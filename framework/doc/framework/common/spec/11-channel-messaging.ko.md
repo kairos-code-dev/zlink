@@ -109,6 +109,12 @@ timeout으로 끝난다. Framework는 같은 MeshName의 다른 RID로 자동 �
 5. [Weight](01-glossary.ko.md#weight) 비율을 반영하여 weight가 0보다 큰 ready target 중 하나를 고르고 즉시
    message를 submit한다.
 
+Framework는 eligibility와 drain 조건을 적용한 뒤 남은 positive weight 합계를 최소
+64-bit 정수로 계산한다. 이 합계가 overflow하지 않도록 계산한 상대 비율로 target을
+선택한다.
+예를 들어 다른 조건이 같은 두 후보의 weight가 `100`과 `300`이면 장기 선택 비율은
+약 `1:3`이다. 개별 호출마다 이 순서를 보장한다는 뜻은 아니다.
+
 ClientServer의 local Server도 remote Server와 같은 후보다. Local Server는 listener
 bind와 ClientServer service admission을 마쳐 ready이고, weight가 0보다 크며,
 draining 상태가 아닐 때만 후보에 들어간다. Framework는 같은 process라는 이유로

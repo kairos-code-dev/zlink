@@ -4,7 +4,7 @@ const {createHash} = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const EXACT_ROOT = 'framework/doc/framework/spec/server/languages';
+const EXACT_ROOT = 'framework/doc/framework/common/spec/server/languages';
 
 function exactDocumentPaths(root, language) {
   const relativeDirectory = path.posix.join(EXACT_ROOT, language, 'interfaces');

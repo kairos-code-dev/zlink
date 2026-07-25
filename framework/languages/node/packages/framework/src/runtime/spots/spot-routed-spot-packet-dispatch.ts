@@ -97,7 +97,7 @@ export class ZLinkRoutedSpotPacketDispatch {
           response = await handler.handle(activation.spot, payload, {
             channelName: context.channelName,
             contentType: context.contentType,
-            packetName,
+            packetName: packetName!,
             metadata: zlinkMessageMetadata({})
           });
         }

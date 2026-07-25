@@ -48,14 +48,14 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 | actor client(no-bind) → actor echo | session 없는 server 측 caller가 `ActorRef`로 직접 send/request하는 비용 측정 | 4 KiB | 1 KiB |
 | publish → subscriber fanout | publisher 하나가 여러 subscriber에게 이벤트를 뿌릴 때 fanout 처리량과 delivery latency 측정 | 1 KiB | 4 KiB |
 
-`publish → subscriber fanout` 축은 `framework/doc/framework/spec/02-interaction-model.ko.md` §3.3과
-`framework/doc/framework/spec/server/10-channel-topology.ko.md`가 정의하는 `publish-subscribe` 공용
+`publish → subscriber fanout` 축은 `framework/doc/framework/common/spec/02-interaction-model.ko.md` §3.3과
+`framework/doc/framework/common/spec/10-channel-topology.ko.md`가 정의하는 `publish-subscribe` 공용
 상호작용 모델, 그리고 `framework/doc/framework/common/e2e/config-3-pubsub.ko.md`의 fanout 시나리오를
 기준으로 한다. `publish-subscribe`는 이미 5개 언어 모두 구현된 공개 계약이므로, 이 축은 언어별
 스킵 없이 다른 다섯 축과 동일하게 필수로 구현한다.
 
 `actor client(no-bind) → actor echo` 축은
-`framework/doc/framework/spec/server/22-actor-model.ko.md` 6.1절의 actor client 계약과
+`framework/doc/framework/common/spec/22-actor-model.ko.md` 6.1절의 actor client 계약과
 `framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md` 시나리오를 기준으로 한다.
 공개 actor client를 제공하는 모든 framework 언어는 이 축을 같은 필수 perf 범위로 유지한다.
 

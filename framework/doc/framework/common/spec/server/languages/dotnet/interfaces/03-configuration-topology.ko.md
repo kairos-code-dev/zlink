@@ -50,9 +50,9 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId);
     IZLinkMeshNodeBuilder SetRoutingIdPrefix(string prefix);
     IZLinkMeshNodeBuilder SetPlacementWeight(int weight);
-    IZLinkMeshNodeBuilder SetObjectCapacity(
-        int maxActiveObjects,
-        int maxPendingActivations);
+    IZLinkMeshNodeBuilder SetActorLimit(int limit);
+    IZLinkMeshNodeBuilder SetSpotLimit(int limit);
+    IZLinkMeshNodeBuilder SetActivationConcurrency(int limit);
     IZLinkMeshObjectRoleBuilder Objects();
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
@@ -270,7 +270,7 @@ Server와 같은 candidate 집합에 넣는다. [Ready](../../../../01-glossary.
 local 우선순위나 remote 제외 규칙을 두지 않는다. 선택 뒤에는 Client DEALER에서 Server ROUTER로 실제
 transport message를 전달하며 handler를 직접 호출하지 않는다.
 
-`ConfigureNetwork()`의 기본 BindHost는 `127.0.0.1`이고 AdvertiseHost를 생략하면 non-wildcard [BindHost](../../../../01-glossary.ko.md#bind-host)를
+`ConfigureNetwork()`의 기본 BindHost는 `127.0.0.1`이고 AdvertiseHost를 생략하면 non-wildcard [BindHost](../../../../01-glossary.ko.md#bindhost)를
 사용한다. [Automatic discovery](../../../../01-glossary.ko.md#automatic-discovery) listener는 `Listen()`·`Bind()`·`EnablePublisher()`의 port를 생략하거나
 listener 호출 자체를 생략하면 port `0`으로 bind한다. Manual mode에서 endpoint를 다른 discovery source로
 얻지 못하면 listen port와 remote endpoint를 명시한다. Listener별 host 설정은 root 기본값보다 우선한다.
@@ -312,7 +312,7 @@ discovery 결과는 이 handle로 변경하지 않는다.
 owner route를 결정하므로 이 설정은 MeshName을 받지 않는다.
 
 `DefaultRequestTimeout`의 기본값은 30초, `DefaultSocketSendTimeout`의 기본값은 1초다. `Worker`는 bounded
-worker scheduler의 최소·최대 thread 수, idle timeout과 queue 상한을 host startup 전에 설정한다. Raw receive
+worker scheduler의 최소·최대 thread 수, idle timeout과 queue 상한을 host startup 전에 설정한다. Raw receiver
 batch와 service protocol claim 크기는 public 설정으로 노출하지 않는다.
 
 `ConfigureStreamCompression()`과 `IZLinkStreamCompressionBuilder`는 STREAM payload compression을 고른다.
@@ -355,12 +355,12 @@ public interface IZLinkMeshPeerConnections
 pending limit은 생략할 수 있지만 명시한 값은 1..`int.MaxValue`다.
 같은 MeshNode에서 같은 stable type 또는 같은 implementation class를
 User Spot factory와 Instance factory에 중복 등록할 수 없다. `TSpot`이 닫힌 generic
-`IZLinkSpotActorLifecycle<TActor>`도 구현하면
+`IZLinkUserSpotActorLifecycle<TActor>`도 구현하면
 actor-free 계약과 충돌하므로 startup이 실패한다. 두 option은 local MeshNode와 Instance type별로 적용한다.
 등록한 type set은 descriptor를 처음 게시하기 전에 고정하며 startup 이후 변경하지 않는다.
 
 `ZLinkRelocationPolicy<TInstance>.Snapshot<TAdapter>()`은 state type이나 state contract ID를 받지 않는다. Actor
-factory 등록에서는 `TAdapter`가 `IZLinkActorRelocationAdapter<TActor>`를, User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory 등록에서는
+factory 등록에서는 `TAdapter`가 `IZLinkActorRelocationAdapter<TActor>`를, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory 등록에서는
 `IZLinkSpotRelocationAdapter<TSpot>`을 구현해야 한다. Factory 대상과 adapter 종류가 맞지 않으면 socket bind 전에
 startup configuration error로 실패한다. `Disabled`와 `Recreate`는 adapter type을 요구하지 않는다.
 

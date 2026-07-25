@@ -93,8 +93,8 @@ class evidence_store_t
         auto value = *event.correlation_id;
         if (*event.packet_name == "forwarding_entry" && event.channel_name) {
             value = *event.channel_name;
-            if (event.spot_rid) {
-                value += ":" + *event.spot_rid;
+            if (event.spot_id) {
+                value += ":" + *event.spot_id;
             }
         }
         const bool request_frame = *event.packet_name == "handoff_request_frame"
@@ -243,37 +243,110 @@ joined_gate_store_t *g_joined_gates = nullptr;
 transfer_gate_store_t *g_transfer_gates = nullptr;
 std::string g_initial_actor_node_rid;
 
-class transfer_actor_t
+class transfer_actor_t final : public fw::actor_t
 {
   public:
     void set_actor_ref (const fw::actor_ref_t &actor_ref)
     {
         actor_id = std::string (actor_ref.actor_id ());
+        actor_type = std::string (actor_ref.actor_type ());
     }
 
     void set_actor_context (fw::actor_context_t actor_context)
     {
-        context = std::move (actor_context);
+        _context = std::move (actor_context);
+    }
+
+    fw::actor_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const fw::actor_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    fw::task_t<void>
+    on_join_completed (
+      const fw::actor_join_completion_t &completion) override
+    {
+        if (const auto *accepted =
+              std::get_if<fw::actor_join_accepted_t> (
+                &completion)) {
+            std::string scenario = "deferred-join";
+            std::string target_spot;
+            if (accepted->reply) {
+                const auto reply =
+                  accepted->reply
+                    ->decode<e2e::join_target_res_t> ();
+                scenario = reply.scenario;
+                target_spot = reply.target_spot_rid;
+            }
+            g_evidence->add (
+              scenario, actor_id, "location_committed",
+              target_spot);
+            g_evidence->add (
+              scenario, actor_id, "join_completion_accepted",
+              std::to_string (
+                accepted->operation_id_high)
+                + ":"
+                + std::to_string (
+                  accepted->operation_id_low));
+        } else if (const auto *rejected =
+                     std::get_if<
+                       fw::actor_join_rejected_t> (
+                       &completion)) {
+            g_evidence->add (
+              "deferred-join", actor_id,
+              "join_completion_rejected",
+              std::to_string (
+                rejected->operation_id_high)
+                + ":"
+                + std::to_string (
+                  rejected->operation_id_low));
+        } else {
+            const auto &failed =
+              std::get<fw::actor_join_failed_t> (
+                completion);
+            g_evidence->add (
+              "deferred-join", actor_id,
+              "join_completion_failed",
+              std::to_string (
+                static_cast<int> (
+                  failed.error_kind)));
+        }
+        co_return;
     }
 
     std::string actor_id;
     std::string actor_type = e2e::actor_type_stateful;
     int state_version = 0;
-    fw::actor_context_t context;
+  private:
+    fw::actor_context_t _context;
 };
 
-class transfer_actor_factory_t
+class transfer_actor_factory_t final :
+    public fw::actor_factory_t<transfer_actor_t>
 {
   public:
-    transfer_actor_t create (std::string actor_id)
+    fw::task_t<std::shared_ptr<transfer_actor_t>>
+    create (
+      fw::actor_context_t &context,
+      std::stop_token) override
     {
+        const auto actor_id =
+          std::string (context.actor_ref ().actor_id ());
         if (g_evidence != nullptr && g_evidence->node_rid () == "actor-b"
             && actor_id.rfind ("actor-no-adapter-", 0) == 0) {
             g_evidence->add ("transfer", actor_id, "transfer_in_empty_default", "actor-factory");
         }
-        transfer_actor_t actor;
-        actor.actor_id = std::move (actor_id);
-        return actor;
+        auto actor =
+          std::make_shared<transfer_actor_t> ();
+        actor->set_actor_ref (
+          context.actor_ref ());
+        actor->set_actor_context (context);
+        co_return actor;
     }
 };
 
@@ -398,41 +471,33 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                                                     fw::spot_actor_request_context_t &,
                                                     const e2e::join_target_req_t &request)
     {
-        auto context = actor.context;
-        auto joined = co_await context
-                        .join_spot (fw::spot_rid_t::from_string (request.target_spot_rid), request)
-                        .timeout (std::chrono::seconds (10))
-                        .async<e2e::join_target_res_t> ();
-        const auto *joined_accepted =
-          std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
-        if (joined_accepted != nullptr
-            && joined_accepted->actor.node_rid ().value () == g_evidence->node_rid ()) {
-            g_evidence->add (request.scenario, actor.actor_id, "location_committed",
-                             request.target_spot_rid);
-        }
+        auto context = actor.context ();
+        context
+          .join_spot (request.target_spot_rid, request)
+          .timeout (std::chrono::seconds (10))
+          .defer ();
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
-                                         joined_accepted != nullptr
-                                           && joined_accepted->reply.accepted,
+                                         true,
                                          g_evidence->node_rid (),
                                          request.target_spot_rid,
                                          actor.state_version,
-                                         std::string{}};
+                                         "deferred"};
     }
 
     e2e::bound_push_res_t bound_push (const transfer_actor_t &actor,
                                       fw::spot_actor_request_context_t &,
                                       const e2e::bound_push_req_t &request)
     {
-        actor.context.bound_session ()
+        actor.context ().bound_session ()
           .send (e2e::bound_push_notify_t{request.scenario, actor.actor_id,
-                                          std::string (_context.spot_rid ().value ()),
+                                          _context.spot_id (),
                                           g_evidence->node_rid (), request.marker,
                                           actor.state_version})
           .submit ();
         g_evidence->add (request.scenario, actor.actor_id, "bound_push", request.marker);
         return e2e::bound_push_res_t{request.scenario,      actor.actor_id,
-                                     std::string (_context.spot_rid ().value ()),
+                                     _context.spot_id (),
                                      g_evidence->node_rid (), request.marker,
                                      actor.state_version};
     }
@@ -444,7 +509,7 @@ class transfer_entry_spot_t : public fw::entry_spot_t
         g_evidence->add (request.scenario, actor.actor_id, "packet_handler", request.marker);
         return e2e::probe_res_t{request.scenario,
                                 actor.actor_id,
-                                std::string (_context.spot_rid ().value ()),
+                                _context.spot_id (),
                                 g_evidence->node_rid (),
                                 actor.state_version,
                                 request.marker};
@@ -475,7 +540,7 @@ class transfer_user_spot_t : public fw::spot_t
         if (!request.empty ()) {
             _mode = request.decode<e2e::create_spot_req_t> ().mode;
         }
-        g_evidence->add ("create_spot", std::string (_context.spot_rid ().value ()), "spot_created", _mode);
+        g_evidence->add ("create_spot", _context.spot_id (), "spot_created", _mode);
         return fw::spot_create_response_t::accept ();
     }
 
@@ -489,14 +554,14 @@ class transfer_user_spot_t : public fw::spot_t
             _join_scenarios[id] = join.scenario;
         }
         g_evidence->add (join.scenario, id, "admission",
-                         "spot=" + std::string (_context.spot_rid ().value ()) + "|mode=" + _mode
+                         "spot=" + _context.spot_id () + "|mode=" + _mode
                            + "|input=actor-id-only");
         if (_mode == "reject" || join.expected_mode == "reject") {
             return fw::spot_actor_join_response_t::reject (
-              make_join_reply (join.scenario, id, false, std::string (_context.spot_rid ().value ())));
+              make_join_reply (join.scenario, id, false, _context.spot_id ()));
         }
         return fw::spot_actor_join_response_t::accept (
-          make_join_reply (join.scenario, id, true, std::string (_context.spot_rid ().value ())));
+          make_join_reply (join.scenario, id, true, _context.spot_id ()));
     }
 
     fw::task_t<void> on_actor_joined (transfer_actor_t &actor)
@@ -504,23 +569,23 @@ class transfer_user_spot_t : public fw::spot_t
         if (_mode == "delay-joined") {
             const auto scenario = scenario_for (actor.actor_id);
             g_evidence->add (scenario, actor.actor_id, "joined_wait",
-                             std::string (_context.spot_rid ().value ()));
-            g_joined_gates->wait (std::string (_context.spot_rid ().value ()));
+                             _context.spot_id ());
+            g_joined_gates->wait (_context.spot_id ());
             g_evidence->add (scenario, actor.actor_id, "joined_released",
-                             std::string (_context.spot_rid ().value ()));
+                             _context.spot_id ());
             g_evidence->add ("transfer", actor.actor_id, "joined",
-                             std::string (_context.spot_rid ().value ()) + ":"
+                             _context.spot_id () + ":"
                                + std::to_string (actor.state_version));
             co_return;
         }
         if (_mode == "fail-joined") {
             const auto scenario = scenario_for (actor.actor_id);
             g_evidence->add (scenario, actor.actor_id, "joined_failed",
-                             std::string (_context.spot_rid ().value ()));
+                             _context.spot_id ());
             throw std::runtime_error ("injected joined failure");
         }
         g_evidence->add ("transfer", actor.actor_id, "joined",
-                         std::string (_context.spot_rid ().value ()) + ":"
+                         _context.spot_id () + ":"
                            + std::to_string (actor.state_version));
         if (actor.actor_type == e2e::actor_type_empty_state) {
             actor.state_version = g_domain_state->load (actor.actor_id);
@@ -532,7 +597,7 @@ class transfer_user_spot_t : public fw::spot_t
     fw::task_t<void> on_leave_actor (const transfer_actor_t &actor)
     {
         g_evidence->add ("transfer", actor.actor_id, "target_leave",
-                         std::string (_context.spot_rid ().value ()));
+                         _context.spot_id ());
         co_return;
     }
 
@@ -540,21 +605,18 @@ class transfer_user_spot_t : public fw::spot_t
                                                     fw::spot_actor_request_context_t &,
                                                     const e2e::join_target_req_t &request)
     {
-        auto context = actor.context;
-        auto joined = co_await context
-                        .join_spot (fw::spot_rid_t::from_string (request.target_spot_rid), request)
-                        .timeout (std::chrono::seconds (10))
-                        .async<e2e::join_target_res_t> ();
-        const auto *joined_accepted =
-          std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
+        auto context = actor.context ();
+        context
+          .join_spot (request.target_spot_rid, request)
+          .timeout (std::chrono::seconds (10))
+          .defer ();
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
-                                         joined_accepted != nullptr
-                                           && joined_accepted->reply.accepted,
+                                         true,
                                          g_evidence->node_rid (),
                                          request.target_spot_rid,
                                          actor.state_version,
-                                         std::string{}};
+                                         "deferred"};
     }
 
     e2e::probe_res_t probe (const transfer_actor_t &actor,
@@ -569,7 +631,7 @@ class transfer_user_spot_t : public fw::spot_t
         }
         return e2e::probe_res_t{request.scenario,
                                 actor.actor_id,
-                                std::string (_context.spot_rid ().value ()),
+                                _context.spot_id (),
                                 g_evidence->node_rid (),
                                 actor.state_version,
                                 request.marker};
@@ -586,15 +648,15 @@ class transfer_user_spot_t : public fw::spot_t
                                       fw::spot_actor_request_context_t &,
                                       const e2e::bound_push_req_t &request)
     {
-        actor.context.bound_session ()
+        actor.context ().bound_session ()
           .send (e2e::bound_push_notify_t{request.scenario, actor.actor_id,
-                                          std::string (_context.spot_rid ().value ()),
+                                          _context.spot_id (),
                                           g_evidence->node_rid (), request.marker,
                                           actor.state_version})
           .submit ();
         g_evidence->add (request.scenario, actor.actor_id, "bound_push", request.marker);
         return e2e::bound_push_res_t{request.scenario,      actor.actor_id,
-                                     std::string (_context.spot_rid ().value ()),
+                                     _context.spot_id (),
                                      g_evidence->node_rid (), request.marker,
                                      actor.state_version};
     }
@@ -784,62 +846,108 @@ class transfer_gate_release_handler_t
 class create_spot_handler_t
 {
   public:
-    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t, evidence_store_t>;
+    using dependency_types =
+      fw::dependency_list_t<fw::spot_manager_t, evidence_store_t>;
 
-    create_spot_handler_t (fw::spot_node_manager_t &spots, evidence_store_t &evidence) :
+    create_spot_handler_t (
+      fw::spot_manager_t &spots,
+      evidence_store_t &evidence) :
         _spots (spots), _evidence (evidence)
     {
     }
 
-    fw::http_response_t handle (const fw::http_request_t &http_request)
+    fw::task_t<fw::http_response_t>
+    handle (const fw::http_request_t &http_request)
     {
         const auto request = parse_body (http_request).get<e2e::create_spot_req_t> ();
-        _spots.get_or_create_spot ("transfer-user",
-                                   fw::spot_rid_t::from_string (request.spot_rid), request);
-        return json_response (nlohmann::json (
+        (void) co_await _spots
+          .get_or_create (
+            request.spot_rid,
+            "transfer-user")
+          .creation_request (request)
+          .submit ();
+        co_return json_response (nlohmann::json (
           e2e::create_spot_res_t{request.spot_rid, _evidence.node_rid (), "created"}));
     }
 
   private:
-    fw::spot_node_manager_t &_spots;
+    fw::spot_manager_t &_spots;
     evidence_store_t &_evidence;
 };
 
 class create_actor_handler_t
 {
   public:
-    using dependency_types = fw::dependency_list_t<fw::session_actor_manager_t, evidence_store_t>;
+    using dependency_types =
+      fw::dependency_list_t<fw::actor_manager_t, fw::session_actor_manager_t,
+                            evidence_store_t>;
 
-    create_actor_handler_t (fw::session_actor_manager_t &actors, evidence_store_t &evidence) :
-        _actors (actors), _evidence (evidence)
+    create_actor_handler_t (fw::actor_manager_t &actor_manager,
+                            fw::session_actor_manager_t &session_actors,
+                            evidence_store_t &evidence) :
+        _actor_manager (actor_manager),
+        _session_actors (session_actors),
+        _evidence (evidence)
     {
     }
 
     fw::task_t<fw::http_response_t> handle (const fw::http_request_t &http_request)
     {
         const auto request = parse_body (http_request).get<e2e::actor_create_req_t> ();
-        auto actor = _actors.get_or_create (request.actor_type, request.actor_id, request);
-        if (!actor) {
-            throw *actor.error ();
+        _evidence.add (
+          "create", request.actor_id,
+          "create_actor_requested",
+          request.actor_type);
+        fw::actor_create_result_t created;
+        try {
+            created = co_await _actor_manager
+              .get_or_create (request.actor_id, request.actor_type)
+              .creation_request (request)
+              .submit ();
         }
-        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
-        auto joined = co_await bound.context ()
-                        .join_entry_spot (fw::node_rid_t::from_string (
-                                           g_initial_actor_node_rid.empty ()
-                                             ? _evidence.node_rid ()
-                                             : g_initial_actor_node_rid),
-                                          request)
-                        .async ();
-        const auto *joined_accepted = std::get_if<fw::actor_join_accepted_t<fw::message_t>> (&joined);
-        const auto &ref =
-          joined_accepted != nullptr ? joined_accepted->actor : bound.context ().actor_ref ();
+        catch (const std::exception &error) {
+            _evidence.add ("create", request.actor_id,
+                           "create_actor_failed", error.what ());
+            throw;
+        }
+        const auto ref = std::visit (
+          [] (const auto &result) -> fw::actor_ref_t {
+              using result_t = std::decay_t<decltype (result)>;
+              if constexpr (std::is_same_v<
+                              result_t,
+                              fw::actor_create_rejected_t>) {
+                  throw fw::framework_exception_t (
+                    fw::framework_error_kind_t::
+                      actor_create_rejected,
+                    "Actor creation was rejected");
+              } else {
+                  return result.actor;
+              }
+          },
+          created);
+        fw::session_actor_t bound;
+        try {
+            bound = co_await _session_actors
+              .bind_or_get (ref)
+              .submit ();
+        }
+        catch (const std::exception &error) {
+            _evidence.add (
+              "create", request.actor_id,
+              "create_actor_bind_failed",
+              error.what ());
+            throw;
+        }
+        const auto &bound_ref = bound.context ().actor_ref ();
         co_return json_response (nlohmann::json (e2e::actor_create_res_t{
-          request.actor_id, request.actor_type, std::string (ref.node_rid ().value ()),
-          static_cast<std::int64_t> (ref.generation ())}));
+          request.actor_id, request.actor_type,
+          std::string (bound_ref.node_rid ().value ()),
+          static_cast<std::int64_t> (bound_ref.generation ())}));
     }
 
   private:
-    fw::session_actor_manager_t &_actors;
+    fw::actor_manager_t &_actor_manager;
+    fw::session_actor_manager_t &_session_actors;
     evidence_store_t &_evidence;
 };
 
@@ -919,8 +1027,9 @@ class join_actor_handler_t
             co_return json_response (nlohmann::json (result));
         }
         catch (const fw::framework_exception_t &error) {
-            _evidence.add (request.scenario, actor_id, "join_failed",
-                           error_kind_name (error));
+            _evidence.add (
+              request.scenario, actor_id, "join_failed",
+              error_kind_name (error) + ":" + error.what ());
             co_return json_response (nlohmann::json (e2e::join_target_res_t{
               request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
               error_kind_name (error)}));
@@ -1139,20 +1248,50 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
         if (host_role == transfer_host_role_t::actor_node) {
             mesh.add_entry_spot<transfer_entry_spot_t> ()
               .add_spot<transfer_user_spot_t> ("transfer-user")
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_stateful)
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_stateful,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
               .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
                 e2e::actor_type_stateful)
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_empty_state)
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_empty_state,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
               .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
                 e2e::actor_type_empty_state)
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_no_adapter)
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_leave)
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_no_adapter,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_fail_leave,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
               .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
                 e2e::actor_type_fail_leave)
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_out)
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_fail_transfer_out,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
               .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
                 e2e::actor_type_fail_transfer_out)
-              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_in)
+              .add_actor_factory<
+                transfer_actor_t,
+                transfer_actor_factory_t> (
+                e2e::actor_type_fail_transfer_in,
+                std::make_shared<
+                  transfer_actor_factory_t> ())
               .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
                 e2e::actor_type_fail_transfer_in);
         }

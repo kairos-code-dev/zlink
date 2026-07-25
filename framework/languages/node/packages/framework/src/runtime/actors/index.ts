@@ -32,7 +32,10 @@ export {
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
-export { DefaultZLinkActorContext } from './actor-context';
+export {
+  DefaultZLinkActorContext,
+  ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME
+} from './actor-context';
 import {
   ZLinkActorCreationCoordinator,
   type ZLinkActorCreateRequest
@@ -57,19 +60,28 @@ export {
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from './actor-runtime-state';
+export {
+  ZLinkDeferredJoinAcceptedJournal,
+  type ZLinkDeferredJoinAcceptedRoot,
+  type ZLinkDeferredJoinDeliveryCurso
+} from './deferred-join-accepted-journal';
+export {
+  decodeActorAuthorityIdentity,
+  encodeActorAuthorityIdentity,
+  publishInitialActorAuthority,
+  type ZLinkActorAuthorityIdentity
+} from './actor-authority-publication';
 import {
   ZLinkActorRuntimeState,
   toFrameworkActorRef,
   type ZLinkActorCreationAttemptResult
 } from './actor-runtime-state';
 export {
-  DefaultZLinkSpotActorReplyOptions,
   ZLinkActorPacketKind,
   ZLinkSpotActorDispatcher,
   ZLinkSpotActorHandlerRegistryRuntime,
   type ZLinkActorPacketDescriptor,
-  type ZLinkSpotActorDispatcherOptions,
-  type ZLinkSpotActorReplyOptionsSnapshot
+  type ZLinkSpotActorDispatcherOptions
 } from './spot-actor-dispatch';
 export {
   ZLinkActorNativeJoinCoordinator,
@@ -391,14 +403,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   ): Promise<void> {
     const destroySignal = signal;
     throwIfAborted(destroySignal);
-    const state = this.states.get(actor.actorId);
+    const state = this.states.get(actor.context.actorId);
     if (state === undefined || state.actor === undefined || state.actor !== actor) {
       return;
     }
     if (state.isJoined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' must leave its current SPOT before destroy.`
+        `Actor '${actor.context.actorId}' must leave its current SPOT before destroy.`
       );
     }
     const destroyTask = state.getOrStartDestroy(entryNodeRid, async (actorRef) => {
@@ -407,13 +419,13 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         state.markNativeActorDestroyed(actorRef);
       }
       if (state.actorType !== undefined && state.ownsLocation) {
-        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
+        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.context.actorId);
       }
-      this.options.actorDestroyedCleanup?.(actor.actorId);
+      this.options.actorDestroyedCleanup?.(actor.context.actorId);
       state.clearAfterDestroy();
-      if (this.states.get(actor.actorId) === state) {
-        this.states.delete(actor.actorId);
-        this.actorMeshNames.delete(actor.actorId);
+      if (this.states.get(actor.context.actorId) === state) {
+        this.states.delete(actor.context.actorId);
+        this.actorMeshNames.delete(actor.context.actorId);
       }
       this.options.metrics?.change('zlink.actor.count', -1);
     });

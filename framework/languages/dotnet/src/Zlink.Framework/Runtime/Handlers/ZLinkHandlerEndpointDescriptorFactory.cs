@@ -22,12 +22,9 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
             "Handler");
 
         var messageName = packetName ?? ZLinkMessageNameResolver.ResolveFromType(messageType);
-        Type? contextType = kind switch
-        {
-            ZLinkMessageKind.Request => typeof(ZLinkRequestContext),
-            ZLinkMessageKind.Command => typeof(ZLinkSendContext),
-            _ => null
-        };
+        Type? contextType = kind is ZLinkMessageKind.Request or ZLinkMessageKind.Command
+            ? typeof(IZLinkMessageContext)
+            : null;
 
         return new ZLinkHandlerEndpointDescriptor(
             kind,
@@ -94,7 +91,7 @@ internal static class ZLinkHandlerEndpointDescriptorFactory
                 continue;
             }
 
-            if (typeof(IZLinkHandlerContext).IsAssignableFrom(parameters[i].ParameterType))
+            if (typeof(IZLinkMessageContext).IsAssignableFrom(parameters[i].ParameterType))
                 contextType = parameters[i].ParameterType;
         }
 

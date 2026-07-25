@@ -9,7 +9,10 @@ public static class SpotActorTransferNames
     public const string ActorTypeFailTransferOut = "transfer-fail-out";
     public const string ActorTypeFailLeave = "transfer-fail-leave";
     public const string ActorTypeFailTransferIn = "transfer-fail-in";
-    public const string EntrySpotRid = "spot-actor-transfer-entry";
+    public const string UserSpotTypePrefix = "transfer-user-spot";
+
+    public static string UserSpotType(string nodeRid) =>
+        $"{UserSpotTypePrefix}:{nodeRid}";
 }
 
 public sealed record ActorCreateReq(
@@ -25,7 +28,8 @@ public sealed record ActorCreateRes(
 
 public sealed record CreateSpotReq(
     string SpotRid,
-    string Mode = "accept");
+    string Mode = "accept",
+    string? TargetNodeRid = null);
 
 public sealed record CreateSpotRes(
     string SpotRid,
@@ -34,7 +38,8 @@ public sealed record CreateSpotRes(
 
 public sealed record MeshReadyRes(
     string NodeRid,
-    string[] ReadyPeerRids);
+    string[] ReadyPeerRids,
+    string[] ReadySpotTypes);
 
 public sealed record GateReleaseRes(
     string SpotRid,
@@ -100,9 +105,21 @@ public sealed record BindActorSessionRes(
     string NodeRid,
     long Generation);
 
+public sealed record SessionBindingsReq(string Scenario);
+
+public sealed record SessionBindingSnapshot(
+    string ActorId,
+    string NodeRid,
+    long Generation);
+
+public sealed record SessionBindingsRes(
+    string Scenario,
+    SessionBindingSnapshot[] Bindings);
+
 public sealed record BoundPushReq(
     string Scenario,
-    string Marker);
+    string Marker,
+    string? ActorId = null);
 
 public sealed record BoundPushRes(
     string Scenario,
@@ -128,6 +145,11 @@ public sealed record ActorRefSnapshotRes(
     string ActorId,
     string NodeRid,
     long Generation);
+
+public sealed record ActorDestroyRes(
+    string ActorId,
+    long Generation,
+    bool Destroyed);
 
 public sealed record TransferStateDto(
     string ActorId,

@@ -309,6 +309,21 @@ internal sealed class ZLinkActorRemoteJoiner(
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
         }
 
+        var authorityStore = registration.Locations.ResolveStore()
+                             ?? throw new InvalidOperationException(
+                                 "Actor handoff requires a location store.");
+        var authorityRead = await authorityStore.ReadAuthorityAsync(
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(actor.ActorId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (authorityRead is not ZLinkAuthorityReadResult.Found authority
+            || authority.Snapshot.ObjectGeneration != actorRef.Generation)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                $"Actor '{actor.ActorId}' authority changed before handoff.");
+        var actorAuthorityOwnerGeneration =
+            authority.Snapshot.AuthorityOwnerGeneration;
+
         var pendingRequests = await actorState.BeginHandoffCaptureAsync(cancellationToken)
             .ConfigureAwait(false);
         var transferMetricStarted = ZLinkRuntimeMetrics.StartActorTransfer(pendingRequests);
@@ -332,7 +347,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             registration.DefaultRequestTimeout);
         var hasBoundSession = actorState.TryGetBoundSession(out var boundSession);
         // A locally bound session records no SessionNodeRid (null means "this
-        // node"); the join commit crosses nodes, so the target must receive
+        // node"); the join commit crosses nodes, so the target must receiver
         // the concrete session node rid — the actor's current owner node — or
         // its pushes can never route back to the session.
         if (hasBoundSession && boundSession.SessionNodeRid is null)
@@ -353,6 +368,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                     handoffId,
                     sourceSpotId,
                     actorRef.NodeRid,
+                    actorRef.Generation,
+                    actorAuthorityOwnerGeneration,
                     boundSession.SessionNodeRid,
                     boundSession.SessionRid,
                     transferState,

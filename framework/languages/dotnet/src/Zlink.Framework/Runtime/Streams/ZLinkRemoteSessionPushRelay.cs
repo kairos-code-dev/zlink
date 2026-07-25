@@ -48,7 +48,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
 {
     public async ValueTask HandleAsync(
         ZLinkRemoteActorFrameRelay message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         await runtime.DispatchRemoteActorFrameAsync(
@@ -78,7 +78,7 @@ internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime r
 {
     public async ValueTask HandleAsync(
         ZLinkRemoteSessionPushRelay message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         // A miss is a stale push racing a rebind or disconnect; spec 31 §6
@@ -98,7 +98,7 @@ internal sealed class ZLinkRemoteActorReplyRelayHandler(ZLinkFrameworkRuntime ru
 {
     public ValueTask HandleAsync(
         ZLinkRemoteActorReplyRelay message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

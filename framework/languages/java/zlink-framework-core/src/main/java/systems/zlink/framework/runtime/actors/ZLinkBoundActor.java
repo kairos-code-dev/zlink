@@ -146,7 +146,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         Message message = ZLinkMessagePayloads.message(payload, serializer);
         byte[] payloadBytes = message.toByteArray();
         message.close();
-        if (managedActor.isPresent() && localActorDispatcher != null && !nativeRebound) {
+        if (managedActor.isPresent() && localActorDispatcher != null) {
             return ZLinkOneWayCalls.adaptOneWay(relayLocal(header, payloadBytes));
         }
         return ZLinkOneWayCalls.adaptOneWay(

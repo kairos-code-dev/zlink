@@ -3,12 +3,10 @@ import type {
   Type,
   ZLinkActor,
   ZLinkEntrySpot,
-  ZLinkPublishContext,
-  ZLinkRequestContext,
-  ZLinkRouteRequestContext,
-  ZLinkRouteSendContext,
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkRouteMessageContext,
   ZLinkRuntimeEventPublisher,
-  ZLinkSendContext,
   ZLinkSpot,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
@@ -24,11 +22,11 @@ export interface ZLinkNestHandlerMetadata {
   readonly methodName: string;
   readonly decodePayload?: (
     payload: Buffer,
-    context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+    context: ZLinkMessageContext | ZLinkRouteMessageContext | ZLinkPublishMessageContext
   ) => unknown;
   readonly encodeResult?: (
     result: unknown,
-    context: ZLinkRequestContext | ZLinkRouteRequestContext
+    context: ZLinkMessageContext | ZLinkRouteMessageContext
   ) => unknown;
 }
 

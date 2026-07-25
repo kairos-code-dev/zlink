@@ -418,7 +418,7 @@ public sealed record ZLinkSpotNodePeerEntry(
     ZLinkSpotPeerSource Source,
     ZLinkSpotPeerKind Kind,
     ZLinkSpotPeerState State,
-    uint Weight,
+    int Weight,
     ulong ConnectedSinceMs,
     ulong LastChangedMs);
 

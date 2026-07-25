@@ -14,6 +14,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorClient;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -73,13 +74,17 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         Contracts.CreateSpotReq request = json.readValue(
             exchange.getRequestBody(), Contracts.CreateSpotReq.class);
         var result = spots.getOrCreate(
-                TransferComponents.TransferUserSpot.class,
-                RoutingId.from(request.spotRid()),
-                ZLinkMessage.of(request))
+                request.spotRid(),
+                TransferComponents.TransferUserSpot.class.getName())
+            .request(ZLinkMessage.of(request))
+            .timeout(Duration.ofSeconds(5))
+            .submit()
             .toCompletableFuture()
-            .get(5, TimeUnit.SECONDS);
+            .get(12, TimeUnit.SECONDS);
         writeJson(exchange, new Contracts.CreateSpotRes(
-            result.spotRid().toString(), evidence.nodeRid(), result.state().name()));
+            result.spot().spotId(),
+            result.spot().nodeRid().toString(),
+            result.state().name()));
     }
 
     private void releaseGate(HttpExchange exchange) throws Exception {
@@ -113,12 +118,18 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
     private void createActor(HttpExchange exchange) throws Exception {
         Contracts.ActorCreateReq request = json.readValue(
             exchange.getRequestBody(), Contracts.ActorCreateReq.class);
-        ActorRef actor = actors.getOrCreate(
+        ZLinkActorCreateResult result = actors.getOrCreate(
                 request.actorId(),
                 request.actorType(),
                 request)
             .toCompletableFuture()
-            .get(5, TimeUnit.SECONDS);
+            .get(12, TimeUnit.SECONDS);
+        ActorRef actor = switch (result) {
+            case ZLinkActorCreateResult.Created created -> created.actor();
+            case ZLinkActorCreateResult.Existing existing -> existing.actor();
+            case ZLinkActorCreateResult.Rejected rejected ->
+                throw new IllegalStateException("Actor creation was rejected");
+        };
         writeJson(exchange, new Contracts.ActorCreateRes(
             actor.actorId(), request.actorType(), actor.nodeRid().toString(), actor.generation()));
     }
@@ -132,7 +143,14 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 .timeout(Duration.ofSeconds(12))
                 .submit(Contracts.JoinTargetRes.class).toCompletableFuture().join();
             if (result.accepted()) {
-                ActorRef resolved = requireActor(actorId);
+                var target = spots.find(request.targetSpotRid())
+                    .toCompletableFuture()
+                    .get(5, TimeUnit.SECONDS)
+                    .orElseThrow(() -> new IllegalStateException(
+                        "target Spot was not found: "
+                            + request.targetSpotRid()));
+                ActorRef resolved =
+                    awaitActorOwner(actorId, target.nodeRid());
                 evidence.add(
                     request.scenario(), actorId, "location_visible",
                     resolved.nodeRid() + ":" + Long.toUnsignedString(resolved.generation()));
@@ -146,6 +164,25 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 request.scenario(), actorId, false, evidence.nodeRid(),
                 request.targetSpotRid(), 0));
         }
+    }
+
+    private ActorRef awaitActorOwner(
+        String actorId,
+        RoutingId expectedOwner) throws Exception {
+        long deadline = System.nanoTime()
+            + Duration.ofSeconds(12).toNanos();
+        while (System.nanoTime() < deadline) {
+            Optional<ActorRef> actor = actors.find(actorId)
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            if (actor.isPresent()
+                && actor.orElseThrow().nodeRid().equals(expectedOwner)) {
+                return actor.orElseThrow();
+            }
+            Thread.sleep(20);
+        }
+        throw new java.util.concurrent.TimeoutException(
+            "Actor location did not commit to target owner");
     }
 
     private void probeActor(HttpExchange exchange, String actorId) throws Exception {

@@ -31,7 +31,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -60,6 +60,29 @@ final class ZLinkChannelRuntimeTest {
                     systems.zlink.framework.spots.ZLinkSpotKind.USER)));
         return ZLinkHandlerActivator.services()
             .add(SpotTransportAddressResolver.class, resolver);
+    }
+
+    @Test
+    void exactMessageContextsExposeTheirContractFields() {
+        Map<String, String> metadata = Map.of("tenant", "blue");
+        var request = new systems.zlink.framework.runtime.channels.DefaultRequestContext(
+            "profile", "ProfileRequest", "application/json", metadata);
+        assertEquals(Optional.empty(), request.meshName());
+        assertEquals(Optional.of("profile"), request.channelName());
+        assertEquals("ProfileRequest", request.packetName());
+        assertEquals(Optional.of("application/json"), request.contentType());
+        assertEquals(metadata, request.metadata());
+        assertEquals(Optional.empty(), request.correlationId());
+
+        var publish = new DefaultPublishContext(
+            "events", "ProfileChanged", "profile.changed", "application/json", metadata);
+        assertEquals("profile.changed", publish.topic());
+        assertEquals(Optional.empty(), publish.source());
+
+        RoutingId sourceNodeRid = RoutingId.from("source-node");
+        var route = new DefaultRouteRequestContext(
+            "mesh", "ProfileRequest", sourceNodeRid, "application/json", metadata);
+        assertEquals(sourceNodeRid, route.sourceNodeRid());
     }
 
     @Test
@@ -115,7 +138,7 @@ final class ZLinkChannelRuntimeTest {
         Method method = ContextHandler.class.getMethod(
             "handle",
             String.class,
-            ZLinkRequestContext.class);
+            ZLinkMessageContext.class);
 
         Object[] arguments = ZLinkChannelHandlerInvoker.methodArguments(method, "hello", context);
 
@@ -1099,19 +1122,24 @@ final class ZLinkChannelRuntimeTest {
     public static final class ContextHandler {
         public void handle(
             String request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
         }
     }
 
-    private static final class DefaultRequestContext implements ZLinkRequestContext {
+    private static final class DefaultRequestContext implements ZLinkMessageContext {
+        @Override
+        public java.util.Optional<String> meshName() {
+            return java.util.Optional.empty();
+        }
+
         @Override
         public java.util.Optional<String> channelName() {
             return java.util.Optional.of("profile");
         }
 
         @Override
-        public java.util.Optional<String> packetName() {
-            return java.util.Optional.of("Echo");
+        public String packetName() {
+            return "Echo";
         }
 
         @Override
@@ -1122,6 +1150,11 @@ final class ZLinkChannelRuntimeTest {
         @Override
         public java.util.Map<String, String> metadata() {
             return java.util.Map.of();
+        }
+
+        @Override
+        public java.util.Optional<String> correlationId() {
+            return java.util.Optional.empty();
         }
     }
 

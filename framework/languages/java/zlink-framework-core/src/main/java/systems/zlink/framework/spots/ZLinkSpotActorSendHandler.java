@@ -2,6 +2,7 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.framework.actors.ZLinkActor;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.ZLinkMessageContext;
 
 public interface ZLinkSpotActorSendHandler<
     TSpot extends ZLinkSpot<?>,
@@ -10,6 +11,6 @@ public interface ZLinkSpotActorSendHandler<
     CompletionStage<Void> handle(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        ZLinkMessageContext context,
         TMessage message);
 }

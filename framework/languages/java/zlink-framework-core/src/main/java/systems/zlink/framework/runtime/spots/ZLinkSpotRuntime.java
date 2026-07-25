@@ -39,7 +39,7 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -86,8 +86,6 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -1707,7 +1705,7 @@ public final class ZLinkSpotRuntime
                         : ZLinkDispatchErrorAction.DROP)
                 .packetName(header.packetName())
                 .spotId(local.joinedSpotId().orElse(null))
-                .actorId(actor.actorId())
+                .actorId(actor.context().actorId())
                 .correlationId(header.requestSequence().map(Object::toString).orElse(null))
                 .error(error));
             return CompletableFuture.failedFuture(error);
@@ -1776,7 +1774,7 @@ public final class ZLinkSpotRuntime
         var actorFlow = systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.current();
         boolean noBindRequest = isNoBindActorRequest(packetHeader, headerPart);
         traceActorSession("dispatch-actor-packet"
-            + " actor=" + actor.actorId()
+            + " actor=" + actor.context().actorId()
             + " packet=" + packetHeader.packetName()
             + " requestSeq=" + packetHeader.requestSeq().map(Object::toString).orElse(null)
             + " sourceNode=" + headerPart.sourceNodeRid()
@@ -1785,7 +1783,7 @@ public final class ZLinkSpotRuntime
             + " hasBound=" + actorSessions.hasBoundSession(actor));
         boolean actorIsRequest = handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST;
         String actorPacketName = packetHeader.packetName();
-        String actorId = actor.actorId();
+        String actorId = actor.context().actorId();
         ZLinkDispatchMessageKind actorKind = actorIsRequest
             ? ZLinkDispatchMessageKind.ACTOR_REQUEST
             : ZLinkDispatchMessageKind.ACTOR_SEND;
@@ -1849,7 +1847,7 @@ public final class ZLinkSpotRuntime
                         primaryNode.replyActorNoBind(
                             new ZLinkBackendActorRef(
                                 headerPart.actor().nodeRid(),
-                                actor.actorId(),
+                                actor.context().actorId(),
                                 headerPart.actor().generation()),
                             headerPart.sourceNodeRid(),
                             headerPart.sourceSessionRid(),
@@ -1863,9 +1861,9 @@ public final class ZLinkSpotRuntime
                     primaryNode,
                     new ZLinkBackendActorRef(
                         headerPart.actor().nodeRid(),
-                        actor.actorId(),
+                        actor.context().actorId(),
                         headerPart.actor().generation()),
-                    actor.actorId(),
+                    actor.context().actorId(),
                     frameBytes,
                     replyFailureMessage);
             })
@@ -2006,7 +2004,7 @@ public final class ZLinkSpotRuntime
         ZLinkActor actor,
         String spotId) {
         if (kind != null && actor != null && spotId != null) {
-            suppressedActorLifecycleCallbacks.add(actorLifecycleCallbackKey(kind, actor.actorId(), spotId));
+            suppressedActorLifecycleCallbacks.add(actorLifecycleCallbackKey(kind, actor.context().actorId(), spotId));
         }
     }
 
@@ -2017,7 +2015,7 @@ public final class ZLinkSpotRuntime
         return kind != null
             && actor != null
             && spotId != null
-            && suppressedActorLifecycleCallbacks.remove(actorLifecycleCallbackKey(kind, actor.actorId(), spotId));
+            && suppressedActorLifecycleCallbacks.remove(actorLifecycleCallbackKey(kind, actor.context().actorId(), spotId));
     }
 
     private static String actorLifecycleCallbackKey(
@@ -2527,7 +2525,7 @@ public final class ZLinkSpotRuntime
             return () -> actorAdmissions.markLeft(actor)
                 .thenCompose(ignored -> notifySpotActorLifecycle(spotSurface, actor, false))
                 .whenComplete((ignored, error) ->
-                    actorAdmissions.completeLeave(actor.actorId(), error));
+                    actorAdmissions.completeLeave(actor.context().actorId(), error));
         }
         return () -> actorAdmissions.markJoined(
                 actor,
@@ -2537,7 +2535,7 @@ public final class ZLinkSpotRuntime
             .thenCompose(ignored -> notifySpotActorLifecycle(spotSurface, actor, true))
             .whenComplete((ignored, error) -> {
                 if (spotSurface instanceof ZLinkEntrySpot<?>) {
-                    actorAdmissions.completeEntryJoin(actor.actorId(), error);
+                    actorAdmissions.completeEntryJoin(actor.context().actorId(), error);
                 }
             });
     }
@@ -2546,7 +2544,7 @@ public final class ZLinkSpotRuntime
         ZLinkBackendActorLifecycleEvent event,
         ZLinkActor actor) {
         return event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT
-            && actorAdmissions.isLeavePending(actor.actorId());
+            && actorAdmissions.isLeavePending(actor.context().actorId());
     }
 
     void dispatchLocalActorPacket(
@@ -2569,7 +2567,7 @@ public final class ZLinkSpotRuntime
             reportSpotActorHandlerMissing(
                 packetHeader,
                 dispatchLine.spotId(),
-                actor.actorId(),
+                actor.context().actorId(),
                 headerPart.sourceNodeRid());
             if (request) {
                 ZLinkBackendActorReceived headerCopy = pendingHeader
@@ -2579,7 +2577,7 @@ public final class ZLinkSpotRuntime
                     dispatchLine,
                     packetHeader,
                     headerCopy,
-                    actor.actorId(),
+                    actor.context().actorId(),
                     new ZLinkConfigurationException(
                         "No SPOT actor request handler is registered for '"
                             + packetHeader.packetName() + "'."),
@@ -2628,7 +2626,7 @@ public final class ZLinkSpotRuntime
         }
         actorSessions.dispatch(
             actor,
-            () -> dispatchLine.enqueueActorDispatch(actor.actorId(), () -> {
+            () -> dispatchLine.enqueueActorDispatch(actor.context().actorId(), () -> {
                 if (packetHeader.flowId().isEmpty()) {
                     return dispatchActorPacketToHandler(
                         dispatchLine.dispatchOutbound(), handler, spotSurface, actor,
@@ -2674,7 +2672,7 @@ public final class ZLinkSpotRuntime
         return sendActorBoundSessionWithRetry(
             primaryNode,
             headerPart.actor(),
-            actor.actorId(),
+            actor.context().actorId(),
             frameBytes,
             "actor handoff reply failed");
     }

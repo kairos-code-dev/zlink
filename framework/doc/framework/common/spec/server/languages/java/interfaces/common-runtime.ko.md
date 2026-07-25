@@ -87,7 +87,7 @@ public final class ZLinkFrameworkRuntime
 member Actor 전체를 하나의 bounded aggregate로 옮긴다. Aggregate participant 하나라도 `Disabled`이면
 `Blocked/RelocationDisabled`, target·capacity·reservation을 확보할 수 없으면 `Blocked/TargetUnavailable`,
 application version·type·Snapshot adapter capability가 맞지 않으면 `Blocked/StateIncompatible`로 끝난다. 이
-preflight failure는 admission을 변경하지 않는다. [User Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)이 존재한다는 사실만으로 Retire를 차단하지 않는다.
+preflight failure는 admission을 변경하지 않는다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)이 존재한다는 사실만으로 Retire를 차단하지 않는다.
 `shutdown()`은 새 relocation을 시작하지 않는다. 두 operation 모두
 숨은 remote `GetOrCreate`를 수행하지 않으며, waiter cancellation은 이미 시작한 shared operation을
 취소하지 않는다. 각 호출은 shared operation 결과를 따르는 전용 `CompletableFuture` view를 반환한다.
@@ -243,6 +243,8 @@ public class systems.zlink.framework.errors.ZLinkFrameworkException extends java
 Spot·Entry Spot identity 충돌은 `SPOT_ID_CONFLICT`로 반환한다. `fromValue(int)`도 같은
 mapping을 사용한다. `RELOCATION_DATA_LOST`는 Location [authority](../../../../01-glossary.ko.md#authority)가 공개한 Relocation payload가 영구적으로
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.
+One-way operation의 target 부재는 Actor·Spot·Mesh·request·session별 기존 not-found kind를 사용한다.
+Runtime 종료만 공통 `RUNTIME_SHUTDOWN`으로 투영한다.
 
 ## Serializer와 오류 public signature
 
@@ -254,6 +256,7 @@ public final class systems.zlink.framework.ZLinkEncodedPayload {
 public final class systems.zlink.framework.errors.ZLinkConfigurationException extends systems.zlink.framework.errors.ZLinkFrameworkException {
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String);
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String, java.lang.Throwable);
+  public systems.zlink.framework.errors.ZLinkConfigurationException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String);
 }
 public final class systems.zlink.framework.errors.ZLinkOperationCanceledException extends systems.zlink.framework.errors.ZLinkFrameworkException {
   public systems.zlink.framework.errors.ZLinkOperationCanceledException(java.lang.String);

@@ -1,16 +1,12 @@
 import type {
-  ActorRef,
   RoutingId,
   SpotId,
-  Type,
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorJoinCompletion,
   ZLinkActorJoinEntrySpotCall,
   ZLinkActorJoinSpotCall,
-  ZLinkActorHandlerRegistry,
-  ZLinkBoundSession,
-  ZLinkSpot
+  ZLinkBoundSession
 } from '../../contracts';
 import {
   ZLinkEncodedPayload,
@@ -33,7 +29,6 @@ import type {
   ZLinkActorBoundSessionFactory,
   ZLinkActorJoinCoordinator
 } from './actor-runtime-contracts';
-import { ZLinkSpotActorHandlerRegistryRuntime } from './spot-actor-dispatch';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 import {
   ZLINK_ACTOR_LIFECYCLE_SNAPSHOT,
@@ -43,18 +38,17 @@ import { randomBytes } from 'node:crypto';
 import { deferActorJoin } from './actor-join-deferred-scope';
 
 const pendingDeferredJoinStates = new WeakSet<ZLinkActorRuntimeState>();
+export const ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME = Symbol('zlink.actor.join-entry-spot-runtime');
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
-  readonly handlers: ZLinkActorHandlerRegistry = new ZLinkSpotActorHandlerRegistryRuntime();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
     private readonly joinCoordinator: ZLinkActorJoinCoordinator | undefined,
     boundSessionFactory: ZLinkActorBoundSessionFactory | undefined,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined,
-    private readonly meshNameProvider: ZLinkActorManagerOptions['actorMeshNameProvider'],
-    private readonly leaveSpotRuntime: ZLinkActorManagerOptions['actorLeaveSpot']
+    private readonly meshNameProvider: ZLinkActorManagerOptions['actorMeshNameProvider']
   ) {
     this.boundSession = boundSessionFactory?.(state.actorId) ?? new UnboundZLinkSession();
   }
@@ -75,48 +69,26 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
   }
 
   get objectGeneration(): bigint {
-    return this.actorRef?.generation ?? 1n;
+    return this.state.nativeActorRef?.generation ?? 1n;
   }
 
   get spotId(): SpotId | undefined {
     return this.state.spotId;
   }
 
-  get isJoined(): boolean {
-    return this.state.isJoined;
-  }
-
-  get actorRef(): ActorRef | undefined {
-    const actorRef = this.state.nativeActorRef;
-    return actorRef === undefined
-      ? undefined
-      : toFrameworkActorRef(actorRef);
-  }
-
   [ZLINK_ACTOR_LIFECYCLE_SNAPSHOT](): ZLinkActorLifecycleSnapshotSource {
-    const actorRef = this.actorRef;
+    const nativeActorRef = this.state.nativeActorRef;
     const actorType = this.state.actorType;
-    if (actorRef === undefined || actorType === undefined) {
+    if (nativeActorRef === undefined || actorType === undefined) {
       throw new ZLinkConfigurationException(
         `Actor '${this.state.actorId}' lifecycle identity is not initialized.`
       );
     }
     return {
-      actorRef,
+      actorRef: toFrameworkActorRef(nativeActorRef),
       actorType,
       membershipEpoch: this.state.spotMembershipEpoch
     };
-  }
-
-  getSpot<TSpot extends ZLinkSpot>(spotType?: Type<TSpot>): ZLinkSpot | TSpot {
-    const spot = this.state.spot;
-    if (spot === undefined) {
-      throw new ZLinkConfigurationException('Actor has not joined a SPOT.');
-    }
-    if (spotType !== undefined && !(spot instanceof spotType)) {
-      throw new ZLinkConfigurationException('Actor joined SPOT has a different spot type.');
-    }
-    return spot;
   }
 
   joinSpot(spotId: SpotId, request?: unknown): ZLinkActorJoinSpotCall {
@@ -140,7 +112,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     );
   }
 
-  async joinEntrySpotForRuntime(
+  async [ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME](
     nodeRid: RoutingId | undefined,
     request: unknown,
     signal?: AbortSignal
@@ -158,17 +130,6 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     } finally {
       requestMessage.close();
     }
-  }
-
-  async leaveSpot(signal?: AbortSignal): Promise<void> {
-    const spotId = this.state.spotId;
-    if (spotId === undefined) {
-      throw new ZLinkConfigurationException('Actor has not joined a user SPOT.');
-    }
-    if (this.leaveSpotRuntime === undefined) {
-      throw new ZLinkConfigurationException('Actor Spot lifecycle runtime is not started.');
-    }
-    await this.leaveSpotRuntime(this.meshName, spotId, this.requireActor(), signal);
   }
 
   private requireActor(): ZLinkActor {
@@ -238,7 +199,8 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
             this.spotId,
             requestMessage,
             remainingJoinTimeout(deadline),
-            undefined
+            undefined,
+            operationId
           );
         } catch (error) {
           await notifyJoinFailure(this.actor, operationId, error);
@@ -312,7 +274,8 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
             undefined,
             requestMessage,
             remainingJoinTimeout(deadline),
-            undefined
+            undefined,
+            operationId
           );
         } catch (error) {
           await notifyJoinFailure(this.actor, operationId, error);

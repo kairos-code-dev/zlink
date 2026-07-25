@@ -184,7 +184,7 @@ public sealed class PlaceOrderHandler
     public PlaceOrderHandler(IOrderStore orders) => _orders = orders;
 
     public async ValueTask<OrderPlaced> HandleAsync(
-        PlaceOrder request, ZLinkRequestContext context, CancellationToken ct)
+        PlaceOrder request, IZLinkMessageContext context, CancellationToken ct)
     {
         await _orders.SaveAsync(request, ct);
         return new OrderPlaced(request.OrderId);
@@ -235,7 +235,7 @@ public sealed class GetProfileHandler
 
     public async ValueTask<GetProfileReply> HandleAsync(
         GetProfileRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         var profile = await _store.LoadAsync(request.AccountId, cancellationToken);
@@ -249,7 +249,7 @@ public sealed class RefreshCacheHandler
 {
     public ValueTask HandleAsync(
         RefreshCacheCommand message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         // 캐시 무효화 등. 호출자는 결과를 기다리지 않는다.
@@ -259,14 +259,13 @@ public sealed class RefreshCacheHandler
 
 // publish 수신 (구독자 측)
 public sealed class CacheRefreshedEventHandler
-    : IZLinkPublishHandler<CacheRefreshedEvent>
+    : IZLinkFanoutHandler<CacheRefreshedEvent>
 {
     public ValueTask HandleAsync(
         CacheRefreshedEvent message,
-        ZLinkPublishContext context,
         CancellationToken cancellationToken)
     {
-        // context.Topic, context.Source 등을 읽을 수 있다.
+        // Classic fanout handler는 등록한 event type의 payload만 받는다.
         return ValueTask.CompletedTask;
     }
 }
@@ -274,9 +273,11 @@ public sealed class CacheRefreshedEventHandler
 
 - handler 의존성은 **생성자 주입**으로 받는다(`IProfileStore`처럼). context에서
   service를 꺼내는 service locator 패턴은 쓰지 않는다.
-- handler context(`ZLinkRequestContext`, `ZLinkSendContext`, `ZLinkPublishContext`)
-  는 공통적으로 channel 이름·packet 이름·content type·연결 취소 토큰을 제공한다.
-  publish context는 추가로 topic/source를 제공한다.
+- channel request와 send handler는 공통 `IZLinkMessageContext`에서 nullable ChannelName,
+  packet 이름, content type, correlation과 metadata를 읽는다. Cancellation은 context가 아니라
+  별도 `CancellationToken` 인자가 소유한다. Logical Multicast subscription은
+  `ZLinkPublishMessageContext`에서 topic과 nullable source를 추가로 제공한다. Classic fanout
+  `IZLinkFanoutHandler<TEvent>`는 typed event와 `CancellationToken`만 받는다.
 - handler class는 dispatch 키가 아니라 **코드 조직 단위**다. 메서드를 한 class에
   주제별로 묶어도, packet마다 class를 따로 둬도 동작은 같다.
 - interface 기반 handler는 컴파일 타임 타입 체크가 가장 강하다. `HandleAsync(...)`
@@ -297,14 +298,14 @@ public sealed class UserHandlers
     [ZLinkRequest]   // 메서드 attribute가 handler 종류를 정한다(channel 이름은 안 받음)
     public ValueTask<GetUserReply> GetUserAsync(
         GetUserRequest request,            // 인자 순서 = (payload, context?, ct?) — context·토큰은 생략 가능
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
         => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
     [ZLinkSend]   // send handler — 반환이 ValueTask(응답 없음). request의 ValueTask<TReply> 와 대비.
     public async ValueTask RefreshCacheAsync(
         RefreshUserCacheCommand command,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         await _publisher
@@ -403,7 +404,7 @@ public sealed class PriceService(IZLinkRouteClient client)
     public async ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => await client
             .SendToChannel("services", "profile", new RefreshCacheCommand(accountId))
-            .SubmitAsync(ct);          // send: admission 결과까지만 기다리고 원격 handler 완료는 기다리지 않는다
+            .Async(ct);          // send: admission 결과까지만 기다리고 원격 handler 완료는 기다리지 않는다
 }
 ```
 
@@ -438,7 +439,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
             // 인자 = (channel, topic, message). topic("profile.cache-refreshed")이 fan-out 라우팅 키다.
             .Publish("api.events", "profile.cache-refreshed",
                 new ProfileCacheRefreshedEvent(accountId))
-            .SubmitAsync(ct);
+            .Async(ct);
 }
 ```
 
@@ -452,9 +453,9 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > **구독 연결.** 구독자는 `AddFanoutChannel(name).ConnectSubscriber(endpoint)`로
 > publisher endpoint를 연결한다.
 
-> **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic을 지정하지 않고, 받은
-> 메시지의 `context.Topic`을 handler 안에서 보고 처리/무시를 정한다. 즉 topic으로 받을 메시지를
-> 미리 거르는 게 아니라, 받아서 `context.Topic`으로 분기한다.
+> **구독자 쪽 event dispatch(.NET).** Classic fanout handler는 등록한 typed event와
+> `CancellationToken`만 받으며 transport topic을 handler context로 노출하지 않는다. 업무 분기가
+> 필요하면 event type이나 등록한 handler를 나눈다.
 
 > **샘플에서 보기 — [DeliveryDispatch](../../common/sample/deliverydispatch/README.ko.md).**
 > HTTP로 접수한 주문을 channel 호출로 배차 서버에 위임하고, 배송 상태 변화를 fanout
@@ -462,10 +463,9 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > 흐름 안에서 함께 쓰이는 대표 예다.
 >
 > ```csharp
-> public ValueTask HandleAsync(EventNotify message, ZLinkPublishContext context, CancellationToken ct)
+> public ValueTask HandleAsync(EventNotify message, CancellationToken ct)
 > {
->     if (context.Topic == "orders.created") { /* 처리 */ }
->     else { /* 이 구독자 관심 밖 — 무시 */ }
+>     // 이 handler에 등록된 EventNotify만 처리한다.
 >     return ValueTask.CompletedTask;
 > }
 > ```
@@ -753,7 +753,7 @@ public sealed class AllocateRoomRouteHandler
 {
     public ValueTask<RoomAllocated> HandleAsync(
         AllocateRoom request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
         => ValueTask.FromResult(new RoomAllocated("room-1"));
 }
@@ -837,24 +837,24 @@ public sealed class UserHandlers(IZLinkFanoutClient publisher)
 {
     [ZLinkRequest]
     public ValueTask<GetUserReply> GetUserAsync(
-        GetUserRequest request, ZLinkRequestContext context, CancellationToken ct)
+        GetUserRequest request, IZLinkMessageContext context, CancellationToken ct)
         => ValueTask.FromResult(new GetUserReply(request.AccountId, "alice"));
 
     [ZLinkSend]
     public async ValueTask RefreshAsync(
-        RefreshUserCacheCommand command, ZLinkSendContext context, CancellationToken ct)
+        RefreshUserCacheCommand command, IZLinkMessageContext context, CancellationToken ct)
         => await publisher
             .Publish("api.events", "user.cache-refreshed",
                 new UserCacheRefreshedEvent(command.AccountId))
-            .SubmitAsync(ct);
+            .Async(ct);
 }
 
 [ZLinkHandlerGroup("api.events")]
 public sealed class UserCacheRefreshedEventHandler
-    : IZLinkPublishHandler<UserCacheRefreshedEvent>
+    : IZLinkFanoutHandler<UserCacheRefreshedEvent>
 {
     public ValueTask HandleAsync(
-        UserCacheRefreshedEvent message, ZLinkPublishContext context, CancellationToken ct)
+        UserCacheRefreshedEvent message, CancellationToken ct)
         => ValueTask.CompletedTask;
 }
 ```

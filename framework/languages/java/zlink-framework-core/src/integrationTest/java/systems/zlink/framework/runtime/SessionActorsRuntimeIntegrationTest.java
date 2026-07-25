@@ -34,7 +34,7 @@ import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkPacket;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -467,7 +467,7 @@ final class SessionActorsRuntimeIntegrationTest {
         @ZLinkRequest
         public CompletionStage<String> handle(
             EnsureActorRequest request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return actors.getOrCreate(request.actorId(), "player")
                 .thenApply(actor -> actor.actorId());
         }

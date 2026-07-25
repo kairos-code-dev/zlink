@@ -1,22 +1,25 @@
 package systems.zlink.e2e.spotactortransfer.actor;
 
 import java.time.Duration;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
-import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
+import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
+import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
+import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -36,15 +39,19 @@ public final class TransferComponents {
     public static final class TransferActor implements ZLinkActor {
         private final String actorId;
         private final ZLinkActorContext context;
+        private final EvidenceStore evidence;
         private String actorType = Contracts.STATEFUL;
         private int stateVersion;
 
-        public TransferActor(String actorId, ZLinkActorContext context) {
+        public TransferActor(
+            String actorId,
+            ZLinkActorContext context,
+            EvidenceStore evidence) {
             this.actorId = actorId;
             this.context = context;
+            this.evidence = evidence;
         }
 
-        @Override
         public String actorId() {
             return actorId;
         }
@@ -69,6 +76,23 @@ public final class TransferComponents {
         public void setStateVersion(int stateVersion) {
             this.stateVersion = stateVersion;
         }
+
+        @Override
+        public CompletionStage<Void> onJoinCompleted(
+            ZLinkActorJoinCompletion completion) {
+            if (completion instanceof ZLinkActorJoinCompletion.Accepted accepted) {
+                evidence.add(
+                    "transfer",
+                    actorId,
+                    "commit_ack",
+                    accepted.actor().nodeRid().toString());
+            } else if (completion instanceof ZLinkActorJoinCompletion.Rejected) {
+                evidence.add("transfer", actorId, "join_rejected", "");
+            } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed) {
+                evidence.add("transfer", actorId, "join_failed", failed.kind().name());
+            }
+            return CompletableFuture.completedFuture(null);
+        }
     }
 
     public static final class TransferActorFactory implements ZLinkActorFactory {
@@ -79,16 +103,18 @@ public final class TransferComponents {
         }
 
         @Override
-        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            String actorId = context.actorId();
             if ("actor-b".equals(evidence.nodeRid()) && actorId.startsWith("actor-no-adapter-")) {
                 evidence.add("transfer", actorId, "transfer_in_empty_default", "actor-factory");
             }
-            return CompletableFuture.completedFuture(new TransferActor(actorId, context));
+            return CompletableFuture.completedFuture(
+                new TransferActor(actorId, context, evidence));
         }
     }
 
     public static final class TransferActorAdapter
-        implements ZLinkActorTransferAdapter<TransferActor> {
+        implements ZLinkActorRelocationAdapter<TransferActor> {
         private final EvidenceStore evidence;
         private final GateStore transferGates;
 
@@ -98,7 +124,9 @@ public final class TransferComponents {
         }
 
         @Override
-        public CompletionStage<ZLinkMessage> transferOut(TransferActor actor) {
+        public CompletionStage<byte[]> capture(
+            TransferActor actor,
+            ZLinkRelocationCancellation cancellation) {
             if (Contracts.FAIL_OUT.equals(actor.actorType())) {
                 evidence.add("ST-C3", actor.actorId(), "transfer_out_failed",
                     Integer.toString(actor.stateVersion()));
@@ -107,7 +135,7 @@ public final class TransferComponents {
             }
             if (Contracts.EMPTY_STATE.equals(actor.actorType())) {
                 evidence.add("transfer", actor.actorId(), "transfer_out_empty", "custom-adapter");
-                return CompletableFuture.completedFuture(ZLinkMessage.empty());
+                return CompletableFuture.completedFuture(new byte[0]);
             }
             evidence.add("transfer", actor.actorId(), "transfer_out",
                 Integer.toString(actor.stateVersion()));
@@ -120,35 +148,47 @@ public final class TransferComponents {
             return CompletableFuture.completedFuture(transferState(actor));
         }
 
-        private static ZLinkMessage transferState(TransferActor actor) {
-            return ZLinkMessage.of(new Contracts.TransferState(
-                actor.actorId(), actor.stateVersion(), actor.actorType()));
+        private static byte[] transferState(TransferActor actor) {
+            byte[] actorType = actor.actorType().getBytes(StandardCharsets.UTF_8);
+            return ByteBuffer.allocate(Integer.BYTES * 2 + actorType.length)
+                .putInt(actor.stateVersion())
+                .putInt(actorType.length)
+                .put(actorType)
+                .array();
         }
 
         @Override
-        public CompletionStage<TransferActor> transferIn(
-            String actorId,
-            ZLinkActorContext context,
-            ZLinkMessage state) {
-            if (state.isEmpty()) {
-                evidence.add("transfer", actorId, "transfer_in_empty", "custom-adapter");
-                TransferActor actor = new TransferActor(actorId, context);
+        public CompletionStage<Void> restore(
+            TransferActor actor,
+            byte[] state,
+            ZLinkRelocationCancellation cancellation) {
+            String actorId = actor.context().actorId();
+            if (state.length == 0) {
+                evidence.add(
+                    "transfer", actorId, "transfer_in_empty", "custom-adapter");
                 actor.setActorType(Contracts.EMPTY_STATE);
-                return CompletableFuture.completedFuture(actor);
+                return CompletableFuture.completedFuture(null);
             }
-            Contracts.TransferState transferred = state.decode(Contracts.TransferState.class);
+            ByteBuffer payload = ByteBuffer.wrap(state);
+            int stateVersion = payload.getInt();
+            int actorTypeLength = payload.getInt();
+            if (actorTypeLength < 0 || actorTypeLength > payload.remaining()) {
+                return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("invalid Actor relocation state"));
+            }
+            byte[] actorType = new byte[actorTypeLength];
+            payload.get(actorType);
             if (actorId.startsWith("actor-fail-transfer-in-")) {
                 evidence.add("ST-C3", actorId, "transfer_in_failed",
-                    Integer.toString(transferred.stateVersion()));
+                    Integer.toString(stateVersion));
                 return CompletableFuture.failedFuture(
                     new IllegalStateException("injected transfer in failure"));
             }
-            TransferActor actor = new TransferActor(actorId, context);
-            actor.setActorType(transferred.actorType());
-            actor.setStateVersion(transferred.stateVersion());
+            actor.setActorType(new String(actorType, StandardCharsets.UTF_8));
+            actor.setStateVersion(stateVersion);
             evidence.add("transfer", actorId, "transfer_in",
                 Integer.toString(actor.stateVersion()));
-            return CompletableFuture.completedFuture(actor);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -179,7 +219,7 @@ public final class TransferComponents {
         }
 
         @Override
-        public CompletionStage<Void> onCreateActor(
+        public CompletionStage<ZLinkActorCreateResponse> onCreateActor(
             TransferActor actor,
             ZLinkMessage createRequest) {
             if (!createRequest.isEmpty()) {
@@ -192,15 +232,8 @@ public final class TransferComponents {
             }
             evidence.add("create", actor.actorId(), "create",
                 actor.actorType() + ":" + actor.stateVersion());
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<ZLinkSpotActorJoinResponse> onActorJoin(
-            String actorId,
-            ZLinkMessage request) {
-            evidence.add("local", actorId, "admission", "actor-id-only");
-            return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.accept(request));
+            return CompletableFuture.completedFuture(
+                ZLinkActorCreateResponse.accept());
         }
 
         @Override
@@ -265,7 +298,7 @@ public final class TransferComponents {
                 String requested = request.decode(Contracts.CreateSpotReq.class).mode();
                 mode = requested == null || requested.isBlank() ? "accept" : requested;
             }
-            evidence.add("create_spot", context.spotRid().toString(), "spot_created", mode);
+            evidence.add("create_spot", context.spotId(), "spot_created", mode);
             return CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
         }
 
@@ -276,10 +309,10 @@ public final class TransferComponents {
             Contracts.JoinTargetReq join = request.decode(Contracts.JoinTargetReq.class);
             scenarios.put(actorId, join.scenario());
             evidence.add(join.scenario(), actorId, "admission",
-                "spot=" + context.spotRid() + ";mode=" + mode + ";input=actor-id-only");
+                "spot=" + context.spotId() + ";mode=" + mode + ";input=actor-id-only");
             boolean reject = "reject".equals(mode) || "reject".equals(join.expectedMode());
             Contracts.JoinTargetRes response = new Contracts.JoinTargetRes(
-                join.scenario(), actorId, !reject, "", context.spotRid().toString(), 0);
+                join.scenario(), actorId, !reject, "", context.spotId(), 0);
             return CompletableFuture.completedFuture(reject
                 ? ZLinkSpotActorJoinResponse.reject(response)
                 : ZLinkSpotActorJoinResponse.accept(response));
@@ -289,9 +322,9 @@ public final class TransferComponents {
         public CompletionStage<Void> onJoinedActor(TransferActor actor) {
             String scenario = scenarios.getOrDefault(actor.actorId(), "transfer");
             if ("delay-joined".equals(mode)) {
-                evidence.add(scenario, actor.actorId(), "joined_wait", context.spotRid().toString());
-                return joinedGates.waitFor(context.spotRid().toString()).thenCompose(ignored -> {
-                    evidence.add(scenario, actor.actorId(), "joined_released", context.spotRid().toString());
+                evidence.add(scenario, actor.actorId(), "joined_wait", context.spotId());
+                return joinedGates.waitFor(context.spotId()).thenCompose(ignored -> {
+                    evidence.add(scenario, actor.actorId(), "joined_released", context.spotId());
                     return completeJoined(actor);
                 });
             }
@@ -301,12 +334,12 @@ public final class TransferComponents {
         private CompletionStage<Void> completeJoined(TransferActor actor) {
             if ("fail-joined".equals(mode)) {
                 String scenario = scenarios.getOrDefault(actor.actorId(), "transfer");
-                evidence.add(scenario, actor.actorId(), "joined_failed", context.spotRid().toString());
+                evidence.add(scenario, actor.actorId(), "joined_failed", context.spotId());
                 return CompletableFuture.failedFuture(
                     new IllegalStateException("injected joined failure"));
             }
             evidence.add("transfer", actor.actorId(), "joined",
-                context.spotRid() + ":" + actor.stateVersion());
+                context.spotId() + ":" + actor.stateVersion());
             if (Contracts.EMPTY_STATE.equals(actor.actorType())) {
                 actor.setStateVersion(domainState.load(actor.actorId()));
                 evidence.add("transfer", actor.actorId(), "domain_state_loaded",
@@ -317,7 +350,7 @@ public final class TransferComponents {
 
         @Override
         public CompletionStage<Void> onLeaveActor(TransferActor actor) {
-            evidence.add("transfer", actor.actorId(), "target_leave", context.spotRid().toString());
+            evidence.add("transfer", actor.actorId(), "target_leave", context.spotId());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -337,7 +370,7 @@ public final class TransferComponents {
         public CompletionStage<Contracts.JoinTargetRes> handle(
             TransferEntrySpot entrySpot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.JoinTargetReq request) {
             return joinTarget(actor, request, evidence);
         }
@@ -358,7 +391,7 @@ public final class TransferComponents {
         public CompletionStage<Contracts.JoinTargetRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.JoinTargetReq request) {
             return joinTarget(actor, request, evidence);
         }
@@ -368,17 +401,18 @@ public final class TransferComponents {
         TransferActor actor,
         Contracts.JoinTargetReq request,
         EvidenceStore evidence) {
-        return actor.context()
-            .joinSpot(RoutingId.from(request.targetSpotRid()), request)
+        actor.context()
+            .joinSpot(request.targetSpotRid(), request)
             .timeout(Duration.ofSeconds(10))
-            .submit(Contracts.JoinTargetRes.class)
-            .thenApply(joined -> {
-                evidence.add(request.scenario(), actor.actorId(), "commit_ack", request.targetSpotRid());
-                return new Contracts.JoinTargetRes(
-                    request.scenario(), actor.actorId(),
-                    joined instanceof ZLinkActorJoinResult.Accepted<?>, evidence.nodeRid(),
-                    request.targetSpotRid(), actor.stateVersion());
-            });
+            .defer();
+        evidence.add(
+            request.scenario(),
+            actor.actorId(),
+            "join_deferred",
+            request.targetSpotRid());
+        return CompletableFuture.completedFuture(new Contracts.JoinTargetRes(
+            request.scenario(), actor.actorId(), true, evidence.nodeRid(),
+            request.targetSpotRid(), actor.stateVersion()));
     }
 
     public static final class EntryProbeHandler implements ZLinkEntrySpotActorRequestHandler<
@@ -396,11 +430,11 @@ public final class TransferComponents {
         public CompletionStage<Contracts.ProbeRes> handle(
             TransferEntrySpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "entry_packet_handler", request.marker());
             return CompletableFuture.completedFuture(new Contracts.ProbeRes(
-                request.scenario(), actor.actorId(), spot.context().spotRid().toString(),
+                request.scenario(), actor.actorId(), spot.context().spotId(),
                 evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
     }
@@ -420,11 +454,11 @@ public final class TransferComponents {
         public CompletionStage<Contracts.ProbeRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.ProbeReq request) {
             evidence.add(request.scenario(), actor.actorId(), "packet_handler", request.marker());
             return CompletableFuture.completedFuture(new Contracts.ProbeRes(
-                request.scenario(), actor.actorId(), spot.context().spotRid().toString(),
+                request.scenario(), actor.actorId(), spot.context().spotId(),
                 evidence.nodeRid(), actor.stateVersion(), request.marker()));
         }
     }
@@ -443,7 +477,7 @@ public final class TransferComponents {
         public CompletionStage<Void> handle(
             TransferUserSpot spot,
             TransferActor actor,
-            systems.zlink.framework.spots.ZLinkSpotActorSendContext context,
+            ZLinkMessageContext context,
             Contracts.StragglerSendReq request) {
             evidence.add(request.scenario(), actor.actorId(), "straggler_send", request.marker());
             return CompletableFuture.completedFuture(null);
@@ -554,9 +588,9 @@ public final class TransferComponents {
         public CompletionStage<Contracts.BoundPushRes> handle(
             TransferEntrySpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.BoundPushReq request) {
-            return push(actor, spot.context().spotRid().toString(), request, evidence);
+            return push(actor, spot.context().spotId(), request, evidence);
         }
     }
 
@@ -575,9 +609,9 @@ public final class TransferComponents {
         public CompletionStage<Contracts.BoundPushRes> handle(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Contracts.BoundPushReq request) {
-            return push(actor, spot.context().spotRid().toString(), request, evidence);
+            return push(actor, spot.context().spotId(), request, evidence);
         }
     }
 

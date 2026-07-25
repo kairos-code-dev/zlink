@@ -205,16 +205,29 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               request.transfer_id, actor_ref_from_spot_route (request),
               spot_id_t (request.source_spot_id),
               spot_id_t (request.target_spot_id),
-              zlink::message_t::from (request.payload));
+              zlink::message_t::from (request.payload),
+              request.completion_operation_id_high,
+              request.completion_operation_id_low);
             if (!admitted) {
                 return detail::propagate_failure<zlink::message_t> (admitted, "remote actor admission failed");
             }
+            const auto completion_root =
+              runtime.pending_join_completion_root (
+                request.transfer_id);
             const auto reply = spot_actor_admission_route_reply_t{
               .accepted = admitted.value ().accepted,
               .payload =
                 admitted.value ().reply
                   ? detail::message_to_raw (*admitted.value ().reply, *_serializers).to_bytes ()
-                  : std::vector<std::uint8_t>{}};
+                  : std::vector<std::uint8_t>{},
+              .completion_root_reference =
+                completion_root
+                  ? completion_root->reference
+                  : std::string{},
+              .completion_root_checksum =
+                completion_root
+                  ? completion_root->checksum_crc32c
+                  : 0};
             trace_actor_transfer_target ("admission-replying", request.actor_id,
                                          request.transfer_id);
             return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
@@ -232,6 +245,25 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             trace_actor_transfer_target ("commit-route-bound", request.actor_id,
                                          request.transfer_id);
             auto runtime = _runtime;
+            const auto recovered_completion =
+              !request.completion_root_reference.empty ()
+              && !runtime.pending_join_completion_root (
+                   request.transfer_id);
+            if (!request.completion_root_reference.empty ()
+                || request.completion_root_checksum != 0) {
+                const auto restored = runtime.restore_pending_join_completion (
+                  request.transfer_id, actor_ref,
+                  spot_id_t (request.target_spot_id),
+                  zlink::framework::runtime::stateful::
+                    durable_join_completion_root_t{
+                    request.completion_root_reference,
+                    request.completion_root_checksum});
+                if (!restored) {
+                    return detail::propagate_failure<zlink::message_t> (
+                      restored,
+                      "remote Actor completion root validation failed");
+                }
+            }
             std::vector<handoff_packet_t> handoff_backlog;
             handoff_backlog.reserve (request.handoff_backlog.size ());
             for (auto &packet : request.handoff_backlog) {
@@ -297,6 +329,23 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                     : std::make_optional (
                         zlink::routing_id_t::from (request.bound_session_rid)),
                   true);
+            }
+            if (request.finalize && recovered_completion) {
+                const auto replacement_prepared =
+                  runtime.prepare_remote_actor_to_spot (
+                    request.transfer_id,
+                    actor_ref,
+                    spot_id_t (request.target_spot_id),
+                    zlink::message_t::from (
+                      request.transfer_state),
+                    actor_gateway.actor_context (actor_ref),
+                    true);
+                if (!replacement_prepared) {
+                    return detail::propagate_failure<
+                      zlink::message_t> (
+                      replacement_prepared,
+                      "replacement target Actor prepare failed");
+                }
             }
             auto committed = request.finalize
                                ? runtime.finalize_remote_actor_to_spot (

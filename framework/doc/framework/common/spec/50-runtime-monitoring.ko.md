@@ -142,6 +142,10 @@ socket을 사용한다.
 RID와 endpoint는 진단 snapshot에 포함할 수 있지만 metric label로 사용하지 않는다. snapshot은 호출이
 끝난 뒤에도 안전한 immutable value이며 native handle이나 caller buffer를 보유하지 않는다.
 
+RouteMesh Channel, ClientServer Server와 node-wide placement weight는 public configuration과 같은 signed
+integer `0..10000` 값을 제공한다. Monitoring projection은 값을 좁은 unsigned type으로 변환하거나
+truncate하지 않는다.
+
 Operational query는 global ActorId 또는 SpotId의 current ref를 exact 조회하거나 object kind·[stable type](01-glossary.ko.md#stable-type)별 current
 authority를 page로 열거한다. Page size는 1..1000이고 encoded 결과는 4 MiB 이하다. Query item은 global ID,
 ObjectGeneration, MeshName, NodeRid, state와 stable type을 제공한다. 이 query는 application messaging target 목록이나
@@ -166,7 +170,7 @@ snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 Mes
 | `zlink.runtime.object.placement_changed` | create reservation, Ready·abort, capacity exhaustion 또는 relocation으로 object placement 집계가 변경 |
 | `zlink.runtime.mesh_node.routing_id_conflict` | automatic RID descriptor owner claim이 active conflict로 실패 |
 | `zlink.runtime.host.termination_changed` | Retire·Shutdown intent, runtime state, sealed-work 또는 terminal result 변경 |
-| `zlink.runtime.relocation.changed` | Standalone Actor·User Spot aggregate·[Instance Spot](01-glossary.ko.md#entry-user-instance-spot) relocation phase 또는 recovery 상태 변경 |
+| `zlink.runtime.relocation.changed` | Standalone Actor·User Spot aggregate·[Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) relocation phase 또는 recovery 상태 변경 |
 | `zlink.runtime.client_server.state_changed` | ClientServer local role, lifecycle 또는 ready state 변경 |
 | `zlink.runtime.client_server.server_changed` | server generation, revision, endpoint, weight, ready 또는 service state 변경 |
 | `zlink.runtime.fanout.publisher_changed` | automatic subscriber의 publisher 연결 대상, ready·disconnected·reconnecting 상태, draining 제외 또는 stale candidate 제외가 변경 |
@@ -293,7 +297,7 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
 - application callback이 대기 중이어도 infrastructure mailbox change와 request completion이 관찰된다.
 - observer failure나 느린 소비가 dispatch, reply와 termination terminal result를 바꾸지 않는다.
 - sequence gap 뒤 snapshot 재조회로 최신 상태를 복원할 수 있다.
-- observer 하나를 취소하거나 close해도 다른 observer, automatic connection, [manual endpoint](01-glossary.ko.md#manual-discovery) 집합과
+- observer 하나를 취소하거나 close해도 다른 observer, automatic connection, [manual endpoint](01-glossary.ko.md#manual-endpoint) 집합과
   message dispatch가 유지되며 취소한 observer에는 새 event가 전달되지 않는다.
 - snapshot의 RID, endpoint, topic, Actor ID와 Spot ID가 metric label로 복사되지 않는다.
 - Object placement 집계가 Actor 전체, User·Instance Spot 전체와 Spot stable type별 active·reserved count 및

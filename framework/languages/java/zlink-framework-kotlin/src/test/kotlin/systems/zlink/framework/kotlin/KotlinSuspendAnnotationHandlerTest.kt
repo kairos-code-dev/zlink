@@ -22,9 +22,8 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.channels.ZLinkPublishContext
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkSendContext
+import systems.zlink.framework.channels.ZLinkPublishMessageContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
@@ -50,8 +49,6 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory
 
@@ -481,11 +478,13 @@ final class KotlinSuspendAnnotationHandlerTest {
     }
 
     private fun requestContext(channelName: String) =
-        object : ZLinkRequestContext {
+        object : ZLinkMessageContext {
+            override fun meshName() = java.util.Optional.empty<String>()
             override fun channelName() = java.util.Optional.of(channelName)
-            override fun packetName() = java.util.Optional.of("ProfileRequest")
+            override fun packetName() = "ProfileRequest"
             override fun contentType() = java.util.Optional.empty<String>()
             override fun metadata() = emptyMap<String, String>()
+            override fun correlationId() = java.util.Optional.empty<String>()
         }
 }
 
@@ -496,7 +495,7 @@ class KotlinSuspendingInterfaceRequestHandler :
     ZLinkSuspendingRequestHandler<ProfileRequest, ProfileReply> {
     override suspend fun handle(
         request: ProfileRequest,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): ProfileReply =
         ProfileReply("${context.channelName().orElse("missing")}:${request.name}")
 }
@@ -543,19 +542,19 @@ class KotlinDispatcherObservationHandler {
 @ZLinkHandlerGroup("kotlin-channel")
 class KotlinSpringSuspendChannelHandler(private val dependency: SuspendDependency) {
     @ZLinkRequest
-    suspend fun request(request: ProfileRequest, context: ZLinkRequestContext): ProfileReply =
+    suspend fun request(request: ProfileRequest, context: ZLinkMessageContext): ProfileReply =
         ProfileReply("${context.channelName().orElse("missing")}:${request.name}:${dependency.value}")
 
     @ZLinkSend
-    suspend fun send(message: ProfileGreeting, context: ZLinkSendContext) {
-        ObservedValues.lastSend.set("${context.packetName().orElse("missing")}:${message.value}")
+    suspend fun send(message: ProfileGreeting, context: ZLinkMessageContext) {
+        ObservedValues.lastSend.set("${context.packetName()}:${message.value}")
     }
 }
 
 @ZLinkHandlerGroup("kotlin-fanout")
 class KotlinSpringSuspendPublishHandler {
     @ZLinkPublish
-    suspend fun publish(message: ProfileEvent, context: ZLinkPublishContext) {
+    suspend fun publish(message: ProfileEvent, context: ZLinkPublishMessageContext) {
         ObservedValues.lastPublish.set("${context.topic()}:${message.value}")
     }
 }
@@ -564,11 +563,11 @@ class KotlinSpringSuspendPublishHandler {
 class KotlinSpringSuspendSpotActorHandler {
     @ZLinkSpotActorRequest
     suspend fun request(actor: PlayerActor, request: PlayerCommand): PlayerReply =
-        PlayerReply("${actor.actorId()}:${request.value}")
+        PlayerReply("${actor.context().actorId()}:${request.value}")
 
     @ZLinkSpotActorSend
     suspend fun send(actor: PlayerActor, message: PlayerEvent) {
-        ObservedValues.lastActorSend.set("${actor.actorId()}:${message.value}")
+        ObservedValues.lastActorSend.set("${actor.context().actorId()}:${message.value}")
     }
 
 }
@@ -589,15 +588,15 @@ class KotlinSuspendFailureHandler {
 class JavaProfileRequestHandler : systems.zlink.framework.channels.ZLinkRequestHandler<ProfileRequest, ProfileReply> {
     override fun handle(
         request: ProfileRequest,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ) = CompletableFuture.completedFuture(ProfileReply(request.name))
 }
 
 class PlayerActorFactory : ZLinkActorFactory {
-    override fun create(
-        actorId: String,
-        context: ZLinkActorContext,
-    ) = CompletableFuture.completedFuture<ZLinkActor>(PlayerActor(actorId))
+    override fun create(context: ZLinkActorContext) =
+        CompletableFuture.completedFuture<ZLinkActor>(
+            PlayerActor(context.actorId()),
+        )
 }
 
 @ZLinkHandlerGroup("kotlin-interface-spot")
@@ -606,10 +605,10 @@ class KotlinSuspendingSpotActorInterfaceHandler :
     override suspend fun handle(
         spot: InterfaceSpot,
         actor: PlayerActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: InterfacePlayerCommand,
     ): InterfacePlayerReply =
-        InterfacePlayerReply("${actor.actorId()}:${request.value}")
+        InterfacePlayerReply("${actor.context().actorId()}:${request.value}")
 }
 
 @ZLinkHandlerGroup("kotlin-interface-spot")
@@ -623,10 +622,10 @@ class SecondKotlinSuspendingSpotActorInterfaceHandler :
     override suspend fun handle(
         spot: InterfaceSpot,
         actor: PlayerActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: SecondInterfacePlayerCommand,
     ): SecondInterfacePlayerReply =
-        SecondInterfacePlayerReply("${actor.actorId()}:${request.value}")
+        SecondInterfacePlayerReply("${actor.context().actorId()}:${request.value}")
 }
 
 @Configuration(proxyBeanMethods = false)
@@ -685,8 +684,10 @@ data class ProfileGreeting(val value: String)
 data class ProfileEvent(val value: String)
 
 class PlayerActor(private val id: String) : ZLinkActor {
-    override fun actorId(): String = id
     override fun context(): ZLinkActorContext = object : ZLinkActorContext {
+        override fun actorId(): String = id
+        override fun objectGeneration(): Long = 1L
+        override fun meshName(): String = "test"
         override fun spotId() = java.util.Optional.empty<String>()
         override fun boundSession() = null
         override fun joinSpot(spotId: String) = unsupportedJoinCall()

@@ -131,7 +131,7 @@ export interface ZLinkBoundSessionSendCall {
 
 export interface ZLinkChannelClient {
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+    requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
 }
 
 export interface ZLinkMeshPeerConnection {
@@ -186,7 +186,9 @@ export interface ZLinkMeshNodeBuilder {
     routingId(routingId: RoutingId): this;
     setRoutingIdPrefix(prefix: string): this;
     setPlacementWeight(weight: number): this;
-    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    setActorLimit(limit: number): this;
+    setSpotLimit(limit: number): this;
+    setActivationConcurrency(limit: number): this;
     objects(): ZLinkMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
@@ -290,7 +292,7 @@ terminal completion을 우회하지 않는다.
 
 Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
 Disabled·Recreate는 유지한다. [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy는 adapter `Type` 하나만 보유한다. Actor [factory](../../../../01-glossary.ko.md#factory)에는
-`ZLinkActorRelocationAdapter<TActor>`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며
+`ZLinkActorRelocationAdapter<TActor>`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며
 종류나 instance type이 다르면 socket bind 전에 configuration error로 실패한다. 별도 adapter registry와
 operation별 adapter는 제공하지 않는다.
 
@@ -357,7 +359,7 @@ bind 전에 한 번에 검증한다. Bound를 넘으면
 startup을 실패시키며 collection을 truncate·split하거나 [descriptor](../../../../01-glossary.ko.md#descriptor) 일부를 게시하지 않는다.
 
 `configureNetwork()`의 기본 BindHost는 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가
-아닌 [BindHost](../../../../01-glossary.ko.md#bind-host)를 사용하고, wildcard BindHost에서는 [AdvertiseHost](../../../../01-glossary.ko.md#advertise-host)를 반드시 명시한다.
+아닌 [BindHost](../../../../01-glossary.ko.md#bindhost)를 사용하고, wildcard BindHost에서는 [AdvertiseHost](../../../../01-glossary.ko.md#advertisehost)를 반드시 명시한다.
 Automatic discovery listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을
 사용한다. Listener별 host 설정은 root 기본값보다 우선한다.
 

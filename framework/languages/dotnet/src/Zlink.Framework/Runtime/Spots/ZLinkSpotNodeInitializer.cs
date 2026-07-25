@@ -139,6 +139,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 node.RoutingId,
                 node.MeshStatus().LifecycleGeneration,
                 ZLinkSpotKind.Entry,
+                authorityOwnerGeneration: 0,
                 deactivate: null)
             .ConfigureAwait(false);
         if (status != ZLinkLocationWriteStatus.Stored)

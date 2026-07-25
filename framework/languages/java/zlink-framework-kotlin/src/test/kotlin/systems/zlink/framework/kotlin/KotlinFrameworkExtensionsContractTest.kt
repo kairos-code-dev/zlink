@@ -298,8 +298,6 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class TestActor : ZLinkActor {
-        override fun actorId(): String = "actor-a"
-
         override fun context(): ZLinkActorContext =
             throw UnsupportedOperationException("test actor has no runtime context")
     }

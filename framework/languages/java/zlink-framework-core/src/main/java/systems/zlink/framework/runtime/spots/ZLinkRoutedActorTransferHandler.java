@@ -11,6 +11,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.runtime.actors.ZLinkActorEntryTransferEnvelope;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -48,14 +49,19 @@ final class ZLinkRoutedActorTransferHandler {
     CompletionStage<List<Message>> handle(
         List<Message> parts,
         RoutingId sourcePeerRid) {
-        ParsedPacket packet = ZLinkSpotRuntime.parsePacket(parts);
+        List<Message> transferParts = parts.size() == 2
+            ? ZLinkActorEntryTransferEnvelope.decode(parts.get(1))
+            : parts;
+        boolean ownsTransferParts = transferParts != parts;
+        ParsedPacket packet = ZLinkSpotRuntime.parsePacket(transferParts);
         ZLinkActorSpotRoutePackets.TransferRequest request =
             ZLinkActorSpotRoutePackets.decodeTransferRequest(packet.payload());
-        Message phasePayload = parts.size() > 2
-            ? Message.from(parts.get(2).toByteArray())
+        Message phasePayload = transferParts.size() > 2
+            ? Message.from(transferParts.get(2).toByteArray())
             : Message.from(new byte[0]);
         List<ZLinkActorSpotRoutePackets.WireHandoffPacket> backlog = request.commit()
-            ? ZLinkActorSpotRoutePackets.decodeHandoffPackets(parts, request.backlogCount())
+            ? ZLinkActorSpotRoutePackets.decodeHandoffPackets(
+                transferParts, request.backlogCount())
             : List.of();
         CompletionStage<List<Message>> result = request.admission()
             ? host.actorAdmissions().prepareRoutedActor(
@@ -95,6 +101,9 @@ final class ZLinkRoutedActorTransferHandler {
             } finally {
                 phasePayload.close();
                 backlog.forEach(ZLinkActorSpotRoutePackets.WireHandoffPacket::close);
+                if (ownsTransferParts) {
+                    transferParts.forEach(Message::close);
+                }
             }
         });
     }

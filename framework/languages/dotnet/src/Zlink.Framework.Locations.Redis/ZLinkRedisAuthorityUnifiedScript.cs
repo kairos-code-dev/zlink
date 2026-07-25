@@ -727,7 +727,7 @@ if op == 'reserveRelocation' then
     redis.call('HSET', KEYS[14],
         'status', 'reserved', 'authorityKey', request.key,
         'requestJson', ARGV[2], 'sourceNodeBucket', sourceNode,
-        'sourceTypeBucket', sourceType, 'targetNodeBucket', buckets.node,
+        'sourceTypeBucket', sourceType or '', 'targetNodeBucket', buckets.node,
         'targetTypeBucket', buckets.type or '',
         'capacityBundle', request.capacityBundle)
     local delta = capacityDelta(request.capacity, request.objectKind)

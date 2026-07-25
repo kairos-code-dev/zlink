@@ -71,6 +71,7 @@ internal sealed class ZLinkActorCreateOperationTarget(
                     operation.StableType,
                     request,
                     snapshot.ObjectGeneration,
+                    snapshot.AuthorityOwnerGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
         }

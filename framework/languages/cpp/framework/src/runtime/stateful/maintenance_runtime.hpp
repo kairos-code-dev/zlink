@@ -42,6 +42,56 @@ class relocation_store_port_t
     virtual void remove (const std::string &reference) = 0;
 };
 
+enum class join_completion_cursor_t : std::uint8_t
+{
+    prepared = 0,
+    committed = 1,
+    delivered = 2
+};
+
+struct durable_join_completion_record_t
+{
+    std::uint64_t operation_id_high = 0;
+    std::uint64_t operation_id_low = 0;
+    object_ref_t actor;
+    std::vector<std::uint8_t> raw_reply;
+    join_completion_cursor_t cursor =
+      join_completion_cursor_t::prepared;
+};
+
+struct durable_join_completion_root_t
+{
+    std::string reference;
+    std::uint32_t checksum_crc32c = 0;
+};
+
+class durable_join_completion_store_t
+{
+  public:
+    explicit durable_join_completion_store_t (
+      std::shared_ptr<relocation_store_port_t> store);
+
+    durable_join_completion_root_t prepare (
+      durable_join_completion_record_t record);
+    durable_join_completion_root_t commit (
+      const durable_join_completion_root_t &root,
+      bool remove_previous = true);
+    durable_join_completion_root_t deliver (
+      const durable_join_completion_root_t &root,
+      const object_ref_t &expected_actor,
+      const std::function<bool (
+        const durable_join_completion_record_t &)> &callback,
+      bool remove_previous = true);
+    std::optional<durable_join_completion_record_t> recover (
+      const durable_join_completion_root_t &root) const;
+    void cleanup (const durable_join_completion_root_t &root);
+
+  private:
+    durable_join_completion_root_t store (
+      const durable_join_completion_record_t &record);
+    std::shared_ptr<relocation_store_port_t> _store;
+};
+
 struct authority_relocation_reference_t
 {
     object_ref_t source;
@@ -50,6 +100,7 @@ struct authority_relocation_reference_t
     std::uint32_t checksum_crc32c = 0;
     inventory_digest_t inventory_digest{};
     location_owner_token_t target_owner;
+    std::vector<std::byte> application_payload;
 };
 
 enum class authority_publish_status_t
@@ -79,6 +130,36 @@ class authority_relocation_port_t
       inventory_digest_t inventory_digest) = 0;
     virtual std::optional<authority_relocation_reference_t>
     read (object_kind_t kind, const std::string &key) = 0;
+    virtual authority_publish_result_t publish_completion (
+      object_kind_t,
+      const std::string &,
+      const std::string &,
+      std::uint64_t,
+      std::string,
+      std::uint32_t)
+    {
+        return {};
+    }
+    virtual authority_publish_result_t replace_completion (
+      object_kind_t,
+      const std::string &,
+      std::uint64_t,
+      const std::string &,
+      std::uint32_t,
+      std::string,
+      std::uint32_t)
+    {
+        return {};
+    }
+    virtual bool release_completion (
+      object_kind_t,
+      const std::string &,
+      std::uint64_t,
+      const std::string &,
+      std::uint32_t)
+    {
+        return false;
+    }
 };
 
 struct aggregate_relocation_fence_t

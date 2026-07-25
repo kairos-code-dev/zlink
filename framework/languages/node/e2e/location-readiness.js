@@ -114,12 +114,6 @@ async function waitReady(store, options) {
 }
 
 async function readinessState(store, expectedPeers) {
-  const leaseSnapshot = await store.listOwnerLeases();
-  const liveOwnerIds = new Set(
-    leaseSnapshot.leases
-      .filter((lease) => lease.leaseExpiresAt.getTime() > leaseSnapshot.storeNow.getTime())
-      .map((lease) => lease.ownerId)
-  );
   const missing = [];
   const rows = [];
   for (const expected of expectedPeers) {
@@ -129,14 +123,24 @@ async function readinessState(store, expectedPeers) {
       role: expected.role
     });
     rows.push(...currentRows);
-    const liveRows = currentRows.filter((row) => liveOwnerIds.has(row.ownerId));
+    const liveRows = [];
+    for (const row of currentRows) {
+      const lease = await store.readOwnerLease(row.ownerId);
+      if (
+        lease.kind === 'found'
+        && lease.leaseGeneration === row.ownerLeaseGeneration
+        && lease.leaseExpiresAt.getTime() > lease.storeNow.getTime()
+      ) {
+        liveRows.push(row);
+      }
+    }
     for (const endpoint of expected.endpoints) {
       if (!liveRows.some((row) => row.endpoint === endpoint || row.metadata?.[pubEndpointMetadataKey] === endpoint)) {
         missing.push(`${expected.meshName}@${endpoint}`);
       }
     }
   }
-  return { missing, rows, leases: leaseSnapshot.leases };
+  return { missing, rows };
 }
 
 function delay(ms) {

@@ -10,18 +10,14 @@ import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter
-import systems.zlink.framework.channels.ZLinkPublishContext
-import systems.zlink.framework.channels.ZLinkRequestContext
-import systems.zlink.framework.channels.ZLinkRouteRequestContext
-import systems.zlink.framework.channels.ZLinkRouteSendContext
-import systems.zlink.framework.channels.ZLinkSendContext
+import systems.zlink.framework.ZLinkMessageContext
+import systems.zlink.framework.channels.ZLinkPublishMessageContext
+import systems.zlink.framework.channels.ZLinkRouteMessageContext
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkActorCreateResponse
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.spots.ZLinkTimerTick
@@ -31,29 +27,29 @@ import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkMessageContext): TReply
 }
 
 interface ZLinkSuspendingSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkMessageContext)
 }
 
 interface ZLinkSuspendingPublishHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkPublishContext)
+    suspend fun handle(message: TMessage, context: ZLinkPublishMessageContext)
 }
 
 interface ZLinkSuspendingRouteRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRouteRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkRouteMessageContext): TReply
 }
 
 interface ZLinkSuspendingRouteSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkRouteSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkRouteMessageContext)
 }
 
 interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(spot: TSpot, message: TMessage)
 
-    suspend fun handle(spot: TSpot, message: TMessage, context: ZLinkSendContext) =
+    suspend fun handle(spot: TSpot, message: TMessage, context: ZLinkMessageContext) =
         handle(spot, message)
 }
 
@@ -63,7 +59,7 @@ interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(
         spot: TSpot,
         request: TRequest,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): TReply = handle(spot, request)
 }
 
@@ -73,7 +69,7 @@ interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(
         spot: TSpot,
         event: TEvent,
-        context: ZLinkPublishContext,
+        context: ZLinkPublishMessageContext,
     ) = handle(spot, event)
 }
 
@@ -89,7 +85,7 @@ interface ZLinkSuspendingEntrySpotActorSendHandler<
     suspend fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: TMessage,
     )
 }
@@ -103,7 +99,7 @@ interface ZLinkSuspendingEntrySpotActorRequestHandler<
     suspend fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: TRequest,
     ): TReply
 }
@@ -116,7 +112,7 @@ interface ZLinkSuspendingSpotActorSendHandler<
     suspend fun handle(
         spot: TSpot,
         actor: TActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: TMessage,
     )
 }
@@ -130,7 +126,7 @@ interface ZLinkSuspendingSpotActorRequestHandler<
     suspend fun handle(
         spot: TSpot,
         actor: TActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: TRequest,
     ): TReply
 }
@@ -147,12 +143,12 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
 }
 
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
-    final override fun create(actorId: String, context: ZLinkActorContext): CompletionStage<ZLinkActor> =
+    final override fun create(context: ZLinkActorContext): CompletionStage<ZLinkActor> =
         coroutineStage {
-            createActor(actorId, context)
+            createActor(context)
         }
 
-    protected abstract suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor
+    protected abstract suspend fun createActor(context: ZLinkActorContext): ZLinkActor
 }
 
 abstract class ZLinkSuspendingActor : ZLinkActor {

@@ -290,8 +290,18 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
 
     final CompletionStage<Optional<Message>> handleRoutedActorPacketParts(
         List<Message> parts) {
-        ZLinkActorSpotRoutePackets.ActorPacket packet =
-            ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
+        List<Message> packetParts = parts.size() == 2
+            ? systems.zlink.framework.runtime.actors
+                .ZLinkActorEntryTransferEnvelope.decode(parts.get(1))
+            : parts;
+        ZLinkActorSpotRoutePackets.ActorPacket packet;
+        try {
+            packet = ZLinkActorSpotRoutePackets.decodeActorPacket(packetParts);
+        } finally {
+            if (packetParts != parts) {
+                packetParts.forEach(Message::close);
+            }
+        }
         if (packet.handoffArrivalIndex() != null) {
             host.actorAdmissions().traceTransferMarker(
                 "backlog_enqueued",

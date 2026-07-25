@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Type, ZLinkHandlerContext } from '@zlink-systems/framework';
+import type { Type, ZLinkMessageContext } from '@zlink-systems/framework';
 import type { ContextId, ModuleRef } from '@nestjs/core';
 import { ContextIdFactory } from '@nestjs/core';
 
@@ -7,7 +7,7 @@ const dispatchContext = new AsyncLocalStorage<ContextId>();
 
 export async function runInNestDispatchScope<T>(
   moduleRef: ModuleRef,
-  context: ZLinkHandlerContext,
+  context: ZLinkMessageContext,
   callback: () => Promise<T>
 ): Promise<T> {
   const contextId = ContextIdFactory.create();

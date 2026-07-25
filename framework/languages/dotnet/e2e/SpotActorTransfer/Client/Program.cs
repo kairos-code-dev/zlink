@@ -20,6 +20,7 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-D1"] = () => StD1LocationCommitTimingScenario.RunAsync(context),
     ["ST-D2"] = () => StD2StaleSourceReleaseFencingScenario.RunAsync(context),
     ["ST-E1"] = () => StE1BoundSessionPushAfterTransferScenario.RunAsync(context),
+    ["ST-E1A"] = () => StE1ANewIncarnationExplicitBindScenario.RunAsync(context),
     ["ST-E2"] = () => StE2BoundSessionRebindIsolationScenario.RunAsync(context),
     ["ST-F1"] = () => StF1InFlightHandoffOrderScenario.RunAsync(context),
     ["ST-F2"] = () => StF2DirectOvertakePreventionScenario.RunAsync(context),

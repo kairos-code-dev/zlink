@@ -57,8 +57,8 @@ CPU 작업과 비동기 I/O 작업은 Framework가 소유한 bounded worker sche
 
 ### 1.3 One-way submit
 
-Send, publish, bound session send, session Actor relay와 명시적인 STREAM send·reply는 비동기 terminal
-하나만 제공한다. 정상 완료 값은 없으며 operation family가 정의한 source-local admission boundary가
+Send, publish, bound session send, session Actor relay와 명시적인 STREAM send·reply는
+비동기 submit terminator 하나만 제공하고, 동기 `TrySubmit` 계열을 제공하지 않는다. 정상 완료 값은 없으며 operation family가 정의한 source-local admission boundary가
 message를 수락했다는 뜻이다. Remote handler 실행, subscriber 수신, remote Spot queue 수락 또는 application
 callback 완료는 기다리지 않는다.
 

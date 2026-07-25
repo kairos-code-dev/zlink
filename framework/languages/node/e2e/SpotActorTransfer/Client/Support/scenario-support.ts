@@ -42,49 +42,75 @@ export const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).bui
 export const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
 
 export async function runRemoteTransfer(scenario: string, actorId: string, actorType: string, stateVersion: number, stateful: boolean): Promise<void> {
-  const spotRid = unique('spot-remote');
-  await createSpot(nodeB, spotRid);
-  await waitSpotRef(nodeA, spotRid, 'actor-b');
   const sourceActor = await createActor(nodeA, actorId, actorType, stateVersion);
-  require(sourceActor.nodeRid === 'actor-a', `${scenario} source actor was created on '${sourceActor.nodeRid}'.`);
-  require((await joinActor(nodeA, actorId, { scenario, targetSpotRid: spotRid })).accepted, `${scenario} join failed.`);
-  const probe = await probeActor(nodeB, actorId, scenario, 'after-transfer');
-  require(probe.nodeRid === 'actor-b' && (!stateful || probe.stateVersion === stateVersion), `${scenario} target state mismatch.`);
-  const source = await waitEvidence(nodeA, [
+  const sourceNode = actorNode(sourceActor.nodeRid);
+  const targetSpot = await createRemoteSpot(sourceActor.nodeRid);
+  const targetNode = actorNode(targetSpot.nodeRid);
+  await waitSpotRef(sourceNode, targetSpot.spotRid, targetSpot.nodeRid);
+  require(
+    (await joinActor(sourceNode, actorId, { scenario, targetSpotRid: targetSpot.spotRid })).accepted,
+    `${scenario} join submission failed.`
+  );
+  await waitEvidence(targetNode, [
+    `${scenario}|${actorId}|join_completion|accepted|`
+  ]);
+  const probe = await probeActor(targetNode, actorId, scenario, 'after-transfer');
+  require(
+    probe.nodeRid === targetSpot.nodeRid && (!stateful || probe.stateVersion === stateVersion),
+    `${scenario} target state mismatch.`
+  );
+  const source = await waitEvidence(sourceNode, [
+    `${scenario}|${actorId}|success_reply|${targetSpot.spotRid}`,
     `transfer|${actorId}|transfer_out|${stateVersion}`,
     `transfer|${actorId}|leave|${stateVersion}`,
-    `${scenario}|${actorId}|commit_request|after-source-leave`,
-    `${scenario}|${actorId}|commit_ack|${spotRid}`,
-    `${scenario}|${actorId}|success_reply|${spotRid}`
+    `${scenario}|${actorId}|commit_request|after-source-leave`
   ]);
-  const target = await waitEvidence(nodeB, [
-    `${scenario}|${actorId}|admission|spot=${spotRid}`,
+  const target = await waitEvidence(targetNode, [
+    `${scenario}|${actorId}|admission|spot=${targetSpot.spotRid}`,
     `transfer|${actorId}|transfer_in|${stateVersion}`,
-    `transfer|${actorId}|joined|${spotRid}:${stateVersion}`,
-    `${scenario}|${actorId}|location_committed|node=actor-b|spot=${spotRid}`
+    `transfer|${actorId}|joined|${targetSpot.spotRid}:${stateVersion}`,
+    `${scenario}|${actorId}|location_committed|node=${targetSpot.nodeRid}|spot=${targetSpot.spotRid}`,
+    `${scenario}|${actorId}|commit_ack|${targetSpot.spotRid}`
   ]);
   require(source.length > 0 && target.length > 0, `${scenario} transfer evidence missing.`);
   assertOrder(source, actorId, [
+    'success_reply',
     'transfer_out',
     'leave',
-    'commit_request',
-    'commit_ack',
-    'success_reply'
+    'commit_request'
   ]);
   assertOrder(target, actorId, [
     'admission',
     'transfer_in',
     'joined',
-    'location_committed'
+    'location_committed',
+    'commit_ack',
+    'join_completion'
   ]);
   assertOrder(mergeEvidence(source, target), actorId, [
+    'success_reply',
     'transfer_out',
     'admission',
     'transfer_in',
+    'joined',
     'location_committed',
     'commit_ack',
-    'success_reply'
+    'join_completion'
   ]);
+}
+
+export async function createRemoteSpot(sourceNodeRid: string): Promise<CreateSpotRes> {
+  for (let attempt = 0; attempt < 32; attempt++) {
+    const spot = await createSpot(nodeB, unique('spot-remote'));
+    if (spot.nodeRid !== sourceNodeRid) return spot;
+  }
+  throw new Error(`Could not place a Spot outside source node '${sourceNodeRid}'.`);
+}
+
+export function actorNode(nodeRid: string): HttpClient {
+  if (nodeRid === 'actor-a') return nodeA;
+  if (nodeRid === 'actor-b') return nodeB;
+  throw new Error(`Unknown actor node '${nodeRid}'.`);
 }
 
 export async function assertSourceFailure(

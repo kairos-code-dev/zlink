@@ -124,7 +124,7 @@ export interface ServiceInstanceActivationReservation {
 }
 
 export interface ServiceInstanceApplicationLifecycle {
-  materialize(target: ServiceInstanceActivationTarget): Promise<void>;
+  materialize(target: ServiceInstanceActivationTarget, objectGeneration: bigint): Promise<void>;
   discard(target: ServiceInstanceActivationTarget): Promise<void>;
 }
 
@@ -275,6 +275,21 @@ export class ServiceStatefulRuntime {
     );
   }
 
+  restoreUserSpotAuthority(
+    spotId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpotState {
+    this.requireOpen();
+    return this.registry.restoreSpot(
+      { spotId, generation },
+      'user',
+      stableType,
+      authorityOwnerGeneration
+    );
+  }
+
   entrySpot(): ServiceSpotState {
     return this.registry.createEntrySpot(this.nodeRid);
   }
@@ -282,6 +297,38 @@ export class ServiceStatefulRuntime {
   createActor(actorId: string, stableType = 'actor'): ServiceActorState {
     this.requireOpen();
     return this.registry.createActor(actorId, stableType);
+  }
+
+  restoreActorSessionBinding(
+    actorRef: ServiceActorRef,
+    sessionNodeRid: string,
+    sessionRid: string,
+    bindingGeneration: bigint
+  ): void {
+    this.requireOpen();
+    const actor = this.registry.actor(actorRef.actorId);
+    if (
+      actor === undefined
+      || actor.ref.generation !== actorRef.generation
+      || actor.ref.nodeRid !== actorRef.nodeRid
+    ) {
+      throw new ServiceStaleGenerationError('actor', actorRef.actorId);
+    }
+    const current = this.registry.binding(actor.ref);
+    if (
+      current?.bindingGeneration === bindingGeneration
+      && current.sessionOwnerNodeRid === sessionNodeRid
+      && current.sessionRid === sessionRid
+    ) {
+      return;
+    }
+    this.registry.installSessionBinding({
+      actor: actor.ref,
+      sessionRid,
+      sessionOwnerNodeRid: sessionNodeRid,
+      bindingGeneration,
+      membershipEpoch: actor.membershipEpoch
+    });
   }
 
   activateInstanceSpot(
@@ -456,7 +503,7 @@ export class ServiceStatefulRuntime {
     if (authority === undefined) {
       throw new Error('Async Instance activation authority is not registered.');
     }
-    await this.instanceApplicationLifecycle?.materialize(target);
+    await this.instanceApplicationLifecycle?.materialize(target, route.objectGeneration);
     const spot = this.registry.spot(target.targetSpotId)
       ?? this.registry.restoreSpot(
         {
@@ -542,7 +589,7 @@ export class ServiceStatefulRuntime {
       throw new Error('Async Instance activation authority is not registered.');
     }
     const reservation = await authority.resume(target, pending);
-    await this.instanceApplicationLifecycle?.materialize(target);
+    await this.instanceApplicationLifecycle?.materialize(target, pending.objectGeneration);
     const spot = this.registry.restoreSpot(
       {
         spotId: target.targetSpotId,
@@ -1702,7 +1749,7 @@ export class ServiceStatefulRuntime {
 
     let activation: { readonly spot: ServiceSpotState; readonly created: boolean };
     try {
-      await this.instanceApplicationLifecycle?.materialize(target);
+      await this.instanceApplicationLifecycle?.materialize(target, reserved.reservation.attempt);
       activation = this.activateInstanceSpot(
         target.targetSpotId,
         target.stableType,
@@ -1856,6 +1903,7 @@ export class ServiceStatefulRuntime {
           actor.membershipEpoch
         );
         this.registry.installSessionBinding(binding);
+        this.enqueueActorBindingControl(binding);
         this.replyWire(ingress, record.correlation, RequestResult.Ok, 0, undefined, {
           kind: 'streamBind',
           bindingGeneration: binding.bindingGeneration,
@@ -1957,6 +2005,31 @@ export class ServiceStatefulRuntime {
         operationKind: 0,
         targetSpot: this.registry.spot(spotId)?.ref,
         kindData: control
+      } satisfies ServiceStatefulMailboxData
+    });
+  }
+
+  private enqueueActorBindingControl(
+    binding: ServiceSessionBinding
+  ): void {
+    const actor = binding.actor;
+    const header = Buffer.from([0x5a, 0x4d, 1, M6bServiceWireCommand.boundSessionBind, 0]);
+    this.raw.mailbox.tryEnqueue({
+      owner: `actor:${actor.actorId}\0${actor.generation}`,
+      domain: 'application',
+      parts: [header],
+      sourceRoutingId: this.nodeRid,
+      stateful: {
+        receiveKind: ReceiveKind.ActorBinding,
+        operationKind: 0,
+        targetActor: actor,
+        kindData: {
+          kind: 'actorBinding',
+          actor,
+          bindingGeneration: binding.bindingGeneration,
+          sessionNodeRid: binding.sessionOwnerNodeRid as never,
+          sessionRid: binding.sessionRid as never
+        }
       } satisfies ServiceStatefulMailboxData
     });
   }
@@ -2412,6 +2485,15 @@ export class ServiceStatefulRuntime {
       if (reply.length < 1 || reply.length > 2) throw new ServiceWireProtocolError('Invalid M6B reply parts.');
       const decoded = decodeStatefulReply(reply[0]!, pending.id, operationKind);
       const payload = reply.length < 2 ? undefined : decodeApplicationPayload(reply[1]);
+      if (
+        operationKind === 'actorJoin'
+        && actor !== undefined
+        && decoded.terminalResult === RequestResult.Ok
+        && decoded.tail?.kind === 'actorJoin'
+        && decoded.tail.joinResult === 0
+      ) {
+        this.enqueueRemoteSourceLeave(actor);
+      }
       this.operations.reply(pending.id, this.resultFromReply(
         decoded.terminalResult,
         decoded.failureCode,
@@ -2423,6 +2505,24 @@ export class ServiceStatefulRuntime {
     } catch (error) {
       this.operations.fail(pending.id, error);
     }
+  }
+
+  private enqueueRemoteSourceLeave(actor: ServiceActorRef): void {
+    const current = this.registry.requireActor(actor);
+    const transition = this.registry.leaveActor(actor, current.membershipEpoch);
+    this.enqueueActorControl(transition.currentSpot.spotId, {
+      kind: 'actorControl',
+      lifecycleKind: ActorLifecycleKind.Left,
+      previousActor: transition.actor.ref,
+      currentActor: transition.actor.ref,
+      previousSpotId: transition.previousSpot.spotId,
+      currentSpotId: transition.currentSpot.spotId,
+      previousSpotGeneration: transition.previousSpot.generation,
+      currentSpotGeneration: transition.currentSpot.generation,
+      previousMembershipEpoch: transition.previousMembershipEpoch,
+      currentMembershipEpoch: transition.currentMembershipEpoch,
+      resultCode: 0
+    });
   }
 
   private resultFromReply(
@@ -2546,6 +2646,9 @@ export class ServiceStatefulRuntime {
 
   private commitJoinedActor(actor: ServiceActorRef, spot: ServiceSpotRef, membershipEpoch: bigint): void {
     const current = this.registry.actor(actor.actorId);
+    const previousActor = current?.ref ?? actor;
+    const previousSpot = current?.spot;
+    const previousMembershipEpoch = current?.membershipEpoch ?? membershipEpoch - 1n;
     if (current === undefined) {
       this.registry.restoreActor(
         { ...actor, nodeRid: this.nodeRid },
@@ -2556,6 +2659,23 @@ export class ServiceStatefulRuntime {
     } else {
       this.registry.joinActor(current.ref, spot);
     }
+    const committed = this.registry.requireActor({
+      ...actor,
+      nodeRid: this.nodeRid
+    });
+    this.enqueueActorControl(spot.spotId, {
+      kind: 'actorControl',
+      lifecycleKind: ActorLifecycleKind.Joined,
+      previousActor,
+      currentActor: committed.ref,
+      previousSpotId: previousSpot?.spotId ?? null,
+      currentSpotId: spot.spotId,
+      previousSpotGeneration: previousSpot?.generation ?? 0n,
+      currentSpotGeneration: spot.generation,
+      previousMembershipEpoch,
+      currentMembershipEpoch: committed.membershipEpoch,
+      resultCode: 0
+    });
   }
 
   private requireOpen(): void {

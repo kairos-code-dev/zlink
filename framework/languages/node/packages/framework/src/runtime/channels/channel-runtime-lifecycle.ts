@@ -179,6 +179,7 @@ export class ZLinkChannelRuntimeLifecycle {
           continue;
         }
         this.meshChannelDispatchers.set(meshChannelKey(meshName, channelName), new ZLinkChannelRequestDispatcher({
+          meshName,
           channelName,
           codecs: this.options.codecs,
           dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),

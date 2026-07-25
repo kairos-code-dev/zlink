@@ -52,15 +52,21 @@ export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectRespons
 
 export interface ZLinkSpotCreateResponse extends ZLinkSpotAcceptRejectResponse {}
 
-export interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor = ZLinkActor> {
-    onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+export interface ZLinkActorCreateResponse extends ZLinkSpotAcceptRejectResponse {}
+
+export interface ZLinkSpotActorMembershipLifecycle<TActor extends ZLinkActor = ZLinkActor> {
     onJoinedActor(actor: TActor): Promise<void>;
     onLeaveActor(actor: TActor): Promise<void>;
     onDisconnectActor?(actor: TActor): Promise<void>;
 }
 
+export interface ZLinkUserSpotActorLifecycle<TActor extends ZLinkActor = ZLinkActor>
+    extends ZLinkSpotActorMembershipLifecycle<TActor> {
+    onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+}
+
 export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>
-    extends ZLinkSpotActorLifecycle<TActor> {
+    extends ZLinkUserSpotActorLifecycle<TActor> {
     readonly context: ZLinkSpotContext<TActor>;
     configure?(): void;
     onCreate?(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse>;
@@ -82,7 +88,7 @@ export interface ZLinkInstanceSpot {
 export interface ZLinkSpotCommonContext<TSpot> {
     readonly meshName: string;
     readonly spotId: SpotId;
-    readonly objectGeneration: number;
+    readonly objectGeneration: bigint;
     readonly nodeRid: RoutingId;
     readonly outbound: ZLinkSpotOutbound;
     addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
@@ -117,7 +123,7 @@ Spot lifecycle에서 사용하는 위치만 고정한다.
 
 `ZLinkSpotCloseReason`의 numeric 값은 `ExplicitClose=0`, `HostShutdown=1`, `RelocationOut=2`다.
 `deadline`은 closing operation의 absolute UTC instant다. Framework는 callback invocation 전에는
-`cleanupSignal`을 abort하지 않고 deadline이 끝날 때 abort한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)만 callback을 받고
+`cleanupSignal`을 abort하지 않고 deadline이 끝날 때 abort한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)만 callback을 받고
 Actor별 closing callback은 제공하지 않는다. Host Shutdown은 Actor membership과 local instance가 유효한
 상태에서 callback을 실행하고 fulfillment 뒤 scope와 authority를 정리한다. Standalone Actor relocation은 Entry
 Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
@@ -139,7 +145,7 @@ export interface ZLinkSpotOutbound {
     requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall;
     publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+    requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
 }
 
 export interface ZLinkSpotSendCall {
@@ -219,7 +225,7 @@ export interface ZLinkSpotGetOrCreateCall {
 }
 ```
 
-User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다. Stable type은 UTF-8 1..255 bytes이며 case-sensitive exact value로
+Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다. Stable type은 UTF-8 1..255 bytes이며 case-sensitive exact value로
 비교하고 normalization하지 않는다. Object generation은 positive signed-63-bit 값이다. MeshName과 NodeRid는
 조회 시점의 route [snapshot](../../../../01-glossary.ko.md#snapshot)이며 identity key에 포함하지 않는다.
 
@@ -258,7 +264,7 @@ Terminal call은 다음 순서로 기존 Instance Spot을 사용하거나 새 In
 3. Target runtime은 metadata presence와 frame을 포함한 complete envelope를 Relocation Store에 immutable
    recovery root로 먼저 저장한 뒤, 요청한 SpotId와 stable type에 일치하는 Instance가 local에 있는지
    확인한다.
-4. Instance가 없을 때만 target이 자신을 owner로 하는 Creating row와 pending capacity를 예약한다. Pending
+4. Instance가 없을 때만 target이 자신을 owner로 하는 Creating row와 reserved capacity를 예약한다. Reserved
    snapshot은 어떤 예약인지 식별하는 reservation fence와 recovery root의 저장 완료를 증명하는 receipt를
    provider에서 받아 반환한다.
 5. Authority reservation 경쟁에서 이긴 target(CAS winner)만 factory와 initialize를 실행하고 durable
@@ -288,7 +294,7 @@ sequenceDiagram
     else Missing이고 Instance intent가 있는 경우
         S->>T: first message를 포함한 activation envelope 전달
         T->>R: complete envelope를 immutable recovery root로 저장
-        T->>L: Creating row와 pending capacity 예약
+        T->>L: Creating row와 reserved capacity 예약
         alt CAS winner인 경우
             T->>I: factory와 initialize 실행
             T->>L: recovery 정보와 Ready state 게시

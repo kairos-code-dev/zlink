@@ -9,11 +9,9 @@ import type {
   ZLinkInstanceSpot,
   ZLinkMonitoringOptions,
   ZLinkMetricsOptions,
-  ZLinkPublishContext,
-  ZLinkRequestContext,
-  ZLinkRouteRequestContext,
-  ZLinkRouteSendContext,
-  ZLinkSendContext,
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkRouteMessageContext,
   ZLinkSpot,
   ZLinkStreamCompressionOptions,
   ZLinkTimerOptions
@@ -420,7 +418,7 @@ export interface ZLinkChannelPublishHandlerRegistration {
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
   readonly handler?: {
-    handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown>;
+    handle(payload: unknown, context: ZLinkMessageContext): Promise<unknown>;
   };
   readonly handlerType?: Type;
 }
@@ -428,19 +426,19 @@ export interface ZLinkChannelRequestHandlerRegistration {
 export interface ZLinkChannelSendHandlerRegistration {
   readonly packetName: string;
   readonly handler?: {
-    handle(payload: unknown, context: ZLinkSendContext): Promise<void>;
+    handle(payload: unknown, context: ZLinkMessageContext): Promise<void>;
   };
   readonly handlerType?: Type;
 }
 
 export interface ZLinkChannelPublishHandler {
-  handle(payload: unknown, context: ZLinkPublishContext): Promise<void>;
+  handle(payload: unknown, context: ZLinkPublishMessageContext): Promise<void>;
 }
 
 export interface ZLinkRouteChannelSendHandler {
-  handle(payload: unknown, context: ZLinkRouteSendContext): Promise<void>;
+  handle(payload: unknown, context: ZLinkRouteMessageContext): Promise<void>;
 }
 
 export interface ZLinkRouteChannelRequestHandler {
-  handle(payload: unknown, context: ZLinkRouteRequestContext): Promise<unknown>;
+  handle(payload: unknown, context: ZLinkRouteMessageContext): Promise<unknown>;
 }

@@ -20,7 +20,7 @@
 
 `.NET 표기`에 **public type 없음**이라고 적은 값은 application에 독립된 type으로
 노출되지 않는다. 이때 제시하는 C# 모양은 구조를 읽기 위한 **contract
-pseudocode**이며 실제 API 이름이나 생성자를 뜻하지 않는다. 원문이 opaque로
+pseudocode**이며 실제 API 이름이나 생성자를 뜻하지 않는다. 공개 계약이 opaque로
 정의한 값에는 내부 field를 추측하여 추가하지 않는다.
 
 실제 .NET public type이 있는 복합 값은 요약 표 아래에 정식 C# 선언을 보여준다.
@@ -28,8 +28,8 @@ pseudocode**이며 실제 API 이름이나 생성자를 뜻하지 않는다. 원
 해당 줄의 한국어 주석으로 설명한다.
 
 실제 .NET 선언의 단일 기준은
-[.NET Server exact interface](../../spec/server/languages/dotnet/interfaces/README.ko.md)와
-[.NET Stream Connector exact interface](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)다.
+[.NET Server exact interface](server/languages/dotnet/interfaces/README.ko.md)와
+[.NET Stream Connector exact interface](stream-connector/languages/dotnet/03-stream-connector.ko.md)다.
 이 용어집의 .NET 표기는 공통 계약을 구체적으로 읽기 위한 보조 표기다.
 
 ## 1. Spot과 위치
@@ -892,6 +892,19 @@ Spot Logical Multicast와 물리 연결이나 subscription 상태를 공유하�
 
 ## 5. Queue, control과 수명
 
+### Snapshot
+
+특정 시점의 runtime 상태를 읽기 전용 값으로 복사한 결과다. Snapshot을 받은 뒤 실제 상태가
+변경되어도 이미 반환된 값은 바뀌지 않는다. 따라서 monitoring이나 target 선택에서 Snapshot을
+사용할 때는 “현재도 반드시 같은 상태”라는 보장으로 해석하지 않는다.
+
+| 사용 위치 | Snapshot이 나타내는 것 |
+|---|---|
+| Monitoring | 조회한 시점의 node, channel, connection과 capacity 상태 |
+| Publish target | publish를 시작할 때 고정한 수신 대상 집합 |
+| Metadata | handler 또는 전송 call에 전달한 시점의 변경 불가능한 metadata 복사본 |
+| `Snapshot` relocation policy | 위 조회 결과와 다른 개념이다. Application state를 byte sequence로 capture하고 target에서 restore하는 정책 이름이다. |
+
 <a id="spot-application-queue"></a>
 ### Spot application queue
 
@@ -1731,11 +1744,20 @@ Session owner가 특정 Actor binding에 보관하는 현재 Actor owner 전달 
 Actor push는 이 저장된 route를 사용한다. Message마다 Location Store를 다시 조회해
 route를 선택하지 않는다.
 
-Actor relocation에서 owner·membership commit이 끝나면 Framework runtime이 이동한
-Actor의 binding route만 target owner로 갱신한다. 같은 Session에 bind된 다른 Actor의
-route와 physical STREAM connection은 유지한다. Location Store와 Relocation Store는
-이 route를 저장하거나 갱신하지 않으며, Session owner의 route 갱신 ACK 전에는 target
-Actor의 session packet·push admission을 열지 않는다.
+Actor relocation에서는 callback·accepted journal replay·durable source cleanup과
+`Completed`를 마친 같은 `ObjectGeneration`의 Actor만 route를 갱신한다. Framework
+runtime이 이동한 Actor의 binding route만 target owner로 갱신하며, 새 incarnation은
+명시적으로 다시 bind해야 한다. 같은 Session에 bind된 다른 Actor의 route와 physical
+STREAM connection은 유지한다. Location Store와 Relocation Store는 이 route를
+저장하거나 갱신하지 않는다.
+
+<a id="binding-route-ack"></a>
+### Binding route 갱신 ACK
+
+Session owner가 새 binding route를 저장하고, 이전 owner generation의 늦은 packet과
+push를 current binding에 적용하지 않도록 검증을 마쳤다는 응답이다. 이 ACK가 오기
+전에는 target Actor의 session packet·push admission을 열지 않는다. ACK는 target
+Actor handler가 실행을 끝냈다는 응답이 아니다.
 
 <a id="binding-generation"></a>
 ### Binding generation

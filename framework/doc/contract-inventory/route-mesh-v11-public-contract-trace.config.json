@@ -2,22 +2,22 @@
   "schema": 1,
   "version": "11.0.0",
   "description": "RouteMesh 11 public-contract trace policy. Exact interface code blocks remain the only signature source; this file assigns contract ownership and verification work without copying signatures.",
-  "exactRoot": "framework/doc/framework/spec/server/languages",
+  "exactRoot": "framework/doc/framework/common/spec/server/languages",
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 4767,
-      "sha256": "c7f4ebd6b45aee24cda73259e9afa3558bef4c2c1903ddc9500151c6fe705ba2",
+      "count": 4797,
+      "sha256": "a39a8b0374c286e4e49ae1a7c9182a53a1d8206a7d3605468bc911a1123b8afc",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 1125,
-      "sha256": "8d356a7fb1bb5de8c57cde6c6521cda62c6d1ca5e438046ddde06b5244b501de",
+      "count": 1149,
+      "sha256": "7945f4372aae65194a915c7435d8ea046983684b852bb62f8b3ba0bb9b4badef",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1437,
-      "sha256": "ccbd28a657d5e703cacca0b8db6888206632b4eada1e33876f9e49e71dc776ae",
+      "count": 1433,
+      "sha256": "d24d6133c44a04c99337320ea2a7be78da8b901ab079957034db1ca7e0d0082d",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -1507,8 +1507,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#2f48096e0327988c",
         "baselineSignatureSha256": "2f48096e0327988ccc4247b3027169824e141ca6887c06b888ce48481ae66e4e",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#68e40786a745a098",
-        "targetSignatureSha256": "68e40786a745a09833b939da19e9b1b73877b76235021ea5980cd4af0024ed84",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#6f3aceae8b708341",
+        "targetSignatureSha256": "6f3aceae8b70834105fdc19c1c46873a7b6fab4ebf418151dc2e27f8ecd0f3a0",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1603,8 +1603,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#f24a540656544232",
         "baselineSignatureSha256": "f24a540656544232d555d423ba06307116571b552ddc73988c0d43e1d6bb98f8",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#5dfb5658aa1db680",
-        "targetSignatureSha256": "5dfb5658aa1db680374246019d5b4109ba5c520192922bc22112930b574855e2",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#710bb7d96cb13480",
+        "targetSignatureSha256": "710bb7d96cb1348002b9d2044721d836db19e2c630e7274043fd1761e08f4c67",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2516,79 +2516,79 @@
   },
   "blockRoleOverrides": [
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "a7cf29ed0b62e2f08d357395fc8390b602176a01a3f842c215df6f5aac75e30d",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "beb09ffc49697afd9b46df980322025f1f3d26db79f9ad7014b3f64a48d603d0",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "763cc584a670037b6ae5a11508ca379cc41e15e2b738991e793e35407070dba6",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
-      "sha256": "f6bbe32f892eec9d783ba5ef4466797799c3f11b13e4c2c6a0210aa301a2be9a",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "sha256": "7f0f82e3a690ba3b28e821cc535460ac5ea8d7d02ec861f49f90968a31d71fc8",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "33c2e8d8f3585704cf6b5dfb68c8dde32d8bb48f0a58b935f4a119e8b05962e9",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "4f83fb0b37c48e9a6dda8c16035a59ba2bfe06639eb0ebec6862cd2a77956e1a",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "cd37fa1430109f9003352c88cefdc340b463944deeff970aee78b2acea842391",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md",
       "sha256": "cf822777470c6bbadb032adf74c871e16df39b36ad53eade7caa947125a28afd",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md",
       "sha256": "4c9c4c230444594a7dc100a14ba8f02a560a07ddf0280abd8696c43f30ec823f",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md",
-      "sha256": "b7ccffb4c1a7e49d984588f336682ee3ae202178c6782f7eedff79ada4bba7ea",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/04-spots.ko.md",
+      "sha256": "a552d4b5f0d1452bfa8bb5eb2c66cb8b10d7163e4e55ffcce8b35008f8d8cb95",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/cpp/interfaces/04-spots.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/cpp/interfaces/04-spots.ko.md",
       "sha256": "87ff33163584b69530404f7e4f5f759f8dbd34b66147cfc3ece3dc79f6e8c2e8",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use or an application-implemented extension and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md",
       "sha256": "68091963c8bebd8923f26379e4263a081048fc92a696e8c2cc87c090f046ac39",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use and is not a package-owned declaration."
     },
     {
-      "document": "framework/doc/framework/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md",
+      "document": "framework/doc/framework/common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md",
       "sha256": "0b8cc01955b0e6f631e1283a1580e70343da63555dbe615a86a449d2f6a8f770",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use and is not a package-owned declaration."
@@ -3069,8 +3069,8 @@
         "/(?:[0-9]+-)?(?:common-runtime|configuration-host|foundation-configuration|nestjs-host)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/05-framework-api.ko.md",
-        "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
+        "framework/doc/framework/common/spec/05-framework-api.ko.md",
+        "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-01",
@@ -3123,10 +3123,10 @@
         "/(?:[0-9]+-)?(?:configuration-topology|foundation-configuration|channel-messaging|routing-id-allocation|location-observability|topology-monitoring|common-runtime)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/10-channel-topology.ko.md",
-        "framework/doc/framework/spec/server/12-client-server-channel.ko.md",
-        "framework/doc/framework/spec/server/13-network-listener-identity.ko.md",
-        "framework/doc/framework/spec/server/40-location-runtime.ko.md"
+        "framework/doc/framework/common/spec/10-channel-topology.ko.md",
+        "framework/doc/framework/common/spec/12-client-server-channel.ko.md",
+        "framework/doc/framework/common/spec/13-network-listener-identity.ko.md",
+        "framework/doc/framework/common/spec/40-location-runtime.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-03",
@@ -3182,9 +3182,9 @@
         "/(?:[0-9]+-)?(?:common-runtime|channel-messaging|dispatch-ownership|serialization|foundation-configuration|examples)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/03-message-model.ko.md",
-        "framework/doc/framework/spec/04-async-execution-policy.ko.md",
-        "framework/doc/framework/spec/server/11-channel-messaging.ko.md"
+        "framework/doc/framework/common/spec/03-message-model.ko.md",
+        "framework/doc/framework/common/spec/04-async-execution-policy.ko.md",
+        "framework/doc/framework/common/spec/11-channel-messaging.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-02",
@@ -3225,10 +3225,10 @@
         "/(?:[0-9]+-)?(?:spots|channel-messaging)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/20-spot-messaging.ko.md",
-        "framework/doc/framework/spec/server/23-spot-actor.ko.md",
-        "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
-        "framework/doc/framework/spec/server/25-stage-wrapper-on-spot.ko.md"
+        "framework/doc/framework/common/spec/20-spot-messaging.ko.md",
+        "framework/doc/framework/common/spec/23-spot-actor.ko.md",
+        "framework/doc/framework/common/spec/24-spot-address-messaging.ko.md",
+        "framework/doc/framework/common/spec/25-stage-wrapper-on-spot.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-06",
@@ -3282,10 +3282,10 @@
         "/(?:[0-9]+-)?(?:actors|spots|bound-stream-session|location-maintenance)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/22-actor-model.ko.md",
-        "framework/doc/framework/spec/server/23-spot-actor.ko.md",
-        "framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md",
-        "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
+        "framework/doc/framework/common/spec/22-actor-model.ko.md",
+        "framework/doc/framework/common/spec/23-spot-actor.ko.md",
+        "framework/doc/framework/common/spec/31-session-actor-dispatch.ko.md",
+        "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-04",
@@ -3378,8 +3378,8 @@
         "/(?:[0-9]+-)?(?:stream-session|bound-stream-session|stream-worker)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/30-stream-session.ko.md",
-        "framework/doc/framework/spec/server/31-session-actor-dispatch.ko.md"
+        "framework/doc/framework/common/spec/30-stream-session.ko.md",
+        "framework/doc/framework/common/spec/31-session-actor-dispatch.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-04",
@@ -3410,10 +3410,10 @@
         "/(?:[0-9]+-)?(?:authority-relocation|location-maintenance|location-provider-redis|location-store|routing-id-allocation|location-observability)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/40-location-runtime.ko.md",
-        "framework/doc/framework/spec/server/41-location-store-redis.ko.md",
-        "framework/doc/framework/spec/server/42-relocation-store-redis.ko.md",
-        "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
+        "framework/doc/framework/common/spec/40-location-runtime.ko.md",
+        "framework/doc/framework/common/spec/41-location-store-redis.ko.md",
+        "framework/doc/framework/common/spec/42-relocation-store-redis.ko.md",
+        "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-06",
@@ -3484,11 +3484,11 @@
         "/(?:[0-9]+-)?(?:monitoring|monitoring-errors|topology-monitoring|location-observability|common-runtime|channel-messaging)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
-        "framework/doc/framework/spec/server/50-runtime-monitoring.ko.md",
-        "framework/doc/framework/spec/server/51-runtime-metrics.ko.md",
-        "framework/doc/framework/spec/server/52-message-flow-tracing.ko.md",
-        "framework/doc/framework/spec/server/53-flow-correlation.ko.md",
-        "framework/doc/framework/spec/server/55-transport-liveness.ko.md"
+        "framework/doc/framework/common/spec/50-runtime-monitoring.ko.md",
+        "framework/doc/framework/common/spec/51-runtime-metrics.ko.md",
+        "framework/doc/framework/common/spec/52-message-flow-tracing.ko.md",
+        "framework/doc/framework/common/spec/53-flow-correlation.ko.md",
+        "framework/doc/framework/common/spec/55-transport-liveness.ko.md"
       ],
       "decisionIds": [
         "POSD-V11-01",

@@ -57,6 +57,7 @@ struct mesh_node_builder_state_t
     entry_spot_options_t entry_spot;
     std::chrono::milliseconds default_request_timeout{std::chrono::seconds (30)};
     std::size_t max_pending = 1024;
+    std::atomic<std::uint64_t> next_join_completion_operation{1};
     std::shared_ptr<spot_node_builder_state_t> spot_state;
     spot_node_builder_t spot_builder;
 };

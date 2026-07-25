@@ -33,7 +33,7 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -54,6 +54,7 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
+import systems.zlink.framework.runtime.actors.ZLinkActorEntryTransferEnvelope;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.channels.ChannelRegistration;
 import systems.zlink.framework.runtime.channels.ChannelKind;
@@ -76,8 +77,6 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
@@ -131,7 +130,7 @@ final class SpotActivation
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor) {
         return host.actorSessions().dispatch(actor, () ->
-            context.enqueueActorDispatch(actor.actorId(), () -> {
+            context.enqueueActorDispatch(actor.context().actorId(), () -> {
             if (host.isClosing()) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
@@ -433,14 +432,19 @@ final class SpotActivation
         String routeChannelName,
         RoutingId sourcePeerRid,
         List<Message> parts) {
-        ParsedPacket packet = ZLinkSpotRuntime.parsePacket(parts);
+        List<Message> transferParts = parts.size() == 2
+            ? ZLinkActorEntryTransferEnvelope.decode(parts.get(1))
+            : parts;
+        boolean ownsTransferParts = transferParts != parts;
+        ParsedPacket packet = ZLinkSpotRuntime.parsePacket(transferParts);
         ZLinkActorSpotRoutePackets.TransferRequest transferRequest =
             ZLinkActorSpotRoutePackets.decodeTransferRequest(packet.payload());
-        Message phasePayload = parts.size() > 2
-            ? Message.from(parts.get(2).toByteArray())
+        Message phasePayload = transferParts.size() > 2
+            ? Message.from(transferParts.get(2).toByteArray())
             : Message.from(new byte[0]);
         List<ZLinkActorSpotRoutePackets.WireHandoffPacket> backlog = transferRequest.commit()
-            ? ZLinkActorSpotRoutePackets.decodeHandoffPackets(parts, transferRequest.backlogCount())
+            ? ZLinkActorSpotRoutePackets.decodeHandoffPackets(
+                transferParts, transferRequest.backlogCount())
             : List.of();
         CompletionStage<List<Message>> replyStage = transferRequest.admission()
             ? host.actorAdmissions().prepareRoutedActor(
@@ -490,6 +494,9 @@ final class SpotActivation
                 } finally {
                     phasePayload.close();
                     backlog.forEach(ZLinkActorSpotRoutePackets.WireHandoffPacket::close);
+                    if (ownsTransferParts) {
+                        transferParts.forEach(Message::close);
+                    }
                 }
             });
     }

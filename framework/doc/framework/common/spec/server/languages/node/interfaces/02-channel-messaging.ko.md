@@ -174,7 +174,7 @@ export interface ZLinkOutboundRouteConfig {
 export declare function ZLinkPacket(packetName: string): ClassDecorator;
 ```
 
-Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언어에서 사용하는 [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)
+Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언어에서 사용하는 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 계기 이름 카탈로그는 다음 여섯 값이며, 이름·종류·단위와 attribute 제한은
 [runtime-metrics](../../../../51-runtime-metrics.ko.md)가 소유한다.
 
@@ -275,6 +275,13 @@ export interface ZLinkRequestCall {
     metadata(metadata: ZLinkMessageMetadata): this;
     timeout(timeoutMs: number): this;
     submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+}
+
+export interface ZLinkChannelRequestCall {
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
+    timeout(timeoutMs: number): this;
+    submit<TReply>(signal?: AbortSignal): Promise<TReply>;
     yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
@@ -286,7 +293,7 @@ export interface ZLinkRouteClient {
     sendToNode(meshName: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
     requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+    requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
     sendToSpot(spotId: SpotId, message: unknown): ZLinkSpotSendCall;
     requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall;
 }
@@ -327,7 +334,12 @@ export interface ZLinkRouteLocationKey {
 }
 
 export interface ZLinkRouteMeshRuntimeOptions {
+    mesh(meshName: string): ZLinkMeshPlacementRuntimeOptions;
     channel(channelName: string): ZLinkMeshChannelRuntimeOptions;
+}
+
+export interface ZLinkMeshPlacementRuntimeOptions {
+    placementWeight: number;
 }
 
 export interface ZLinkMeshChannelRuntimeOptions {

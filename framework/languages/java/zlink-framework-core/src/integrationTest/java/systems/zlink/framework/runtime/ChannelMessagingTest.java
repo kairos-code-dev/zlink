@@ -40,7 +40,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkHandlerInvocation;
 import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -48,16 +48,14 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -1714,7 +1712,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class EchoHandler implements ZLinkRequestHandler<EchoRequest, String> {
         @Override
-        public CompletionStage<String> handle(EchoRequest request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(EchoRequest request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request.value());
         }
     }
@@ -1821,7 +1819,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class ThrowingRequestHandler implements ZLinkRequestHandler<ThrowRequest, String> {
         @Override
-        public CompletionStage<String> handle(ThrowRequest request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(ThrowRequest request, ZLinkMessageContext context) {
             return CompletableFuture.failedFuture(new IllegalStateException("DERR-007 handler exception"));
         }
     }
@@ -1851,7 +1849,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         static final AtomicInteger invocations = new AtomicInteger();
 
         @Override
-        public CompletionStage<String> handle(DecodePayload request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(DecodePayload request, ZLinkMessageContext context) {
             invocations.incrementAndGet();
             return CompletableFuture.completedFuture("decode:" + request.value());
         }
@@ -1859,21 +1857,21 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class JsonCodecEchoHandler implements ZLinkRequestHandler<JsonCodecProbe, JsonCodecProbe> {
         @Override
-        public CompletionStage<JsonCodecProbe> handle(JsonCodecProbe request, ZLinkRequestContext context) {
+        public CompletionStage<JsonCodecProbe> handle(JsonCodecProbe request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
 
     public static final class ManualRegistrationRequestHandler implements ZLinkRequestHandler<ManualRequest, String> {
         @Override
-        public CompletionStage<String> handle(ManualRequest request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(ManualRequest request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture("manual:" + request.value());
         }
     }
 
     public static final class ManualRegistrationCommandHandler implements ZLinkSendHandler<ManualCommand> {
         @Override
-        public CompletionStage<Void> handle(ManualCommand message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(ManualCommand message, ZLinkMessageContext context) {
             MANUAL_REG_SEND_MESSAGE.set(message.value());
             MANUAL_REG_SEND_PACKET.set(context.packetName().orElse(""));
             MANUAL_REG_SEND_CHANNEL.set(context.channelName().orElse(""));
@@ -1884,7 +1882,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class ManualRegistrationPublishHandler implements ZLinkPublishHandler<ManualEvent> {
         @Override
-        public CompletionStage<Void> handle(ManualEvent message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(ManualEvent message, ZLinkPublishMessageContext context) {
             MANUAL_REG_PUBLISH_MESSAGE.set(message.value());
             MANUAL_REG_PUBLISH_TOPIC.set(context.topic());
             MANUAL_REG_PUBLISH_CHANNEL.set(context.channelName().orElse(""));
@@ -1896,7 +1894,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     public static final class ReplyDecoratingFilter implements ZLinkHandlerFilter {
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkInvocationContext context,
+            ZLinkHandlerInvocation context,
             ZLinkNext<T> next) {
             Object request = context.request().orElse("");
             FILTER_REQUEST.set(request instanceof EchoRequest echo ? echo.value() : request.toString());
@@ -1913,14 +1911,14 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     @ZLinkHandlerGroup("scanned-profile")
     public static final class ScannedEchoHandler implements ZLinkRequestHandler<StringPacket, String> {
         @Override
-        public CompletionStage<String> handle(StringPacket request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(StringPacket request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture("scanned:" + request.value());
         }
     }
 
     public static final class ProfileChangedHandler implements ZLinkSendHandler<ProfileChanged> {
         @Override
-        public CompletionStage<Void> handle(ProfileChanged message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(ProfileChanged message, ZLinkMessageContext context) {
             SEND_MESSAGE.set(message.value());
             SEND_PACKET.set(context.packetName().orElse(""));
             SEND_CHANNEL.set(context.channelName().orElse(""));
@@ -1947,7 +1945,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class ScoreChangedHandler implements ZLinkPublishHandler<ScoreChanged> {
         @Override
-        public CompletionStage<Void> handle(ScoreChanged message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(ScoreChanged message, ZLinkPublishMessageContext context) {
             FANOUT_MESSAGE.set(message.value());
             FANOUT_TOPIC.set(context.topic());
             FANOUT_CHANNEL.set(context.channelName().orElse(""));
@@ -1958,7 +1956,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class FanoutSequenceOneHandler implements ZLinkPublishHandler<FanoutSequence> {
         @Override
-        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_ONE.add(message.value());
             return CompletableFuture.completedFuture(null);
         }
@@ -1966,7 +1964,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class FanoutSequenceTwoHandler implements ZLinkPublishHandler<FanoutSequence> {
         @Override
-        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_TWO.add(message.value());
             return CompletableFuture.completedFuture(null);
         }
@@ -1974,7 +1972,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class FanoutSequenceThreeHandler implements ZLinkPublishHandler<FanoutSequence> {
         @Override
-        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(FanoutSequence message, ZLinkPublishMessageContext context) {
             FANOUT_SEQUENCE_THREE.add(message.value());
             return CompletableFuture.completedFuture(null);
         }
@@ -1993,7 +1991,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class RouteEchoHandler implements ZLinkRouteRequestHandler<EchoRequest, String> {
         @Override
-        public CompletionStage<String> handle(EchoRequest request, ZLinkRouteRequestContext context) {
+        public CompletionStage<String> handle(EchoRequest request, ZLinkRouteMessageContext context) {
             ROUTE_REQUEST_CHANNEL.set(context.channelName().orElse(""));
             return CompletableFuture.completedFuture("route:" + request.value());
         }
@@ -2007,7 +2005,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         }
 
         @Override
-        public CompletionStage<String> handle(NestedApi request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(NestedApi request, ZLinkMessageContext context) {
             return routes.requestToNode("route", RoutingId.from("nested-play-route"), new NestedRoute(request.value()))
                 .timeout(Duration.ofMillis(200))
                 .submit(String.class);
@@ -2020,14 +2018,14 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         @Override
         public CompletionStage<String> handle(
             StringPacket request,
-            ZLinkRouteRequestContext context) {
+            ZLinkRouteMessageContext context) {
             return CompletableFuture.completedFuture("scanned-route:" + request.value());
         }
     }
 
     public static final class DelayedRouteEchoHandler implements ZLinkRouteRequestHandler<SharedPacket, String> {
         @Override
-        public CompletionStage<String> handle(SharedPacket request, ZLinkRouteRequestContext context) {
+        public CompletionStage<String> handle(SharedPacket request, ZLinkRouteMessageContext context) {
             String[] parts = request.value().split(":", 2);
             String value = parts[0];
             long delayMillis = parts.length == 2 ? Long.parseLong(parts[1]) : 0;
@@ -2039,7 +2037,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     public static final class RouteNoticeHandler implements ZLinkRouteSendHandler<RouteNotice> {
         @Override
-        public CompletionStage<Void> handle(RouteNotice message, ZLinkRouteSendContext context) {
+        public CompletionStage<Void> handle(RouteNotice message, ZLinkRouteMessageContext context) {
             ROUTE_SEND_MESSAGE.set(message.value());
             ROUTE_SEND_PACKET.set(context.packetName().orElse(""));
             ROUTE_SEND_CHANNEL.set(context.channelName().orElse(""));

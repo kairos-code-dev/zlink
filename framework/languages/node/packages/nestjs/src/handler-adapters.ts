@@ -2,11 +2,9 @@ import type { InjectionToken } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import type {
   Type,
-  ZLinkPublishContext,
-  ZLinkRequestContext,
-  ZLinkRouteRequestContext,
-  ZLinkRouteSendContext,
-  ZLinkSendContext
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkRouteMessageContext
 } from '@zlink-systems/framework';
 import type { ZLinkChannelOptions } from './framework-integration-contracts';
 import { framework } from './framework-loader';
@@ -21,7 +19,7 @@ export function createDiscoveredRequestHandlers(
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'request', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkRequestContext) {
+    async handle(payload: Buffer, context: ZLinkMessageContext) {
       const result = await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
       return metadata.encodeResult === undefined ? result : metadata.encodeResult(result, context);
     }
@@ -34,7 +32,7 @@ export function createDiscoveredSendHandlers(
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'send', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkRouteSendContext) {
+    async handle(payload: Buffer, context: ZLinkRouteMessageContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
@@ -46,7 +44,7 @@ export function createDiscoveredChannelSendHandlers(
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['sendHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'send', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkSendContext) {
+    async handle(payload: Buffer, context: ZLinkMessageContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
@@ -58,7 +56,7 @@ export function createDiscoveredPublishHandlers(
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['publishHandlers']> {
   return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'publish', (ref, metadata) => ({
-    async handle(payload: Buffer, context: ZLinkPublishContext) {
+    async handle(payload: Buffer, context: ZLinkPublishMessageContext) {
       await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
     }
   }));
@@ -68,43 +66,41 @@ export function createManualRequestHandlers(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['requestHandlers']> {
-  return createManualHandlerRegistrations<ZLinkRequestContext, unknown>(handlerTypes, moduleRef, (result) => result);
+  return createManualHandlerRegistrations<ZLinkMessageContext, unknown>(handlerTypes, moduleRef, (result) => result);
 }
 
 export function createManualPublishHandlers(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['publishHandlers']> {
-  return createManualHandlerRegistrations<ZLinkPublishContext, void>(handlerTypes, moduleRef, () => undefined);
+  return createManualHandlerRegistrations<ZLinkPublishMessageContext, void>(handlerTypes, moduleRef, () => undefined);
 }
 
 export function createManualSendHandlers(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<ZLinkChannelOptions['sendHandlers']> {
-  return createManualHandlerRegistrations<ZLinkSendContext, void>(handlerTypes, moduleRef, () => undefined);
+  return createManualHandlerRegistrations<ZLinkMessageContext, void>(handlerTypes, moduleRef, () => undefined);
 }
 
 export function createManualRouteSendHandlers(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['sendHandlers']> {
-  return createManualHandlerRegistrations<ZLinkRouteSendContext, void>(handlerTypes, moduleRef, () => undefined);
+  return createManualHandlerRegistrations<ZLinkRouteMessageContext, void>(handlerTypes, moduleRef, () => undefined);
 }
 
 export function createManualRouteRequestHandlers(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,
   moduleRef: ModuleRef
 ): NonNullable<NonNullable<ZLinkChannelOptions['routeMesh']>['requestHandlers']> {
-  return createManualHandlerRegistrations<ZLinkRouteRequestContext, unknown>(handlerTypes, moduleRef, (result) => result);
+  return createManualHandlerRegistrations<ZLinkRouteMessageContext, unknown>(handlerTypes, moduleRef, (result) => result);
 }
 
 type ManualHandlerContext =
-  | ZLinkRequestContext
-  | ZLinkSendContext
-  | ZLinkRouteRequestContext
-  | ZLinkRouteSendContext
-  | ZLinkPublishContext;
+  | ZLinkMessageContext
+  | ZLinkRouteMessageContext
+  | ZLinkPublishMessageContext;
 
 function createManualHandlerRegistrations<TContext extends ManualHandlerContext, TResult>(
   handlerTypes: readonly ZLinkNestManualHandlerOptions[] | undefined,

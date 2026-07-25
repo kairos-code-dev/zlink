@@ -1,5 +1,5 @@
 import { Message as BindingMessage } from '@zlink-systems/zlink';
-import type { RoutingId, ZLinkRouteRequestContext } from '../../contracts';
+import type { RoutingId, ZLinkRouteMessageContext } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef } from '../backend';
 import type { DefaultZLinkActorManager } from '../actors';
@@ -17,7 +17,7 @@ export class ZLinkRemoteActorJoinReceiver {
 
   async receive(
     payload: unknown,
-    routeContext: ZLinkRouteRequestContext
+    routeContext: ZLinkRouteMessageContext
   ): Promise<{
     readonly accepted: boolean;
     readonly actorNodeRid: string;

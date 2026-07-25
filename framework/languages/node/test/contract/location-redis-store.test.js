@@ -1299,6 +1299,39 @@ test('redis fanout publisher descriptors match the fixture and enforce dedicated
   }
 });
 
+test('redis relocation store preserves immutable bytes and provider-clock expiry', async (t) => {
+  const fixture = await redisFixture();
+  if (fixture === undefined) {
+    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
+    return;
+  }
+  const prefix = `zlink:node-relocation:${process.pid}:${Date.now()}`;
+  const store = new redisLocations.ZLinkRedisLocationStore({
+    url: fixture.url,
+    keyPrefix: prefix
+  });
+  try {
+    const payload = Buffer.from([0, 1, 2, 127, 128, 255]);
+    const stored = await store.putRelocation(payload, 60_000);
+    assert.equal(stored.expiresAt.getTime() - stored.storeNow.getTime(), 60_000);
+    assert.deepEqual(
+      Buffer.from((await store.getRelocation(stored.reference)).payload),
+      payload
+    );
+
+    const renewed = await store.renewRelocation(stored.reference, 90_000);
+    assert.equal(renewed.kind, 'renewed');
+    assert.equal(renewed.expiresAt.getTime() - renewed.storeNow.getTime(), 90_000);
+    assert.equal(await store.deleteRelocation(stored.reference), 'deleted');
+    assert.equal(await store.deleteRelocation(stored.reference), 'missing');
+    assert.equal((await store.getRelocation(stored.reference)).kind, 'missing');
+  } finally {
+    await store.dispose();
+    await cleanupPrefix(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
 test('redis location store validates required connection options', () => {
   assert.throws(
     () => new redisLocations.ZLinkRedisLocationStore({ url: 'redis://127.0.0.1:6379', keyPrefix: '' }),

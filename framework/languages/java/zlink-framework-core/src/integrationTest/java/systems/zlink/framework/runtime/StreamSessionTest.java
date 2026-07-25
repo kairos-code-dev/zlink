@@ -36,7 +36,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -352,7 +352,7 @@ final class StreamSessionTest {
         public CompletionStage<String> handle(
             UserSpot spot,
             PlayerActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             String request) {
             return spot.context().leaveActor(actor).thenApply(ignored -> "left");
         }

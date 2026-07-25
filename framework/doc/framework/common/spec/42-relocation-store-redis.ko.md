@@ -32,12 +32,15 @@ Store의 payload만으로 owner를 바꾸지 않는다.
 Provider는 relocation·[activation envelope](01-glossary.ko.md#activation-envelope), application state, message, timer와 journal record의
 내용을 해석하지 않는다.
 
-Relocation Store는 Session binding route도 저장하거나 갱신하지 않는다. Actor가
+Relocation Store는 Session binding route, 즉 Session owner가 현재 Actor owner에
+전달할 때 사용하는 경로도 저장하거나 갱신하지 않는다. Actor가
 Session에 bind되어 있으면 Framework runtime이 Location Store의 owner·membership
 commit, callback·journal replay, durable source cleanup과 `Completed`를 끝낸 뒤 같은
 ObjectGeneration을 검증하고 command 44·45로 Session owner가 보관한 해당 Actor
-route만 target owner로 갱신한다. Routed ACK와 steady normalization 전에는 target
-Actor의 session packet·push admission을 열지 않는다.
+route만 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). Steady normalization 전에는 target
+Actor의 session packet·push admission을 열지 않는다. 같은 Session의 다른 Actor
+route와 physical STREAM connection은 유지한다. Route 갱신은 같은 `ObjectGeneration`에만
+적용하며, 새 incarnation은 application이 명시적으로 다시 bind해야 한다.
 
 Relocation Store는 Location Store와 별도 public interface, 별도 등록과 별도 Redis implementation을 사용한다.
 두 implementation은 같은 Redis deployment 또는 cluster를 서로 다른 key prefix로 사용할 수 있고 물리적으로
@@ -60,7 +63,7 @@ Process의 encoded payload in-flight 기본 상한 256 MiB는 Framework coordina
 stream ceiling이 아니다. Framework는 source queue를 seal하기 전에 Snapshot participant마다 64 MiB와 이미
 Framework가 소유한 section의 deterministic encoded upper bound를 합한 byte permit을 얻는다. `Capture` 뒤에는 actual
 encoded size로 permit을 축소만 한다. 한 User Spot aggregate의 reservation이 gate보다 크면 다른 payload가
-in-flight가 아닌 동안에만 exclusive oversized aggregate 하나로 저장·복원한다. Standalone Actor와 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot)
+in-flight가 아닌 동안에만 exclusive oversized aggregate 하나로 저장·복원한다. Standalone Actor와 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 unit은 gate 안에서만 admit한다. Permit attempt는 all-or-nothing이며 실패한 unit은 일부 permit을 보유한 채
 기다리지 않는다.
 

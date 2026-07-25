@@ -62,8 +62,8 @@ const isKotlinSourcePackageMember = member => member.language === 'kotlin'
 
 export const closedCatchAllExpectations = {
   'kotlin-reviewed-contract-set': {
-    count: 95,
-    identitySetSha256: '5937b0bd1328b8842b0a6377d77b9d926d4189e3870ede85d691c233f5047c0c',
+    count: 88,
+    identitySetSha256: '60f90e0b0092df0612f07ab5a3e533e071752dad39e139aa6cf866dfd9f6f07a',
   },
   'node-reviewed-contract-set': {
     count: 54,
@@ -450,6 +450,12 @@ const rules = [
       && !/spotrid/u.test(value),
     decisions: ['CA-D02', 'CA-D26'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
+  },
+  {
+    id: 'unified-message-context',
+    matches: value => /spotactormessagemetadata|spotpacketcontext|streamdispatchcontext|streammetadata/u.test(value),
+    decisions: ['CA-D76'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'node-reviewed-contract-set',

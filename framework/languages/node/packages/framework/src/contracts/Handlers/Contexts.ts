@@ -1,32 +1,21 @@
 import type { RoutingId, ZLinkMessageMetadata } from '../Common';
-import type { ZLinkSpotActorReplyOptions } from '../Spots';
 
-export interface ZLinkHandlerContext {
+export interface ZLinkMessageContext {
+  readonly meshName?: string;
   readonly channelName?: string;
-  readonly packetName?: string;
+  readonly packetName: string;
   readonly contentType?: string;
-  readonly connectionAborted?: AbortSignal;
   readonly metadata: ZLinkMessageMetadata;
+  readonly correlationId?: string;
 }
 
-export interface ZLinkRequestContext extends ZLinkHandlerContext {}
-export interface ZLinkSendContext extends ZLinkHandlerContext {}
-export interface ZLinkPublishContext extends ZLinkHandlerContext {
+export interface ZLinkPublishMessageContext extends ZLinkMessageContext {
+  readonly channelName: string;
   readonly topic: string;
   readonly source?: string;
 }
 
-export interface ZLinkRouteSendContext extends ZLinkHandlerContext {
-  readonly routerChannelId: string;
+export interface ZLinkRouteMessageContext extends ZLinkMessageContext {
+  readonly meshName: string;
   readonly sourceNodeRid: RoutingId;
-}
-
-export interface ZLinkRouteRequestContext extends ZLinkRouteSendContext {}
-
-export interface ZLinkSpotActorSendContext extends ZLinkHandlerContext {
-  readonly metadata: ZLinkMessageMetadata;
-}
-
-export interface ZLinkSpotActorRequestContext extends ZLinkSpotActorSendContext {
-  readonly reply: ZLinkSpotActorReplyOptions;
 }

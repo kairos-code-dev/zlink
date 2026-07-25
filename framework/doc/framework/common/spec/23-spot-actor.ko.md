@@ -55,7 +55,7 @@ topology는 Node direct와 Channel operation만 사용할 수 있다.
 node의 capacity를 함께 예약하여 이 권한을 하나로 확정한다. 이 기록을 placement
 reservation이라 한다.
 
-Actor와 User Spot을 manager로 만들 때와 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot)의 첫 message로 생성할 때는
+Actor와 User Spot을 manager로 만들 때와 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)의 첫 message로 생성할 때는
 reservation을 요청하는 위치가 다르다.
 
 | 생성 방식 | Reservation을 요청하는 주체와 시점 |
@@ -66,30 +66,49 @@ reservation을 요청하는 위치가 다르다.
 두 방식의 공통 결과는 같다. Location Store가 한 target에만 생성 권한을 주고, 다른
 target은 별도 [factory](01-glossary.ko.md#factory)를 시작하지 않는다.
 
+Object factory를 등록하고 같은 type인지 비교할 때 사용하는 변경되지 않는 이름을
+stable type이라 한다.
+
+Remote User Spot manager create는 reservation 뒤 exact target에 별도 terminal service operation을 보낸다.
+이 operation은 source와 target node lifecycle, global Spot key·[stable type](01-glossary.ko.md#stable-type),
+provider가 발급한 reservation,
+`StoreVersion`과 deadline을 고정한다. Target은 `Reserved` allocation의 `pendingCreation`을 Location Store에서
+exact read한 뒤 factory·initialize·Commit을 실행한다. Location row polling이나 application control packet은
+terminal result가 아니다.
+
+Remote User Spot close도 exact `SpotRef`, owner generation·`StoreVersion`과 target lifecycle을 가진 별도
+terminal service operation이다. Target은 active Actor membership과 relocation 상태를 admission 전에
+확인한다.
+
 1. Runtime이 global key, stable type, optional Mesh·placement와 durable creation input을 고정하고 role, type
-   capability, active·pending capacity를 만족하는 positive node-wide weight 후보를 선택한다.
+   capability와 typed population capacity를 만족하는 positive node-wide weight 후보를 선택한다.
 2. Actor·User Spot manager create는 coordinator가 `Reserve`를 호출한다. Instance Spot은 source가 first-message
    activation envelope를 후보 target에 먼저 제출하고 target activation registry가 `Reserve`를 호출한다.
 3. Store `Reserve`는 object 상태를 `Missing`에서 `Creating`으로 바꾸고 target에서
-   해당 object를 만드는 데 필요한 pending capacity를 같은 transaction으로
-   확보한다. 이 상태 변경을 `Missing → Creating` transition이라 한다.
+   해당 object를 만드는 데 필요한 allocation과 typed capacity bundle을 같은
+   transaction에서 `Reserved`로 고정한다. Authority의 상태 변경을
+   `Missing → Creating` transition이라 한다.
 4. 이 예약에 성공한 target만 factory와 initialize를 실행한다. 동시에 요청했지만
    예약에 실패한 target은 같은 object를 별도로 만들지 않는다.
 5. 생성 callback이 승인하면 Store terminal `Commit`이 같은 fence를 `Ready`로
-   바꾸고 pending capacity를 active로 전환하면서 `Created` result를 publish한다.
+   바꾸고 allocation과 typed capacity bundle을 `Reserved → Active`로 전환하면서
+   `Created` result를 publish한다.
    Instance Spot은 별도 application 생성 승인이 없으며 envelope에 포함된 first
    message를 activation barrier 뒤 local queue에 한 번 제출한다.
 6. 생성 callback이 거절하면 같은 terminal `Commit`이 Ready와 active capacity를
-   만들지 않고 Creating authority와 pending capacity를 정리하면서 `Rejected`
+   만들지 않고 Creating authority와 reserved allocation·typed capacity bundle을 정리하면서 `Rejected`
    result를 publish한다.
 7. Node 종료, timeout 또는 callback exception에서는 `Abort`가 exact Creating
-   authority와 pending capacity를 정리하고 `Aborted` failure를 publish한다.
+   authority와 `Reserved` allocation·typed capacity bundle을 정리하고 `Aborted`
+   failure를 publish한다.
 
 Reservation에는 어떤 object를 어느 target에 만들 것인지, 필요한 capacity와 현재
-owner를 검증할 정보가 들어간다. 고정 만료 시간인 TTL로 생성 권한을 판단하지
-않는다. Store에 기록한 `Creating` 상태와 target owner lease를 함께 확인하여 생성
-복구, 다른 target의 인계와 취소 여부를 결정한다. Actor와 Spot은 이 공통
-reservation operation을 함께 사용한다.
+owner를 검증할 정보가 들어간다. 정확히는 object kind, global key, stable type,
+target descriptor, typed capacity bundle, exact owner lease와 `StoreVersion`을
+고정한다. 고정 만료 시간인 TTL로 생성 권한을 판단하지 않는다. Store에 기록한
+`Creating` 상태와 target owner lease를 함께 확인하여 생성 복구, 다른 target의
+인계와 취소 여부를 결정한다. Actor와 Spot은 이 공통 reservation operation을 함께
+사용한다.
 
 Encoded creation request는 최대 1 MiB다. Framework는 reservation 전에 변경할 수
 없는 content reference와 hash를 creation intent에 기록하고, object가 Ready가 되거나
@@ -395,8 +414,8 @@ Cross-node join은 다음 순서를 지킨다.
    application admission은 계속 닫아 둔다.
 8. 실행 전 queue와 source ingress hold를 target으로 옮기고 old Entry membership과
    남은 source resource의 durable cleanup을 끝낸 뒤 Completed authority CAS를 수행한다.
-9. 이동한 Actor가 Session에 bind되어 있으면 command 44·45로 Session owner가 보관한
-   해당 Actor의 binding route만 target owner로 갱신하고 routed ACK를 받는다. 같은
+9. 이동한 Actor가 Session에 bind되어 있으면 Session owner가 보관한 해당 Actor의 현재
+   전달 경로인 binding route만 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). 같은
    Session의 다른 Actor route와 physical STREAM connection은 유지한다. Steady target
    normalization 뒤 target packet·push admission을 연다. 후처리 완료를 표시하기 위해
    Location Store의 같은 aggregate를 두 번째로 commit하지 않는다.
@@ -472,9 +491,9 @@ operation의 absolute deadline을 제공한다.
 
 | 값 | Reason | 호출 조건 |
 |---:|---|---|
-| 0 | `ExplicitClose` | application이 User·Instance Spot의 close를 시작해 해당 local instance를 정상 정리함 |
-| 1 | `HostShutdown` | relocation 없이 host `Shutdown`이 local Entry·User·Instance Spot을 정리함 |
-| 2 | `RelocationOut` | User·Instance Spot owner commit 뒤 source local instance를 정리함 |
+| 0 | `ExplicitClose` | Application이 User·Instance Spot의 close를 시작하여 해당 local instance를 정상적으로 정리한다. |
+| 1 | `HostShutdown` | Relocation 없이 host `Shutdown`이 local Entry·User·Instance Spot을 정리한다. |
+| 2 | `RelocationOut` | User·Instance Spot owner commit 뒤 source local instance를 정리한다. |
 
 Standalone Actor 이동은 Entry Spot 자체를 닫지 않으므로 Entry Spot의 `OnClosing`을 호출하지 않는다. 기존 target
 `OnActorRelocated`와 source `OnLeaveActor`만 사용한다. User Spot에 Actor membership이 남아 explicit close가 거부되면
@@ -545,7 +564,7 @@ Aggregate ID는 non-zero 128-bit value다. Aggregate record는 최대 1024 parti
    전환한다.
 6. Authority commit 뒤 target lifecycle callback, accepted message·journal replay와 Framework timer 자동
    복원을 끝낸다. Durable source cleanup과 Completed authority CAS 뒤 aggregate에 포함된 bound Actor마다
-   command 44·45로 Session owner의 해당 route만 target으로 바꾼다. 같은 Session의 aggregate 밖 Actor
+   Session owner에 해당 route를 target으로 바꿔 달라고 요청하고 확인을 받는다(`command 44·45`). 같은 Session의 aggregate 밖 Actor
    route와 physical STREAM connection은 유지한다. 모든 routed ACK와 steady normalization 뒤 전체
    packet·push admission을 연다.
 
@@ -566,7 +585,7 @@ authority와 Relocation Store root에서 target activation을 이어가며 faile
 
 Factory, `Capture`, `Restore`와 lifecycle callback은 attempt 사이에서 at-least-once로 실행될 수 있다. Stale attempt는
 completion, admission과 cleanup을 commit할 수 없다. Process pause 뒤 재개한 이전 owner도 stale
-[AuthorityOwnerGeneration](01-glossary.ko.md#authority-owner-generation), owner lease와 local admission deadline 때문에 message, timer, phase update와 cleanup을
+[AuthorityOwnerGeneration](01-glossary.ko.md#authorityownergeneration), owner lease와 local admission deadline 때문에 message, timer, phase update와 cleanup을
 수행하지 못한다.
 
 `Capture`가 예외나 rejected task로 끝나면 Framework는 relocation root를 publish하지 않는다. Durable `Aborted` CAS,
@@ -600,8 +619,8 @@ Actor가 이동해도 physical STREAM connection, session identity와 ObjectGene
 유지된다. Owner·membership commit 뒤 callback·journal replay와 durable source
 cleanup을 끝내고 Completed authority CAS를 수행한다. 그 뒤 Session owner는
 [binding token](01-glossary.ko.md#binding-token), AuthorityOwnerGeneration과 sequence
-barrier를 검증해 command 44·45로 해당 Actor의 binding route만 target owner로 바꾸고
-routed ACK를 반환한다. 한 Session에 Actor가 여러 개 bind되어 있어도 이동하지 않은
+barrier를 검증해 해당 Actor의 [binding route](01-glossary.ko.md#binding-route)만 target owner로
+바꿔 달라고 요청하고 확인을 받는다(`command 44·45`). 한 Session에 Actor가 여러 개 bind되어 있어도 이동하지 않은
 Actor의 route는 바꾸지 않는다.
 
 Target은 steady normalization 전에는 session packet·push admission을 열지 않는다.

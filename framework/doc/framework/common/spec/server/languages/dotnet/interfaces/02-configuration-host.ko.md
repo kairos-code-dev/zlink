@@ -126,7 +126,7 @@ Host는 network bind 전에 다음 조건을 검증한다.
 - 같은 owner namespace의 handler key 중복
 - Spot, Actor와 STREAM factory의 owner 관계
 - Object role의 중복 선택, Client·Server role의 Location Store 등록과 None role의 [factory](../../../../01-glossary.ko.md#factory) 부재
-- Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)의 stable type·구현 class 중복, explicit relocation policy와 type별 capacity
+- Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)의 stable type·구현 class 중복, explicit relocation policy와 type별 capacity
 - Node placement weight와 active/pending capacity
 - Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
 - `Snapshot` policy의 Actor·Spot adapter type과 factory 대상의 일치 여부

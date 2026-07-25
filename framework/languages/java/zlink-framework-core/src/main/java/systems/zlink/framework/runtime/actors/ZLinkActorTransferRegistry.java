@@ -48,7 +48,7 @@ final class ZLinkActorTransferRegistry {
         }
         return invokeTransferIn(createAdapter(adapterType), actorId, context, state)
             .thenApply(actor -> {
-                if (actor == null || !actorId.equals(actor.actorId())) {
+                if (actor == null || !actorId.equals(actor.context().actorId())) {
                     throw new ZLinkConfigurationException(
                         "actor transfer adapter returned an actor with a different id: "
                             + adapterType.getName());

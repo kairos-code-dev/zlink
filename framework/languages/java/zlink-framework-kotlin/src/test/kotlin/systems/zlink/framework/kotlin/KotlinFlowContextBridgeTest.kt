@@ -112,7 +112,7 @@ class KotlinFlowContextBridgeTest {
         val flow = ZLinkFlowContext.create(ZLinkFlowOrigin.LIFECYCLE)
         val first = RecordingActorFactory()
         val firstStage = ZLinkFlowContext.enter(flow).use {
-            first.create("actor-a", UNUSED_CONTEXT)
+            first.create(context("actor-a"))
         }
 
         firstStage.toCompletableFuture().join()
@@ -121,7 +121,7 @@ class KotlinFlowContextBridgeTest {
         assertEquals(flow, first.afterSuspension)
 
         val second = RecordingActorFactory()
-        second.create("actor-b", UNUSED_CONTEXT).toCompletableFuture().join()
+        second.create(context("actor-b")).toCompletableFuture().join()
         assertNull(second.beforeSuspension)
         assertNull(second.afterSuspension)
     }
@@ -130,19 +130,21 @@ class KotlinFlowContextBridgeTest {
         var beforeSuspension: ZLinkFlowContext.State? = null
         var afterSuspension: ZLinkFlowContext.State? = null
 
-        override suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor {
+        override suspend fun createActor(context: ZLinkActorContext): ZLinkActor {
             beforeSuspension = ZLinkFlowContext.current()
             yield()
             afterSuspension = ZLinkFlowContext.current()
             return object : ZLinkActor {
-                override fun actorId() = actorId
                 override fun context() = context
             }
         }
     }
 
     companion object {
-        private val UNUSED_CONTEXT = object : ZLinkActorContext {
+        private fun context(actorId: String) = object : ZLinkActorContext {
+            override fun actorId(): String = actorId
+            override fun objectGeneration(): Long = 1L
+            override fun meshName(): String = "test"
             override fun spotId(): Optional<String> = Optional.empty()
             override fun boundSession(): ZLinkBoundSession = error("not used")
             override fun joinSpot(spotId: String): ZLinkActorJoinCall =

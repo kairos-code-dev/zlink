@@ -90,7 +90,7 @@ export class ZLinkUserSpotCreationCoordinator {
       readonly meshName: string;
       readonly nodeRid: RoutingId;
       readonly isLocal: boolean;
-    }, signal: AbortSignal) => Promise<ZLinkLocalSpotCreateResult>,
+    }, authority: ZLinkAuthoritySnapshot, signal: AbortSignal) => Promise<ZLinkLocalSpotCreateResult>,
     discard?: (signal?: AbortSignal) => Promise<void>
   ): Promise<ZLinkUserSpotCreationResult> {
     const deadline = createDeadline(request.timeoutMs, request.signal);
@@ -305,7 +305,8 @@ export class ZLinkUserSpotCreationCoordinator {
               target.nodeGeneration,
               deadlineUnixMs
             ),
-            (_payload, localSignal) => materialize(target, localSignal),
+            (_payload, authority, localSignal) =>
+              materialize(target, authority, localSignal),
             discard,
             signal
           )
@@ -408,6 +409,7 @@ export class ZLinkUserSpotCreationCoordinator {
     record: ServiceUserSpotCreateRecord,
     materialize: (
       requestPayload: Uint8Array,
+      authority: ZLinkAuthoritySnapshot,
       signal: AbortSignal
     ) => Promise<ZLinkLocalSpotCreateResult>,
     discard?: (signal?: AbortSignal) => Promise<void>,
@@ -439,6 +441,7 @@ export class ZLinkUserSpotCreationCoordinator {
     record: ServiceUserSpotCreateRecord,
     materialize: (
       requestPayload: Uint8Array,
+      authority: ZLinkAuthoritySnapshot,
       signal: AbortSignal
     ) => Promise<ZLinkLocalSpotCreateResult>,
     discard?: (signal?: AbortSignal) => Promise<void>,
@@ -462,6 +465,7 @@ export class ZLinkUserSpotCreationCoordinator {
     record: ServiceUserSpotCreateRecord,
     materialize: (
       requestPayload: Uint8Array,
+      authority: ZLinkAuthoritySnapshot,
       signal: AbortSignal
     ) => Promise<ZLinkLocalSpotCreateResult>,
     discard?: (signal?: AbortSignal) => Promise<void>,
@@ -540,7 +544,11 @@ export class ZLinkUserSpotCreationCoordinator {
     }
     let local: ZLinkLocalSpotCreateResult | undefined;
     try {
-      local = await materialize(requestPayload, signal ?? new AbortController().signal);
+      local = await materialize(
+        requestPayload,
+        current,
+        signal ?? new AbortController().signal
+      );
       if (local.state === ZLinkSpotCreateState.Rejected) {
         local.publication?.abort();
         await this.options.store.abort({

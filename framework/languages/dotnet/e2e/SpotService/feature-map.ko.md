@@ -26,15 +26,15 @@
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
 | SM-C5 | 구현 | 10.0.0 MeshNode의 play-a Spot이 발행한 Logical Multicast가 play-b 구독 Spot에 도달하는 evidence를 최신 `default-batch` 실행에서 확인했다. |
-| SM-C6 | 구현 | runner가 play-b process group을 정지해 remote ROUTER backpressure를 만들고, non-blocking 즉시 결과와 blocking timeout, target별 부분 수락 개수 및 정확히 한 target의 최종 전달을 검증한다. |
+| SM-C6 | 부분 구현 | Gateway publish endpoint는 현재 result-free one-way 계약으로 전환해 제출 완료만 반환한다. 기존 client는 제거된 target별 `ZLinkPublishResult`와 부분 수락 개수를 전제로 하므로, 현재 공개 계약에서 관측할 수 있는 backpressure와 최종 전달 조건으로 scenario를 다시 정의해야 한다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
 | SM-D4 | 구현 | multiple actor bind marker가 있다. |
-| SM-D4A | 구현 | `Rebind_Fences_Stale_Relay_And_Late_Disconnect_Without_Affecting_Other_Actors`가 같은 generation의 Session A→B rebind, stale relay의 `ActorSessionNotBound`, late disconnect 무효화와 다른 Actor binding 유지를 검증한다. Focused PASS: 12/12. |
-| SM-D4B | 구현 | `Bound_Actor_Relay_Does_Not_Resolve_The_Location_Store_Per_Message`와 exact route test가 bind 뒤 Store read 0과 hidden refresh 부재를 검증한다. `ActorHandoffTests`는 active forwarding과 expiry 뒤 stale 판정을 검증한다. Focused PASS: Session 12/12, handoff 30/30. |
-| SM-D5 | 구현 | physical stream disconnect에서 application이 Actor 목록을 순회하지 않아도 Framework가 fixed snapshot 전체에 자동 통지한다. `Physical_Disconnect_Uses_A_Fixed_AllSettled_Snapshot_And_Cleans_Every_Binding`과 cleanup suite가 all-settled cleanup 및 Actor state 유지를 검증한다. Focused PASS: Session 12/12, cleanup 13/13. |
-| SM-D5A | 실행 대기 | `sm-d5a` process runner를 추가했다. 같은 connection에 두 Actor를 bind하고 public `NotifyDisconnectedAsync` reply 뒤 선택 Actor callback 1회와 다른 Actor request 생존을 검증한다. 현재 SpotService의 선행 SpotId·terminal API 전환 gap 38개로 compile되지 않아 PASS log는 아직 없다. |
+| SM-D4A | 부분 구현 | `Rebind_Fences_Stale_Relay_And_Late_Disconnect_Without_Affecting_Other_Actors`가 같은 generation의 Session A→B rebind, stale relay의 `ActorSessionNotBound`, late disconnect 무효화와 다른 Actor binding 유지를 검증한다. Focused 12/12를 다시 통과했지만 같은 조건을 실행하는 process selector는 아직 없다. |
+| SM-D4B | 부분 구현 | `Bound_Actor_Relay_Does_Not_Resolve_The_Location_Store_Per_Message`와 exact route test가 bind 뒤 Store read 0과 hidden refresh 부재를 검증한다. `ActorHandoffTests`는 active forwarding과 expiry 뒤 stale 판정을 검증한다. Focused Session 12/12와 handoff 30/30을 다시 통과했지만 Store를 중단한 실제 process selector는 아직 없다. |
+| SM-D5 | 구현 | physical stream disconnect에서 application이 Actor 목록을 순회하지 않아도 Framework가 fixed snapshot 전체에 자동 통지한다. expected RID peer intent, authority-store 기반 Actor route, initial AuthorityOwnerGeneration fence와 session-originated Actor frame을 현재 runtime 계약으로 맞춘 뒤 `./run_e2e.sh --skip-build sm-d5`가 통과했다. 증거는 `logs/20260725-083207-854305/`에 있다. |
+| SM-D5A | 구현 | 같은 connection에 두 Actor를 bind하고 public `NotifyDisconnectedAsync` reply 뒤 선택 Actor callback 1회와 다른 Actor request 생존을 검증한다. `./run_e2e.sh --skip-build sm-d5a`가 통과했으며 증거는 `logs/20260725-083229-855693/`에 있다. |
 | SM-D6 | 구현 | bound session push targeting marker가 있다. |
 | SM-D7 | 구현 | stream auth and dispatch marker가 있다. |
 | SM-D8 | 구현 | stream 연결 종료 중 pending request 실패를 확인하고 새 session에서 reauth/rebind 후 messaging 재개 marker를 확인한다. |

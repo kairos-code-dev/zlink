@@ -75,7 +75,7 @@ adapter는 stage가 끝난 뒤 그 배열을 보관하지 않는다. 길이가 0
 받지 않는다.
 
 Cross-node materialization에서 Actor factory가 `Snapshot` policy를 사용하면 maintenance Actor relocation,
-remote User·[Entry Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) join과 whole User Spot relocation의 각 Actor participant에 같은 Actor adapter를 사용한다.
+remote User·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) join과 whole User Spot relocation의 각 Actor participant에 같은 Actor adapter를 사용한다.
 Same-node join과 `Disabled` policy에서는 adapter를 호출하지 않는다. `Recreate`는 application state를 capture하지
 않으므로 adapter가 없다.
 
@@ -293,7 +293,7 @@ public interface systems.zlink.framework.actors.ZLinkActorRequestCall {
   public abstract systems.zlink.framework.actors.ZLinkActorRequestCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.actors.ZLinkActorRequestCall timeout(java.time.Duration);
   public abstract <TReply> java.util.concurrent.CompletionStage<TReply> submit(java.lang.Class<TReply>);
-  public default <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
+  public abstract <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.actors.ZLinkActorSendCall {
   public abstract systems.zlink.framework.actors.ZLinkActorSendCall metadata(java.lang.String, java.lang.String);

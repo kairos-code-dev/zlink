@@ -1299,7 +1299,7 @@ test('Instance application factory initializes before the first recovered handle
       ['mesh-a', new Map([['TenantWorker', TenantInstance]])]
     ])
   });
-  await manager.materializeInstance('mesh-a', 'TenantWorker', 'tenant:factory');
+  await manager.materializeInstance('mesh-a', 'TenantWorker', 'tenant:factory', 1n);
   const parts = encodeChannelEnvelopeParts(
     ZLinkChannelMessageKind.Command,
     'instance',

@@ -1,7 +1,7 @@
 package systems.zlink.framework.spots;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 
 public interface ZLinkSpotPacketHandler<TSpot, TMessage> {
     CompletionStage<Void> handle(TSpot spot, TMessage message);
@@ -9,7 +9,7 @@ public interface ZLinkSpotPacketHandler<TSpot, TMessage> {
     default CompletionStage<Void> handle(
         TSpot spot,
         TMessage message,
-        ZLinkSendContext context) {
+        ZLinkMessageContext context) {
         return handle(spot, message);
     }
 }

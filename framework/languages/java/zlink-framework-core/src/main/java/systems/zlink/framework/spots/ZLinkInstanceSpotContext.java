@@ -9,6 +9,8 @@ public interface ZLinkInstanceSpotContext {
 
     String spotId();
 
+    long objectGeneration();
+
     RoutingId nodeRid();
 
     ZLinkInstanceSpotHandlerRegistry handlers();

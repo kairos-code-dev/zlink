@@ -183,7 +183,9 @@ public sealed record ZLinkMeshNodeDescriptor(
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
     public int PlacementWeight { get; init; } = 100;
     public ZLinkPlacementCapacity Capacity { get; init; }
-        = new(0, 0, 10_000, 128);
+        = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
+    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
+        = new(0, 128);
 }
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
@@ -281,30 +283,49 @@ public sealed record ZLinkObjectCapability(
     string StableType,
     ZLinkObjectMaintenancePolicyKind Policy,
     bool HasSnapshotAdapter,
-    int? ActiveLimit,
-    int? PendingLimit);
+    int Limit);
+
+public sealed record ZLinkPopulationCapacity(
+    int Active,
+    int Reserved,
+    int Limit);
+
+public sealed record ZLinkSpotTypeCapacity(
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    int Active,
+    int Reserved,
+    int Limit);
 
 public sealed record ZLinkPlacementCapacity(
+    ZLinkPopulationCapacity Actors,
+    ZLinkPopulationCapacity Spots,
+    IReadOnlyList<ZLinkSpotTypeCapacity> SpotTypes);
+
+public sealed record ZLinkActivationConcurrency(
     int Active,
-    int Pending,
-    int ActiveLimit,
-    int PendingLimit);
+    int Limit);
 ```
 
 `ChannelWeights`의 key 집합은 [descriptor](../../../../01-glossary.ko.md#descriptor)를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
 Stable type은 UTF-8 byte 순서로 정렬한다.
-`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 [stable type](../../../../01-glossary.ko.md#stable-type), policy, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부와
-type별 capacity limit을 한 항목에 함께 둔다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 [stable type](../../../../01-glossary.ko.md#stable-type), policy와 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부를
+한 항목에 함께 둔다. User·Instance Spot capability의 `Limit`은 stable type별 limit이고 Actor는
+`0`이다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
 등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
-`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Channel
-weight, placement [weight](../../../../01-glossary.ko.md#weight), active·pending count, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
+`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다.
+`Capacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별 active·reserved·limit projection을
+구분한다. `ActivationConcurrency`는 population reservation과 분리된 process-local active·limit
+projection이다. Channel weight, placement [weight](../../../../01-glossary.ko.md#weight), capacity count,
+maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
 MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와 같은 generation의 descriptor가 모두
 유효할 때만 projection을 성공 결과로 사용한다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-[ChannelName](../../../../01-glossary.ko.md#channelname) key set, object role과 object capability의 kind·type·policy·Snapshot adapter 등록 여부·limit은
+[ChannelName](../../../../01-glossary.ko.md#channelname) key set, object role, population limit,
+activation concurrency limit과 object capability의 kind·type·policy·Snapshot adapter 등록 여부·limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
-active·pending count, maintenance wave와 runtime state만
+active·reserved count, activation active count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 [lifecycle generation](../../../../01-glossary.ko.md#lifecycle-generation)을 제시하고
 `DescriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
@@ -456,7 +477,7 @@ Server RID와 generation을 admission에서 확인하기 전에는 반환된 des
 subscriber의 connection-intent 계산에 있다. Automatic subscriber는 선택한 모든 endpoint를 연결 대상으로
 사용하며 subscriber row는 게시하지 않는다.
 
-Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) owner state는 global `SpotId`에서 파생한 하나의 authority key를 공유한다.
+Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) owner state는 global `SpotId`에서 파생한 하나의 authority key를 공유한다.
 User Spot create와 Instance cold claim은 같은 row에 generic placement reserve를 수행하므로 kind conflict,
 object generation과 capacity 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
 운영 projection이며 provider write·remove·resolve interface가 아니다. Actor relocation도 같은 generic authority

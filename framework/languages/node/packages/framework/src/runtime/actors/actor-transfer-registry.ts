@@ -67,9 +67,6 @@ export class ZLinkActorTransferRegistry {
     }
     const adapter = await this.createAdapter(adapterType) as ZLinkActorTransferAdapter<ZLinkActor>;
     const actor = await adapter.transferIn(actorId, state);
-    if (actor.actorId !== actorId) {
-      throw new Error(`Actor transfer adapter '${adapterType.name}' returned an actor with a different id.`);
-    }
     return actor;
   }
 

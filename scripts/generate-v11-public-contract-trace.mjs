@@ -564,6 +564,19 @@ const blockSimilarity = (left, right) => {
   return union === 0 ? 1 : intersection / union;
 };
 
+const legacySpecDocument = document => {
+  const commonPrefix = 'framework/doc/framework/common/spec/';
+  if (!document.startsWith(commonPrefix)) return document;
+  const relative = document.slice(commonPrefix.length);
+  if (relative.startsWith('server/languages/')) {
+    return `framework/doc/framework/spec/${relative}`;
+  }
+  if (/^\d{2}-/u.test(relative)) {
+    return `framework/doc/framework/spec/server/${relative}`;
+  }
+  return `framework/doc/framework/spec/${relative}`;
+};
+
 const refreshBlockRoleOverrides = config => {
   for (const rule of config.blockRoleOverrides || []) {
     const currentSource = fs.readFileSync(path.join(repositoryRoot, rule.document), 'utf8');
@@ -574,17 +587,23 @@ const refreshBlockRoleOverrides = config => {
     let previousPeerIndex = -1;
     for (const revision of ['HEAD', config.baseline?.revision]) {
       if (!revision) continue;
-      try {
-        const previousSource = gitText(['show', `${revision}:${rule.document}`]);
-        const previousBlocks = headedFencedBlocks(previousSource);
-        previousBlock = previousBlocks.find(block => sha256(block.source) === rule.sha256);
-        if (previousBlock) {
-          previousPeerIndex = previousBlocks
-            .filter(block => block.heading === previousBlock.heading && block.tag === previousBlock.tag)
-            .findIndex(block => block.ordinal === previousBlock.ordinal);
+      for (const previousDocument of uniqueSorted([
+        rule.document,
+        legacySpecDocument(rule.document),
+      ])) {
+        try {
+          const previousSource = gitText(['show', `${revision}:${previousDocument}`]);
+          const previousBlocks = headedFencedBlocks(previousSource);
+          previousBlock = previousBlocks.find(block => sha256(block.source) === rule.sha256);
+          if (previousBlock) {
+            previousPeerIndex = previousBlocks
+              .filter(block => block.heading === previousBlock.heading && block.tag === previousBlock.tag)
+              .findIndex(block => block.ordinal === previousBlock.ordinal);
+          }
+        } catch {
+          previousBlock = undefined;
         }
-      } catch {
-        previousBlock = undefined;
+        if (previousBlock) break;
       }
       if (previousBlock) break;
     }
@@ -1050,7 +1069,10 @@ const buildTrace = (config, {refreshReview = false} = {}) => {
     if (!baseline || !target
         || baseline.signatureSha256 !== override.baselineSignatureSha256
         || target.signatureSha256 !== override.targetSignatureSha256) {
-      throw new Error(`member override does not name exact baseline and target signatures: ${override.baselineIdentity || '<missing>'}`);
+      throw new Error(
+        `member override does not name exact baseline and target signatures: ${override.baselineIdentity || '<missing>'}`
+        + ` (baseline=${baseline?.signatureSha256 || '<missing>'}, target=${target?.signatureSha256 || '<missing>'})`,
+      );
     }
     if (classifiedTarget.has(target.identity)) {
       if (target.disposition !== 'verified-baseline') {

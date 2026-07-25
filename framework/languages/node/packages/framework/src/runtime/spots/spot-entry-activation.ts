@@ -147,6 +147,7 @@ export class ZLinkEntrySpotActivation {
     this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.context = createEntrySpotContext({
       nativeSpotId: options.nativeSpot.routingId,
+      objectGeneration: toContextGeneration(entrySpotGeneration(options.nativeSpot)),
       nodeRid: options.nodeRid,
       handlers: this.handlers,
       outbound: this.outbound,
@@ -424,9 +425,9 @@ export class ZLinkEntrySpotActivation {
     return await replayActorHandoffBacklog(
       backlog,
       (parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
-        this.actorPacketMailboxes.submit(actor.actorId, () =>
+        this.actorPacketMailboxes.submit(actor.context.actorId, () =>
           this.dispatchActorPacketInsideMailbox(
-            actor.actorId,
+            actor.context.actorId,
             parts,
             returnResponse,
             remoteBoundSessionTarget,
@@ -436,7 +437,7 @@ export class ZLinkEntrySpotActivation {
           sourceName: 'zlink.framework.actor-handoff',
           timestamp: new Date(),
           marker: 'backlog_enqueued',
-          actorId: actor.actorId,
+          actorId: actor.context.actorId,
           index
         })
     );
@@ -486,4 +487,19 @@ export class ZLinkEntrySpotActivation {
   ): void {
     this.options.nativeNode.replyActorNoBind(info, parts, result);
   }
+}
+
+function toContextGeneration(generation: bigint): number {
+  if (generation < 0n || generation > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ZLinkConfigurationException(
+      `Entry Spot object generation '${generation}' cannot be represented by the Node.js public context.`
+    );
+  }
+  return Number(generation);
+}
+
+function entrySpotGeneration(spot: ZLinkBackendSpot): bigint {
+  return spot.lifecycleGeneration
+    ?? (spot as Partial<ZLinkBackendSpot>).status?.().lifecycleGeneration
+    ?? 0n;
 }

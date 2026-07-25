@@ -169,7 +169,7 @@ public:
     template <typename TReply>
     task_t<TReply> yield();
 
-    task_t<message_t> async_message();
+    task_t<message_t> submit_message();
     task_t<message_t> yield_message();
 };
 
@@ -271,7 +271,7 @@ membership의 Ready `spot_ref_t`만 반환하고 Entry [membership](../../../../
 같은 incarnation이 없으면 `false`, 다른 generation은 `actor_generation_stale`, 이동 중이면 `actor_moving`이다.
 Public Actor directory와 local Actor bind overload는 제공하지 않는다.
 
-Actor creation은 selected owner MeshNode의 [Entry Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) membership을 Ready barrier 안에서 함께 확정한다. Actor
+Actor creation은 selected owner MeshNode의 [Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) membership을 Ready barrier 안에서 함께 확정한다. Actor
 업무 payload는 membership 종류와 관계없이 Actor queue로 직접 전달하며 Entry Spot callback을 경유하지 않는다.
 Original creation payload와 일반 message는 다른 owner나 새 incarnation으로 hidden retry하지 않는다. Caller가
 timeout, cancellation 또는 moving 결과를 받으면 새 operation을 명시적으로 시작해야 한다.

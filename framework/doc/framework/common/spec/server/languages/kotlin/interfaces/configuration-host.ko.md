@@ -26,7 +26,7 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 
 `ZLinkFrameworkOptions.addLocationStore(...)`와 `addRelocationStore(...)`는 Java public member를 그대로 사용한다.
 `RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면 Relocation Store를
-정확히 하나 등록해야 하며 missing·duplicate는 socket bind 전에 configuration error다. [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory가
+정확히 하나 등록해야 하며 missing·duplicate는 socket bind 전에 configuration error다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가
 없고 `DISABLED` factory와 same-node join만 사용하는 host에는 Relocation Store가 필수가 아니다. 두 capability를
 묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
 완료 가능한 모든 cross-node Actor·[Spot](../../../../01-glossary.ko.md#spot) 이동은 Relocation Store를 사용한다. `RECREATE`도 accepted journal과 recovery
@@ -39,7 +39,9 @@ payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한�
 public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActorCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setSpotCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActivationConcurrency(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder {

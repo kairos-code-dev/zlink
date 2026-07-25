@@ -19,12 +19,10 @@ import type {
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
   ZLinkMonitoringOptions,
-  ZLinkPublishContext,
-  ZLinkRequestContext,
-  ZLinkRouteRequestContext,
-  ZLinkRouteSendContext,
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkRouteMessageContext,
   ZLinkRuntimeEventPublisher,
-  ZLinkSendContext,
   ZLinkSpot,
   ZLinkStreamCompressionOptions,
   ZLinkTimerOptions
@@ -54,11 +52,11 @@ export interface ZLinkNestIntegrationRuntimeHost {
 }
 
 export interface ZLinkRouteChannelSendHandler {
-  handle(payload: unknown, context: ZLinkRouteSendContext): Promise<void>;
+  handle(payload: unknown, context: ZLinkRouteMessageContext): Promise<void>;
 }
 
 export interface ZLinkRouteChannelRequestHandler {
-  handle(payload: unknown, context: ZLinkRouteRequestContext): Promise<unknown>;
+  handle(payload: unknown, context: ZLinkRouteMessageContext): Promise<unknown>;
 }
 
 // These records describe the private composition bridge between the Nest
@@ -339,17 +337,17 @@ export interface ZLinkRouteChannelRequestHandlerRegistration {
 
 export interface ZLinkChannelPublishHandlerRegistration {
   readonly packetName: string;
-  readonly handler: { handle(payload: unknown, context: ZLinkPublishContext): Promise<void> };
+  readonly handler: { handle(payload: unknown, context: ZLinkPublishMessageContext): Promise<void> };
 }
 
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
-  readonly handler: { handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown> };
+  readonly handler: { handle(payload: unknown, context: ZLinkMessageContext): Promise<unknown> };
 }
 
 export interface ZLinkChannelSendHandlerRegistration {
   readonly packetName: string;
-  readonly handler: { handle(payload: unknown, context: ZLinkSendContext): Promise<void> };
+  readonly handler: { handle(payload: unknown, context: ZLinkMessageContext): Promise<void> };
 }
 
 export interface ZLinkEntrySpotTimerHandlerRegistration {

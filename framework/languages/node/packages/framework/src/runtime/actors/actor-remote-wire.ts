@@ -1,4 +1,4 @@
-import type { RoutingId, SpotId } from '../../contracts';
+import type { RoutingId, SpotId, ZLinkActorJoinOperationId } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef } from '../backend/contracts';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
@@ -70,8 +70,11 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly boundSessionNodeRidHex?: unknown;
   readonly boundSessionRid?: unknown;
   readonly boundSessionRidHex?: unknown;
+  readonly boundSessionBindingGeneration?: unknown;
   readonly request?: unknown;
   readonly handoffBacklog?: unknown;
+  readonly completionOperationHigh?: unknown;
+  readonly completionOperationLow?: unknown;
 }
 
 export interface ZLinkRemoteActorJoinRequest {
@@ -99,7 +102,10 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly boundSessionNodeRidHex?: string;
   readonly boundSessionRid?: string;
   readonly boundSessionRidHex?: string;
+  readonly boundSessionBindingGeneration?: string;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
+  readonly completionOperationHigh?: string;
+  readonly completionOperationLow?: string;
 }
 
 export interface ZLinkRemoteActorJoinRequestPayload {
@@ -128,8 +134,11 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly boundSessionNodeRidHex?: string;
   readonly boundSessionRid?: string;
   readonly boundSessionRidHex?: string;
+  readonly boundSessionBindingGeneration?: string;
   readonly request?: string;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
+  readonly completionOperationHigh?: string;
+  readonly completionOperationLow?: string;
 }
 
 interface ZLinkRemoteActorJoinRequestPayloadOptions {
@@ -149,6 +158,7 @@ interface ZLinkRemoteActorJoinRequestPayloadOptions {
   readonly transferAdapterKey?: string;
   readonly transferState?: Buffer;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
+  readonly completionOperationId?: ZLinkActorJoinOperationId;
 }
 
 export interface ZLinkRemoteActorJoinReply {
@@ -183,6 +193,8 @@ export function buildRemoteActorJoinRequestPayload(
     transferAdapterKey: options.transferAdapterKey,
     transferState: options.transferState?.toString('base64'),
     handoffBacklog: options.handoffBacklog,
+    completionOperationHigh: options.completionOperationId?.high.toString(),
+    completionOperationLow: options.completionOperationId?.low.toString(),
     sourceSpotId: sourceSpotId === undefined ? undefined : String(sourceSpotId),
     routerChannelId: options.routerChannelId,
     boundSessionRouterChannelId: boundSessionTarget?.routerChannelId,
@@ -201,6 +213,7 @@ export function buildRemoteActorJoinRequestPayload(
     boundSessionRidHex: boundSessionTarget?.sessionRid === undefined
       ? undefined
       : encodeRoutingIdHex(boundSessionTarget.sessionRid),
+    boundSessionBindingGeneration: boundSessionTarget?.bindingGeneration?.toString(),
     request: options.request === undefined ? undefined : options.request.data().toString('base64')
   };
 }

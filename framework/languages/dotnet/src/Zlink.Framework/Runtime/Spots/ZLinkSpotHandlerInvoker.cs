@@ -54,6 +54,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
     public async ValueTask InvokeSubscriptionAsync(
         ZLinkSpotSubscriptionDescriptor descriptor,
         object? message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         await InvokeWithDeferredJoinsAsync(
@@ -63,7 +64,13 @@ internal sealed class ZLinkSpotHandlerInvoker(
                         ? descriptor.PassCancellationToken
                             ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
                             : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
-                        : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+                        : InvokeAsync(
+                            descriptor.HandlerType,
+                            descriptor.Invoker,
+                            spot,
+                            message,
+                            context,
+                            cancellationToken);
                     await invocation.ConfigureAwait(false);
                 })
             .ConfigureAwait(false);
@@ -161,7 +168,7 @@ internal sealed class ZLinkSpotHandlerInvoker(
             descriptor.MessageType,
             codecs,
             compressionCodec);
-        var context = CreateRequestContext(header, cancellationToken);
+        var context = CreateMessageContext(header);
         return await InvokeWithDeferredJoinsAsync(
                 async () =>
                 {
@@ -178,7 +185,9 @@ internal sealed class ZLinkSpotHandlerInvoker(
                     return ZLinkActorReply.FromPayload(
                         encoded.Codec,
                         encoded.Payload.ToArray(),
-                        context.Reply.CreateSnapshot(),
+                        new ZLinkSpotActorReplyOptionsSnapshot(
+                            new Dictionary<string, string>(StringComparer.Ordinal),
+                            false),
                         compressionCodec);
                 })
             .ConfigureAwait(false);
@@ -199,28 +208,22 @@ internal sealed class ZLinkSpotHandlerInvoker(
         return result;
     }
 
-    private ZLinkSpotActorSendContext CreateSendContext(
+    private ZLinkMessageContext CreateSendContext(
         ZlinkStreamHeader header,
         CancellationToken cancellationToken)
     {
-        return new ZLinkSpotActorSendContext(
-            meshName,
-            header.Name!,
-            ZLinkEnvelopeCodec.DefaultContentType,
-            cancellationToken,
-            CreateMessageMetadata(header));
+        return CreateMessageContext(header);
     }
 
-    private ZLinkSpotActorRequestContext CreateRequestContext(
-        ZlinkStreamHeader header,
-        CancellationToken cancellationToken)
+    private ZLinkMessageContext CreateMessageContext(ZlinkStreamHeader header)
     {
-        return new ZLinkSpotActorRequestContext(
+        return new ZLinkMessageContext(
             meshName,
+            channelName: null,
             header.Name!,
             ZLinkEnvelopeCodec.DefaultContentType,
-            cancellationToken,
-            CreateMessageMetadata(header));
+            CreateMessageMetadata(header),
+            header.CorrelationId);
     }
 
     private ZLinkMessageMetadata CreateMessageMetadata(ZlinkStreamHeader header)

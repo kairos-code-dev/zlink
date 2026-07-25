@@ -100,67 +100,6 @@ public sealed class ZLinkSpotActorReplyOptions
     }
 }
 
-public sealed class ZLinkSpotActorSendContext : IZLinkHandlerContext
-{
-    internal ZLinkSpotActorSendContext(
-        string meshName,
-        string packetName,
-        string? contentType,
-        CancellationToken connectionAborted,
-        ZLinkMessageMetadata? metadata = null)
-    {
-        MeshName = meshName;
-        PacketName = packetName;
-        ContentType = contentType;
-        ConnectionAborted = connectionAborted;
-        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-    }
-
-    public string MeshName { get; }
-
-    public string? ChannelName => null;
-
-    public string PacketName { get; }
-
-    public string? ContentType { get; }
-
-    public ZLinkMessageMetadata Metadata { get; }
-
-    public CancellationToken ConnectionAborted { get; }
-}
-
-public sealed class ZLinkSpotActorRequestContext : IZLinkHandlerContext
-{
-    internal ZLinkSpotActorRequestContext(
-        string meshName,
-        string packetName,
-        string? contentType,
-        CancellationToken connectionAborted,
-        ZLinkMessageMetadata? metadata = null)
-    {
-        MeshName = meshName;
-        PacketName = packetName;
-        ContentType = contentType;
-        ConnectionAborted = connectionAborted;
-        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
-        Reply = new ZLinkSpotActorReplyOptions();
-    }
-
-    public string MeshName { get; }
-
-    public string? ChannelName => null;
-
-    public string PacketName { get; }
-
-    public string? ContentType { get; }
-
-    public ZLinkMessageMetadata Metadata { get; }
-
-    public CancellationToken ConnectionAborted { get; }
-
-    public ZLinkSpotActorReplyOptions Reply { get; }
-}
-
 public interface IZLinkSpot
 {
     IZLinkSpotContext Context { get; }
@@ -394,7 +333,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -406,7 +345,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -418,7 +357,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -430,7 +369,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }

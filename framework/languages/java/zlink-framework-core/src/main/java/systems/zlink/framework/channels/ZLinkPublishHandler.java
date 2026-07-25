@@ -5,5 +5,5 @@ import java.util.concurrent.CompletionStage;
 public interface ZLinkPublishHandler<TMessage> {
     CompletionStage<Void> handle(
         TMessage message,
-        ZLinkPublishContext context);
+        ZLinkPublishMessageContext context);
 }

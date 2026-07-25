@@ -45,6 +45,8 @@ internal static class ZLinkRemoteActorJoinPackets
         string handoffId,
         string sourceSpotId,
         RoutingId sourceNodeRid,
+        ulong actorGeneration,
+        ulong actorAuthorityOwnerGeneration,
         RoutingId? boundSessionNodeRid,
         RoutingId boundSessionRid,
         ZLinkMessage transferState,
@@ -66,7 +68,9 @@ internal static class ZLinkRemoteActorJoinPackets
             encodedRequest.Payload.ToArray(),
             handoffFrames,
             ZLinkSpotId.Require(sourceSpotId, nameof(sourceSpotId)),
-            sourceNodeRid.ToBytes().ToArray());
+            sourceNodeRid.ToBytes().ToArray(),
+            actorGeneration,
+            actorAuthorityOwnerGeneration);
 
         return ZLinkEnvelopeCodec.EncodeParts(
             header,
@@ -296,7 +300,7 @@ internal sealed record ZLinkRemoteActorAdmissionReply(
     byte[] Reply,
     long DeadlineUnixTimeMilliseconds = 0);
 
-internal sealed record ZLinkRemoteActorJoinRequest(
+    internal sealed record ZLinkRemoteActorJoinRequest(
     string ActorId,
     string ActorType,
     string HandoffId,
@@ -308,7 +312,9 @@ internal sealed record ZLinkRemoteActorJoinRequest(
     byte[] Request,
     IReadOnlyList<ZLinkActorHandoffFrame> HandoffFrames,
     string SourceSpotId,
-    byte[] SourceNodeRid);
+    byte[] SourceNodeRid,
+    ulong ActorGeneration,
+    ulong ActorAuthorityOwnerGeneration);
 
 internal sealed record ZLinkRemoteActorJoinReply(
     bool Accepted,

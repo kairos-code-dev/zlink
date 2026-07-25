@@ -1446,6 +1446,13 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
     createActor() {
       return createdRef;
     },
+    rememberSpotRoute(route, storeVersion) {
+      events.push(
+        `rememberSpot:${route.spot.spotId}:${route.spot.generation}:`
+        + `${route.targetNodeRid}:${route.targetNodeGeneration}:`
+        + `${route.authorityOwnerGeneration}:${storeVersion}`
+      );
+    },
     joinActor(actorRef, targetNodeRid, targetSpotId, request, callback, timeoutMs) {
       events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${request.data().toString()}:${timeoutMs}`);
       callback({
@@ -1468,7 +1475,10 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
         targetNodeRid: 'node-a',
         spotId,
         spotKind: framework.ZLinkSpotKind.User,
-        targetSpotGeneration: 9n
+        targetSpotGeneration: 9n,
+        targetNodeGeneration: 4n,
+        authorityOwnerGeneration: 5n,
+        authorityStoreVersion: 'store-6'
       };
     }
   };
@@ -1504,6 +1514,7 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
   assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
     'resolve:room-1',
+    'rememberSpot:room-1:9:node-a:4:5:store-6',
     'joinActor:1:node-a:room-1:payload:undefined',
     'bind:node-a:alice:2'
   ]);

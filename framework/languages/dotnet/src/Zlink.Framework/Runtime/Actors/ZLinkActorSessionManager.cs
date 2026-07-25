@@ -80,6 +80,8 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorType,
         ZLinkActorTransferRegistration? transfer,
         ZLinkMessage transferState,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         ZLinkActorClaimMode claimMode,
         bool publishActorRef,
         CancellationToken cancellationToken = default)
@@ -89,9 +91,11 @@ internal sealed partial class ZLinkActorSessionManager(
                 state,
                 actorId,
                 actorType,
-                transfer,
-                transferState,
-                claimMode,
+            transfer,
+            transferState,
+            objectGeneration,
+            authorityOwnerGeneration,
+            claimMode,
                 publishActorRef,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -102,6 +106,7 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorType,
         ZLinkMessage createRequest,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         CancellationToken cancellationToken)
     {
         var state = _actorSessions.GetOrCreate(actorId);
@@ -111,6 +116,7 @@ internal sealed partial class ZLinkActorSessionManager(
                 actorType,
                 createRequest,
                 objectGeneration,
+                authorityOwnerGeneration,
                 cancellationToken)
             .ConfigureAwait(false);
     }

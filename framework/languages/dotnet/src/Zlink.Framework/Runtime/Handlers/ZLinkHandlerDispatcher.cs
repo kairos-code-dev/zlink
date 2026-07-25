@@ -11,15 +11,13 @@ internal sealed class ZLinkHandlerDispatcher(
     public async ValueTask<object?> DispatchAsync(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        IZLinkHandlerContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var invocation = new ZLinkHandlerInvocation(
-            context.MeshName,
             context.ChannelName is null ? "Node" : "Channel",
-            context.PacketName,
-            context.Metadata);
+            context);
         object? result = null;
         var pipeline = BuildPipeline(
             endpoint,
@@ -36,7 +34,7 @@ internal sealed class ZLinkHandlerDispatcher(
     private ZLinkHandlerFilterNext BuildPipeline(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        IZLinkHandlerContext context,
+        IZLinkMessageContext context,
         ZLinkHandlerInvocation invocation,
         IServiceProvider services,
         Action<object?> setResult,
@@ -72,7 +70,7 @@ internal sealed class ZLinkHandlerDispatcher(
     private static async ValueTask<object?> InvokeHandlerAsync(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
-        IZLinkHandlerContext context,
+        IZLinkMessageContext context,
         ZLinkHandlerActivator activator,
         IServiceProvider services,
         CancellationToken cancellationToken)

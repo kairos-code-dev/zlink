@@ -108,7 +108,7 @@ pending operation 저장소, dispatch 순서와 native transport adapter는 공�
 없어야 한다.
 
 공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot ID를 대상으로 하는 typed 호출을
-제공한다. [User Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
+제공한다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
 타입을 제공하지 않는다. request 계열은 `channel_request_call_t`을 반환한다. 사용자는 target MeshNode,
 location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location claim과
 serializer 선택은 framework가 처리한다.

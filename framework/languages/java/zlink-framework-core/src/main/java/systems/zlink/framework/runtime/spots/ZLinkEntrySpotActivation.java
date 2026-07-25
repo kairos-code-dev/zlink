@@ -33,7 +33,7 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -76,8 +76,6 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
@@ -417,7 +415,8 @@ final class EntrySpotActivation
             payload.close();
             headerPart.close();
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "remote joined actor packet is missing source session route: " + actor.actorId()));
+                "remote joined actor packet is missing source session route: "
+                    + actor.context().actorId()));
         }
         ZLinkStreamHeader header = new ZLinkStreamHeader(
             packetHeader.requestSeq().isPresent()
@@ -461,7 +460,8 @@ final class EntrySpotActivation
                 SendFlags.NONE);
             if (!forwarded) {
                 return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                    "remote joined actor packet forward failed: " + actor.actorId()));
+                    "remote joined actor packet forward failed: "
+                        + actor.context().actorId()));
             }
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         } finally {

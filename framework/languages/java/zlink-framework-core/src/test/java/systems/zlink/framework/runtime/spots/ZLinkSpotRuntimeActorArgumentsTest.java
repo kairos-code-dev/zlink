@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
 final class ZLinkSpotRuntimeActorArgumentsTest {
@@ -21,12 +21,12 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
             "request",
             TestSpot.class,
             TestActor.class,
-            ZLinkSpotActorRequestContext.class,
+            ZLinkMessageContext.class,
             Request.class);
         TestSpot spot = new TestSpot();
         TestActor actor = new TestActor();
         Request request = new Request();
-        ZLinkSpotActorRequestContext context = requestContext("PlaceMarkReq");
+        ZLinkMessageContext context = requestContext("PlaceMarkReq");
 
         Object[] args = ZLinkSpotHandlerInvoker.actorPacketArguments(
             method,
@@ -42,16 +42,21 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
         assertEquals(4, args.length);
     }
 
-    private static ZLinkSpotActorRequestContext requestContext(String packetName) {
-        return new ZLinkSpotActorRequestContext() {
+    private static ZLinkMessageContext requestContext(String packetName) {
+        return new ZLinkMessageContext() {
+            @Override
+            public Optional<String> meshName() {
+                return Optional.empty();
+            }
+
             @Override
             public Optional<String> channelName() {
                 return Optional.empty();
             }
 
             @Override
-            public Optional<String> packetName() {
-                return Optional.of(packetName);
+            public String packetName() {
+                return packetName;
             }
 
             @Override
@@ -63,6 +68,11 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
             public java.util.Map<String, String> metadata() {
                 return java.util.Map.of();
             }
+
+            @Override
+            public Optional<String> correlationId() {
+                return Optional.empty();
+            }
         };
     }
 
@@ -70,7 +80,7 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
         public CompletionStage<Reply> request(
             TestSpot spot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             Request request) {
             return CompletableFuture.completedFuture(new Reply());
         }
@@ -91,11 +101,6 @@ final class ZLinkSpotRuntimeActorArgumentsTest {
     }
 
     public static final class TestActor implements ZLinkActor {
-        @Override
-        public String actorId() {
-            return "actor";
-        }
-
         @Override
         public ZLinkActorContext context() {
             throw new UnsupportedOperationException();

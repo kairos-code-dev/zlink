@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
@@ -27,9 +27,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendHandler;
 
 final class ZLinkSpotActorHandlerCatalog {
@@ -92,8 +90,8 @@ final class ZLinkSpotActorHandlerCatalog {
             handlerType,
             method,
             kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
-                ? ZLinkSpotActorRequestContext.class
-                : ZLinkSpotActorSendContext.class);
+                ? ZLinkMessageContext.class
+                : ZLinkMessageContext.class);
         Class<?> replyType = kind == ZLinkScannedHandlerKind.ACTOR_REQUEST
             ? resolveReplyType(handlerType, method)
             : Void.class;
@@ -186,8 +184,8 @@ final class ZLinkSpotActorHandlerCatalog {
                 handler.handlerType(),
                 handler.handlerMethod(),
                 handler.kind() == ZLinkScannedHandlerKind.ACTOR_REQUEST
-                    ? ZLinkSpotActorRequestContext.class
-                    : ZLinkSpotActorSendContext.class);
+                    ? ZLinkMessageContext.class
+                    : ZLinkMessageContext.class);
             return new SpotActorPacketHandlerRegistration(
                 handler.handlerType(),
                 handler.handlerMethod(),
@@ -275,7 +273,7 @@ final class ZLinkSpotActorHandlerCatalog {
     private static ActorMessageShape actorPacketHandlerShape(
         Class<?> handlerType,
         Method method,
-        Class<? extends ZLinkHandlerContext> contextType) {
+        Class<?> contextType) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(null, parameters[0], parameters[1]);

@@ -2,7 +2,7 @@ import { Message as BindingMessage } from '@zlink-systems/zlink';
 import type {
   ActorRef,
   RoutingId,
-  ZLinkRouteSendContext,
+  ZLinkRouteMessageContext,
   ZLinkSessionActor
 } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
@@ -147,7 +147,7 @@ export class ZLinkActorPacketRelay {
 
   async receiveRemoteActorPacketRelay(
     payload: unknown,
-    _routeContext: ZLinkRouteSendContext
+    _routeContext: ZLinkRouteMessageContext
   ): Promise<{
     readonly ok: boolean;
     readonly error?: unknown;

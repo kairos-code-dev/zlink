@@ -76,22 +76,22 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     if (actorType === undefined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' does not have an actor type for remote SPOT join.`
+        `Actor '${actor.context.actorId}' does not have an actor type for remote SPOT join.`
       );
     }
     const transport = this.options.routedTransport;
     if (transport === undefined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor '${actor.actorId}' remote route transport is not configured.`
+        `Actor '${actor.context.actorId}' remote route transport is not configured.`
       );
     }
 
     const entrySpotId = node.entrySpot().routingId;
-    const boundSessionTarget = state.remoteBoundSessionTarget;
+    const boundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
     const transferId = randomUUID();
     const admissionRequest = buildRemoteActorJoinRequestPayload({
-      actorId: actor.actorId,
+      actorId: actor.context.actorId,
       actorType,
       actorRef,
       expectedMembershipEpoch: state.spotMembershipEpoch,
@@ -129,7 +129,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     }
 
     const commitRequest = buildRemoteActorJoinRequestPayload({
-      actorId: actor.actorId,
+      actorId: actor.context.actorId,
       actorType,
       actorRef,
       expectedMembershipEpoch: state.spotMembershipEpoch,

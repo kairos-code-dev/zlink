@@ -133,7 +133,8 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         ZLinkCodecRegistryBuilder? codecs,
         ZLinkDispatchErrorReporter dispatchErrors,
         ILogger logger,
-        Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
+        Func<ZLinkSpotSubscriptionDescriptor, object?, ZLinkPublishMessageContext, CancellationToken, ValueTask>
+            dispatchAsync,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -164,7 +165,8 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         ZLinkCodecRegistryBuilder? codecs,
         ZLinkDispatchErrorReporter dispatchErrors,
         ILogger logger,
-        Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
+        Func<ZLinkSpotSubscriptionDescriptor, object?, ZLinkPublishMessageContext, CancellationToken, ValueTask>
+            dispatchAsync,
         CancellationToken cancellationToken)
     {
         if (message.Parts.Count == 0)
@@ -238,12 +240,21 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         }
 
         var dispatched = false;
+        var context = new ZLinkPublishMessageContext(
+            meshName: null,
+            message.ChannelName,
+            header.MessageName!,
+            header.ContentType,
+            metadata: null,
+            header.CorrelationId,
+            message.Topic,
+            header.Source);
         foreach (var descriptor in descriptors)
         {
             if (!string.Equals(descriptor.MessageName, header.MessageName, StringComparison.Ordinal)) continue;
 
             var body = ZLinkEnvelopeCodec.DecodeBody(message.Parts, descriptor.MessageType, codecs);
-            await dispatchAsync(descriptor, body, cancellationToken).ConfigureAwait(false);
+            await dispatchAsync(descriptor, body, context, cancellationToken).ConfigureAwait(false);
             dispatched = true;
         }
 

@@ -13,6 +13,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 final class ZLinkActorContextState {
     private ZLinkActor actor;
     private final String actorId;
+    private final String meshName;
     private ZLinkBackendActorRef actorRef;
     private ZLinkBoundSession boundSession;
     private long sessionBindingToken;
@@ -28,8 +29,12 @@ final class ZLinkActorContextState {
     private boolean moving;
     private CompletableFuture<Void> moveCompletion = CompletableFuture.completedFuture(null);
 
-    ZLinkActorContextState(ZLinkBackendActorRef actorRef, String entrySpotId) {
+    ZLinkActorContextState(
+        ZLinkBackendActorRef actorRef,
+        String meshName,
+        String entrySpotId) {
         this.actorId = actorRef.actorId();
+        this.meshName = meshName;
         this.actorRef = actorRef;
         this.entrySpotNodeRid = actorRef.nodeRid();
         this.entrySpotId = entrySpotId;
@@ -45,6 +50,14 @@ final class ZLinkActorContextState {
 
     String actorId() {
         return actorId;
+    }
+
+    long objectGeneration() {
+        return actorRef.generation();
+    }
+
+    String meshName() {
+        return meshName;
     }
 
     ZLinkBackendActorRef actorRef() {

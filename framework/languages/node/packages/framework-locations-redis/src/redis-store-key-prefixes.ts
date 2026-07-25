@@ -178,6 +178,10 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:relocation:${compactId(fenceId)}`;
   }
 
+  relocationPayload(reference: string): string {
+    return `${this.authorityDomain}:relocation-payload:${compactId(reference)}`;
+  }
+
   aggregate(aggregateId: string, generation: string): string {
     return `${this.authorityDomain}:aggregate:${compactId(aggregateId)}:${generation}`;
   }

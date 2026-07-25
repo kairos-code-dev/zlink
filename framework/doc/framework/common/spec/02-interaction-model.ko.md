@@ -236,7 +236,7 @@ Multicast, timer와 lifecycle callback은 각 Spot의 execution gate에서 직�
 `PerActor` mode에서는 Actor별, Spot lane별, timer별 gate를 사용한다. Node callback이 Spot queue를 대신
 읽지 않는다.
 
-[Instance Spot](01-glossary.ko.md#entry-user-instance-spot)은 Actor membership이 없는 Spot kind다. Missing Instance 생성은 [Spot direct](01-glossary.ko.md#spot-direct) fluent call의
+[Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)은 Actor membership이 없는 Spot kind다. Missing Instance 생성은 [Spot direct](01-glossary.ko.md#spot-direct) fluent call의
 명시적인 [Instance intent](01-glossary.ko.md#instance-intent)만 시작한다. [Location Store](01-glossary.ko.md#location-store) reservation이 정한 owner 하나가 factory를 실행하고
 durable activation inbox first record를 확정한 뒤 recovery root·cursor를 포함한 location `Ready`를 commit한다.
 Framework는 first record를 local queue head로 복원한 뒤 activation barrier를 연다. Creating 경쟁자는 같은

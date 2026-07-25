@@ -24,6 +24,7 @@ export interface ZLinkRemoteBoundSessionTarget {
   readonly spotId: RoutingId;
   readonly sessionNodeRid?: RoutingId;
   readonly sessionRid?: RoutingId;
+  readonly bindingGeneration?: bigint;
 }
 
 export interface ZLinkRemoteActorPacketTarget {
@@ -62,6 +63,7 @@ export class ZLinkActorRuntimeState {
   private boundSessionBindingGenerationValue = 0n;
   private entryNodeRidValue: RoutingId | undefined;
   private remoteBoundSessionTargetValue: ZLinkRemoteBoundSessionTarget | undefined;
+  private boundSessionTransferTargetValue: ZLinkRemoteBoundSessionTarget | undefined;
   private remoteActorPacketTargetValue: ZLinkRemoteActorPacketTarget | undefined;
   private createRequestPayloadValue: Buffer | undefined;
   private ownsLocationValue = false;
@@ -105,6 +107,10 @@ export class ZLinkActorRuntimeState {
 
   get remoteBoundSessionTarget(): ZLinkRemoteBoundSessionTarget | undefined {
     return this.remoteBoundSessionTargetValue;
+  }
+
+  get boundSessionTransferTarget(): ZLinkRemoteBoundSessionTarget | undefined {
+    return this.boundSessionTransferTargetValue;
   }
 
   get remoteActorPacketTarget(): ZLinkRemoteActorPacketTarget | undefined {
@@ -253,10 +259,10 @@ export class ZLinkActorRuntimeState {
   }
 
   bindActor(actor: ZLinkActor, context: ZLinkActorContext): void {
-    if (actor.actorId !== this.actorId) {
+    if (actor.context.actorId !== this.actorId) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorCreateFailed,
-        `Actor state id '${this.actorId}' does not match actor id '${actor.actorId}'.`
+        `Actor state id '${this.actorId}' does not match actor id '${actor.context.actorId}'.`
       );
     }
     if (actor.context !== context) {
@@ -299,6 +305,18 @@ export class ZLinkActorRuntimeState {
   setBoundSessionBindingGeneration(generation: bigint): void {
     if (generation > 0n) {
       this.boundSessionBindingGenerationValue = generation;
+      if (this.remoteBoundSessionTargetValue !== undefined) {
+        this.remoteBoundSessionTargetValue = {
+          ...this.remoteBoundSessionTargetValue,
+          bindingGeneration: generation
+        };
+      }
+      if (this.boundSessionTransferTargetValue !== undefined) {
+        this.boundSessionTransferTargetValue = {
+          ...this.boundSessionTransferTargetValue,
+          bindingGeneration: generation
+        };
+      }
     }
   }
 
@@ -308,7 +326,7 @@ export class ZLinkActorRuntimeState {
 
   setRemoteBoundSessionTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
     const current = this.remoteBoundSessionTargetValue;
-    this.remoteBoundSessionTargetValue = target === undefined ||
+    const merged = target === undefined ||
       target.sessionNodeRid !== undefined ||
       current?.sessionNodeRid === undefined ||
       current.routerChannelId !== target.routerChannelId ||
@@ -320,6 +338,32 @@ export class ZLinkActorRuntimeState {
           sessionNodeRid: current.sessionNodeRid,
           sessionRid: current.sessionRid
         };
+    const bindingGeneration = merged?.bindingGeneration
+      ?? current?.bindingGeneration
+      ?? (
+        this.boundSessionBindingGenerationValue > 0n
+          ? this.boundSessionBindingGenerationValue
+          : undefined
+      );
+    this.remoteBoundSessionTargetValue = merged === undefined
+      ? undefined
+      : bindingGeneration === undefined
+        ? merged
+        : { ...merged, bindingGeneration };
+  }
+
+  setBoundSessionTransferTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
+    const bindingGeneration = target?.bindingGeneration
+      ?? (
+        this.boundSessionBindingGenerationValue > 0n
+          ? this.boundSessionBindingGenerationValue
+          : undefined
+      );
+    this.boundSessionTransferTargetValue = target === undefined
+      ? undefined
+      : bindingGeneration === undefined
+        ? target
+        : { ...target, bindingGeneration };
   }
 
   setRemoteActorPacketTarget(target: ZLinkRemoteActorPacketTarget | undefined): void {
@@ -355,6 +399,7 @@ export class ZLinkActorRuntimeState {
     this.boundSessionBindingGenerationValue = 0n;
     this.entryNodeRidValue = undefined;
     this.remoteBoundSessionTargetValue = undefined;
+    this.boundSessionTransferTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;
@@ -374,6 +419,7 @@ export class ZLinkActorRuntimeState {
     this.nativeActorRefValue = undefined;
     this.boundSessionBindingGenerationValue = 0n;
     this.remoteBoundSessionTargetValue = undefined;
+    this.boundSessionTransferTargetValue = undefined;
     this.remoteActorPacketTargetValue = undefined;
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;

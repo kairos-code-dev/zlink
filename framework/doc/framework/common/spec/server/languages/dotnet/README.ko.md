@@ -30,7 +30,7 @@ Stream connector client는 별도 package이며
   interface의 provider 가운데 하나이며 Redis 사용 자체가 Object role의 필수 조건은 아니다.
 - Actor·User Spot·Instance [Spot](../../../01-glossary.ko.md#spot)의 일반 message는 global ID만 받는다. Actor와 User Spot의 manager create는
   stable type과 optional Mesh·placement를 받고 remote placement를 수행하며 exact mutation은 `ActorRef` 또는
-  `SpotRef`를 받는다. Missing [Instance Spot](../../../01-glossary.ko.md#entry-user-instance-spot)은 Spot 전용 fluent call에서 activation을 명시한다.
+  `SpotRef`를 받는다. Missing [Instance Spot](../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)은 Spot 전용 fluent call에서 activation을 명시한다.
 - Host lifecycle은 `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
 - Framework service runtime은 bindings의 public raw socket API만 사용하고 Core service C API, private SPI,
   reflection과 native symbol 직접 호출을 사용하지 않는다.

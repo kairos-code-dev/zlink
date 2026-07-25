@@ -417,24 +417,65 @@ public final class Program implements AutoCloseable {
 
     private void boundSessionTransfer() throws Exception {
         String actorId = id("actor-bound-transfer");
-        String spotRid = id("spot-bound-transfer");
-        createSpot(nodeB, spotRid, "accept");
-        createActor(nodeA, actorId, Contracts.STATEFUL, 81);
+        Contracts.ActorCreateRes created =
+            createActor(nodeA, actorId, Contracts.STATEFUL, 81);
+        Contracts.CreateSpotRes target = null;
+        String spotRid = null;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            spotRid = id("spot-bound-transfer");
+            Contracts.CreateSpotRes candidate =
+                createSpot(nodeB, spotRid, "accept");
+            if (!candidate.nodeRid().equals(created.nodeRid())) {
+                target = candidate;
+                break;
+            }
+        }
+        require(target != null, "ST-E1 could not allocate a remote target Spot");
         ZLinkStreamConnector connector = connector(
-            options.streamAEndpoint());
+            streamEndpoint(created.nodeRid()));
         try {
             connector.connect().submit().toCompletableFuture().join();
             Contracts.BindSessionRes bound = connector
                 .request(new Contracts.BindSessionReq("ST-E1", actorId))
                 .submit(Contracts.BindSessionRes.class).toCompletableFuture().join();
-            require("actor-a".equals(bound.nodeRid()), "ST-E1 session did not bind source actor");
-            assertBoundPush(connector, actorId, "ST-E1", "before-transfer", "actor-a");
-            require(join(nodeA, actorId, "ST-E1", spotRid, "accept").accepted(),
+            require(created.nodeRid().equals(bound.nodeRid()),
+                "ST-E1 session did not bind source actor");
+            assertBoundPush(
+                connector, actorId, "ST-E1", "before-transfer",
+                created.nodeRid());
+            require(join(
+                    httpEndpoint(created.nodeRid()),
+                    actorId,
+                    "ST-E1",
+                    spotRid,
+                    "accept").accepted(),
                 "ST-E1 remote transfer failed");
-            assertBoundPush(connector, actorId, "ST-E1", "after-transfer", "actor-b");
+            assertBoundPush(
+                connector, actorId, "ST-E1", "after-transfer",
+                target.nodeRid());
         } finally {
             connector.close().submit().toCompletableFuture().join();
         }
+    }
+
+    private String streamEndpoint(String nodeRid) {
+        return switch (nodeRid) {
+            case "actor-a" -> options.streamAEndpoint();
+            case "actor-b" -> options.streamBEndpoint();
+            case "actor-c" -> options.streamCEndpoint();
+            default -> throw new IllegalArgumentException(
+                "unknown Actor owner: " + nodeRid);
+        };
+    }
+
+    private String httpEndpoint(String nodeRid) {
+        return switch (nodeRid) {
+            case "actor-a" -> nodeA;
+            case "actor-b" -> nodeB;
+            case "actor-c" -> nodeC;
+            default -> throw new IllegalArgumentException(
+                "unknown Actor owner: " + nodeRid);
+        };
     }
 
     private void failedTransferKeepsBoundSession() throws Exception {
@@ -542,12 +583,22 @@ public final class Program implements AutoCloseable {
             "ST-D1 target location was not committed after joined callback");
     }
 
-    private void createSpot(String node, String spotRid, String mode) throws Exception {
-        post(node + "/spots", new Contracts.CreateSpotReq(spotRid, mode), Contracts.CreateSpotRes.class);
+    private Contracts.CreateSpotRes createSpot(
+        String node,
+        String spotRid,
+        String mode) throws Exception {
+        return post(
+            node + "/spots",
+            new Contracts.CreateSpotReq(spotRid, mode),
+            Contracts.CreateSpotRes.class);
     }
 
-    private void createActor(String node, String actorId, String actorType, int state) throws Exception {
-        post(node + "/actors", new Contracts.ActorCreateReq(actorId, actorType, state),
+    private Contracts.ActorCreateRes createActor(
+        String node,
+        String actorId,
+        String actorType,
+        int state) throws Exception {
+        return post(node + "/actors", new Contracts.ActorCreateReq(actorId, actorType, state),
             Contracts.ActorCreateRes.class);
     }
 
@@ -774,7 +825,7 @@ public final class Program implements AutoCloseable {
         RequestTarget target = requestTarget(uri);
         return target.client().get(target.path())
             .timeout(Duration.ofSeconds(5))
-            .async(type).toCompletableFuture().join().body();
+            .submit(type).toCompletableFuture().join().body();
     }
 
     private RequestTarget requestTarget(String uri) {

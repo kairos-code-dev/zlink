@@ -160,6 +160,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                     request.ActorType,
                     transfer,
                     ZLinkRemoteActorJoinPackets.DecodeTransferState(request, Registration.Codecs),
+                    request.ActorGeneration,
+                    request.ActorAuthorityOwnerGeneration,
                     ZLinkActorClaimMode.TakeoverExistingOwner,
                     publishActorRef: false,
                     cancellationToken)
@@ -317,7 +319,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                     request.Frames,
                     cancellationToken)
                 .ConfigureAwait(false);
-            await PublishTransferredActorLocationAsync(actorState, target, cancellationToken)
+            await PublishTransferredActorLocationAsync(
+                    actorState,
+                    target,
+                    request.HandoffId,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (completionRoot is
                 {
@@ -554,6 +560,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     private async ValueTask PublishTransferredActorLocationAsync(
         ZLinkActorRuntimeState actorState,
         ActorHandoffTarget target,
+        string handoffId,
         CancellationToken cancellationToken)
     {
         if (LocationLifecycle is not { } locations) return;
@@ -562,15 +569,25 @@ internal sealed partial class ZLinkFrameworkRuntime
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during location commit.");
+        var targetSpotId = target.UserSpot?.SpotId
+                           ?? target.EntrySpot?.SpotId
+                           ?? throw new InvalidOperationException(
+                               $"Actor '{actorState.ActorId}' handoff target has no Spot identity.");
+        if (!locations.SpotLocations.TryGetTrackedGeneration(
+                targetSpotId,
+                out var targetSpotGeneration)
+            || targetSpotGeneration == 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorState.ActorId}' handoff target Spot generation is unavailable.");
+
         if (target.UserSpot is { } userSpot)
         {
-            _ = locations.SpotLocations.TryGetTrackedGeneration(
-                userSpot.SpotId, out var spotGeneration);
             await locations.ActorOwnership.CommitTransferredActorLocationAsync(
                     actorState.ActorId,
                     actorRef.ToNative(),
                     userSpot.SpotId,
-                    spotGeneration,
+                    targetSpotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -581,6 +598,29 @@ internal sealed partial class ZLinkFrameworkRuntime
                     target.NodeRid,
                     cancellationToken)
                 .ConfigureAwait(false);
+
+        var actorType = actorState.ActorType
+                        ?? throw new InvalidOperationException(
+                            $"Actor '{actorState.ActorId}' has no registered type during handoff.");
+        var meshName = ResolveActorDrainMeshName(Registration, actorType)
+                       ?? throw new InvalidOperationException(
+                           $"Actor '{actorState.ActorId}' has no mesh during handoff.");
+        var authorityOwnerGeneration =
+            await locations.ActorOwnership.CommitTransferredActorAuthorityAsync(
+                    actorState.ActorId,
+                    actorRef.ToNative(),
+                    meshName,
+                    targetSpotId,
+                    targetSpotGeneration,
+                    target.UserSpot is null
+                        ? ZLinkSpotKind.Entry
+                        : ZLinkSpotKind.User,
+                    Guid.ParseExact(handoffId, "N"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        GetMeshNodeRuntime(meshName).Node.SetLocalActorAuthority(
+            actorRef,
+            authorityOwnerGeneration);
         LogActorHandoff(
             $"location_committed actor={actorState.ActorId} spot={target.TargetRid}");
     }
@@ -938,6 +978,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorType,
         ZLinkMessage createRequest,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         CancellationToken cancellationToken)
     {
         var result = await _actorSessionManager.PrepareReservedActorAsync(
@@ -945,6 +986,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 actorType,
                 createRequest,
                 objectGeneration,
+                authorityOwnerGeneration,
                 cancellationToken)
             .ConfigureAwait(false);
         if (!result.Created)

@@ -67,7 +67,7 @@ Framework는 인과 관계가 있는 다음 operation에 flow ID와 root origin�
 |---|---|
 | [Node direct](01-glossary.ko.md#node-direct)·[ChannelName](01-glossary.ko.md#channelname) | 선택된 RouteMesh 또는 ClientServer target의 handler context까지 보존 |
 | [Spot direct](01-glossary.ko.md#spot-direct) | target [Spot](01-glossary.ko.md#spot) application turn까지 보존 |
-| [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) direct | source resolve·activation envelope, target-owned claim·activation barrier를 지나 first Spot application turn까지 보존 |
+| [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) direct | source resolve·activation envelope, target-owned claim·activation barrier를 지나 first Spot application turn까지 보존 |
 | [Logical Multicast](01-glossary.ko.md#logical-multicast) | 모든 remote [MeshNode](01-glossary.ko.md#meshnode)와 local matching Spot이 같은 flow ID 사용 |
 | Actor direct·STREAM Actor dispatch | target Actor queue와 request reply까지 보존 |
 | Actor relocation | relocation control과 target Actor의 관련 lifecycle 작업에 보존 |

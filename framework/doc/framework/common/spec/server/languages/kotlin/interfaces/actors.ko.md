@@ -49,7 +49,7 @@ relocation API를 만들지 않는다. Snapshot policy는
 bind 전에 검증한다. Java interop에서 null adapter class를 전달한 policy도 bind 전에 `InvalidConfiguration`으로
 거부한다.
 
-[Snapshot](../../../../01-glossary.ko.md#relocation-policy) Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole [User Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)
+[Snapshot](../../../../01-glossary.ko.md#relocation-policy) Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 relocation의 각 Actor participant에 사용한다. Same-node join, `Disabled`와 `Recreate`에서는 호출하지 않는다.
 Capture가 반환한 `ByteArray`는 최대 64 MiB이며 adapter가 completion까지 소유한다. Java runtime은 completion에서
 복사한다. Restore는 호출마다

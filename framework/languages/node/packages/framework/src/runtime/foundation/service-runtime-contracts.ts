@@ -39,7 +39,8 @@ export const ReceiveKind = Object.freeze({
   Completion: 11,
   SendReady: 12,
   TransferControl: 13,
-  InstanceSpotActivation: 14
+  InstanceSpotActivation: 14,
+  ActorBinding: 15
 } as const);
 
 export const OperationKind = Object.freeze({
@@ -131,12 +132,21 @@ export interface ActorTransferControlPayload {
   readonly failureErrno: number;
 }
 
+export interface ActorBindingControlPayload {
+  readonly kind: 'actorBinding';
+  readonly actor: ActorRef;
+  readonly bindingGeneration: bigint;
+  readonly sessionNodeRid: RoutingId;
+  readonly sessionRid: RoutingId;
+}
+
 export type ReceiveKindData =
   | ActorControlPayload
   | ActorJoinCompletionPayload
   | ActorLookupCompletionPayload
   | SendReadyPayload
-  | ActorTransferControlPayload;
+  | ActorTransferControlPayload
+  | ActorBindingControlPayload;
 
 export interface ReadyRecord {
   readonly ownerKind: number;
@@ -247,6 +257,7 @@ export interface StreamSessionService {
   shutdown(timeoutMs: number): RequestResult;
   close(): void;
   status(): StreamSessionStatus;
+  lookupActor(targetNodeRid: RoutingId, actorId: string, timeoutMs?: number): MeshOperationId;
   bindActor(sessionRid: RoutingId, actor: ActorRef, timeoutMs?: number): MeshOperationId;
   unbindActor(
     sessionRid: RoutingId,

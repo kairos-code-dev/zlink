@@ -127,7 +127,7 @@ public:
 Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다. `stopped/none`은 `drained_t`로
 변환한다. `force_stopped/deadline_exceeded`, `force_stopped/relocation_failed`,
 `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`를 담은 `force_stopped_t`로
-변환한다. 이 목록은 허용된 Shutdown terminal result 전체를 포함한다. `blocked`는 [Shutdown](../../../../01-glossary.ko.md#shutdown) 결과가 아니므로
+변환한다. 이 목록은 허용된 Shutdown terminal result 전체를 포함한다. `blocked`는 Shutdown 결과가 아니므로
 `drain_result_t`에 추가하지 않는다. 이전 `drain_state_publish_failed`와 `owner_cleanup_failed` 값은 제공하지
 않는다. 인자 없는
 `drain()`과 `await_drained()`도 기본 30초의 같은 Shutdown operation을 시작하거나 이미 시작한 operation에
@@ -543,7 +543,7 @@ public:
 
 Location runtime을 사용하는 application은 `add_location_store(...)`로 Location Store를 정확히 하나 등록한다.
 `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면
-`add_relocation_store(...)`로 Relocation Store도 정확히 하나 등록한다. [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory가 없고
+`add_relocation_store(...)`로 Relocation Store도 정확히 하나 등록한다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고
 `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다. 필요한 Store가 없거나
 같은 capability가 중복 등록되면 Framework는 socket bind 전에 configuration error로 종료한다.
 

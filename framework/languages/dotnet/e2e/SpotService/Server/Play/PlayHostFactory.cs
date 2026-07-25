@@ -47,6 +47,9 @@ internal static class PlayHostFactory
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -93,7 +96,15 @@ internal static class PlayHostFactory
                 .AddSpotFactory<ScenarioAlternateSpot>(
                     SpotServiceNames.AlternateSpotType,
                     null,
-                    ZLinkRelocationPolicy<ScenarioAlternateSpot>.Disabled);
+                    ZLinkRelocationPolicy<ScenarioAlternateSpot>.Disabled)
+                .AddSpotFactory<MultiNodeSpotA>(
+                    SpotServiceNames.MultiSpotTypeA,
+                    null,
+                    ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled)
+                .AddSpotFactory<MultiNodeSpotB>(
+                    SpotServiceNames.MultiSpotTypeB,
+                    null,
+                    ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
             spot.ChannelName(SpotServiceNames.SpotChannel);
             if (string.Equals(options.Rid, "play-a", StringComparison.Ordinal))
             {
@@ -117,7 +128,7 @@ internal static class PlayHostFactory
         {
             var entry = await handles.ResolveSpotHandleAsync(
                             SpotServiceNames.SpotChannel,
-                            RoutingId.From(options.Rid),
+                            options.Rid,
                             cancellationToken)
                         ?? throw new InvalidOperationException(
                             $"Entry Spot for '{options.Rid}' was not resolved.");

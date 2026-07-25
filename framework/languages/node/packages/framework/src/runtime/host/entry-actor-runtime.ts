@@ -34,10 +34,10 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
   }
 
   async commitActorTransaction(actor: ZLinkActor, onJoined: () => Promise<void>): Promise<void> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     const entryNode = this.options.spotNodeRuntime()?.primaryMeshNode;
     if (state === undefined) {
-      throw new Error(`Entry Spot actor '${actor.actorId}' state is not available.`);
+      throw new Error(`Entry Spot actor '${actor.context.actorId}' state is not available.`);
     }
     if (entryNode === undefined) {
       throw new Error('Entry Spot actor commit requires a started SPOT node runtime.');
@@ -47,7 +47,7 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
       // to its display string would make a later RoutingId.from(...) call
       // interpret the hexadecimal display as different literal bytes.
       nodeRid: entryNode.status().routingId,
-      actorId: actor.actorId,
+      actorId: actor.context.actorId,
       generation: state.nativeActorRef?.generation ?? 0n
     } as unknown as ZLinkBackendActorRef;
     state.clearJoinedSpot();
@@ -58,9 +58,9 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
     } catch (error) {
       callbackError = error;
     }
-    const committedState = this.options.actorManager()?.getState(actor.actorId);
+    const committedState = this.options.actorManager()?.getState(actor.context.actorId);
     if (committedState?.actor === actor) {
-      this.options.boundSessionRelay.clearRemoteActorPacketTarget(actor.actorId);
+      this.options.boundSessionRelay.clearRemoteActorPacketTarget(actor.context.actorId);
       this.binder.bindEventually(actorRef as ActorRef);
     }
     if (callbackError !== undefined) throw callbackError;

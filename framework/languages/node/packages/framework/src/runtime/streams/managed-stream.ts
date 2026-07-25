@@ -175,6 +175,7 @@ export class ZLinkManagedStream implements ZLinkStream {
         this.nativeSessionService.start();
       }
       const nativeActor = toNativeActorRef(actor);
+      await this.ensureNativeActorRoute(actor, timeoutMs, signal);
       const operation = await this.submitNativeSessionBind(nativeActor, timeoutMs, signal);
       await this.requireSuccessfulCompletion(operation, `Actor '${actor.actorId}' native session bind`, signal);
       const binding = this.nativeSessionService.bindings(this.backendRoutingId())
@@ -194,6 +195,39 @@ export class ZLinkManagedStream implements ZLinkStream {
       return;
     }
     await this.socket.bindActor(this.backendRoutingId(), toBackendActorRef(actor), timeoutMs, signal);
+  }
+
+  private async ensureNativeActorRoute(
+    actor: ActorRef,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const operation = this.nativeSessionService!.lookupActor(
+      actor.nodeRid,
+      actor.actorId,
+      timeoutMs
+    );
+    const completion = await this.meshCompletions!.wait(operation, signal);
+    try {
+      const resolved = completion.kindData?.kind === 'actorLookupCompletion'
+        ? completion.kindData.location.actor
+        : undefined;
+      if (
+        completion.terminalResult !== 0
+        || completion.failureErrno !== 0
+        || resolved === undefined
+        || resolved.actorId !== actor.actorId
+        || resolved.generation !== actor.generation
+        || String(resolved.nodeRid) !== String(actor.nodeRid)
+      ) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorRouteNotFound,
+          `Actor '${actor.actorId}' native route fence does not match its ActorRef.`
+        );
+      }
+    } finally {
+      closeMeshCompletion(completion);
+    }
   }
 
   async unbindActor(actorId: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {

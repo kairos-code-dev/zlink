@@ -18,15 +18,42 @@ internal sealed class BindActorSessionHandler(
         CancellationToken cancellationToken)
     {
         _ = dispatch;
-        var actorRef = await actors.FindAsync(request.ActorId, cancellationToken);
-        ActorRef resolved = actorRef ?? (request.NodeRid is not null && request.Generation is not null
-            ? new ActorRef(RoutingId.From(request.NodeRid), request.ActorId, checked((ulong)request.Generation.Value))
-            : throw new InvalidOperationException($"Actor '{request.ActorId}' was not found."));
+        var resolved = request.NodeRid is not null && request.Generation is not null
+            ? new ActorRef(
+                RoutingId.From(request.NodeRid),
+                request.ActorId,
+                checked((ulong)request.Generation.Value))
+            : await actors.FindAsync(request.ActorId, cancellationToken)
+              ?? throw new InvalidOperationException(
+                  $"Actor '{request.ActorId}' was not found.");
         _ = await context.Actors.BindOrGetAsync(resolved, cancellationToken).ConfigureAwait(false);
         evidence.Add(request.Scenario, request.ActorId, "session_bound", context.SessionId);
         await context.Client.Reply(new BindActorSessionRes(
                 request.Scenario, resolved.ActorId, resolved.NodeRid.ToString(), checked((long)resolved.Generation)))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
+    }
+}
+
+internal sealed class SessionBindingsHandler
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, SessionBindingsReq>
+{
+    public async ValueTask HandleAsync(
+        IZLinkSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        SessionBindingsReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = dispatch;
+        await context.Client.Reply(new SessionBindingsRes(
+                request.Scenario,
+                context.Actors.Bound
+                    .Select(actor => new SessionBindingSnapshot(
+                        actor.ActorId,
+                        actor.Ref.NodeRid.ToString(),
+                        checked((long)actor.Ref.Generation)))
+                    .OrderBy(static actor => actor.ActorId, StringComparer.Ordinal)
+                    .ToArray()))
+            .Async(cancellationToken);
     }
 }
 
@@ -36,7 +63,11 @@ internal sealed class TransferSession(
 {
     public IZLinkSessionContext Context { get; } = context;
 
-    public void Configure() => Context.Handlers.AddHandler<BindActorSessionHandler>();
+    public void Configure()
+    {
+        Context.Handlers.AddHandler<BindActorSessionHandler>();
+        Context.Handlers.AddHandler<SessionBindingsHandler>();
+    }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
@@ -65,8 +96,19 @@ internal sealed class TransferSession(
         CancellationToken cancellationToken)
     {
         if (await Context.Handlers.TryHandleAsync(dispatch, payload, cancellationToken).ConfigureAwait(false)) return;
-        var actor = Context.Actors.Bound.SingleOrDefault()
-                    ?? throw new InvalidOperationException("No actor is bound.");
+        var targetActorId = payload.Decode<BoundPushReq>().ActorId;
+        var actor = targetActorId is null
+            ? Context.Actors.Bound.SingleOrDefault()
+            : Context.Actors.Bound.SingleOrDefault(bound =>
+                string.Equals(
+                    bound.ActorId,
+                    targetActorId,
+                    StringComparison.Ordinal));
+        if (actor is null)
+            throw new InvalidOperationException(
+                targetActorId is null
+                    ? "No actor is bound."
+                    : $"Actor '{targetActorId}' is not bound.");
         await actor.RelayAsync(payload, cancellationToken).ConfigureAwait(false);
     }
 }

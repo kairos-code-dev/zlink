@@ -104,11 +104,47 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{actor.ActorId}' generation is stale.");
 
+        var store = runtime.Registration.Locations.ResolveStore();
+        ZLinkAuthoritySnapshot? authority = null;
+        var authorityKey = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actor.ActorId);
+        if (store is not null)
+        {
+            var read = await store.ReadAuthorityAsync(
+                    authorityKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (read is not ZLinkAuthorityReadResult.Found found
+                || found.Snapshot.ObjectGeneration != actor.Generation)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorGenerationStale,
+                    $"Actor '{actor.ActorId}' authority generation is stale.");
+            authority = found.Snapshot;
+        }
+
         await runtime.DestroyActorAsync(
                 state.LiveActivation?.NodeRid ?? actor.NodeRid,
                 instance,
                 cancellationToken)
             .ConfigureAwait(false);
+        if (store is not null && authority is not null)
+        {
+            var deleted = await store.CompareExchangeAuthorityAsync(
+                    authorityKey,
+                    authority.StoreVersion,
+                    new ZLinkAuthorityMutation.Delete(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (deleted is ZLinkAuthorityCompareExchangeResult.Conflict
+                {
+                    Current: ZLinkAuthorityReadResult.Missing
+                })
+                return true;
+            if (deleted is not ZLinkAuthorityCompareExchangeResult.Deleted)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    $"Actor '{actor.ActorId}' authority changed during destroy.",
+                    true);
+        }
         return true;
     }
 

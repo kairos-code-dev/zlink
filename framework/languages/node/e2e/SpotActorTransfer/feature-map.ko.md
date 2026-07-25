@@ -9,7 +9,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-A1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission accept와 callback 순서. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: local admission reject의 무효과. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-A3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: joined callback 완료 전 packet dispatch 차단. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-B1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: remote transfer 성공과 state 복원. Track A~E 로그: `log/20260710-152609-2661347`. |
+| `ST-B1` | 구현 | Public object placement로 source와 다른 target Spot을 선택하고 `defer` handler의 정상 reply 뒤 native transfer를 실행한다. Lazy Entry Actor·User Spot authority를 exact generation과 owner fence로 materialize하고, target admission·state restore·`Joined`·Location commit·durable commit ACK·`onJoinCompleted(Accepted)` 뒤 packet request가 새 owner에서 처리되는 것을 실제 process로 검증했다. 증거: `log/20260725-092511-2310951`. |
 | `ST-B2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source cleanup. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B3` | 전환 필요 | 현재 runner는 transfer adapter가 없는 actor의 기본 빈 state transfer 성공과 target 기본 state를 확인한다. 그러나 `joined -> location_committed`를 성공 순서로 단언해, 공통 시나리오의 `location_committed -> joined` 순서와 다르다. 이 순서를 정렬하기 전에는 기존 Track A~E 로그를 완료 증거로 사용하지 않는다. |
 | `ST-B4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: custom empty state transfer. Track A~E 로그: `log/20260710-152609-2661347`. |
@@ -18,7 +18,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-C3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: callback 단계별 failure 분류. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-D1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: location commit 공개 시점. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-D2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: stale generation fencing. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-E1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: transfer 성공 뒤 bound session push. Track A~E 로그: `log/20260710-152609-2661347`. |
+| `ST-E1` | 구현 | Public `SpotId`, `find`, `defer`와 completion callback을 사용한다. Native session bind가 확정한 session 좌표와 binding generation을 transfer snapshot에 보존하고 target native registry에 같은 generation fence로 복원한다. Source와 다른 target을 강제한 실제 process에서 transfer 전 push, durable commit ACK와 `onJoinCompleted(Accepted)`, transfer 후 같은 session의 push를 검증했다. 증거: `log/20260725-092454-2307879`. |
 | `ST-E1A` | 부분 구현 | `internal route refresh preserves object generation while explicit bind can replace an incarnation`과 SM-D4A focused runner가 same-generation internal refresh, 새 generation explicit bind와 이전 token 격리를 검증한다. Ownership command가 durable `Completed` 뒤에만 발행되는 순서는 process relocation runner에서 추가 검증해야 한다. |
 | `ST-E2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: transfer 실패 때 기존 session binding 유지. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-F1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: moving backlog FIFO. Track F 로그: `log/20260710-200221-3864800`. |
@@ -36,3 +36,6 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - Track F는 source backlog, target enqueue와 location commit 순서를 actor별 arrival index로 대조한다.
 - request-correlation 시나리오는 request sequence와 flags를 보존하고, caller timeout 뒤 late reply가
   다음 request를 방해하지 않는지 확인한다.
+- Focused contract test는 cross-node Accepted root의 operation ID·raw reply·target ActorRef·generation과
+  `Prepared→Committed→Delivered` cursor, callback retry·dedupe, backlog 선행 순서를 검증한다. Redis provide
+  test는 immutable bytes, CRC32C와 provider clock 기준 expiry·renew·delete를 검증한다.

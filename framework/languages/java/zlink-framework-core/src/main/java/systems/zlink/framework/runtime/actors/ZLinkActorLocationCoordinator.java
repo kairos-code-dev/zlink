@@ -93,7 +93,7 @@ final class ZLinkActorLocationCoordinator {
         if (meshName == null || meshName.isBlank()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorJoinedSpot(actorType, actor.actorId(), meshName, spotId);
+        return lifecycle.notifyActorJoinedSpot(actorType, actor.context().actorId(), meshName, spotId);
     }
 
     CompletionStage<Void> actorLeftSpot(ZLinkActor actor) {
@@ -104,7 +104,7 @@ final class ZLinkActorLocationCoordinator {
         if (actorType == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorLeftSpot(actorType, actor.actorId());
+        return lifecycle.notifyActorLeftSpot(actorType, actor.context().actorId());
     }
 
     CompletionStage<Void> actorMovedToEntrySpot(ZLinkActor actor, RoutingId nodeRid) {
@@ -115,7 +115,7 @@ final class ZLinkActorLocationCoordinator {
         if (actorType == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorMovedToEntrySpot(actorType, actor.actorId(), nodeRid);
+        return lifecycle.notifyActorMovedToEntrySpot(actorType, actor.context().actorId(), nodeRid);
     }
 
     CompletionStage<Void> releaseActor(String actorType, String actorId) {
@@ -148,7 +148,7 @@ final class ZLinkActorLocationCoordinator {
     }
 
     private String actorTypeFor(ZLinkActor actor) {
-        String actorType = actorTypeResolver.apply(actor.actorId());
+        String actorType = actorTypeResolver.apply(actor.context().actorId());
         return actorType == null || actorType.isBlank() ? null : actorType;
     }
 

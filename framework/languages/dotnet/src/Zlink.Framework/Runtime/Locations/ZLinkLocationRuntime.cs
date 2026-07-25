@@ -63,6 +63,8 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         ?? throw new InvalidOperationException(
             "The location runtime has not claimed its owner lease.");
 
+    internal IZLinkLocationStore Store => _locationStore;
+
     internal string? LastError => Volatile.Read(ref _health).LastError;
 
     internal ZLinkLocationRuntimeHealth GetHealthSnapshot() => Volatile.Read(ref _health);

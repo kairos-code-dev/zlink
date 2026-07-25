@@ -193,6 +193,18 @@ class mesh_node_builder_t
         return *this;
     }
 
+    template <typename TActor, typename TActorFactory>
+    requires std::derived_from<TActor, actor_t>
+             && std::derived_from<TActorFactory, actor_factory_t<TActor>>
+    mesh_node_builder_t &
+    add_actor_factory (std::string actor_type,
+                       std::shared_ptr<TActorFactory> factory)
+    {
+        spot_builder ().template add_actor_factory<TActor, TActorFactory> (
+          std::move (actor_type), std::move (factory));
+        return *this;
+    }
+
     template <typename TActor, typename TAdapter>
     mesh_node_builder_t &add_actor_transfer_adapter (std::string actor_type)
     {

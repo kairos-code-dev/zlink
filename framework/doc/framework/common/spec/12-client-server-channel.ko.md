@@ -53,7 +53,8 @@ Channel caller가 지정하는 논리 주소와 호출 완료 의미는
 ## 3. Client와 Server role
 
 한 process는 동일한 ClientServer `ChannelName`에 `Client`, `Server` 또는 두 역할을
-함께 등록할 수 있다. `Client`와 `Server`는 역할별로 최대 한 번만 등록한다.
+함께 등록할 수 있다. Registration key는 `(ChannelName, Role)`이며 `Client`와
+`Server`는 역할별로 최대 한 번만 등록한다.
 
 ### 3.1 Role 등록 interface와 예시
 
@@ -218,7 +219,7 @@ descriptor를 RouteMesh peer 연결에 사용하지 않는다.
 
 ### 4.4 Location Store가 필요한 시점
 
-[Manual endpoint](01-glossary.ko.md#manual-discovery)만 사용하면 Location Store가 없어도 된다. Automatic discovery를
+[Manual endpoint](01-glossary.ko.md#manual-endpoint)만 사용하면 Location Store가 없어도 된다. Automatic discovery를
 활성화했는데 Location Store가 없으면 Server listener를 bind하기 전에 startup이
 실패한다.
 
@@ -246,6 +247,9 @@ Server weight는 선택 가능한 여러 Server 사이에서 새로운 send와 r
 
 Weight는 `Ready`이고 drain 중이 아닌 Server 사이에서만 비교한다. 따라서 연결이
 준비되지 않았거나 drain 중인 Server는 weight가 높아도 선택하지 않는다.
+Framework는 이 조건을 먼저 적용한 뒤 남은 positive weight 합계를 최소 64-bit
+정수로 계산한다. 이 합계가 overflow하지 않도록 계산한 상대 비율로 Server를
+선택한다.
 
 Drain은 Server를 안전하게 종료하거나 service 대상에서 제외하기 위해 새 send와
 request의 선택을 먼저 막고, 이미 Server가 받은 작업은 정해진 시간까지 마무리하는
@@ -277,7 +281,7 @@ flowchart LR
     S2["다른 process의 Ready Server"]
     Pick["상대 배정 비중과 안전 종료 여부를 반영하여 하나 선택"]
 
-    C --> Pick
+    C -->|호출 시작| Pick
     Pick -->|선택 가능| S1
     Pick -->|선택 가능| S2
 ```

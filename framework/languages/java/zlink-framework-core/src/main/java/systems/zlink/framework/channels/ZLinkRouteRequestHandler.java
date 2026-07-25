@@ -5,5 +5,5 @@ import java.util.concurrent.CompletionStage;
 public interface ZLinkRouteRequestHandler<TRequest, TReply> {
     CompletionStage<TReply> handle(
         TRequest request,
-        ZLinkRouteRequestContext context);
+        ZLinkRouteMessageContext context);
 }

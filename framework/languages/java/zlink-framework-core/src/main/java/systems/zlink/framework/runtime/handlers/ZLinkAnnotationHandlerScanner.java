@@ -5,10 +5,8 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.Set;
-import systems.zlink.framework.ZLinkHandlerContext;
-import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkPublish;
 import systems.zlink.framework.handlers.ZLinkRequest;
@@ -18,8 +16,6 @@ import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 
 final class ZLinkAnnotationHandlerScanner {
     private ZLinkAnnotationHandlerScanner() {
@@ -45,7 +41,8 @@ final class ZLinkAnnotationHandlerScanner {
         ZLinkSend send = method.getAnnotation(ZLinkSend.class);
         if (send != null) {
             requireJavaCompletionStageReturn(candidate, method);
-            Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkSendContext.class);
+            Class<?> messageType = requireChannelHandlerShape(
+                candidate, method, ZLinkMessageContext.class);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.CHANNEL,
                 ZLinkScannedHandlerKind.SEND,
@@ -60,7 +57,8 @@ final class ZLinkAnnotationHandlerScanner {
         ZLinkRequest request = method.getAnnotation(ZLinkRequest.class);
         if (request != null) {
             requireJavaCompletionStageReturn(candidate, method);
-            Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkRequestContext.class);
+            Class<?> messageType = requireChannelHandlerShape(
+                candidate, method, ZLinkMessageContext.class);
             Class<?> replyType = resolveReplyType(candidate, method);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.CHANNEL,
@@ -76,7 +74,8 @@ final class ZLinkAnnotationHandlerScanner {
         ZLinkPublish publish = method.getAnnotation(ZLinkPublish.class);
         if (publish != null) {
             requireJavaCompletionStageReturn(candidate, method);
-            Class<?> messageType = requireChannelHandlerShape(candidate, method, ZLinkPublishContext.class);
+            Class<?> messageType = requireChannelHandlerShape(
+                candidate, method, ZLinkPublishMessageContext.class);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.CHANNEL,
                 ZLinkScannedHandlerKind.PUBLISH,
@@ -100,7 +99,7 @@ final class ZLinkAnnotationHandlerScanner {
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
-                ZLinkRequestContext.class,
+                ZLinkMessageContext.class,
                 "SPOT request handler method must have spot and request parameters: ");
             Class<?> replyType = resolveReplyType(candidate, method);
             handlers.add(new ZLinkScannedHandler(
@@ -124,7 +123,7 @@ final class ZLinkAnnotationHandlerScanner {
             SpotMethodShape shape = requireSpotMethodShape(
                 candidate,
                 method,
-                ZLinkPublishContext.class,
+                ZLinkPublishMessageContext.class,
                 "SPOT subscription handler method must have spot and event parameters: ");
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.SPOT,
@@ -153,7 +152,7 @@ final class ZLinkAnnotationHandlerScanner {
             ActorMessageShape shape = requireActorPacketHandlerShape(
                 candidate,
                 method,
-                ZLinkSpotActorSendContext.class);
+                ZLinkMessageContext.class);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.SPOT,
                 ZLinkScannedHandlerKind.ACTOR_SEND,
@@ -175,7 +174,7 @@ final class ZLinkAnnotationHandlerScanner {
             ActorMessageShape shape = requireActorPacketHandlerShape(
                 candidate,
                 method,
-                ZLinkSpotActorRequestContext.class);
+                ZLinkMessageContext.class);
             Class<?> replyType = resolveReplyType(candidate, method);
             handlers.add(new ZLinkScannedHandler(
                 ZLinkScannedHandlerSurface.SPOT,
@@ -196,7 +195,7 @@ final class ZLinkAnnotationHandlerScanner {
     private static SpotMethodShape requireSpotMethodShape(
         Class<?> handlerType,
         Method method,
-        Class<? extends ZLinkHandlerContext> contextType,
+        Class<?> contextType,
         String failurePrefix) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
@@ -239,7 +238,7 @@ final class ZLinkAnnotationHandlerScanner {
     private static ActorMessageShape requireActorPacketHandlerShape(
         Class<?> handlerType,
         Method method,
-        Class<? extends ZLinkHandlerContext> contextType) {
+        Class<?> contextType) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 2) {
             return new ActorMessageShape(null, parameters[0], parameters[1]);
@@ -259,7 +258,7 @@ final class ZLinkAnnotationHandlerScanner {
     private static Class<?> requireChannelHandlerShape(
         Class<?> handlerType,
         Method method,
-        Class<? extends ZLinkHandlerContext> contextType) {
+        Class<?> contextType) {
         Class<?>[] parameters = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameters.length == 0) {
             throw new ZLinkConfigurationException(

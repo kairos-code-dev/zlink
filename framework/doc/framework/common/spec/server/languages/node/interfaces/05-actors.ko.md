@@ -170,7 +170,7 @@ Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본�
 명시 값은 millisecond 올림 기준 유한한 `1..2_147_483_647` ms다. `defer()`를
 호출한 시점에 monotonic absolute deadline을 고정한다.
 
-`ZLinkActorContext.spotId`가 없으면 Actor는 current [Entry Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) member이고 값이 있으면 해당 User Spot member다.
+`ZLinkActorContext.spotId`가 없으면 Actor는 current [Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) member이고 값이 있으면 해당 User Spot member다.
 같은 상태를 나타내는 별도 boolean이나 mutable Spot instance를 제공하지 않는다. `findSpot(actorId)`도 current User
 [Spot](../../../../01-glossary.ko.md#spot) [membership](../../../../01-glossary.ko.md#membership)만 `SpotRef`로 반환하며 Entry Spot에서는 `undefined`다. Factory는 target attempt마다 새 Actor와
 context를 만들고 cross-node restore가 실패한 instance를 다음 attempt에 재사용하지 않는다.

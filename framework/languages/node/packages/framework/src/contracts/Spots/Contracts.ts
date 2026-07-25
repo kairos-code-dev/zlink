@@ -12,7 +12,7 @@ import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkInstanceSpot, ZLinkSpot } from './ZLinkSpot';
 
 export interface ZLinkActorHandlerRegistry {
-  addHandler<THandler>(handlerType: Type<THandler>): this;
+  addHandler<THandler>(handlerType: Type<THandler>, packetName?: string): this;
 }
 
 export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
@@ -35,14 +35,11 @@ export interface ZLinkWorkerCall<T> {
   yield(signal?: AbortSignal): Promise<T>;
 }
 
-export interface ZLinkSpotCommonContext<
-  TActor extends ZLinkActor = ZLinkActor,
-  TSpot = ZLinkSpot<TActor>
-> {
+export interface ZLinkSpotCommonContext<TSpot = ZLinkSpot> {
   readonly meshName: string;
   readonly spotId: SpotId;
+  readonly objectGeneration: number;
   readonly nodeRid: RoutingId;
-  readonly routingId: RoutingId;
   readonly outbound: ZLinkSpotOutbound;
   addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -64,13 +61,14 @@ export interface ZLinkSpotCommonContext<
 export interface ZLinkSpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
-> extends ZLinkSpotCommonContext<TActor, TSpot> {
+> extends ZLinkSpotCommonContext<TSpot> {
   readonly handlers: ZLinkSpotHandlerRegistry;
+  leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
 }
 
 export interface ZLinkInstanceSpotContext
-  extends ZLinkSpotCommonContext<ZLinkActor, ZLinkInstanceSpot> {
+  extends ZLinkSpotCommonContext<ZLinkInstanceSpot> {
   readonly handlers: ZLinkInstanceSpotHandlerRegistry;
   close(signal?: AbortSignal): Promise<boolean>;
 }
@@ -78,13 +76,9 @@ export interface ZLinkInstanceSpotContext
 export interface ZLinkEntrySpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
-> extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
+> extends ZLinkSpotCommonContext<TEntrySpot> {
   readonly handlers: ZLinkSpotHandlerRegistry;
   destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
-}
-
-export interface ZLinkSpotActorReplyOptions {
-  compress(enabled?: boolean): this;
 }
 
 export interface ZLinkSpotOutbound {

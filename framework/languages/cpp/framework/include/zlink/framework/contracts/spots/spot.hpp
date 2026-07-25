@@ -49,6 +49,10 @@ void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
 
 class actor_context_t;
 class actor_ref_t;
+class actor_t;
+template <typename TActor>
+requires std::derived_from<TActor, actor_t>
+class actor_factory_t;
 class spot_publisher_client_t;
 class spot_manager_t;
 
@@ -1707,6 +1711,11 @@ class spot_node_builder_t
         }
     }
 
+    template <typename TActor, typename TActorFactory>
+    spot_node_builder_t &
+    add_actor_factory (std::string actor_type,
+                       std::shared_ptr<TActorFactory> factory);
+
     template <typename TActor, typename TAdapter>
     spot_node_builder_t &add_actor_transfer_adapter (std::string actor_type)
     {
@@ -1775,7 +1784,12 @@ class spot_node_builder_t
       std::function<std::optional<zlink::message_t> (void *, serializer_registry_t &)>
         serialize_instance,
       std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
-        deserialize_instance);
+        deserialize_instance,
+      std::function<std::shared_ptr<void> (actor_context_t &)>
+        create_context_instance = {},
+      std::function<task_t<void> (
+        void *, std::uint64_t, std::uint64_t, const actor_ref_t &,
+        const std::optional<message_t> &)> on_join_completed = {});
     spot_node_builder_t &add_actor_transfer_erased (
       std::string actor_type,
       std::type_index actor_instance_type,

@@ -135,7 +135,8 @@ export function decodeRemoteActorJoinPayload(
       payload.boundSessionNodeRid,
       payload.boundSessionNodeRidHex,
       payload.boundSessionRid,
-      payload.boundSessionRidHex
+      payload.boundSessionRidHex,
+      payload.boundSessionBindingGeneration
     ),
     request
   };
@@ -173,7 +174,7 @@ export function decodeRemoteActorRef(
   } as ZLinkBackendActorRef;
 }
 
-function decodeRemoteBoundSessionTarget(
+export function decodeRemoteBoundSessionTarget(
   routerChannelId: unknown,
   targetNodeRid: unknown,
   targetNodeRidHex: unknown,
@@ -181,7 +182,8 @@ function decodeRemoteBoundSessionTarget(
   sessionNodeRid: unknown,
   sessionNodeRidHex: unknown,
   sessionRid: unknown,
-  sessionRidHex: unknown
+  sessionRidHex: unknown,
+  bindingGeneration: unknown
 ): ZLinkRemoteBoundSessionTarget | undefined {
   if (
     typeof routerChannelId !== 'string' ||
@@ -200,6 +202,9 @@ function decodeRemoteBoundSessionTarget(
       : undefined,
     sessionRid: typeof sessionRid === 'string'
       ? decodeWireRoutingId(sessionRid, sessionRidHex)
+      : undefined,
+    bindingGeneration: typeof bindingGeneration === 'string'
+      ? BigInt(bindingGeneration)
       : undefined
   };
 }

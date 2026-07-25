@@ -311,11 +311,6 @@ final class EntrySpotActorDispatchTests {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return context;
         }
@@ -323,8 +318,9 @@ final class EntrySpotActorDispatchTests {
 
     public static final class ProbeActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new ProbeActor(actorId, context));
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(
+                new ProbeActor(context.actorId(), context));
         }
     }
 
@@ -332,7 +328,7 @@ final class EntrySpotActorDispatchTests {
         @ZLinkSpotActorRequest(packetName = "request")
         public CompletionStage<ProbeReply> handle(ProbeActor actor, ProbeRequest request) {
             return CompletableFuture.completedFuture(
-                new ProbeReply(request.value() + ":" + actor.actorId()));
+                new ProbeReply(request.value() + ":" + actor.context().actorId()));
         }
     }
 

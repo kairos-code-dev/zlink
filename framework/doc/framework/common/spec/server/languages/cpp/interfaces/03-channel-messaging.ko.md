@@ -92,13 +92,6 @@ enum class object_role_t : std::uint8_t {
     server = 2
 };
 
-struct object_capacity_options_t {
-    std::uint32_t active = 0;
-    std::uint32_t pending = 0;
-    std::uint32_t active_limit = 10000;
-    std::uint32_t pending_limit = 128;
-};
-
 struct actor_placement_options_t {
 };
 
@@ -231,16 +224,15 @@ struct location_runtime_snapshot_t {
     std::optional<std::chrono::system_clock::time_point> last_failure_at;
 };
 
-struct object_capacity_snapshot_t {
-    std::uint32_t active_limit;
-    std::uint32_t pending_limit;
-    std::uint32_t active_count;
-    std::uint32_t pending_count;
+struct activation_concurrency_snapshot_t {
+    std::uint32_t active;
+    std::uint32_t limit;
 };
 
 struct mesh_node_snapshot_t {
     std::string mesh_name;
     zlink::routing_id_t rid;
+    std::optional<spot_id_t> entry_spot_id;
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
@@ -248,7 +240,8 @@ struct mesh_node_snapshot_t {
     object_role_t object_role;
     std::int64_t application_version;
     int placement_weight;
-    object_capacity_snapshot_t object_capacity;
+    placement_capacity_t object_capacity;
+    activation_concurrency_snapshot_t activation_concurrency;
     std::uint64_t placement_reservation_failure_count;
     std::optional<std::string> last_placement_reservation_failure;
     std::vector<object_capability_t> object_capabilities;
@@ -440,6 +433,8 @@ public:
 class route_mesh_runtime_options_t {
 public:
     virtual ~route_mesh_runtime_options_t() = default;
+    virtual int placement_weight() const = 0;
+    virtual void placement_weight(int value) = 0;
     virtual mesh_channel_runtime_options_t &channel(std::string channel_name) = 0;
 };
 
@@ -463,8 +458,8 @@ RouteMesh Channel Server, ClientServer Server와 node-wide placement weight는 �
 `0..10000`, 기본값은 `100`이다. 범위 밖 값은 startup 설정과 runtime 변경에서 configuration error다.
 Weighted selection은 후보 weight 합계를 최소 64-bit 정수로 계산한다.
 
-Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가 아닌 [BindHost](../../../../01-glossary.ko.md#bind-host)를
-사용하고, wildcard BindHost에서는 [AdvertiseHost](../../../../01-glossary.ko.md#advertise-host)를 반드시 명시한다. Automatic discovery
+Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가 아닌 [BindHost](../../../../01-glossary.ko.md#bindhost)를
+사용하고, wildcard BindHost에서는 [AdvertiseHost](../../../../01-glossary.ko.md#advertisehost)를 반드시 명시한다. Automatic discovery
 listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을 사용한다.
 Listener별 host 설정은 root 기본값보다 우선한다.
 
@@ -478,11 +473,25 @@ Object role `none`인 explicit manual topology에서만 허용한다.
 Object role `server`는 `client` 기능을 포함한다. `client`와 `server`는 Location Store가 필수이며 `none`은
 manager, factory와 hidden local object runtime을 만들지 않는다. Placement [weight](../../../../01-glossary.ko.md#weight)는 `0..10000`, 기본값은 100이고
 0은 새 create·relocation target에서만 제외한다. 범위 밖 값은 startup 설정과 runtime 변경에서
-configuration error다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
-`1..2147483647`이다. `spot_placement_options_t::stable_type_limit`은 type별 Spot limit을 등록한다. Capacity를
-생략하면 node-wide 설정을 공유한다.
+configuration error다. Node Actor limit과 Node Spot limit의 기본값은 `0`이며 제한 없음을 뜻한다.
+`set_actor_limit(...)`은 Entry Spot과 User Spot에 존재하는 모든 Actor를 계산하고,
+`set_spot_limit(...)`은 User·Instance Spot을 계산하지만 Entry Spot은 제외한다. 두 limit과
+`spot_placement_options_t::stable_type_limit`은 `0..2147483647`만 허용하며 음수는 socket bind 전에
+configuration error다. Actor stable type별 limit은 제공하지 않는다.
+
+`set_activation_concurrency(...)`는 factory와 initialization의 process-local 동시 실행 gate를 설정하며
+기본값은 `128`이고 양수만 허용한다. `0`이나 음수는 socket bind 전에 configuration error다. Population
+capacity와 activation concurrency를 같은 counter나 option으로 합치지 않는다. 모든 값은 MeshNode lifecycle
+시작 전에 고정한다.
+
+Descriptor capacity는 candidate filter에만 사용한다. Framework는 선택한 node에서 Location Store의 typed
+bundle reservation을 원자적으로 얻은 뒤에만 factory를 실행한다. Actor는 Actor slot 하나, Spot은 Spot 전체
+slot 하나와 해당 stable type slot 하나를 예약한다. User Spot과 member Actor `N`개의 aggregate relocation은
+Spot total 1개, 해당 Spot stable type 1개와 Actor total `N`개를 all-or-none으로 예약한다. 모든 후보의
+reservation이 capacity 때문에 실패하면 `placement_capacity_exhausted`로 완료하고 application factory나
+handler를 호출하지 않는다.
 Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 relocation policy를 항상 명시하며 이를 생략하는
-overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)
+overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류와 adapter 종류 또는 instance type이
 일치하지 않으면 socket bind 전에 configuration error로 실패한다.
 
@@ -515,7 +524,7 @@ binding 타입을 조합한다.
 - `zlink::dealer_socket_t`
 - `zlink::pub_socket_t`
 - `zlink::sub_socket_t`
-- MeshNode runtime handle
+- MeshNode runtime handler
 - `zlink::stream_socket_t`
 
 ## 2. ClientServer·Fanout builder
@@ -597,7 +606,7 @@ manual publisher와 manual subscriber만 사용하는 host는 다른 location �
 Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다. Subscriber만
 publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
 intent 하나를 만든다.
-`subscriber_connections()`는 builder의 `connect(endpoint)`와 같은 [manual endpoint](../../../../01-glossary.ko.md#manual-discovery) 집합을 가리키는
+`subscriber_connections()`는 builder의 `connect(endpoint)`와 같은 [manual endpoint](../../../../01-glossary.ko.md#manual-endpoint) 집합을 가리키는
 runtime handle이다. 이 handle은 endpoint 연결, 해제와 현재 목록 조회를 제공하며 automatic discovery
 결과를 변경하지 않는다.
 
@@ -654,12 +663,6 @@ public:
     void connect(std::string endpoint);
     void disconnect(std::string endpoint);
     std::vector<std::string> list_connections() const;
-};
-
-class actor_join_call_t {
-public:
-    actor_join_call_t &timeout(std::chrono::milliseconds timeout);
-    void defer();
 };
 
 // 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §13).

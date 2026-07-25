@@ -8,12 +8,10 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
-import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -30,7 +28,6 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
 import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
@@ -249,7 +246,7 @@ final class ZLinkHandlerScannerTest {
         @Override
         public CompletionStage<String> handle(
             String request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
@@ -263,21 +260,21 @@ final class ZLinkHandlerScannerTest {
 
     public static final class ContextAttributedRequestHandler {
         @ZLinkRequest(packetName = "ContextRequest")
-        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
-            return CompletableFuture.completedFuture(context.packetName().orElse(request));
+        public CompletionStage<String> handle(String request, ZLinkMessageContext context) {
+            return CompletableFuture.completedFuture(context.packetName());
         }
     }
 
     public static final class ContextAttributedSendHandler {
         @ZLinkSend(packetName = "ContextSend")
-        public CompletionStage<Void> handle(String request, ZLinkHandlerContext context) {
+        public CompletionStage<Void> handle(String request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class ContextAttributedPublishHandler {
         @ZLinkPublish(packetName = "ContextPublish")
-        public CompletionStage<Void> handle(String request, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(String request, ZLinkPublishMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -287,7 +284,7 @@ final class ZLinkHandlerScannerTest {
         public CompletionStage<String> handle(
             String request,
             Object defaultParameter,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
@@ -306,7 +303,7 @@ final class ZLinkHandlerScannerTest {
         public CompletionStage<SpotActorReply> handle(
             TestSpot spot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             SpotActorRequest request) {
             return CompletableFuture.completedFuture(new SpotActorReply());
         }
@@ -350,7 +347,7 @@ final class ZLinkHandlerScannerTest {
         public CompletionStage<SpotActorReply> handle(
             TestEntrySpot entrySpot,
             TestActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             SpotActorRequest request) {
             return CompletableFuture.completedFuture(new SpotActorReply());
         }
@@ -390,11 +387,6 @@ final class ZLinkHandlerScannerTest {
     }
 
     public static final class TestActor implements ZLinkActor {
-        @Override
-        public String actorId() {
-            return "actor";
-        }
-
         @Override
         public ZLinkActorContext context() {
             throw new UnsupportedOperationException();

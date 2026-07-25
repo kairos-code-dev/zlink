@@ -16,8 +16,8 @@
 | ST-C3 | 구현 | callback 실패와 transfer 실패의 public error 분류를 검증한다. |
 | ST-D1 | 구현 | target commit 전후 location row의 owner와 generation 전환 시점을 검증한다. |
 | ST-D2 | 구현 | stale source release가 새 generation location을 제거하지 못함을 검증한다. |
-| ST-E1 | 구현 | remote transfer 뒤 bound session push가 새 owner에서 계속 전달됨을 검증한다. |
-| ST-E1A | 부분 구현 | `New_Object_Generation_Requires_An_Explicit_Bind`와 SM-D4A focused test가 새 generation은 explicit bind로만 교체되고 이전 token의 relay·disconnect가 current binding에 영향을 주지 않음을 검증한다. Completed 뒤 same-generation route switch 순서를 실제 relocation command로 검증하는 process runner는 아직 없다. |
+| ST-E1 | 구현 | remote transfer가 Actor의 ObjectGeneration을 유지하고 canonical authority와 bound session route를 target owner로 전환한 뒤 push를 계속 전달하는지 검증한다. 실제 process 실행은 `logs/20260725-094700-2778437`에서 통과했다. |
+| ST-E1A | 구현 | bound Actor를 destroy하고 같은 ActorId를 새 ObjectGeneration으로 만든 뒤 이전 binding의 request가 `ActorLocationStale`로 끝나는지 검증한다. 새 generation은 explicit bind 뒤에만 등록되며, 같은 Session에 bind된 다른 Actor의 route와 push도 유지되는지 함께 확인한다. 실제 process 실행은 `logs/20260725-094700-2778437`에서 통과했다. |
 | ST-E2 | 구현 | 실패한 transfer가 기존 bound session route를 바꾸지 않음을 검증한다. |
 | ST-F1 | 구현 | handoff 중 도착한 packet의 순서와 target replay를 검증한다. |
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |

@@ -233,7 +233,7 @@ export class ZLinkSessionActorCoordinator {
     }
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.ActorRouteNotFound,
-      `Actor '${actor.actorId}' does not have a concrete actor ref.`
+      `Actor '${actor.context.actorId}' does not have a concrete actor ref.`
     );
   }
 

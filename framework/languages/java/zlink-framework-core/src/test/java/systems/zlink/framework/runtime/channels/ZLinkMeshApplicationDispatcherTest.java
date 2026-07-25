@@ -18,9 +18,9 @@ import systems.zlink.contracts.service.spot.OwnerKind;
 import systems.zlink.contracts.service.spot.ReadyRecord;
 import systems.zlink.contracts.service.spot.ReceiveRecord;
 import systems.zlink.contracts.service.spot.RecordKind;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -308,8 +308,8 @@ final class ZLinkMeshApplicationDispatcherTest {
         @Override
         public CompletionStage<Void> handle(
             String message,
-            ZLinkRouteSendContext context) {
-            received.complete(message + "@" + context.routingId());
+            ZLinkRouteMessageContext context) {
+            received.complete(message + "@" + context.sourceNodeRid());
             metadata.complete(context.metadata());
             return CompletableFuture.completedFuture(null);
         }
@@ -322,8 +322,10 @@ final class ZLinkMeshApplicationDispatcherTest {
         private static CompletableFuture<Integer> completed;
 
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkRouteSendContext context) {
-            started.complete(message + "@" + context.routingId());
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkRouteMessageContext context) {
+            started.complete(message + "@" + context.sourceNodeRid());
             return release.whenComplete((ignored, error) ->
                 completed.complete(completedCount.incrementAndGet()));
         }
@@ -331,7 +333,9 @@ final class ZLinkMeshApplicationDispatcherTest {
 
     public static final class FailingNodeHandler implements ZLinkRouteSendHandler<String> {
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkRouteSendContext context) {
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkRouteMessageContext context) {
             throw new IllegalStateException("expected failure");
         }
     }
@@ -346,7 +350,7 @@ final class ZLinkMeshApplicationDispatcherTest {
         @Override
         public CompletionStage<Void> handle(
             String message,
-            ZLinkSendContext context) {
+            ZLinkMessageContext context) {
             received.complete(message + "@" + context.channelName().orElse(""));
             metadata.complete(context.metadata());
             return CompletableFuture.completedFuture(null);
@@ -361,7 +365,9 @@ final class ZLinkMeshApplicationDispatcherTest {
         }
 
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkMessageContext context) {
             received.complete(message + "@" + context.channelName().orElse(""));
             return CompletableFuture.completedFuture(null);
         }

@@ -3,6 +3,7 @@ using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 
@@ -13,14 +14,30 @@ internal static class ActorNodeEndpoints
     public static void Map(WebApplication app, ServerOptions options)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok", options.Rid }));
-        app.MapGet("/mesh/ready", (IZLinkRouteMeshRuntime meshRuntime) =>
+        app.MapGet("/mesh/ready", async (
+            IZLinkRouteMeshRuntime meshRuntime,
+            IZLinkLocationStore locations,
+            CancellationToken cancellationToken) =>
         {
             var snapshot = meshRuntime.Snapshot(SpotActorTransferNames.Mesh);
+            var descriptors = await locations.ListMeshNodesAsync(
+                SpotActorTransferNames.Mesh,
+                cancellationToken);
             return Results.Ok(new MeshReadyRes(
                 options.Rid,
                 snapshot.Peers
                     .Where(static peer => peer.Ready)
                     .Select(static peer => peer.Rid.ToString())
+                    .ToArray(),
+                descriptors
+                    .Where(static descriptor =>
+                        descriptor.State == ZLinkFrameworkRuntimeState.Serving
+                        && descriptor.ObjectRole == ZLinkMeshNodeObjectRole.Server)
+                    .SelectMany(static descriptor => descriptor.ObjectCapabilities)
+                    .Where(static capability =>
+                        capability.ObjectKind == ZLinkPlacementObjectKind.UserSpot)
+                    .Select(static capability => capability.StableType)
+                    .Distinct(StringComparer.Ordinal)
                     .ToArray()));
         });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
@@ -58,10 +75,15 @@ internal static class ActorNodeEndpoints
         app.MapPost("/spots", async (CreateSpotReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
-            var result = await spots.GetOrCreateAsync<TransferUserSpot, CreateSpotReq>(
-                RoutingId.From(request.SpotRid), request, cancellationToken);
+            var targetNodeRid = request.TargetNodeRid
+                                ?? throw new InvalidOperationException(
+                                    "Create Spot request must select a target node.");
+            var result = await spots
+                .GetOrCreate(request.SpotRid, SpotActorTransferNames.UserSpotType(targetNodeRid))
+                .Request(request)
+                .Async(cancellationToken);
             return Results.Ok(new CreateSpotRes(
-                result.SpotRid.ToString(), options.Rid, result.State.ToString()));
+                result.Spot.SpotId, result.Spot.NodeRid.ToString(), result.State.ToString()));
         });
         app.MapPost("/actors", async (ActorCreateReq request, IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
@@ -82,6 +104,18 @@ internal static class ActorNodeEndpoints
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             return Results.Ok(new ActorRefSnapshotRes(
                 actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.Generation)));
+        });
+        app.MapPost("/actors/{actorId}/destroy", async (
+            string actorId,
+            IZLinkActorManager actors,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = await FindActorAsync(actors, actorId, cancellationToken);
+            var destroyed = await actors.DestroyAsync(actor, cancellationToken);
+            return Results.Ok(new ActorDestroyRes(
+                actor.ActorId,
+                checked((long)actor.Generation),
+                destroyed));
         });
         app.MapGet("/actors/{actorId}/ref-evidence/{scenario}/{marker}", async (
             string actorId,
@@ -107,8 +141,6 @@ internal static class ActorNodeEndpoints
             {
                 var result = await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
                     .Timeout(TimeSpan.FromSeconds(10)).Async<JoinTargetRes>(cancellationToken);
-                evidence.Add(request.Scenario, actorId,
-                    result.Accepted ? "success_reply" : "reject_reply", request.TargetSpotRid);
                 return Results.Ok(result);
             }
             catch (Exception error) when (error is ZLinkFrameworkException or InvalidOperationException)
@@ -157,7 +189,7 @@ internal static class ActorNodeEndpoints
         {
             await actorClient.SendToActor(SpotActorTransferNames.Mesh, ToActorRef(actorId, request),
                     new HandoffPacket(request.Scenario, request.Marker))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             return Results.Ok();
         });
         app.MapPost("/actors/{actorId}/bound-push", async (string actorId, BoundPushReq request,
@@ -172,10 +204,12 @@ internal static class ActorNodeEndpoints
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
         });
-        app.MapPost("/drain", async (IZLinkDrainControl drain, CancellationToken cancellationToken) =>
+        app.MapPost("/drain", async (
+            IZLinkFrameworkRuntime runtime,
+            CancellationToken cancellationToken) =>
         {
-            var result = await drain.DrainAsync(TimeSpan.FromSeconds(10), cancellationToken);
-            if (result is not Drained)
+            var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            if (result.Outcome != ZLinkFrameworkTerminationOutcome.Stopped)
                 throw new InvalidOperationException($"Target drain did not complete: {result}.");
             return Results.Ok(new { status = "drained" });
         });

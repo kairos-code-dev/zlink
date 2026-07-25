@@ -67,7 +67,7 @@ internal sealed class ScenarioEntrySpot(
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         ScenarioActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
@@ -76,7 +76,7 @@ internal sealed class ScenarioEntrySpot(
         if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateReq>().DisplayName;
 
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

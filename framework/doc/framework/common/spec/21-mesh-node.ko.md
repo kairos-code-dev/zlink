@@ -57,7 +57,7 @@ Framework가 listener 종류에 맞는 기본 prefix를 사용한다.
 | 구성 요소 | 계약 |
 |---|---|
 | Prefix | ASCII `[A-Za-z0-9._-]` 문자만 사용하며 길이는 `1..64`자다. |
-| UUID | UUID v4를 36자리 lowercase canonical 문자열로 표현한다. |
+| UUID | RFC 4122 UUID v4 bit layout을 사용하는 16-byte random value를 `8-4-4-4-12` 자리의 36자 lowercase canonical 문자열로 표현한다. |
 | Full RID | `prefix-<lowercase-canonical-uuid-v4>` 형식이며 UTF-8로 encode한 크기는 255 bytes 이하다. |
 
 Core binary RID, Framework prefix, Entry Spot과 caller-provided RID를 함께 다루는 전체 규칙은
@@ -78,7 +78,7 @@ Object Server MeshNode는 같은 diagnostic prefix로 Entry Spot ID도 발급한
 
 ```text
 MeshNode RID:   <prefix>-<node-uuid-v4>
-Entry Spot ID: <prefix>-entry-<entry-uuid-v4>
+Entry Spot ID: <prefix>-entry-<lowercase-canonical-uuid-v4>
 ```
 
 MeshNode와 Entry Spot은 각각 별도의 UUID v4를 생성한다. 두 UUID 값의 비교로 관계를 판정하지 않는다.
@@ -169,7 +169,7 @@ Actor, User Spot과 Instance Spot factory를 등록할 때는 다음 두 값을 
 
 Stable type은 대소문자를 구분하는 exact value다. Framework는 normalization을
 적용하지 않으며 언어의 class FQN을 wire나 Store identity로 사용하지 않는다. 같은
-object kind와 stable type을 두 번 등록하면 startup 오류다.
+`(object kind, stable type)` 조합을 두 번 등록하면 startup 오류다.
 
 Relocation policy를 생략하는 overload나 compatibility default는 제공하지 않는다.
 
@@ -183,9 +183,9 @@ Actor·Spot capacity projection과 등록한 type별 capability가 포함된다.
 | 항목 | 계약 |
 |---|---|
 | Placement [weight](01-glossary.ko.md#weight) | 범위는 `0..10000`, 기본값은 `100`이다. Channel weight와는 별개다. 범위 밖 값은 startup 설정과 runtime 변경에서 configuration error다. |
-| Node별 Actor limit | 기본값 `0`은 제한 없음이다. 양수이면 최대 Actor 수다. |
-| Node별 Spot limit | 기본값 `0`은 제한 없음이다. User Spot과 Instance Spot을 합산한다. |
-| Spot stable type별 limit | 기본값 `0`은 제한 없음이다. 해당 User·Instance Spot type에 적용한다. |
+| Node별 Actor limit | 기본값 `0`은 제한 없음이다. 양수이면 `1..2^31-1` 범위의 최대 Actor 수다. 음수는 startup configuration error다. |
+| Node별 Spot limit | 기본값 `0`은 제한 없음이다. 양수 범위는 `1..2^31-1`이며 User Spot과 Instance Spot을 합산한다. 음수는 startup configuration error다. |
+| Spot stable type별 limit | 기본값 `0`은 제한 없음이다. 양수 범위는 `1..2^31-1`이며 해당 User·Instance Spot type에 적용한다. 음수는 startup configuration error다. |
 | Entry Spot | Object Server node마다 하나로 고정하며 configurable Spot limit에서 제외한다. |
 | Pending activation | 기본값 `128`이며 object population이 아니라 동시에 진행되는 activation admission을 제한한다. |
 
@@ -201,6 +201,8 @@ Framework는 Active count와 reserved slot을 합해 설정한 Actor·Spot limit
 검사하고 그 뒤에 weight를 적용한다. Limit `0`은 검사를 생략한다. Capacity 조건을
 만족하는 node가 하나도 없으면 `PlacementCapacityExhausted`다. Descriptor의 count는
 후보 선택용 projection이며 Location Store의 atomic reservation이 최종 판정이다.
+남은 후보의 positive placement weight 합계는 최소 64-bit 정수로 계산하여
+overflow하지 않게 한다.
 
 Startup builder, runtime option, MeshNode descriptor와 monitoring snapshot은 같은
 weight와 capacity 값을 사용한다.
@@ -292,7 +294,7 @@ node-wide placement weight도 바꾸지 않는다.
 |---|---|
 | Node direct | Caller가 지정한 `MeshName` 안에서 exact target RID로 한 번 제출한다. |
 | Channel | Process-local `ChannelName` index가 RouteMesh를 정한다. 그 Mesh에서 ready 상태이고 Channel weight가 0보다 큰 Server 중 하나를 weight 비율에 따라 선택한다. |
-| Logical Multicast | Target ChannelName에 참여한 ready remote node 전체와 조건이 일치하는 local Spot subscription에 전달한다. |
+| Logical Multicast | 먼저 해당 ChannelName에 참여하고 ready 상태이며 Channel weight가 0보다 큰 remote MeshNode를 모두 선택한다. 각 수신 MeshNode는 자신의 local Spot 중에서 ChannelName과 topic 조건이 일치하는 subscription에 message를 전달한다. |
 | Actor direct | Global ActorId의 current authority와 ObjectGeneration을 확인한 뒤 current owner route로 제출한다. |
 | Spot direct | Global SpotId의 current [authority](01-glossary.ko.md#authority)와 [ObjectGeneration](01-glossary.ko.md#objectgeneration)을 확인한 뒤 current [owner route](01-glossary.ko.md#owner-route)로 제출한다. |
 
@@ -310,7 +312,7 @@ Actor와 Spot 메시징은 global ActorId 또는 SpotId를 target으로 사용�
 NodeRid나 MeshName을 target으로 넘기지 않는다.
 
 기존 Actor·Spot의 current `MeshName`과 NodeRid는 Location Store authority가
-제공한다. Missing [Instance Spot](01-glossary.ko.md#entry-user-instance-spot)에서만 [Spot direct](01-glossary.ko.md#spot-direct) fluent call의 Instance intent에
+제공한다. Missing [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)에서만 [Spot direct](01-glossary.ko.md#spot-direct) fluent call의 Instance intent에
 optional initial Mesh와 stable type을 지정할 수 있다. Initial Mesh는 cold activation
 placement에만 사용하며 기존 owner의 현재 Mesh를 제한하거나 이동시키지 않는다.
 

@@ -184,10 +184,11 @@ export class ZLinkSpotSubscriptionDispatch {
           await handler.handle(spot, event, {
             channelName: envelope.header.channelName,
             contentType: envelope.header.contentType,
-            packetName: envelope.packetName,
+            packetName: envelope.packetName!,
             topic: message.topic,
             source: subSource,
-            metadata: zlinkMessageMetadata(envelope.header.metadata)
+            metadata: zlinkMessageMetadata(envelope.header.metadata),
+            correlationId: envelope.header.correlationId ?? undefined
           });
         } catch (error) {
           this.options.dispatchErrors?.report({

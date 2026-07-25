@@ -58,11 +58,12 @@ test('Entry Spot native actor request dispatches to registered handler and repli
   class EntrySpot {}
 
   class MatchHandler {
-    async handle(actor, context, request) {
+    async handle(spot, actor, context, request) {
+      assert.equal(spot instanceof EntrySpot, true);
       assert.equal(actor.actorId, 'player-1');
       assert.equal(context.packetName, 'Match');
       assert.deepEqual(request, { value: 'ping' });
-      context.reply.compress();
+      assert.equal('reply' in context, false);
       calls.push('handler');
       return { value: 'pong' };
     }
@@ -154,7 +155,7 @@ test('Entry Spot native actor request dispatches to registered handler and repli
     requestSeq: 7n,
     payload: { value: 'pong' },
     metadata: [],
-    compressPayload: true
+    compressPayload: false
   });
 });
 
@@ -318,11 +319,27 @@ test('Entry Spot materializes a remotely returning actor with its original Entry
   const replies = [];
   const events = [];
   const originalEntryNodeRid = zlink.RoutingId.from('play-node-b');
-  const actor = { actorId: 'player-2' };
+  const actorRef = {
+    nodeRid: originalEntryNodeRid,
+    actorId: 'player-2',
+    generation: 2n
+  };
+  const actor = {
+    context: {
+      actorId: 'player-2',
+      [framework.ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]() {
+        return {
+          actorRef,
+          actorType: 'PlayerActor',
+          membershipEpoch: 1n
+        };
+      }
+    }
+  };
 
   class EntrySpot {
     async onJoinedActor(joinedActor) {
-      events.push(`joined:${joinedActor.actorId}`);
+      events.push(`joined:${joinedActor.actor.actorId}`);
     }
   }
 
@@ -363,7 +380,7 @@ test('Entry Spot materializes a remotely returning actor with its original Entry
         assert.equal(String(actorEntryNodeRid), String(originalEntryNodeRid));
         return {
           actor,
-          actorRef: { nodeRid: originalEntryNodeRid, actorId, generation: 2n }
+          actorRef
         };
       }
     }

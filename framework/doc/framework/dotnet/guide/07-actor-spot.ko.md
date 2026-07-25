@@ -194,7 +194,7 @@ public sealed class EnsureCustomerActorHandler(IZLinkActorManager actors)
     : IZLinkRequestHandler<EnsureCustomerActor, CustomerActorEnsured>
 {
     public async ValueTask<CustomerActorEnsured> HandleAsync(
-        EnsureCustomerActor request, ZLinkRequestContext context, CancellationToken ct)
+        EnsureCustomerActor request, IZLinkMessageContext context, CancellationToken ct)
     {
         var actor = await actors.GetOrCreateAsync(
             request.CustomerId,                 // actorId (domain id)
@@ -415,7 +415,7 @@ internal sealed class SubmitBingoCardHandler
 {
     public async ValueTask<SubmitBingoCardRes> HandleAsync(
         BingoRoom spot, PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SubmitBingoCardReq message, CancellationToken ct)
     {
         spot.EnsureRoomId(message.RoomId);
@@ -427,8 +427,8 @@ internal sealed class SubmitBingoCardHandler
 ```
 
 > **응답 body는 반환값으로.** actor request handler는 응답 body를 직접 보내지 않고 반환한
-> `TReply`로 정한다. `context.Reply`는 metadata/compression 같은 응답 frame 옵션만 기록한다.
-> send handler(`IZLinkSpotActorSendHandler<...>`)는 반환이 없다(단방향).
+> `TReply`로 정한다. 공통 message context에는 reply operation이나 응답 metadata·compression
+> option이 없다. Send handler(`IZLinkSpotActorSendHandler<...>`)는 반환이 없다(단방향).
 
 ### 실행 직렬화 (위치별 큐)
 
@@ -492,7 +492,7 @@ internal sealed class MatchBingoActorHandler(ILogger<MatchBingoActorHandler> log
 {
     public async ValueTask<MatchBingoRes> HandleAsync(
         BingoEntrySpot entrySpot, PlayerActor actor,
-        ZLinkSpotActorRequestContext context, MatchBingoReq message, CancellationToken ct)
+        IZLinkMessageContext context, MatchBingoReq message, CancellationToken ct)
     {
         // Entry Spot actor handler에서는 일반 async 대기로 외부 API 결과를 기다린다.
         var matched = await entrySpot.Context.Outbound

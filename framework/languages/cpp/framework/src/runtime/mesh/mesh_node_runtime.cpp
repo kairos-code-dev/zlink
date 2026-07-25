@@ -18,7 +18,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
-#include <limits>
+#include <set>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -188,6 +188,10 @@ void mesh_node_runtime_t::start ()
                [] (const auto &left, const auto &right) {
                    return left.name < right.name;
                });
+    std::set<std::string> object_stable_types (
+      _state->spot_state->snapshot.actor_types.begin (),
+      _state->spot_state->snapshot.actor_types.end ());
+    object_stable_types.insert ("framework.spot");
     auto node = std::make_shared<host::public_host_runtime_t> (
       host::host_options_t{
         runtime::mesh::raw_mesh_node_options_t{
@@ -208,7 +212,8 @@ void mesh_node_runtime_t::start ()
           _state->socket.mailbox_byte_budget,
           1024,
           4u * 1024u * 1024u},
-        _state->spot_state->snapshot.entry_spot_name.value_or ("entry")});
+        _state->spot_state->snapshot.entry_spot_name.value_or ("entry"),
+        std::move (object_stable_types)});
     if (_user_spot_store && _user_spot_materializer) {
         node->configure_user_spot_operations (
           _user_spot_store, _user_spot_materializer);
@@ -231,8 +236,9 @@ void mesh_node_runtime_t::start ()
         }
     }
     _node = std::move (node);
+    spot_node_runtime_t spot_runtime (_state->spot_state);
+    spot_runtime.attach_native_node (_node);
     if (_state->spot_state->snapshot.entry_spot_name) {
-        spot_node_runtime_t spot_runtime (_state->spot_state);
         (void) spot_runtime.create_spot (
           *_state->spot_state->snapshot.entry_spot_name);
     }
@@ -264,6 +270,8 @@ void mesh_node_runtime_t::stop () noexcept
         for (auto &[_, spot] : _spots)
             (void) spot.close ();
         _spots.clear ();
+        spot_node_runtime_t (_state->spot_state)
+          .detach_native_node ();
         _node->close ();
     }
     catch (...) {
@@ -586,12 +594,23 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
           "source Actor is not joined to a local Spot");
     }
     const auto transfer_id = spot_runtime.next_actor_transfer_id ();
+    const auto completion_operation_id_low =
+      _state->next_join_completion_operation.fetch_add (
+        1, std::memory_order_relaxed);
+    const auto completion_operation_id_high =
+      static_cast<std::uint64_t> (
+        std::hash<std::string>{} (_state->mesh_name))
+      | 1ULL;
     const auto admission_request = spot_actor_admission_route_request_t{
       .transfer_id = transfer_id,
       .actor_node_rid = std::string (actor.node_rid ().value ()),
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .completion_operation_id_high =
+        completion_operation_id_high,
+      .completion_operation_id_low =
+        completion_operation_id_low,
       .source_spot_id = *source_spot,
       .target_spot_id = target_spot,
       .payload = request.to_bytes ()};
@@ -632,6 +651,10 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .completion_root_reference =
+        admission.value ().completion_root_reference,
+      .completion_root_checksum =
+        admission.value ().completion_root_checksum,
       .target_spot_id = target_spot,
       .transfer_state = prepared.value ().state.to_bytes (),
       .core_transfer = true,
@@ -694,11 +717,16 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
+      .completion_root_reference =
+        admission.value ().completion_root_reference,
+      .completion_root_checksum =
+        admission.value ().completion_root_checksum,
       .target_spot_id = target_spot,
       .bound_session_node_rid =
         bound_session_node_rid ? bound_session_node_rid->to_string () : std::string{},
       .bound_session_rid =
         bound_session_rid ? bound_session_rid->to_string () : std::string{},
+      .transfer_state = prepared.value ().state.to_bytes (),
       .handoff_backlog = std::move (backlog),
       .core_transfer = true,
       .core_transfer_id_high = 0,

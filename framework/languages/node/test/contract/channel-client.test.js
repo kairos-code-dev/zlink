@@ -436,11 +436,17 @@ test('ZLinkRouteClient applies route channel request timeout before registration
 test('route packet dispatcher sends channel envelopes to route handlers before Spot bridge fallback', async () => {
   let bridgeCalls = 0;
   const handledPayloads = [];
+  const filterInvocations = [];
   const replyParts = [];
   const dispatcher = new framework.ZLinkRoutePacketDispatcher({
     routerChannelId: 'bingo.play',
     dispatchErrors: noDispatchErrorReporter(),
-    filters: [],
+    filters: [{
+      async invoke(invocation, next) {
+        filterInvocations.push(invocation);
+        return await next();
+      }
+    }],
     spotRouteBridge: {
       handleRouterReceived() {
         bridgeCalls += 1;
@@ -452,7 +458,13 @@ test('route packet dispatcher sends channel envelopes to route handlers before S
       packetName: 'AllocateBingoRoomReq',
       handler: {
         handle(payload, context) {
-          handledPayloads.push({ payload, sourceNodeRid: String(context.sourceNodeRid) });
+          handledPayloads.push({
+            payload,
+            meshName: context.meshName,
+            sourceNodeRid: String(context.sourceNodeRid),
+            correlationId: context.correlationId,
+            hasRouterAlias: 'routerChannelId' in context
+          });
           return { roomId: 'room-1' };
         }
       }
@@ -500,8 +512,24 @@ test('route packet dispatcher sends channel envelopes to route handlers before S
     assert.equal(bridgeCalls, 0);
     assert.deepEqual(handledPayloads, [{
       payload: { mode: 'two-player' },
-      sourceNodeRid: 'api-node'
+      meshName: 'bingo.play',
+      sourceNodeRid: 'api-node',
+      correlationId: 'route-corr',
+      hasRouterAlias: false
     }]);
+    assert.deepEqual(filterInvocations.map((invocation) => ({
+      ownerKind: invocation.ownerKind,
+      messageContext: invocation.messageContext,
+      hasLegacyContext: 'context' in invocation,
+      hasMessage: 'message' in invocation
+    })), [{
+      ownerKind: 'routeMeshChannel',
+      messageContext: filterInvocations[0].messageContext,
+      hasLegacyContext: false,
+      hasMessage: false
+    }]);
+    assert.equal(filterInvocations[0].messageContext.meshName, 'bingo.play');
+    assert.equal(filterInvocations[0].messageContext.packetName, 'AllocateBingoRoomReq');
     assert.equal(replyParts.length, 2);
   } finally {
     parts.forEach((part) => part.close());
@@ -2828,7 +2856,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
           packetName: 'RouteNotice',
           handler: {
             async handle(payload, context) {
-              events.push(`send:${context.channelName}:${context.packetName}:${payload.value}`);
+              events.push(`send:${context.meshName}:${context.packetName}:${payload.value}`);
             }
           }
         },
@@ -2837,7 +2865,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
           packetName: 'RoutePing',
           handler: {
             async handle(payload, context) {
-              events.push(`request:${context.channelName}:${context.packetName}:${context.routerChannelId}:${payload.value}`);
+              events.push(`request:${context.meshName}:${context.packetName}:${payload.value}`);
               return { value: 'pong' };
             }
           }
@@ -2886,7 +2914,7 @@ test('ZLinkRoutePacketDispatcher invokes routed send and request handlers', asyn
     assert.equal(envelope.header.kind, 2);
     assert.deepEqual(envelope.body, { value: 'pong' });
     assert.equal(events[0], 'send:mesh:RouteNotice:one-way');
-    assert.match(events[1], /^request:mesh:RoutePing:mesh:ping$/);
+    assert.match(events[1], /^request:mesh:RoutePing:ping$/);
     reply.forEach((part) => part.close());
   } finally {
     remoteDealer.close();
@@ -3033,12 +3061,12 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
   const events = [];
   class RouteNoticeHandler {
     async handle(payload, context) {
-      events.push(`send:${context.channelName}:${context.packetName}:${payload.value}`);
+      events.push(`send:${context.meshName}:${context.packetName}:${payload.value}`);
     }
   }
   class RoutePingHandler {
     async handle(payload, context) {
-      events.push(`request:${context.channelName}:${context.packetName}:${context.routerChannelId}:${payload.value}`);
+      events.push(`request:${context.meshName}:${context.packetName}:${payload.value}`);
       return { value: 'pong' };
     }
   }
@@ -3066,7 +3094,7 @@ test('ZLinkModule route channel dispatches inbound routed handlers after bootstr
     const reply = (await remote.next('result')).result;
     assert.deepEqual(reply, { value: 'pong' });
     assert.equal(events.includes('send:mesh:RouteNotice:one-way'), true);
-    assert.equal(events.includes('request:mesh:RoutePing:mesh:ping'), true);
+    assert.equal(events.includes('request:mesh:RoutePing:ping'), true);
   } finally {
     await remote?.stop();
     await runtime.stop();
@@ -3087,7 +3115,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
   }
   class RoutePingHandler {
     async handle(payload, context) {
-      events.push(`request:${context.channelName}:${context.packetName}:${context.routerChannelId}:${payload.value}`);
+      events.push(`request:${context.meshName}:${context.packetName}:${payload.value}`);
       return { value: 'pong' };
     }
   }
@@ -3114,7 +3142,7 @@ test('ZLinkModule routeMesh channel option dispatches inbound routed handlers af
     remote.send({ type: 'run', mode: 'channel' });
     const reply = (await remote.next('result')).result;
     assert.deepEqual(reply, { value: 'pong' });
-    assert.equal(events[0], 'request:mesh:RoutePing:undefined:ping');
+    assert.equal(events[0], 'request:mesh:RoutePing:ping');
     assert.equal(filterInvocations, 1);
   } finally {
     await remote?.stop();

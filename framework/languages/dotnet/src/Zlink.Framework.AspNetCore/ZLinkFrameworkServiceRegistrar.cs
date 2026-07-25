@@ -291,7 +291,9 @@ internal static class ZLinkFrameworkServiceRegistrar
     private static bool HasActorCapableSpotNode(ZLinkFrameworkRegistration registration)
     {
         return registration.SpotNodes.Values.Any(static spotNode =>
-            spotNode.Router is not null && spotNode.ActorFactories.Count > 0);
+            spotNode.Router is not null
+            && spotNode.ObjectRole is ZLinkMeshNodeObjectRole.Client
+                or ZLinkMeshNodeObjectRole.Server);
     }
     private static IServiceCollection AddLocationRuntime(
         this IServiceCollection services,

@@ -438,6 +438,42 @@ PY
   return 1
 }
 
+wait_spot_route() {
+  local source_url="$1"
+  local target_rid="$2"
+  local name="$3"
+  local deadline_ns
+  deadline_ns="$(python3 - "$ROUTE_READINESS_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+print(time.monotonic_ns() + int(float(sys.argv[1]) * 1_000_000_000))
+PY
+  )"
+  while true; do
+    local probe_timeout
+    probe_timeout="$(python3 - "$deadline_ns" "$HTTP_PROBE_TIMEOUT_SECONDS" <<'PY'
+import sys
+import time
+
+remaining = (int(sys.argv[1]) - time.monotonic_ns()) / 1_000_000_000
+print("0" if remaining <= 0 else f"{min(float(sys.argv[2]), remaining):.3f}")
+PY
+    )"
+    if [[ "$probe_timeout" == "0" ]]; then
+      break
+    fi
+    if curl --max-time "$probe_timeout" \
+      --connect-timeout "$probe_timeout" \
+      -fsS "$source_url/channel/spot-peer-ready/$target_rid" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Spot route ${name} was not ready within ${ROUTE_READINESS_TIMEOUT_SECONDS}s via ${source_url} -> ${target_rid}" >&2
+  return 1
+}
+
 ordered_roles() {
   python3 - "$E2E_START_ORDER" "$@" <<'PY'
 import random
@@ -542,7 +578,9 @@ start_named_server() {
         --redis-endpoint "$REDIS_ENDPOINT"
         --redis-key-prefix "$REDIS_KEY_PREFIX"
         --control-endpoint "$SESSION_A_CONTROL"
+        --control-peer-a-endpoint "$PLAY_A_CONTROL"
         --spot-router-endpoint "$SESSION_A_SPOT_ROUTER"
+        --spot-peer-a-endpoint "$PLAY_A_SPOT_ROUTER"
         --stream-endpoint "$SESSION_A_STREAM"
         --evidence-file "$LOG_DIR/session-a.evidence.log"
         --log-dir "$LOG_DIR"
@@ -554,19 +592,35 @@ start_named_server() {
           --tls-key-path "$TLS_KEY"
         )
       fi
+      if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
+        SESSION_A_ARGS+=(
+          --control-peer-b-endpoint "$PLAY_B_CONTROL"
+          --spot-peer-b-endpoint "$PLAY_B_SPOT_ROUTER"
+        )
+      fi
       start_server session-a "$SESSION_DLL" "${SESSION_A_ARGS[@]}"
       ;;
     session-b)
-      start_server session-b "$SESSION_DLL" \
+      SESSION_B_ARGS=(
         --rid session-b \
         --http-url "$SESSION_B_HTTP" \
         --redis-endpoint "$REDIS_ENDPOINT" \
         --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --control-endpoint "$SESSION_B_CONTROL" \
+        --control-peer-a-endpoint "$PLAY_A_CONTROL" \
         --spot-router-endpoint "$SESSION_B_SPOT_ROUTER" \
+        --spot-peer-a-endpoint "$PLAY_A_SPOT_ROUTER" \
         --stream-endpoint "$SESSION_B_STREAM" \
         --evidence-file "$LOG_DIR/session-b.evidence.log" \
         --log-dir "$LOG_DIR"
+      )
+      if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
+        SESSION_B_ARGS+=(
+          --control-peer-b-endpoint "$PLAY_B_CONTROL"
+          --spot-peer-b-endpoint "$PLAY_B_SPOT_ROUTER"
+        )
+      fi
+      start_server session-b "$SESSION_DLL" "${SESSION_B_ARGS[@]}"
       ;;
     play-a)
       start_server play-a "$PLAY_DLL" \
@@ -757,12 +811,16 @@ done
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a
+  wait_spot_route "$SESSION_A_HTTP" play-a session-a-play-a
     if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
     wait_control_route "$SESSION_A_HTTP" play-b session-a-play-b
+    wait_spot_route "$SESSION_A_HTTP" play-b session-a-play-b
   fi
   if [[ "$NEED_SESSION_B" == "1" ]]; then
     wait_control_route "$SESSION_B_HTTP" play-a session-b-play-a
+    wait_spot_route "$SESSION_B_HTTP" play-a session-b-play-a
     wait_control_route "$SESSION_B_HTTP" play-b session-b-play-b
+    wait_spot_route "$SESSION_B_HTTP" play-b session-b-play-b
   fi
 fi
 

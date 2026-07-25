@@ -97,13 +97,22 @@ Object Server는 Channel weight와 독립된 node-wide placement weight를 사�
 기본값은 100이다. 0인 node는 새 placement와 relocation target에서 제외하지만 Ready object와 이미 reservation을
 확보한 attempt는 유지한다. 비용이 다른 Actor와 Spot을 합산하는 node 전체 active object 제한은 두지 않는다.
 Node별 Actor, User·Instance Spot 전체와 Spot stable type별 limit은 `0`이 기본값이며 제한 없음을 뜻한다.
-양수이면 해당 node의 최대 개수이고 음수이면 startup configuration 오류다. Entry Spot은 Object Server
-node마다 하나로 고정하며 configurable Spot count에 포함하지 않는다.
+양수이면 `1..2^31-1` 범위에서 해당 node의 최대 개수이고 음수이면 startup configuration 오류다.
+Entry Spot은 Object Server node마다 하나로 고정하며 configurable Spot count에 포함하지 않는다.
+다만 Entry Spot에 존재하는 Actor는 Actor 전체 limit에 포함한다. Actor stable type별 limit은 제공하지 않는다.
 
 상한 판정은 Active count와 factory가 완료되기 전에 확보한 reserved slot을 함께 계산한다. Location Store가
 reservation과 authority를 같은 transaction에서 확정하며 descriptor count는 후보 선택용 projection이다.
 Capacity를 만족하는 후보가 없으면 `PlacementCapacityExhausted`로 완료한다. 기존 pending activation `128`
 제한은 object population limit이 아니라 동시에 진행되는 activation을 보호하는 별도 admission 제한이다.
+Activation concurrency 기본값은 node당 `128`이고 양수만 허용한다. Permit은 factory와 initialization이
+끝나면 반환하며 active·reserved population count를 바꾸지 않는다.
+
+하나의 object를 만들거나 relocation할 때 필요한 모든 capacity는 하나의 typed bundle로 예약한다.
+Actor bundle에는 Actor slot 하나가 들어간다. Spot bundle에는 Spot 전체 slot 하나와, stable type limit을
+설정했다면 해당 Spot kind·stable type slot 하나가 함께 들어간다. User Spot aggregate를 relocation할
+때는 Spot slot, Spot type slot과 member Actor 수만큼의 Actor slot을 한 transaction에서 모두 확보한다.
+일부 slot만 확보한 상태는 외부에 공개하지 않는다.
 
 RouteMesh Channel Server, ClientServer Server와 node-wide placement weight는 모두 정수 `0..10000`, 기본값
 `100`을 사용한다. Startup 설정과 runtime 변경에서 음수나 `10000`보다 큰 값은 configuration error다.
@@ -287,7 +296,7 @@ Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자
 한 process 안의 contract test에서만 사용할 수 있다.
 
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
-Object Server factory에 `Recreate` 또는 `Snapshot` policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) factory가 하나라도
+Object Server factory에 `Recreate` 또는 `Snapshot` policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도
 있으면 opaque Relocation Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지
 않지만 factory 등록 시점에는 향후 cross-node join과 host `Retire`를 배제할 수 없으므로 이 조건을 완화하지 않는다.
 Instance Spot factory가 없고 모든 factory가 `Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있으며,
@@ -397,12 +406,14 @@ Missing Instance Spot call에서 source Framework는 최초 message와 operation
 optional metadata presence·frame, 선택한 Mesh·stable type과 target descriptor fence를 activation envelope에 넣어
 eligible target으로 전송한다.
 Source는 owner claim이나 reservation을 먼저 만들지 않는다. Target runtime은 complete [activation envelope](01-glossary.ko.md#activation-envelope)를
-Relocation Store에 immutable recovery root로 저장한 뒤 current authority와 local exact instance를 확인하고,
-Missing이면 자신을 owner로 generic reservation을 획득한다. Pending authority snapshot은 provider가 발급한
-reservation fence와 recovery root receipt를 반환한다. CAS winner만 factory와 initialize를 실행하고 envelope
-message를 durable activation inbox의 첫 record로 확정한다. Handler barrier를 유지한 상태에서 recovery
-root·cursor를 포함한 `Ready`를 commit하고, 첫 record를 local queue head로 복원한 뒤 barrier를 연다. CAS loser는
-local instance를 만들지 않으며 source는 `Ready` 뒤 같은 message를 다시 전송하지 않는다. 이 순서는 public
+Relocation Store에 immutable recovery root로 저장한 뒤, Location Store의 현재 위치정보와 이 node에 같은
+Spot instance가 이미 있는지 확인한다. 둘 다 없으면 이 node에서 생성을 진행할 권한과 필요한 capacity를
+하나의 reservation으로 확보한다. Location provider는 생성 중인 위치정보와 함께 reservation을 식별하는
+fence와 recovery root receipt를 반환한다. 여러 target이나 중복 message가 경쟁해도 이 reservation을 먼저
+확보한 runtime만 factory와 initialize를 실행하고, activation envelope의 message를 durable activation
+inbox의 첫 record로 확정한다. Handler barrier를 유지한 상태에서 recovery root·cursor를 포함한 `Ready`를
+commit하고, 첫 record를 local queue head로 복원한 뒤 barrier를 연다. 경쟁에서 진 runtime은 local Spot
+instance를 만들지 않으며 source는 `Ready` 뒤 같은 message를 다시 전송하지 않는다. 이 순서는 public
 call을 check와 create로 나누거나 application에 target node를 노출하지 않는다.
 Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 cursor를 inbox sequence까지 갱신한 뒤에만
 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
@@ -519,6 +530,9 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 | 34 | `RelocationDataLost` | no |
 | 35 | `SpotIdConflict` | no |
 | 36 | `RuntimeShutdown` | no |
+| 37 | `RelocationDisabled` | no |
+| 38 | `RelocationTargetUnavailable` | yes |
+| 39 | `RelocationFailed` | yes |
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
@@ -530,6 +544,11 @@ rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 �
 `RoutingIdConflict`는 MeshNode transport RID owner claim 충돌이고, `SpotIdConflict`는 global Spot ID
 namespace의 Entry·User·Instance Spot identity claim 충돌이다. `RuntimeShutdown`은 host shutdown으로
 새 operation admission이 닫힌 상태다.
+
+`RelocationDisabled`는 object에 설정한 policy가 다른 node로의 relocation을 허용하지 않는 상태다.
+`RelocationTargetUnavailable`은 stable type과 capacity 조건을 만족하는 target을 찾거나 reservation을
+확보하지 못한 상태다. `RelocationFailed`는 target을 정한 뒤 capture, restore 또는 commit 전에
+relocation 처리가 실패한 상태다.
 
 ### 13.1 Operation 결과 변환
 

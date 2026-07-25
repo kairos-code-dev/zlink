@@ -51,11 +51,11 @@ function lifecycleSource(actor: ZLinkActor): ZLinkActorLifecycleSnapshotSource {
     : undefined;
   if (source === undefined) {
     throw new ZLinkConfigurationException(
-      `Actor '${actor.actorId}' does not expose a framework lifecycle identity snapshot.`
+      `Actor '${actor.context.actorId}' does not expose a framework lifecycle identity snapshot.`
     );
   }
-  if (source.actorRef.actorId !== actor.actorId || source.actorType.length === 0) {
-    throw new ZLinkConfigurationException(`Actor '${actor.actorId}' lifecycle identity is invalid.`);
+  if (source.actorRef.actorId !== actor.context.actorId || source.actorType.length === 0) {
+    throw new ZLinkConfigurationException(`Actor '${actor.context.actorId}' lifecycle identity is invalid.`);
   }
   return source;
 }

@@ -8,26 +8,57 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.MultiNode.Spots;
 
-internal sealed class ScenarioActorFactory : IZLinkActorFactory
+internal sealed class ScenarioActorFactory(EvidenceStore evidence) : IZLinkActorFactory<ScenarioActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<ScenarioActor> CreateAsync(
         string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new ScenarioActor(actorId, context));
+        return ValueTask.FromResult(new ScenarioActor(actorId, context, evidence));
     }
 }
 
-internal sealed class ScenarioActor(string actorId, IZLinkActorContext context) : IZLinkActor
+internal sealed class ScenarioActor(
+    string actorId,
+    IZLinkActorContext context,
+    EvidenceStore evidence) : IZLinkActor
 {
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(string TargetSpotId, string Marker)>
+        _pendingJoins = new();
+
     public string DisplayName { get; set; } = actorId;
 
     public int Seen { get; set; }
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
+
+    public void RecordDeferredJoin(string targetSpotId, string marker)
+    {
+        _pendingJoins.Enqueue((targetSpotId, marker));
+    }
+
+    public ValueTask OnJoinCompletedAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_pendingJoins.TryDequeue(out var pending))
+            throw new InvalidOperationException(
+                $"Actor '{ActorId}' received Join completion without a pending E2E request.");
+
+        var accepted = completion is ZLinkActorJoinCompletion.Accepted;
+        var completedActor = completion is ZLinkActorJoinCompletion.Accepted value
+            ? value.Actor
+            : default;
+        evidence.Add(
+            $"spot-only-actor-join-completed|rid={evidence.Rid}|actor={ActorId}"
+            + $"|target={pending.TargetSpotId}|accepted={accepted}"
+            + $"|generation={completedActor.Generation}|marker={pending.Marker}");
+        return ValueTask.CompletedTask;
+    }
 }
 
 internal sealed record ScenarioActorCreateReq(string DisplayName);
@@ -38,7 +69,7 @@ internal sealed class ScenarioEntrySpot(
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         ScenarioActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
@@ -47,7 +78,7 @@ internal sealed class ScenarioEntrySpot(
         if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateReq>().DisplayName;
 
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -216,7 +247,7 @@ internal sealed class SpotOnlyUserSpot(
             var command = request.Decode<SpotOnlyMeshReq>();
             var target = await spots.ResolveSpotHandleAsync(
                              Context.MeshName,
-                             RoutingId.From(command.TargetSpotRid),
+                             command.TargetSpotRid,
                              cancellationToken)
                          ?? throw new InvalidOperationException(
                              $"Target spot '{command.TargetSpotRid}' has no live location row.");

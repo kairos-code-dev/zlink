@@ -51,6 +51,13 @@ function actorHarness(events, completionResult = { accepted: true }) {
   return { actor, context };
 }
 
+async function waitForEvents(events, count) {
+  for (let attempt = 0; attempt < 20 && events.length < count; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.ok(events.length >= count, `expected at least ${count} events, received ${events.length}`);
+}
+
 test('deferred Actor Join starts only after a normal handler terminal and reports completion', async () => {
   const events = [];
   const { context } = actorHarness(events);
@@ -60,12 +67,14 @@ test('deferred Actor Join starts only after a normal handler terminal and report
     context.joinSpot('room-a', 'hello').timeout(25).defer();
     events.push('handler:end');
   });
+  events.push('handler:terminal');
 
-  assert.deepEqual(events.slice(0, 2), ['handler:start', 'handler:end']);
-  const timeoutMs = Number(events[2].split(':').at(-1));
-  assert.match(events[2], /^join:alice:alice:room-a:"hello":\d+$/);
+  assert.deepEqual(events, ['handler:start', 'handler:end', 'handler:terminal']);
+  await waitForEvents(events, 5);
+  const timeoutMs = Number(events[3].split(':').at(-1));
+  assert.match(events[3], /^join:alice:alice:room-a:"hello":\d+$/);
   assert.ok(timeoutMs > 0 && timeoutMs <= 25);
-  assert.equal(events[3], 'completion:accepted:7');
+  assert.equal(events[4], 'completion:accepted:7');
   assert.equal(context.objectGeneration, 1n);
 });
 
@@ -97,8 +106,10 @@ test('Actor Join defer rejects detached use, duplicate terminal, and a second pe
       (error) => error.kind === 'actorMoving'
     );
   });
-  assert.deepEqual(events.slice(-2), [
-    'join:alice:alice:room-a::5000',
-    'completion:accepted:7'
-  ]);
+  await waitForEvents(events, 2);
+  const [join, completion] = events.slice(-2);
+  assert.match(join, /^join:alice:alice:room-a::\d+$/);
+  const remainingTimeout = Number(join.split(':').at(-1));
+  assert.ok(remainingTimeout > 0 && remainingTimeout <= 5_000);
+  assert.equal(completion, 'completion:accepted:7');
 });

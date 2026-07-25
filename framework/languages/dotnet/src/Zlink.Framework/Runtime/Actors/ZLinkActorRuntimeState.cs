@@ -664,6 +664,18 @@ internal sealed class ZLinkActorRuntimeState(
         return new DispatchScope(this, previous, previousAmbient, ownership);
     }
 
+    public DispatchScope EnterDeferredJoinExecution()
+    {
+        var previousAmbient = AmbientDispatch.Value;
+        var ownership = new DispatchOwnership(this);
+        AmbientDispatch.Value = ownership;
+        return new DispatchScope(
+            this,
+            CurrentDispatch,
+            previousAmbient,
+            ownership);
+    }
+
     private async Task ClearActorCreationTaskWhenCompletedAsync(Task<IZLinkActor> creationTask)
     {
         var succeeded = true;

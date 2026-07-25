@@ -81,8 +81,8 @@ public final class ZLinkActorCreationCoordinator
         ZLinkMessage createRequest,
         boolean getOrCreate) {
         UUID id = UUID.randomUUID();
-        long high = id.getMostSignificantBits();
-        long low = id.getLeastSignificantBits();
+        long high = id.getMostSignificantBits() & Long.MAX_VALUE;
+        long low = id.getLeastSignificantBits() & Long.MAX_VALUE;
         if (high == 0 && low == 0) {
             low = 1;
         }

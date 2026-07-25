@@ -72,7 +72,16 @@ internal static class GatewayHostFactory
             var mesh19 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
+            mesh19.Objects().Client();
             mesh19.ChannelName(SpotServiceNames.SpotChannel);
+            if (!string.IsNullOrWhiteSpace(options.SpotPeerAEndpoint))
+                mesh19.PeerConnections.Connect(
+                    RoutingId.From("play-a"),
+                    options.SpotPeerAEndpoint);
+            if (!string.IsNullOrWhiteSpace(options.SpotPeerBEndpoint))
+                mesh19.PeerConnections.Connect(
+                    RoutingId.From("play-b"),
+                    options.SpotPeerBEndpoint);
             var publisherConfig = mesh19.ConfigureSpotPublisher();
             publisherConfig.SendHighWaterMark = options.SpotPublisherSendHighWaterMark;
             publisherConfig.SendTimeout = TimeSpan.FromMilliseconds(
@@ -123,58 +132,18 @@ internal static class GatewayHostFactory
             CancellationToken cancellationToken) =>
         {
             var payload = new string('x', Math.Clamp(request.PayloadBytes, 1024, 1024 * 1024));
-            var maxAttempts = Math.Clamp(request.MaxAttempts, 1, 20000);
-            var startSequence = Math.Max(1, request.StartSequence);
-            var observed = new Dictionary<string, int>(StringComparer.Ordinal);
-
-            for (var offset = 0; offset < maxAttempts; offset++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var sequence = startSequence + offset;
-                var started = System.Diagnostics.Stopwatch.GetTimestamp();
-                var call = publisher.Publish(
+            var sequence = Math.Max(1, request.StartSequence);
+            var started = Stopwatch.GetTimestamp();
+            await publisher.Publish(
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
-                    new SpotBackpressureMsg(request.Marker, sequence, payload));
-                var result = await call.Async(cancellationToken);
-                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
-                var observation =
-                    $"status={result.Status},snapshot={result.Detail.SnapshotRemoteNodeCount}"
-                    + $",admitted={result.Detail.AdmittedRemoteNodeCount}"
-                    + $",dropped={result.Detail.DroppedRemoteNodeCount}";
-                observed[observation] = observed.GetValueOrDefault(observation) + 1;
-                if (result.Detail.SnapshotRemoteNodeCount >= 2
-                    && result.Detail.AdmittedRemoteNodeCount + 1
-                        == result.Detail.SnapshotRemoteNodeCount
-                    && result.Detail.DroppedRemoteNodeCount == 1)
-                    return Results.Ok(ToAttempt(sequence, result, elapsed));
-                if (request.Blocking)
-                {
-                    Console.WriteLine(
-                        $"spot-service sm-c6 blocking-attempt sequence={sequence}"
-                        + $" status={result.Status}"
-                        + $" elapsed_ms={(long)elapsed.TotalMilliseconds}"
-                        + $" snapshot={result.Detail.SnapshotRemoteNodeCount}"
-                        + $" admitted={result.Detail.AdmittedRemoteNodeCount}"
-                        + $" dropped={result.Detail.DroppedRemoteNodeCount}");
-                }
-                if (!request.Blocking)
-                    await Task.Delay(TimeSpan.FromMilliseconds(5), cancellationToken);
-            }
-
-            var observations = string.Join(
-                "; ",
-                observed.OrderBy(entry => entry.Key, StringComparer.Ordinal)
-                    .Select(entry => $"{entry.Key},count={entry.Value}"));
-            Console.WriteLine(
-                $"spot-service sm-c6 {(request.Blocking ? "blocking" : "non-blocking")} exhausted"
-                + $" attempts={maxAttempts} observations=[{observations}]");
-            return Results.Problem(
-                $"{(request.Blocking ? "Blocking" : "Non-blocking")} ROUTER backpressure"
-                + $" did not produce one admitted and one dropped target in {maxAttempts} publishes."
-                + $" Observed: {observations}",
-                statusCode: StatusCodes.Status504GatewayTimeout);
+                    new SpotBackpressureMsg(request.Marker, sequence, payload))
+                .Async(cancellationToken);
+            var elapsed = Stopwatch.GetElapsedTime(started);
+            return Results.Ok(new SpotBackpressureSubmitRes(
+                sequence,
+                (long)elapsed.TotalMilliseconds));
         });
         app.MapPost("/channel/route-ping", async (
             IZLinkRouteClient routes,
@@ -329,7 +298,7 @@ internal static class GatewayHostFactory
                     row.Rid.ToString(), request.NodeRid, StringComparison.Ordinal));
                 var entry = await handles.ResolveSpotHandleAsync(
                     SpotServiceNames.SpotChannel,
-                    RoutingId.From(request.NodeRid),
+                    request.NodeRid,
                     cancellationToken);
                 lastPeerReady = peerReady;
                 lastEntryReady = entry is not null;
@@ -369,7 +338,7 @@ internal static class GatewayHostFactory
         {
             var entry = await handles.ResolveSpotHandleAsync(
                             SpotServiceNames.SpotChannel,
-                            RoutingId.From(request.NodeRid),
+                            request.NodeRid,
                             cancellationToken)
                         ?? throw new InvalidOperationException(
                             $"Entry Spot for node '{request.NodeRid}' is not ready.");
@@ -393,21 +362,6 @@ internal static class GatewayHostFactory
         });
         return app;
     }
-
-    static SpotBackpressureAttemptRes ToAttempt(
-        int sequence,
-        ZLinkPublishResult result,
-        TimeSpan elapsed)
-        => new(
-            sequence,
-            result.Status.ToString(),
-            (long)elapsed.TotalMilliseconds,
-            result.Detail.SnapshotRemoteNodeCount,
-            result.Detail.AdmittedRemoteNodeCount,
-            result.Detail.DroppedRemoteNodeCount,
-            result.Detail.SnapshotLocalSpotCount,
-            result.Detail.AdmittedLocalSpotCount,
-            result.Detail.DroppedLocalSpotCount);
 
     static string Require(string? value, string optionName)
         => string.IsNullOrWhiteSpace(value)

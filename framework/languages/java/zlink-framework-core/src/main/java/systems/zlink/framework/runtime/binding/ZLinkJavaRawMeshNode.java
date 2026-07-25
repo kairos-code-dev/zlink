@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -1059,8 +1060,21 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             topology == null
                 ? Optional.empty()
                 : topology.peer(targetNodeRid);
-        if (peer.isEmpty() || localDescriptor == null
-            || !intent.reservation().targetNodeRid()
+        if (peer.isEmpty() || localDescriptor == null) {
+            if (System.currentTimeMillis() < intent.deadlineUnixMs()) {
+                return CompletableFuture.supplyAsync(
+                        () -> null,
+                        CompletableFuture.delayedExecutor(
+                            10, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored ->
+                        requestActorCreate(
+                            targetNodeRid, intent, timeout));
+            }
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote Actor create target is not connected"));
+        }
+        if (!intent.reservation().targetNodeRid()
                 .equals(targetNodeRid)
             || intent.reservation().targetNodeGeneration()
                 != peer.orElseThrow().descriptor()
@@ -1153,8 +1167,25 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             topology == null
                 ? Optional.empty()
                 : topology.peer(targetNodeRid);
-        if (peer.isEmpty() || localDescriptor == null
-            || !intent.reservation().targetNodeRid()
+        if (peer.isEmpty() || localDescriptor == null) {
+            if (System.currentTimeMillis() < intent.deadlineUnixMs()) {
+                return CompletableFuture.supplyAsync(
+                        () -> null,
+                        CompletableFuture.delayedExecutor(
+                            10, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored ->
+                        requestUserSpotCreate(
+                            targetNodeRid,
+                            intent,
+                            timeout,
+                            operationHigh,
+                            operationLow));
+            }
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote User Spot create target is not connected"));
+        }
+        if (!intent.reservation().targetNodeRid()
                 .equals(targetNodeRid)
             || intent.reservation().targetNodeGeneration()
                 != peer.orElseThrow().descriptor()
@@ -1712,8 +1743,19 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 drainMonitorEvents();
                 announceExpectedPeers(now);
                 tickLiveness(now);
-                Optional<ZLinkJavaRawServicePort.Inbound> inbound =
-                    port.receive(requireStarted());
+                Optional<ZLinkJavaRawServicePort.Inbound> inbound;
+                try {
+                    inbound = port.receive(requireStarted());
+                } catch (RuntimeException ignored) {
+                    if (closed.get()) {
+                        return;
+                    }
+                    // A transient transport receive failure must not stop the
+                    // only service pump. Retry on the next pump iteration.
+                    java.util.concurrent.locks.LockSupport.parkNanos(
+                        Duration.ofMillis(1).toNanos());
+                    continue;
+                }
                 if (inbound.isEmpty()) {
                     java.util.concurrent.locks.LockSupport.parkNanos(
                         Duration.ofMillis(1).toNanos());
@@ -2836,12 +2878,17 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             if (nowNanos < next) {
                 continue;
             }
-            port.send(
-                requireStarted(),
-                expected,
-                List.of(wire.encodeAdmission(
-                    ServiceWireConstants.COMMAND_HELLO,
-                    localDescriptor)));
+            try {
+                port.send(
+                    requireStarted(),
+                    expected,
+                    List.of(wire.encodeAdmission(
+                        ServiceWireConstants.COMMAND_HELLO,
+                        localDescriptor)));
+            } catch (RuntimeException ignored) {
+                // A manual peer can be configured before its listener is
+                // ready. The next announcement interval retries admission.
+            }
             nextAnnouncementNanos.put(
                 expected,
                 nowNanos + Duration.ofMillis(100).toNanos());
@@ -2851,12 +2898,17 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private void tickLiveness(long nowNanos) {
         ZLinkServiceLivenessRegistry.Tick tick = liveness.tick(nowNanos);
         for (ZLinkServiceLivenessRegistry.Probe probe : tick.probes()) {
-            port.send(
-                requireStarted(),
-                probe.nodeRoutingId(),
-                encodeLiveness(
-                    ServiceWireConstants.COMMAND_LIVENESS_PROBE,
-                    probe.probeId()));
+            try {
+                port.send(
+                    requireStarted(),
+                    probe.nodeRoutingId(),
+                    encodeLiveness(
+                        ServiceWireConstants.COMMAND_LIVENESS_PROBE,
+                        probe.probeId()));
+            } catch (RuntimeException ignored) {
+                // The liveness timeout owns peer eviction. A transient send
+                // failure must not stop the service receive pump.
+            }
         }
         tick.timedOutNodes().forEach(this::disconnectAdmitted);
     }

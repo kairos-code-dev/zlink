@@ -101,7 +101,7 @@ final class ZLinkActorSessionCoordinator {
     CompletionStage<Void> dispatch(
         ZLinkActor actor,
         Supplier<CompletionStage<Void>> operation) {
-        return requireActors().submitActorDispatch(actor.actorId(), operation);
+        return requireActors().submitActorDispatch(actor.context().actorId(), operation);
     }
 
     CompletionStage<Optional<Message>> captureMoving(
@@ -183,8 +183,8 @@ final class ZLinkActorSessionCoordinator {
         }
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
         return runtime.submitActorDispatch(
-                actor.actorId(),
-                ZLinkActorAcceptedJournal.encode(actor.actorId(), header, payload),
+                actor.context().actorId(),
+                ZLinkActorAcceptedJournal.encode(actor.context().actorId(), header, payload),
                 () -> invokeLocalDispatch(
                     localDispatch,
                     new LocalDispatch(actor, joinedSpotId),
@@ -213,7 +213,7 @@ final class ZLinkActorSessionCoordinator {
                 headerPart.sourceNodeRid(),
                 headerPart.sourceSessionRid());
         }
-        return runtime.runActorDispatchTurn(actor.actorId(), operation);
+        return runtime.runActorDispatchTurn(actor.context().actorId(), operation);
     }
 
     boolean hasBoundSession(ZLinkActor actor) {

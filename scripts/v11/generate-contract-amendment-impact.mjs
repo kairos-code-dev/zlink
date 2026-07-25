@@ -310,7 +310,7 @@ for (const [language, regressionPath] of regressionRoots) {
     replacementCoverage: [],
     specOwner: language === 'common'
       ? 'framework/doc/framework/common/internals/README.ko.md'
-      : `framework/doc/framework/spec/server/languages/${language}/interfaces/README.ko.md`,
+      : `framework/doc/framework/common/spec/server/languages/${language}/interfaces/README.ko.md`,
     runtimeOwner: language === 'common' ? 'V11-CA-PROTOCOL' : languageOwner(language, 'V11-M6A-E2E'),
     activationStage: 'V11-M6-SCAFFOLD-ZERO',
     quarantineStatus: 'active-regression',
@@ -326,7 +326,7 @@ for (const [language, regressionPath] of regressionRoots) {
       replacementCoverage: [],
       specOwner: language === 'common'
         ? 'framework/doc/framework/common/internals/README.ko.md'
-        : `framework/doc/framework/spec/server/languages/${language}/interfaces/README.ko.md`,
+        : `framework/doc/framework/common/spec/server/languages/${language}/interfaces/README.ko.md`,
       runtimeOwner: language === 'common'
         ? 'V11-CA-PROTOCOL'
         : languageOwner(language, 'V11-M6A-E2E'),
@@ -503,7 +503,7 @@ for (const language of ['cpp', 'dotnet', 'java', 'kotlin', 'node']) {
     approvedHash: null,
     acceptanceIntent: 'CA-D29에 따라 현재 source의 우연한 표면이 아니라 reviewed exact interface와 contract test로 공개 동작을 검증한다.',
     replacementCoverage: [],
-    specOwner: `framework/doc/framework/spec/server/languages/${language}/interfaces/README.ko.md`,
+    specOwner: `framework/doc/framework/common/spec/server/languages/${language}/interfaces/README.ko.md`,
     runtimeOwner: 'V11-M7-CONTRACT',
     activationStage: 'V11-M7-CONTRACT',
     quarantineStatus: 'pending-disabled-by-contract-amendment',
@@ -579,7 +579,7 @@ for (const [id, kind, acceptanceIntent, activationStage] of plannedAdds) {
     || id.includes('redis-stores')
     || id.includes('location-participant-digest');
   const specOwner = storeRelated
-    ? 'framework/doc/framework/spec/server/42-relocation-store-redis.ko.md'
+    ? 'framework/doc/framework/common/spec/42-relocation-store-redis.ko.md'
     : kind.startsWith('sample')
       ? 'framework/doc/framework/common/sample/README.ko.md'
       : 'framework/doc/framework/common/e2e/README.ko.md';

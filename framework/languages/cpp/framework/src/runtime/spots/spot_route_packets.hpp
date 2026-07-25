@@ -23,6 +23,8 @@ struct spot_actor_admission_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
+    std::uint64_t completion_operation_id_high = 0;
+    std::uint64_t completion_operation_id_low = 0;
     std::string source_spot_id;
     std::string target_spot_id;
     std::vector<std::uint8_t> payload;
@@ -32,6 +34,8 @@ struct spot_actor_admission_route_reply_t
 {
     bool accepted = false;
     std::vector<std::uint8_t> payload;
+    std::string completion_root_reference;
+    std::uint32_t completion_root_checksum = 0;
 };
 
 // One preserved in-flight packet carried with the commit (spot-actor §10.2-2).
@@ -55,6 +59,8 @@ struct spot_actor_commit_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
+    std::string completion_root_reference;
+    std::uint32_t completion_root_checksum = 0;
     std::string target_spot_id;
     std::string bound_session_node_rid;
     std::string bound_session_rid;

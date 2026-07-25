@@ -15,6 +15,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
         RoutingId nodeRid,
         ulong nodeGeneration,
         ZLinkSpotKind spotKind,
+        ulong authorityOwnerGeneration,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken = default)
     {
@@ -32,7 +33,10 @@ internal sealed class ZLinkSpotLocationLifecycle(
             spotKind,
             SpotType: spotType ?? string.Empty,
             OwnerId: string.Empty,
-            UpdatedAt: default);
+            UpdatedAt: default)
+        {
+            AuthorityOwnerGeneration = authorityOwnerGeneration
+        };
         var result = await runtime.WriteSpotAsync(row, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
             .ConfigureAwait(false);
         if (result.Status == ZLinkLocationWriteStatus.RejectedConflict)

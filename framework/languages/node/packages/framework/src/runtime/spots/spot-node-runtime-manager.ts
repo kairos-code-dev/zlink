@@ -542,16 +542,24 @@ export class ZLinkSpotNodeRuntimeManager {
     return meshName === undefined ? undefined : this.meshCompletions.get(meshName);
   }
 
-  notifyEntrySpotActorCreated(
+  async notifyEntrySpotActorCreated(
     nodeRid: RoutingId,
     actor: ZLinkActor,
     createRequest: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<import('../../contracts').ZLinkActorCreateResponse | undefined> {
-    const activation = [...this.entryActivations.values()].find(
+    let activation = [...this.entryActivations.values()].find(
       (entryActivation) => routingIdsEqual(entryActivation.nodeRid, nodeRid)
     );
-    return activation?.notifyCreateActor(actor, createRequest, signal) ?? Promise.resolve(undefined);
+    if (activation === undefined) {
+      for (const [meshName, node] of this.meshNodes) {
+        if (!routingIdsEqual(node.status().routingId, nodeRid)) continue;
+        await this.ensureEntryActivation(meshName);
+        activation = this.entryActivations.get(meshName);
+        break;
+      }
+    }
+    return activation?.notifyCreateActor(actor, createRequest, signal);
   }
 
   notifyPrimaryEntrySpotActorJoined(

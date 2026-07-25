@@ -4,6 +4,9 @@ import type {
   ZLinkActor,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
+  ZLinkInstanceSpot,
+  ZLinkInstanceSpotContext,
+  ZLinkInstanceSpotHandlerRegistry,
   ZLinkProviderResolver,
   ZLinkRuntimeEventPublisher,
   ZLinkSpot,
@@ -24,6 +27,7 @@ import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
 interface ZLinkEntrySpotContextOptions {
   readonly nativeSpotId: RoutingId;
+  readonly objectGeneration: number;
   readonly nodeRid: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
@@ -44,6 +48,7 @@ interface ZLinkEntrySpotContextOptions {
 interface ZLinkSpotContextOptions {
   readonly meshName: string;
   readonly spotId: RoutingId;
+  readonly objectGeneration: number;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
   readonly timers: ZLinkSpotTimerRegistry;
@@ -55,14 +60,15 @@ interface ZLinkSpotContextOptions {
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly workerRuntime: ZLinkWorkerRuntime;
   readonly close: (signal?: AbortSignal) => Promise<boolean>;
+  readonly leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
 }
 
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
-  return {
+  return withImmutableSpotIdentity({
     meshName: options.spotNodeName,
     spotId: options.nativeSpotId,
+    objectGeneration: options.objectGeneration,
     nodeRid: options.nodeRid,
-    routingId: options.nativeSpotId,
     handlers: options.handlers,
     outbound: options.outbound,
     destroyActor(actor: ZLinkActor, signal?: AbortSignal) {
@@ -105,19 +111,18 @@ export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): Z
       return new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
         options.workerRuntime.scheduleIo(work, timeoutMs, signal));
     }
-  };
+  });
 }
 
 export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotContext {
-  return {
+  return withImmutableSpotIdentity({
     meshName: options.meshName,
     spotId: options.spotId,
-    get nodeRid() {
-      return options.nodeRidProvider?.() ?? options.nodeRid ?? '';
-    },
-    routingId: options.spotId,
+    objectGeneration: options.objectGeneration,
+    nodeRid: contextNodeRid(options.nodeRidProvider?.() ?? options.nodeRid),
     handlers: options.handlers,
     outbound: options.outbound,
+    leaveActor: options.leaveActor,
     close: options.close,
     addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkSpot>>(
       name: string,
@@ -148,5 +153,79 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
     runIoWorker: <T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> =>
       new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
         options.workerRuntime.scheduleIo(work, timeoutMs, signal))
+  });
+}
+
+export function createInstanceSpotContext(
+  options: Omit<ZLinkSpotContextOptions, 'handlers' | 'leaveActor'> & {
+    readonly handlers: ZLinkInstanceSpotHandlerRegistry;
+  }
+): ZLinkInstanceSpotContext {
+  const common = {
+    meshName: options.meshName,
+    spotId: options.spotId,
+    objectGeneration: options.objectGeneration,
+    nodeRid: contextNodeRid(options.nodeRidProvider?.() ?? options.nodeRid),
+    handlers: options.handlers,
+    outbound: options.outbound,
+    close: options.close,
+    addTimer: <THandler extends ZLinkSpotTimerHandler<ZLinkInstanceSpot>>(
+      name: string,
+      periodMs: number,
+      handlerType: Type<THandler>,
+      timerOptions?: ZLinkTimerOptions,
+      signal?: AbortSignal
+    ) => {
+      const spot = options.getSpot();
+      if (spot === undefined) {
+        throw new ZLinkConfigurationException('Instance Spot timer cannot be registered before activation.');
+      }
+      return options.timers.add(
+        name,
+        periodMs,
+        timerOptions,
+        handlerType,
+        options.serial,
+        spot,
+        options.providerResolver,
+        signal,
+        createTimerDiagnostics(
+          String(options.spotId),
+          options.spotId,
+          false,
+          name,
+          handlerType,
+          options.runtimeEventPublisher
+        )
+      );
+    },
+    runCpuWorker: <T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> =>
+      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleCpu(work, timeoutMs, signal)),
+    runIoWorker: <T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> =>
+      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleIo(work, timeoutMs, signal))
   };
+  return withImmutableSpotIdentity(common);
+}
+
+function contextNodeRid(nodeRid: RoutingId | undefined): RoutingId {
+  return nodeRid ?? ('' as RoutingId);
+}
+
+function withImmutableSpotIdentity<T extends {
+  readonly meshName: string;
+  readonly spotId: RoutingId;
+  readonly objectGeneration: number;
+  readonly nodeRid: RoutingId;
+}>(context: T): T {
+  for (const key of ['meshName', 'spotId', 'objectGeneration', 'nodeRid'] as const) {
+    Object.defineProperty(context, key, {
+      configurable: false,
+      enumerable: true,
+      writable: false,
+      value: context[key]
+    });
+  }
+  return context;
 }

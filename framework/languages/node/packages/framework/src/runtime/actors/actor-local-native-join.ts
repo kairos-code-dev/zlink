@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { RequestResult } from '@zlink-systems/zlink';
 import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
+  ZLinkActorJoinOperationId,
   ZLinkMessageSerializer,
 } from '../../contracts';
 import type { ZLinkActorJoinRuntimeResult } from './actor-runtime-contracts';
@@ -43,6 +45,7 @@ export interface ZLinkLocalNativeActorJoinOptions {
   readonly completionTableProvider: () => ZLinkMeshCompletionTable | undefined;
   readonly sourceTransfer?: ZLinkActorSourceTransfer;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
+  readonly postCommitErrorReporter?: (error: unknown) => void;
   readonly remoteActivationWaiter?: (
     actorId: string,
     targetNodeRid: RoutingId,
@@ -64,7 +67,8 @@ export class ZLinkLocalNativeActorJoin {
     spotRouteTarget: ZLinkSpotRouteTarget | undefined,
     request: Message,
     timeoutMs: number | undefined,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    completionOperationId?: ZLinkActorJoinOperationId
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     if (signal?.aborted === true) throw createAbortError();
     const completions = this.requireCompletions();
@@ -81,13 +85,13 @@ export class ZLinkLocalNativeActorJoin {
       if (actorType === undefined || this.options.sourceTransfer === undefined) {
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actor.actorId}' remote transfer state is not configured.`
+          `Actor '${actor.context.actorId}' remote transfer state is not configured.`
         );
       }
       prepared = await this.options.sourceTransfer.prepareSource(actor, state, signal, 'core');
       transferId = randomUUID();
       requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
-        actorId: actor.actorId,
+        actorId: actor.context.actorId,
         actorType,
         actorRef: actorRef as never,
         expectedMembershipEpoch: state.spotMembershipEpoch,
@@ -97,14 +101,15 @@ export class ZLinkLocalNativeActorJoin {
         targetSpotId: target.spotId,
         routerChannelId: target.routerChannelId,
         sourceSpotId: state.spotId ?? toFrameworkRoutingId(node.entrySpot().routingId),
-        boundSessionTarget: state.remoteBoundSessionTarget,
+        boundSessionTarget: state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget,
         phase: REMOTE_ACTOR_JOIN_COMMIT,
         transferId,
         transferAdapterKey: prepared.adapterKey,
         transferState: Buffer.from(
           prepared.state.toEncodedPayload(this.options.messageSerializers).data()
         ),
-        handoffBacklog: prepared.handoffBacklog
+        handoffBacklog: prepared.handoffBacklog,
+        completionOperationId
       })));
     }
     let completion;
@@ -135,7 +140,7 @@ export class ZLinkLocalNativeActorJoin {
       closeMeshCompletion(completion);
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor join failed for '${actor.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
+        `Actor join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
     if (control.joinResult !== 0) {
@@ -155,7 +160,7 @@ export class ZLinkLocalNativeActorJoin {
       closeMeshCompletion(completion);
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor join failed for '${actor.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
+        `Actor join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
 
@@ -174,7 +179,7 @@ export class ZLinkLocalNativeActorJoin {
           node,
           completions,
           target.targetNodeRid,
-          actor.actorId,
+          actor.context.actorId,
           requireTransferId(transferId),
           false,
           timeoutMs,
@@ -187,30 +192,31 @@ export class ZLinkLocalNativeActorJoin {
         node,
         completions,
         target.targetNodeRid,
-        actor.actorId,
+        actor.context.actorId,
         requireTransferId(transferId),
         true,
         timeoutMs,
         signal
       );
-      const targetActorRef = await this.options.remoteActivationWaiter?.(
-        actor.actorId,
-        target.targetNodeRid,
-        timeoutMs,
-        signal
-      );
-      prepared?.commit(
-        target,
-        targetActorRef ?? toFrameworkActorRef(control.actor as never),
-        []
-      );
+      const nativeTargetActorRef = toFrameworkActorRef(control.actor as never);
+      prepared?.commit(target, nativeTargetActorRef, []);
+      try {
+        await this.options.remoteActivationWaiter?.(
+          actor.context.actorId,
+          target.targetNodeRid,
+          timeoutMs,
+          signal
+        );
+      } catch (error) {
+        this.options.postCommitErrorReporter?.(error);
+      }
     } else {
       prepared?.commit(target, toFrameworkActorRef(control.actor as never), []);
     }
     if (!remote && state.actorType !== undefined) {
       this.options.postCommitLocation?.joinedEventually(
         state.actorType,
-        actor.actorId,
+        actor.context.actorId,
         spotRouteTarget?.routerChannelId ?? '',
         toFrameworkRoutingId(control.location.spotId ?? target.spotId),
         control.location.spotGeneration,
@@ -251,7 +257,7 @@ export class ZLinkLocalNativeActorJoin {
         closeMeshCompletion(leaveCompletion);
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor SPOT leave failed for '${actor.actorId}' with result '${leaveCompletion.terminalResult}' and errno '${leaveCompletion.failureErrno}'.`
+          `Actor SPOT leave failed for '${actor.context.actorId}' with result '${leaveCompletion.terminalResult}' and errno '${leaveCompletion.failureErrno}'.`
         );
       }
       closeMeshCompletion(leaveCompletion);
@@ -274,7 +280,7 @@ export class ZLinkLocalNativeActorJoin {
       closeMeshCompletion(completion);
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        `Actor entry SPOT join failed for '${actor.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
+        `Actor entry SPOT join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
       );
     }
 
@@ -283,7 +289,7 @@ export class ZLinkLocalNativeActorJoin {
     if (state.actorType !== undefined) {
       this.options.postCommitLocation?.leftEventually(
         state.actorType,
-        actor.actorId,
+        actor.context.actorId,
         toFrameworkRoutingId(control.location.spotId ?? nodeRid),
         control.location.spotGeneration,
         control.location.membershipEpoch,
@@ -322,28 +328,54 @@ export class ZLinkLocalNativeActorJoin {
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
   ): Promise<void> {
-    const operationId = node.requestToNode(
-      toBindingRoutingId(targetNodeRid),
-      Buffer.from(JSON.stringify({
-        packetName: ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL,
-        transferId,
-        actorId,
-        succeeded
-      })),
-      { timeoutMs }
-    );
-    const completion = await completions.wait(operationId, signal);
-    try {
-      if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorRouteNotFound,
-          `Actor '${actorId}' source leave terminal result was not acknowledged.`
+    const deadline = Date.now() + (timeoutMs ?? 30_000);
+    const payload = Buffer.from(JSON.stringify({
+      packetName: ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL,
+      transferId,
+      actorId,
+      succeeded
+    }));
+    for (;;) {
+      throwIfAborted(signal);
+      const remainingMs = Math.max(1, deadline - Date.now());
+      let completion;
+      try {
+        const operationId = node.requestToNode(
+          toBindingRoutingId(targetNodeRid),
+          payload,
+          { timeoutMs: remainingMs }
         );
+        completion = await completions.wait(operationId, signal);
+      } catch (error) {
+        if (!isRetryableTerminalRouteFailure(error) || Date.now() >= deadline) {
+          throw error;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        continue;
       }
-    } finally {
-      closeMeshCompletion(completion);
+      const retry = completion.terminalResult === RequestResult.NotConnected
+        && Date.now() < deadline;
+      try {
+        if (!retry && (completion.terminalResult !== 0 || completion.failureErrno !== 0)) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+            `Actor '${actorId}' source leave terminal result was not acknowledged.`
+          );
+        }
+      } finally {
+        closeMeshCompletion(completion);
+      }
+      if (!retry) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
   }
+}
+
+function isRetryableTerminalRouteFailure(error: unknown): boolean {
+  return error instanceof Error && (
+    error.message.includes('target route is not connected')
+    || error.message.includes('Transport endpoint is not connected')
+  );
 }
 
 function normalizeNativeActorRef(actor: ActorRef): ActorRef {

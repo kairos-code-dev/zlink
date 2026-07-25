@@ -173,7 +173,7 @@ sealed class CreateGameHandler(
 {
     public async ValueTask<CreateGameRes> HandleAsync(
         CreateGameReq request,
-        ZLinkRequestContext context,             // framework가 주입하는 요청 메타(correlation 등)
+        IZLinkMessageContext context,            // framework가 주입하는 요청 메타(correlation 등)
         CancellationToken cancellationToken)
     {
         // 실제론 여기서 room SPOT을 만든다 — 그 흐름은 06-spot으로 이어진다.

@@ -424,12 +424,21 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     ISpot CreateSpot();
     ISpot EntrySpot();
     ISpot GetOrCreateSpot(string spotId, out bool created);
+    ISpot GetOrCreateReservedSpot(
+        string spotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        out bool created);
     ActorRef CreateActor(string actorId, IReadOnlyList<Message>? creationParts = null, TimeSpan timeout = default);
     ActorRef CreateReservedActor(
         string actorId,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message>? creationParts = null,
         TimeSpan timeout = default);
+    void SetActorAuthority(
+        ActorRef actor,
+        ulong authorityOwnerGeneration);
     bool ActorLookup(string actorId, out ActorLocation location);
     MeshOperationId DestroyActor(ActorRef actor, TimeSpan timeout = default);
     MeshOperationId JoinSpot(ActorRef actor, RoutingId targetNodeRid, string targetSpotId,

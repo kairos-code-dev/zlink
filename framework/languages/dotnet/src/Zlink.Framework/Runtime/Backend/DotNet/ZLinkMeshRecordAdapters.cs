@@ -80,11 +80,14 @@ internal static class ZLinkMeshRecordAdapters
         // redeem it.
         var flags = record.Kind == MeshRecordKind.ActorRequest ? 1u : 0u;
         var parts = new ZLinkBackendActorPart[messages.Count];
+        var sourceSpotRid = string.IsNullOrEmpty(record.SourceSpotId)
+            ? default
+            : ZLinkSpotId.ToNativeRoutingId(record.SourceSpotId);
         for (var i = 0; i < parts.Length; i++)
             parts[i] = new ZLinkBackendActorPart(
                 actor,
                 record.SourceNodeRid,
-                ZLinkSpotId.ToNativeRoutingId(record.SourceSpotId),
+                sourceSpotRid,
                 requestId,
                 flags,
                 messages[i],

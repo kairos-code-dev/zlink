@@ -189,13 +189,19 @@ Framework는 다음 세 종류를 relocation unit으로 inventory한다.
 
 - User Spot과 seal 시점의 member Actor 전체를 묶은 하나의 aggregate
 - User Spot aggregate에 속하지 않는 standalone Actor 하나
-- Actor membership이 없는 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) 하나
+- Actor membership이 없는 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) 하나
 
 Entry Spot 자체는 relocation unit이 아니다. Coordinator는 각 unit queue에 `Retire` intent를 infrastructure
 notification으로 예약한다. 이 notification은 application callback을 호출하거나 readiness 값을 application에
 요구하지 않는다. Notification을 처리한 queue turn 경계에서만 unit이 relocation-ready가 된다. 그 경계에서 필요한
 permit을 nonblocking으로 얻지 못하면 seal하지 않고 다음 notification을 예약하며 application message와 timer turn을
 계속 처리한다.
+
+`SpotWide` User Spot aggregate는 공유 Spot gate 경계에서 notification을 처리한다. `PerActor` aggregate는
+Spot lane, seal 시점의 모든 member Actor lane과 timer별 lane을 포함하는 barrier generation을 예약한다.
+각 lane은 현재 claim을 마친 뒤 barrier에 도착한다. `Yield`로 Spot gate를 반납한 `SpotWide` Actor callback은
+Actor FIFO claim이 끝나지 않았으므로 barrier 도착으로 보지 않는다. Framework는 준비된 lane만 먼저
+capture하거나 일부 participant만 seal하지 않는다.
 
 하나라도 준비할 수 없으면 preflight read와 tentative coordination을 정리하고 `Blocked`를 반환한다. 이 경우 host state는
 `Serving`이고 readiness, descriptor와 application admission도 그대로 유지된다. 한 process에
@@ -217,8 +223,11 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
    수 있는 최대 64 MiB와 Framework가 이미 소유한 queue·journal bytes, timer·manifest·metadata의 deterministic
    encoded upper bound를 더한 값이다. 어느 permit이든 실패하면 provisional permit을 모두 즉시 반환하고 unit을
    seal하지 않는다.
-2. Permit을 모두 얻은 같은 turn 경계에서 application ingress와 timer dispatch를 원자적으로 seal한다. 실행 중인
-   turn은 이미 끝났으므로 새 application callback을 시작하지 않는다.
+2. Permit을 모두 얻으면 해당 unit의 barrier generation을 게시하고 application ingress, timer dispatch와
+   아직 시작하지 않은 continuation admission을 원자적으로 seal한다. `SpotWide`에서는 공유 gate claim이
+   0이 될 때까지 기다리고, `PerActor`에서는 Spot lane, 모든 member Actor lane과 timer별 lane의 active
+   claim이 0이 될 때까지 기다린다. 모든 lane이 같은 generation에 도착하기 전에는 새 application
+   callback이나 `Capture`를 시작하지 않는다.
 3. Seal 시점에 실행하지 않은 message queue, accepted journal, timer logical registration·pending tick과 Framework
    manifest·metadata를 exact boundary로 고정한다. `Snapshot`이면 `Capture`를 실행해 application state를 추가한다.
 4. Immutable relocation root를 저장하고 `Captured` authority를 연결한 뒤 exact inventory로 target reservation,
@@ -228,9 +237,11 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
 6. Standalone Actor는 target lifecycle callback과 accepted message·journal replay를 완료하고 Framework timer를
    자동 복원한다. 그 뒤 old Entry membership과 남은 source resource의 durable cleanup,
    `Completed`를 마친다. 같은 ObjectGeneration의 Actor가 Session에 bind되어 있으면
-   command 44·45로 Session owner가 보관한 해당 Actor의 binding route만 target owner로
-   갱신하고 routed ACK를 받는다. 같은 Session의 다른 Actor route와 physical STREAM
-   connection은 유지하며 steady normalization 뒤 target packet·push admission을 연다.
+   Session owner가 보관한 해당 Actor의 binding route, 즉 현재 Actor owner에 전달할 경로를 target owner로 갱신해 달라고
+   요청하고 확인을 받는다(`command 44·45`). 같은 Session의 다른 Actor route와 physical STREAM
+   connection은 유지한다. Route 갱신은 같은 `ObjectGeneration`에만 적용하며 새
+   incarnation은 application이 명시적으로 다시 bind해야 한다. Steady normalization 뒤
+   target packet·push admission을 연다.
 7. Unit의 outbound·inbound·callback·byte permit을 반환하고 다음 ready unit을 진행한다.
 
 Process별 기본 상한은 active outbound relocation unit 64개, active inbound relocation unit 64개, encoded payload
@@ -378,11 +389,12 @@ Standalone Actor, User Spot aggregate와 Instance Spot relocation은
 
 Bound STREAM connection 자체는 이동하지 않는다. Actor owner·membership commit 뒤
 callback·journal replay와 durable source cleanup, `Completed`를 끝낸 다음 같은
-ObjectGeneration을 검증한다. 그 뒤 Framework는 command 44·45로 Session owner가 보관한
-해당 Actor의 binding route, session relay authority와 binding generation만 target owner
-기준으로 갱신하고 routed ACK를 받는다. 같은 Session의 다른 Actor route는 바꾸지
-않으며 steady normalization 전에는 target의 session packet·push admission을 열지
-않는다. Stale packet과 reply는 거부한다. Runtime timer handle과 callback continuation도
+ObjectGeneration을 검증한다. 그 뒤 Framework는 Session owner가 보관한 해당 Actor의
+[binding route](01-glossary.ko.md#binding-route), session relay authority와 binding generation만 target owner 기준으로 갱신해
+달라고 요청하고 확인을 받는다(`command 44·45`). 같은 Session의 다른 Actor route는 바꾸지
+않으며, route 갱신은 같은 `ObjectGeneration`에만 적용한다. 새 incarnation은
+application이 명시적으로 다시 bind해야 한다. Steady normalization 전에는 target의
+session packet·push admission을 열지 않는다. Stale packet과 reply는 거부한다. Runtime timer handle과 callback continuation도
 이동하지 않는다. Framework는 seal 시점의 timer logical registration, 다음 실행 시각과 이미 발생했지만 실행하지
 않은 pending tick을 relocation payload에 기록한다. Target은 `Restore` 뒤 이 registration을 자동으로 복원하고 pending
 tick을 accepted queue 순서에 맞춰 dispatch한다. Application은 `Capture` payload에 Framework timer를 중복 저장하거나

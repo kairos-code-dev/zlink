@@ -12,21 +12,10 @@ public interface IZLinkRouteClient
         RoutingId targetNodeRid,
         TRequest request);
 
-    /// <summary>
-    /// Sends to one ready positive-weight member of the ChannelName on the
-    /// named mesh. Selection and submit are one atomic operation; the selected
-    /// RID is not returned and the send is not re-submitted to another member.
-    /// </summary>
     IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
 
-    /// <summary>
-    /// Requests one ready positive-weight member of the ChannelName on the
-    /// named mesh. Selection and submit are one atomic operation; a timeout or
-    /// disconnect after submit is not retried on another member because the
-    /// request may already have executed.
-    /// </summary>
     IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
@@ -36,7 +25,7 @@ public interface IZLinkRouteSendHandler<in TMessage>
 {
     ValueTask HandleAsync(
         TMessage message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken);
 }
 
@@ -44,31 +33,31 @@ public interface IZLinkRouteRequestHandler<in TRequest, TReply>
 {
     ValueTask<TReply> HandleAsync(
         TRequest request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken);
 }
 
-public sealed class ZLinkRouteSendContext : IZLinkHandlerContext
+public sealed class ZLinkRouteMessageContext : IZLinkMessageContext
 {
-    internal ZLinkRouteSendContext(
-        string meshName,
+    internal ZLinkRouteMessageContext(
+        string? meshName,
         string? channelName,
         RoutingId sourceNodeRid,
         string packetName,
         string? contentType,
-        CancellationToken connectionAborted,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata,
+        string? correlationId)
     {
         MeshName = meshName;
         ChannelName = channelName;
         SourceNodeRid = sourceNodeRid;
         PacketName = packetName;
         ContentType = contentType;
-        ConnectionAborted = connectionAborted;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        CorrelationId = correlationId;
     }
 
-    public string MeshName { get; }
+    public string? MeshName { get; }
 
     public string? ChannelName { get; }
 
@@ -78,32 +67,34 @@ public sealed class ZLinkRouteSendContext : IZLinkHandlerContext
 
     public ZLinkMessageMetadata Metadata { get; }
 
-    public CancellationToken ConnectionAborted { get; }
+    public string? CorrelationId { get; }
 
     public RoutingId SourceNodeRid { get; }
 }
 
-public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
+public sealed class ZLinkPublishMessageContext : IZLinkMessageContext
 {
-    internal ZLinkRouteRequestContext(
-        string meshName,
+    internal ZLinkPublishMessageContext(
+        string? meshName,
         string? channelName,
-        RoutingId sourceNodeRid,
         string packetName,
         string? contentType,
-        CancellationToken connectionAborted,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata,
+        string? correlationId,
+        string topic,
+        string? source)
     {
         MeshName = meshName;
         ChannelName = channelName;
-        SourceNodeRid = sourceNodeRid;
         PacketName = packetName;
         ContentType = contentType;
-        ConnectionAborted = connectionAborted;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        CorrelationId = correlationId;
+        Topic = topic;
+        Source = source;
     }
 
-    public string MeshName { get; }
+    public string? MeshName { get; }
 
     public string? ChannelName { get; }
 
@@ -113,7 +104,9 @@ public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
 
     public ZLinkMessageMetadata Metadata { get; }
 
-    public CancellationToken ConnectionAborted { get; }
+    public string? CorrelationId { get; }
 
-    public RoutingId SourceNodeRid { get; }
+    public string Topic { get; }
+
+    public string? Source { get; }
 }

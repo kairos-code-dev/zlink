@@ -487,7 +487,10 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
             var first = value.IndexOf('|');
             var second = value.IndexOf('|', first + 1);
             var generation = long.Parse(value[..first]);
-            var nodeRid = RoutingId.FromHex(value[(first + 1)..second]);
+            var encodedNodeRid = value[(first + 1)..second];
+            var nodeRid = encodedNodeRid.Length == 0
+                ? default
+                : RoutingId.FromHex(encodedNodeRid);
             var renewedAt = DateTimeOffset.FromUnixTimeMilliseconds(
                 long.Parse(value[(second + 1)..]));
             leases.Add(new ZLinkOwnerLease(

@@ -28,7 +28,7 @@ same-process Actor [authority](01-glossary.ko.md#authority)나 local-only bindin
 
 Application은 session object, `ActorRef`, typed payload·reply와 bound-session API만
 사용한다. Node RID, STREAM transport handle, raw relay envelope, request sequence,
-[AuthorityOwnerGeneration](01-glossary.ko.md#authority-owner-generation)과 endpoint를 직접 조립하거나 보관하지 않는다.
+[AuthorityOwnerGeneration](01-glossary.ko.md#authorityownergeneration)과 endpoint를 직접 조립하거나 보관하지 않는다.
 
 1. Session callback이 client를 인증하고 domain Actor identity와 type을 정한다.
 2. Global ActorId로 Ready ActorRef를 lookup하거나 application 정책에 따라 Actor를 명시적으로 생성한다.
@@ -125,6 +125,11 @@ Bind가 성공하면 session owner는 검증된 Actor route를 binding에 저장
 한 번 전달하거나 typed stale error로 끝낸다. Location Store에서 새 `ActorRef`를 찾아
 같은 message를 다른 owner에게 자동으로 다시 보내지 않는다.
 
+저장한 route는 current owner lease와 local admission deadline 안에서만 유효하다.
+Location Store가 일시적으로 사용할 수 없더라도 이 lease나 deadline을 연장하지
+않는다. 따라서 Store 장애가 난 뒤에도 Framework가 새 route를 추측하거나 이전
+binding을 무기한 사용하는 동작은 하지 않는다.
+
 Binding identity는 session owner Node RID, 그 node의 lifecycle generation과
 owner-local binding generation을 함께 사용한다. Binding generation의 대소 비교는
 같은 session owner lifecycle 안에서만 유효하다. 다른 MeshNode가 bind하거나 session
@@ -215,8 +220,10 @@ Deadline 또는 callback failure가 발생해도 나머지 binding cleanup을 �
 Actor가 속한 현재 Entry Spot 또는 User Spot은 이 통지를
 `OnDisconnectActorAsync(...)`로 받는다. Public `NotifyDisconnectedAsync(...)`는
 physical connection이 유지된 상태에서 application이 선택한 Actor 하나에 같은 logical
-notification을 명시적으로 보내는 operation이다. 두 통지는 connection 종료 사실만
-알리며 Actor를 destroy하거나 Spot membership을 변경하지 않는다.
+notification을 명시적으로 보내는 operation이다. 이 언어 중립 operation을
+`NotifyDisconnected`라 하며 `.NET` exact interface에서는
+`NotifyDisconnectedAsync(...)`로 표현한다. 두 통지는 connection 종료 사실만 알리며
+Actor를 destroy하거나 Spot membership을 변경하지 않는다.
 
 ```mermaid
 sequenceDiagram
@@ -267,6 +274,11 @@ route 변경이며, ACK가 끝나기 전에는 target Actor의 session packet·p
    이전·target AuthorityOwnerGeneration, binding generation, session owner lease와 high-water를 검증해 해당
    Actor route만 atomic switch하고 command 45 routed ACK를 보낸다.
 8. Maintenance authority를 steady target으로 normalize한 뒤에만 target Actor packet·push admission을 연다.
+
+Route 갱신은 binding이 가리키는 `ObjectGeneration`과 같은 Actor relocation에만
+허용한다. 같은 ActorId라도 새 incarnation이 만들어졌다면 Framework가 기존 binding을
+그 새 Actor로 바꾸지 않으며, application이 새 `ActorRef`로 명시적인 bind를 시작해야
+한다. 같은 Session에 bind된 다른 Actor는 route·token·generation을 유지한다.
 
 ```mermaid
 sequenceDiagram
@@ -351,6 +363,9 @@ Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의
 - Physical disconnect 때 Framework가 current binding snapshot 전체에 자동 all-settled 통지하고 current
   Spot의 `OnDisconnectActorAsync(...)`를 exact binding identity마다 최대 한 번 호출한다.
 - Rebind 뒤 이전 token과 authority fence가 current binding을 바꾸지 않는다.
+- 두 node 사이의 bind, session ingress와 Actor push가 각각 command 38,
+  bound-session tail을 포함한 command 24, command 36의 raw ROUTER 경로를
+  사용한다.
 - Request reply가 original STREAM correlation으로 한 번 완료된다.
 - Physical STREAM connection과 session object를 Actor target process로 이동하지 않는다.
 - Relocation commit 뒤 session owner의 해당 Actor route가 갱신되며 route 갱신 ACK 전에는

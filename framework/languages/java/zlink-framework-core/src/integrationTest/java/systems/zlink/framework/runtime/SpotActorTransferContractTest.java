@@ -40,7 +40,7 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotKind;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.framework.spots.SpotHandleResolver;
 
@@ -539,7 +539,7 @@ final class SpotActorTransferContractTest {
         public CompletionStage<ProbeReply> handle(
             ContractTargetSpot spot,
             ContractActor actor,
-            ZLinkSpotActorRequestContext context,
+            ZLinkMessageContext context,
             ProbeRequest request) {
             EVENTS.add("target-packet");
             return CompletableFuture.completedFuture(

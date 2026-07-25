@@ -3,6 +3,12 @@ package systems.zlink.framework.actors;
 import java.util.Optional;
 
 public interface ZLinkActorContext {
+    String actorId();
+
+    long objectGeneration();
+
+    String meshName();
+
     Optional<String> spotId();
 
     ZLinkBoundSession boundSession();

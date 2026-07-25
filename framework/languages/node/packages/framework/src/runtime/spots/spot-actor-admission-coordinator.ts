@@ -192,7 +192,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       await transfer?.publishRoutedActorOwnership(actor);
       return results;
     } catch (error) {
-      activation.commitActorDeparture(actor.actorId);
+      activation.commitActorDeparture(actor.context.actorId);
       transfer?.clearRoutedActor(actor);
       try {
         await transfer?.rollbackRoutedActor(actor);
@@ -213,7 +213,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
       (parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
         this.dispatchActorPacketDirect(
           activation,
-          actor.actorId,
+          actor.context.actorId,
           parts,
           returnResponse,
           remoteBoundSessionTarget,
@@ -223,7 +223,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
         sourceName: 'zlink.framework.actor-handoff',
         timestamp: new Date(),
         marker: 'backlog_enqueued',
-        actorId: actor.actorId,
+        actorId: actor.context.actorId,
         index
       })
     );

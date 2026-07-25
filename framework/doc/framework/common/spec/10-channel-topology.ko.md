@@ -367,6 +367,10 @@ Client와 Server role 목록은 startup 뒤 바꿀 수 없다. Server membership
 `0..10000` 범위에서 실행 중 변경할 수 있으며 기본값은 `100`이다. 범위 밖 값은
 startup 설정과 runtime 변경에서 configuration error다.
 
+Framework는 readiness, capacity와 drain 조건을 먼저 적용한 뒤 남은 후보의 positive
+weight 합계를 최소 64-bit 정수로 계산한다. 이 합계가 overflow하지 않도록 계산한
+비율만 target 선택에 사용한다.
+
 [Weight](01-glossary.ko.md#weight) 변경은 다음 대상에만 적용한다.
 
 - 이후 시작하는 ChannelName select-one
@@ -408,7 +412,7 @@ Framework는 두 송신 경로 사이의 live migration, message 중계 또는 p
 
 ### 4.5 Channel handler를 구분하는 값
 
-Channel handler는 ChannelName, message kind와 packet identity의 조합으로 구분한다.
+Channel handler는 `(ChannelName, message kind, packet identity)` 조합으로 구분한다.
 ChannelName만으로 현재 process의 송신 경로를 결정할 수 있으므로 Channel handler
 context에는 MeshName을 제공하지 않는다.
 
@@ -496,7 +500,7 @@ Peer endpoint를 얻는 방법은 automatic과 manual 두 가지다.
 | Automatic | Redis Location Store에 게시된 MeshNode descriptor에서 endpoint를 찾는다. | 공식 Redis extension을 명시적으로 등록해야 한다. |
 | Manual | Application이 endpoint와 필요하면 expected RID를 등록한다. | Peer 연결만 사용한다면 필요하지 않다. |
 
-[Manual mode](01-glossary.ko.md#manual-discovery)도
+[Manual mode](01-glossary.ko.md#manual-endpoint)도
 [automatic mode](01-glossary.ko.md#automatic-discovery)와 같은 handshake와 중복
 연결 제거 규칙을 사용한다.
 Expected RID를 지정하면 실제 remote RID가 다를 때 연결에 실패한다. Expected RID를

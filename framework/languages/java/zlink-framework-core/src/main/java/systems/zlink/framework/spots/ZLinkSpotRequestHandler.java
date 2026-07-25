@@ -1,7 +1,7 @@
 package systems.zlink.framework.spots;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 
 public interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
     CompletionStage<TReply> handle(TSpot spot, TRequest request);
@@ -9,7 +9,7 @@ public interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
     default CompletionStage<TReply> handle(
         TSpot spot,
         TRequest request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         return handle(spot, request);
     }
 }

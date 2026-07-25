@@ -87,6 +87,7 @@ class instance_spot_context_t;
 class spot_handler_registry_t;
 class instance_spot_handler_registry_t;
 struct spot_actor_join_response_t;
+struct actor_create_response_t;
 struct spot_create_response_t;
 
 template <typename TActor>
@@ -125,7 +126,7 @@ public:
     virtual task_t<void> on_closing(
       const spot_closing_context_t &context,
       std::stop_token cleanup_cancellation);
-    virtual task_t<void> on_create_actor(
+    virtual task_t<actor_create_response_t> on_create_actor(
       TActor &actor,
       const message_t &create_request);
     virtual task_t<void> on_actor_relocated(TActor &actor);
@@ -242,6 +243,23 @@ struct spot_actor_join_response_t {
 
     template <typename TReply>
     static spot_actor_join_response_t reject(TReply reply);
+};
+
+struct actor_create_response_t {
+    bool accepted = true;
+    std::optional<zlink::framework::message_t> reply;
+
+    static actor_create_response_t accept(
+      std::optional<message_t> reply = std::nullopt);
+
+    template <typename TReply>
+    static actor_create_response_t accept(TReply reply);
+
+    static actor_create_response_t reject(
+      std::optional<message_t> reply = std::nullopt);
+
+    template <typename TReply>
+    static actor_create_response_t reject(TReply reply);
 };
 
 enum class spot_create_state_t {
@@ -370,7 +388,7 @@ Spot Actor Join / Relocation 관련 interface도 이 문서에 기록된 정식 
 
 `spot_close_reason_t`의 값은 `explicit_close=0`, `host_shutdown=1`, `relocation_out=2`다. Context의
 `deadline`은 closing operation의 absolute UTC time이다. Framework는 callback invocation 전에는
-`cleanup_cancellation`에 stop을 요청하지 않고 deadline이 끝날 때 요청한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)만
+`cleanup_cancellation`에 stop을 요청하지 않고 deadline이 끝날 때 요청한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)만
 callback을 받고 Actor별 closing callback은 제공하지 않는다. Host Shutdown은 Actor membership과 local instance가
 유효한 상태에서 callback을 실행하고 completion 뒤 scope와 authority를 정리한다. Standalone Actor relocation은
 Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
@@ -445,7 +463,7 @@ Source와 target은 다음 순서로 역할을 나눈다.
    보낸다. 이 envelope는 application handler에 전달하지 않는 Framework 내부 message다.
 4. Target은 metadata presence와 frame을 포함한 complete envelope를 Relocation Store에 immutable recovery
    root로 먼저 저장한다.
-5. 같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 등록할 reservation을 요청한다. Pending
+5. 같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 등록할 reservation을 요청한다. Reserved
    snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다.
 6. Reservation을 먼저 확보한 target만 factory와 initialize를 실행하고 최초 message를 durable activation
    inbox의 첫 record로 확정한다.
@@ -472,7 +490,7 @@ sequenceDiagram
 먼저 reservation을 확보했다면 현재 target은 factory를 만들지 않는다. 대신 current authority를 읽어 owner로
 reroute하거나 진행 중인 attempt에 합류한다. Source는 `Ready` 뒤 같은 message를 다시 보내지 않으므로 최초
 message는 한 번만 queue에 들어간다. Authority와 일치하지 않는 local-only instance는 message를 처리할 수
-없다. 실패는 exact Abort로 authority와 pending capacity를 함께 정리한다.
+없다. 실패는 exact Abort로 authority와 reserved capacity를 함께 정리한다.
 Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
 갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 

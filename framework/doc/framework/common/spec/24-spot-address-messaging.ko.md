@@ -21,11 +21,18 @@ Framework가 target 선택, Store transaction, route cache와 activation barrier
 
 ## 2. Spot identity와 reference
 
-User·[Instance Spot](01-glossary.ko.md#entry-user-instance-spot)은 Location Store namespace 전체에서 유일한 Spot ID로 식별한다.
+User·[Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)은 Location Store namespace 전체에서 유일한 Spot ID로 식별한다.
 Spot ID는 UTF-8 encoded 크기 1..255 bytes의 case-sensitive exact string이다.
+Spot ID는 transport routing identity가 아니다. MeshNode의 `NodeRid`만 Core
+`RoutingId`를 사용한다. Framework는 Spot address를 Core routing ID로 변환하거나
+Spot ID 문자열을 parse하여 owner node를 추론하지 않는다. Location Store에서 current
+authority를 조회하고 그 결과의 `NodeRid`를 transport route로 사용한다.
+
 Service wire에서 Spot ID와 source·target Spot ID에서 파생한 field는 `text8` 또는 `optional-text8`로
 encode한다. Node RID field만 `rid` 또는 `optional-rid` encoding을 사용한다. Framework는 이전 binary
 Spot address를 자동으로 decode하거나 base64·replacement character string으로 변환하지 않는다.
+Invalid UTF-8, 0-byte와 256-byte 이상 값은 application admission과 Store mutation 전에
+protocol 또는 configuration failure로 거부한다.
 
 `MeshName`은 [Spot](01-glossary.ko.md#spot)을 처음 배치할 곳을 정할 때만 사용하며 Spot identity에는 포함되지
 않는다. 따라서 같은 Spot ID를 `MeshName`, [Spot kind](01-glossary.ko.md#spot-kind) 또는 stable type만 다르게 하여
@@ -36,12 +43,27 @@ case folding을 적용하지 않으며 언어 class FQN을 Store 또는 wire ide
 Server에 같은 [stable type](01-glossary.ko.md#stable-type)을 중복 등록하면 startup 오류다. Entry Spot ID는 Framework가 발급하며 caller가
 create 대상으로 지정하지 않는다.
 
-`<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식은 Framework가 발급하는 Entry Spot ID를 위해 예약한다.
+`<diagnostic-prefix>-entry-<lowercase-canonical-uuid-v4>` 형식은 Framework가 발급하는 Entry Spot ID를 위해
+예약한다. UUID 부분은 MeshNode RID와 별도로 만드는 RFC 4122 UUID v4 값이다.
 Caller가 지정한 User·Instance Spot ID가 이 형식과 일치하면 Location Store reservation이나 factory를
 시작하기 전에 `InvalidConfiguration`으로 거부한다. Framework는 Spot ID 문자열로 MeshNode 관계를 계산하지
 않고 MeshNode descriptor가 게시한 exact Entry Spot ID mapping을 사용한다.
-Transport RID와 Spot ID의 발급 형식과 충돌 처리는
-[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-routing-id-정책)이 정의한다.
+
+Entry Spot ID는 같은 Object Server lifecycle 동안 유지한다. Endpoint가 같은 replacement lifecycle에서도
+새 MeshNode RID와 새 Entry Spot ID를 각각 발급한다. Framework는 full MeshNode RID를 이어 붙여 Entry Spot
+ID를 만들지 않는다.
+
+Object Server descriptor의 `NewClaim`은 `(MeshName, NodeRid)` descriptor identity와 `EntrySpotId`의 global
+Spot identity claim을 exact owner lease와 lifecycle에 연결하여 하나의 Location Store transaction에서
+생성한다. 둘 중 하나라도 active claim과 충돌하면 descriptor, Entry claim과 index를 모두 변경하지 않고
+첫 claim에서 `SpotIdConflict`를 반환한다. 두 번째 Entry UUID나 claim은 만들지 않는다.
+
+Descriptor remove와 owner cleanup은 저장된 descriptor의 exact owner lease와 lifecycle이 요청과 일치할
+때만 연결된 Entry claim을 같은 transaction에서 해제한다. 이전 lifecycle의 stale cleanup은 replacement
+lifecycle의 descriptor나 Entry claim을 삭제할 수 없다. `EntrySpotId`는 descriptor immutable field와
+immutable digest에 포함하며 `Renew` 또는 mutable descriptor update로 바꿀 수 없다. User·Instance Spot의
+generic `Reserve`도 같은 global namespace를 검사하므로 active Entry Spot ID를 caller-created Spot
+authority로 사용할 수 없다.
 
 `SpotRef`는 조회한 시점의 위치를 나타내는 변경할 수 없는 snapshot이다.
 
@@ -240,6 +262,14 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
    identity·reply correlation·deadline, command 39의 optional metadata 존재 여부와
    metadata frame 및 최초 application message를 하나의 activation envelope에 넣어
    target으로 보낸다. 이 시점에는 Source가 자신이나 target을 owner로 등록하지 않는다.
+   Command 39의 route kind `1`은 이미 Ready인 authority의 exact generation fence를
+   사용한다. Missing cold activation은 route kind `2`를 사용하며 target Mesh·node
+   RID·lifecycle, Spot ID, stable type, descriptor version과 deadline만 전달한다.
+   아직 존재하지 않는 authority generation은 포함하지 않는다. Route kind `2`의
+   deadline은 Relocation Store에 기록하는 `instance-activation-recovery-v1`의
+   deadline과 같아야 한다. Cold activation send와 request는 모두 중복 실행을 막는
+   non-zero operation identity를 사용하며 metadata flag와 ZLIA metadata presence도
+   같아야 한다.
 8. Target은 Location Store의 현재 owner 기록과 자신의 Spot 목록을 함께 확인한다.
    현재 owner가 자신이고 같은 generation의 Spot이 이미 있으면 최초 message를 그
    Spot의 기존 queue에 넣는다. 자신의 목록에 Spot이 있더라도 Store가 다른 owner나
@@ -249,12 +279,14 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
    Reference, SHA-256, encoded size와 retention을 확인한 다음 자신에게 이 Spot을
    만들어도 되는지 `Reserve`로 요청한다. Location Store는 target의 lifecycle, owner
    lease, type과 남은 capacity를 다시 확인한다. 조건을 만족하면 object 상태를
-   `Missing`에서 `Creating`으로 바꾸고 recovery receipt, provider가 발급한 reservation
-   fence와 생성 중 capacity를 한 transaction으로 기록한다.
+   `Missing`에서 `Creating`으로 바꾼다. 이를 `Missing → Creating` transition이라
+   한다. 같은 transaction에서 recovery receipt, provider가 발급한 reservation
+   fence와 생성 중 capacity를 기록한다.
 10. 이 예약에 성공한 target만 factory와 initialize를 실행한다. 최초 message를
     durable activation inbox의 첫 record로 확정할 때까지 handler 실행은 barrier로
-    차단한다. 같은 reservation의 `Ready` commit은 recovery root와 replay cursor를
-    authority에 유지하면서 active capacity를 게시한다. Runtime은 첫 record를 local
+    차단한다. 같은 reservation의 `Commit`은 recovery root와 replay cursor를 유지하는
+    `Ready` authority를 게시하고
+   active capacity를 게시한다. Runtime은 첫 record를 local
     queue 선두에 복원한 뒤 barrier를 연다. 후속 message는 이 record를 추월할 수
     없으며 Source는 준비 완료 뒤 같은 message를 다시 보내지 않는다.
 11. 최초 handler의 완료를 durable하게 기록하고 [replay cursor](01-glossary.ko.md#replay-cursor)를 해당 inbox
@@ -312,6 +344,7 @@ type 수와 관계없이 전송할 수 있다.
 Spot direct send/request의 시작 method는 global Spot ID와 typed payload만 받는다. Framework는 positive route cache 또는
 Location Store에서 current Ready incarnation과 owner route를 resolve하고 selected ObjectGeneration을 wire
 admission에 고정한다. Local과 remote owner는 같은 handler, metadata와 completion 의미를 가진다.
+Instance intent가 없는 direct call은 existing-only operation이며, 이미 존재하는 Ready Spot만 대상으로 한다.
 
 - Missing, Creating과 Store failure는 negative cache에 저장하지 않는다.
 - Positive Ready cache는 current owner lease의 local admission deadline과 `RouteCacheMaxAge` 안에서만

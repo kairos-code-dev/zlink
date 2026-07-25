@@ -64,7 +64,7 @@ Actor는 다음 두 상태를 서로 독립적으로 관리한다.
 
 | 상태 축 | 가능한 상태 | 이 상태가 나타내는 것 |
 |---|---|---|
-| Spot membership | [Entry Spot](01-glossary.ko.md#entry-user-instance-spot), user Spot, 이동 중 | Actor의 logical 위치와 Spot membership을 나타낸다. |
+| Spot membership | [Entry Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot), user Spot, 이동 중 | Actor의 logical 위치와 Spot membership을 나타낸다. |
 | STREAM binding | unbound, bound | 현재 client session으로 push하거나 session payload를 받을 수 있는지를 나타낸다. |
 
 Actor가 user Spot에 존재하기 위해 bound session이 필요하지 않다. Session bind나
@@ -100,8 +100,9 @@ User Spot execution mode와 `Yield` continuation의 실행 규칙은
 
 ### 3.1 Deferred Join barrier
 
-Actor Join의 `Defer()`는 현재 handler가 끝난 뒤 Join을 실행하도록 예약하는 동기
-terminal이다. 호출한 자리에서는 target을 찾거나 Store에 접근하지 않는다. 현재
+Actor Join은 `JoinSpot(...)` 또는 `JoinEntrySpot(...)` call의 `Defer()`로 등록한다.
+`Defer()`는 현재 handler가 끝난 뒤 Join을 실행하도록 예약하는 동기 terminal이다.
+호출한 자리에서는 target을 찾거나 Store에 접근하지 않는다. 현재
 handler에 변경할 수 없는 Join 요청을 기록하고, 이 Actor의 다음 message가 Join보다
 먼저 실행되지 않도록 비활성 queue barrier만 등록한다.
 
@@ -110,6 +111,9 @@ Join call에는 `Async`, `await`, `submit`, coroutine terminal과 `Yield`를 제
 handler는 계속 실행하며, 마지막 awaited continuation까지 정상적으로 끝나야
 Framework가 barrier를 활성화하고 Join을 시작한다. Handler가 exception이나
 cancellation으로 끝나면 그 handler가 등록한 비활성 barrier를 모두 폐기한다.
+
+Registration은 Actor exact generation, current membership, immutable request
+snapshot, absolute deadline과 non-zero 128-bit operation ID를 고정한다.
 
 한 handler는 Join을 최대 64개까지 등록할 수 있다. Join request 하나의 encoded
 크기는 최대 1 MiB이며 같은 handler가 등록한 모든 Join request의 합계는 최대
@@ -228,9 +232,9 @@ Handler type과 signature는 언어별 공개 interface 문서가 정의한다.
 
 Actor와 Actor Context는 composition 관계다. Framework는 factory를 호출하기 전에 `ActorId`,
 `ObjectGeneration`, current `MeshName`, nullable current `SpotId`와 bound-session capability를 가진 exact
-Context를 만든다. Factory는 ID를 별도 인자로 받지 않고 이 Context만 받으며, 반환한 Actor는 전달받은
-Context를 read-only member로 그대로 노출해야 한다. 다른 Context를 반환하면 staging Actor를 Ready로
-공개하지 않는다.
+Context를 만든다. Factory는 ID를 별도 인자로 받지 않고 이 Context만 받는다. 반환한 Actor는 전달받은
+Context를 read-only `Context` member로 그대로 노출해야 하며 `Configure()`는 Context 인자를 받지 않는다.
+다른 Context를 반환하면 staging Actor를 Ready로 공개하지 않는다.
 
 Same-node Join은 Actor instance와 Context를 유지하고 membership commit에서 `SpotId`만 바꾼다. Cross-node
 Join은 Actor ID와 ObjectGeneration을 유지하되 target owner와 membership에 결합한 새 Context를 target
@@ -264,8 +268,9 @@ queue와 timer 정보는 이동 후에도 유지한다. 두 policy 모두 같은
 
 이동하는 Actor가 Session에 bind되어 있으면 owner·membership commit 뒤 callback·journal
 replay와 durable source cleanup을 완료하고 `Completed` authority CAS를 수행한다. 그 뒤
-Framework가 command 44·45로 Session owner에 저장된 해당 Actor binding route만 target
-owner로 갱신하고 routed ACK를 받는다. 같은 Session에 bind된 다른 Actor route와
+Framework가 Session owner에 저장된 해당 Actor binding route만 target owner로
+갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). 여기서 binding route는 Session owner가 현재
+Actor owner에 message를 보낼 때 사용하는 전달 경로다. 같은 Session에 bind된 다른 Actor route와
 physical STREAM connection은 유지한다. Steady normalization 전에는 target Actor의
 session packet·push admission을 열지 않는다. Route update는 같은 ObjectGeneration의
 relocation에만 허용하며 새 incarnation은 explicit bind가 필요하다.
@@ -419,7 +424,8 @@ Factory가 만든 Actor는 아직 외부에 공개되지 않은 staging instance
 application reply를 반환한다.
 
 - `Accepted`이면 initial Entry membership과 Ready authority를 commit하고 `Created`를
-  publish한다.
+  publish한다. 이 최초 생성 과정에서는 `OnActorJoin`과 joined notification을 호출하지
+  않는다.
 - `Rejected`이면 Ready authority와 message admission을 만들지 않는다. Staging Actor,
   Creating authority와 reserved capacity를 정리하고 `Rejected`를 publish한다.
 - Callback exception은 application이 선택한 `Rejected`가 아니라 typed creation

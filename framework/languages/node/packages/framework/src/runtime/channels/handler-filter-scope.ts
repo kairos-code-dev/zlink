@@ -1,6 +1,6 @@
 import type {
   Type,
-  ZLinkHandlerContext,
+  ZLinkMessageContext,
   ZLinkProviderResolver
 } from '../../contracts';
 
@@ -9,7 +9,7 @@ export interface ZLinkHandlerFilterScopeResolver {
 }
 
 export type ZLinkHandlerFilterScopeRunner = <T>(
-  context: ZLinkHandlerContext,
+  context: ZLinkMessageContext,
   callback: (resolver: ZLinkHandlerFilterScopeResolver) => Promise<T>
 ) => Promise<T>;
 

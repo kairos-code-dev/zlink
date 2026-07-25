@@ -2,6 +2,7 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.framework.actors.ZLinkActor;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.framework.ZLinkMessageContext;
 
 public interface ZLinkEntrySpotActorRequestHandler<
     TEntrySpot extends ZLinkEntrySpot<?>,
@@ -11,6 +12,6 @@ public interface ZLinkEntrySpotActorRequestHandler<
     CompletionStage<TReply> handle(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         TRequest request);
 }

@@ -218,7 +218,7 @@ public interface IZLinkSpotActorMembershipLifecycle<TActor>
     }
 }
 
-public interface IZLinkSpotActorLifecycle<TActor>
+public interface IZLinkUserSpotActorLifecycle<TActor>
     : IZLinkSpotActorMembershipLifecycle<TActor>
     where TActor : IZLinkActor
 {
@@ -228,7 +228,7 @@ public interface IZLinkSpotActorLifecycle<TActor>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkSpot<TActor> : IZLinkSpot, IZLinkSpotActorLifecycle<TActor>
+public interface IZLinkSpot<TActor> : IZLinkSpot, IZLinkUserSpotActorLifecycle<TActor>
     where TActor : IZLinkActor;
 
 public readonly record struct ZLinkActorCreateResponse(
@@ -338,7 +338,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
 Actor membership과 local instance가 유효한 상태에서 callback을 실행하고 completion 뒤 scope와 [authority](../../../../01-glossary.ko.md#authority)를
 정리한다. Standalone Actor relocation은 Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
-`IZLinkSpotRelocationAdapter<TSpot>`은 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy로 cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) instance를
+`IZLinkSpotRelocationAdapter<TSpot>`은 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy로 cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) instance를
 materialize할 때만 호출한다. Whole User Spot relocation에서는 [Spot](../../../../01-glossary.ko.md#spot) adapter가 Spot application payload를 처리하고,
 각 member Actor의 payload는 Actor factory에 등록한 Actor adapter가 각각 처리한다. `Recreate`는 adapter를 호출하지
 않고 application state 없이 instance를 다시 만들며 `Disabled`는 capture 전에 cross-node 이동을 거부한다.
@@ -537,7 +537,7 @@ public interface IZLinkSpotPublisherClient
 }
 ```
 
-User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다. Stable type은 UTF-8 1..255 bytes이며 case-sensitive exact value로
+Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다. Stable type은 UTF-8 1..255 bytes이며 case-sensitive exact value로
 비교하고 normalization하지 않는다. `SpotRef.ObjectGeneration`은 1..`long.MaxValue`다. MeshName과 NodeRid는
 조회 시점의 route snapshot이며 identity key에 포함하지 않는다.
 
@@ -584,8 +584,8 @@ Store-backed User Spot은 manager create operation이 reservation을 시작하�
 4. Target은 metadata presence와 frame을 포함한 complete
    [activation envelope](../../../../01-glossary.ko.md#activation-envelope)를 Relocation Store에 immutable
    recovery root로 먼저 저장한다.
-5. 같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 하는 `Creating` row와 pending capacity를
-   Reserve한다. Pending snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다.
+5. 같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 하는 `Creating` row와 reserved capacity를
+   Reserve한다. Reserved snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다.
 6. Reservation을 먼저 확보한 target만 factory로 target scope와 Spot을 만든 뒤 `Configure`,
    `OnInitializeAsync`를 실행하고 최초 message를 durable activation inbox의 첫 record로 확정한다.
    `OnCreateAsync`나 empty `ZLinkMessage`는 사용하지 않는다.
@@ -601,7 +601,7 @@ sequenceDiagram
 
     Source->>Target: 생성 정보와 최초 message를 한 envelope로 전달
     Target->>Store: envelope를 immutable recovery root로 저장
-    Target->>Store: Creating row와 pending capacity 예약
+    Target->>Store: Creating row와 reserved capacity 예약
     Store-->>Target: reservation fence와 recovery receipt 반환
     Target->>Spot: factory, Configure와 초기화 실행
     Target->>Store: 최초 record와 Ready authority를 함께 확정

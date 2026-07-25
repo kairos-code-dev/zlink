@@ -205,7 +205,7 @@ options.ConfigureDispatch()
 
 - [Node direct](01-glossary.ko.md#node-direct)와 RouteMesh·ClientServer ChannelName select-one submit·receive·dispatch·reply
 - Spot direct application queue admission과 handler completion
-- [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) source resolve·activation-envelope submit, target-owned claim·activation barrier, application
+- [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) source resolve·activation-envelope submit, target-owned claim·activation barrier, application
   admission과 post-submit one-way drop
 - Actor queue admission, handler completion과 relocation terminal result
 - STREAM session receive, Actor dispatch, reply와 bound-session send

@@ -163,8 +163,10 @@ public sealed record ZLinkMeshNodeSnapshot(
     public long ApplicationVersion { get; init; }
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
     public int PlacementWeight { get; init; }
-    public ZLinkPlacementCapacity ObjectCapacity { get; init; }
-        = new(0, 0, 10_000, 128);
+    public ZLinkPlacementCapacity PopulationCapacity { get; init; }
+        = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
+    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
+        = new(0, 128);
     public ulong PlacementReservationFailureCount { get; init; }
     public string? LastPlacementReservationFailure { get; init; }
     public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
@@ -185,6 +187,10 @@ public sealed record ZLinkMeshRuntimeEvent(
     string? ChannelName,
     string? ClaimDomain,
     string? MessageKind,
+    string? PlacementOutcome,
+    ZLinkCapacityVector? Capacity,
+    ZLinkPlacementCapacity? PopulationCapacity,
+    ZLinkActivationConcurrency? ActivationConcurrency,
     string? Reason,
     ZLinkMeshNodeState? State)
     : Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
@@ -346,6 +352,12 @@ public interface IZLinkFanoutRuntime
 }
 ```
 
+`PopulationCapacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
+active·reserved·limit을 구분한다. Limit `0`은 제한 없음이다. Entry Spot 자체는 Spot count에서 제외하고
+Entry Spot의 Actor는 Actor 전체 count에 포함한다. `ActivationConcurrency`의 active·limit은 population
+reservation과 별도로 제공한다. Placement event의 `Capacity`는 해당 operation의 typed vector이고
+`PopulationCapacity`는 관찰 시점의 node aggregate다.
+
 `InstanceSpots`는 이 MeshNode에 startup에서 등록한 Instance type별 immutable 집계다. `ActiveCount`는
 `Ready` 상태에서 업무 message를 처리할 수 있는 수이고, 나머지 count는 `Activating`, `Closing`, activation
 barrier 앞의 pending message와 byte를 각각 나타낸다. `LastActivationOutcome`은 아직 terminal activation을
@@ -360,7 +372,7 @@ barrier 앞의 pending message와 byte를 각각 나타낸다. `LastActivationOu
 preflight waiter에게만 공유하며 host terminal result로 저장하지 않는다.
 
 `Preparing` 또는 `Error`의 `RetireAsync`는 admission을 바꾸지 않고
-`Blocked/RuntimeNotReady`를 반환한다. `ShutdownAsync`는 두 state에서도 bounded cleanup을 시작한다. [User Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)과
+`Blocked/RuntimeNotReady`를 반환한다. `ShutdownAsync`는 두 state에서도 bounded cleanup을 시작한다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)과
 seal 시점의 member Actor는 bounded aggregate로 함께 이전한다. Participant의 `Disabled` policy나 호환 target 부재는
 aggregate 전체를 commit 전에 차단한다. Enum의 숫자와 허용 outcome·reason 조합은
 [Host Retire, Shutdown & Handoff](../../../../54-graceful-drain-handoff.ko.md)를

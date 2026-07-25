@@ -389,6 +389,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     internal async ValueTask<PreparedReservedSpot> PrepareReservedAsync(
         Type spotType,
         string requestedSpotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -418,7 +420,11 @@ internal sealed class ZLinkSpotNodeCatalog(
         ZLinkSpotActivation? activation = null;
         try
         {
-            nativeSpot = node.GetOrCreateSpot(requestedSpotId, out var created);
+            nativeSpot = node.GetOrCreateReservedSpot(
+                requestedSpotId,
+                objectGeneration,
+                authorityOwnerGeneration,
+                out var created);
             if (!created)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
@@ -446,9 +452,20 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
     }
 
-    internal void PublishReserved(PreparedReservedSpot prepared)
+    internal async ValueTask PublishReservedAsync(
+        PreparedReservedSpot prepared,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        CancellationToken cancellationToken)
     {
         if (prepared.Existing) return;
+        await ClaimSpotLocationAsync(
+                prepared.Activation,
+                prepared.SpotType,
+                objectGeneration,
+                authorityOwnerGeneration,
+                cancellationToken)
+            .ConfigureAwait(false);
         lock (_gate)
         {
             if (_spots.ContainsKey(prepared.Activation.SpotId))
@@ -582,17 +599,34 @@ internal sealed class ZLinkSpotNodeCatalog(
         Type spotType,
         CancellationToken cancellationToken)
     {
+        await ClaimSpotLocationAsync(
+                activation,
+                spotType,
+                activation.NativeSpot.LifecycleGeneration,
+                authorityOwnerGeneration: 0,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask ClaimSpotLocationAsync(
+        ZLinkSpotActivation activation,
+        Type spotType,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        CancellationToken cancellationToken)
+    {
         if (lifecycle is null) return;
 
         var spotId = activation.SpotId;
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotChannelName,
                 spotId,
-                activation.NativeSpot.LifecycleGeneration,
+                objectGeneration,
                 spotType.FullName,
                 node.RoutingId,
                 node.MeshStatus().LifecycleGeneration,
                 ZLinkSpotKind.User,
+                authorityOwnerGeneration,
                 deactivate: async ct => _ = await CloseAsync(spotId, ct).ConfigureAwait(false),
                 cancellationToken)
             .ConfigureAwait(false);
@@ -786,7 +820,10 @@ internal sealed class ZLinkSpotNodeCatalog(
 internal sealed record PreparedReservedSpot(
     ZLinkSpotActivation Activation,
     bool Existing,
-    ZLinkSpotCreateResponse? Response);
+    ZLinkSpotCreateResponse? Response)
+{
+    internal Type SpotType => Activation.Spot.GetType();
+}
 
 internal enum ReservedSpotCloseReadiness
 {

@@ -155,12 +155,16 @@ Host `Retire`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 �
 application join callback을 사용하지 않는다. Framework는 target에서 Actor state를
 복원하고 Actor owner와 target Entry Spot membership을 commit한 뒤 target Entry
 Spot의 `OnActorRelocatedAsync`와 source Entry Spot의 `OnLeaveActorAsync`를 실행한다.
-이 Actor가 Session에 bind되어 있으면 Framework는 owner·membership commit 뒤
-Session owner가 보관한 해당 Actor의 binding route를 target owner로 갱신한다. 같은
-Session에 bind된 다른 Actor의 route는 바꾸지 않는다. Session owner의 route 갱신
-ACK 전에는 target Actor의 session packet·push admission을 열지 않는다.
 두 callback과 기존 Entry membership의 durable cleanup이 끝나기 전에는 accepted
 journal을 replay하거나 target Actor dispatch를 열지 않는다.
+Journal replay, 남은 source resource의 durable cleanup과 `Completed`까지 마친 뒤,
+이 Actor가 Session에 bind되어 있으면 Framework는 Session owner가 보관한 해당
+Actor의 현재 전달 경로인 binding route를 target owner로 갱신한다. 같은 Session에 bind된 다른 Actor의
+route와 physical STREAM connection은 바꾸지 않는다. Session owner가 route 갱신을
+확인하고 target authority를 steady 상태로 정리하기 전에는 target Actor의 session
+packet·push admission을 열지 않는다. Route
+갱신은 같은 `ObjectGeneration`에만 적용하며, 새 incarnation은 application이
+명시적으로 다시 bind해야 한다.
 
 Callback 실패는 이미 완료한 owner와 membership commit을 되돌리지 않는다.
 Framework는 target을 sealed 상태로 유지하고 current relocation fence에서 callback을
@@ -226,10 +230,14 @@ Spot의 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync`,
 `OnActorRelocatedAsync`를 호출하지 않는다. Source User Spot instance를 정리할
 때는 `RelocationOut` 이유로 `OnClosingAsync`를 호출한다.
 
-Member Actor가 Session에 bind되어 있으면 aggregate owner commit 뒤 각 Actor의
-binding route를 target owner로 갱신한다. 같은 Session에 bind되어 있지만 이
-aggregate에 포함되지 않은 Actor의 route는 바꾸지 않는다. 모든 route 갱신 ACK 전에는
-target User Spot과 member Actor의 session packet·push admission을 열지 않는다.
+Member Actor가 Session에 bind되어 있으면 callback과 accepted journal replay, durable
+source cleanup 및 `Completed` 뒤 aggregate에 포함된 각 Actor의 [binding route](01-glossary.ko.md#binding-route)를 target
+owner로 갱신한다. 같은 Session에 bind되어 있지만 이 aggregate에 포함되지 않은
+Actor의 route와 physical STREAM connection은 바꾸지 않는다. 모든 [Binding route 갱신
+ACK](01-glossary.ko.md#binding-route-ack) 전에는 target User Spot과 member Actor의
+session packet·push admission을 열지 않는다. 모든 route 갱신 확인과 steady
+normalization 뒤에만 admission을 연다. Route 갱신은 같은 `ObjectGeneration`에만
+적용하며, 새 incarnation은 application이 명시적으로 다시 bind해야 한다.
 
 ## 6. Instance Spot
 

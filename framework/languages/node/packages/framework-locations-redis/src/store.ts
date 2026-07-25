@@ -34,8 +34,10 @@ import {
   RELEASE_LEASE_SCRIPT,
   RELEASE_ROUTING_ID_SLOT_SCRIPT,
   PREPARE_ACTOR_TRANSFER_SCRIPT,
+  PUT_RELOCATION_SCRIPT,
   REMOVE_ALL_BY_OWNER_SCRIPT,
   REMOVE_SCRIPT,
+  RENEW_RELOCATION_SCRIPT,
   RENEW_LEASE_SCRIPT,
   TAKE_OVER_ACTOR_TRANSFER_SCRIPT,
   WRITE_SCRIPT
@@ -113,6 +115,9 @@ import {
   type ZLinkRelocationCapacityFence,
   type ZLinkRelocationCapacityReservationRequest,
   type ZLinkRelocationCapacityReserveResult,
+  type ZLinkRelocationReference,
+  type ZLinkRelocationStore,
+  type ZLinkRelocationStored,
   type ZLinkOwnerLeaseClaimResult,
   type ZLinkOwnerLeaseReadResult,
   type ZLinkOwnerLeaseReleaseResult,
@@ -146,6 +151,7 @@ export class ZLinkRedisLocationStore implements
   ZLinkFanoutLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkOwnerLeaseStore,
+  ZLinkRelocationStore,
   ZLinkRoutingIdSlotAllocationStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
@@ -174,6 +180,85 @@ export class ZLinkRedisLocationStore implements
       }) as RedisCommandClient;
       this.client.on?.('error', () => {});
     }
+  }
+
+  async putRelocation(
+    payload: Uint8Array,
+    retentionMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkRelocationStored> {
+    const retention = requireRelocationRetention(retentionMs);
+    signal?.throwIfAborted();
+    for (;;) {
+      const reference = randomUUID();
+      const stored = asArray(await this.eval(
+        PUT_RELOCATION_SCRIPT,
+        [this.keys.relocationPayload(reference)],
+        [Buffer.from(payload).toString('base64'), String(retention)],
+        signal
+      ));
+      if (toNumber(stored[0]) !== 1) continue;
+      const storeNow = fromUnixMs(toNumber(stored[1]));
+      return {
+        reference: { value: reference } as ZLinkRelocationReference,
+        checksumCrc32c: crc32c(payload),
+        expiresAt: new Date(storeNow.getTime() + retention),
+        storeNow
+      };
+    }
+  }
+
+  async getRelocation(
+    reference: ZLinkRelocationReference,
+    signal?: AbortSignal
+  ): Promise<{ readonly kind: 'found'; readonly payload: Uint8Array } | { readonly kind: 'missing' }> {
+    const value = await this.command([
+      'GET',
+      this.keys.relocationPayload(requireRelocationReference(reference))
+    ], signal);
+    if (value === null) return { kind: 'missing' };
+    const encoded = asString(value);
+    const payload = Buffer.from(encoded, 'base64');
+    if (payload.toString('base64') !== encoded) {
+      throw new Error('Redis Relocation Store payload is not canonical base64.');
+    }
+    return { kind: 'found', payload };
+  }
+
+  async renewRelocation(
+    reference: ZLinkRelocationReference,
+    retentionMs: number,
+    signal?: AbortSignal
+  ): Promise<
+    | { readonly kind: 'renewed'; readonly expiresAt: Date; readonly storeNow: Date }
+    | { readonly kind: 'missing' }
+  > {
+    const retention = requireRelocationRetention(retentionMs);
+    const renewed = asArray(await this.eval(
+      RENEW_RELOCATION_SCRIPT,
+      [this.keys.relocationPayload(requireRelocationReference(reference))],
+      [String(retention)],
+      signal
+    ));
+    if (toNumber(renewed[0]) !== 1) return { kind: 'missing' };
+    const storeNow = fromUnixMs(toNumber(renewed[1]));
+    return {
+      kind: 'renewed',
+      expiresAt: new Date(storeNow.getTime() + retention),
+      storeNow
+    };
+  }
+
+  async deleteRelocation(
+    reference: ZLinkRelocationReference,
+    signal?: AbortSignal
+  ): Promise<'deleted' | 'missing'> {
+    return toNumber(await this.command([
+      'DEL',
+      this.keys.relocationPayload(requireRelocationReference(reference))
+    ], signal)) === 1
+      ? 'deleted'
+      : 'missing';
   }
 
   async updateMeshNode(
@@ -1297,7 +1382,11 @@ export class ZLinkRedisLocationStore implements
   async dispose(): Promise<void> {
     const client = this.client;
     this.client = undefined;
-    if (client !== undefined && client !== this.providedClient) {
+    if (
+      client !== undefined
+      && client !== this.providedClient
+      && client.isOpen === true
+    ) {
       if (client.quit !== undefined) {
         await client.quit();
       } else {
@@ -2804,4 +2893,31 @@ function validateOwnerLeaseInput(ownerId: string, leaseTtlMs: number): void {
   if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1) {
     throw new RangeError('leaseTtlMs must be a positive safe integer.');
   }
+}
+
+function requireRelocationRetention(retentionMs: number): number {
+  const rounded = Math.ceil(retentionMs);
+  if (!Number.isFinite(retentionMs) || rounded < 1 || rounded > 2_147_483_647) {
+    throw new RangeError('Relocation retention must be a finite positive millisecond value.');
+  }
+  return rounded;
+}
+
+function requireRelocationReference(reference: ZLinkRelocationReference): string {
+  const value = reference.value;
+  if (value.length === 0 || value.includes('\0')) {
+    throw new TypeError('Relocation reference must be non-empty text without NUL.');
+  }
+  return value;
+}
+
+function crc32c(payload: Uint8Array): number {
+  let crc = 0xffff_ffff;
+  for (const byte of payload) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) {
+      crc = (crc >>> 1) ^ ((crc & 1) === 0 ? 0 : 0x82f6_3b78);
+    }
+  }
+  return (crc ^ 0xffff_ffff) >>> 0;
 }

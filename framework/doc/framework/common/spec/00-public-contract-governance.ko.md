@@ -124,7 +124,7 @@ backend 선택 option은 허용하지 않는다.
 공통 spec의 개념 이름과 자료형은 언어별 기존 공개 타입을 바꾸라는 지시가 아니다. 같은 의미를 이미
 표현하는 public type, generic, callback 인자와 기본 interface 구현이 있으면 그 표면을 유지한다. 예를 들어
 공통 Actor membership record를 새로 정의했다는 이유로 `.NET`의 typed
-`IZLinkSpotActorLifecycle<TActor>`를 non-generic callback으로 바꾸지 않는다. 공통 의미를 기존 표면으로
+`IZLinkUserSpotActorLifecycle<TActor>`를 non-generic callback으로 바꾸지 않는다. 공통 의미를 기존 표면으로
 표현할 수 없는 경우에만 별도 기능 근거와 POSD 검토를 거쳐 최소 member를 추가한다.
 
 언어별 정확한 인터페이스는 `languages/<lang>/interfaces/` 아래의 범주별 문서가 소유한다. 파일 분할과

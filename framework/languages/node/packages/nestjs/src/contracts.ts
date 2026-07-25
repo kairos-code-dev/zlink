@@ -22,11 +22,9 @@ import type {
   ZLinkMeshPeerConnections,
   ZLinkMetricsOptions,
   ZLinkMonitoringOptions,
-  ZLinkPublishContext,
-  ZLinkRequestContext,
-  ZLinkRouteRequestContext,
-  ZLinkRouteSendContext,
-  ZLinkSendContext,
+  ZLinkMessageContext,
+  ZLinkPublishMessageContext,
+  ZLinkRouteMessageContext,
   ZLinkSession,
   ZLinkSessionFactory,
   ZLinkSpot,
@@ -91,11 +89,11 @@ export interface ZLinkNestHandlerOptions {
   readonly methodName?: string;
   readonly decodePayload?: (
     payload: Buffer,
-    context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext
+    context: ZLinkMessageContext | ZLinkRouteMessageContext | ZLinkPublishMessageContext
   ) => unknown;
   readonly encodeResult?: (
     result: unknown,
-    context: ZLinkRequestContext | ZLinkRouteRequestContext
+    context: ZLinkMessageContext | ZLinkRouteMessageContext
   ) => unknown;
 }
 

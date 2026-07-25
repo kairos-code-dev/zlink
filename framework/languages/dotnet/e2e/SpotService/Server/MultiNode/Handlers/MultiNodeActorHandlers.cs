@@ -12,7 +12,7 @@ namespace SpotService.Server.MultiNode.Handlers;
 internal sealed class SpotOnlyJoinHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, SpotOnlyJoinReq, SpotOnlyJoinRes>
 {
-    public async ValueTask<SpotOnlyJoinRes> HandleAsync(
+    public ValueTask<SpotOnlyJoinRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -24,19 +24,16 @@ internal sealed class SpotOnlyJoinHandler(EvidenceStore evidence)
         if (!string.Equals(actor.ActorId, request.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Spot-only join request actor does not match dispatched actor.");
 
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.From(request.TargetSpotRid),
-                ZLinkMessage.Empty)
-            .Async(cancellationToken)
-            .ConfigureAwait(false);
+        actor.Context.JoinSpot(request.TargetSpotRid, ZLinkMessage.Empty).Defer();
+        actor.RecordDeferredJoin(request.TargetSpotRid, request.Marker);
         evidence.Add(
             $"spot-only-actor-join|rid={evidence.Rid}|actor={actor.ActorId}"
-            + $"|target={request.TargetSpotRid}|accepted={joined is ZLinkActorJoinResult.Accepted}|marker={request.Marker}");
-        return new SpotOnlyJoinRes(
+            + $"|target={request.TargetSpotRid}|deferred=True|marker={request.Marker}");
+        return ValueTask.FromResult(new SpotOnlyJoinRes(
             request.TargetSpotRid,
             actor.ActorId,
-            joined is ZLinkActorJoinResult.Accepted,
-            request.Marker);
+            true,
+            request.Marker));
     }
 }
 

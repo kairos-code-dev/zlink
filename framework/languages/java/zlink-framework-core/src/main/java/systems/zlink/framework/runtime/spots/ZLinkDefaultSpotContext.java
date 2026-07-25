@@ -54,6 +54,9 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     }
 
     @Override public String spotId() { return backendSpot.routingId(); }
+    @Override public long objectGeneration() {
+        return backendSpot.lifecycleGeneration();
+    }
     @Override public RoutingId nodeRid() { return nodeRid; }
     @Override public ZLinkSpotOutbound outbound() { return outbound; }
     @Override public DefaultSpotOutbound dispatchOutbound() { return outbound; }
@@ -255,6 +258,9 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     }
 
     @Override public String spotId() { return backendSpot.routingId(); }
+    @Override public long objectGeneration() {
+        return backendSpot.lifecycleGeneration();
+    }
     @Override public RoutingId nodeRid() { return nodeRid; }
     @Override public ZLinkSpotOutbound outbound() { return outbound; }
     @Override public DefaultSpotOutbound dispatchOutbound() { return outbound; }

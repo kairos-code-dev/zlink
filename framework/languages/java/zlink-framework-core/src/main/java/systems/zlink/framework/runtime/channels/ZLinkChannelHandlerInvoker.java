@@ -35,7 +35,7 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkClient;
@@ -43,14 +43,11 @@ import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkClientServerChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkPublishCall;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRequestCall;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkSendCall;
-import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -155,7 +152,7 @@ final class ZLinkChannelHandlerInvoker {
                 ex));
         }
         try {
-            ZLinkSendContext context = new DefaultSendContext(
+            ZLinkMessageContext context = new DefaultSendContext(
                 channelName,
                 registration.packetName(),
                 contentTypeFor(registration.messageType()),
@@ -171,7 +168,7 @@ final class ZLinkChannelHandlerInvoker {
     private CompletionStage<Void> invokeSendHandlerCore(
         ChannelSendHandlerRegistration registration,
         Object message,
-        ZLinkSendContext context) {
+        ZLinkMessageContext context) {
         try {
             if (registration.handlerMethod() != null) {
                 return invokeVoidMethodHandler(
@@ -213,7 +210,7 @@ final class ZLinkChannelHandlerInvoker {
                 ex));
         }
         try {
-            ZLinkRequestContext context = new DefaultRequestContext(
+            ZLinkMessageContext context = new DefaultRequestContext(
                 channelName,
                 registration.packetName(),
                 contentTypeFor(registration.requestType()),
@@ -230,7 +227,7 @@ final class ZLinkChannelHandlerInvoker {
     private CompletionStage<Object> invokeRequestHandlerCore(
         ChannelRequestHandlerRegistration registration,
         Object request,
-        ZLinkRequestContext context) {
+        ZLinkMessageContext context) {
         try {
             if (registration.handlerMethod() != null) {
                 return invokeReplyMethodHandler(
@@ -263,7 +260,7 @@ final class ZLinkChannelHandlerInvoker {
                 ex));
         }
         try {
-            ZLinkPublishContext context = new DefaultPublishContext(
+            ZLinkPublishMessageContext context = new DefaultPublishContext(
                 channelName,
                 registration.packetName(),
                 topic,
@@ -279,7 +276,7 @@ final class ZLinkChannelHandlerInvoker {
     private CompletionStage<Void> invokePublishHandlerCore(
         ChannelPublishHandlerRegistration registration,
         Object message,
-        ZLinkPublishContext context) {
+        ZLinkPublishMessageContext context) {
         try {
             if (registration.handlerMethod() != null) {
                 return invokeVoidMethodHandler(
@@ -301,7 +298,7 @@ final class ZLinkChannelHandlerInvoker {
         Class<?> handlerType,
         Method method,
         Object message,
-        ZLinkHandlerContext context) {
+        ZLinkMessageContext context) {
         try {
             Object handler = handlerFactory.create(handlerType);
             return ZLinkHandlerMethodInvoker
@@ -318,7 +315,7 @@ final class ZLinkChannelHandlerInvoker {
         Class<?> handlerType,
         Method method,
         Object message,
-        ZLinkHandlerContext context) {
+        ZLinkMessageContext context) {
         try {
             Object handler = handlerFactory.create(handlerType);
             return ZLinkHandlerMethodInvoker.invoke(
@@ -336,7 +333,7 @@ final class ZLinkChannelHandlerInvoker {
     static Object[] methodArguments(
         Method method,
         Object message,
-        ZLinkHandlerContext context) {
+        ZLinkMessageContext context) {
         Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         Object[] arguments = new Object[parameterTypes.length];
         arguments[0] = message;
@@ -377,7 +374,7 @@ final class ZLinkChannelHandlerInvoker {
                 ex));
         }
         try {
-            ZLinkRouteSendContext context =
+            ZLinkRouteMessageContext context =
                 new DefaultRouteSendContext(
                     channelName,
                     registration.packetName(),
@@ -428,7 +425,7 @@ final class ZLinkChannelHandlerInvoker {
                 ex));
         }
         try {
-            ZLinkRouteRequestContext context =
+            ZLinkRouteMessageContext context =
                 new DefaultRouteRequestContext(
                     channelName,
                     registration.packetName(),
@@ -466,7 +463,7 @@ final class ZLinkChannelHandlerInvoker {
     }
 
     private <T> CompletionStage<T> invokeWithFilters(
-        ZLinkHandlerContext context,
+        ZLinkMessageContext context,
         Object request,
         java.util.function.Supplier<CompletionStage<T>> terminal) {
         if (filterTypes.isEmpty()) {

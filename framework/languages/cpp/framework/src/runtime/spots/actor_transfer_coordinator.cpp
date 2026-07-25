@@ -197,6 +197,17 @@ bool actor_transfer_coordinator_t::try_add_admission (std::string transfer_id,
 }
 
 std::optional<pending_actor_admission_t>
+actor_transfer_coordinator_t::admission (
+  const std::string &transfer_id) const
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _admissions.find (transfer_id);
+    return found == _admissions.end ()
+             ? std::nullopt
+             : std::make_optional (found->second);
+}
+
+std::optional<pending_actor_admission_t>
 actor_transfer_coordinator_t::begin_commit (const std::string &transfer_id,
                                             const actor_ref_t &source_actor,
                                             const spot_id_t &target_spot_id)
@@ -248,6 +259,21 @@ actor_transfer_coordinator_t::pending_commit (const std::string &transfer_id,
         return std::nullopt;
     }
     return found->second;
+}
+
+bool actor_transfer_coordinator_t::update_completion_root (
+  const std::string &transfer_id,
+  std::string reference,
+  std::uint32_t checksum)
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _admissions.find (transfer_id);
+    if (found == _admissions.end ())
+        return false;
+    found->second.completion_root_reference =
+      std::move (reference);
+    found->second.completion_root_checksum = checksum;
+    return true;
 }
 
 void actor_transfer_coordinator_t::fail_commit (const std::string &transfer_id, bool reconcile)

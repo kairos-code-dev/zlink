@@ -156,7 +156,7 @@ struct peer_location_t {
     std::optional<zlink::routing_id_t> node_rid;
     location_role_t role = location_role_t::invalid;
     std::string endpoint;
-    int weight = 0;
+    int weight = 100;
     std::int64_t value = 0;
     std::map<std::string, std::string> metadata;
     std::vector<std::string> capabilities;
@@ -200,8 +200,25 @@ struct object_capability_t {
     std::string stable_type;
     maintenance_policy_kind_t policy;
     bool has_snapshot_adapter;
-    std::optional<std::uint32_t> active_limit;
-    std::optional<std::uint32_t> pending_limit;
+    std::int32_t spot_limit = 0;
+};
+
+struct capacity_usage_t {
+    std::uint64_t active;
+    std::uint64_t reserved;
+    std::int32_t limit;
+};
+
+struct spot_type_capacity_t {
+    placement_object_kind_t object_kind;
+    std::string stable_type;
+    capacity_usage_t usage;
+};
+
+struct placement_capacity_t {
+    capacity_usage_t actors;
+    capacity_usage_t spots;
+    std::vector<spot_type_capacity_t> spot_types;
 };
 
 struct mesh_node_descriptor_t {
@@ -216,7 +233,7 @@ struct mesh_node_descriptor_t {
     std::vector<object_capability_t> object_capabilities;
     object_role_t object_role = object_role_t::none;
     int placement_weight = 100;
-    object_capacity_options_t object_capacity{};
+    placement_capacity_t capacity{};
     std::optional<std::string> maintenance_wave;
     framework_runtime_state_t state;
     std::string security_identity;
@@ -232,7 +249,7 @@ struct client_server_server_descriptor_t {
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
-    int weight;
+    int weight = 100;
     framework_runtime_state_t state;
     std::string security_identity;
     std::string owner_id;
@@ -458,6 +475,14 @@ option은 제공하지 않는다. Framework reconciler는 scope change stamp를 
 적용하고 다르면 부분 결과를 버리고 first page부터 다시 읽는다. Page 조립과 retry는 Framework 내부 동작이며
 application에 별도 reconciliation API를 제공하지 않는다.
 
+`capacity_usage_t`는 Location Store가 계산한 `active`, `reserved`, `limit` projection을 제공하며 limit `0`은
+제한 없음을 뜻한다. Limit은 `0..2147483647`이며 음수인 descriptor는 invalid provider data로 거부한다.
+`placement_capacity_t::actors`에는 Entry·User Spot의 Actor를 모두 포함하고,
+`spots`와 `spot_types`에는 User·Instance Spot만 포함한다. Entry Spot은 두 Spot 집계에서 제외한다.
+`spot_types`는 `(object_kind, stable_type)`의 UTF-8 byte 순서이며 Actor 항목을 포함하지 않는다.
+Descriptor capacity는 candidate를 빠르게 거르는 비권위 projection이다. 최종 수락 여부는 Location Store의
+같은 transaction에서 current counter와 reservation을 검사해 결정한다.
+
 User·Instance Spot owner state는 global SpotId에서 파생한 하나의 opaque authority key를 공유한다. Manager
 Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 pending capacity를 원자적으로
 결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
@@ -629,7 +654,7 @@ public:
 
 `location_store_t`는 descriptor, owner lease와 opaque authority CAS를 하나의
 등록 capability로 제공한다. 여기서 필수 descriptor는 [MeshNode](../../../../01-glossary.ko.md#meshnode)다. ClientServer, fanout, generic peer와 route
-capability는 해당 기능을 구성할 때 provider가 추가로 구현한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) owner와 Actor
+capability는 해당 기능을 구성할 때 provider가 추가로 구현한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) owner와 Actor
 relocation state machine은 Framework 내부 payload다. Provider는 payload 형식, [Spot kind](../../../../01-glossary.ko.md#spot-kind), phase와 recovery
 cursor를 해석하지 않는다.
 Relocation payload 보관은 별도 `relocation_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도

@@ -8,6 +8,7 @@
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
+#include "runtime/stateful/maintenance_runtime.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
@@ -115,6 +116,11 @@ class spot_node_builder_state_t
           serialize_instance;
         std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
           deserialize_instance;
+        std::function<std::shared_ptr<void> (actor_context_t &)>
+          create_context_instance;
+        std::function<task_t<void> (
+          void *, std::uint64_t, std::uint64_t, const actor_ref_t &,
+          const std::optional<message_t> &)> on_join_completed;
     };
     struct actor_transfer_registration_t
     {
@@ -145,6 +151,14 @@ class spot_node_builder_state_t
     // fixed across languages; deployments may override it.
     std::chrono::milliseconds actor_transfer_forward_window{5000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
+    std::set<std::pair<std::uint64_t, std::uint64_t>>
+      committed_join_locations;
+    std::set<std::pair<std::uint64_t, std::uint64_t>>
+      delivered_join_completions;
+        std::shared_ptr<runtime::stateful::relocation_store_port_t>
+          relocation_store;
+        std::shared_ptr<runtime::stateful::authority_relocation_port_t>
+          relocation_authority;
     /* Address → (type, id) lookup for instance-identity public surfaces
      * (destroy_actor). Never dereferenced — resolution only compares
      * addresses — and maintained alongside every registration/erasure, so
@@ -473,7 +487,8 @@ class spot_node_runtime_t
       const actor_ref_t &actor_ref,
       spot_id_t spot_id,
       const zlink::message_t &request,
-      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
+      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt,
+      actor_context_t actor_context = {});
     result_t<actor_join_reply_t>
     join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                       spot_id_t spot_id,
@@ -484,7 +499,9 @@ class spot_node_runtime_t
                                 const actor_ref_t &actor_ref,
                                 spot_id_t source_spot_id,
                                 spot_id_t target_spot_id,
-                                const zlink::message_t &request);
+                                const zlink::message_t &request,
+                                std::uint64_t completion_operation_id_high = 0,
+                                std::uint64_t completion_operation_id_low = 0);
     // handoff_backlog holds the in-flight packets the source preserved while the
     // actor was moving (§10.2-2). They are enqueued on the target actor's
     // dispatch queue before the committed location is published (§10.2-3), and
@@ -522,6 +539,18 @@ class spot_node_runtime_t
     bool actor_transfer_in_progress (const actor_ref_t &actor_ref) const;
     bool actor_transfer_in_progress (std::string_view actor_id) const;
     void set_actor_transfer_forward_window (std::chrono::milliseconds window);
+    void bind_relocation_store (
+      std::shared_ptr<runtime::stateful::relocation_store_port_t> store);
+    void bind_relocation_authority (
+      std::shared_ptr<runtime::stateful::authority_relocation_port_t>
+        authority);
+    std::optional<runtime::stateful::durable_join_completion_root_t>
+    pending_join_completion_root (const std::string &transfer_id) const;
+    result_t<void> restore_pending_join_completion (
+      const std::string &transfer_id,
+      const actor_ref_t &actor,
+      const spot_id_t &target_spot_id,
+      runtime::stateful::durable_join_completion_root_t root);
     result_t<remote_actor_transfer_t> transfer_actor_out (const actor_ref_t &actor_ref,
                                                           std::string transfer_id = {});
     result_t<void> leave_actor_for_remote_transfer (const actor_ref_t &actor_ref);
@@ -543,7 +572,8 @@ class spot_node_runtime_t
       const actor_ref_t &actor_ref,
       node_rid_t spot_node_rid,
       const zlink::message_t &request,
-      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
+      const std::optional<zlink::message_t> &actor_snapshot = std::nullopt,
+      actor_context_t actor_context = {});
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,

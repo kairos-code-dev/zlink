@@ -21,10 +21,12 @@ internal static class SpotLifecycleEndpoints
             NodeOptions node,
             CreateSpotReq request) =>
         {
-            var createdSpot = await spots.GetOrCreateAsync<ScenarioUserSpot>(RoutingId.From(request.SpotRid));
-            evidence.Add($"create-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
+            var createdSpot = await spots
+                .GetOrCreate(request.SpotRid, SpotServiceNames.UserSpotType)
+                .Async();
+            evidence.Add($"create-spot|rid={node.Rid}|spot={createdSpot.Spot.SpotId}|state={createdSpot.State}");
             return Results.Ok(new CreateSpotRes(
-                createdSpot.SpotRid.ToString(),
+                createdSpot.Spot.SpotId,
                 node.Rid,
                 createdSpot.State.ToString()));
         });
@@ -34,11 +36,13 @@ internal static class SpotLifecycleEndpoints
             NodeOptions node,
             CreateSpotReq request) =>
         {
-            var createdSpot = await spots.GetOrCreateAsync<ScenarioAlternateSpot>(RoutingId.From(request.SpotRid));
+            var createdSpot = await spots
+                .GetOrCreate(request.SpotRid, SpotServiceNames.AlternateSpotType)
+                .Async();
             evidence.Add(
-                $"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.SpotRid}|state={createdSpot.State}");
+                $"create-unsubscribed-spot|rid={node.Rid}|spot={createdSpot.Spot.SpotId}|state={createdSpot.State}");
             return Results.Ok(new CreateSpotRes(
-                createdSpot.SpotRid.ToString(),
+                createdSpot.Spot.SpotId,
                 node.Rid,
                 createdSpot.State.ToString()));
         });
@@ -48,11 +52,14 @@ internal static class SpotLifecycleEndpoints
             NodeOptions node,
             SpotTypeMismatchReq request) =>
         {
-            var rid = RoutingId.From(request.SpotRid);
-            var first = await spots.GetOrCreateAsync<ScenarioUserSpot>(rid);
+            var first = await spots
+                .GetOrCreate(request.SpotRid, SpotServiceNames.UserSpotType)
+                .Async();
             try
             {
-                await spots.GetOrCreateAsync<ScenarioAlternateSpot>(rid);
+                await spots
+                    .GetOrCreate(request.SpotRid, SpotServiceNames.AlternateSpotType)
+                    .Async();
             }
             catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
             {
@@ -72,7 +79,9 @@ internal static class SpotLifecycleEndpoints
             NodeOptions node,
             CloseSpotReq request) =>
         {
-            var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid));
+            var spot = await spots.FindAsync(request.SpotRid)
+                       ?? throw new InvalidOperationException($"Spot '{request.SpotRid}' was not found.");
+            var closed = await spots.CloseAsync(spot);
             evidence.Add($"close-spot|rid={node.Rid}|spot={request.SpotRid}|closed={closed}");
             await WaitUntilAsync(
                 () => evidence.Snapshot().Any(line =>

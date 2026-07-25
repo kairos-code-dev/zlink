@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <climits>
 #include <chrono>
+#include <concepts>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -82,6 +83,60 @@ struct actor_ref_snapshot_t
 
 class actor_client_t;
 class route_client_t;
+class actor_context_t;
+
+struct actor_join_accepted_t
+{
+    std::uint64_t operation_id_high = 0;
+    std::uint64_t operation_id_low = 0;
+    actor_ref_t actor;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_rejected_t
+{
+    std::uint64_t operation_id_high = 0;
+    std::uint64_t operation_id_low = 0;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_failed_t
+{
+    std::uint64_t operation_id_high = 0;
+    std::uint64_t operation_id_low = 0;
+    framework_error_kind_t error_kind = framework_error_kind_t::request_failed;
+    bool retryable = false;
+};
+
+using actor_join_completion_t =
+  std::variant<actor_join_accepted_t,
+               actor_join_rejected_t,
+               actor_join_failed_t>;
+
+class actor_t
+{
+  public:
+    virtual ~actor_t () = default;
+    virtual actor_context_t &context () noexcept = 0;
+    virtual const actor_context_t &context () const noexcept = 0;
+    virtual void configure () {}
+    virtual task_t<void>
+    on_join_completed (const actor_join_completion_t &)
+    {
+        return task_t<void> (result_t<void>::success ());
+    }
+};
+
+template <typename TActor>
+requires std::derived_from<TActor, actor_t>
+class actor_factory_t
+{
+  public:
+    virtual ~actor_factory_t () = default;
+    virtual task_t<std::shared_ptr<TActor>>
+    create (actor_context_t &context,
+            std::stop_token operation_cancellation) = 0;
+};
 
 class actor_send_call_t
 {
@@ -630,5 +685,68 @@ class session_actor_manager_t
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     std::shared_ptr<detail::session_actor_binding_context_t> _binding_context;
 };
+
+template <typename TActor, typename TActorFactory>
+spot_node_builder_t &
+spot_node_builder_t::add_actor_factory (
+  std::string actor_type,
+  std::shared_ptr<TActorFactory> factory)
+{
+    static_assert (std::derived_from<TActor, actor_t>);
+    static_assert (
+      std::derived_from<TActorFactory, actor_factory_t<TActor>>);
+    if (!factory) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Actor factory must not be null");
+    }
+    return add_actor_factory_erased (
+      std::move (actor_type), std::type_index (typeid (TActor)),
+      {},
+      [] (void *actor, const actor_ref_t &,
+          void *actor_context) {
+          if (actor_context != nullptr) {
+              static_cast<TActor *> (actor)->context ()
+                = *static_cast<actor_context_t *> (
+                  actor_context);
+          }
+      },
+      [] (void *, serializer_registry_t &)
+        -> std::optional<zlink::message_t> { return std::nullopt; },
+      [] (void *, const zlink::message_t &, serializer_registry_t &) {},
+      [factory = std::move (factory)] (
+        actor_context_t &context) -> std::shared_ptr<void> {
+          auto created = factory->create (context, {}).result ();
+          if (!created) {
+              const auto *error = created.error ();
+              throw framework_exception_t (
+                created.error_kind (),
+                error != nullptr ? error->what ()
+                                 : "Actor factory failed");
+          }
+          if (!created.value ()) {
+              throw framework_exception_t (
+                framework_error_kind_t::actor_route_not_found,
+                "Actor factory returned null");
+          }
+          created.value ()->configure ();
+          return std::static_pointer_cast<void> (
+            std::move (created.value ()));
+      },
+      [] (void *actor,
+          std::uint64_t operation_id_high,
+          std::uint64_t operation_id_low,
+          const actor_ref_t &committed,
+          const std::optional<message_t> &reply) {
+          const actor_join_completion_t completion =
+            actor_join_accepted_t{
+              operation_id_high,
+              operation_id_low,
+              committed,
+              reply};
+          return static_cast<TActor *> (actor)
+            ->on_join_completed (completion);
+      });
+}
 
 } // namespace zlink::framework

@@ -11,6 +11,8 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace zlink::framework::runtime
 {
@@ -34,6 +36,7 @@ class serial_execution_queue_t
     bool try_post (std::string name, std::function<void ()> work);
     bool try_post_async (std::string name, async_work_t work);
     bool try_post_async_front (std::string name, async_work_t work);
+    bool try_post_deferred (std::string name, std::function<void ()> work);
     void post (std::string name, std::function<void ()> work);
     void post_async (std::string name, async_work_t work);
     void run (std::string name, std::function<void ()> work);
@@ -63,6 +66,8 @@ class serial_execution_queue_t
     mutable std::mutex _mutex;
     std::condition_variable _empty;
     std::deque<work_item_t> _queue;
+    std::vector<std::pair<std::string, std::function<void ()>>>
+      _deferred_after_active;
     std::vector<std::shared_ptr<detail::serial_turn_t>> _active_turns;
     std::vector<std::string> _active_names;
     bool _closed = false;

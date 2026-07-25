@@ -11,10 +11,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
+import systems.zlink.framework.actors.ZLinkRelocationPolicy;
+import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
+import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -78,9 +84,13 @@ public final class Program {
     }
 
     @Bean
-    ZLinkFrameworkConfigurer framework(EvidenceStore evidence, ActorNodeOptions config) {
+    ZLinkFrameworkConfigurer framework(
+        EvidenceStore evidence,
+        ActorNodeOptions config,
+        ZLinkRedisRelocationStore relocationStore) {
         return options -> {
             String nodeRid = evidence.nodeRid();
+            options.addRelocationStore(relocationStore);
             options.addHandlersFromPackageOf(TransferComponents.class);
             options.setActorTransferForwardWindow(Duration.ofSeconds(2));
             options.configureDispatch()
@@ -101,14 +111,20 @@ public final class Program {
                     node.peerConnections().connect(RoutingId.from(fields[0]), fields[1]);
                 }
             }
-            node.addEntrySpot(TransferComponents.TransferEntrySpot.class);
-            registerActor(node, Contracts.STATEFUL, true);
-            registerActor(node, Contracts.EMPTY_STATE, true);
-            registerActor(node, Contracts.NO_ADAPTER, false);
-            registerActor(node, Contracts.FAIL_OUT, true);
-            registerActor(node, Contracts.FAIL_LEAVE, true);
-            registerActor(node, Contracts.FAIL_IN, true);
-            node.addSpotFactory(TransferComponents.TransferUserSpot.class);
+            node.objects().client();
+            ZLinkMeshObjectServerBuilder objects = node.objects().server();
+            objects.addEntrySpot(TransferComponents.TransferEntrySpot.class);
+            registerActor(objects, Contracts.STATEFUL, true);
+            registerActor(objects, Contracts.EMPTY_STATE, true);
+            registerActor(objects, Contracts.NO_ADAPTER, false);
+            registerActor(objects, Contracts.FAIL_OUT, true);
+            registerActor(objects, Contracts.FAIL_LEAVE, true);
+            registerActor(objects, Contracts.FAIL_IN, true);
+            objects.addSpotFactory(
+                TransferComponents.TransferUserSpot.class.getName(),
+                TransferComponents.TransferUserSpot.class,
+                new ZLinkUserSpotFactoryOptions(0),
+                ZLinkRelocationPolicy.disabled());
             options.addStreamNode("spot-transfer-session-" + nodeRid)
                 .bind(config.streamEndpoint())
                 .enableActorDispatch(Contracts.MESH)
@@ -117,13 +133,18 @@ public final class Program {
     }
 
     private static void registerActor(
-        ZLinkMeshNodeBuilder node,
+        ZLinkMeshObjectServerBuilder objects,
         String actorType,
         boolean adapter) {
-        node.addActorFactory(actorType, TransferComponents.TransferActorFactory.class);
-        if (adapter) {
-            node.addActorTransferAdapter(actorType, TransferComponents.TransferActorAdapter.class);
-        }
+        objects.addActorFactory(
+            actorType,
+            TransferComponents.TransferActor.class,
+            TransferComponents.TransferActorFactory.class,
+            new ZLinkActorFactoryOptions(),
+            adapter
+                ? ZLinkRelocationPolicy.snapshot(
+                    TransferComponents.TransferActorAdapter.class)
+                : ZLinkRelocationPolicy.recreate());
     }
 
     @Bean
@@ -131,6 +152,13 @@ public final class Program {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
             .setConnectionString(config.redisLocationEndpoint())
             .setKeyPrefix(config.locationKeyPrefix()));
+    }
+
+    @Bean
+    ZLinkRedisRelocationStore relocationStore(ActorNodeOptions config) {
+        return new ZLinkRedisRelocationStore(new ZLinkRedisRelocationOptions()
+            .setConnectionString(config.redisLocationEndpoint())
+            .setKeyPrefix(config.locationKeyPrefix() + "relocation:"));
     }
 
     private static String configPath(String[] args) {

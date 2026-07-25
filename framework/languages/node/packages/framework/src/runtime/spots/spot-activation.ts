@@ -59,7 +59,7 @@ import {
   ZLinkSpotTimerRegistry
 } from './spot-timer';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
-import { createSpotContext } from './spot-context';
+import { createInstanceSpotContext, createSpotContext } from './spot-context';
 import type { ZLinkSpotActorJoinDispatch, ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkSpotActorAdmissionCoordinator } from './spot-actor-admission-coordinator';
 import { ZLinkSpotActivation } from './spot-activation-state';
@@ -98,7 +98,11 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly workerRuntime: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly locationClaim: ZLinkSpotLocationClaim;
-  readonly createNativeSpot?: (meshName: string, spotId: RoutingId) => ZLinkBackendSpot | undefined;
+  readonly createNativeSpot?: (
+    meshName: string,
+    spotId: RoutingId,
+    authority?: ZLinkNativeSpotAuthority
+  ) => ZLinkBackendSpot | undefined;
   readonly nativeSpotNodeProvider?: (meshName: string) => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
@@ -114,6 +118,12 @@ export interface ZLinkSpotActivationLifecycleOptions {
   ) => Promise<boolean>;
   readonly registerActivation: (activation: ZLinkSpotActivation) => void;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+}
+
+export interface ZLinkNativeSpotAuthority {
+  readonly stableType: string;
+  readonly objectGeneration: bigint;
+  readonly authorityOwnerGeneration: bigint;
 }
 
 interface UserSpotLocationClaim {
@@ -139,6 +149,7 @@ export class ZLinkSpotActivationLifecycle {
     instanceType: string,
     implementation: Type<TSpot>,
     spotId: RoutingId,
+    objectGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActivation> {
     const serial = new ZLinkSpotSerialExecutor(this.options.metrics, 'instance', true);
@@ -165,11 +176,11 @@ export class ZLinkSpotActivationLifecycle {
       this.options.addressTransport
     );
     let instance: TSpot | undefined;
-    const context = {
-      ...createSpotContext({
+    const context = createInstanceSpotContext({
         meshName,
         spotId,
-        handlers,
+        objectGeneration: toContextGeneration(objectGeneration),
+        handlers: instanceHandlers,
         outbound,
         timers,
         serial,
@@ -180,9 +191,7 @@ export class ZLinkSpotActivationLifecycle {
         runtimeEventPublisher: this.options.runtimeEventPublisher,
         workerRuntime: this.options.workerRuntime,
         close: (contextSignal) => this.options.closeSpot(meshName, spotId, contextSignal)
-      }),
-      handlers: instanceHandlers
-    };
+      });
     instance = await createFreshProviderInstance(
       implementation,
       this.options.providerResolver,
@@ -268,7 +277,8 @@ export class ZLinkSpotActivationLifecycle {
     spotType: Type<TSpot>,
     spotId: RoutingId,
     request: Message,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    authority?: ZLinkNativeSpotAuthority
   ): Promise<ZLinkLocalSpotCreateResult> {
     const executionMode = this.options.userSpotExecutionMode?.(meshName, spotType)
       ?? ZLinkUserSpotExecutionMode.SpotWide;
@@ -320,7 +330,7 @@ export class ZLinkSpotActivationLifecycle {
     );
     // Core owns the lifecycle generation. Publish the location only after the
     // formal Spot exists, so no synthetic generation can escape into routing.
-    nativeSpot = this.options.createNativeSpot?.(meshName, spotId);
+    nativeSpot = this.options.createNativeSpot?.(meshName, spotId, authority);
     const spotGeneration = nativeSpot?.lifecycleGeneration;
     if (nativeSpot === undefined || spotGeneration === undefined || spotGeneration <= 0n) {
       await nativeSpot?.dispose();
@@ -338,6 +348,7 @@ export class ZLinkSpotActivationLifecycle {
           outbound,
           unclaimed,
           executionMode,
+          authority?.objectGeneration ?? 0n,
           signal
         );
       }
@@ -360,6 +371,7 @@ export class ZLinkSpotActivationLifecycle {
     const context = createSpotContext({
       meshName,
       spotId,
+      objectGeneration: toContextGeneration(spotGeneration),
       handlers,
       outbound,
       timers,
@@ -370,6 +382,7 @@ export class ZLinkSpotActivationLifecycle {
       providerResolver: this.options.providerResolver,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       workerRuntime: this.options.workerRuntime,
+      leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
       close: async (contextSignal) => {
         // Native callbacks can cross a promise boundary that does not retain
         // the serial turn context. Queue the close before calling the manager
@@ -454,12 +467,14 @@ export class ZLinkSpotActivationLifecycle {
     outbound: DefaultZLinkSpotOutbound,
     locationClaim: UserSpotLocationClaim,
     executionMode: ZLinkUserSpotExecutionMode,
+    objectGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkLocalSpotCreateResult> {
     let spot: ZLinkSpot | undefined;
     const context = createSpotContext({
       meshName,
       spotId,
+      objectGeneration: toContextGeneration(objectGeneration),
       handlers,
       outbound,
       timers,
@@ -470,6 +485,7 @@ export class ZLinkSpotActivationLifecycle {
       providerResolver: this.options.providerResolver,
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       workerRuntime: this.options.workerRuntime,
+      leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
       close: (contextSignal) => this.options.closeSpot(meshName, spotId, contextSignal)
     });
     spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);
@@ -693,4 +709,13 @@ export class ZLinkSpotActivationLifecycle {
       message.close();
     }
   }
+}
+
+function toContextGeneration(generation: bigint): number {
+  if (generation < 0n || generation > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new ZLinkConfigurationException(
+      `Spot object generation '${generation}' cannot be represented by the Node.js public context.`
+    );
+  }
+  return Number(generation);
 }

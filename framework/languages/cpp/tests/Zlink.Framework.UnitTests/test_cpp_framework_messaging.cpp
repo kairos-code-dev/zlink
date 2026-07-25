@@ -7,6 +7,7 @@
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/messaging/submit_queue.hpp"
+#include "runtime/spots/spot_route_packets.hpp"
 
 #include <zlink/framework/contracts/detail/call_facade.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
@@ -43,6 +44,54 @@ struct envelope_payload_t
 
 int main ()
 {
+    {
+        zlink::framework::serializer_registry_t serializers;
+        zlink::framework::detail::
+          register_spot_route_packet_serializers (serializers);
+        const auto admission_root =
+          serializers
+            .get<zlink::framework::detail::
+                   spot_actor_admission_route_reply_t> ()
+            .deserialize (
+              serializers
+                .get<zlink::framework::detail::
+                       spot_actor_admission_route_reply_t> ()
+                .serialize (
+                  zlink::framework::detail::
+                    spot_actor_admission_route_reply_t{
+                      true,
+                      {1, 2},
+                      "join-root",
+                      0x12345678}));
+        if (admission_root.completion_root_reference
+              != "join-root"
+            || admission_root.completion_root_checksum
+                 != 0x12345678) {
+            return 150;
+        }
+        const auto commit_root =
+          serializers
+            .get<zlink::framework::detail::
+                   spot_actor_commit_route_request_t> ()
+            .deserialize (
+              serializers
+                .get<zlink::framework::detail::
+                       spot_actor_commit_route_request_t> ()
+                .serialize (
+                  zlink::framework::detail::
+                    spot_actor_commit_route_request_t{
+                      .transfer_id = "transfer-root",
+                      .completion_root_reference =
+                        "join-root",
+                      .completion_root_checksum =
+                        0x12345678}));
+        if (commit_root.completion_root_reference
+              != "join-root"
+            || commit_root.completion_root_checksum
+                 != 0x12345678) {
+            return 151;
+        }
+    }
     {
         zlink::framework::serializer_registry_t serializers;
         serializers.add<envelope_payload_t> (

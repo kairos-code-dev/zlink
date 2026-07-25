@@ -7,7 +7,7 @@ internal static class ZLinkHandlerInvocationEngine
         ZLinkHandlerMethodInvoker invoker,
         IReadOnlyList<ZLinkHandlerArgumentKind> argumentPlan,
         object? message,
-        IZLinkHandlerContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         object? arg0 = null;

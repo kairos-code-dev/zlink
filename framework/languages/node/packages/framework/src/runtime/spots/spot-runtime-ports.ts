@@ -2,12 +2,14 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
+  ZLinkActorJoinOperationId,
   ZLinkSpot
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type {
   ZLinkRemoteActorPacketTarget,
-  ZLinkRemoteBoundSessionTarget
+  ZLinkRemoteBoundSessionTarget,
+  ZLinkDeferredJoinAcceptedRoot
 } from '../actors';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import type {
@@ -35,6 +37,24 @@ export interface ZLinkEntryActorRuntime {
 }
 
 export interface ZLinkSpotActorTransferRuntime {
+  prepareDeferredJoinAccepted(
+    actorId: string,
+    operationId: ZLinkActorJoinOperationId,
+    actorRef: ActorRef,
+    rawReply: Uint8Array,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot>;
+  recoverDeferredJoinAccepted(
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot | undefined>;
+  commitAndDeliverDeferredJoinAccepted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    actor: ZLinkActor,
+    actorRef: ActorRef,
+    submitMailbox: <T>(operation: () => Promise<T>) => Promise<T>,
+    signal?: AbortSignal
+  ): Promise<void>;
   getOrCreateRoutedActor(
     actorId: string,
     actorType: string,

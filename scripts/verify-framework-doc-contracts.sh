@@ -70,7 +70,7 @@ for (const [language, owners] of Object.entries(allowedDuplicateOwners)) {
         || new Set(documents).size !== documents.length
         || documents.some(document => typeof document !== 'string'
           || !document.startsWith(
-            `framework/doc/framework/spec/server/languages/${language}/interfaces/`))) {
+            `framework/doc/framework/common/spec/server/languages/${language}/interfaces/`))) {
       fail(`invalid allowed duplicate declaration owner: ${language}: ${name}`);
     }
   }
@@ -114,7 +114,7 @@ if (JSON.stringify(terminationOwnerPolicy.members)
 }
 
 const expectedTerminationResultContract = {
-  formal_path: 'framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md',
+  formal_path: 'framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md',
   e2e_path: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
   outcomes: [
     { name: 'Stopped', wire_value: 0, reasons: ['None'] },
@@ -503,7 +503,7 @@ for (const language of expectedLanguages) {
     }
   }
   const exactDirectory = path.posix.join(
-    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+    'framework/doc/framework/common/spec/server/languages', language, 'interfaces');
   for (const [name, fragments] of Object.entries(projection.required_file_fragments || {})) {
     if (!Array.isArray(fragments) || fragments.length === 0) {
       fail(`${language} required_file_fragments must contain non-empty arrays: ${name}`);
@@ -610,7 +610,7 @@ const applicationExampleMutationSource = [
   '```',
 ].join('\n');
 const applicationExampleMutationDocument =
-  'framework/doc/framework/spec/server/languages/dotnet/interfaces/99-examples.ko.md';
+  'framework/doc/framework/common/spec/server/languages/dotnet/interfaces/99-examples.ko.md';
 const dotnetRoleConfig = traceLanguages.get('dotnet');
 const applicationExampleMutationBlocks = headedFencedBlocks(applicationExampleMutationSource)
   .map(block => ({
@@ -633,7 +633,7 @@ if (applicationExampleMutationBlocks.length !== 1
 }
 
 const javaExactDirectory =
-  'framework/doc/framework/spec/server/languages/java/interfaces';
+  'framework/doc/framework/common/spec/server/languages/java/interfaces';
 const javaMonitoringRelative = path.posix.join(javaExactDirectory, 'monitoring.ko.md');
 const javaMonitoringSource = fs.readFileSync(path.join(root, javaMonitoringRelative), 'utf8');
 const javaSourceHeadings = [
@@ -2140,7 +2140,7 @@ const amendedObjectSemanticFixtures = [
     'global ActorId', 'global SpotId', 'send(actor_id_t actor_id',
     'spot_send_call_t send_to_spot(spot_id_t target',
     'spot_request_call_t request_to_spot(',
-    '`instance_spot()`은 stable type을 생략한 marker',
+    '`instance_spot()`은 [stable type]',
     '`spot_manager_t`는 User Spot만 생성한다.',
     'distinct Instance Spot type이 0개이면',
     'class actor_manager_t', 'class spot_manager_t',
@@ -2149,21 +2149,21 @@ const amendedObjectSemanticFixtures = [
   ]],
   ['dotnet', ['05-spots.ko.md', '06-actors.ko.md', '07-stream-session.ko.md'], [
     'ActorId는 Location Store transaction domain 전체에서 유일한 logical ID',
-    'User·Instance SpotId는 global key다.',
+    'Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다.',
     'SendToActor<TMessage>(',
     'IZLinkSpotSendCall SendToSpot<TMessage>(string spotId',
     'IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId',
     'IZLinkSpotSendCall InstanceSpot();',
     'IZLinkSpotRequestCall InstanceSpot();',
     '`IZLinkSpotManager`는 User Spot의 명시적 create·get-or-create, resolve와 exact close만 제공한다.',
-    '등록된 Instance Spot type이 하나일 때만',
+    'Instance Spot type이 하나일 때만',
     'public interface IZLinkActorManager', 'public interface IZLinkSpotManager',
     'ActorRef.ObjectGeneration', 'SpotRef.ObjectGeneration', 'actor-free lifecycle interface',
     '다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다.',
   ]],
   ['java', ['actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
     'ActorId는 UTF-8 1..255 bytes의 global logical ID',
-    'SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 global logical ID다.',
+    'Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`인 global logical ID',
     'sendToActor(java.lang.String, java.lang.Object)',
     'ZLinkSpotSendCall sendToSpot(java.lang.String, java.lang.Object)',
     'ZLinkSpotRequestCall requestToSpot(java.lang.String, java.lang.Object)',
@@ -2179,12 +2179,12 @@ const amendedObjectSemanticFixtures = [
   ]],
   ['kotlin', ['README.ko.md', 'actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
     'global ActorId·SpotId', 'ID-only 일반',
-    'ZLinkActorManager.create(actorId, actorType)',
+    'ZLinkKotlinActorManager.create(actorId, actorType)',
     'ZLinkSpotManager.create(spotType)',
     'Manager는 Instance Spot',
     'create/get-or-create를 제공하지 않는다.',
-    '`ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을',
-    '`instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만',
+    'Spot 전용 send/request call에서 `instanceSpot()` 또는',
+    '`instanceSpot(stableType)`을 명시한 경우에만',
     'serving Instance type이 distinct',
     'value 하나일 때만 그 type을 자동 선택한다.',
     'ActorRef(actorId, objectGeneration, meshName, nodeRid)',
@@ -2193,7 +2193,7 @@ const amendedObjectSemanticFixtures = [
   ]],
   ['node', ['01-foundation-configuration.ko.md', '04-spots.ko.md', '05-actors.ko.md'], [
     '`ActorId`는 Location Store transaction domain 전체에서 유일한 logical ID',
-    'Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 `string`이며 global key다.',
+    'Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 global string key다.',
     'sendToActor(actorId: ActorId',
     'sendToSpot(spotId: SpotId, message: unknown): ZLinkSpotSendCall',
     'requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall',
@@ -2207,7 +2207,7 @@ const amendedObjectSemanticFixtures = [
 ];
 for (const [language, files, required] of amendedObjectSemanticFixtures) {
   const directory = path.posix.join(
-    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+    'framework/doc/framework/common/spec/server/languages', language, 'interfaces');
   const source = files.map(name => fs.readFileSync(path.join(root, directory, name), 'utf8')).join('\n');
   for (const fragment of required) {
     if (!source.includes(fragment)) {
@@ -2226,7 +2226,7 @@ for (const [language, files, required] of amendedObjectSemanticFixtures) {
 
 const javaSpotsSource = fs.readFileSync(path.join(
   root,
-  'framework/doc/framework/spec/server/languages/java/interfaces/spots.ko.md'), 'utf8');
+  'framework/doc/framework/common/spec/server/languages/java/interfaces/spots.ko.md'), 'utf8');
 const javaInstanceSpot = javaSpotsSource.match(
   /public interface ZLinkInstanceSpot\s*\{([\s\S]*?)\n\}/u)?.[1] || '';
 if (!javaInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(javaInstanceSpot)) {
@@ -2234,14 +2234,14 @@ if (!javaInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(javaInstanceSpot)) {
 }
 const nodeSpotsSource = fs.readFileSync(path.join(
   root,
-  'framework/doc/framework/spec/server/languages/node/interfaces/04-spots.ko.md'), 'utf8');
+  'framework/doc/framework/common/spec/server/languages/node/interfaces/04-spots.ko.md'), 'utf8');
 const nodeInstanceSpot = nodeSpotsSource.match(
   /export interface ZLinkInstanceSpot\s*\{([\s\S]*?)\n\}/u)?.[1] || '';
 if (!nodeInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(nodeInstanceSpot)) {
   fail('node Instance Spot must retain an actor-free exact interface');
 }
 const kotlinExactSource = markdownDocumentsUnder(
-  'framework/doc/framework/spec/server/languages/kotlin/interfaces')
+  'framework/doc/framework/common/spec/server/languages/kotlin/interfaces')
   .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
 if (/ZLinkSuspendingInstanceSpot\s*</u.test(kotlinExactSource)
     || /ZLinkInstanceSpotActor/u.test(kotlinExactSource)) {
@@ -2253,7 +2253,7 @@ const removedMessageContextDeclaration = new RegExp(
   'u');
 for (const language of ['dotnet', 'java', 'kotlin', 'node', 'cpp']) {
   const directory = path.posix.join(
-    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+    'framework/doc/framework/common/spec/server/languages', language, 'interfaces');
   const source = markdownDocumentsUnder(directory)
     .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
   if (removedMessageContextDeclaration.test(source)) {

@@ -52,11 +52,6 @@ final class ZLinkRelocationAdapterRegistryTest {
 
     public static final class TestActor implements ZLinkActor {
         @Override
-        public String actorId() {
-            return "actor";
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return null;
         }
@@ -64,9 +59,7 @@ final class ZLinkRelocationAdapterRegistryTest {
 
     public static final class TestActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new TestActor());
         }
     }

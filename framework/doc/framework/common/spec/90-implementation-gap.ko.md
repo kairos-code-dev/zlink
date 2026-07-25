@@ -258,7 +258,7 @@ immutable relocation root와 replay cursor로 처리를 이어 가도록 요구�
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
 opaque payload의 read와 expected Store version 기반 compare-exchange를 제공한다. Framework coordinator만
 relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
-policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) factory가 하나라도 있는 host는 accepted journal, application state와
+policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도 있는 host는 accepted journal, application state와
 recovery payload를 보존할 Relocation Store도 정확히 하나 등록한다. Instance Spot [factory](01-glossary.ko.md#factory)가 없고 모든 factory가
 `Disabled`인 same-node 구성에서만 Relocation Store를 생략할 수 있다.
 
@@ -572,7 +572,7 @@ Entry callback 순서, User Spot aggregate commit, precommit source 복원, boun
 - Node.js는 expected RID를 모두 명시한 manual peer registry에서는 unknown RID를 `TargetNotFound`로 분류하고,
   registry에 남아 있지만 ready route가 없는 RID는 `RouteNotConnected`로 분류한다. Self RID direct submit도
   기존 node-direct dispatcher의 local admission을 사용해 결과값 없이 완료한다. Discovery mode나 expected
-  RID가 없는 [manual endpoint](01-glossary.ko.md#manual-discovery)가 섞인 구성에는 unknown RID와 이전에 연결됐던 disconnected RID를 구분할
+  RID가 없는 [manual endpoint](01-glossary.ko.md#manual-endpoint)가 섞인 구성에는 unknown RID와 이전에 연결됐던 disconnected RID를 구분할
   target이 논리적으로 존재하는지 판단할 기준 데이터가 없다. 이 구성은 Core의 pipe 결과만 사용하므로 두
   상태를 완전히 구분하지 못한다.
 - JVM은 expected RID를 모두 명시한 manual peer registry에서 unknown RID를 `TargetNotFound`로 분류하고,

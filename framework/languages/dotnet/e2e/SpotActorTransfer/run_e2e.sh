@@ -113,7 +113,12 @@ start_node() {
     --router-endpoint "$router" \
     --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
-    --log-dir "$LOG_DIR"
+    --log-dir "$LOG_DIR" \
+    --route-peer "actor-a=$NODE_A_ROUTER" \
+    --route-peer "actor-b=$NODE_B_ROUTER" \
+    --route-peer "actor-c=$NODE_C_ROUTER" \
+    --route-peer "session-a=$SESSION_A_ROUTER" \
+    --route-peer "session-b=$SESSION_B_ROUTER"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -129,7 +134,12 @@ start_session_gateway() {
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
     --stream-endpoint "$stream" \
-    --evidence-file "$LOG_DIR/${rid}.evidence.log"
+    --evidence-file "$LOG_DIR/${rid}.evidence.log" \
+    --route-peer "actor-a=$NODE_A_ROUTER" \
+    --route-peer "actor-b=$NODE_B_ROUTER" \
+    --route-peer "actor-c=$NODE_C_ROUTER" \
+    --route-peer "session-a=$SESSION_A_ROUTER" \
+    --route-peer "session-b=$SESSION_B_ROUTER"
   setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -207,7 +217,7 @@ wait_health "$SESSION_B_URL" session-b
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"

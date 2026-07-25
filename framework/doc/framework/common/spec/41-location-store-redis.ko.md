@@ -20,6 +20,10 @@ Provider는 object lifecycle, authority payload와 relocation phase를 해석하
 Framework가 schema에 맞춰 bytes를 encode하고 decode한다. Redis provider는 key,
 generation, `StoreVersion`과 atomic CAS를 관리한다.
 
+Session socket, binding token과 Actor별 binding route(현재 Actor owner에 전달할 경로)는 Location Store record나
+transaction에 포함하지 않는다. Actor relocation이 `Completed`까지 끝난 뒤 route를
+바꾸는 작업은 Store provider가 아니라 Session owner Framework runtime이 수행한다.
+
 Redis server time이 lease 만료의 기준이다. Application host의 wall clock은
 [authority](01-glossary.ko.md#authority) 판단에 사용하지 않는다.
 
@@ -31,60 +35,69 @@ Redis key prefix는 배포 단위에서 설정할 수 있지만 같은 provider 
 | 영역 | 값 | 수명 |
 |---|---|---|
 | Discovery [descriptor](01-glossary.ko.md#descriptor) | [MeshNode descriptor](01-glossary.ko.md#meshnode-descriptor), [ClientServer Server descriptor](01-glossary.ko.md#clientserver-server-descriptor) 또는 [fanout publisher descriptor](01-glossary.ko.md#fanout-publisher-descriptor)와 host [owner lease](01-glossary.ko.md#owner-lease) token을 기록한다. | Host lease가 만료되면 더 이상 유효하지 않은 ephemeral data로 처리한다. |
+| Entry Spot ID claim | Object Server descriptor의 `EntrySpotId`, descriptor lifecycle과 exact owner lease token을 기록한다. | Descriptor `NewClaim`에서 생성하고 exact descriptor remove·owner cleanup에서 해제한다. |
 | Host owner lease | `(OwnerId, LeaseGeneration, ExpiresAt, StoreNow)`를 기록한다. | Redis TTL이 만료 여부를 결정한다. |
-| Object authority | Canonical authority key, opaque payload, `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`, current `OwnerId`·`LeaseGeneration`과 Pending·Active placement allocation을 기록한다. | 명시적인 fenced delete가 성공할 때까지 유지하며 TTL을 설정하지 않는다. |
+| Object authority | Canonical authority key, opaque payload, `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`, current `OwnerId`·`LeaseGeneration`과 Reserved·Active placement allocation을 기록한다. | 명시적인 fenced delete가 성공할 때까지 유지하며 TTL을 설정하지 않는다. |
 | Authority index | Snapshot scan에 사용하는 versioned key index와 active scan lease를 기록한다. | Current index는 authority row를 따르고, 삭제 이력은 이를 참조할 수 있는 scan lease가 끝나거나 만료될 때까지 유지한다. |
-| Creation attempt | Object key, stable type, target descriptor, capacity 변화량, exact authority fence와 terminal result를 기록한다. | Reserved 상태는 exact fence로 takeover 또는 terminal 처리할 때까지 TTL 없이 유지한다. Created·Rejected·Aborted terminal 상태는 caller 결과 회수를 위한 retention TTL 동안 유지한다. |
-| Relocation capacity reservation | Current authority key·`StoreVersion`, source·target descriptor와 owner token, capacity 변화량을 기록한다. | `NewOwner` 또는 aggregate commit이나 exact abort가 끝날 때까지 유지하며 TTL을 설정하지 않는다. |
+| Creation reservation | Object key, stable type, target descriptor, typed capacity bundle과 exact authority fence를 기록한다. | Creating recovery 또는 terminal cleanup까지 durable하게 유지한다. |
+| Creation operation terminal | Exact source lifecycle·`OperationId`, reservation fence, `Created`·`Rejected` state와 opaque application reply envelope를 기록한다. | 같은 operation의 retry retention이 끝날 때까지 durable하게 유지한다. |
+| Relocation capacity reservation | Current authority key·`StoreVersion`, source·target descriptor와 owner token, typed capacity bundle을 기록한다. | Standalone `NewOwner` 또는 exact abort까지 durable하게 유지하며 TTL을 설정하지 않는다. |
 | Global counters | `ObjectGeneration`, `AuthorityOwnerGeneration`, `StoreRevision`, `LeaseGeneration`을 transaction domain 전체에서 발급한다. | Provider transaction domain에 durable counter로 유지한다. |
 
 ### 2.1 공통 물리 schema
 
 공식 Redis extension은 언어와 관계없이 같은 hybrid schema를 사용한다. Authority current state와
 scan history는 authority별 HASH에 두고, transaction domain 전체가 공유하는 counter·capacity·membership·
-versioned index만 shared HASH 또는 ZSET에 둔다. Creation attempt, relocation fence와 aggregate record는
+versioned index만 shared HASH 또는 ZSET에 둔다. Creation reservation, relocation fence와 aggregate record는
 각 operation별 HASH로 분리한다. 여러 authority의 property를 몇 개의 큰 HASH로 나누는 layout과 provider
 전체 state를 하나의 serialized value로 저장하는 layout은 사용하지 않는다.
 
 사용자가 설정하는 prefix `P`에는 `{`와 `}`를 허용하지 않는다. Provider는 모든 transaction key에 literal
-`{zlink-location-v1}` hash tag를 넣는다. 다음 표의 `D`는 canonical key bytes의 SHA-256 lower-hex이고,
-`I`는 UUID의 32자 lower-hex다.
+`{zlink-location-v3}` hash tag를 넣는다. 다음 표의 `D`는 canonical key bytes의 SHA-256 lower-hex,
+`E`는 full Entry Spot ID UTF-8 bytes의 SHA-256 lower-hex이고 `I`는 reservation·aggregate UUID raw
+128-bit 값의 32자 lower-hex다.
 
 | 용도 | Redis key와 자료형 |
 |---|---|
-| Schema marker | `P:{zlink-location-v1}:schema` · HASH |
-| Global counter | `P:{zlink-location-v1}:counter` · HASH |
-| Host owner lease | `P:{zlink-location-v1}:owner-lease:D` · HASH |
-| Public [MeshNode](01-glossary.ko.md#meshnode) descriptor | `P:{zlink-location-v1}:descriptor:mesh:D` · HASH |
-| Descriptor admission metadata | `P:{zlink-location-v1}:descriptor-admission:mesh:D` · HASH |
-| Descriptor canonical key index | `P:{zlink-location-v1}:descriptor:mesh:index` · SET |
-| Descriptor [owner](01-glossary.ko.md#owner) token index | `P:{zlink-location-v1}:descriptor:mesh:owner:D` · SET |
-| Current authority | `P:{zlink-location-v1}:authority:current:D` · HASH |
-| Authority history | `P:{zlink-location-v1}:authority:history:D` · HASH |
-| Authority revision index | `P:{zlink-location-v1}:authority:history-revisions:D` · ZSET |
-| Canonical authority key index | `P:{zlink-location-v1}:authority:key-index` · ZSET |
-| Deleted key GC index | `P:{zlink-location-v1}:authority:index-gc` · ZSET |
-| Current [membership](01-glossary.ko.md#membership) | `P:{zlink-location-v1}:membership:current` · HASH |
-| Membership history | `P:{zlink-location-v1}:membership:history:D` · HASH |
-| Membership revision index | `P:{zlink-location-v1}:membership:history-revisions:D` · ZSET |
-| Node capacity | `P:{zlink-location-v1}:capacity:node:<active\|pending>` · HASH |
-| Type capacity | `P:{zlink-location-v1}:capacity:type:<active\|pending>` · HASH |
-| Creation attempt | `P:{zlink-location-v1}:creation:I` · HASH |
-| Relocation capacity fence | `P:{zlink-location-v1}:relocation:I` · HASH |
-| Aggregate record | `P:{zlink-location-v1}:aggregate:I:<generation>` · HASH |
-| Scan lease | `P:{zlink-location-v1}:scan:I` · HASH |
-| Scan expiry index | `P:{zlink-location-v1}:scans:expiry` · ZSET |
-| Scan watermark index | `P:{zlink-location-v1}:scans:watermark` · ZSET |
+| Schema marker | `P:{zlink-location-v3}:schema` · HASH |
+| Global counter | `P:{zlink-location-v3}:counter` · HASH |
+| Host owner lease | `P:{zlink-location-v3}:owner-lease:D` · HASH |
+| Public [MeshNode](01-glossary.ko.md#meshnode) descriptor | `P:{zlink-location-v3}:descriptor:mesh:D` · HASH |
+| Descriptor admission metadata | `P:{zlink-location-v3}:descriptor-admission:mesh:D` · HASH |
+| Descriptor canonical key index | `P:{zlink-location-v3}:descriptor:mesh:index` · SET |
+| Descriptor [owner](01-glossary.ko.md#owner) token index | `P:{zlink-location-v3}:descriptor:mesh:owner:D` · SET |
+| Entry Spot ID claim | `P:{zlink-location-v3}:entry-spot-id:E` · HASH |
+| Current authority | `P:{zlink-location-v3}:authority:current:D` · HASH |
+| Authority history | `P:{zlink-location-v3}:authority:history:D` · HASH |
+| Authority revision index | `P:{zlink-location-v3}:authority:history-revisions:D` · ZSET |
+| Canonical authority key index | `P:{zlink-location-v3}:authority:key-index` · ZSET |
+| Deleted key GC index | `P:{zlink-location-v3}:authority:index-gc` · ZSET |
+| Current [membership](01-glossary.ko.md#membership) | `P:{zlink-location-v3}:membership:current` · HASH |
+| Membership history | `P:{zlink-location-v3}:membership:history:D` · HASH |
+| Membership revision index | `P:{zlink-location-v3}:membership:history-revisions:D` · ZSET |
+| Actor capacity | `P:{zlink-location-v3}:capacity:actor:<active\|reserved>` · HASH |
+| Spot capacity | `P:{zlink-location-v3}:capacity:spot:<active\|reserved>` · HASH |
+| Spot type capacity | `P:{zlink-location-v3}:capacity:spot-type:<active\|reserved>` · HASH |
+| Creation reservation | `P:{zlink-location-v3}:creation:I` · HASH |
+| Relocation capacity fence | `P:{zlink-location-v3}:relocation:I` · HASH |
+| Aggregate record | `P:{zlink-location-v3}:aggregate:I:<generation>` · HASH |
+| Scan lease | `P:{zlink-location-v3}:scan:I` · HASH |
+| Scan expiry index | `P:{zlink-location-v3}:scans:expiry` · ZSET |
+| Scan watermark index | `P:{zlink-location-v3}:scans:watermark` · ZSET |
 
-Schema marker의 `format`은 `location-authority-hybrid-v1`이고 최초 `epoch`은 decimal `1`이다. 비어 있는
+Schema marker의 `format`은 `location-authority-hybrid-v3`이고 최초 `epoch`은 decimal `3`이다. 비어 있는
 transaction domain만 이 marker로 초기화할 수 있다. Marker가 없는데 domain key가 있거나 format이 다르면
 startup을 실패한다. Migration은 serving을 닫은 상태에서 전체 invariant와 digest를 검증하고 새 epoch를
 마지막 CAS로 publish한다. Provider는 다른 layout을 자동으로 읽거나 dual-write하지 않는다.
+기존 `location-authority-hybrid-v1` 또는 `location-authority-hybrid-v2` domain은 offline migration으로
+authority allocation과 reservation의 scalar capacity를 typed bundle로 변환하고 모든 Spot canonical
+key와 Entry claim이 유효한 UTF-8 Spot ID인지 검증한 뒤에만 epoch 3을 publish할 수 있다. 임의 binary
+Spot RID는 자동 변환하지 않으며 migration에서 명시적인 replacement Spot ID가 없으면 실패한다.
 
 Current authority HASH는 원래 canonical authority key bytes를 함께 저장하고 `D`와 exact match를 확인한다.
 그 밖에 `payload`, `storeVersion`, `objectGeneration`, `authorityOwnerGeneration`, `ownerId`,
 `ownerLeaseGeneration`, `allocationState`, `objectKind`, `stableType`, `descriptorKey`,
-`descriptorLifecycleGeneration`, `capacityDelta` field를 사용한다. Pending allocation은
+`descriptorLifecycleGeneration`, `capacityBundle` field를 사용한다. Reserved allocation은
 여기에 `pendingCreationReservationId`, `pendingCreationReference`,
 `pendingCreationSha256`, `pendingCreationEncodedSize` 네 field를 반드시 추가한다.
 각각 provider가 발급한 reservation ID, 변경할 수 없는 creation content의 reference,
@@ -93,12 +106,88 @@ Current authority HASH는 원래 canonical authority key bytes를 함께 저장�
 않는다. `objectKind`는 enum의 언어별 이름이나 정수값이 아니라
 `actor`, `user_spot`, `instance_spot` 중 하나로 저장한다.
 
+Entry Spot ID claim HASH는 `state`, `spotId`, `descriptorKey`, `descriptorLifecycleGeneration`,
+`ownerId`, `ownerLeaseGeneration` 여섯 field만 사용한다. `state`는 case-sensitive ASCII
+`Claimed`이고 `spotId`는 full Entry Spot ID의 exact UTF-8 bytes다. Generation은 선행 `0` 없는
+invariant decimal이다. Optional field, descriptor JSON 또는 provider 전용 metadata를 추가하지 않는다.
+이 HASH에는 TTL을 설정하지 않으며 exact release transaction으로만 삭제한다.
+
 Capacity HASH의 field도 언어에 따라 달라지지 않는 length-prefix encoding을 사용한다. 각 segment는
 `<UTF-8 byte length>:<value>`로 encode하고 separator를 추가하지 않는다. Node bucket은 canonical
-descriptor key와 lifecycle generation의 decimal 값을 차례로 encode한다. Type bucket은 같은 node
-bucket 뒤에 위 `objectKind` token과 [stable type](01-glossary.ko.md#stable-type)을 차례로 encode한다. 따라서 Unicode stable type도
+descriptor key와 lifecycle generation의 decimal 값을 차례로 encode한다. Spot type bucket은 같은 node
+bucket 뒤에 `user_spot` 또는 `instance_spot` token과 [stable type](01-glossary.ko.md#stable-type)을 차례로 encode한다. 따라서 Unicode stable type도
 UTF-16 code unit 수가 아니라 UTF-8 byte 수를 사용하며, descriptor lifecycle이 바뀌면 이전 node의
 capacity와 새 node의 capacity가 섞이지 않는다.
+
+`capacityBundle`은 domain `zlink-capacity-bundle-v2`, Actor slot, Spot slot, Spot type presence를
+차례로 length-prefix segment로 기록한 뒤, entry가 있으면 `(objectKind token, stableType, slot 수)`를
+이어 붙인다. Slot과 presence는 선행 `0` 없는 invariant decimal이며 presence는 `0` 또는 `1`이다.
+Spot type entry의 `objectKind`는 `user_spot` 또는 `instance_spot`만 허용한다. 같은 kind·stable type의
+중복 entry, 음수 slot, 모든 slot이 0인 bundle은 provider I/O 전에 argument validation error로 거부한다.
+
+Creation reservation, standalone relocation reservation과 aggregate record는 다음 exact field set을
+사용한다. Field 이름은 아래 ASCII spelling과 대소문자를 그대로 사용하며 optional field나 provider
+전용 field를 추가하지 않는다.
+
+| Record | Exact HASH fields |
+|---|---|
+| Creation reservation | `state`, `reservationId`, `authorityKey`, `storeVersion`, `objectGeneration`, `authorityOwnerGeneration`, `reservationVersion`, `objectKind`, `stableType`, `targetDescriptorKey`, `targetDescriptorLifecycleGeneration`, `targetOwnerId`, `targetOwnerLeaseGeneration`, `creationReference`, `creationSha256`, `creationEncodedSize`, `capacityBundle` |
+| Creation operation terminal | `state`, `sourceNodeRid`, `sourceNodeGeneration`, `operationIdHigh`, `operationIdLow`, `reservationId`, `objectKind`, `terminalEnvelope`, `terminalEnvelopeSha256`, `expiresAtUnixMs` |
+| Standalone relocation | `state`, `reservationId`, `authorityKey`, `expectedStoreVersion`, `objectKind`, `stableType`, `sourceDescriptorKey`, `sourceDescriptorLifecycleGeneration`, `sourceOwnerId`, `sourceOwnerLeaseGeneration`, `targetDescriptorKey`, `targetDescriptorLifecycleGeneration`, `targetOwnerId`, `targetOwnerLeaseGeneration`, `capacityBundle` |
+| Aggregate | `state`, `aggregateId`, `aggregateGeneration`, `participants`, `inventoryDigest`, `targetDescriptorKey`, `targetDescriptorLifecycleGeneration`, `targetOwnerId`, `targetOwnerLeaseGeneration`, `capacityBundle` |
+
+Creation reservation의 `state`는 case-sensitive ASCII `Reserved`, `Committed`, `Rejected`, `Aborted`
+중 하나다. Creation operation terminal의 `state`는 `Created`, `Rejected`, `Failed` 중 하나다.
+Standalone relocation과 aggregate record는 `Reserved`, `Committed`, `Aborted`를 사용한다.
+Public prepare 결과의 `Prepared`·`AlreadyPrepared`는 operation 결과 이름이며 durable aggregate
+record의 준비 상태는 `Reserved`다. Creation terminal envelope는
+`creation-operation-terminal-v1`의 correlation-free semantic bytes다. Command head, request
+correlation과 reply route는 포함하지 않으며 Provider는 envelope를 해석하지 않는다.
+
+128-bit ID는 hyphen 없는 32자리 lowercase hex, generation·size는 선행 `0` 없는 decimal,
+SHA-256과 inventory digest는 exact 32 raw bytes로 저장한다. Authority key, descriptor key, owner ID,
+`StoreVersion`, reference와 stable type은 계약에서 정한 UTF-8 bytes를 그대로 사용한다.
+`participants`는 bounded canonical participant set과 mutation을 공통 aggregate encoding으로
+serialize한 bytes다.
+
+Creation operation terminal key는 다음 exact 형식이다.
+
+```text
+P:{zlink-location-v3}:creation-terminal:<rid-byte-length>:<rid-hex>:<source-generation>:<operation-id-hex>
+```
+
+`rid-byte-length`와 `source-generation`은 선행 `0` 없는 decimal이다. `rid-hex`는 Node RID의 exact
+UTF-8 bytes를 lowercase hex로 변환한 값이고, `operation-id-hex`는 high·low unsigned 64-bit를 각각
+16자리 lowercase hex로 이어 붙인 32자리 값이다. `terminalEnvelope`는 correlation-free semantic
+envelope bytes의 lowercase hex projection이며 decode한 bytes가 1,048,576 bytes를 넘으면 provider
+I/O 전에 거부한다. `terminalEnvelopeSha256`은 decode한 bytes의 exact SHA-256이다.
+`expiresAtUnixMs`는 original operation deadline에 300,000 ms를 더한 값이며 Redis `TIME` 기준으로
+이미 만료된 입력은 mutation 전에 거부한다. Terminal key에는 `PEXPIREAT`을 적용하지만 authority와
+creation reservation에는 TTL을 적용하지 않는다.
+
+Schema epoch 3 provider는 다음 capacity fixture를 같은 bytes로 생성해야 한다.
+
+```text
+actorSlots = 3
+spotSlots = 1
+spotType = (user_spot, room, 1)
+encoded = 24:zlink-capacity-bundle-v21:31:11:19:user_spot4:room1:1
+hex = 32343a7a6c696e6b2d63617061636974792d62756e646c652d7632313a33313a31313a31393a757365725f73706f74343a726f6f6d313a31
+```
+
+모든 언어 provider의 contract test는 공통 byte fixture를 write한 뒤 raw Redis bytes로 비교하고,
+fixture를 raw Redis에 넣은 뒤 public read 결과도 비교한다. Field set, state token,
+`capacityBundle` bytes 또는 epoch가 다르면 호환 schema로 읽지 않고 startup을 실패한다.
+
+Entry claim fixture는 full RID `mesh-entry-123e4567-e89b-42d3-a456-426614174000`을 사용한다.
+UUID component는 RFC 4122 version 4와 variant를 가진 lowercase canonical `8-4-4-4-12` 형식이다.
+이 RID의 `E`는 `52704385274f30e952774ce79876f362d51f5564752cc4d687bbb60bb05d453e`이고
+exact key suffix는
+`{zlink-location-v3}:entry-spot-id:52704385274f30e952774ce79876f362d51f5564752cc4d687bbb60bb05d453e`다.
+`spotId` value hex는
+`6d6573682d656e7472792d31323365343536372d653839622d343264332d613435362d343236363134313734303030`,
+`state` value hex는 `436c61696d6564`다. Fixture는 여섯 field가 정확히 존재하고 extra field가
+없음을 검증한다.
 
 Public MeshNode descriptor HASH는 공통 fixture의 `owner`, `gen`, `json`, `updatedAtMs`, `mesh` 다섯
 field만 가진다. Placement admission에 필요한 descriptor revision, owner lease generation, object role,
@@ -204,14 +293,14 @@ MeshName·NodeRid·lifecycle generation은 placement allocation의 descriptor me
 Read 결과는 다음 closed union이다.
 
 - `Missing(StoreNow)`: row가 없으며 StoreVersion이나 generation을 만들지 않는다.
-- `Found(Payload, StoreVersion, [ObjectGeneration](01-glossary.ko.md#objectgeneration), [AuthorityOwnerGeneration](01-glossary.ko.md#authority-owner-generation), OwnerId,
+- `Found(Payload, StoreVersion, [ObjectGeneration](01-glossary.ko.md#objectgeneration), [AuthorityOwnerGeneration](01-glossary.ko.md#authorityownergeneration), OwnerId,
   OwnerLeaseGeneration, PlacementAllocation, StoreNow)`: current row snapshot을 반환한다.
 
 Missing 결과에 `0`, 빈 문자열이나 synthetic StoreVersion을 넣지 않는다.
 
 ### 4.2 Expectation과 mutation
 
-모든 public authority mutation은 Active `Found`의 expected StoreVersion을 명시한다. Missing→Pending 생성은
+모든 public authority mutation은 Active `Found`의 expected StoreVersion을 명시한다. Missing→Reserved 생성은
 generic Reserve가 전담한다. Redis Lua/function은 expectation을 먼저 검증한 뒤 global counter 소비, row write와
 index write를 한 atomic operation으로 처리한다.
 
@@ -235,105 +324,73 @@ Framework가 encode하는 authority payload는 relocation phase, `RelocationId`,
 source와 current target fence, Relocation Store root reference와 checksum, membership, replay·completion count를
 포함한다. Redis provider는 이 field를 해석하지 않지만 expected StoreVersion CAS는 reference, checksum, phase,
 membership과 count를 하나의 authority revision으로 바꾼다. Current owner ID·lease generation과 placement
-allocation의 state·kind·stable type·descriptor key·lifecycle generation·capacity delta는 provider metadata에만
+allocation의 state·kind·stable type·descriptor key·lifecycle generation·typed capacity bundle은 provider metadata에만
 두며 payload에 중복 encode하지 않는다. 일부 field만 별도 operation으로 갱신하지 않는다.
 
 Logical create와 ObjectGeneration·initial allocation 발급은 아래 generic placement reservation operation만 사용한다.
 Public authority CAS는 Missing row를 만들지 않는다.
 
-Missing→Pending은 `Reserve`, Actor Pending→Active는 exact
-`CompleteCreation(Created)`, Actor Pending→Missing은 exact
-`CompleteCreation(Rejected|Failed)` 또는 recovery `Abort`만 수행한다.
+Missing→Reserved는 `Reserve`, Reserved→Active는 exact `Commit`, application rejection의
+Reserved→Missing은 exact `Reject`, infrastructure failure의 Reserved→Missing은 exact `Abort`만 수행한다.
 Active→다른 Active는 capacity fence를 소비하는 NewOwner·aggregate commit, Active→Missing은 Delete만 수행한다.
-Pending row에 Preserve·NewOwner·Delete를 적용하면 Conflict이고 mutation은 0이다.
+Reserved row에 Preserve·NewOwner·Delete를 적용하면 Conflict이고 mutation은 0이다.
 
 ### 4.3 Generic placement reservation
 
-Provider는 `Reserve`, `CompleteCreation`, `ReadCreationTerminal`과 recovery
-`Abort` closed operation을 제공한다.
-Provider는 object kind와 stable type을 placement allocation·capability·capacity
-counter를 선택하는 metadata로 처리하지만 Framework가 encode한
-application·creation·relocation payload는 해석하지 않는다. Reservation은 object
-kind, global canonical key, stable type, immutable creation intent reference·hash,
-target descriptor key·lifecycle generation, active·pending capacity delta, exact owner
-fence와 Framework가 encode한 opaque Creating authority payload를 가진다.
-
-`CompleteCreation`은 `Created`, `Rejected` 또는 `Failed` outcome, Framework가
-encode한 opaque semantic terminal envelope와 Created의 Ready authority payload를 받는다. Redis provider는
-payload를 해석하거나 합성하지 않는다. Reserved attempt에는 TTL을 두지 않으며
-Creating authority와 target host owner lease를 기준으로 recovery, takeover 또는
-terminal 처리를 수행한다.
+Provider는 `Reserve`, `Commit`, `Reject`, `Abort` closed operation을 제공한다. Provider는 object
+kind와 stable type을 placement allocation·capability·capacity counter를 선택하는 metadata로 처리하지만
+Framework가 encode한 application·creation·relocation payload는 해석하지 않는다. Reservation은 object
+kind, global canonical key, stable type, immutable creation intent reference·hash, target descriptor
+key·lifecycle generation, typed capacity bundle, exact owner fence와 Framework가 encode한 opaque
+Creating authority payload를 가진다. `Commit`은 Framework가 encode한 opaque Ready authority payload를
+받는다. Redis provider는 두 payload를 해석하거나 합성하지 않고 해당 authority revision에 그대로 기록한다.
+Reservation에는 TTL을 두지 않으며 Creating authority와 target host owner lease를 기준으로 recovery,
+takeover 또는 abort한다.
 
 | Operation | Atomic mutation |
 |---|---|
-| `Reserve` | `Missing → Creating`, generation 발급, creation intent 연결과 target pending capacity 증가 |
-| `CompleteCreation(Created)` | Target descriptor lifecycle·owner lease 재검증, exact `Creating → Ready`, pending 감소, active 증가와 operation-scoped `Created` terminal publish |
-| `CompleteCreation(Rejected\|Failed)` | Exact Creating authority 삭제, pending 감소와 operation-scoped terminal publish. Ready authority와 active capacity는 만들지 않음 |
-| `ReadCreationTerminal` | Exact source lifecycle·`OperationId`로 retained semantic terminal을 읽거나 Missing 반환 |
-| `Abort` | Current lifecycle·lease와 무관하게 reservation에 고정한 exact Creating authority 삭제와 이전 target pending 감소. Operation terminal은 publish하지 않음 |
+| `Reserve` | `Missing → Creating`, generation 발급, creation intent 연결과 target reserved bundle 증가 |
+| `Commit` | Target descriptor lifecycle·owner lease 재검증, exact `Creating → Ready`, reserved 감소와 active 증가, 해당 operation의 `Created` terminal publication |
+| `Reject` | Exact Creating authority 삭제, reserved bundle 감소, 해당 operation의 `Rejected` terminal publication |
+| `Abort` | Current lifecycle·lease와 무관하게 reservation에 고정한 exact Creating authority 삭제와 이전 target reserved bundle 감소 |
 
-Expectation, global counter, authority row·index, creation attempt와 capacity counter는
-같은 server-side transaction에서 검증하고 변경한다. Capacity HASH는 node별 Actor
-active·reserved count, User·Instance Spot 전체 count와 Spot stable type별 count의
-권한 원본이다. Limit `0`은 제한 없음이며 양수 limit은 Active와 reserved delta를 합해
-검사한다. Entry Spot은 이 counter에 포함하지 않는다. `Reserve`가 limit을 넘으면
-아무 값을 소비하지 않고 `PlacementCapacityExhausted`를 반환한다.
+Expectation, global counter, authority row·index, reservation과 capacity counter는 같은 server-side
+transaction에서 검증하고 변경한다. `Reserve`는 bundle 전체에 대해 Actor·Spot node limit과 Spot type
+limit을 모두 확인한다. Actor의 `Commit`과 `Reject`는 reservation에 결합된 exact source operation
+terminal만 publish한다. 다른 operation이 같은 Actor의 Creating authority를 기다리고 있으면 terminal
+result를 읽지 않고 authority를 다시 조회한다. Ready면 `Existing`, Missing이면 새 reservation을 경쟁한다.
 
-Created completion은 target descriptor lifecycle과 owner lease가 stale이면 mutation 0으로
-끝내고 reservation을 유지한다. Completion은 exact operation terminal key를 CAS하며 이미
-publish한 terminal을 다른 outcome으로 바꾸지 않는다. Abort는 reservation에 기록한 이전
-descriptor·counter를 정리한다. Stale reservation은 새
-authority나 capacity를 변경하지 못한다.
+User Spot 또는 Instance Spot `Reserve`는 같은 Spot ID의 Entry claim key도 같은 transaction에서 확인한다.
+`Claimed` record가 있으면 identity conflict로 닫고 authority row, generation, reservation, index와
+capacity를 하나도 변경하지 않는다. Framework는 canonical Spot authority key와 Entry claim key를 모두
+`KEYS`로 전달하며 provider는 RID 문자열에서 어느 key도 만들지 않는다.
 
-Creation request는 encoded 최대 1 MiB이고 immutable content reference와 hash로
-저장한다. Ready 또는 fenced terminal 처리가 확정될 때까지 reference를 유지한다.
-Provider는 content를 해석하지 않는다. Recovery는 owner lease가 stale한 Reserved
-attempt를 exact fence로 takeover하거나 abort하며, elapsed time만으로 Reserved
-attempt를 삭제하지 않는다.
+`active + reserved + requested`가 limit을 넘으면 아무 값을 소비하지 않고
+`PlacementCapacityExhausted`를 반환한다. `Commit`은 target descriptor lifecycle과 owner lease가
+stale이면 mutation 0으로 끝내고 reservation을 유지한다. `Abort`는 stale lifecycle·lease를 이유로
+거부하지 않고 reservation에 기록한 이전 descriptor·counter를 정리한다. 두 operation은 같은
+reservation fence에 대해 idempotent하며 stale reservation이 새 authority나 capacity를 변경하지 못한다.
 
-[Creation attempt](01-glossary.ko.md#creation-attempt) HASH는 Reserved 또는 terminal
-상태 중 하나만 가진다.
-
-```text
-Missing
-  → Reserved(R1)
-      ├─ Created(R1, ObjectRef, ReplyRef?)
-      ├─ Rejected(R1, ReplyRef?)
-      └─ Aborted(R1, Failure)
-```
-
-Created와 Rejected는 reservation winner operation의 정상 terminal result이며 callback
-exception은 Failed다. Abort는 recovery cleanup이므로 operation terminal이 아니다.
-Creating을 관찰한 서로 다른 operation은 Ready 뒤 Existing을 받고 cleanup 뒤 새
-reservation을 경쟁한다. 앞선 application reply를 공유하지 않는다.
-
-Terminal transition은 `(source Node RID raw bytes, source lifecycle generation,
-OperationId)` exact key의 HASH에 outcome, correlation-free
-`creation-operation-terminal-v1` envelope, SHA-256과 Redis server time 기준 expiry를
-기록한다. 같은 source lifecycle·`OperationId`의 재전송만 이 record를 읽고 Framework가
-현재 correlation·reply route로 command reply를 다시 encode한다. TTL은 original
-operation deadline 뒤 5분이며 Reserved 상태에는 TTL을 설정하지 않는다.
-
-Creation terminal key의 RID segment는 transport `RoutingId`의 exact raw bytes 길이와
-그 raw bytes의 lowercase hex다. RoutingId를 먼저 canonical hex text로 바꾼 뒤 그
-문자열을 UTF-8로 다시 encode하지 않는다. 예를 들어 raw bytes가 `node-a`이면 segment는
-`6:6e6f64652d61`이다.
+Creation request는 encoded 최대 1 MiB이고 immutable content reference와 hash로 저장한다. Ready 또는
+fenced abort가 확정될 때까지 reference를 유지한다. Provider는 content를 해석하지 않는다. Recovery는
+owner lease가 stale한 pending reservation을 exact fence로 takeover하거나 abort하며, elapsed time만으로
+reservation을 삭제하지 않는다.
 
 #### Relocation capacity reservation
 
 Existing object relocation은 creation reservation을 재사용하지 않는다. `ReserveRelocationCapacity`는 Framework가
 만든 non-zero 128-bit reservation ID, current authority key·StoreVersion, kind·stable type, source
 descriptor key·lifecycle generation·owner token, target descriptor key·lifecycle generation·owner token과
-capacity delta를 받는다. Lua/function은 request source identity가 current authority owner와 durable Active
-placement allocation의 descriptor key·lifecycle generation·kind·stable type·capacity delta와 정확히 같은지
+typed capacity bundle을 받는다. Lua/function은 request source identity가 current authority owner와 durable Active
+placement allocation의 descriptor key·lifecycle generation·kind·stable type·capacity bundle과 정확히 같은지
 확인한다. Source descriptor row와 source owner lease의 live 상태는 요구하지 않는다. Target descriptor
-lifecycle·owner lease·capability·pending limit만 live/exact로 확인하고 target pending을 예약한다. Authority row와
+lifecycle·owner lease·capability와 bundle의 모든 limit을 live/exact로 확인하고 target reserved bundle을 예약한다. Authority row와
 source active count는 이 단계에서 바꾸지 않는다. 같은 ID와 exact request는 같은
 fence를 반환하고 다른 request는 conflict다.
 
 Standalone `NewOwner` CAS는 relocation capacity fence를 필수로 받아 authority owner 전환, source active 감소,
-target pending 감소·active 증가와 fence commit을 한 transaction에서 처리한다. Aggregate commit도 participant별
-relocation capacity fence를 같은 transaction에서 소비한다. Abort는 uncommitted fence의 target pending만 해제하며
+target reserved 감소·active 증가와 fence commit을 한 transaction에서 처리한다. Abort는 uncommitted
+standalone fence의 target reserved bundle만 해제하며
 반복 abort는 idempotent하고 committed 또는 다른 fence는 closed result로 구분한다. Reservation에는 TTL을 두지
 않는다. Recovery는 expected authority StoreVersion, current owner token과 Active allocation을 사용하며 payload를 해석하지 않는다.
 Standalone NewOwner fence가 reserved 상태가 아니거나 authority key·expected StoreVersion·source·target owner와
@@ -342,48 +399,46 @@ Standalone NewOwner fence가 reserved 상태가 아니거나 authority key·expe
 match를 다시 확인하고 target descriptor lifecycle과 target owner lease만 live/exact로 재검증한다. Source
 descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면
 같은 Conflict와 mutation 0으로 끝낸다.
-Aggregate prepare에서 fence reservation record와 `NewOwner` participant는 정확히 일대일이어야 한다. Fence의
-authority key·expected StoreVersion·source owner·target owner가 participant expectation, current authority owner,
-aggregate target owner와 일치해야 한다. Request source는 durable Active allocation과 exact match해야 하고 target
-descriptor lifecycle·owner lease만 live/exact로 다시 확인한다.
-누락·중복·추가 fence나 값 불일치는 conflict이며 row·capacity·fence·aggregate record를 변경하지 않는다.
+User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. Aggregate prepare가
+participant expectation과 current Active allocation을 exact-match하고, target descriptor lifecycle·owner
+lease와 `Actor=N, Spot=1, User Spot type=1`인 typed bundle을 검증한다. Bundle 또는 participant
+inventory가 다르면 conflict이며 row·capacity·aggregate record를 변경하지 않는다.
 
 ### 4.4 Bounded aggregate commit
 
 User Spot relocation과 cross-node Actor `JoinSpot`·`JoinEntrySpot`은 generic bounded aggregate transaction을 사용한다. Request는 non-zero
 128-bit aggregate ID, exact aggregate generation, participant별 authority key·expected StoreVersion·owner mutation과
 membership mutation을 가진다. Participant는 최대 1024개이고 encoded request와 aggregate record는 각각 최대
-1 MiB다. Provider는 [User Spot](01-glossary.ko.md#entry-user-instance-spot)이나 Actor 의미를 해석하지 않고 expectation과 mutation vector만 처리한다.
+1 MiB다. Provider는 [User Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)이나 Actor 의미를 해석하지 않고 expectation과 mutation vector만 처리한다.
 
 [Location Store](01-glossary.ko.md#location-store)의 aggregate record가 bounded canonical participant set, participant별 mutation, aggregate generation과
 inventory digest를 권한 원본으로 저장한다. Relocation Store manifest는 participant별 state·journal payload를 찾기
 위한 같은 digest의 projection일 뿐 authority가 아니다. Location Store transaction은 Relocation Store를 호출하거나
 두 Store 사이 2PC를 수행하지 않는다.
 
-`PrepareAggregate`는 모든 participant expectation, `NewOwner` participant와 일대일로 대응하는 relocation capacity
-fence와 owner lease fence를 확인하고 durable prepared record를 만든다. 같은 transaction에서 각 Reserved fence를
-aggregate ID·generation에 bind하고 Prepared로 전이한다. Bind된 fence의 direct abort는 Stale이고 다른 aggregate
-prepare는 conflict다. Exact duplicate prepare만 idempotent하다. `CommitAggregate`는 prepared record의 exact
-generation에 bind된 fence의 source Active allocation match와 target descriptor lifecycle·owner lease를 다시
-확인한다. Source descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다.
-Target이 stale이면 participant·capacity·fence를 바꾸지 않고 bind 상태를 유지한다. 유효한 fence만 소비해 모든 authority owner,
-AuthorityOwnerGeneration, membership index와 aggregate commit generation을 한 server-side transaction으로
-전환한다. `AbortAggregate`는 commit 전 prepared record와 bind된 fence의 target pending을 함께 정리하고 fence를
-aborted로 닫는다. 같은 aggregate generation의
-duplicate operation은 idempotent하고 다른 generation은 stale다.
+`PrepareAggregate`는 모든 participant expectation과 target owner lease fence를 확인하고 durable
+`Reserved` record를 만든다. 같은 transaction에서 target typed capacity bundle 전체를 예약한다.
+`CommitAggregate`는 record의 exact generation, canonical participant set과 inventory digest, source Active
+allocation match와 target descriptor lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease가
+stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면 participant·capacity·
+aggregate record를 바꾸지 않고 `Reserved`를 유지한다. 유효한 record만 소비해 모든 authority owner,
+`AuthorityOwnerGeneration`, membership index와 aggregate commit generation을 한 server-side transaction으로
+전환하고 record state를 `Committed`로 바꾼다. `AbortAggregate`는 commit 전 `Reserved` record의 target
+reserved bundle 전체를 정리하고 `Aborted`로 닫는다. 같은 aggregate generation의 duplicate operation은
+idempotent하고 다른 generation은 stale다.
 
-이 transaction은 Session binding route를 저장하거나 갱신하지 않는다. Actor가
+이 transaction은 Session [binding route](01-glossary.ko.md#binding-route)를 저장하거나 갱신하지 않는다. Actor가
 Session에 bind되어 있으면 Framework runtime이 owner·membership commit,
 callback·journal replay, durable source cleanup과 `Completed`를 끝낸 뒤 같은
 ObjectGeneration을 검증하고 command 44·45로 Session owner가 보관한 해당 Actor의
-binding route만 target owner로 갱신한다. Routed ACK와 steady normalization 전에는
-target session packet·push admission을 열지 않는다. Session socket과 binding route는
-Location Store record에 넣지 않는다.
+binding route만 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). Steady normalization 전에는
+target session packet·push admission을 열지 않는다.
 
 Expectation 하나라도 맞지 않으면 participant row, membership index, reservation, aggregate record와 counter를
 변경하지 않는다. Commit 전에는 target owner나 membership 일부를 authority read와 index scan에 공개하지 않는다.
 Commit 뒤에는 source participant 일부로 rollback하지 않으며 exact aggregate record를 사용해 target 전체 recovery를
-계속한다. Recovery는 aggregate ID, generation, participant fence와 current owner lease를 모두 확인한다.
+계속한다. Recovery는 aggregate ID, generation, canonical participant set, typed capacity bundle과 current
+owner lease를 모두 확인한다.
 
 ## 5. Snapshot-consistent authority scan
 
@@ -412,9 +467,9 @@ IEEE-754 double이므로 `2^63-1`까지 exact StoreRevision을 표현할 수 없
 
 Authority history HASH의 field encoding도 공통이다. Revision hex를 `R`이라 할 때
 Active full snapshot은 `R:deleted=0`과 `R:<current field name>` 13개 field를
-저장한다. Pending full snapshot은 같은 13개 field와 네
+저장한다. Reserved full snapshot은 같은 13개 field와 네
 `R:pendingCreation*` field를 모두 저장하므로 current row와 같은 17개 field를
-복원한다. Pending snapshot에서 네 field가 하나라도 빠지거나 Active snapshot에
+복원한다. Reserved snapshot에서 네 field가 하나라도 빠지거나 Active snapshot에
 하나라도 있으면 schema violation이다. Tombstone은 `R:deleted=1`과
 `R:authorityKey`만 저장하며 StoreVersion은 `R`에서 복원한다. 하나의 language
 runtime만 해석할 수 있는 serialized JSON value나 다른 field grouping을 사용하지
@@ -464,9 +519,14 @@ DescriptorRevision은 Framework caller가 descriptor마다 발급하며 Redis pr
 publish를 시도하지 않는다.
 
 MeshNode descriptor의 object role, stable type capability와 capacity limit은 immutable하다. Node-wide placement
-weight와 current active·pending count는 더 큰 revision으로 갱신할 수 있다. Channel weight를 placement weight로
+weight와 current active·reserved count는 더 큰 revision으로 갱신할 수 있다. Channel weight를 placement weight로
 합성하지 않는다. Reservation transaction이 변경한 count와 descriptor projection이 같은 값을 나타내야 하며,
 projection lag를 capacity 권한으로 사용하지 않는다.
+
+RouteMesh Channel, ClientServer Server와 node-wide placement weight는 signed decimal integer
+`0..10000`으로 encode한다. Provider는 범위 밖 값이나 정수가 아닌 값을 저장하지 않고 configuration error를
+반환한다. Weight update는 같은 lifecycle의 더 큰 descriptor revision과 함께 atomic하게 게시한다. Lowe
+revision, 같은 revision의 다른 값과 narrow unsigned representation으로 truncate한 값은 거부한다.
 
 ## 7. Routing ID descriptor owner CAS
 
@@ -551,7 +611,7 @@ Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까�
 
 - Missing read가 StoreNow만 반환하고 synthetic StoreVersion과 generation을 만들지 않는다.
 - ActorId와 SpotId가 MeshName과 독립적인 global authority key로 저장된다.
-- Reserve가 exact target owner lease를 검증하고 initial generation·Pending allocation·row/index를 한
+- Reserve가 exact target owner lease를 검증하고 initial generation·Reserved allocation·row/index를 한
   operation으로 만들며 NewOwner가 exact target owner lease와 relocation capacity fence를 검증하고 Active
   allocation·owner metadata를 한 operation으로 교체한다.
 - 모든 generation counter가 `2^63-1`에서 `GenerationExhausted`를 stable하게 반환하고 아무 값도 소비하지 않는다.
@@ -561,31 +621,28 @@ Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까�
 - Descriptor page가 1000 item·4 MiB를 지키고 unstable scope stamp 결과를 적용하지 않는다.
 - Oversize descriptor와 capability vector가 startup을 실패시키며 partial descriptor를 publish하지 않는다.
 - Descriptor owner CAS가 active RID conflict를 덮어쓰지 않으며 exact host lease fence를 사용한다.
-- Object Server descriptor가 같은 lifecycle 동안 immutable한 exact Entry Spot ID mapping을 유지하고
-  replacement lifecycle은 새 mapping을 게시한다.
-- Entry Spot authority 충돌은 두 번째 reservation 없이 즉시 실패하며, 예약 형식의 caller-provided Spot
-  RID는 Redis operation 전에 거부한다.
-- `Reserve`, `CompleteCreation`, `ReadCreationTerminal`, `Abort`가 authority,
-  operation terminal과 node·type capacity를 계약대로 전환한다.
-- Concurrent `GetOrCreate`에서 CAS winner만 factory와 creation callback을 실행하고,
-  다른 operation은 authority 변경을 기다린다.
-- `CompleteCreation(Created)`가 Ready authority, active capacity와 terminal result를 하나의
-  transaction으로 publish한다.
-- `CompleteCreation(Rejected|Failed)`가 Ready authority와 active capacity를 만들지
-  않고 reserved capacity를 반환하면서 operation-scoped terminal을 publish한다.
-- 서로 다른 operation은 application reply를 공유하지 않고, 같은 source
-  lifecycle·`OperationId`만 5분 retention 동안 semantic terminal을 replay한다.
-- Creation terminal RID key segment가 exact RoutingId raw bytes를 사용한다.
-- Found·Stored·scan snapshot이 provider-owned Pending·Active allocation metadata를 완전하게 반환한다.
+- Object Server descriptor `NewClaim`이 descriptor와 Entry Spot ID claim을 한 transaction에서 만들고,
+  existing Entry claim 또는 같은 RID의 User·Instance Spot authority와 충돌하면 partial write를 만들지 않는다.
+- User·Instance Spot `Reserve`가 같은 RID의 active Entry claim을 확인하고 generation·authority·capacity를
+  소비하지 않은 채 identity conflict로 끝난다.
+- Descriptor remove와 `RemoveAllByOwner`가 exact owner lease·lifecycle·claim field를 확인해 stale
+  cleanup으로 successor Entry claim을 삭제하지 않는다.
+- Automatic MeshNode RID와 Entry Spot ID claim이 active conflict에서 mutation 0과
+  `RoutingIdConflict`로 즉시 끝나며 다른 UUID로 retry하지 않는다.
+- Entry Spot ID의 UUID component가 RFC 4122 UUID v4 lowercase canonical 형식이고 provider가 full
+  Spot ID를 parse하지 않는다.
+- Entry Spot ID가 descriptor immutable digest와 update fence에 포함되어 mutable update로 바뀌지 않는다.
+- `Reserve`, `Commit`, `Abort`가 authority와 Actor·Spot·Spot type capacity를 atomic하게 전환한다.
+- Found·Stored·scan snapshot이 provider-owned Reserved·Active allocation metadata를 완전하게 반환한다.
 - Relocation reserve·standalone commit·aggregate commit이 request source를 durable Active allocation에
   exact-match하고 source descriptor·lease stale recovery는 허용하되 target stale commit은 no-write로 막는다.
-- Aggregate prepare가 Reserved capacity fence를 aggregate ID·generation에 atomic하게 bind하며 bind된 fence의
-  direct abort와 다른 aggregate prepare를 거부한다.
-- Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity delta를 row와 함께
+- Aggregate prepare가 User Spot 하나, 해당 Spot type 하나와 participant Actor 전체의 typed bundle을 한
+  transaction에서 예약한다.
+- Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity bundle을 row와 함께
   atomic하게 제거한다.
-- Pending reservation recovery가 elapsed time이 아니라 exact owner lease와 authority fence를 사용한다.
+- Reserved reservation recovery가 elapsed time이 아니라 exact owner lease와 authority fence를 사용한다.
 - Creation request reference와 hash가 Ready 또는 fenced abort까지 유지되고 encoded 1 MiB bound를 지킨다.
-- Pending authority의 네 `pendingCreation*` field와 history의 17개 field가
+- Reserved authority의 네 `pendingCreation*` field와 history의 17개 field가
   reservation ID, creation reference, SHA-256과 encoded size를 빠짐없이 복원한다.
 - Bounded aggregate transaction이 최대 1024 participant·1 MiB record에서 owner와 membership을 한 commit
   generation으로 전환하고 partial visibility를 만들지 않는다.

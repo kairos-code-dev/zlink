@@ -22,7 +22,7 @@ internal sealed class SpotToSpotHandler(
         // location snapshot and safe request refresh behavior.
         var target = await spots.ResolveSpotHandleAsync(
                          spot.Context.MeshName,
-                         RoutingId.From(request.TargetSpotRid),
+                         request.TargetSpotRid,
                          cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");
@@ -62,7 +62,7 @@ internal sealed class SpotToSpotTimeoutHandler(
         {
             var target = await spots.ResolveSpotHandleAsync(
                              spot.Context.MeshName,
-                             RoutingId.From(request.TargetSpotRid),
+                             request.TargetSpotRid,
                              cancellationToken)
                          ?? throw new InvalidOperationException(
                              $"Target spot '{request.TargetSpotRid}' has no live location row.");
@@ -102,7 +102,7 @@ internal sealed class SpotToSpotNegativeHandler(
         // best-effort send is dropped at the target with evidence.
         var target = await spots.ResolveSpotHandleAsync(
                          spot.Context.MeshName,
-                         RoutingId.From(request.TargetSpotRid),
+                         request.TargetSpotRid,
                          cancellationToken)
                      ?? throw new InvalidOperationException(
                          $"Target spot '{request.TargetSpotRid}' has no live location row.");

@@ -656,11 +656,14 @@ export interface ZLinkMeshNodeSnapshot {
     readonly endpoint: string;
     readonly objectRole: ZLinkObjectRole;
     readonly placementWeight: number;
-    readonly objectCapacity: {
-        readonly maxActiveObjects: number;
-        readonly maxPendingActivations: number;
-        readonly activeObjects: number;
-        readonly pendingActivations: number;
+    readonly populationCapacity: {
+        readonly actors: ZLinkPopulationCapacity;
+        readonly spots: ZLinkPopulationCapacity;
+        readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+    };
+    readonly activationConcurrency: {
+        readonly active: number;
+        readonly limit: number;
     };
     readonly applicationVersion: bigint;
     readonly placementReservationFailureCount: bigint;
@@ -690,6 +693,17 @@ export interface ZLinkMeshRuntimeEvent {
     readonly claimDomain?: string;
     readonly mailboxDomain?: "application" | "infrastructure";
     readonly messageKind?: string;
+    readonly placementOutcome?: string;
+    readonly capacity?: ZLinkCapacityVector;
+    readonly populationCapacity?: {
+        readonly actors: ZLinkPopulationCapacity;
+        readonly spots: ZLinkPopulationCapacity;
+        readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+    };
+    readonly activationConcurrency?: {
+        readonly active: number;
+        readonly limit: number;
+    };
     readonly reason?: string;
     readonly state?: ZLinkMeshNodeState;
 }
@@ -807,6 +821,12 @@ export interface ZLinkFanoutRuntime {
 }
 
 ```
+
+`populationCapacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
+active·reserved·limit을 구분한다. Limit `0`은 제한 없음이다. Entry Spot 자체는 Spot count에서 제외하고
+Entry Spot의 Actor는 Actor 전체 count에 포함한다. `activationConcurrency`의 active·limit은 population
+reservation과 별도로 제공한다. Placement event의 `capacity`는 해당 operation의 typed vector이고
+`populationCapacity`는 관찰 시점의 node aggregate다.
 
 같은 ChannelName에 Client와 Server를 함께 등록한 snapshot의 `localRole`은
 `"clientAndServer"`다. 이 값은 `(ChannelName, Role)`의 별도 registration 두 개가 하나의 ClientServer

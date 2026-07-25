@@ -258,6 +258,11 @@ key로 사용할 수 없다.
 fanout subscriber는 endpoint connection 표면을 사용하므로 `ZLinkFanoutRuntime` 조회 대상이 아니다. Observer
 capacity는 0보다 커야 하며 publisher cancellation은 해당 관찰만 끝낸다.
 
+`ZLinkMeshNodeSnapshot.objectCapacity()`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
+`active`, `reserved`, `limit`을 반환한다. Limit `0`은 제한이 없다는 뜻이다. Entry Spot은 Spot 집계에서
+제외하지만 Entry Spot에 존재하는 Actor는 Actor 전체 집계에 포함한다. `activationConcurrency()`는 현재
+factory·initialization 실행 수와 양수 limit을 별도 값으로 반환하며 population capacity에 합치지 않는다.
+
 Fanout의 `connectionIntent`는 automatic planner의 endpoint intent다. `ready`와 `readyConnectionCount`는
 publisher 전용 SUB socket의 native-ready와 같은 socket의 첫 valid application record 또는 liveness beacon
 수신을 모두 관찰한 뒤에만 증가한다. Native disconnect 또는 15초 inbound timeout은 해당 publisher entry만
@@ -347,7 +352,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot ext
   public long pendingInfrastructureWork();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
+  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, systems.zlink.framework.monitoring.ZLinkActivationConcurrency, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -368,9 +373,18 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot exte
   public systems.zlink.framework.locations.ZLinkMeshNodeObjectRole objectRole();
   public int placementWeight();
   public systems.zlink.framework.locations.ZLinkPlacementCapacity objectCapacity();
+  public systems.zlink.framework.monitoring.ZLinkActivationConcurrency activationConcurrency();
   public java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability> objectCapabilities();
   public long placementReservationFailureCount();
   public java.util.Optional<java.lang.String> lastPlacementReservationFailure();
+}
+public final class systems.zlink.framework.monitoring.ZLinkActivationConcurrency extends java.lang.Record {
+  public systems.zlink.framework.monitoring.ZLinkActivationConcurrency(int, int);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public int active();
+  public int limit();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot extends java.lang.Record {
   public systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot(systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.lang.String, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);

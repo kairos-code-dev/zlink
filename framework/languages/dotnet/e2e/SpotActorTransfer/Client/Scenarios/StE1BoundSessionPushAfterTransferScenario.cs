@@ -25,6 +25,16 @@ internal static class StE1BoundSessionPushAfterTransferScenario
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E1", spotRid));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-E1 join was rejected.");
+        await context.WaitEvidenceAsync(context.NodeB, [
+            $"ST-E1|{actorId}|success_reply|{spotRid}"
+        ]);
+        var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
+        ZlinkStreamAssert.Ensure(
+            targetRef.NodeRid == "actor-b",
+            $"ST-E1 target route expected actor-b, got {targetRef.NodeRid}.");
+        ZlinkStreamAssert.Ensure(
+            targetRef.Generation == sourceRef.Generation,
+            $"ST-E1 relocation changed ObjectGeneration from {sourceRef.Generation} to {targetRef.Generation}.");
         var pushed = bound.WaitFor<BoundPushNotify>()
             .Where(message => message.Payload.Marker == "after-remote-transfer")
             .Timeout(TimeSpan.FromSeconds(10))

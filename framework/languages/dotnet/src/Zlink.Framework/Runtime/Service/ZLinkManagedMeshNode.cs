@@ -717,6 +717,45 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return spot;
     }
 
+    public ISpot GetOrCreateReservedSpot(
+        string spotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        out bool created)
+    {
+        ZLinkSpotId.Require(spotId, nameof(spotId));
+        if (objectGeneration == 0 || objectGeneration > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(objectGeneration));
+        if (authorityOwnerGeneration == 0 || authorityOwnerGeneration > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(authorityOwnerGeneration));
+        if (_spots.TryGetValue(spotId, out var existing))
+        {
+            created = false;
+            return existing;
+        }
+
+        ulong observed;
+        do
+        {
+            observed = Volatile.Read(ref _nextSpotGeneration);
+            if (observed >= objectGeneration) break;
+        } while (Interlocked.CompareExchange(
+                     ref _nextSpotGeneration,
+                     objectGeneration,
+                     observed) != observed);
+
+        var candidate = new ZLinkManagedSpot(
+            this,
+            spotId,
+            objectGeneration,
+            authorityOwnerGeneration);
+        var spot = _spots.GetOrAdd(spotId, candidate);
+        created = ReferenceEquals(spot, candidate);
+        if (!created)
+            candidate.Dispose();
+        return spot;
+    }
+
     public ActorRef CreateActor(
         string actorId,
         IReadOnlyList<Message>? creationParts = null,
@@ -733,11 +772,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     public ActorRef CreateReservedActor(
         string actorId,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         IReadOnlyList<Message>? creationParts = null,
         TimeSpan timeout = default)
     {
         if (objectGeneration == 0 || objectGeneration > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(objectGeneration));
+        if (authorityOwnerGeneration == 0 || authorityOwnerGeneration > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(authorityOwnerGeneration));
         ulong observed;
         do
         {
@@ -747,14 +789,20 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                      ref _nextActorGeneration,
                      objectGeneration,
                      observed) != observed);
-        return CreateActorCore(actorId, objectGeneration, creationParts, timeout);
+        return CreateActorCore(
+            actorId,
+            objectGeneration,
+            creationParts,
+            timeout,
+            authorityOwnerGeneration);
     }
 
     private ActorRef CreateActorCore(
         string actorId,
         ulong generation,
         IReadOnlyList<Message>? creationParts,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        ulong? reservedAuthorityOwnerGeneration = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
         if (Encoding.UTF8.GetByteCount(actorId) > byte.MaxValue)
@@ -770,7 +818,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             entry.SpotId,
             entry.LifecycleGeneration,
             membershipEpoch: 1,
-            NextAuthorityOwnerGeneration());
+            reservedAuthorityOwnerGeneration ?? NextAuthorityOwnerGeneration());
         if (!_actors.TryAdd(actorId, actor))
             throw new InvalidOperationException($"Actor '{actorId}' already exists.");
         entry.AddActor();
@@ -781,6 +829,17 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             actor,
             creationParts ?? Array.Empty<Message>());
         return actorRef;
+    }
+
+    public void SetActorAuthority(
+        ActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        if (authorityOwnerGeneration == 0
+            || !TryGetActor(actor, out var current))
+            throw new InvalidOperationException(
+                $"Actor '{actor.ActorId}' does not match the local authority update.");
+        current.SetAuthorityOwnerGeneration(authorityOwnerGeneration);
     }
 
     public bool ActorLookup(string actorId, out ActorLocation location)
@@ -4085,6 +4144,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 lock (_gate)
                     return _binding;
             }
+        }
+
+        internal void SetAuthorityOwnerGeneration(ulong value)
+        {
+            if (value == 0)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            lock (_gate)
+                AuthorityOwnerGeneration = value;
         }
         internal ActorLocation Location =>
             new(Ref, SpotId, SpotGeneration, MembershipEpoch);

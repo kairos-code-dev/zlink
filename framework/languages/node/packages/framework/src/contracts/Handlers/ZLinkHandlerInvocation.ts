@@ -1,6 +1,6 @@
-import type { ZLinkHandlerContext } from './Contexts';
+import type { ZLinkMessageContext } from './Contexts';
 
 export interface ZLinkHandlerInvocation {
-  readonly message: unknown;
-  readonly context: ZLinkHandlerContext;
+  readonly ownerKind: string;
+  readonly messageContext: ZLinkMessageContext;
 }

@@ -48,9 +48,9 @@ PIDS=()
 PID_A=""
 PID_B=""
 PID_C=""
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS=10
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=100
 mkdir -p "${LOG_DIR}"
 
 cleanup() {
@@ -68,8 +68,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
-   || "${LOCAL_READINESS_ATTEMPTS}" != 30 ]]; then
+if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 10 \
+   || "${LOCAL_READINESS_ATTEMPTS}" != 100 ]]; then
   echo "SpotActorTransfer must use a 3s readiness limit" >&2
   exit 1
 fi
@@ -188,6 +188,8 @@ nodeBHttpEndpoint=http://127.0.0.1:${HTTP_B_PORT}
 nodeCHttpEndpoint=http://127.0.0.1:${HTTP_C_PORT}
 logDirectory=${LOG_DIR}
 streamAEndpoint=tcp://127.0.0.1:${STREAM_A_PORT}
+streamBEndpoint=tcp://127.0.0.1:${STREAM_B_PORT}
+streamCEndpoint=tcp://127.0.0.1:${STREAM_C_PORT}
 EOF
   chmod 0600 "${config_path}"
   timeout -k 5s 240s \

@@ -3,13 +3,12 @@ package systems.zlink.framework.runtime.handlers;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import systems.zlink.framework.ZLinkHandlerContext;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkHandlerInvocation;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkNext;
 
 public final class ZLinkFilterPipeline {
@@ -19,11 +18,11 @@ public final class ZLinkFilterPipeline {
     public static <T> CompletionStage<T> invoke(
         List<Class<? extends ZLinkHandlerFilter>> filterTypes,
         ZLinkHandlerActivator handlerFactory,
-        ZLinkHandlerContext context,
+        ZLinkMessageContext context,
         Object request,
         Supplier<CompletionStage<T>> terminal) {
         ZLinkNext<T> next = terminal::get;
-        ZLinkInvocationContext invocation =
+        ZLinkHandlerInvocation invocation =
             new DefaultInvocationContext(context, request);
         for (int index = filterTypes.size() - 1; index >= 0; index--) {
             Class<? extends ZLinkHandlerFilter> filterType = filterTypes.get(index);
@@ -38,12 +37,12 @@ public final class ZLinkFilterPipeline {
         return next.invoke();
     }
 
-    private static final class DefaultInvocationContext implements ZLinkInvocationContext {
-        private final ZLinkHandlerContext inner;
+    private static final class DefaultInvocationContext implements ZLinkHandlerInvocation {
+        private final ZLinkMessageContext messageContext;
         private final Object request;
 
-        private DefaultInvocationContext(ZLinkHandlerContext inner, Object request) {
-            this.inner = inner;
+        private DefaultInvocationContext(ZLinkMessageContext messageContext, Object request) {
+            this.messageContext = messageContext;
             this.request = request;
         }
 
@@ -53,23 +52,8 @@ public final class ZLinkFilterPipeline {
         }
 
         @Override
-        public Optional<String> channelName() {
-            return inner.channelName();
-        }
-
-        @Override
-        public Optional<String> packetName() {
-            return inner.packetName();
-        }
-
-        @Override
-        public Optional<String> contentType() {
-            return inner.contentType();
-        }
-
-        @Override
-        public Map<String, String> metadata() {
-            return inner.metadata();
+        public ZLinkMessageContext messageContext() {
+            return messageContext;
         }
     }
 }

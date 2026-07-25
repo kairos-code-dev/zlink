@@ -49,6 +49,10 @@ void to_json (nlohmann::json &json, const spot_actor_admission_route_request_t &
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
+                          {"completionOperationIdHigh",
+                           value.completion_operation_id_high},
+                          {"completionOperationIdLow",
+                           value.completion_operation_id_low},
                           {"sourceSpotId", value.source_spot_id},
                           {"targetSpotId", value.target_spot_id},
                           {"payload", value.payload}};
@@ -61,6 +65,10 @@ void from_json (const nlohmann::json &json, spot_actor_admission_route_request_t
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.completion_operation_id_high =
+      json.value ("completionOperationIdHigh", std::uint64_t{0});
+    value.completion_operation_id_low =
+      json.value ("completionOperationIdLow", std::uint64_t{0});
     value.source_spot_id = json.at ("sourceSpotId").get<std::string> ();
     value.target_spot_id = json.at ("targetSpotId").get<std::string> ();
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
@@ -68,13 +76,21 @@ void from_json (const nlohmann::json &json, spot_actor_admission_route_request_t
 
 void to_json (nlohmann::json &json, const spot_actor_admission_route_reply_t &value)
 {
-    json = nlohmann::json{{"accepted", value.accepted}, {"payload", value.payload}};
+    json = nlohmann::json{
+      {"accepted", value.accepted},
+      {"payload", value.payload},
+      {"completionRootReference", value.completion_root_reference},
+      {"completionRootChecksum", value.completion_root_checksum}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_admission_route_reply_t &value)
 {
     value.accepted = json.at ("accepted").get<bool> ();
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
+    value.completion_root_reference =
+      json.value ("completionRootReference", "");
+    value.completion_root_checksum =
+      json.value ("completionRootChecksum", std::uint32_t{0});
 }
 
 void to_json (nlohmann::json &json, const spot_actor_handoff_packet_t &value)
@@ -102,6 +118,10 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
+                          {"completionRootReference",
+                           value.completion_root_reference},
+                          {"completionRootChecksum",
+                           value.completion_root_checksum},
                           {"targetSpotId", value.target_spot_id},
                           {"boundSessionNodeRid", value.bound_session_node_rid},
                           {"boundSessionRid", value.bound_session_rid},
@@ -125,6 +145,10 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.completion_root_reference =
+      json.value ("completionRootReference", "");
+    value.completion_root_checksum =
+      json.value ("completionRootChecksum", std::uint32_t{0});
     value.target_spot_id = json.at ("targetSpotId").get<std::string> ();
     value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
     value.bound_session_rid = json.value ("boundSessionRid", "");

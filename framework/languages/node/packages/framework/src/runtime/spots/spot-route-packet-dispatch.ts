@@ -146,8 +146,9 @@ export class ZLinkSpotRoutePacketDispatch {
     const context = {
       channelName: envelope.header.channelName,
       contentType: envelope.header.contentType,
-      packetName: envelope.packetName,
-      metadata: zlinkMessageMetadata(envelope.header.metadata)
+      packetName: envelope.packetName!,
+      metadata: zlinkMessageMetadata(envelope.header.metadata),
+      correlationId: envelope.header.correlationId ?? received.requestSeq?.toString()
     };
     try {
       let response: unknown;
@@ -234,8 +235,9 @@ export class ZLinkSpotRoutePacketDispatch {
           );
           response = await handler.handle(spot, envelope.payload, {
             channelName: envelope.channelName,
-            packetName: envelope.packetName,
-            metadata: zlinkMessageMetadata(envelope.metadata)
+            packetName: envelope.packetName!,
+            metadata: zlinkMessageMetadata(envelope.metadata),
+            correlationId: received.requestSeq?.toString()
           });
         }
       });

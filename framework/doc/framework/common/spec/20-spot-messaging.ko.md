@@ -196,7 +196,7 @@ public interface IZLinkPublishCall
 
 ### 2.1 Spot을 식별하는 값
 
-User Spot과 [Instance Spot](01-glossary.ko.md#entry-user-instance-spot)은 논리 주소인 Spot ID로 식별한다. 이 ID는 Location Store가
+User Spot과 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)은 논리 주소인 Spot ID로 식별한다. 이 ID는 Location Store가
 관리하는 전체 범위에서 유일해야 한다.
 
 [Spot ID](01-glossary.ko.md#spot-id)는 UTF-8 encoded 크기 1..255 bytes의
@@ -589,10 +589,10 @@ sequenceDiagram
     Spot->>Index: ChannelName으로 request
     alt 현재 process에 송신 경로 있음
         Index->>Route: 원래 request와 Spot을 식별하는 정보를 유지해 제출
-        alt Async
+        alt Async로 기다림
             Note over Spot: 원래 Spot turn 유지
             Route-->>Spot: 최종 결과 반환
-        else Yield
+        else Yield로 기다림
             Note over Spot: 원래 Spot turn 반환
             Route-->>Index: 최종 결과 반환
             Index->>Queue: 실행을 재개할 작업 하나 추가
@@ -633,8 +633,8 @@ Spot turn을 유지한다. 두 방식 모두 ChannelName으로 현재 process에
 ### 4.1 Target 범위
 
 Logical Multicast는 같은 Channel에 속한 여러 Spot에 message 하나를 전달하는
-기능이다. `ChannelName`과 [`topic`](01-glossary.ko.md#topic)의 조합으로 전달 범위를
-정한다.
+기능이다. `(ChannelName, topic)` 조합으로 전달 범위를
+정한다. 두 번째 값은 [topic](01-glossary.ko.md#topic)이다.
 
 `ChannelName`은 message를 받을 RouteMesh 참여 node를 선택한다. `Topic`은 각
 수신 MeshNode에서 message를 받을 local Spot
@@ -762,7 +762,7 @@ publish와 무관한 공통 runtime monitoring으로 확인한다.
 
 #### 비규범적 .NET 예시
 
-Publish 완료는 handler 실행 결과가 아니라 source-local admission 경계만 나타낸다.
+Publish 완료는 handler 실행 결과가 아니라 local outbound admission, 즉 source-local admission 경계만 나타낸다.
 
 ```csharp
 static async ValueTask PublishAsync<TEvent>(
@@ -962,7 +962,7 @@ Logical Multicast의 remote·local target 수와 target별 결과는 publish 전
 - Source는 자신을 owner로 먼저 기록하지 않고 최초 message가 포함된 activation
   envelope를 선택한 target에 제출한다.
 - 생성 권한을 먼저 확보한 target만 자신을 owner로 기록하고 factory를 실행한다.
-- Pending authority가 [reservation fence](01-glossary.ko.md#reservation-fence)와 recovery receipt를 반환하고 process
+- Reserved authority가 [reservation fence](01-glossary.ko.md#reservation-fence)와 recovery receipt를 반환하고 process
   restart 뒤에도 같은 reservation과 durable inbox 선두를 복원한다.
 - Durable inbox의 첫 record를 `Ready` 전에 확정하며 queue 선두 복원이 끝나기 전에
   Serving gate를 열지 않는다.

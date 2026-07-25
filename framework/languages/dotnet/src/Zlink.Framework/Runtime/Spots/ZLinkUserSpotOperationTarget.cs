@@ -94,6 +94,8 @@ internal sealed class ZLinkUserSpotOperationTarget(
             prepared = await catalog.PrepareReservedAsync(
                     factory.InstanceType,
                     operation.SpotId,
+                    operation.Reservation.ObjectGeneration,
+                    operation.Reservation.AuthorityOwnerGeneration,
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -160,7 +162,12 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 .ConfigureAwait(false);
             throw Moving(operation.SpotId);
         }
-        catalog.PublishReserved(prepared);
+        await catalog.PublishReservedAsync(
+                prepared,
+                operation.Reservation.ObjectGeneration,
+                operation.Reservation.AuthorityOwnerGeneration,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         return SuccessCreate(
             prepared.Existing

@@ -6,7 +6,9 @@ using SpotService.Server.Session.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 
 using Zlink.Framework.Locations.Redis;
@@ -41,6 +43,9 @@ internal static class SessionHostFactory
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -59,6 +64,14 @@ internal static class SessionHostFactory
                 .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
             controlMesh.ChannelName(SpotServiceNames.ControlChannel);
+            if (!string.IsNullOrWhiteSpace(options.ControlPeerAEndpoint))
+                controlMesh.PeerConnections.Connect(
+                    RoutingId.From("play-a"),
+                    options.ControlPeerAEndpoint);
+            if (!string.IsNullOrWhiteSpace(options.ControlPeerBEndpoint))
+                controlMesh.PeerConnections.Connect(
+                    RoutingId.From("play-b"),
+                    options.ControlPeerBEndpoint);
             controlMesh
                 .AddRouteRequestHandler<EnsureActorHandler>()
                 .AddRouteRequestHandler<ControlPingHandler>()
@@ -66,10 +79,38 @@ internal static class SessionHostFactory
                 .AddRouteRequestHandler<CloseSpotHandler>()
                 .AddRouteRequestHandler<SpotTypeMismatchHandler>();
             var mesh22 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
-                                .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid))
+                .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid));
+            if (!string.IsNullOrWhiteSpace(options.SpotPeerAEndpoint))
+                mesh22.PeerConnections.Connect(
+                    RoutingId.From("play-a"),
+                    options.SpotPeerAEndpoint);
+            if (!string.IsNullOrWhiteSpace(options.SpotPeerBEndpoint))
+                mesh22.PeerConnections.Connect(
+                    RoutingId.From("play-b"),
+                    options.SpotPeerBEndpoint);
+            mesh22.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
-                .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
+                .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
+                    SpotServiceNames.ActorType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                .AddSpotFactory<ScenarioUserSpot>(
+                    SpotServiceNames.UserSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                .AddSpotFactory<ScenarioAlternateSpot>(
+                    SpotServiceNames.AlternateSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioAlternateSpot>.Disabled)
+                .AddSpotFactory<MultiNodeSpotA>(
+                    SpotServiceNames.MultiSpotTypeA,
+                    null,
+                    ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled)
+                .AddSpotFactory<MultiNodeSpotB>(
+                    SpotServiceNames.MultiSpotTypeB,
+                    null,
+                    ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
             mesh22.ChannelName(SpotServiceNames.SpotChannel);
             framework.AddStreamNode(SpotServiceNames.StreamNode)
                 .Bind(Require(options.StreamEndpoint, "StreamEndpoint"))
@@ -87,6 +128,19 @@ internal static class SessionHostFactory
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Role, options.Rid }));
+        app.MapGet("/channel/spot-peer-ready/{targetRid}", (
+            string targetRid,
+            IZLinkRouteMeshRuntime meshRuntime) =>
+        {
+            var peer = meshRuntime.Snapshot(SpotServiceNames.SpotChannel).Peers
+                .FirstOrDefault(candidate => string.Equals(
+                    candidate.Rid.ToString(),
+                    targetRid,
+                    StringComparison.Ordinal));
+            return peer is { Ready: true }
+                ? Results.Ok(peer)
+                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapPost("/evidence/wait", async (
             EvidenceWaitReq request,

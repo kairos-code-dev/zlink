@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Actors;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 internal enum ZLinkActorClaimStatus
@@ -295,6 +297,214 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<ulong> CommitTransferredActorAuthorityAsync(
+        string actorId,
+        ActorRef actorRef,
+        string meshName,
+        string spotId,
+        ulong spotGeneration,
+        ZLinkSpotKind spotKind,
+        Guid relocationId,
+        CancellationToken cancellationToken = default)
+    {
+        var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId);
+        var read = await runtime.Store.ReadAuthorityAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        if (read is not ZLinkAuthorityReadResult.Found found
+            || !ZLinkActorAuthorityPayloadCodec.TryDecode(
+                found.Snapshot.Payload.Span,
+                out var authority))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' does not have readable authority during handoff.");
+
+        var snapshot = found.Snapshot;
+        if (snapshot.ObjectGeneration != actorRef.Generation)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                $"Actor '{actorId}' authority generation changed during handoff.");
+        if (authority.NodeRid == actorRef.NodeRid
+            && string.Equals(authority.CurrentSpotId, spotId, StringComparison.Ordinal)
+            && authority.CurrentSpotGeneration == spotGeneration
+            && authority.CurrentSpotKind == spotKind)
+            return snapshot.AuthorityOwnerGeneration;
+
+        var descriptors = await resolver.ListLiveMeshNodesAsync(
+                meshName,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var target = descriptors.SingleOrDefault(descriptor =>
+            descriptor.Rid == actorRef.NodeRid);
+        if (target is null
+            || target.State == ZLinkFrameworkRuntimeState.Draining
+            || target.LifecycleGeneration == 0
+            || string.IsNullOrWhiteSpace(target.OwnerId)
+            || target.LeaseGeneration <= 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' handoff target is not a live mesh node.");
+
+        var targetOwner = new ZLinkLocationOwnerToken(
+            target.OwnerId,
+            target.LeaseGeneration);
+        var sourceOwner = new ZLinkLocationOwnerToken(
+            snapshot.OwnerId,
+            snapshot.OwnerLeaseGeneration);
+        var reserve = await runtime.Store.ReserveRelocationCapacityAsync(
+                new ZLinkRelocationCapacityReservationRequest(
+                    relocationId,
+                    key,
+                    snapshot.StoreVersion,
+                    ZLinkPlacementObjectKind.Actor,
+                    snapshot.Allocation.StableType,
+                    snapshot.Allocation.Descriptor,
+                    snapshot.Allocation.DescriptorLifecycleGeneration,
+                    sourceOwner,
+                    new ZLinkMeshNodeDescriptorKey(meshName, target.Rid),
+                    target.LifecycleGeneration,
+                    targetOwner,
+                    new ZLinkCapacityVector(1, 0, null)),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (reserve is ZLinkRelocationCapacityReserveResult.Conflict reserveConflict)
+        {
+            if (TryResolveCommittedAuthorityGeneration(
+                    reserveConflict.Current,
+                    actorRef,
+                    spotId,
+                    spotGeneration,
+                    spotKind,
+                    out var currentGeneration))
+                return currentGeneration;
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' authority changed during handoff.",
+                true);
+        }
+        if (reserve is ZLinkRelocationCapacityReserveResult.PlacementCapacityExhausted)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                $"Actor '{actorId}' handoff target has no Actor capacity.",
+                true);
+        if (reserve is ZLinkRelocationCapacityReserveResult.TargetUnavailable)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorId}' handoff target became unavailable.",
+                true);
+        var capacityFence = reserve switch
+        {
+            ZLinkRelocationCapacityReserveResult.Reserved reserved => reserved.Fence,
+            ZLinkRelocationCapacityReserveResult.AlreadyReserved existing => existing.Fence,
+            _ => throw new InvalidOperationException(
+                "The authority store returned an invalid relocation capacity result.")
+        };
+
+        var applicationPayload = ZLinkActorAuthorityPayloadCodec.Encode(
+            authority with
+            {
+                State = ZLinkActorAuthorityState.Ready,
+                CurrentSpotId = spotId,
+                CurrentSpotGeneration = spotGeneration,
+                CurrentSpotKind = spotKind,
+                OwnerId = targetOwner.OwnerId,
+                OwnerLeaseGeneration = checked((ulong)targetOwner.LeaseGeneration),
+                MeshName = meshName,
+                NodeRid = target.Rid,
+                NodeGeneration = target.LifecycleGeneration
+            });
+        var authorityPayload = ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+            snapshot.Payload.Span,
+            out var publication)
+            ? ZLinkRelocationAuthorityPayloadCodec.Encode(
+                publication with
+                {
+                    TargetOwnerId = targetOwner.OwnerId,
+                    TargetOwnerLeaseGeneration = targetOwner.LeaseGeneration,
+                    ApplicationPayload = applicationPayload
+                })
+            : applicationPayload;
+
+        var committed = false;
+        try
+        {
+            var result = await runtime.Store.CompareExchangeAuthorityAsync(
+                    key,
+                    snapshot.StoreVersion,
+                    new ZLinkAuthorityMutation.Put(
+                        authorityPayload,
+                        ZLinkAuthorityGenerationTransition.NewOwner,
+                        targetOwner,
+                        capacityFence),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            switch (result)
+            {
+                case ZLinkAuthorityCompareExchangeResult.Stored stored:
+                    committed = true;
+                    return stored.Snapshot.AuthorityOwnerGeneration;
+
+                case ZLinkAuthorityCompareExchangeResult.Conflict conflict:
+                    if (TryResolveCommittedAuthorityGeneration(
+                            conflict.Current,
+                            actorRef,
+                            spotId,
+                            spotGeneration,
+                            spotKind,
+                            out var currentGeneration))
+                    {
+                        committed = true;
+                        return currentGeneration;
+                    }
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        $"Actor '{actorId}' authority changed during handoff.",
+                        true);
+
+                case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' authority generation space was exhausted.");
+
+                default:
+                    throw new InvalidOperationException(
+                        "The authority store returned an invalid Actor handoff result.");
+            }
+        }
+        finally
+        {
+            if (!committed)
+                await runtime.Store.AbortRelocationCapacityAsync(
+                        capacityFence,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+        }
+    }
+
+    private static bool TryResolveCommittedAuthorityGeneration(
+        ZLinkAuthorityReadResult current,
+        ActorRef actorRef,
+        string spotId,
+        ulong spotGeneration,
+        ZLinkSpotKind spotKind,
+        out ulong authorityOwnerGeneration)
+    {
+        if (current is ZLinkAuthorityReadResult.Found found
+            && found.Snapshot.ObjectGeneration == actorRef.Generation
+            && ZLinkActorAuthorityPayloadCodec.TryDecode(
+                found.Snapshot.Payload.Span,
+                out var authority)
+            && authority.NodeRid == actorRef.NodeRid
+            && string.Equals(authority.CurrentSpotId, spotId, StringComparison.Ordinal)
+            && authority.CurrentSpotGeneration == spotGeneration
+            && authority.CurrentSpotKind == spotKind)
+        {
+            authorityOwnerGeneration = found.Snapshot.AuthorityOwnerGeneration;
+            return true;
+        }
+
+        authorityOwnerGeneration = 0;
+        return false;
     }
 
     internal async ValueTask NotifyActorMovedToEntrySpotAsync(

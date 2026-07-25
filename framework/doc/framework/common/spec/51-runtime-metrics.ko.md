@@ -77,6 +77,14 @@ target 수, target별 수락·실패와 backpressure를 전용 metric으로 기�
 | `zlink.actor.count` | updown | `{actor}` | `mesh_name` | 현재 Actor 수를 제공한다. |
 | `zlink.actor.queue.depth` | observable | `{item}` | `mesh_name` | Actor application queue에서 기다리는 payload 수를 제공한다. |
 | `zlink.actor.queue.wait.duration` | histogram | `s` | `mesh_name` | Actor payload admission부터 turn 시작까지 걸린 시간을 기록한다. |
+| `zlink.object.capacity.active` | observable | `{object}` | `mesh_name`, `capacity_scope` | Location Store가 확정한 active population 수를 제공한다. |
+| `zlink.object.capacity.reserved` | observable | `{object}` | `mesh_name`, `capacity_scope` | Location Store reservation이 확보한 population 수를 제공한다. |
+| `zlink.object.capacity.limit` | observable | `{object}` | `mesh_name`, `capacity_scope` | Actor 전체 또는 Spot 전체 limit을 제공하며, 값이 `0`이면 제한하지 않는다. |
+| `zlink.spot.type.capacity.active` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 active 수를 제공한다. |
+| `zlink.spot.type.capacity.reserved` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 reserved 수를 제공한다. |
+| `zlink.spot.type.capacity.limit` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 limit을 제공하며, 값이 `0`이면 별도로 제한하지 않는다. |
+| `zlink.object.activation.active` | observable | `{activation}` | `mesh_name` | 현재 factory와 initialization을 실행 중인 수를 제공한다. |
+| `zlink.object.activation.limit` | observable | `{activation}` | `mesh_name` | Population capacity와 별도로 적용하는 activation concurrency limit을 제공한다. |
 | `zlink.relocation.started` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy` | Actor·Instance Spot relocation을 시작한 횟수를 누적한다. |
 | `zlink.relocation.completed` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy`, `outcome` | Relocation terminal 결과를 누적한다. |
 | `zlink.relocation.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | Prepare부터 terminal phase까지 걸린 시간을 기록한다. |
@@ -87,12 +95,16 @@ target 수, target별 수락·실패와 backpressure를 전용 metric으로 기�
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | [STREAM session](01-glossary.ko.md#stream-session)을 연 횟수를 누적한다. |
 | `zlink.stream.connections.closed` | counter | `{connection}` | `transport`, `close_reason` | STREAM session을 닫은 횟수를 누적한다. |
 
-`spot_kind`는 `entry|user|instance`, `object_kind`는 `actor|user_spot|instance_spot`, `policy`는
+일반 Spot 계기의 `spot_kind`는 `entry|user|instance`이고, Spot type capacity 계기에서는
+`user|instance`만 허용한다. `capacity_scope`는 `actor|spot`이다. `stable_type`은 startup에
+등록한 bounded User·Instance Spot type만 사용하며 Actor type이나 address에서 얻은 값을 사용하지
+않는다. Entry Spot은 Spot capacity 계기에 포함하지 않지만 그 안의 Actor는
+`capacity_scope=actor`에 포함한다. `object_kind`는 `actor|user_spot|instance_spot`, `policy`는
 `recreate|snapshot`, relocation `outcome`은 `completed|aborted|recovered|failed|shutdown`, `transport`는
 등록 시점에 정해지는 닫힌 값이다. `close_reason`은
 `client_close|idle_timeout|heartbeat_timeout|server_shutdown|protocol_error|transport_error`다.
 
-[Instance Spot](01-glossary.ko.md#entry-user-instance-spot) activation은 다음 계기를 추가한다. `instance_spot_type`은 startup에 등록한 bounded type 이름만
+[Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) activation은 다음 계기를 추가한다. `instance_spot_type`은 startup에 등록한 bounded type 이름만
 사용하며 address payload에서 동적으로 만든 값을 label로 사용하지 않는다.
 
 | 계기 | 종류 | 단위 | Label | 의미 |

@@ -171,7 +171,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
         // BindAsync: 인증된 actor handle을 이 session에 묶는다. 이후 packet은 RelayAsync로 이 actor에 간다.
         await context.Actors.BindAsync(
             actor, ct);
-        await context.Client.Reply(new AuthRep(ok: true)).SubmitAsync(ct);
+        await context.Client.Reply(new AuthRep(ok: true)).Async(ct);
     }
 }
 ```
@@ -228,20 +228,16 @@ public sealed class JoinMatchActorHandler
     public async ValueTask<JoinMatchRes> HandleAsync(
         MatchSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinMatchReq request,
         CancellationToken ct)
     {
         // 같은 actor에 묶인 client로 push — 원격 handler 완료가 아니라 admission 결과까지만 기다린다.
         await actor.Context.BoundSession
             .Send(new OpponentJoinedNotify(request.MatchId))
-            .SubmitAsync(ct);
+            .Async(ct);
 
-        // 응답 frame의 metadata/compression 옵션. 응답 body는 반환값이다.
-        context.Reply
-            .Metadata("trace-id", "reply-trace")
-            .Compress();
-
+        // 응답 body는 반환값이며 공통 message context에 reply option을 두지 않는다.
         return new JoinMatchRes(request.MatchId);
     }
 }
@@ -258,18 +254,18 @@ public sealed class PlayerNotifyHandler
     public async ValueTask HandleAsync(
         MatchSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         GameStateNotify message,
         CancellationToken ct)
     {
         // 다른 actor가 이 actor 앞으로 보낸 메시지를 받아, 자기 BoundSession으로 client에 push 하는 끝점.
-        await actor.Context.BoundSession.Send(message).SubmitAsync(ct);
+        await actor.Context.BoundSession.Send(message).Async(ct);
     }
 }
 ```
 
 - `IZLinkBoundSession`의 표면은 **`Send<TMessage>(message)`** 와 **`DisconnectAsync(...)`** 둘뿐이다.
-  client로의 push는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).SubmitAsync(...)`는
+  client로의 push는 단방향이며 별도의 `Request` 표면은 없다. `Send(...).Async(...)`는
   admission 결과를 반환하지만 원격 handler 실행 완료는 기다리지 않는다.
 - `DisconnectAsync(...)`는 어플리케이션이 거는 것이라 session의 `OnDisconnectedAsync`를 다시 일으키지
   않는다(stream만 닫고 binding 정리).
@@ -308,7 +304,7 @@ public ValueTask OnDisconnectedAsync(CancellationToken ct)
 if (sessions.TryGet(playerId, out var session))
 {
     await session.Client.Send(new QuestProgressNotify(playerId, progress)) // client가 이 이름으로 받는다
-        .SubmitAsync(ct);
+        .Async(ct);
 }
 ```
 
@@ -331,9 +327,9 @@ handler가 메시지를 받아, 구독 중인 session 들에 `Context.Client.Sen
 
 ```csharp
 public sealed class DeliveryStatusFanoutHandler(CustomerSessionDirectory sessions)
-    : IZLinkPublishHandler<DeliveryStatusNotify>
+    : IZLinkFanoutHandler<DeliveryStatusNotify>
 {
-    public ValueTask HandleAsync(DeliveryStatusNotify message, ZLinkPublishContext context, CancellationToken ct)
+    public ValueTask HandleAsync(DeliveryStatusNotify message, CancellationToken ct)
         => sessions.PublishAsync(message, ct);   // directory가 구독 session 들로 Client.Send fan-out
 }
 ```

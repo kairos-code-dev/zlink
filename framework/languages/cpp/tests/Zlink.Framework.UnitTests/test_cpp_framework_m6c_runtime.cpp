@@ -71,12 +71,7 @@ class public_memory_authority_store_t final :
           std::get_if<zlink::framework::authority_put_t> (
             &mutation);
         if (!snapshot || !put
-            || expected_store_version != snapshot->store_version
-            || put->generation_transition
-                 != zlink::framework::
-                      authority_generation_transition_t::new_owner
-            || !put->target_owner
-            || !put->relocation_capacity_fence)
+            || expected_store_version != snapshot->store_version)
             return completed (
               zlink::framework::
                 authority_compare_exchange_result_t{
@@ -87,13 +82,28 @@ class public_memory_authority_store_t final :
                       : zlink::framework::authority_read_result_t{
                           zlink::framework::authority_missing_t{
                             std::chrono::system_clock::now ()}}}});
-        observed_target_owner = put->target_owner;
-        observed_capacity_fence =
-          put->relocation_capacity_fence;
-        snapshot->store_version = "2";
+        if (put->generation_transition
+            == zlink::framework::
+                 authority_generation_transition_t::new_owner) {
+            if (!put->target_owner
+                || !put->relocation_capacity_fence)
+                return completed (
+                  zlink::framework::
+                    authority_compare_exchange_result_t{
+                      zlink::framework::authority_conflict_t{
+                        zlink::framework::
+                          authority_read_result_t{
+                            *snapshot}}});
+            observed_target_owner = put->target_owner;
+            observed_capacity_fence =
+              put->relocation_capacity_fence;
+            ++snapshot->authority_owner_generation;
+            snapshot->owner = *put->target_owner;
+        }
+        snapshot->store_version =
+          std::to_string (
+            std::stoull (snapshot->store_version) + 1);
         snapshot->payload = put->payload;
-        ++snapshot->authority_owner_generation;
-        snapshot->owner = *put->target_owner;
         snapshot->store_now = std::chrono::system_clock::now ();
         return completed (
           zlink::framework::
@@ -1521,6 +1531,140 @@ void test_public_authority_store_adapter (test_context_t &test)
         && read->inventory_digest == digest_with (9)
         && read->target_owner.lease_generation == 5,
       "public authority adapter must decode only its Framework-owned payload");
+
+    const std::vector<std::byte> application_payload{
+      std::byte{0x31}, std::byte{0x32}};
+    store.snapshot =
+      zlink::framework::authority_snapshot_t{
+        "10",
+        application_payload,
+        7,
+        12,
+        {"owner-b", 5},
+        std::chrono::system_clock::now ()};
+    const auto completion_published =
+      adapter.publish_completion (
+        object_kind_t::actor,
+        "actor-public",
+        "mesh",
+        7,
+        "completion-prepared",
+        51);
+    const auto completion_replaced =
+      adapter.replace_completion (
+        object_kind_t::actor,
+        "actor-public",
+        7,
+        "completion-prepared",
+        51,
+        "completion-delivered",
+        52);
+    const auto completion_read =
+      adapter.read (
+        object_kind_t::actor,
+        "actor-public");
+    test.require (
+      completion_published.status
+          == authority_publish_status_t::published
+        && completion_replaced.status
+             == authority_publish_status_t::published
+        && completion_read
+        && completion_read->relocation_reference
+             == "completion-delivered"
+        && completion_read->checksum_crc32c == 52
+        && completion_read->source.object_generation == 7
+        && completion_read->source.authority_owner_generation
+             == 12,
+      "completion cursor roots must use exact preserve-generation authority CAS");
+    const auto completion_released =
+      adapter.release_completion (
+        object_kind_t::actor,
+        "actor-public",
+        7,
+        "completion-delivered",
+        52);
+    test.require (
+      completion_released
+        && store.snapshot
+        && store.snapshot->payload == application_payload
+        && store.snapshot->authority_owner_generation == 12
+        && !adapter.read (
+          object_kind_t::actor,
+          "actor-public"),
+      "Delivered release must restore authority payload before root cleanup");
+}
+
+void test_durable_join_completion_replacement_and_ordering (
+  test_context_t &test)
+{
+    auto store = std::make_shared<memory_relocation_store_t> ();
+    durable_join_completion_store_t source (store);
+    const object_ref_t actor{
+      object_kind_t::actor, "actor-join", 7, 12,
+      "mesh", "node-b"};
+    auto root = source.prepare (
+      durable_join_completion_record_t{
+        0x1111, 0x2222, actor, {4, 5, 6},
+        join_completion_cursor_t::prepared});
+    root = source.commit (root);
+
+    std::vector<std::string> events;
+    const auto failed_root = source.deliver (
+      root, actor,
+      [&] (const durable_join_completion_record_t &record) {
+          events.push_back ("callback-failed");
+          test.require (
+            record.operation_id_high == 0x1111
+              && record.operation_id_low == 0x2222
+              && record.raw_reply
+                   == std::vector<std::uint8_t> ({4, 5, 6}),
+            "replacement callback must retain operation id and raw reply");
+          return false;
+      });
+    test.require (
+      failed_root.reference == root.reference,
+      "failed callback must retain the committed immutable root");
+
+    durable_join_completion_store_t replacement (store);
+    int delivered = 0;
+    root = replacement.deliver (
+      failed_root, actor,
+      [&] (const durable_join_completion_record_t &) {
+          ++delivered;
+          events.push_back ("callback-delivered");
+          return true;
+      });
+    events.push_back ("backlog");
+    const auto deduplicated = replacement.deliver (
+      root, actor,
+      [&] (const durable_join_completion_record_t &) {
+          ++delivered;
+          return true;
+      });
+    test.require (
+      delivered == 1
+        && events
+             == std::vector<std::string> (
+               {"callback-failed", "callback-delivered", "backlog"})
+        && deduplicated.reference == root.reference,
+      "replacement must deliver once before opening backlog");
+
+    auto stale = actor;
+    ++stale.object_generation;
+    bool fenced = false;
+    try {
+        (void) replacement.deliver (root, stale, {});
+    }
+    catch (const std::invalid_argument &) {
+        fenced = true;
+    }
+    test.require (
+      fenced,
+      "replacement must reject a mismatched Actor generation");
+    replacement.cleanup (root);
+    test.require (
+      !store->get (root.reference),
+      "delivered Join completion root must be removed after cleanup");
 }
 
 } // namespace
@@ -1542,5 +1686,6 @@ int main ()
     test_post_commit_failure_is_force_stopped (test);
     test_public_relocation_store_adapter (test);
     test_public_authority_store_adapter (test);
+    test_durable_join_completion_replacement_and_ordering (test);
     return test.failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

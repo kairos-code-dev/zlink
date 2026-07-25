@@ -469,8 +469,43 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return { spot: new RawServiceSpot(this, state), created: existing === undefined };
   }
 
+  restoreUserSpotAuthority(
+    spotId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpot {
+    return new RawServiceSpot(
+      this,
+      this.requireStateful().restoreUserSpotAuthority(
+        spotId,
+        stableType,
+        generation,
+        authorityOwnerGeneration
+      )
+    );
+  }
+
   createActor(actorId: string): ZLinkBackendActorRef {
     return this.requireStateful().createActor(actorId).ref;
+  }
+
+  restoreActorSessionBinding(
+    actor: ZLinkBackendActorRef,
+    sessionNodeRid: unknown,
+    sessionRid: unknown,
+    bindingGeneration: bigint
+  ): void {
+    this.requireStateful().restoreActorSessionBinding(
+      {
+        nodeRid: String(actor.nodeRid),
+        actorId: actor.actorId,
+        generation: actor.generation
+      },
+      String(sessionNodeRid),
+      String(sessionRid),
+      bindingGeneration
+    );
   }
 
   registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void {
@@ -573,7 +608,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   actorLookup(actorId: string) {
     const actor = this.requireStateful().actor(actorId);
-    if (actor === undefined) throw new Error(`Actor '${actorId}' was not found.`);
+    if (actor === undefined) {
+      throw Object.assign(new Error(`Actor '${actorId}' was not found.`), { nativeErrno: 2 });
+    }
     return {
       actor: actor.ref,
       spotId: actor.spot.spotId,
@@ -1132,6 +1169,7 @@ class RawServiceSpot implements ServiceSpot {
 class RawStreamSessionService implements StreamSessionService {
   private state = 1;
   private closed = false;
+  private readonly sessionTargets = new Map<string, RoutingId>();
 
   constructor(
     private readonly stateful: ServiceStatefulRuntime,
@@ -1156,6 +1194,7 @@ class RawStreamSessionService implements StreamSessionService {
     if (this.closed) return;
     this.closed = true;
     this.state = 5;
+    this.sessionTargets.clear();
   }
 
   status() {
@@ -1171,16 +1210,30 @@ class RawStreamSessionService implements StreamSessionService {
     };
   }
 
+  lookupActor(
+    targetNodeRid: RoutingId,
+    actorId: string,
+    timeoutMs = 30_000
+  ): MeshOperationId {
+    this.requireStarted();
+    return this.observe(
+      OperationKind.ActorLookup,
+      this.stateful.lookupRemoteActor(String(targetNodeRid), actorId, timeoutMs)
+    );
+  }
+
   bindActor(
     sessionRid: RoutingId,
     actor: ServiceActorRef,
     timeoutMs = 30_000
   ): MeshOperationId {
     this.requireStarted();
+    const sessionKey = String(sessionRid);
+    this.sessionTargets.set(sessionKey, sessionRid);
     return this.observe(
       OperationKind.StreamBind,
       this.stateful.bindSession(
-        String(sessionRid),
+        sessionKey,
         actor,
         timeoutMs,
         (targetSessionRid, payload) => this.deliver(targetSessionRid, payload.payload)
@@ -1224,7 +1277,9 @@ class RawStreamSessionService implements StreamSessionService {
   }
 
   private deliver(sessionRid: string, payload: Uint8Array): boolean {
-    const operation = this.stream.send(BindingRoutingId.from(sessionRid));
+    const target = this.sessionTargets.get(sessionRid);
+    if (target === undefined) return false;
+    const operation = this.stream.send(target as unknown as BindingRoutingId);
     const parts = decodeMultipartBuffers(payload);
     if (parts.length === 0) return false;
     let submit = operation.message(parts[0]!);

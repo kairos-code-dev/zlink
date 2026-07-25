@@ -59,6 +59,16 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     IZLinkBackendSpot GetOrCreateSpot(string spotId, out bool created);
 
+    IZLinkBackendSpot GetOrCreateReservedSpot(
+        string spotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        out bool created);
+
+    void SetLocalActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration);
+
     ZLinkSpotNodeStatus Status();
 
     IReadOnlyList<ZLinkSpotNodePeerEntry> Peers();
@@ -115,6 +125,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     ZLinkBackendActorRef CreateReservedActor(
         string actorId,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         Message createRequest) =>
         throw new NotSupportedException(
             "This MeshNode backend does not support reservation-fenced Actor creation.");
@@ -261,7 +272,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     // Registers the handler the node dispatch pump invokes for node-addressed
     // (NodeSend/NodeRequest) and channel-addressed (ChannelSend/ChannelRequest)
-    // records, so the MeshNode builder's registered route/channel handlers receive
+    // records, so the MeshNode builder's registered route/channel handlers receiver
     // inbound traffic. Requests reply through the record's held reply token.
     void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler);
 }

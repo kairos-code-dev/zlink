@@ -28,7 +28,7 @@ export class ZLinkTransferredActorRollbackCoordinator {
   ) {}
 
   async rollback(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
-    const state = this.states.get(actor.actorId);
+    const state = this.states.get(actor.context.actorId);
     if (state?.actor !== actor) {
       return;
     }
@@ -57,12 +57,12 @@ export class ZLinkTransferredActorRollbackCoordinator {
     node: ZLinkBackendMeshNode | undefined,
     actorRef: ZLinkBackendActorRef | undefined
   ): void {
-    if (this.tasks.has(actor.actorId)) {
+    if (this.tasks.has(actor.context.actorId)) {
       return;
     }
     const task = this.retry(actor, state, node, actorRef)
-      .finally(() => this.tasks.delete(actor.actorId));
-    this.tasks.set(actor.actorId, task);
+      .finally(() => this.tasks.delete(actor.context.actorId));
+    this.tasks.set(actor.context.actorId, task);
   }
 
   private async retry(
@@ -72,7 +72,7 @@ export class ZLinkTransferredActorRollbackCoordinator {
     actorRef: ZLinkBackendActorRef | undefined
   ): Promise<void> {
     const retryDelay = new ZLinkActorRetryDelay();
-    while (this.states.get(actor.actorId) === state && this.options.shutdownSignal?.aborted !== true) {
+    while (this.states.get(actor.context.actorId) === state && this.options.shutdownSignal?.aborted !== true) {
       if (!await retryDelay.wait(this.options.shutdownSignal)) return;
       try {
         if (node !== undefined && actorRef !== undefined) {
@@ -113,12 +113,12 @@ export class ZLinkTransferredActorRollbackCoordinator {
   }
 
   private complete(actor: ZLinkActor, state: ZLinkActorRuntimeState): void {
-    if (this.states.get(actor.actorId) !== state) {
+    if (this.states.get(actor.context.actorId) !== state) {
       return;
     }
-    this.options.actorDestroyedCleanup?.(actor.actorId);
+    this.options.actorDestroyedCleanup?.(actor.context.actorId);
     state.clearAfterDestroy();
-    this.states.delete(actor.actorId);
+    this.states.delete(actor.context.actorId);
     this.options.metrics?.change('zlink.actor.count', -1);
   }
 }

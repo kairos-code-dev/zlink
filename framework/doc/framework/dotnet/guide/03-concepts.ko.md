@@ -306,7 +306,7 @@ outbound 호출은 비동기 경계를 가진다. send/push는 one-way `Submit(.
 
 ```csharp
 public async ValueTask<CreateGameReply> HandleAsync (
-    CreateGameRequest request, ZLinkRequestContext context, CancellationToken ct)
+    CreateGameRequest request, IZLinkMessageContext context, CancellationToken ct)
 {
     // 런타임(핸들러) 스레드 — await로 비운다. blocking(.Result/.GetAwaiter().GetResult())은 금지.
     var room = await _client

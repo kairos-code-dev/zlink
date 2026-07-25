@@ -1,5 +1,5 @@
 import type {
-  ZLinkHandlerContext,
+  ZLinkMessageContext,
   ZLinkHandlerFilter,
   ZLinkUnhandledDispatchOptions,
   ZLinkFlowOrigin
@@ -43,11 +43,11 @@ export interface ZLinkChannelDispatchFields {
   readonly flowOrigin?: ZLinkFlowOrigin;
 }
 
-interface ZLinkChannelDispatchHandler<TContext extends ZLinkHandlerContext, TResult> {
+interface ZLinkChannelDispatchHandler<TContext extends ZLinkMessageContext, TResult> {
   handle(payload: unknown, context: TContext): Promise<TResult> | TResult;
 }
 
-interface ZLinkOneWayDispatch<TContext extends ZLinkHandlerContext> {
+interface ZLinkOneWayDispatch<TContext extends ZLinkMessageContext> {
   readonly fields: ZLinkChannelDispatchFields;
   readonly envelope: ZLinkChannelEnvelope;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
@@ -55,7 +55,7 @@ interface ZLinkOneWayDispatch<TContext extends ZLinkHandlerContext> {
   readonly context: TContext;
 }
 
-interface ZLinkRequestDispatch<TContext extends ZLinkHandlerContext> {
+interface ZLinkRequestDispatch<TContext extends ZLinkMessageContext> {
   readonly fields: ZLinkChannelDispatchFields;
   readonly envelope: ZLinkChannelEnvelope;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
@@ -75,7 +75,7 @@ export class ZLinkChannelDispatchPipeline {
     this.unhandled = options.unhandled ?? DEFAULT_UNHANDLED_DISPATCH;
   }
 
-  async dispatchOneWay<TContext extends ZLinkHandlerContext>(dispatch: ZLinkOneWayDispatch<TContext>): Promise<void> {
+  async dispatchOneWay<TContext extends ZLinkMessageContext>(dispatch: ZLinkOneWayDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
       const action = dispatch.fields.messageKind === ZLinkDispatchMessageKind.Publish
@@ -113,7 +113,7 @@ export class ZLinkChannelDispatchPipeline {
     }
   }
 
-  async dispatchRequest<TContext extends ZLinkHandlerContext>(dispatch: ZLinkRequestDispatch<TContext>): Promise<void> {
+  async dispatchRequest<TContext extends ZLinkMessageContext>(dispatch: ZLinkRequestDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
       const missing = new ZLinkFrameworkException(
@@ -191,7 +191,7 @@ export class ZLinkChannelDispatchPipeline {
     );
   }
 
-  private invoke<TContext extends ZLinkHandlerContext, TResult>(
+  private invoke<TContext extends ZLinkMessageContext, TResult>(
     envelope: ZLinkChannelEnvelope,
     codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
     handler: ZLinkChannelDispatchHandler<TContext, TResult>,
@@ -200,7 +200,10 @@ export class ZLinkChannelDispatchPipeline {
     const payload = decodeChannelPayload(envelope, codecs);
     return invokeZLinkHandlerFilters(
       this.filters,
-      { message: payload, context },
+      {
+        ownerKind: this.options.surface,
+        messageContext: context
+      },
       () => Promise.resolve(handler.handle(payload, context))
     ) as Promise<TResult>;
   }

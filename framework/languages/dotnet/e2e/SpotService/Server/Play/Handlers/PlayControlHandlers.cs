@@ -105,11 +105,11 @@ internal sealed class CreateSpotHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var result = await spots.GetOrCreateAsync<ScenarioUserSpot>(
-            RoutingId.From(request.SpotRid),
-            cancellationToken);
-        evidence.Add($"create-spot|rid={node.Rid}|spot={result.SpotRid}|state={result.State}");
-        return new CreateSpotRes(result.SpotRid.ToString(), node.Rid, result.State.ToString());
+        var result = await spots
+            .GetOrCreate(request.SpotRid, SpotServiceNames.UserSpotType)
+            .Async(cancellationToken);
+        evidence.Add($"create-spot|rid={node.Rid}|spot={result.Spot.SpotId}|state={result.State}");
+        return new CreateSpotRes(result.Spot.SpotId, node.Rid, result.State.ToString());
     }
 }
 
@@ -125,7 +125,9 @@ internal sealed class CloseSpotHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var closed = await spots.CloseAsync(RoutingId.From(request.SpotRid), cancellationToken);
+        var spot = await spots.FindAsync(request.SpotRid, cancellationToken)
+                   ?? throw new InvalidOperationException($"Spot '{request.SpotRid}' was not found.");
+        var closed = await spots.CloseAsync(spot, cancellationToken);
         evidence.Add($"close-spot|rid={evidence.Rid}|spot={request.SpotRid}|closed={closed}");
         return new CloseSpotRes(request.SpotRid, closed);
     }
@@ -143,11 +145,14 @@ internal sealed class SpotTypeMismatchHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var rid = RoutingId.From(request.SpotRid);
-        var first = await spots.GetOrCreateAsync<ScenarioUserSpot>(rid, cancellationToken);
+        var first = await spots
+            .GetOrCreate(request.SpotRid, SpotServiceNames.UserSpotType)
+            .Async(cancellationToken);
         try
         {
-            await spots.GetOrCreateAsync<ScenarioAlternateSpot>(rid, cancellationToken);
+            await spots
+                .GetOrCreate(request.SpotRid, SpotServiceNames.AlternateSpotType)
+                .Async(cancellationToken);
         }
         catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.SpotTypeMismatch)
         {

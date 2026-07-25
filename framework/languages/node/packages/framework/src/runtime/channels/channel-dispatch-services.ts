@@ -135,7 +135,7 @@ export class ZLinkChannelDispatchServices {
   ): Promise<unknown> {
     const scoped = handlerFilterScope(this.providerResolver);
     if (scoped !== undefined) {
-      return scoped(invocation.context, async (resolver) => invokeZLinkHandlerFilters(
+      return scoped(invocation.messageContext, async (resolver) => invokeZLinkHandlerFilters(
         await Promise.all(this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))),
         invocation,
         next

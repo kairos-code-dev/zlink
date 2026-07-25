@@ -1,7 +1,7 @@
 # C++ Framework Regression Test Matrix
 
 > 이 문서는 C++ framework 유지보수자를 위한 internals 문서다. 공개 API 계약은
-> `framework/doc/framework/spec/server/languages/cpp/` 문서와 public header를 기준으로 확인한다.
+> `framework/doc/framework/common/spec/server/languages/cpp/` 문서와 public header를 기준으로 확인한다.
 
 ## 1. 테스트 계층
 

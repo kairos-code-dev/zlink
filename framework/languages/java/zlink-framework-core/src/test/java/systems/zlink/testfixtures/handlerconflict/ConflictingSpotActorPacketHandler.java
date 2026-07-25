@@ -7,7 +7,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.handlers.ZLinkSpotActorSend;
 import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 
 public final class ConflictingSpotActorPacketHandler {
@@ -16,7 +16,7 @@ public final class ConflictingSpotActorPacketHandler {
     public CompletionStage<SpotActorReply> handle(
         TestSpot spot,
         TestActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         SpotActorRequest request) {
         return CompletableFuture.completedFuture(new SpotActorReply());
     }
@@ -36,11 +36,6 @@ public final class ConflictingSpotActorPacketHandler {
     }
 
     public static final class TestActor implements ZLinkActor {
-        @Override
-        public String actorId() {
-            return "actor";
-        }
-
         @Override
         public ZLinkActorContext context() {
             throw new UnsupportedOperationException();

@@ -22,9 +22,9 @@ internal sealed class MultiNodeCreateSpotAHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var result = await spots.GetOrCreateAsync<MultiNodeSpotA>(
-            RoutingId.From(request.SpotRid),
-            cancellationToken);
+        var result = await spots
+            .GetOrCreate(request.SpotRid, SpotServiceNames.MultiSpotTypeA)
+            .Async(cancellationToken);
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
@@ -32,9 +32,9 @@ internal sealed class MultiNodeCreateSpotAHandler(
             request.Delta,
             cancellationToken);
         evidence.Add(
-            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.SpotRid}|state={result.State}");
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeA}|spot={result.Spot.SpotId}|state={result.State}");
         return new MultiNodeCreateSpotRes(
-            result.SpotRid.ToString(),
+            result.Spot.SpotId,
             SpotServiceNames.MultiSpotNodeA,
             result.State.ToString(),
             state.Value);
@@ -54,9 +54,9 @@ internal sealed class MultiNodeCreateSpotBHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var result = await spots.GetOrCreateAsync<MultiNodeSpotB>(
-            RoutingId.From(request.SpotRid),
-            cancellationToken);
+        var result = await spots
+            .GetOrCreate(request.SpotRid, SpotServiceNames.MultiSpotTypeB)
+            .Async(cancellationToken);
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
@@ -64,9 +64,9 @@ internal sealed class MultiNodeCreateSpotBHandler(
             request.Delta,
             cancellationToken);
         evidence.Add(
-            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.SpotRid}|state={result.State}");
+            $"multi-create-spot|node={SpotServiceNames.MultiSpotNodeB}|spot={result.Spot.SpotId}|state={result.State}");
         return new MultiNodeCreateSpotRes(
-            result.SpotRid.ToString(),
+            result.Spot.SpotId,
             SpotServiceNames.MultiSpotNodeB,
             result.State.ToString(),
             state.Value);

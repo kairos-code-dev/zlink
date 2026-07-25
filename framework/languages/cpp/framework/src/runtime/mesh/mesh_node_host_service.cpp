@@ -21,6 +21,7 @@
 #include <cstring>
 #include <iostream>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 namespace zlink::framework::runtime
@@ -416,7 +417,8 @@ mesh_node_host_service_t::create_actor (
            target.lifecycle_generation,
          .owner = {target.owner_id,
                    target.lease_generation}},
-      .creating_payload = request_bytes};
+      .creating_payload = request_bytes,
+      .capacity_bundle = {.actor_slots = 1}};
     while (std::chrono::steady_clock::now () < deadline) {
         const auto reserved =
           _location_store->reserve (reserve)
@@ -1247,7 +1249,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
           };
         _nodes[index]->configure_user_spot_operations (
           store,
-          [this, registration] (
+          [this, registration, source] (
             const stateful::object_ref_t &object,
             const std::string &stable_type,
             const std::vector<std::byte> &payload) {
@@ -1262,14 +1264,43 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               for (const auto value : payload)
                   request_bytes.push_back (
                     std::to_integer<std::uint8_t> (value));
+              auto spot_id = spot_id_t (
+                zlink::routing_id_t::from (rid_bytes)
+                  .to_string ());
+              const auto native_id = std::string (spot_id);
+              auto native_spot =
+                std::make_shared<host::spot_handle_t> (
+                  source->native_node ().shared_from_this (),
+                  object);
+              {
+                  std::lock_guard<std::recursive_mutex> lock (
+                    registration->spot_state->mutex);
+                  registration->spot_state->native_spots_by_id
+                    .insert_or_assign (
+                      native_id, native_spot);
+              }
               detail::spot_node_runtime_t spots (
                 registration->spot_state);
-              auto created = spots.get_or_create_spot (
-                stable_type,
-                spot_id_t (
-                  zlink::routing_id_t::from (rid_bytes)
-                    .to_string ()),
-                zlink::message_t::from (request_bytes));
+              detail::local_spot_create_result_t created;
+              try {
+                  created = spots.get_or_create_spot (
+                    stable_type, std::move (spot_id),
+                    zlink::message_t::from (request_bytes));
+              }
+              catch (...) {
+                  std::lock_guard<std::recursive_mutex> lock (
+                    registration->spot_state->mutex);
+                  const auto found =
+                    registration->spot_state
+                      ->native_spots_by_id.find (native_id);
+                  if (found
+                        != registration->spot_state
+                             ->native_spots_by_id.end ()
+                      && found->second == native_spot)
+                      registration->spot_state
+                        ->native_spots_by_id.erase (found);
+                  throw;
+              }
               std::optional<protocol::application_payload_t>
                 application_reply;
               if (created.reply) {
@@ -1334,6 +1365,23 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         descriptor.lease_generation =
           _location_owner->lease_generation;
         for (const auto &stable_type :
+             registration->spot_state->snapshot.actor_types) {
+            const auto has_transfer_adapter =
+              registration->spot_state->actor_transfers.contains (
+                stable_type);
+            descriptor.object_capabilities.push_back (
+              object_capability_t{
+                .object_kind =
+                  placement_object_kind_t::actor,
+                .stable_type = stable_type,
+                .policy =
+                  has_transfer_adapter
+                    ? maintenance_policy_kind_t::snapshot
+                    : maintenance_policy_kind_t::disabled,
+                .has_snapshot_adapter =
+                  has_transfer_adapter});
+        }
+        for (const auto &stable_type :
              registration->spot_state->snapshot.spot_names) {
             if (registration->spot_state->snapshot.entry_spot_name
                 == stable_type)
@@ -1350,6 +1398,26 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 .stable_type = stable_type,
                 .usage = {}});
         }
+        std::sort (
+          descriptor.object_capabilities.begin (),
+          descriptor.object_capabilities.end (),
+          [] (const object_capability_t &left,
+              const object_capability_t &right) {
+              return std::tie (left.object_kind,
+                               left.stable_type)
+                     < std::tie (right.object_kind,
+                                 right.stable_type);
+          });
+        std::sort (
+          descriptor.capacity.spot_types.begin (),
+          descriptor.capacity.spot_types.end (),
+          [] (const spot_type_capacity_t &left,
+              const spot_type_capacity_t &right) {
+              return std::tie (left.object_kind,
+                               left.stable_type)
+                     < std::tie (right.object_kind,
+                                 right.stable_type);
+          });
         const auto written =
           _location_store
             ->update_mesh_node (

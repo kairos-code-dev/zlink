@@ -46,6 +46,12 @@ export interface ZLinkActorManagerOptions {
     signal?: AbortSignal
   ) => Promise<ZLinkActorCreateResponse | undefined>;
   readonly actorDestroyedCleanup?: (actorId: string) => void;
+  readonly publishActorAuthority?: (
+    actorType: string,
+    actorRef: ActorRef,
+    ownerNodeGeneration: bigint,
+    signal?: AbortSignal
+  ) => Promise<void>;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -71,7 +77,8 @@ export interface ZLinkActorJoinCoordinator {
     spotId: RoutingId,
     request: Message,
     timeoutMs: number | undefined,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    completionOperationId?: import('../../contracts').ZLinkActorJoinOperationId
   ): Promise<ZLinkActorJoinRuntimeResult<Message>>;
   joinEntrySpot(
     actor: ZLinkActor,
@@ -79,6 +86,7 @@ export interface ZLinkActorJoinCoordinator {
     nodeRid: RoutingId | undefined,
     request: Message,
     timeoutMs: number | undefined,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    completionOperationId?: import('../../contracts').ZLinkActorJoinOperationId
   ): Promise<ZLinkActorJoinRuntimeResult<Message>>;
 }

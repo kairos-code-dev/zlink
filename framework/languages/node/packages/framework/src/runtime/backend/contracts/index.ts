@@ -139,10 +139,22 @@ export interface ZLinkBackendMeshNode {
   createSpot(): ServiceSpot;
   entrySpot(): ServiceSpot;
   getOrCreateSpot(routingId: unknown): { readonly spot: ServiceSpot; readonly created: boolean };
+  restoreUserSpotAuthority?(
+    spotId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpot;
   createActor(
     actorId: string,
     parts?: MessageLike | readonly MessageLike[]
   ): ZLinkBackendActorRef;
+  restoreActorSessionBinding?(
+    actor: ZLinkBackendActorRef,
+    sessionNodeRid: unknown,
+    sessionRid: unknown,
+    bindingGeneration: bigint
+  ): void;
   actorLookup(actorId: string): {
     readonly actor: ZLinkBackendActorRef;
     readonly spotId: unknown;
@@ -151,6 +163,15 @@ export interface ZLinkBackendMeshNode {
   };
   lookupRemoteActor(targetNodeRid: unknown, actorId: string, timeoutMs?: number): MeshOperationId;
   destroyActor(actor: ZLinkBackendActorRef, timeoutMs?: number): MeshOperationId;
+  rememberSpotRoute?(
+    route: {
+      readonly spot: { readonly spotId: string; readonly generation: bigint };
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly authorityOwnerGeneration: bigint;
+    },
+    storeVersion?: string
+  ): void;
   joinActorSpot(
     actor: ZLinkBackendActorRef,
     targetNodeRid: unknown,

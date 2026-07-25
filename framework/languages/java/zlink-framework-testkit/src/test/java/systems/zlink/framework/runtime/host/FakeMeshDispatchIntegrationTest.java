@@ -7,9 +7,9 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
@@ -51,8 +51,8 @@ final class FakeMeshDispatchIntegrationTest {
         @Override
         public CompletionStage<Void> handle(
             String message,
-            ZLinkRouteSendContext context) {
-            received.complete(message + "@" + context.routingId());
+            ZLinkRouteMessageContext context) {
+            received.complete(message + "@" + context.sourceNodeRid());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -66,7 +66,7 @@ final class FakeMeshDispatchIntegrationTest {
         @Override
         public CompletionStage<Void> handle(
             String message,
-            ZLinkSendContext context) {
+            ZLinkMessageContext context) {
             received.complete(message + "@" + context.channelName().orElse(""));
             return CompletableFuture.completedFuture(null);
         }

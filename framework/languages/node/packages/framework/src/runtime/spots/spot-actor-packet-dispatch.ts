@@ -256,7 +256,9 @@ export class ZLinkSpotActorPacketDispatch {
     try {
       if (header.kind === ZLinkStreamMessageKind.Send) {
         await dispatcher.dispatchSend(actor, header.name, payload, {
-          metadata: zlinkMessageMetadata(header.metadata)
+          meshName: this.options.spot.context.meshName,
+          metadata: zlinkMessageMetadata(header.metadata),
+          correlationId: header.correlationId ?? undefined
         });
         this.trace(ZLinkMessageFlowOutcome.Dispatched, actorId, header, ZLinkDispatchMessageKind.ActorSend);
         return undefined;
@@ -276,13 +278,17 @@ export class ZLinkSpotActorPacketDispatch {
       const requestSeq = header.requestSeq;
       if (returnResponse || this.options.actorResponseSender === undefined) {
         const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
-          metadata: zlinkMessageMetadata(header.metadata)
+          meshName: this.options.spot.context.meshName,
+          metadata: zlinkMessageMetadata(header.metadata),
+          correlationId: header.correlationId ?? header.requestSeq.toString()
         });
         this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
         return response;
       }
       await dispatcher.dispatchRequestThen(actor, header.name, payload, {
-        metadata: zlinkMessageMetadata(header.metadata)
+        meshName: this.options.spot.context.meshName,
+        metadata: zlinkMessageMetadata(header.metadata),
+        correlationId: header.correlationId ?? header.requestSeq.toString()
       }, async (response, replyOptions) => {
         this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
         await this.options.actorResponseSender?.(

@@ -10,8 +10,11 @@ namespace SpotActorTransfer.ActorNode
 {
     internal sealed class TransferActor(
         string actorId,
-        IZLinkActorContext context) : IZLinkActor
+        IZLinkActorContext context,
+        EvidenceStore evidence) : IZLinkActor
     {
+        private readonly Queue<JoinTargetReq> _pendingJoins = new();
+
         public string ActorId { get; } = actorId;
 
         public string ActorType { get; set; } = SpotActorTransferNames.ActorTypeStateful;
@@ -19,11 +22,44 @@ namespace SpotActorTransfer.ActorNode
         public int StateVersion { get; set; }
 
         public IZLinkActorContext Context { get; } = context;
+
+        public void RecordDeferredJoin(JoinTargetReq request) =>
+            _pendingJoins.Enqueue(request);
+
+        public ValueTask OnJoinCompletedAsync(
+            ZLinkActorJoinCompletion completion,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var reply = completion switch
+            {
+                ZLinkActorJoinCompletion.Accepted { Reply: { } replyMessage } =>
+                    replyMessage.Decode<JoinTargetRes>(),
+                ZLinkActorJoinCompletion.Rejected { Reply: { } replyMessage } =>
+                    replyMessage.Decode<JoinTargetRes>(),
+                _ => null
+            };
+            var pending = _pendingJoins.Count > 0 ? _pendingJoins.Dequeue() : null;
+            var scenario = reply?.Scenario ?? pending?.Scenario ?? "unknown";
+            var targetSpotId = reply?.TargetSpotRid ?? pending?.TargetSpotRid ?? string.Empty;
+            var kind = completion switch
+            {
+                ZLinkActorJoinCompletion.Accepted => "success_reply",
+                ZLinkActorJoinCompletion.Rejected => "reject_reply",
+                ZLinkActorJoinCompletion.Failed => "join_failed",
+                _ => throw new InvalidOperationException("Unknown Actor Join completion.")
+            };
+            var terminalValue = completion is ZLinkActorJoinCompletion.Failed failed
+                ? failed.Kind.ToString()
+                : targetSpotId;
+            evidence.Add(scenario, ActorId, kind, terminalValue);
+            return ValueTask.CompletedTask;
+        }
     }
 
-    internal sealed class TransferActorFactory(EvidenceStore evidence) : IZLinkActorFactory
+    internal sealed class TransferActorFactory(EvidenceStore evidence) : IZLinkActorFactory<TransferActor>
     {
-        public ValueTask<IZLinkActor> CreateAsync(
+        public ValueTask<TransferActor> CreateAsync(
             string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
@@ -32,7 +68,7 @@ namespace SpotActorTransfer.ActorNode
             if (evidence.NodeRid == "actor-b"
                 && actorId.StartsWith("actor-no-adapter-", StringComparison.Ordinal))
                 evidence.Add("transfer", actorId, "transfer_in_empty_default", "actor-factory");
-            return ValueTask.FromResult<IZLinkActor>(new TransferActor(actorId, context));
+            return ValueTask.FromResult(new TransferActor(actorId, context, evidence));
         }
     }
 
@@ -79,7 +115,7 @@ namespace SpotActorTransfer.ActorNode
             if (state.IsEmpty)
             {
                 evidence.Add("transfer", actorId, "transfer_in_empty", "custom-adapter");
-                return ValueTask.FromResult(new TransferActor(actorId, context)
+                return ValueTask.FromResult(new TransferActor(actorId, context, evidence)
                 {
                     ActorType = SpotActorTransferNames.ActorTypeEmptyState
                 });
@@ -92,7 +128,7 @@ namespace SpotActorTransfer.ActorNode
                 throw new InvalidOperationException("injected transfer in failure");
             }
 
-            var actor = new TransferActor(actorId, context)
+            var actor = new TransferActor(actorId, context, evidence)
             {
                 ActorType = SpotActorTransferNames.ActorTypeStateful,
                 StateVersion = dto.StateVersion
@@ -109,7 +145,7 @@ namespace SpotActorTransfer.ActorNode
     {
         public IZLinkEntrySpotContext Context { get; } = context;
 
-        public ValueTask OnCreateActorAsync(
+        public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
             TransferActor actor,
             ZLinkMessage createRequest,
             CancellationToken cancellationToken)
@@ -125,7 +161,7 @@ namespace SpotActorTransfer.ActorNode
             }
 
             evidence.Add("create", actor.ActorId, "create", $"{actor.ActorType}:{actor.StateVersion}");
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
         }
 
         public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
@@ -182,7 +218,7 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!request.IsEmpty) _mode = request.Decode<CreateSpotReq>().Mode;
-            evidence.Add("create_spot", Context.SpotRid.ToString(), "spot_created", _mode);
+            evidence.Add("create_spot", Context.SpotId, "spot_created", _mode);
             return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
         }
 
@@ -194,7 +230,7 @@ namespace SpotActorTransfer.ActorNode
             cancellationToken.ThrowIfCancellationRequested();
             var join = request.Decode<JoinTargetReq>();
             _joinScenarios[actorId] = join.Scenario;
-            evidence.Add(join.Scenario, actorId, "admission", $"spot={Context.SpotRid}|mode={_mode}|input=actor-id-only");
+            evidence.Add(join.Scenario, actorId, "admission", $"spot={Context.SpotId}|mode={_mode}|input=actor-id-only");
             if (string.Equals(_mode, "reject", StringComparison.Ordinal)
                 || string.Equals(join.ExpectedMode, "reject", StringComparison.Ordinal))
                 return ValueTask.FromResult(ZLinkSpotActorJoinResult.Reject(new JoinTargetRes(
@@ -202,14 +238,14 @@ namespace SpotActorTransfer.ActorNode
                     actorId,
                     false,
                     string.Empty,
-                    Context.SpotRid.ToString(),
+                    Context.SpotId,
                     0)));
             return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(new JoinTargetRes(
                 join.Scenario,
                 actorId,
                 true,
                 string.Empty,
-                Context.SpotRid.ToString(),
+                Context.SpotId,
                 0)));
         }
 
@@ -221,17 +257,17 @@ namespace SpotActorTransfer.ActorNode
             if (string.Equals(_mode, "delay-joined", StringComparison.Ordinal))
             {
                 var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
-                evidence.Add(scenario, actor.ActorId, "joined_wait", Context.SpotRid.ToString());
+                evidence.Add(scenario, actor.ActorId, "joined_wait", Context.SpotId);
                 return WaitForJoinedGateAsync(actor, cancellationToken);
             }
             if (string.Equals(_mode, "fail-joined", StringComparison.Ordinal))
             {
                 var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
-                evidence.Add(scenario, actor.ActorId, "joined_failed", Context.SpotRid.ToString());
+                evidence.Add(scenario, actor.ActorId, "joined_failed", Context.SpotId);
                 throw new InvalidOperationException("injected joined failure");
             }
 
-            evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotRid}:{actor.StateVersion}");
+            evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotId}:{actor.StateVersion}");
             if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
             {
                 actor.StateVersion = domainState.Load(actor.ActorId);
@@ -245,10 +281,10 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             var scenario = _joinScenarios.GetValueOrDefault(actor.ActorId, "unknown");
-            await joinedGates.WaitAsync(Context.SpotRid.ToString(), cancellationToken)
+            await joinedGates.WaitAsync(Context.SpotId, cancellationToken)
                 .ConfigureAwait(false);
-            evidence.Add(scenario, actor.ActorId, "joined_released", Context.SpotRid.ToString());
-            evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotRid}:{actor.StateVersion}");
+            evidence.Add(scenario, actor.ActorId, "joined_released", Context.SpotId);
+            evidence.Add("transfer", actor.ActorId, "joined", $"{Context.SpotId}:{actor.StateVersion}");
         }
 
         public ValueTask OnLeaveActorAsync(
@@ -256,29 +292,31 @@ namespace SpotActorTransfer.ActorNode
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            evidence.Add("transfer", actor.ActorId, "target_leave", Context.SpotRid.ToString());
+            evidence.Add("transfer", actor.ActorId, "target_leave", Context.SpotId);
             return ValueTask.CompletedTask;
         }
     }
 
     internal sealed class ActorJoinTargetUseCase(EvidenceStore evidence)
     {
-        public async ValueTask<JoinTargetRes> ExecuteAsync(
+        public ValueTask<JoinTargetRes> ExecuteAsync(
             TransferActor actor,
             JoinTargetReq request,
             CancellationToken cancellationToken)
         {
-            var joined = await actor.Context.JoinSpot(RoutingId.From(request.TargetSpotRid), request)
+            cancellationToken.ThrowIfCancellationRequested();
+            actor.RecordDeferredJoin(request);
+            actor.Context.JoinSpot(request.TargetSpotRid, request)
                 .Timeout(TimeSpan.FromSeconds(10))
-                .Async<JoinTargetRes>(cancellationToken);
+                .Defer();
             evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotRid);
-            return new JoinTargetRes(
+            return ValueTask.FromResult(new JoinTargetRes(
                 request.Scenario,
                 actor.ActorId,
-                joined is ZLinkActorJoinResult<JoinTargetRes>.Accepted,
+                true,
                 evidence.NodeRid,
                 request.TargetSpotRid,
-                actor.StateVersion);
+                actor.StateVersion));
         }
     }
 
@@ -339,7 +377,7 @@ namespace SpotActorTransfer.ActorNode
             return new ProbeRes(
                 request.Scenario,
                 actor.ActorId,
-                spot.Context.SpotRid.ToString(),
+                spot.Context.SpotId,
                 spot.Context.NodeRid.ToString(),
                 actor.StateVersion,
                 request.Marker);
@@ -381,16 +419,16 @@ namespace SpotActorTransfer.ActorNode
             await actor.Context.BoundSession.Send(new BoundPushNotify(
                     request.Scenario,
                     actor.ActorId,
-                    entrySpot.Context.SpotRid.ToString(),
+                    entrySpot.Context.SpotId,
                     entrySpot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
             return new BoundPushRes(
                 request.Scenario,
                 actor.ActorId,
-                entrySpot.Context.SpotRid.ToString(),
+                entrySpot.Context.SpotId,
                 entrySpot.Context.NodeRid.ToString(),
                 request.Marker,
                 actor.StateVersion);
@@ -413,16 +451,16 @@ namespace SpotActorTransfer.ActorNode
             await actor.Context.BoundSession.Send(new BoundPushNotify(
                     request.Scenario,
                     actor.ActorId,
-                    spot.Context.SpotRid.ToString(),
+                    spot.Context.SpotId,
                     spot.Context.NodeRid.ToString(),
                     request.Marker,
                     actor.StateVersion))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             evidence.Add(request.Scenario, actor.ActorId, "bound_push", request.Marker);
             return new BoundPushRes(
                 request.Scenario,
                 actor.ActorId,
-                spot.Context.SpotRid.ToString(),
+                spot.Context.SpotId,
                 spot.Context.NodeRid.ToString(),
                 request.Marker,
                 actor.StateVersion);

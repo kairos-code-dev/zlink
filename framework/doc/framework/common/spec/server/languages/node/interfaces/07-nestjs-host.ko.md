@@ -211,7 +211,9 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
     routingId(routingId: string | undefined): this;
     setRoutingIdPrefix(prefix: string): this;
     setPlacementWeight(weight: number): this;
-    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    setActorLimit(limit: number): this;
+    setSpotLimit(limit: number): this;
+    setActivationConcurrency(limit: number): this;
     objects(): ZLinkNestMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
@@ -391,6 +393,6 @@ export declare class ZLinkHttpClientModule {
 ```
 
 `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot [factory](../../../../01-glossary.ko.md#factory)가 하나라도 등록된 Object Server는
-`addRelocationStore(...)`를 정확히 한 번 호출해야 한다. [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory가 없고 모든 factory가
+`addRelocationStore(...)`를 정확히 한 번 호출해야 한다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고 모든 factory가
 `Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있다. 누락과 중복은 socket bind 전에 configuration
 error다.

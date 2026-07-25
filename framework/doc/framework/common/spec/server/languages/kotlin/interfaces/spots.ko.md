@@ -18,7 +18,7 @@ SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 [Location Store](.
 비교는 case-sensitive exact match이고 Unicode normalization과 case folding을 적용하지 않는다. 일반 [Spot](../../../../01-glossary.ko.md#spot) send/request는
 SpotId만 받는다. `SpotRef(spotId, objectGeneration, meshName, nodeRid)`는 exact incarnation을 close할 때만
 사용하는 immutable snapshot이다. `objectGeneration`은 `1..Long.MAX_VALUE`이고 JSON에서는 decimal string이다.
-User와 [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) type은 UTF-8 1..255 bytes의 stable exact value다.
+User와 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) type은 UTF-8 1..255 bytes의 stable exact value다.
 Java enum의 numeric value는 `ZLinkSpotKind.INVALID=0`, `ENTRY=1`, `USER=2`, `INSTANCE=3`이고
 Kotlin은 ordinal을 계약 값으로 사용하지 않고 `value()`를 사용한다. Creatable kind enum은 제공하지 않는다.
 
@@ -58,7 +58,7 @@ Kotlin API를 사용해도 Instance Spot 생성은 Java runtime이 다음 순서
 3. Target Java runtime은 metadata presence와 frame을 포함한 complete envelope를 Relocation Store에
    immutable recovery root로 먼저 저장한다.
 4. 요청한 SpotId와 stable type에 일치하는 Instance가 local에 없을 때만 target이 자신을 owner로
-   예약한다. Pending [snapshot](../../../../01-glossary.ko.md#snapshot)은 어떤 예약인지 식별하는 reservation fence와 recovery root의 저장 완료를
+   예약한다. Reserved [snapshot](../../../../01-glossary.ko.md#snapshot)은 어떤 예약인지 식별하는 reservation fence와 recovery root의 저장 완료를
    증명하는 receipt를 provider에서 받아 반환한다.
 5. Authority reservation 경쟁에서 이긴 target(CAS winner)만 factory와 initialize를 실행하고 durable
    activation inbox의 first record를 확정한다. 경쟁에서 진 target(CAS loser)은 [factory](../../../../01-glossary.ko.md#factory)를 시작하지 않으며

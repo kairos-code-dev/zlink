@@ -118,10 +118,10 @@ endpoint를 바꾸지 않는다.
 
 Process 기본 BindHost는 `127.0.0.1`이다.
 
-AdvertiseHost를 생략했을 때 [BindHost](01-glossary.ko.md#bind-host)가 wildcard가 아니면 같은 host를 remote 접속
+AdvertiseHost를 생략했을 때 [BindHost](01-glossary.ko.md#bindhost)가 wildcard가 아니면 같은 host를 remote 접속
 주소로 사용한다. 이 기본값은 한 host에서 실행하는 local 환경을 위한 것이다.
 Container나 여러 host에 배포할 때는 remote process가 실제로 연결할 수 있는
-[AdvertiseHost](01-glossary.ko.md#advertise-host)를 지정해야 한다.
+[AdvertiseHost](01-glossary.ko.md#advertisehost)를 지정해야 한다.
 
 ### 3.2 Wildcard 주소
 

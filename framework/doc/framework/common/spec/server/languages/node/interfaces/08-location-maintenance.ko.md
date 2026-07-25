@@ -29,7 +29,7 @@ export interface ZLinkLocationOptions {
 
 Location runtime을 사용하는 application은 Location Store를 정확히 하나 등록한다. `Recreate` 또는 `Snapshot`
 factory가 하나라도 있거나 Instance Spot [factory](../../../../01-glossary.ko.md#factory)가 하나라도 있으면 opaque state, accepted journal, full
-inventory와 replay payload를 보존하는 Relocation Store도 정확히 하나 등록한다. [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory가 없고
+inventory와 replay payload를 보존하는 Relocation Store도 정확히 하나 등록한다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고
 `Disabled` factory만 있는 same-node 구성만 이를 생략할 수 있다. 두 Store는 별도 객체와 별도 registration이다.
 필요한 Store가 없거나 같은 capability가 중복 등록되면 Framework는 socket bind 전에 구성 오류로 종료한다.
 
@@ -124,8 +124,18 @@ export interface ZLinkObjectCapability {
     readonly stableType: string;
     readonly policy: ZLinkObjectMaintenancePolicyKind;
     readonly hasSnapshotAdapter: boolean;
-    readonly activeLimit?: number;
-    readonly pendingLimit?: number;
+    readonly limit: number;
+}
+
+export interface ZLinkPopulationCapacity {
+    readonly active: number;
+    readonly reserved: number;
+    readonly limit: number;
+}
+
+export interface ZLinkSpotTypeCapacity extends ZLinkPopulationCapacity {
+    readonly objectKind: "user_spot" | "instance_spot";
+    readonly stableType: string;
 }
 
 export interface ZLinkMeshNodeDescriptor {
@@ -137,11 +147,14 @@ export interface ZLinkMeshNodeDescriptor {
     readonly entrySpotId?: SpotId;
     readonly objectRole: ZLinkObjectRole;
     readonly placementWeight: number;
-    readonly objectCapacity: {
-        readonly activeObjects: number;
-        readonly pendingActivations: number;
-        readonly maxActiveObjects: number;
-        readonly maxPendingActivations: number;
+    readonly populationCapacity: {
+        readonly actors: ZLinkPopulationCapacity;
+        readonly spots: ZLinkPopulationCapacity;
+        readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+    };
+    readonly activationConcurrency: {
+        readonly active: number;
+        readonly limit: number;
     };
     readonly channelWeights: Readonly<Record<string, number>>;
     readonly applicationVersion: bigint;
@@ -280,15 +293,19 @@ export interface ZLinkOwnerLeaseStore {
 Spot을 object kind와 stable type별로 구분하고 policy, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부와 type별
 capacity limit을 같은 항목에 둔다. `hasSnapshotAdapter`는 해당 kind adapter의 등록 여부만 나타내며 state format,
 version이나 contract ID를 싣지 않는다. Snapshot policy이면 이 값은 `true`여야 하고 Disabled·Recreate이면
-`false`다. Current active·pending count는 `objectCapacity`에 둔다. Runtime state,
-current capacity, maintenance wave 또는 weight가 바뀌면 descriptor
+`false`다. `populationCapacity`는 Actor 전체, Spot 전체와 등록한 Spot type별
+active·reserved·limit을 구분한다. `activationConcurrency`는 population capacity와 별도인
+process-local active·limit이다. Runtime state, current capacity, activation active count,
+maintenance wave 또는 weight가 바뀌면 descriptor
 revision을 증가시킨다. ClientServer와 fanout은 RouteMesh [descriptor](../../../../01-glossary.ko.md#descriptor)의 key나 store operation을 재사용하지
 않는다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
 ChannelName key set, Spot type set와 object capability의 kind·[stable type](../../../../01-glossary.ko.md#stable-type)·policy·Snapshot adapter 등록 여부·
 limit은 첫 admission 뒤
-해당 lifecycle에서 바뀌지 않는다. Channel [weight](../../../../01-glossary.ko.md#weight) 값, current `objectCapacity`, maintenance wave와 runtime state만
+해당 lifecycle에서 바뀌지 않는다. Population·Spot type limit과 activation concurrency limit도
+immutable하다. Channel [weight](../../../../01-glossary.ko.md#weight) 값, current `populationCapacity`,
+activation active count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 [lifecycle generation](../../../../01-glossary.ko.md#lifecycle-generation)을 제시하고
 `descriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
@@ -333,7 +350,19 @@ export interface ZLinkAuthorityStoreVersion {
     readonly [zlinkAuthorityVersionBrand]: true;
 }
 
-export type ZLinkPlacementAllocationState = "pending" | "active";
+export type ZLinkPlacementAllocationState = "reserved" | "active";
+
+export interface ZLinkSpotTypeCapacityDelta {
+    readonly objectKind: "user_spot" | "instance_spot";
+    readonly stableType: string;
+    readonly count: number;
+}
+
+export interface ZLinkCapacityVector {
+    readonly actors: number;
+    readonly spots: number;
+    readonly spotType?: ZLinkSpotTypeCapacityDelta;
+}
 
 export interface ZLinkPlacementAllocation {
     readonly state: ZLinkPlacementAllocationState;
@@ -341,10 +370,10 @@ export interface ZLinkPlacementAllocation {
     readonly stableType: string;
     readonly descriptor: ZLinkMeshNodeDescriptorKey;
     readonly descriptorLifecycleGeneration: bigint;
-    readonly capacityDelta: number;
+    readonly capacity: ZLinkCapacityVector;
 }
 
-export interface ZLinkPendingObjectCreation {
+export interface ZLinkReservedObjectCreation {
     readonly reservationId: string;
     readonly requestContentReference: string;
     readonly requestSha256: Uint8Array;
@@ -365,7 +394,7 @@ export type ZLinkAuthorityReadResult =
         readonly ownerId: string;
         readonly ownerLeaseGeneration: bigint;
         readonly allocation: ZLinkPlacementAllocation;
-        readonly pendingCreation?: ZLinkPendingObjectCreation;
+        readonly reservedCreation?: ZLinkReservedObjectCreation;
         readonly storeNow: Date;
     };
 
@@ -451,7 +480,7 @@ export type ZLinkAuthorityScanResult =
 Authority key와 Store version은 Framework와 provider가 만든 opaque 값이다. `missing`은 `storeNow`만
 반환하고 fake StoreVersion을 갖지 않는다. `compareExchangeAuthority`는 Active `"snapshot"`의 exact
 StoreVersion을 받는 overload만 제공한다. `"preserve"`·`"newOwner"`·delete는 current StoreVersion을
-`"found"`를 요구하며 `"missing"`과 Pending row에는 적용할 수 없다. Put의 `targetOwner`는 `"preserve"`에서
+`"found"`를 요구하며 `"missing"`과 Reserved allocation row에는 적용할 수 없다. Put의 `targetOwner`는 `"preserve"`에서
 없어야 하고 `"newOwner"`에서 반드시 있어야 한다. Provider는 exact target owner lease를 CAS와 같은
 transaction에서 검증하고 성공 결과의 `ownerId`·`ownerLeaseGeneration`으로 기록한다. 정상 create는 generic
 reservation만 사용한다. `"preserve"`와 delete는 stored current owner lease, `"newOwner"`는 `targetOwner`
@@ -465,9 +494,9 @@ application·relocation payload는 해석하지 않는다. Framework runtime만 
 Provider domain은 영구적인 global object generation, authority owner generation과 Store revision counter를
 각각 하나씩 유지한다. Initial object·owner generation은 `reserve`만 발급하고 `"newOwner"`는 owner
 generation만 증가시키며 `"preserve"`는 둘 다 유지한다. Stored mutation과 delete는 global Store revision으로
-fence한다. `reserve`는 Missing→Pending, exact `commit`은 Pending→Active, exact `abort`는
-Pending→Missing만 수행한다. `"preserve"`·`"newOwner"`·delete는 Active에만 적용한다. Delete는 current
-Active allocation의 capacity delta를 감소시킨 뒤 row를 완전히 제거하고 per-key counter나 version tombstone을
+fence한다. `reserve`는 Missing→Reserved, exact `commit`은 Reserved→Active, exact `abort`는
+Reserved→Missing만 수행한다. `"preserve"`·`"newOwner"`·delete는 Active에만 적용한다. Delete는 current
+Active allocation의 typed capacity vector를 감소시킨 뒤 row를 완전히 제거하고 per-key counter나 version tombstone을
 유지하지 않는다. Scan lease가 활성화된 동안만 snapshot 유지용 tombstone을 bounded로 유지할 수 있다.
 Authority payload에 generation과 current allocation을 중복 encode하지 않는다.
 Authority row는 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다.
@@ -654,7 +683,7 @@ export interface ZLinkObjectReserveRequest {
     readonly intent: ZLinkObjectCreationIntent;
     readonly target: ZLinkObjectCreationTarget;
     readonly creatingPayload: Uint8Array;
-    readonly pendingCapacityDelta: number;
+    readonly capacity: ZLinkCapacityVector;
 }
 
 export type ZLinkObjectReserveResult =
@@ -735,7 +764,7 @@ export interface ZLinkRelocationCapacityReservationRequest {
     readonly targetDescriptor: ZLinkMeshNodeDescriptorKey;
     readonly targetNodeLifecycleGeneration: bigint;
     readonly targetOwner: ZLinkLocationOwnerToken;
-    readonly capacityDelta: number;
+    readonly capacity: ZLinkCapacityVector;
 }
 
 export type ZLinkRelocationCapacityReserveResult =
@@ -778,7 +807,9 @@ export interface ZLinkAggregatePrepareRequest {
     readonly aggregateGeneration: bigint;
     readonly participants: readonly ZLinkAggregateParticipant[];
     readonly inventoryDigest: Uint8Array;
-    readonly targetReservations: readonly ZLinkRelocationCapacityFence[];
+    readonly targetDescriptor: ZLinkMeshNodeDescriptorKey;
+    readonly targetDescriptorLifecycleGeneration: bigint;
+    readonly capacity: ZLinkCapacityVector;
     readonly targetOwner: ZLinkLocationOwnerToken;
 }
 
@@ -858,11 +889,13 @@ Creation intent의 stable type은 UTF-8 1..255 bytes다. Encoded creation reques
 `requestEncodedSize`는 같은 immutable content를 가리켜야 한다. `creatingPayload`와 `readyPayload`는 Framework가
 encode한 opaque authority state다. Provider는 이를 해석하거나 합성하지 않고 각각 Reserve와 Commit의 authority
 revision에 그대로 기록한다. `reserve(...)`는 같은 identity의 Ready row를
-`alreadyExists`, 다른 kind·stable type을 `typeMismatch`, target pending limit 초과를
-`placementCapacityExhausted`로 닫는다. `pendingCapacityDelta`는 weighted placement unit이며
-`1..2147483647`이다. 새 generation을 발급할 수 없으면 `generationExhausted`다.
+`alreadyExists`, 다른 kind·stable type을 `typeMismatch`, target typed population limit 초과를
+`placementCapacityExhausted`로 닫는다. `capacity`는 Actor 전체 delta, Spot 전체 delta와 optional
+User·Instance Spot kind·stable type delta를 한 vector로 보존한다. Actor 생성은 `(1, 0, undefined)`, Spot
+생성은 `(0, 1, exact Spot type 1)`이다. 각 count는 0 이상이고 vector 전체는 하나 이상의 slot을
+요청해야 한다. 새 generation을 발급할 수 없으면 `generationExhausted`다.
 
-Pending snapshot은 `pendingCreation`을 반드시 가지며 Active snapshot에는 이 field가 없어야 한다. Projection은
+Reserved snapshot은 `reservedCreation`을 반드시 가지며 Active snapshot에는 이 field가 없어야 한다. Projection은
 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content reference, exact
 32-byte SHA-256, `0..1 MiB` encoded size를 반환한다. Target-owned Instance Spot의 cold activation content만
 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager create content에는 이
@@ -884,10 +917,10 @@ provider exception과 구분되는 닫힌 결과이며 row·capacity를 중복 �
 Existing object relocation은 creation reservation을 재사용하지 않는다. `reserveRelocationCapacity`는 non-empty
 128-bit `reservationId`, current authority version, kind·stable type, source·target descriptor key·lifecycle
 generation과 exact owner token을
-검증하고 `1..2147483647`인 `capacityDelta`만큼 target pending capacity만 예약한다. Request source owner와
-kind·stable type·descriptor key·lifecycle generation·capacity delta는 current authority owner와 durable
+검증하고 `capacity` typed vector 전체를 target reserved capacity로 예약한다. Request source owner와
+kind·stable type·descriptor key·lifecycle generation·capacity vector는 current authority owner와 durable
 Active allocation에 정확히 일치해야 한다. Source descriptor row와 source owner lease의 live 상태는 요구하지
-않는다. Target descriptor lifecycle·owner lease·capability·pending limit은 같은 transaction에서
+않는다. Target descriptor lifecycle·owner lease·capability와 typed population limit은 같은 transaction에서
 live/exact로 검증한다. 같은 ID와 exact request는 `alreadyReserved`, 다른 내용은 `conflict`다. Standalone
 Actor의 `"newOwner"` CAS와 aggregate commit만 fence를 소비하며 source active 감소와
 target pending-to-active를 authority mutation과 같은 transaction에서 처리한다. Commit 전
@@ -903,16 +936,13 @@ Aggregate ID는 zero가 아닌 128-bit 값이고 aggregate generation은 `1..922
 authority key의 canonical byte order로 정렬하며 중복이 없는 bounded canonical participant set이다. 한 prepare는
 participant를 1..1024개 포함하며 participant payload와 [membership](../../../../01-glossary.ko.md#membership) mutation을 합친 encoded request가 1 MiB를
 넘을 수 없다. `inventoryDigest`는 participant set과 mutation 전체를 canonical encode한 bytes의 32-byte SHA-256이다.
-`prepareAggregate(...)`는 모든 participant의 Store version, owner transition과 relocation capacity
-fence를 함께 검증한다. `targetReservations`는 `"newOwner"` participant와 정확히 일대일이어야 한다. Fence
-reservation의 authority key·expected Store version·source owner·target owner는 participant expectation,
-current authority owner와 aggregate `targetOwner`에 정확히 일치해야 한다. Request source는 durable Active
-allocation과 exact match해야 하고 target descriptor lifecycle·owner lease만 live/exact로 다시 확인한다.
-Source descriptor row·lease의 live 상태는
-요구하지 않는다. 누락·중복·추가 fence와 값 불일치는 `"conflict"`와 mutation 0으로 끝난다.
-Prepare 성공은 같은 transaction에서 Reserved fence를 aggregate ID·generation에 bind해 Prepared로 바꾼다.
-Bind된 fence의 direct abort는 `"stale"`이고 다른 aggregate prepare는 `"conflict"`다. Exact duplicate prepare만
-`"alreadyPrepared"`다. `commitAggregate(...)`는 bind된 fence만 소비해 모든 authority·membership·capacity
+User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. `capacity`는 Actor slot
+`N`, Spot slot `1`, User Spot stable type slot `1`을 하나의 typed vector로 표현해야 한다.
+`prepareAggregate(...)`는 모든 participant expectation과 durable Active allocation을 exact-match하고,
+`targetDescriptor`, lifecycle generation과 `targetOwner`를 live/exact로 검증한 뒤 vector 전체를 같은
+transaction에서 reserved capacity로 예약한다. Participant set 또는 vector가 맞지 않으면 `"conflict"`이며
+mutation은 0이다. Exact duplicate prepare만 `"alreadyPrepared"`다. `commitAggregate(...)`는 aggregate
+record가 소유한 bundle만 소비해 모든 authority·membership·capacity
 변경을 한 번에 공개한다. Commit 직전에 source Active allocation exact match와 target descriptor
 lifecycle·owner lease를 다시 확인한다. Target이 stale이면 mutation 없이 fence를 bind 상태로 유지하며 source
 descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. 일부 participant만

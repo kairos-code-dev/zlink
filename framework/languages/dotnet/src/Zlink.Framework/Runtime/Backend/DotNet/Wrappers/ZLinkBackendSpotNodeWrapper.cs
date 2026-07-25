@@ -7,7 +7,7 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // RouteMesh 10.0.0 MeshNode-backed implementation of the framework SpotNode seam.
 // The 9.x SpotNode fluent+callback surface is bridged onto IMeshNode: requests
 // return an out MeshOperationId whose reply is resolved by the node dispatch pump
-// through the completion table, and pull dispatch replaces the per-spot receive
+// through the completion table, and pull dispatch replaces the per-spot receiver
 // loops.
 internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendSpotNode,
@@ -389,6 +389,35 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             _pump, _completions, _subscriptions);
     }
 
+    public IZLinkBackendSpot GetOrCreateReservedSpot(
+        string spotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        out bool created)
+    {
+        EnsureStarted();
+        return new ZLinkBackendSpotWrapper(
+            _node,
+            _node.GetOrCreateReservedSpot(
+                spotId,
+                objectGeneration,
+                authorityOwnerGeneration,
+                out created),
+            _pump,
+            _completions,
+            _subscriptions);
+    }
+
+    public void SetLocalActorAuthority(
+        ZLinkBackendActorRef actor,
+        ulong authorityOwnerGeneration)
+    {
+        EnsureStarted();
+        _node.SetActorAuthority(
+            actor.ToNative(),
+            authorityOwnerGeneration);
+    }
+
     public ZLinkSpotNodeStatus Status()
     {
         return _node.Status().ToFramework();
@@ -465,12 +494,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public ZLinkBackendActorRef CreateReservedActor(
         string actorId,
         ulong objectGeneration,
+        ulong authorityOwnerGeneration,
         Message createRequest)
     {
         EnsureStarted();
         var actorRef = _node.CreateReservedActor(
             actorId,
             objectGeneration,
+            authorityOwnerGeneration,
             new[] { createRequest });
         return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
     }

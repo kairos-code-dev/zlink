@@ -13,7 +13,8 @@ normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는
 인터페이스를 고정한다. 일반 message는 global SpotId로 대상을 지정하고, 특정 incarnation을 닫는
 operation만 `SpotRef`를 사용한다.
 
-SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 case-sensitive exact value로 비교한다.
+Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`인 global logical ID이며
+case-sensitive exact value로 비교한다.
 Unicode normalization과 case folding을 적용하지 않는다.
 
 Location Store가 [Spot](../../../../01-glossary.ko.md#spot)의 current owner와 lifecycle state를 확정해 보관하는 정보를 authority라 한다.
@@ -57,6 +58,7 @@ public interface ZLinkInstanceSpotHandlerRegistry {
 public interface ZLinkInstanceSpotContext {
     String meshName();
     String spotId();
+    long objectGeneration();
     RoutingId nodeRid();
     ZLinkInstanceSpotHandlerRegistry handlers();
     ZLinkSpotOutbound outbound();
@@ -80,6 +82,12 @@ public interface ZLinkSpotRelocationAdapter<TSpot> {
 public interface ZLinkEntrySpot<TActor extends ZLinkActor>
     extends ZLinkSpotActorMembershipLifecycle<TActor> {
     ZLinkEntrySpotContext context();
+    default CompletionStage<ZLinkActorCreateResponse> onCreateActor(
+        TActor actor,
+        ZLinkMessage createRequest) {
+        return CompletableFuture.completedFuture(
+            ZLinkActorCreateResponse.accept());
+    }
     default CompletionStage<Void> onClosing(
         ZLinkSpotClosingContext context) {
         return CompletableFuture.completedFuture(null);
@@ -116,7 +124,7 @@ public interface ZLinkSpotManager {
 ```
 
 Factory registration의 정확한 builder member는 [구성과 host](configuration-host.ko.md)가 소유한다.
-Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) [factory](../../../../01-glossary.ko.md#factory)는 explicit relocation policy를 받으며 생략 overload는 제공하지 않는다.
+Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) [factory](../../../../01-glossary.ko.md#factory)는 explicit relocation policy를 받으며 생략 overload는 제공하지 않는다.
 Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotId, spotType)`만 User Spot의
 creation intent를 만들며 Instance Spot create/get-or-create member와 kind marker를 제공하지 않는다.
 
@@ -184,8 +192,8 @@ User Spot은 manager operation이 placement reservation을 시작한다. Instanc
 3. Target runtime은 metadata presence와 frame을 포함한 complete envelope를 Relocation Store에 immutable
    recovery root로 먼저 저장한 뒤, 요청한 SpotId와 [stable type](../../../../01-glossary.ko.md#stable-type)에 일치하는 local instance가 있는지
    확인한다.
-4. Instance가 없을 때만 target이 자신을 owner로 하는 `CREATING` authority와 pending capacity를 예약한다.
-   Pending [snapshot](../../../../01-glossary.ko.md#snapshot)은 어떤 예약인지 식별하는 reservation fence와 recovery root의 저장 완료를 증명하는
+4. Instance가 없을 때만 target이 자신을 owner로 하는 `CREATING` authority와 reserved capacity를 예약한다.
+   Reserved [snapshot](../../../../01-glossary.ko.md#snapshot)은 어떤 예약인지 식별하는 reservation fence와 recovery root의 저장 완료를 증명하는
    receipt를 provider에서 받아 반환한다.
 5. Authority reservation 경쟁에서 이긴 target(CAS winner)만 factory와 initialize를 실행하고 durable
    activation inbox의 first record를 확정한다. 경쟁에서 진 target(CAS loser)은 factory를 시작하지 않으며
@@ -215,7 +223,7 @@ sequenceDiagram
     else Missing이고 Instance intent가 있는 경우
         S->>T: first message를 포함한 activation envelope 전달
         T->>R: complete envelope를 immutable recovery root로 저장
-        T->>L: CREATING authority와 pending capacity 예약
+        T->>L: CREATING authority와 reserved capacity 예약
         alt CAS winner인 경우
             T->>I: factory와 initialize 실행
             T->>L: recovery 정보와 Ready state 게시
@@ -341,7 +349,7 @@ public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends sys
   public default void configure();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkActorCreateResponse> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
   public default java.util.concurrent.CompletionStage<java.lang.Void> onActorRelocated(TActor);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
@@ -393,6 +401,17 @@ public interface systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle
 }
 public interface systems.zlink.framework.spots.ZLinkUserSpotActorLifecycle<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle<TActor> {
   public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+}
+public final class systems.zlink.framework.spots.ZLinkActorCreateResponse extends java.lang.Record {
+  public systems.zlink.framework.spots.ZLinkActorCreateResponse(boolean, systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept();
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept(java.lang.Object);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject();
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject(java.lang.Object);
+  public boolean accepted();
+  public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
 public interface systems.zlink.framework.spots.ZLinkSpotActorRequestHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
   public abstract java.util.concurrent.CompletionStage<TReply> handle(TSpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest);

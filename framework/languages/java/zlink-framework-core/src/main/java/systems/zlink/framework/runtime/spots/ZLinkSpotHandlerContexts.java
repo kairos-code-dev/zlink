@@ -2,29 +2,32 @@ package systems.zlink.framework.runtime.spots;
 
 import java.util.Map;
 import java.util.Optional;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 
 record ZLinkSpotActorSendHandlerContext(
     String packet,
-    Map<String, String> metadata) implements ZLinkSpotActorSendContext {
+    Map<String, String> metadata) implements ZLinkMessageContext {
     ZLinkSpotActorSendHandlerContext {
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 
+    @Override public Optional<String> meshName() { return Optional.empty(); }
     @Override public Optional<String> channelName() { return Optional.empty(); }
-    @Override public Optional<String> packetName() { return Optional.ofNullable(packet); }
+    @Override public String packetName() { return packet; }
     @Override public Optional<String> contentType() { return Optional.empty(); }
+    @Override public Optional<String> correlationId() { return Optional.empty(); }
 }
 
 record ZLinkSpotActorRequestHandlerContext(
     String packet,
-    Map<String, String> metadata) implements ZLinkSpotActorRequestContext {
+    Map<String, String> metadata) implements ZLinkMessageContext {
     ZLinkSpotActorRequestHandlerContext {
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 
+    @Override public Optional<String> meshName() { return Optional.empty(); }
     @Override public Optional<String> channelName() { return Optional.empty(); }
-    @Override public Optional<String> packetName() { return Optional.ofNullable(packet); }
+    @Override public String packetName() { return packet; }
     @Override public Optional<String> contentType() { return Optional.empty(); }
+    @Override public Optional<String> correlationId() { return Optional.empty(); }
 }

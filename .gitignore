@@ -204,6 +204,8 @@ bindings/**/.next/
 ## Java (Maven/Gradle)
 bindings/**/target/
 bindings/**/.gradle/
+**/.gradle/
+dump.rdb
 bindings/**/build/
 bindings/**/*.class
 bindings/**/*.jar

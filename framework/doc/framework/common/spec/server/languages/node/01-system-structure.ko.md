@@ -242,7 +242,7 @@ Spot·Actor factory는 owner MeshNode에 등록한다. [Spot direct](../../../01
 | `configureSpotPublisher()` | Logical Multicast의 ROUTER 송신 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |
-| `addInstanceSpotFactory(type, TSpot, placement, relocation)` | 이 노드가 activation할 수 있는 actor-free [Instance Spot](../../../01-glossary.ko.md#entry-user-instance-spot) 타입 |
+| `addInstanceSpotFactory(type, TSpot, placement, relocation)` | 이 노드가 activation할 수 있는 actor-free [Instance Spot](../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) 타입 |
 | MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
 중복 등록과 타입 규칙은

@@ -545,7 +545,9 @@ public sealed class ActorHandoffTests
             [],
             [],
             request.SourceSpotId,
-            request.SourceNodeRid);
+            request.SourceNodeRid,
+            1,
+            1);
     }
 
     [Fact]
@@ -866,7 +868,9 @@ public sealed class ActorHandoffTests
             [],
             frames,
             "source-spot",
-            [2]);
+            [2],
+            1,
+            1);
 
     private static ZLinkRemoteActorAdmissionRequest AdmissionRequest(
         TimeProvider timeProvider,

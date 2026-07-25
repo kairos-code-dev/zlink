@@ -842,6 +842,44 @@ struct contract_actor_t
 {
 };
 
+struct contract_exact_actor_t : zlink::framework::actor_t
+{
+    explicit contract_exact_actor_t (
+      zlink::framework::actor_context_t &context) :
+        value (&context)
+    {
+    }
+
+    zlink::framework::actor_context_t &context () noexcept override
+    {
+        return *value;
+    }
+
+    const zlink::framework::actor_context_t &
+    context () const noexcept override
+    {
+        return *value;
+    }
+
+    zlink::framework::actor_context_t *value;
+};
+
+struct contract_exact_actor_factory_t
+    : zlink::framework::actor_factory_t<contract_exact_actor_t>
+{
+    zlink::framework::task_t<
+      std::shared_ptr<contract_exact_actor_t>>
+    create (zlink::framework::actor_context_t &context,
+            std::stop_token) override
+    {
+        return zlink::framework::task_t<
+          std::shared_ptr<contract_exact_actor_t>> (
+          zlink::framework::result_t<
+            std::shared_ptr<contract_exact_actor_t>>::success (
+              std::make_shared<contract_exact_actor_t> (context)));
+    }
+};
+
 struct contract_actor_transfer_t
     : zlink::framework::actor_transfer_adapter_t<contract_actor_t>
 {
@@ -1438,6 +1476,23 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_join_call_t &> ().defer ()),
                  void>);
+static_assert (std::is_same_v<
+               decltype (std::declval<contract_exact_actor_t &> ()
+                           .on_join_completed (
+                             std::declval<const zlink::framework::
+                               actor_join_completion_t &> ())),
+               zlink::framework::task_t<void>>);
+static_assert (std::variant_size_v<
+                 zlink::framework::actor_join_completion_t>
+               == 3);
+static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
+                .add_actor_factory<contract_exact_actor_t> (
+                  "actor",
+                  std::declval<std::shared_ptr<
+                    contract_exact_actor_factory_t>> ())),
+    zlink::framework::mesh_node_builder_t &>);
 static_assert (!has_legacy_async<zlink::framework::actor_join_call_t>);
 static_assert (!has_blocking_submit<zlink::framework::actor_join_call_t>);
 static_assert (!has_yield<zlink::framework::actor_join_call_t>);

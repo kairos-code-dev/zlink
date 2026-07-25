@@ -414,11 +414,6 @@ final class NodesAndServicesTest {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return context;
         }
@@ -426,10 +421,9 @@ final class NodesAndServicesTest {
 
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            return CompletableFuture.completedFuture(
+                new PlayerActor(context.actorId(), context));
         }
     }
 
@@ -444,12 +438,10 @@ final class NodesAndServicesTest {
         }
 
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
             invocations.incrementAndGet();
             return release.thenApply(
-                ignored -> new PlayerActor(actorId, context));
+                ignored -> new PlayerActor(context.actorId(), context));
         }
     }
 

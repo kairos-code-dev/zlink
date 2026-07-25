@@ -74,7 +74,9 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
     ZLinkMeshNodeBuilder setRoutingIdPrefix(String prefix);
     ZLinkMeshNodeBuilder setPlacementWeight(int weight);
-    ZLinkMeshNodeBuilder setObjectCapacity(int maxActiveObjects, int maxPendingActivations);
+    ZLinkMeshNodeBuilder setActorCapacity(int maxActors);
+    ZLinkMeshNodeBuilder setSpotCapacity(int maxSpots);
+    ZLinkMeshNodeBuilder setActivationConcurrency(int maxConcurrentActivations);
     ZLinkMeshObjectRoleBuilder objects();
     ZLinkMeshNodeSocketConfig configureRouterSocket();
     ZLinkSpotPublisherConfig configureSpotPublisher();
@@ -194,7 +196,7 @@ Object role을 생략하면 `None`이다. `client()`는 global object operation�
 반드시 받으며 policy를 생략하는 overload는 없다.
 
 `ZLinkRelocationPolicy.snapshot(adapterClass)`의 `Class<?>`는 factory kind에 따라 socket bind 전에 검증한다.
-Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory에는 같은 Spot
+Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 같은 Spot
 type의 `ZLinkSpotRelocationAdapter`가 필요하다. `Disabled`와 `Recreate`에는 adapter class를 연결하지 않는다.
 Type mismatch는 startup configuration error이며 application traffic을 받기 전에 끝난다.
 
@@ -207,7 +209,7 @@ Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Intege
 Object Server의 Entry Spot ID는 MeshNode diagnostic prefix를 사용한
 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식이며 MeshNode와 별도로 생성한 UUID v4를 사용한다.
 `ZLinkMeshNodeDescriptor.entrySpotId()`가 같은 lifecycle의 exact mapping을 제공한다. Global Spot ID가
-active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `ROUTING_ID_CONFLICT`로 startup을
+active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SPOT_ID_CONFLICT`로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 이 예약 형식과 일치하면 Store와 factory를 시작하기
 전에 `INVALID_CONFIGURATION`으로 거부한다.
 
@@ -556,7 +558,9 @@ public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingId(systems.zlink.contracts.core.RoutingId);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActorCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setSpotCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActivationConcurrency(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig configureRouterSocket();
   public abstract systems.zlink.framework.configuration.ZLinkSpotPublisherConfig configureSpotPublisher();

@@ -14,7 +14,8 @@ internal sealed record ServerOptions(
     string RouterEndpoint,
     string EvidenceFile,
     string LogDir,
-    int RequestTimeoutMilliseconds)
+    int RequestTimeoutMilliseconds,
+    string[] RoutePeers)
 {
     public static ServerOptions Parse(string[] args, string role)
         => E2eConfiguration.Load<ServerOptions>(args);

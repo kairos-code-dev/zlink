@@ -428,69 +428,32 @@ zlink::submit_result_t actor_handle_t::join_entry_spot (
   operation_id_t &operation,
   std::chrono::milliseconds timeout)
 {
+    if (!_host) {
+        return zlink::submit_result_t::invalid_handle;
+    }
+    const auto entry = _host->entry_spot ();
     return join_spot (
-      target_node_rid,
-      target_node_rid.to_string () + "-entry",
-      1, parts, operation, timeout);
+      target_node_rid, entry.spot_id (),
+      entry.status ().lifecycle_generation (), parts, operation, timeout);
 }
 
 zlink::submit_result_t actor_handle_t::join_spot (
   const zlink::routing_id_t &target_node_rid,
   const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
-  const std::vector<zlink::message_t> &,
+  const std::vector<zlink::message_t> &parts,
   operation_id_t &operation,
   std::chrono::milliseconds)
 {
     if (!_host) {
         return zlink::submit_result_t::invalid_handle;
     }
-    operation = _host->next_operation ();
-    auto target = _host->resolve_spot (target_spot_id);
-    if (!target
-        && target_node_rid.to_bytes ()
-             == _host->status ().routing_id ().to_bytes ()) {
-        (void) _host->get_or_create_spot (target_spot_id);
-        target = _host->resolve_spot (target_spot_id);
+    if (target_node_rid.to_bytes ()
+        != _host->status ().routing_id ().to_bytes ()) {
+        return zlink::submit_result_t::not_connected;
     }
-    receive_record_t completion;
-    completion.kind = record_kind_t::completion;
-    completion.domain = ready_domain_t::infrastructure;
-    completion.operation_id = operation;
-    completion.operation_kind = operation_kind_t::actor_join;
-    completion.source_node_rid = _host->status ().routing_id ();
-    completion.terminal_result = 0;
-    if (!target || target->object_generation != target_spot_generation) {
-        completion.terminal_result = 1;
-        completion.join_completion = actor_join_completion_t{
-          join_admission_t::rejected, _actor};
-    } else {
-        auto [error, token] =
-          _host->objects ().begin_membership_move (_object, *target);
-        if (error == stateful::stateful_error_t::none) {
-            auto [commit_error, current] =
-              _host->objects ().commit_membership_move (token);
-            if (commit_error == stateful::stateful_error_t::none) {
-                _object = current;
-                _actor = _host->framework_actor_ref (
-                  current, std::string (_actor.actor_type ()));
-                completion.join_completion = actor_join_completion_t{
-                  join_admission_t::accepted, _actor};
-            } else {
-                completion.terminal_result = 1;
-            }
-        } else {
-            completion.terminal_result = 1;
-        }
-    }
-    {
-        std::lock_guard lock (_host->_mutex);
-        _host->_completions.emplace (
-          std::make_pair (operation.high, operation.low),
-          std::make_pair (std::move (completion),
-                          std::vector<zlink::message_t>{}));
-    }
-    return zlink::submit_result_t::ok;
+    return _host->begin_local_actor_join (
+      _actor, target_spot_id, target_spot_generation, parts, operation);
 }
 
 zlink::submit_result_t actor_handle_t::send_to (
@@ -534,7 +497,7 @@ public_host_runtime_t::public_host_runtime_t (host_options_t options) :
         descriptor.mesh_name,
         std::string (descriptor.node_routing_id.begin (),
                      descriptor.node_routing_id.end ()),
-        {},
+        _options.object_stable_types,
         descriptor.placement_weight,
         descriptor.active_capacity_limit,
         descriptor.active_capacity_used,
@@ -882,9 +845,17 @@ zlink::submit_result_t public_host_runtime_t::send_to_actor (
   const std::vector<zlink::message_t> &parts,
   std::span<const std::uint8_t> metadata)
 {
-    const auto peer = _transport->topology ().peer (
+    const auto target_routing_id =
       zlink::routing_id_t::from (
-        std::string (target.node_rid ().value ())).to_bytes ());
+        std::string (target.node_rid ().value ()));
+    if (target_routing_id.to_bytes ()
+          == status ().routing_id ().to_bytes ()
+        && resolve_actor (target)) {
+        return submitted (enqueue_local_actor_message (
+          target, record_kind_t::actor_send, parts));
+    }
+    const auto peer = _transport->topology ().peer (
+      target_routing_id.to_bytes ());
     const auto node_generation =
       peer ? peer->descriptor.lifecycle_generation
            : status ().lifecycle_generation ();
@@ -912,9 +883,17 @@ zlink::submit_result_t public_host_runtime_t::request_to_actor (
   std::span<const std::uint8_t> metadata)
 {
     operation = next_operation ();
-    const auto peer = _transport->topology ().peer (
+    const auto target_routing_id =
       zlink::routing_id_t::from (
-        std::string (target.node_rid ().value ())).to_bytes ());
+        std::string (target.node_rid ().value ()));
+    if (target_routing_id.to_bytes ()
+          == status ().routing_id ().to_bytes ()
+        && resolve_actor (target)) {
+        return submitted (enqueue_local_actor_message (
+          target, record_kind_t::actor_request, parts, operation));
+    }
+    const auto peer = _transport->topology ().peer (
+      target_routing_id.to_bytes ());
     const auto node_generation =
       peer ? peer->descriptor.lifecycle_generation
            : status ().lifecycle_generation ();
@@ -1865,6 +1844,17 @@ std::size_t public_host_runtime_t::dispatch_ready (
         ++count;
     }
 
+    std::vector<local_application_dispatch_t> local_dispatches;
+    {
+        std::lock_guard lock (_mutex);
+        local_dispatches.swap (_local_application_dispatches);
+    }
+    for (auto &pending : local_dispatches) {
+        dispatch (pending.owner, pending.record,
+                  std::move (pending.parts));
+        ++count;
+    }
+
     while (auto claim = _transport->mailbox ().try_claim (
              mesh::service_mailbox_domain_t::application, 64,
              16u * 1024u * 1024u)) {
@@ -1986,9 +1976,17 @@ bool public_host_runtime_t::reply (
   const reply_token_t &token,
   const std::vector<zlink::message_t> &parts)
 {
-    return token.request
-           && _transport->reply (
-             *token.request, encode_application (parts));
+    try {
+        if (token.local_reply) {
+            return token.local_reply (parts);
+        }
+        return token.request
+               && _transport->reply (
+                 *token.request, encode_application (parts));
+    }
+    catch (const zlink::submit_error_t &) {
+        return false;
+    }
 }
 
 std::optional<stateful::object_ref_t>
@@ -2058,6 +2056,184 @@ operation_id_t public_host_runtime_t::next_operation ()
           "framework public host operation id is exhausted");
     }
     return {status ().lifecycle_generation (), low};
+}
+
+zlink::submit_result_t public_host_runtime_t::begin_local_actor_join (
+  const actor_ref_t &actor,
+  const std::string &target_spot_id,
+  std::uint64_t target_spot_generation,
+  const std::vector<zlink::message_t> &parts,
+  operation_id_t &operation)
+{
+    operation = next_operation ();
+    const auto current = resolve_actor (actor);
+    const auto target = resolve_spot (target_spot_id);
+    auto reject = [&] {
+        receive_record_t completion;
+        completion.kind = record_kind_t::completion;
+        completion.domain = ready_domain_t::infrastructure;
+        completion.operation_id = operation;
+        completion.operation_kind = operation_kind_t::actor_join;
+        completion.source_node_rid = status ().routing_id ();
+        completion.join_completion = actor_join_completion_t{
+          join_admission_t::rejected, actor};
+        std::lock_guard lock (_mutex);
+        _completions.emplace (
+          std::make_pair (operation.high, operation.low),
+          std::make_pair (std::move (completion),
+                          std::vector<zlink::message_t>{}));
+    };
+    if (!current || !target
+        || target->object_generation != target_spot_generation) {
+        reject ();
+        return zlink::submit_result_t::ok;
+    }
+    auto [error, membership] =
+      _objects.begin_membership_move (*current, *target);
+    if (error != stateful::stateful_error_t::none) {
+        reject ();
+        return zlink::submit_result_t::ok;
+    }
+
+    const auto actor_type = std::string (actor.actor_type ());
+    std::weak_ptr<public_host_runtime_t> weak = shared_from_this ();
+    ready_record_t owner{
+      .owner_kind = owner_kind_t::spot,
+      .domain = ready_domain_t::application,
+      .spot_id = target_spot_id};
+    receive_record_t record;
+    record.kind = record_kind_t::spot_control;
+    record.domain = ready_domain_t::application;
+    record.operation_id = operation;
+    record.operation_kind = operation_kind_t::actor_join;
+    record.source_node_rid = status ().routing_id ();
+    record.actor_control = actor_control_t{
+      lifecycle_kind_t::joined, actor};
+    record.reply_token.local_actor_join =
+      [weak, operation, actor_type, membership] (
+        actor_join_result_t result,
+        const std::vector<zlink::message_t> &reply) {
+          const auto host = weak.lock ();
+          return host
+                 && host->complete_local_actor_join (
+                   operation, actor_type, membership, result, reply);
+      };
+    {
+        std::lock_guard lock (_mutex);
+        _local_application_dispatches.push_back (
+          local_application_dispatch_t{
+            std::move (owner), std::move (record), parts});
+    }
+    return zlink::submit_result_t::ok;
+}
+
+bool public_host_runtime_t::complete_local_actor_join (
+  operation_id_t operation,
+  std::string actor_type,
+  stateful::membership_token_t membership,
+  actor_join_result_t result,
+  const std::vector<zlink::message_t> &parts)
+{
+    receive_record_t completion;
+    completion.kind = record_kind_t::completion;
+    completion.domain = ready_domain_t::infrastructure;
+    completion.operation_id = operation;
+    completion.operation_kind = operation_kind_t::actor_join;
+    completion.source_node_rid = status ().routing_id ();
+
+    if (result == actor_join_result_t::accepted) {
+        auto [error, current] =
+          _objects.commit_membership_move (membership);
+        if (error != stateful::stateful_error_t::none) {
+            completion.terminal_result = 1;
+            completion.join_completion = actor_join_completion_t{
+              join_admission_t::rejected,
+              framework_actor_ref (membership.actor, actor_type)};
+        } else {
+            const auto actor =
+              framework_actor_ref (current, actor_type);
+            {
+                std::lock_guard lock (_mutex);
+                const auto found = _actors.find (current.key);
+                if (found != _actors.end ())
+                    found->second.second = current;
+            }
+            completion.join_completion = actor_join_completion_t{
+              join_admission_t::accepted, actor};
+        }
+    } else {
+        (void) _objects.abort_membership_move (membership);
+        completion.join_completion = actor_join_completion_t{
+          join_admission_t::rejected,
+          framework_actor_ref (membership.actor, actor_type)};
+    }
+
+    std::lock_guard lock (_mutex);
+    return _completions.emplace (
+      std::make_pair (operation.high, operation.low),
+      std::make_pair (std::move (completion), parts))
+      .second;
+}
+
+bool public_host_runtime_t::enqueue_local_actor_message (
+  const actor_ref_t &target,
+  record_kind_t kind,
+  const std::vector<zlink::message_t> &parts,
+  std::optional<operation_id_t> operation)
+{
+    if (kind != record_kind_t::actor_send
+        && kind != record_kind_t::actor_request) {
+        return false;
+    }
+    const auto current = resolve_actor (target);
+    if (!current) {
+        return false;
+    }
+
+    ready_record_t owner{
+      .owner_kind = owner_kind_t::actor,
+      .domain = ready_domain_t::application,
+      .actor = framework_actor_ref (
+        *current, std::string (target.actor_type ()))};
+    receive_record_t record;
+    record.kind = kind;
+    record.domain = ready_domain_t::application;
+    record.source_node_rid = status ().routing_id ();
+    if (operation) {
+        record.operation_id = *operation;
+        std::weak_ptr<public_host_runtime_t> weak =
+          shared_from_this ();
+        record.reply_token.host = weak;
+        record.reply_token.local_reply =
+          [weak, operation = *operation] (
+            const std::vector<zlink::message_t> &reply) {
+              const auto host = weak.lock ();
+              return host
+                     && host->complete_local_request (
+                       operation, reply);
+          };
+    }
+    std::lock_guard lock (_mutex);
+    _local_application_dispatches.push_back (
+      local_application_dispatch_t{
+        std::move (owner), std::move (record), parts});
+    return true;
+}
+
+bool public_host_runtime_t::complete_local_request (
+  operation_id_t operation,
+  const std::vector<zlink::message_t> &parts)
+{
+    receive_record_t completion;
+    completion.kind = record_kind_t::completion;
+    completion.domain = ready_domain_t::infrastructure;
+    completion.operation_id = operation;
+    completion.source_node_rid = status ().routing_id ();
+    std::lock_guard lock (_mutex);
+    return _completions.emplace (
+      std::make_pair (operation.high, operation.low),
+      std::make_pair (std::move (completion), parts))
+      .second;
 }
 
 void public_host_runtime_t::complete_operation (
@@ -2151,13 +2327,23 @@ bool actor_join_reply (
   actor_join_result_t result,
   const std::vector<zlink::message_t> &parts)
 {
+    if (token.local_actor_join) {
+        return token.local_actor_join (result, parts);
+    }
     if (result != actor_join_result_t::accepted) {
         const auto host = token.host.lock ();
-        return host && token.request
-               && host->transport ().reply_failure (
-                 *token.request, 106,
-                 static_cast<std::uint32_t> (
-                   protocol::framework_error_code::requestRejected));
+        if (!host || !token.request) {
+            return false;
+        }
+        try {
+            return host->transport ().reply_failure (
+              *token.request, 106,
+              static_cast<std::uint32_t> (
+                protocol::framework_error_code::requestRejected));
+        }
+        catch (const zlink::submit_error_t &) {
+            return false;
+        }
     }
     return reply (token, parts) == zlink::submit_result_t::ok;
 }

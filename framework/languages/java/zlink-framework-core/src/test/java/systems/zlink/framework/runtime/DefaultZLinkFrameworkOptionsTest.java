@@ -16,15 +16,13 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkPublishContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkPublishHandler;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPacket;
@@ -33,7 +31,7 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
-import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkHandlerInvocation;
 import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -977,7 +975,7 @@ final class DefaultZLinkFrameworkOptionsTest {
 
     public static final class EchoHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(String request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
@@ -991,7 +989,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<String> handle(
             AnnotatedPacket request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request.value());
         }
     }
@@ -999,7 +997,9 @@ final class DefaultZLinkFrameworkOptionsTest {
     @ZLinkHandlerGroup("scanned-publish")
     public static final class EventHandler implements ZLinkPublishHandler<String> {
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkPublishContext context) {
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkPublishMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1009,14 +1009,14 @@ final class DefaultZLinkFrameworkOptionsTest {
         @ZLinkPublish(packetName = "AttributedEvent")
         public CompletionStage<Void> handle(
             String message,
-            ZLinkPublishContext context) {
+            ZLinkPublishMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
 
     public static final class SendHandler implements ZLinkSendHandler<String> {
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(String message, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1024,7 +1024,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     @ZLinkHandlerGroup("scanned-request")
     public static final class ScannedRequestHandler implements ZLinkRequestHandler<String, String> {
         @Override
-        public CompletionStage<String> handle(String request, ZLinkRequestContext context) {
+        public CompletionStage<String> handle(String request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
@@ -1034,14 +1034,16 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class MultiGroupScannedRequestHandler
         implements ZLinkRequestHandler<Integer, Integer> {
         @Override
-        public CompletionStage<Integer> handle(Integer request, ZLinkRequestContext context) {
+        public CompletionStage<Integer> handle(Integer request, ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
 
     public static final class RouteSendHandler implements ZLinkRouteSendHandler<String> {
         @Override
-        public CompletionStage<Void> handle(String message, ZLinkRouteSendContext context) {
+        public CompletionStage<Void> handle(
+            String message,
+            ZLinkRouteMessageContext context) {
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1052,7 +1054,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         @Override
         public CompletionStage<String> handle(
             String request,
-            ZLinkRouteRequestContext context) {
+            ZLinkRouteMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }
@@ -1074,7 +1076,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     public static final class TestFilter implements ZLinkHandlerFilter {
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkInvocationContext context,
+            ZLinkHandlerInvocation context,
             ZLinkNext<T> next) {
             return next.invoke();
         }

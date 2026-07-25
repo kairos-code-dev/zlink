@@ -29,8 +29,8 @@ const reviewedCoreRemovalFilesSha256 =
 
 const ledgerPath =
   'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md';
-const formalSpecRoot = 'framework/doc/framework/spec';
-const formalServerSpecRoot = `${formalSpecRoot}/server`;
+const formalSpecRoot = 'framework/doc/framework/common/spec';
+const formalServerSpecRoot = formalSpecRoot;
 const commonInternalsRoot = 'framework/doc/framework/common/internals';
 const formalSpecIndex = `${formalSpecRoot}/README.ko.md`;
 const commonInternalsIndex = `${commonInternalsRoot}/README.ko.md`;
@@ -327,29 +327,29 @@ const bindingDefinitions = {
       'bindings/cpp/include/zlink/Contracts/Service/',
       'bindings/cpp/include/zlink/service/',
     ],
-    exactOwner: 'framework/doc/framework/spec/server/languages/cpp/interfaces/README.ko.md',
+    exactOwner: 'framework/doc/framework/common/spec/server/languages/cpp/interfaces/README.ko.md',
     removalGate: 'V11-M4-BIND-CPP',
     finalGate: 'V11-M9-PKG-CPP',
   },
   dotnet: {
     root: 'bindings/dotnet',
     publicRoots: ['bindings/dotnet/src/Zlink/Contracts/Service/'],
-    exactOwner: 'framework/doc/framework/spec/server/languages/dotnet/interfaces/README.ko.md',
+    exactOwner: 'framework/doc/framework/common/spec/server/languages/dotnet/interfaces/README.ko.md',
     removalGate: 'V11-M4-BIND-DN',
     finalGate: 'V11-M9-PKG-DN',
   },
   java: {
     root: 'bindings/java',
     publicRoots: ['bindings/java/src/main/java/systems/zlink/contracts/service/'],
-    exactOwner: 'framework/doc/framework/spec/server/languages/java/interfaces/README.ko.md',
-    additionalOwner: 'framework/doc/framework/spec/server/languages/kotlin/interfaces/README.ko.md',
+    exactOwner: 'framework/doc/framework/common/spec/server/languages/java/interfaces/README.ko.md',
+    additionalOwner: 'framework/doc/framework/common/spec/server/languages/kotlin/interfaces/README.ko.md',
     removalGate: 'V11-M4-BIND-JVM',
     finalGate: 'V11-M9-PKG-JVM',
   },
   node: {
     root: 'bindings/node',
     publicRoots: ['bindings/node/src/zlink/contracts/service/'],
-    exactOwner: 'framework/doc/framework/spec/server/languages/node/interfaces/README.ko.md',
+    exactOwner: 'framework/doc/framework/common/spec/server/languages/node/interfaces/README.ko.md',
     removalGate: 'V11-M4-BIND-NODE',
     finalGate: 'V11-M9-PKG-NODE',
   },
@@ -907,7 +907,8 @@ function loadReviewedCoreBaseline() {
       || !Array.isArray(baseline.coreExportSymbols)) {
     throw new Error('reviewed Core service baseline sections are missing');
   }
-  const digest = crypto.createHash('sha256').update(stableJson(baseline)).digest('hex');
+  const digestInput = restoreSealedDocumentOwners(baseline);
+  const digest = crypto.createHash('sha256').update(stableJson(digestInput)).digest('hex');
   if (digest !== reviewedCoreBaselineSha256) {
     throw new Error([
       'reviewed Core service baseline digest differs from the sealed value',
@@ -918,6 +919,34 @@ function loadReviewedCoreBaseline() {
   return {
     corePublicSymbols: relocateConsolidatedDocumentOwners(baseline.corePublicSymbols),
     coreExportSymbols: relocateConsolidatedDocumentOwners(baseline.coreExportSymbols),
+  };
+}
+
+function restoreSealedDocumentOwners(baseline) {
+  const commonPrefix = `${formalSpecRoot}/`;
+  const restoreOwner = owner => {
+    if (owner === formalSpecIndex) {
+      return 'framework/doc/framework/spec/README.ko.md';
+    }
+    const languagePrefix = `${formalSpecRoot}/server/languages/`;
+    if (owner.startsWith(languagePrefix)) {
+      return `framework/doc/framework/spec/server/languages/${owner.slice(languagePrefix.length)}`;
+    }
+    if (owner === `${formalSpecRoot}/04-async-execution-policy.ko.md`) {
+      return 'framework/doc/framework/spec/04-async-execution-policy.ko.md';
+    }
+    if (owner.startsWith(commonPrefix)) {
+      return `framework/doc/framework/spec/server/${owner.slice(commonPrefix.length)}`;
+    }
+    return owner;
+  };
+  const restoreRecords = records => records.map(record => ({
+    ...record,
+    targetOwners: (record.targetOwners || []).map(restoreOwner),
+  }));
+  return {
+    corePublicSymbols: restoreRecords(baseline.corePublicSymbols),
+    coreExportSymbols: restoreRecords(baseline.coreExportSymbols),
   };
 }
 
@@ -939,6 +968,21 @@ function verifyReviewedCoreRemovalFiles(records, source) {
 }
 
 function relocateConsolidatedDocumentOwners(records) {
+  const legacyFormalSpecRoot = 'framework/doc/framework/spec';
+  const relocateFormalOwner = owner => {
+    const legacyServerPrefix = `${legacyFormalSpecRoot}/server/`;
+    const legacyLanguagePrefix = `${legacyServerPrefix}languages/`;
+    if (owner.startsWith(legacyLanguagePrefix)) {
+      return `${formalSpecRoot}/server/languages/${owner.slice(legacyLanguagePrefix.length)}`;
+    }
+    if (owner.startsWith(legacyServerPrefix)) {
+      return `${formalSpecRoot}/${owner.slice(legacyServerPrefix.length)}`;
+    }
+    if (owner.startsWith(`${legacyFormalSpecRoot}/`)) {
+      return `${formalSpecRoot}/${owner.slice(legacyFormalSpecRoot.length + 1)}`;
+    }
+    return owner;
+  };
   const relocated = new Map([
     [`${retiredPlanSpecRoot}/README.ko.md`, formalSpecIndex],
     [`${retiredPlanSpecRoot}/01-mesh-node.ko.md`,
@@ -981,7 +1025,8 @@ function relocateConsolidatedDocumentOwners(records) {
   ]);
   return records.map(record => ({
     ...record,
-    targetOwners: (record.targetOwners || []).map(owner => relocated.get(owner) || owner),
+    targetOwners: (record.targetOwners || [])
+      .map(owner => relocated.get(owner) || relocateFormalOwner(owner)),
   }));
 }
 

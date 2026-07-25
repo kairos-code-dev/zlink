@@ -13,7 +13,7 @@ Java API를 기다리는 server extension도 이 디렉토리의 정식 계약�
 ChannelName 단일 호출, RouteMesh·ClientServer role builder, listener network identity, handler context와
 전용 descriptor·runtime은 Java 정본 타입을 재사용하고 Kotlin DSL만 관용적으로 투영한다.
 
-Global ActorId·SpotId, exact ActorRef·SpotRef, [User Spot](../../../01-glossary.ko.md#entry-user-instance-spot) manager의 명시적인 create/get-or-create,
+Global ActorId·SpotId, exact ActorRef·SpotRef, [User Spot](../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) manager의 명시적인 create/get-or-create,
 actor-free Instance Spot lifecycle과 Location provider의 opaque authority capability도 Java 정본 타입을
 재사용한다. Kotlin은
 ID-only direct call에 `send`와 `request` extension만 추가하며 Java member와 충돌하는 suspend

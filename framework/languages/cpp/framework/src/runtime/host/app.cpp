@@ -789,6 +789,26 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             registration->spot_state->dispatch = options.configure_dispatch ();
             registration->spot_state->monitoring = monitoring_state;
             detail::spot_node_runtime_t spot_runtime (registration->spot_state);
+            if (_state->services.contains (
+                  std::type_index (typeid (
+                    runtime::stateful::relocation_store_port_t)))) {
+                auto &relocations = provider.get_required<
+                  runtime::stateful::relocation_store_port_t> ();
+                spot_runtime.bind_relocation_store (
+                  std::shared_ptr<
+                    runtime::stateful::relocation_store_port_t> (
+                    &relocations, [] (auto *) noexcept {}));
+            }
+            if (_state->services.contains (
+                  std::type_index (typeid (
+                    runtime::stateful::authority_relocation_port_t)))) {
+                auto &authority = provider.get_required<
+                  runtime::stateful::authority_relocation_port_t> ();
+                spot_runtime.bind_relocation_authority (
+                  std::shared_ptr<
+                    runtime::stateful::authority_relocation_port_t> (
+                    &authority, [] (auto *) noexcept {}));
+            }
             spot_runtime.bind_location_lifecycle (location_lifecycle);
             spot_runtime.bind_spot_location_resolver (spot_resolver);
             spot_runtime.bind_drain_flag (_state->draining);

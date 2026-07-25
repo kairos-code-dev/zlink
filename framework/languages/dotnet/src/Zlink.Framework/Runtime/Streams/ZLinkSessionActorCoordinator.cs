@@ -1,5 +1,6 @@
 namespace Zlink.Framework.Runtime.Streams;
 
+using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkSessionActorCoordinator(
@@ -142,7 +143,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             try
             {
-                response = await new ZLinkActorClient(runtime)
+                response = await runtime.Services.GetRequiredService<IZLinkActorClient>()
                     .RequestToActor(ActorDispatchMeshName, actor, new ZLinkRemoteSessionBindRequest(
                         sessionNodeRid.ToBytes().ToArray(),
                         sessionRid.ToBytes().ToArray()))

@@ -7,15 +7,15 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.Session.Spots;
 
-internal sealed class ScenarioActorFactory : IZLinkActorFactory
+internal sealed class ScenarioActorFactory : IZLinkActorFactory<ScenarioActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<ScenarioActor> CreateAsync(
         string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new ScenarioActor(actorId, context));
+        return ValueTask.FromResult(new ScenarioActor(actorId, context));
     }
 }
 
@@ -37,7 +37,7 @@ internal sealed class ScenarioEntrySpot(
 {
     public IZLinkEntrySpotContext Context { get; } = context;
 
-    public ValueTask OnCreateActorAsync(
+    public ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         ScenarioActor actor,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken)
@@ -46,7 +46,7 @@ internal sealed class ScenarioEntrySpot(
         if (!createRequest.IsEmpty) actor.DisplayName = createRequest.Decode<ScenarioActorCreateReq>().DisplayName;
 
         evidence.Add($"entry-created|rid={evidence.Rid}|actor={actor.ActorId}");
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
 
     public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(

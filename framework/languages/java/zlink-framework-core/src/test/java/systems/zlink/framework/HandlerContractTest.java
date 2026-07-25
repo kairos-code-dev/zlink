@@ -33,6 +33,7 @@ import systems.zlink.framework.handlers.ZLinkStreamPacket;
 import systems.zlink.framework.handlers.ZLinkStreamRaw;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -97,17 +98,43 @@ final class HandlerContractTest {
     void handlerFilterUsesInvocationContextAndTypedNext() throws NoSuchMethodException {
         Method method = ZLinkHandlerFilter.class.getMethod(
             "invoke",
-            ZLinkInvocationContext.class,
+            ZLinkHandlerInvocation.class,
             ZLinkNext.class);
 
         assertEquals(1, method.getTypeParameters().length);
     }
 
     @Test
+    void objectAndMessageContextsMatchTheExactInterface() throws Exception {
+        assertFalse(hasMethod(ZLinkActor.class, "actorId"));
+        assertSame(
+            ZLinkActorContext.class,
+            ZLinkActor.class.getMethod("context").getReturnType());
+        ZLinkActorFactory.class.getMethod("create", ZLinkActorContext.class);
+
+        ZLinkMessageContext.class.getMethod("meshName");
+        ZLinkMessageContext.class.getMethod("channelName");
+        ZLinkMessageContext.class.getMethod("packetName");
+        ZLinkMessageContext.class.getMethod("contentType");
+        ZLinkMessageContext.class.getMethod("metadata");
+        ZLinkMessageContext.class.getMethod("correlationId");
+
+        assertClassIsAbsent("systems.zlink.framework.ZLinkHandlerContext");
+        assertClassIsAbsent("systems.zlink.framework.ZLinkInvocationContext");
+        assertClassIsAbsent("systems.zlink.framework.channels.ZLinkRequestContext");
+        assertClassIsAbsent("systems.zlink.framework.channels.ZLinkSendContext");
+        assertClassIsAbsent("systems.zlink.framework.channels.ZLinkPublishContext");
+        assertClassIsAbsent("systems.zlink.framework.channels.ZLinkRouteRequestContext");
+        assertClassIsAbsent("systems.zlink.framework.channels.ZLinkRouteSendContext");
+        assertClassIsAbsent("systems.zlink.framework.spots.ZLinkSpotActorRequestContext");
+        assertClassIsAbsent("systems.zlink.framework.spots.ZLinkSpotActorSendContext");
+    }
+
+    @Test
     void metadataContractsMatchTheExactInterface() throws NoSuchMethodException {
         assertEquals(
             java.util.Map.class,
-            ZLinkHandlerContext.class.getMethod("metadata").getReturnType());
+            ZLinkMessageContext.class.getMethod("metadata").getReturnType());
         assertEquals(
             ZLinkMetadataPolicyBuilder.class,
             ZLinkMetadataPolicyBuilder.class
@@ -155,25 +182,25 @@ final class HandlerContractTest {
             "handle",
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
-            systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
+            systems.zlink.framework.ZLinkMessageContext.class,
             Object.class);
         ZLinkEntrySpotActorRequestHandler.class.getMethod(
             "handle",
             ZLinkEntrySpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
-            systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
+            systems.zlink.framework.ZLinkMessageContext.class,
             Object.class);
         ZLinkSpotActorSendHandler.class.getMethod(
             "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
-            systems.zlink.framework.spots.ZLinkSpotActorSendContext.class,
+            systems.zlink.framework.ZLinkMessageContext.class,
             Object.class);
         ZLinkSpotActorRequestHandler.class.getMethod(
             "handle",
             ZLinkSpot.class,
             systems.zlink.framework.actors.ZLinkActor.class,
-            systems.zlink.framework.spots.ZLinkSpotActorRequestContext.class,
+            systems.zlink.framework.ZLinkMessageContext.class,
             Object.class);
     }
 
@@ -302,6 +329,10 @@ final class HandlerContractTest {
     private static boolean hasMethod(Class<?> type, String name) {
         return Arrays.stream(type.getMethods())
             .anyMatch(method -> method.getName().equals(name));
+    }
+
+    private static void assertClassIsAbsent(String className) {
+        assertThrows(ClassNotFoundException.class, () -> Class.forName(className));
     }
 
     private static void assertClassMissing(String className) {

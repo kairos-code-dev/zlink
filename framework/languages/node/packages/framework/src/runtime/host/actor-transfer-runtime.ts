@@ -2,8 +2,11 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
+  ZLinkActorJoinOperationId,
+  ZLinkAuthorityStore,
   ZLinkMessage,
   ZLinkMessageSerializer,
+  ZLinkRelocationStore,
   ZLinkSpot
 } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
@@ -15,6 +18,8 @@ import {
   type ZLinkActorHandoffCoordinator,
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
+  ZLinkDeferredJoinAcceptedJournal,
+  type ZLinkDeferredJoinAcceptedRoot,
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
@@ -58,6 +63,8 @@ export interface ZLinkActorTransferRuntimeOptions {
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
+  readonly authorityStore: () => ZLinkAuthorityStore | undefined;
+  readonly relocationStore: () => ZLinkRelocationStore | undefined;
   readonly clearRemoteActorPacketTarget: (actorId: string) => void;
   readonly reportPostCommitError?: (error: unknown) => void;
   readonly onSourceDepartureCompleted?: (actorId: string) => void;
@@ -74,6 +81,90 @@ export class ZLinkActorTransferRuntime {
   }>();
 
   constructor(private readonly options: ZLinkActorTransferRuntimeOptions) {}
+
+  async prepareDeferredJoinAccepted(
+    actorId: string,
+    operationId: ZLinkActorJoinOperationId,
+    actorRef: ActorRef,
+    rawReply: Uint8Array,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot> {
+    return await this.requireDeferredJoinJournal().prepare(
+      actorId,
+      operationId,
+      actorRef,
+      rawReply,
+      signal
+    );
+  }
+
+  async recoverDeferredJoinAccepted(
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkDeferredJoinAcceptedRoot | undefined> {
+    const authority = this.options.authorityStore();
+    const relocation = this.options.relocationStore();
+    if (authority === undefined || relocation === undefined) return undefined;
+    return await new ZLinkDeferredJoinAcceptedJournal(authority, relocation)
+      .recover(actorId, signal);
+  }
+
+  async commitAndDeliverDeferredJoinAccepted(
+    root: ZLinkDeferredJoinAcceptedRoot,
+    actor: ZLinkActor,
+    actorRef: ActorRef,
+    submitMailbox: <T>(operation: () => Promise<T>) => Promise<T>,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const targetActorRef = this.options.actorManager()
+      ?.getState(actor.context.actorId)
+      ?.nativeActorRef;
+    const currentActorRef = targetActorRef === undefined
+      ? actorRef
+      : toFrameworkActorRef(targetActorRef);
+    let current = root.cursor === 'prepared'
+      ? await this.requireDeferredJoinJournal().markCommitted(root, currentActorRef, signal)
+      : root;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        current = await this.requireDeferredJoinJournal().deliver(
+          current,
+          actor,
+          currentActorRef,
+          submitMailbox,
+          signal
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(resolve, 10 << attempt);
+            timer.unref();
+            signal?.addEventListener('abort', () => {
+              clearTimeout(timer);
+              reject(signal.reason);
+            }, { once: true });
+          });
+          current = await this.requireDeferredJoinJournal().recover(
+            currentActorRef.actorId,
+            signal
+          ) ?? current;
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private requireDeferredJoinJournal(): ZLinkDeferredJoinAcceptedJournal {
+    const authority = this.options.authorityStore();
+    const relocation = this.options.relocationStore();
+    if (authority === undefined || relocation === undefined) {
+      throw new Error('Cross-node deferred Actor Join requires Location and Relocation Stores.');
+    }
+    return new ZLinkDeferredJoinAcceptedJournal(authority, relocation);
+  }
 
   private async prepareSourceActorLeave(
     actor: ZLinkActor,
@@ -107,13 +198,13 @@ export class ZLinkActorTransferRuntime {
 
   private async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
     state.beginMove();
-    this.options.actorHandoff.begin(actor.actorId, state.nativeActorRef?.generation ?? 0n);
+    this.options.actorHandoff.begin(actor.context.actorId, state.nativeActorRef?.generation ?? 0n);
     try {
       if (state.spotId !== undefined) {
-        await this.options.spotManager()?.beginActorTransfer(state.spotId, actor.actorId);
+        await this.options.spotManager()?.beginActorTransfer(state.spotId, actor.context.actorId);
       }
     } catch (error) {
-      this.options.actorHandoff.cancel(actor.actorId);
+      this.options.actorHandoff.cancel(actor.context.actorId);
       state.endMove();
       throw error;
     }
@@ -122,10 +213,10 @@ export class ZLinkActorTransferRuntime {
   private async cancelSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
     try {
       if (state.spotId !== undefined) {
-        await this.options.spotManager()?.cancelActorTransfer(state.spotId, actor.actorId);
+        await this.options.spotManager()?.cancelActorTransfer(state.spotId, actor.context.actorId);
       }
     } finally {
-      this.options.actorHandoff.cancel(actor.actorId);
+      this.options.actorHandoff.cancel(actor.context.actorId);
       state.endMove();
     }
   }
@@ -148,7 +239,7 @@ export class ZLinkActorTransferRuntime {
       );
       this.options.metrics?.histogram(
         'zlink.actor.transfer.pending_requests.count',
-        this.options.actorHandoff.pendingCount(actor.actorId),
+        this.options.actorHandoff.pendingCount(actor.context.actorId),
         '{request}'
       );
       if (lifecycleAuthority === 'framework') {
@@ -156,14 +247,14 @@ export class ZLinkActorTransferRuntime {
         await this.prepareSourceActorLeave(actor, sourceSpotId, signal);
       }
       const sourceLeaveCompletion = lifecycleAuthority === 'core'
-        ? this.beginCoreSourceLeave(actor.actorId)
+        ? this.beginCoreSourceLeave(actor.context.actorId)
         : undefined;
       let phase: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
       return {
         ...transfer,
         handoffBacklog: lifecycleAuthority === 'core'
-          ? this.options.actorHandoff.snapshotCoreBacklog(actor.actorId)
-          : this.options.actorHandoff.snapshot(actor.actorId),
+          ? this.options.actorHandoff.snapshotCoreBacklog(actor.context.actorId)
+          : this.options.actorHandoff.snapshot(actor.context.actorId),
         sourceLeaveCompletion,
         commit: (
           target: Parameters<ZLinkActorHandoffCoordinator['complete']>[1],
@@ -179,7 +270,7 @@ export class ZLinkActorTransferRuntime {
             Number(process.hrtime.bigint() - transferStarted) / 1e9
           );
           try {
-            this.options.actorHandoff.complete(actor.actorId, target, targetActorRef, results);
+            this.options.actorHandoff.complete(actor.context.actorId, target, targetActorRef, results);
           } catch (error) {
             // The target has already committed. Local forwarding setup is now
             // post-commit work and must not turn the accepted transfer into a
@@ -196,7 +287,7 @@ export class ZLinkActorTransferRuntime {
         rollback: async () => {
           if (phase !== 'prepared') return;
           phase = 'rolledBack';
-          this.coreSourceLeaves.delete(actor.actorId);
+          this.coreSourceLeaves.delete(actor.context.actorId);
           await this.cancelSourceActorMove(actor, state);
           await this.restoreSourceActor(actor, sourceSpotId);
         }
@@ -213,7 +304,7 @@ export class ZLinkActorTransferRuntime {
   }
 
   async notifyCoreSourceLeave(actor: ZLinkActor, callback: () => Promise<void>): Promise<void> {
-    const pending = this.coreSourceLeaves.get(actor.actorId);
+    const pending = this.coreSourceLeaves.get(actor.context.actorId);
     try {
       await callback();
       pending?.resolve();
@@ -221,7 +312,7 @@ export class ZLinkActorTransferRuntime {
       pending?.reject(error);
       throw error;
     } finally {
-      this.coreSourceLeaves.delete(actor.actorId);
+      this.coreSourceLeaves.delete(actor.context.actorId);
     }
   }
 
@@ -242,10 +333,10 @@ export class ZLinkActorTransferRuntime {
     sourceSpotId: RoutingId | undefined,
     releaseLocation: boolean
   ): void {
-    if (this.sourceDepartureTasks.has(actor.actorId)) return;
+    if (this.sourceDepartureTasks.has(actor.context.actorId)) return;
     const task = this.finishSourceDeparture(actor, sourceSpotId, releaseLocation)
-      .finally(() => this.sourceDepartureTasks.delete(actor.actorId));
-    this.sourceDepartureTasks.set(actor.actorId, task);
+      .finally(() => this.sourceDepartureTasks.delete(actor.context.actorId));
+    this.sourceDepartureTasks.set(actor.context.actorId, task);
   }
 
   private async finishSourceDeparture(
@@ -257,19 +348,19 @@ export class ZLinkActorTransferRuntime {
     while (this.options.shutdownSignal?.()?.aborted !== true) {
       try {
         if (sourceSpotId !== undefined) {
-          await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotId, actor.actorId);
+          await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotId, actor.context.actorId);
         }
         if (releaseLocation) {
-          const state = this.options.actorManager()?.getState(actor.actorId);
+          const state = this.options.actorManager()?.getState(actor.context.actorId);
           if (state?.actorType !== undefined && state.ownsLocation) {
             await this.options.locationLifecycle()?.releaseActor(
               state.actorType,
-              actor.actorId
+              actor.context.actorId
             );
             state.markLocationReleased();
           }
         }
-        this.options.onSourceDepartureCompleted?.(actor.actorId);
+        this.options.onSourceDepartureCompleted?.(actor.context.actorId);
         return;
       } catch (error) {
         this.options.reportPostCommitError?.(error);
@@ -332,7 +423,10 @@ export class ZLinkActorTransferRuntime {
       throw new Error(`Actor '${actorId}' transfer state was not created.`);
     }
     if (actorEntryNodeRid !== undefined) state.setEntryNodeRid(actorEntryNodeRid);
-    state.setRemoteBoundSessionTarget(remoteBoundSessionTarget);
+    state.setBoundSessionTransferTarget(remoteBoundSessionTarget);
+    if (remoteBoundSessionTarget?.bindingGeneration !== undefined) {
+      state.setBoundSessionBindingGeneration(remoteBoundSessionTarget.bindingGeneration);
+    }
     return {
       actor: materialized.actor,
       actorRef: materialized.actorRef as unknown as ZLinkBackendActorRef
@@ -340,13 +434,28 @@ export class ZLinkActorTransferRuntime {
   }
 
   commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     state?.setJoinedSpot(spotId, spot);
+    const actorRef = state?.nativeActorRef;
+    const binding = state?.boundSessionTransferTarget;
+    if (
+      actorRef !== undefined
+      && binding?.sessionNodeRid !== undefined
+      && binding.sessionRid !== undefined
+      && binding.bindingGeneration !== undefined
+    ) {
+      this.options.primaryMeshNode().restoreActorSessionBinding?.(
+        actorRef,
+        binding.sessionNodeRid,
+        binding.sessionRid,
+        binding.bindingGeneration
+      );
+    }
   }
 
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void {
     const node = this.options.primaryMeshNode();
-    const localActorRef = node.actorLookup(actor.actorId).actor;
+    const localActorRef = node.actorLookup(actor.context.actorId).actor;
     const targetActorRef = {
       ...actorRef,
       nodeRid: node.status().routingId,
@@ -354,7 +463,7 @@ export class ZLinkActorTransferRuntime {
         ? localActorRef.generation
         : actorRef.generation
     };
-    this.options.actorManager()?.getState(actor.actorId)?.setNativeActorRef(
+    this.options.actorManager()?.getState(actor.context.actorId)?.setNativeActorRef(
       targetActorRef as unknown as ZLinkBackendActorRef
     );
   }
@@ -368,18 +477,18 @@ export class ZLinkActorTransferRuntime {
       readonly membershipEpoch: bigint;
     }
   ): Promise<void> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     const actorType = state?.actorType;
     const lifecycle = this.options.locationLifecycle();
     if (state === undefined || actorType === undefined || lifecycle === undefined) {
       return;
     }
     const node = this.options.primaryMeshNode();
-    const location = node.actorLookup(actor.actorId);
+    const location = node.actorLookup(actor.context.actorId);
     const spotGeneration = joinedLocation?.spotGeneration ?? location.spotGeneration;
     const membershipEpoch = joinedLocation?.membershipEpoch ?? location.membershipEpoch;
     if (spotGeneration <= 0n || membershipEpoch <= 0n) {
-      throw new Error(`Actor '${actor.actorId}' committed target location has invalid lifecycle generations.`);
+      throw new Error(`Actor '${actor.context.actorId}' committed target location has invalid lifecycle generations.`);
     }
     if (
       joinedLocation === undefined
@@ -388,18 +497,18 @@ export class ZLinkActorTransferRuntime {
         || location.spotId !== spotId
       )
     ) {
-      throw new Error(`Actor '${actor.actorId}' Core location does not match the committed target SPOT.`);
+      throw new Error(`Actor '${actor.context.actorId}' Core location does not match the committed target SPOT.`);
     }
     const deadline = Date.now() + 5_000;
     const ownerNodeGeneration = node.status().lifecycleGeneration;
     if (ownerNodeGeneration <= 0n) {
-      throw new Error(`Actor '${actor.actorId}' owner MeshNode has no valid lifecycle generation.`);
+      throw new Error(`Actor '${actor.context.actorId}' owner MeshNode has no valid lifecycle generation.`);
     }
     let claim;
     for (;;) {
       claim = await lifecycle.takeoverActorJoinedSpot(
         actorType,
-        actor.actorId,
+        actor.context.actorId,
         toFrameworkActorRef(state.nativeActorRef ?? location.actor as never),
         spotMeshName,
         spotId,
@@ -414,7 +523,7 @@ export class ZLinkActorTransferRuntime {
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
     if (claim.status === 'conflict') {
-      throw new Error(`Actor '${actor.actorId}' target location takeover was rejected.`);
+      throw new Error(`Actor '${actor.context.actorId}' target location takeover was rejected.`);
     }
     if (claim.generation !== undefined) {
       state.setLocationGeneration(claim.generation);
@@ -428,8 +537,8 @@ export class ZLinkActorTransferRuntime {
     spotId: RoutingId,
     spotMeshName: string
   ): Promise<ZLinkNativeActorJoinSnapshot> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
-    const previousLocation = this.options.locationLifecycle()?.actorLocationSnapshot(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
+    const previousLocation = this.options.locationLifecycle()?.actorLocationSnapshot(actor.context.actorId);
     const snapshot = {
       spotId: state?.spotId,
       spot: state?.spot,
@@ -445,12 +554,12 @@ export class ZLinkActorTransferRuntime {
   }
 
   async publishRoutedActorOwnership(actor: ZLinkActor): Promise<void> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     const actorRef = state?.nativeActorRef;
     const generation = state?.locationGeneration;
     if (state === undefined || actorRef === undefined || generation === undefined) return;
     await this.publishBoundSessionOwnership(
-      actor.actorId,
+      actor.context.actorId,
       actorRef,
       generation,
       state.remoteBoundSessionTarget,
@@ -464,15 +573,15 @@ export class ZLinkActorTransferRuntime {
   }
 
   clearRoutedActor(actor: ZLinkActor): void {
-    this.options.actorManager()?.getState(actor.actorId)?.clearJoinedSpot();
-    this.options.clearRemoteActorPacketTarget(actor.actorId);
+    this.options.actorManager()?.getState(actor.context.actorId)?.clearJoinedSpot();
+    this.options.clearRemoteActorPacketTarget(actor.context.actorId);
   }
 
   async rollbackNativeActorJoin(
     actor: ZLinkActor,
     snapshot: ZLinkNativeActorJoinSnapshot
   ): Promise<void> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     const actorType = state?.actorType;
     const lifecycle = this.options.locationLifecycle();
     if (snapshot.spotId === undefined) state?.clearJoinedSpot();
@@ -485,11 +594,11 @@ export class ZLinkActorTransferRuntime {
         || snapshot.membershipEpoch === undefined
         || snapshot.ownerNodeGeneration === undefined
       ) {
-        throw new Error(`Actor '${actor.actorId}' cannot restore its Entry SPOT location without its exact generation fields.`);
+        throw new Error(`Actor '${actor.context.actorId}' cannot restore its Entry SPOT location without its exact generation fields.`);
       }
       await lifecycle.notifyActorLeftSpot(
         actorType,
-        actor.actorId,
+        actor.context.actorId,
         snapshot.locationSpotId,
         snapshot.spotGeneration,
         snapshot.membershipEpoch,
@@ -498,7 +607,7 @@ export class ZLinkActorTransferRuntime {
       return;
     }
     if (snapshot.actorRef === undefined) {
-      throw new Error(`Actor '${actor.actorId}' cannot restore its previous SPOT location without a native ref.`);
+      throw new Error(`Actor '${actor.context.actorId}' cannot restore its previous SPOT location without a native ref.`);
     }
     if (
       snapshot.spotMeshName === undefined
@@ -506,11 +615,11 @@ export class ZLinkActorTransferRuntime {
       || snapshot.membershipEpoch === undefined
       || snapshot.ownerNodeGeneration === undefined
     ) {
-      throw new Error(`Actor '${actor.actorId}' cannot restore its previous SPOT location without its exact generation fields.`);
+      throw new Error(`Actor '${actor.context.actorId}' cannot restore its previous SPOT location without its exact generation fields.`);
     }
     const restored = await lifecycle.takeoverActorJoinedSpot(
       actorType,
-      actor.actorId,
+      actor.context.actorId,
       snapshot.actorRef,
       snapshot.spotMeshName,
       snapshot.spotId,
@@ -520,24 +629,24 @@ export class ZLinkActorTransferRuntime {
       async () => state.clearAfterDestroy()
     );
     if (restored.status === 'conflict') {
-      throw new Error(`Actor '${actor.actorId}' previous SPOT location could not be restored.`);
+      throw new Error(`Actor '${actor.context.actorId}' previous SPOT location could not be restored.`);
     }
     if (restored.generation !== undefined) state.setLocationGeneration(restored.generation);
   }
 
   async rollbackRoutedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     const manager = this.options.actorManager();
-    const state = manager?.getState(actor.actorId);
+    const state = manager?.getState(actor.context.actorId);
     const actorType = state?.actorType;
     const lifecycle = this.options.locationLifecycle();
     let locationError: unknown;
     if (state?.ownsLocation === true && actorType !== undefined && lifecycle !== undefined) {
       try {
-        await lifecycle.releaseActor(actorType, actor.actorId);
+        await lifecycle.releaseActor(actorType, actor.context.actorId);
         state.markLocationReleased();
       } catch (error) {
         locationError = error;
-        void lifecycle.releaseActorEventually(actorType, actor.actorId);
+        void lifecycle.releaseActorEventually(actorType, actor.context.actorId);
       }
     }
     try {
@@ -546,7 +655,7 @@ export class ZLinkActorTransferRuntime {
       if (locationError !== undefined) {
         throw new AggregateError(
           [locationError, rollbackError],
-          `Actor '${actor.actorId}' target transfer rollback failed.`
+          `Actor '${actor.context.actorId}' target transfer rollback failed.`
         );
       }
       throw rollbackError;
@@ -555,7 +664,7 @@ export class ZLinkActorTransferRuntime {
   }
 
   actorEntryNodeRid(actor: ZLinkActor): RoutingId | undefined {
-    return this.options.actorManager()?.getState(actor.actorId)?.entryNodeRid;
+    return this.options.actorManager()?.getState(actor.context.actorId)?.entryNodeRid;
   }
 
   private requireActorManager(message: string): ZLinkActorTransferRuntimeActorManager {

@@ -97,16 +97,23 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
         if (!complete) {
             return false;
         }
-        complete ([completion = std::move (completion),
+        complete ([this, completion = std::move (completion),
                    deferred = std::move (deferred)] () mutable {
             if (completion) {
                 completion ();
             }
-            for (auto &work : deferred) {
-                if (work) {
-                    work ();
-                }
+            if (deferred.empty ()) {
+                return;
             }
+            (void) _queue.try_post_deferred (
+              _name + "-deferred",
+              [deferred = std::move (deferred)] () mutable {
+                  for (auto &work : deferred) {
+                      if (work) {
+                          work ();
+                      }
+                  }
+              });
         });
         return true;
     }
@@ -143,7 +150,14 @@ bool serial_execution_queue_t::try_post (std::string name, std::function<void ()
         throw std::invalid_argument ("serial execution queue work is empty");
     }
     return try_post_async (std::move (name), [work = std::move (work)] (auto complete) mutable {
-        complete (std::move (work));
+        try {
+            work ();
+            complete ([] {});
+        }
+        catch (...) {
+            auto error = std::current_exception ();
+            complete ([error] { std::rethrow_exception (error); });
+        }
     });
 }
 
@@ -172,6 +186,22 @@ bool serial_execution_queue_t::try_post_async_front (std::string name, async_wor
     }
     _queue.push_front (work_item_t{std::move (name), std::move (work)});
     schedule_drain_locked ();
+    return true;
+}
+
+bool serial_execution_queue_t::try_post_deferred (
+  std::string name,
+  std::function<void ()> work)
+{
+    if (!work) {
+        throw std::invalid_argument ("serial execution queue work is empty");
+    }
+    std::lock_guard<std::mutex> lock (_mutex);
+    if (_closed) {
+        return false;
+    }
+    _deferred_after_active.emplace_back (
+      std::move (name), std::move (work));
     return true;
 }
 
@@ -323,6 +353,8 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
         }
     }
 
+    std::vector<std::pair<std::string, std::function<void ()>>>
+      deferred_after_active;
     {
         std::lock_guard<std::mutex> lock (_mutex);
         _active_turns.erase (
@@ -333,10 +365,26 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
                              _active_names.end ());
         --_active;
         _draining = false;
+        deferred_after_active =
+          std::move (_deferred_after_active);
+        _deferred_after_active.clear ();
         if (!_queue.empty ()) {
             schedule_drain_locked ();
         } else if (_queue.empty () && _active == 0) {
             _empty.notify_all ();
+        }
+    }
+    for (auto &[deferred_name, work] : deferred_after_active) {
+        try {
+            if (work) {
+                work ();
+            }
+        }
+        catch (...) {
+            if (_error_handler) {
+                _error_handler (
+                  deferred_name, std::current_exception ());
+            }
         }
     }
 }

@@ -210,9 +210,12 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                         spotId,
                         address.spotGeneration(),
                         List.of(requestPart),
-                        timeout);
-                } finally {
+                        timeout)
+                        .whenComplete((ignored, joinError) ->
+                            requestPart.close());
+                } catch (RuntimeException dispatchError) {
                     requestPart.close();
+                    throw dispatchError;
                 }
             })
             .thenCompose(stage -> stage)
@@ -400,8 +403,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
 
     private CompletionStage<Void> applyCoreRemoteActorMigration(
         ZLinkBackendActorJoinResult result) {
-        // Core source commit already retargets the STREAM binding. Rebinding
-        // here would first unbind and destroy Core's transferred route.
+        // The source-bound session remains attached to the forwarding actor.
+        // Framework routing resolves the relocated Spot for subsequent relay.
         return applyRemoteActorMigration(result, true, true);
     }
 
@@ -527,9 +530,12 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             } finally {
                                 replyParts.forEach(Message::close);
                             }
-                        });
-                } finally {
+                        })
+                        .whenComplete((ignored, admissionError) ->
+                            admissionParts.forEach(Message::close));
+                } catch (RuntimeException error) {
                     admissionParts.forEach(Message::close);
+                    throw error;
                 }
             });
     }
@@ -548,8 +554,9 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         UUID coreId = UUID.fromString(transferId);
         long membershipEpoch =
             services.spotNode().actorMembershipEpoch(currentActorRef.actorId());
-        PrepareActorTransferResult corePrepared =
-            services.spotNode().prepareActorTransfer(
+        PrepareActorTransferResult prepared;
+        try {
+            prepared = services.spotNode().prepareActorTransfer(
                 new ActorTransferPrepare(
                     ActorTransferRole.SOURCE,
                     new ActorTransferId(
@@ -565,12 +572,18 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     0L,
                     0L),
                 timeout);
-        services.actors().traceActorTransferMarker(
-            "core_source_prepared",
-            currentActorRef.actorId(),
-            Long.toUnsignedString(corePrepared.result().transferId().high())
-                + ":" + Long.toUnsignedString(corePrepared.result().transferId().low())
-                + ":" + Long.toUnsignedString(corePrepared.result().finalSequence()));
+        } catch (UnsupportedOperationException unavailable) {
+            prepared = null;
+        }
+        PrepareActorTransferResult corePrepared = prepared;
+        if (corePrepared != null) {
+            services.actors().traceActorTransferMarker(
+                "core_source_prepared",
+                currentActorRef.actorId(),
+                Long.toUnsignedString(corePrepared.result().transferId().high())
+                    + ":" + Long.toUnsignedString(corePrepared.result().transferId().low())
+                    + ":" + Long.toUnsignedString(corePrepared.result().finalSequence()));
+        }
         CompletionStage<ZLinkDeferredJoinAcceptedRecovery.Manifest> completionManifest =
             operationId == null
                 ? CompletableFuture.completedFuture(null)
@@ -594,7 +607,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                         services.actors().takeRemoteMoveBacklog(actor);
                     committedBacklog.set(backlog);
                     services.actors().traceActorTransferMarker(
-                        "commit_request", actor.actorId(), transferId);
+                        "commit_request", actor.context().actorId(), transferId);
                     return new TransferCommit(transfer, backlog);
                 }))
             .thenCompose(commit -> {
@@ -615,20 +628,29 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     transferState,
                     commit.backlog(),
                     new ZLinkActorSpotRoutePackets.CoreTransfer(
-                        true,
-                        corePrepared.result().transferId().high(),
-                        corePrepared.result().transferId().low(),
+                        corePrepared != null,
+                        corePrepared == null ? 0L
+                            : corePrepared.result().transferId().high(),
+                        corePrepared == null ? 0L
+                            : corePrepared.result().transferId().low(),
                         membershipEpoch,
-                        corePrepared.result().finalSequence(),
-                        corePrepared.result().reserveMessageCount(),
-                        corePrepared.result().reserveByteCount()),
+                        corePrepared == null ? 0L
+                            : corePrepared.result().finalSequence(),
+                        corePrepared == null ? 0L
+                            : corePrepared.result().reserveMessageCount(),
+                        corePrepared == null ? 0L
+                            : corePrepared.result().reserveByteCount()),
                     manifest);
                 transferState.close();
                 try {
-                    return requestTransfer(address, commitParts).thenCompose(reply -> forwardLateBacklog(
-                            address, reply, commit.backlog()));
-                } finally {
+                    return requestTransfer(address, commitParts)
+                        .thenCompose(reply -> forwardLateBacklog(
+                            address, reply, commit.backlog()))
+                        .whenComplete((ignored, commitError) ->
+                            commitParts.forEach(Message::close));
+                } catch (RuntimeException error) {
                     commitParts.forEach(Message::close);
+                    throw error;
                 }
             })
             .handle((commitReply, error) -> {
@@ -640,8 +662,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     commitReply.parts(), admissionReply, commitReply.backlog());
             })
             .thenApply(result -> {
-                services.spotNode().commitActorTransfer(
-                    corePrepared.token(), membershipEpoch + 1);
+                if (corePrepared != null) {
+                    services.spotNode().commitActorTransfer(
+                        corePrepared.token(), membershipEpoch + 1);
+                }
                 if (operationId != null) {
                     acceptedCompletionDeliveredOnTarget.set(true);
                 }
@@ -660,6 +684,9 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     }
 
     private void abortCoreTransfer(PrepareActorTransferResult prepared) {
+        if (prepared == null) {
+            return;
+        }
         try {
             services.spotNode().abortActorTransfer(prepared.token());
         } catch (RuntimeException ignored) {
@@ -672,13 +699,23 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         SpotTransportAddress address,
         List<Message> parts) {
         if (internalRouteChannel == null) {
-            return services.routedTransport().requestToSpotViaRouterChannel(
-                address.routerChannelId(),
-                address.targetNodeRid(),
-                address.spotId(),
-                address.spotGeneration(),
-                parts,
-                timeout);
+            Message packetName = Message.from(parts.getFirst());
+            Message envelope = ZLinkActorEntryTransferEnvelope.encode(parts);
+            List<Message> wireParts = List.of(packetName, envelope);
+            try {
+                return services.routedTransport().requestToSpotViaRouterChannel(
+                        address.routerChannelId(),
+                        address.targetNodeRid(),
+                        address.spotId(),
+                        address.spotGeneration(),
+                        wireParts,
+                        timeout)
+                    .whenComplete((ignored, error) ->
+                        wireParts.forEach(Message::close));
+            } catch (RuntimeException error) {
+                wireParts.forEach(Message::close);
+                throw error;
+            }
         }
         Message envelope = ZLinkActorEntryTransferEnvelope.encode(parts);
         return services.routedTransport().requestInternalToNode(
@@ -735,9 +772,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             packet.payload(),
             null,
             packet.arrivalIndex());
+        CompletionStage<Void> forwarded;
         try {
             if (internalRouteChannel != null) {
-                return requestTransfer(address, parts)
+                forwarded = requestTransfer(address, parts)
                     .handle((replyParts, error) -> {
                         try {
                             if (error != null) {
@@ -760,39 +798,43 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             }
                         }
                     });
-            }
-            return services.routedTransport().requestToSpotViaRouterChannel(
-                    address.routerChannelId(),
-                    address.targetNodeRid(),
-                    address.spotId(),
-                    address.spotGeneration(),
-                    parts,
-                    timeout)
-                .handle((replyParts, error) -> {
-                    try {
-                        if (error != null) {
-                            if (packet.fail(error)) {
+            } else {
+                forwarded = services.routedTransport().requestToSpotViaRouterChannel(
+                        address.routerChannelId(),
+                        address.targetNodeRid(),
+                        address.spotId(),
+                        address.spotGeneration(),
+                        parts,
+                        timeout)
+                    .handle((replyParts, error) -> {
+                        try {
+                            if (error != null) {
+                                if (packet.fail(error)) {
+                                    packet.close();
+                                }
+                                throw new CompletionException(error);
+                            }
+                            packet.complete(replyParts.isEmpty()
+                                || ZLinkActorSpotRoutePackets.isHandoffDirectReplyAck(replyParts.get(0))
+                                ? java.util.Optional.empty()
+                                : java.util.Optional.of(Message.from(replyParts.get(0))));
+                        } finally {
+                            if (replyParts != null) {
+                                replyParts.forEach(Message::close);
+                            }
+                            if (error == null) {
                                 packet.close();
                             }
-                            throw new CompletionException(error);
                         }
-                        packet.complete(replyParts.isEmpty()
-                            || ZLinkActorSpotRoutePackets.isHandoffDirectReplyAck(replyParts.get(0))
-                            ? java.util.Optional.empty()
-                            : java.util.Optional.of(Message.from(replyParts.get(0))));
-                    } finally {
-                        if (replyParts != null) {
-                            replyParts.forEach(Message::close);
-                        }
-                        if (error == null) {
-                            packet.close();
-                        }
-                    }
-                    return null;
-                });
-        } finally {
+                        return null;
+                    });
+            }
+        } catch (RuntimeException error) {
             parts.forEach(Message::close);
+            throw error;
         }
+        return forwarded.whenComplete((ignored, error) ->
+            parts.forEach(Message::close));
     }
 
     private ZLinkBackendActorJoinResult decodeCommitReply(

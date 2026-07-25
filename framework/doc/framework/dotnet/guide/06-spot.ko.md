@@ -370,7 +370,7 @@ public sealed class StageHeartbeatHandler : IZLinkSpotTimerHandler<StageSpot>
                 "game.stage",
                 "stage.heartbeat",
                 new StageHeartbeat(spot.Context.SpotRid, tick.StartedAt))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 ```
@@ -603,7 +603,7 @@ public sealed class StageAllocator(
                 "game.stage",                              // Logical Multicast ChannelName
                 "stage.state.updated",                     // topic
                 new StageStateUpdatedEvent(stage.SpotRid.ToString()))
-            .SubmitAsync(ct);
+            .Async(ct);
 
         return stage.SpotRid.ToString();
     }
@@ -655,7 +655,7 @@ SpotHandle delivery = await spots.GetOrCreateAsync(
     ct);
 
 // 같은 프로세스 대상도 public Spot 메시징 표면을 사용한다.
-await spotClient.SendToSpot(delivery, new RecordDeliveryEvent(request)).SubmitAsync(ct);
+await spotClient.SendToSpot(delivery, new RecordDeliveryEvent(request)).Async(ct);
 ```
 
 받는 Spot은 `AddPacket<T>()`로 등록한 handler에서 메시지를 처리한다. 이 경로를
@@ -721,18 +721,18 @@ public sealed class StageNoticeHandler
         // topic — game.stage ChannelName이 고른 RouteMesh로 Logical Multicast
         await outbound.Publish(
                 "game.stage", "stage.notice", new StageNoticeEvent(request.Text))
-            .SubmitAsync(ct);
+            .Async(ct);
 
         // 일반 channel — orders ChannelName의 process-local 송신 경로로 send/request
         await outbound.SendToChannel("orders", new RoomNoticeMessage(request.Text))
-            .SubmitAsync(ct);
+            .Async(ct);
         var state = await outbound
             .RequestToChannel("orders", new GetOrderStateRequest())
             .Async<GetOrderStateReply>(ct);
 
         // spot packet — 다른 Spot으로. SpotHandle는 미리 resolve 해서 보관한 값이다(§5 아래).
         await outbound.SendToSpot(peerHandle, new StageNoticeEvent(request.Text))
-            .SubmitAsync(ct);
+            .Async(ct);
 
         return new BroadcastReply(state.Count);
     }
@@ -775,7 +775,7 @@ app.MapPost("/stage/publish", async (
     await spotPublisher
         .Publish("game.stage", "stage.state.updated",
             new StageStateUpdatedEvent(request.StageRid))
-        .SubmitAsync(ct);
+        .Async(ct);
     return Results.Accepted();
 });
 ```

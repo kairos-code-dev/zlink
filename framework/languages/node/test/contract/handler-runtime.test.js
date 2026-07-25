@@ -32,10 +32,18 @@ test('handler scan does not expose handlers unless policy selects them', () => {
 
 test('handler filters run before and after in registration order', async () => {
   const events = [];
-  const invocation = { context: {}, handler: {} };
+  const invocation = {
+    ownerKind: 'channel',
+    messageContext: {
+      channelName: 'api',
+      packetName: 'Ping',
+      metadata: new Map()
+    }
+  };
   const filters = [
     {
-      async invoke(_invocation, next) {
+      async invoke(actual, next) {
+        assert.equal(actual, invocation);
         events.push('a:before');
         const result = await next();
         events.push('a:after');
@@ -43,7 +51,8 @@ test('handler filters run before and after in registration order', async () => {
       }
     },
     {
-      async invoke(_invocation, next) {
+      async invoke(actual, next) {
+        assert.equal(actual, invocation);
         events.push('b:before');
         const result = await next();
         events.push('b:after');

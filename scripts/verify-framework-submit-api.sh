@@ -35,9 +35,9 @@ function read(relative) {
 }
 
 if (mode === '--contract') {
-  const asyncPolicy = read('framework/doc/framework/spec/04-async-execution-policy.ko.md');
-  const frameworkApi = read('framework/doc/framework/spec/05-framework-api.ko.md');
-  const spotMessaging = read('framework/doc/framework/spec/server/20-spot-messaging.ko.md');
+  const asyncPolicy = read('framework/doc/framework/common/spec/04-async-execution-policy.ko.md');
+  const frameworkApi = read('framework/doc/framework/common/spec/05-framework-api.ko.md');
+  const spotMessaging = read('framework/doc/framework/common/spec/20-spot-messaging.ko.md');
   const scenario = read('framework/doc/framework/common/e2e/config-13-submit-admission.ko.md');
   for (const [source, owner, fragments] of [
     [asyncPolicy, 'async policy', [
@@ -46,12 +46,12 @@ if (mode === '--contract') {
       '`DeadlineExceeded`',
       '`RuntimeShutdown`']],
     [frameworkApi, 'Framework API', [
-      '반환 데이터 없이 정상 완료',
-      'Remote와 local target 수와 target별 수락·drop·unreachable 결과는 public publish 결과나 publish 전용',
+      'one-way send·publish는 결과값 없이 정상 완료',
+      'Target별 수락·실패 결과는 public publish 결과로 반환하거나 publish 전용 monitoring 값으로 집계하지',
       '`RuntimeShutdown`']],
     [spotMessaging, 'Spot messaging', [
-      '정상 완료는 source의 local outbound admission이 끝나 outbound queue가 operation을',
-      'snapshot, metric, runtime event 또는 message-flow count로 제공하지 않는다']],
+      'Publish 완료는 handler 실행 결과가 아니라 local outbound admission',
+      'monitoring snapshot, metric 또는 runtime event로 제공하지 않는다']],
     [scenario, 'Config 13', [
       '원격 handler 실행 완료가 아니다',
       'timeout 예외',
@@ -68,7 +68,7 @@ if (mode === '--contract') {
   const submitPatterns = {
     dotnet: /ValueTask\s+Async\s*\(/,
     cpp: /task_t<void>\s+submit\s*\(\s*\)/,
-    java: /CompletionStage<Void>\s+submit\s*\(/,
+    java: /CompletionStage<(?:java\.lang\.)?Void>\s+submit\s*\(/,
     kotlin: /suspend\s+fun\s+await\s*\(\s*\)(?:\s*:\s*Unit)?/,
     node: /submit\([^)]*\): Promise<void>/,
   };

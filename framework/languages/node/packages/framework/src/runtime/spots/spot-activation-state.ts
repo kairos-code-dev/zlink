@@ -155,20 +155,20 @@ export class ZLinkSpotActivation {
   }
 
   commitActorJoin(actor: ZLinkActor): () => void {
-    const previousActor = this.joinedActors.get(actor.actorId);
-    const wasDeparted = this.departedActorIds.has(actor.actorId);
-    this.departedActorIds.delete(actor.actorId);
-    this.joinedActors.set(actor.actorId, actor);
+    const previousActor = this.joinedActors.get(actor.context.actorId);
+    const wasDeparted = this.departedActorIds.has(actor.context.actorId);
+    this.departedActorIds.delete(actor.context.actorId);
+    this.joinedActors.set(actor.context.actorId, actor);
     return () => {
       if (previousActor === undefined) {
-        this.joinedActors.delete(actor.actorId);
+        this.joinedActors.delete(actor.context.actorId);
       } else {
-        this.joinedActors.set(actor.actorId, previousActor);
+        this.joinedActors.set(actor.context.actorId, previousActor);
       }
       if (wasDeparted) {
-        this.departedActorIds.add(actor.actorId);
+        this.departedActorIds.add(actor.context.actorId);
       } else {
-        this.departedActorIds.delete(actor.actorId);
+        this.departedActorIds.delete(actor.context.actorId);
       }
     };
   }

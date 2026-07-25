@@ -317,11 +317,6 @@ final class ZLinkActorClientRuntimeTest {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public systems.zlink.framework.actors.ZLinkActorContext context() {
             return null;
         }
@@ -330,9 +325,9 @@ final class ZLinkActorClientRuntimeTest {
     public static final class ProbeActorFactory implements systems.zlink.framework.actors.ZLinkActorFactory {
         @Override
         public CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(
-            String actorId,
             systems.zlink.framework.actors.ZLinkActorContext context) {
-            return java.util.concurrent.CompletableFuture.completedFuture(new ProbeActor(actorId));
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                new ProbeActor(context.actorId()));
         }
     }
 

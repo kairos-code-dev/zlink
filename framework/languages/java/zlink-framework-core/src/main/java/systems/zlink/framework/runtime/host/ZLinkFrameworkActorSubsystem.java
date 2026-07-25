@@ -91,6 +91,7 @@ final class ZLinkFrameworkActorSubsystem {
                 ? new ZLinkStoreActorDirectory(storeLocationResolvers)
                 : null;
         if (actors != null) {
+            actors.setMeshName(actorNodeName);
             actors.setMetadataPolicy(
                 registration.metadataPolicy().sessionToActorKeys(),
                 registration.metadataPolicy().actorToSessionKeys());

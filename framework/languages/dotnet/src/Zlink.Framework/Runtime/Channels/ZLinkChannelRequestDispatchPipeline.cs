@@ -68,13 +68,13 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
             return;
         }
 
-        var context = new ZLinkRequestContext(
+        var context = new ZLinkMessageContext(
             meshName,
             channelName,
             scope.PacketName!,
             scope.ContentType,
-            cancellationToken,
-            metadata);
+            metadata,
+            header.CorrelationId);
 
         try
         {

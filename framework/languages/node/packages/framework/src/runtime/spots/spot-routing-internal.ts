@@ -14,4 +14,10 @@ export interface ZLinkSpotRouteTarget {
   readonly stableType?: string;
   /** Required for user Spot operations and absent for an Entry Spot route. */
   readonly targetSpotGeneration?: bigint;
+  /** Authority fence used to install the resolved route in the stateful runtime. */
+  readonly targetNodeGeneration?: bigint;
+  /** Authority fence used to reject a superseded Spot owner. */
+  readonly authorityOwnerGeneration?: bigint;
+  /** Store version paired with the authority fence. */
+  readonly authorityStoreVersion?: string;
 }

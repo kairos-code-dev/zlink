@@ -127,11 +127,6 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return null;
         }

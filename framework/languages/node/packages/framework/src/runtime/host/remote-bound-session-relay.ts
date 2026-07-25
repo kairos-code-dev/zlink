@@ -237,9 +237,9 @@ export class ZLinkRemoteBoundSessionRelay {
     fallbackActorRef?: ActorRef,
     signal?: AbortSignal
   ): Promise<void> {
-    const state = this.options.actorManager()?.getState(actor.actorId);
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
     if (this.options.streamBindingRuntime().sendLocalBoundSessionResponse(
-      actor.actorId,
+      actor.context.actorId,
       packetName,
       requestSeq,
       response,
@@ -248,12 +248,18 @@ export class ZLinkRemoteBoundSessionRelay {
     )) {
       return;
     }
-    const actorRef = (state?.nativeActorRef as ActorRef | undefined) ?? fallbackActorRef;
+    const stateActorRef = state?.nativeActorRef as ActorRef | undefined;
+    const actorRef = stateActorRef === undefined
+      ? fallbackActorRef
+      : {
+          ...stateActorRef,
+          bindingGeneration: state!.boundSessionBindingGeneration
+        } as ActorRef;
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionResponse(
         remoteTarget,
-        actor.actorId,
+        actor.context.actorId,
         packetName,
         requestSeq,
         response,
@@ -263,7 +269,7 @@ export class ZLinkRemoteBoundSessionRelay {
       return;
     }
     if (actorRef === undefined) {
-      throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
+      throw new Error(`Actor '${actor.context.actorId}' does not have a native actor ref.`);
     }
     const primarySpotNode = this.options.primarySpotNode?.();
     if (primarySpotNode === undefined) {
@@ -301,8 +307,13 @@ export class ZLinkRemoteBoundSessionRelay {
       return;
     }
     const state = this.options.actorManager()?.getState(actorId);
-    const actorRef = (state?.nativeActorRef as ActorRef | undefined)
-      ?? fallbackActorRef
+    const stateActorRef = state?.nativeActorRef as ActorRef | undefined;
+    const actorRef = (stateActorRef === undefined
+      ? fallbackActorRef
+      : {
+          ...stateActorRef,
+          bindingGeneration: state!.boundSessionBindingGeneration
+        } as ActorRef)
       ?? this.options.destroyedActorRefs.get(actorId);
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {

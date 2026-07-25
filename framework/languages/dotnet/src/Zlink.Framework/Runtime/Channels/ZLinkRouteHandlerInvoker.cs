@@ -18,14 +18,14 @@ internal sealed class ZLinkRouteHandlerInvoker(
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
         await using var scope = services.CreateAsyncScope();
-        var context = new ZLinkRouteSendContext(
+        var context = new ZLinkRouteMessageContext(
             routerChannelId,
             null,
             sourceRid,
             header.MessageName!,
             header.ContentType,
-            cancellationToken,
-            metadata);
+            metadata,
+            header.CorrelationId);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,
@@ -52,14 +52,14 @@ internal sealed class ZLinkRouteHandlerInvoker(
         var message = ZLinkEnvelopeCodec.DecodeBody(parts, descriptor.MessageType, codecs);
 
         await using var scope = services.CreateAsyncScope();
-        var context = new ZLinkRouteRequestContext(
+        var context = new ZLinkRouteMessageContext(
             routerChannelId,
             null,
             sourceRid,
             header.MessageName!,
             header.ContentType,
-            cancellationToken,
-            metadata);
+            metadata,
+            header.CorrelationId);
         var handler = scope.ServiceProvider.GetRequiredService(descriptor.HandlerType);
         var reply = await ZLinkHandlerInvocationEngine.InvokeAsync(
                 handler,

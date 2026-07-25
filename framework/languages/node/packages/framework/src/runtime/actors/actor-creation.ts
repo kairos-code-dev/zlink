@@ -88,8 +88,7 @@ export class ZLinkActorCreationCoordinator {
       this.options.joinCoordinator,
       this.options.boundSessionFactory,
       this.options.messageSerializers,
-      this.options.actorMeshNameProvider,
-      this.options.actorLeaveSpot
+      this.options.actorMeshNameProvider
     ));
     const actor = restore === undefined
       ? await (await this.createFactory(actorType)).create(context)
@@ -117,11 +116,10 @@ export class ZLinkActorCreationCoordinator {
       this.options.joinCoordinator,
       this.options.boundSessionFactory,
       this.options.messageSerializers,
-      this.options.actorMeshNameProvider,
-      this.options.actorLeaveSpot
+      this.options.actorMeshNameProvider
     ));
     const actor = await factory.create(context, signal);
-    if (actor.context !== context || actor.actorId !== context.actorId) {
+    if (actor.context !== context || actor.context.actorId !== context.actorId) {
       throw new ZLinkConfigurationException(
         `Actor factory '${actorType}' must return an Actor bound to the exact supplied context.`
       );
@@ -164,6 +162,12 @@ export class ZLinkActorCreationCoordinator {
             actorId,
             toFrameworkActorRef(actorRef),
             nativeActorNode.status().lifecycleGeneration
+          );
+          await this.options.publishActorAuthority?.(
+            actorType,
+            toFrameworkActorRef(actorRef),
+            nativeActorNode.status().lifecycleGeneration,
+            signal
           );
         }
       } else if (nodeRid !== undefined && updateLocation) {

@@ -27,7 +27,7 @@ application에 그대로 넘기지 않는다.
 
 - Framework는 stream header를 decode하여 packet name과 metadata를 dispatch context에
   넣고, 아직 업무 객체로 변환하지 않은 payload와 함께 session callback에 전달한다.
-- Application은 [packet name](01-glossary.ko.md#packet-name)으로 처리할 packet을 구분하고 Framework의 공통 decode
+- Application은 [packet name](01-glossary.ko.md#packet-name)으로 처리할 packet을 구분하고 Framework의 공통 decoder
   표면을 사용한다. 이 표면은 등록된 codec registry로 payload를 업무 객체로
   변환하므로 handler가 codec별 helper를 직접 선택하지 않는다(§5).
 - Transport 본체는 header framing까지만 처리하며 payload의 업무 객체 변환을
@@ -210,8 +210,8 @@ Application callback은 bound 목록을 순회하지 않는다. 한 Actor의 실
 
 Bound Actor가 relocation되면 physical STREAM socket과 Session object는 그대로
 유지한다. Owner·membership commit 뒤 callback·journal replay와 durable source cleanup,
-`Completed` CAS를 완료하고 command 44·45로 Framework가 Session owner에 저장된 해당
-Actor binding route만 target owner로 갱신한다. 같은 Session의 다른 Actor route는
+`Completed` CAS를 완료한 뒤 Framework가 Session owner에 저장된 해당 Actor binding
+route, 즉 현재 Actor owner에 전달할 경로를 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). 같은 Session의 다른 Actor route는
 바꾸지 않으며 routed ACK와 steady normalization 전에는 target Actor의 session
 packet·push admission을 열지 않는다. Route update는 같은 ObjectGeneration에만
 허용하고 새 incarnation은 explicit bind가 필요하다.

@@ -43,6 +43,9 @@ internal static class MultiNodeHostFactory
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
+                framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -75,12 +78,25 @@ internal static class MultiNodeHostFactory
 
                 var mesh20 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterAEndpoint, "MultiSpotRouterAEndpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
+                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA));
+                mesh20.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
-                    .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                    .AddSpotFactory<SpotOnlyUserSpot>()
-                    .AddSpotFactory<ScenarioUserSpot>()
-                    .AddSpotFactory<MultiNodeSpotA>();
+                    .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
+                        SpotServiceNames.ActorType,
+                        null,
+                        ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                    .AddSpotFactory<SpotOnlyUserSpot>(
+                        SpotServiceNames.SpotOnlyUserSpotType,
+                        null,
+                        ZLinkRelocationPolicy<SpotOnlyUserSpot>.Disabled)
+                    .AddSpotFactory<ScenarioUserSpot>(
+                        SpotServiceNames.UserSpotType,
+                        null,
+                        ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                    .AddSpotFactory<MultiNodeSpotA>(
+                        SpotServiceNames.MultiSpotTypeA,
+                        null,
+                        ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled);
                 mesh20.ChannelName(ResolveSpotMeshName(options));
             }
 
@@ -101,12 +117,25 @@ internal static class MultiNodeHostFactory
 
                 var mesh21 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterBEndpoint, "MultiSpotRouterBEndpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
+                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB));
+                mesh21.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
-                    .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                    .AddSpotFactory<SpotOnlyUserSpot>()
-                    .AddSpotFactory<ScenarioUserSpot>()
-                    .AddSpotFactory<MultiNodeSpotB>();
+                    .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
+                        SpotServiceNames.ActorType,
+                        null,
+                        ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                    .AddSpotFactory<SpotOnlyUserSpot>(
+                        SpotServiceNames.SpotOnlyUserSpotType,
+                        null,
+                        ZLinkRelocationPolicy<SpotOnlyUserSpot>.Disabled)
+                    .AddSpotFactory<ScenarioUserSpot>(
+                        SpotServiceNames.UserSpotType,
+                        null,
+                        ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                    .AddSpotFactory<MultiNodeSpotB>(
+                        SpotServiceNames.MultiSpotTypeB,
+                        null,
+                        ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
                 mesh21.ChannelName(ResolveSpotMeshName(options));
             }
         });
@@ -136,9 +165,11 @@ internal static class MultiNodeHostFactory
         {
             var isNodeA = string.Equals(node.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var created = isNodeA
-                ? await CreateLocalMultiNodeSpotAsync<MultiNodeSpotA>(spots, evidence, node.Rid, request.SpotRid,
+                ? await CreateLocalMultiNodeSpotAsync(spots, evidence, node.Rid, request.SpotRid,
+                    SpotServiceNames.MultiSpotTypeA,
                     cancellationToken)
-                : await CreateLocalMultiNodeSpotAsync<MultiNodeSpotB>(spots, evidence, node.Rid, request.SpotRid,
+                : await CreateLocalMultiNodeSpotAsync(spots, evidence, node.Rid, request.SpotRid,
+                    SpotServiceNames.MultiSpotTypeB,
                     cancellationToken);
             return Results.Ok(created);
         });
@@ -149,12 +180,12 @@ internal static class MultiNodeHostFactory
             CreateSpotReq request,
             CancellationToken cancellationToken) =>
         {
-            var created = await spots.GetOrCreateAsync<SpotOnlyUserSpot>(
-                RoutingId.From(request.SpotRid),
-                cancellationToken);
-            evidence.Add($"create-user-spot|rid={node.Rid}|spot={created.SpotRid}|state={created.State}");
+            var created = await spots
+                .GetOrCreate(request.SpotRid, SpotServiceNames.SpotOnlyUserSpotType)
+                .Async(cancellationToken);
+            evidence.Add($"create-user-spot|rid={node.Rid}|spot={created.Spot.SpotId}|state={created.State}");
             return Results.Ok(new CreateSpotRes(
-                created.SpotRid.ToString(),
+                created.Spot.SpotId,
                 node.Rid,
                 created.State.ToString()));
         });
@@ -165,10 +196,10 @@ internal static class MultiNodeHostFactory
             SpotOnlyMeshReq request,
             CancellationToken cancellationToken) =>
         {
-            var created = await spots.GetOrCreateAsync<SpotOnlyUserSpot, SpotOnlyMeshReq>(
-                RoutingId.From(request.SourceSpotRid),
-                request,
-                cancellationToken);
+            var created = await spots
+                .GetOrCreate(request.SourceSpotRid, SpotServiceNames.SpotOnlyUserSpotType)
+                .Request(request)
+                .Async(cancellationToken);
             var snapshot = await evidence.WaitUntilAsync(
                 entries => entries.Any(entry =>
                     entry.Contains(
@@ -178,7 +209,7 @@ internal static class MultiNodeHostFactory
                 TimeSpan.FromSeconds(10),
                 cancellationToken);
             return Results.Ok(new SpotOnlyMeshRes(
-                created.SpotRid.ToString(),
+                created.Spot.SpotId,
                 request.TargetSpotRid,
                 ExtractSpotOnlyValue(snapshot, request),
                 request.Marker));
@@ -271,18 +302,18 @@ internal static class MultiNodeHostFactory
         return int.TryParse(valueText, out var value) ? value : 0;
     }
 
-    private static async Task<MultiNodeCreateSpotRes> CreateLocalMultiNodeSpotAsync<TSpot>(
+    private static async Task<MultiNodeCreateSpotRes> CreateLocalMultiNodeSpotAsync(
         IZLinkSpotManager spots,
         EvidenceStore evidence,
         string nodeRid,
         string spotRid,
+        string spotType,
         CancellationToken cancellationToken)
-        where TSpot : class, IZLinkSpot
     {
-        var created = await spots.GetOrCreateAsync<TSpot>(RoutingId.From(spotRid), cancellationToken);
-        evidence.Add($"multi-create-spot|node={nodeRid}|spot={created.SpotRid}|state={created.State}");
+        var created = await spots.GetOrCreate(spotRid, spotType).Async(cancellationToken);
+        evidence.Add($"multi-create-spot|node={nodeRid}|spot={created.Spot.SpotId}|state={created.State}");
         return new MultiNodeCreateSpotRes(
-            created.SpotRid.ToString(),
+            created.Spot.SpotId,
             nodeRid,
             created.State.ToString(),
             0);

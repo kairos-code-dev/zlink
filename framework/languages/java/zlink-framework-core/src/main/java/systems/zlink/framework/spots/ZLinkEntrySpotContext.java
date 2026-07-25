@@ -8,6 +8,8 @@ import systems.zlink.framework.actors.ZLinkActor;
 public interface ZLinkEntrySpotContext {
     String spotId();
 
+    long objectGeneration();
+
     RoutingId nodeRid();
 
     default ZLinkSpotHandlerRegistry handlers() {

@@ -431,7 +431,10 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
             ? ZLinkSpotKind.Instance
             : ZLinkSpotKind.User,
           stableType: decoded.stableType,
-          targetSpotGeneration: current.objectGeneration
+          targetSpotGeneration: current.objectGeneration,
+          targetNodeGeneration: current.allocation.descriptorLifecycleGeneration,
+          authorityOwnerGeneration: current.authorityOwnerGeneration,
+          authorityStoreVersion: current.storeVersion.value
         };
       }
     }

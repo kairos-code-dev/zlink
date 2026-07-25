@@ -644,6 +644,12 @@ public sealed class RedisAuthorityRelocationTests(
                     PlacementWeight = 100
                 },
                 ZLinkLocationWriteIntent.Renew)).Status);
+        var admitted = Assert.IsType<ZLinkRelocationCapacityReserveResult.Reserved>(
+            await store.ReserveRelocationCapacityAsync(
+                relocation with { ReservationId = Guid.NewGuid() }));
+        Assert.Equal(
+            ZLinkRelocationCapacityAbortResult.Aborted,
+            await store.AbortRelocationCapacityAsync(admitted.Fence));
         var occupying = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
                 Request(

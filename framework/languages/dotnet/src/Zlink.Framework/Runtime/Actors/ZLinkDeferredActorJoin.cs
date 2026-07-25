@@ -141,6 +141,7 @@ internal sealed class ZLinkDeferredActorJoin(
         try
         {
             using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+            using var dispatch = actorState.EnterDeferredJoinExecution();
             var remaining = timeout - Stopwatch.GetElapsedTime(_registeredTimestamp);
             if (remaining <= TimeSpan.Zero)
             {

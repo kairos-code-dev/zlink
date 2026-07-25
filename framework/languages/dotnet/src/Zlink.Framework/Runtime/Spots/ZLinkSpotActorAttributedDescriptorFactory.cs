@@ -139,9 +139,7 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             ZLinkHandlerMethodShape.RequireParameterCount(handlerType, method, 5, "SPOT actor packet handler");
         var spotType = parameters[0].ParameterType;
         var actorType = parameters[1].ParameterType;
-        var expectedContextType = request is null
-            ? typeof(ZLinkSpotActorSendContext)
-            : typeof(ZLinkSpotActorRequestContext);
+        var expectedContextType = typeof(IZLinkMessageContext);
         if (parameters[2].ParameterType != expectedContextType)
             throw new InvalidOperationException(
                 $"SPOT actor packet handler '{handlerType}' method '{method.Name}' must use {expectedContextType.Name} as the third parameter.");

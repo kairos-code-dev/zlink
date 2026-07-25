@@ -5,12 +5,9 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.ZLinkHandlerContext;
-import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.ZLinkMessageContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 
 record ParsedPacket(String packetName, Message payload) {
 }
@@ -21,7 +18,7 @@ final class PayloadDecodeDispatchException extends RuntimeException {
     }
 }
 
-abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
+abstract class ChannelHandlerContextBase implements ZLinkMessageContext {
     private final String channelName;
     private final String packetName;
     private final String contentType;
@@ -46,13 +43,18 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
     }
 
     @Override
+    public final Optional<String> meshName() {
+        return Optional.empty();
+    }
+
+    @Override
     public final Optional<String> channelName() {
         return presentText(channelName);
     }
 
     @Override
-    public final Optional<String> packetName() {
-        return presentText(packetName);
+    public final String packetName() {
+        return packetName;
     }
 
     @Override
@@ -65,6 +67,11 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
         return metadata;
     }
 
+    @Override
+    public final Optional<String> correlationId() {
+        return Optional.empty();
+    }
+
     private static Optional<String> presentText(String value) {
         return Optional.ofNullable(value).filter(text -> !text.isBlank());
     }
@@ -72,7 +79,7 @@ abstract class ChannelHandlerContextBase implements ZLinkHandlerContext {
 
 final class DefaultRequestContext
     extends ChannelHandlerContextBase
-    implements ZLinkRequestContext {
+    implements ZLinkMessageContext {
     DefaultRequestContext(String channelName, String packetName, String contentType) {
         super(channelName, packetName, contentType);
     }
@@ -88,7 +95,7 @@ final class DefaultRequestContext
 
 final class DefaultSendContext
     extends ChannelHandlerContextBase
-    implements ZLinkSendContext {
+    implements ZLinkMessageContext {
     DefaultSendContext(String channelName, String packetName, String contentType) {
         super(channelName, packetName, contentType);
     }
@@ -104,7 +111,7 @@ final class DefaultSendContext
 
 final class DefaultPublishContext
     extends ChannelHandlerContextBase
-    implements ZLinkPublishContext {
+    implements ZLinkPublishMessageContext {
     private final String topic;
 
     DefaultPublishContext(
@@ -162,11 +169,15 @@ abstract class RouteHandlerContextBase extends ChannelHandlerContextBase {
     public final RoutingId routingId() {
         return routingId;
     }
+
+    public final RoutingId sourceNodeRid() {
+        return routingId;
+    }
 }
 
 final class DefaultRouteRequestContext
     extends RouteHandlerContextBase
-    implements ZLinkRouteRequestContext {
+    implements ZLinkRouteMessageContext {
     DefaultRouteRequestContext(
         String channelName,
         String packetName,
@@ -187,7 +198,7 @@ final class DefaultRouteRequestContext
 
 final class DefaultRouteSendContext
     extends RouteHandlerContextBase
-    implements ZLinkRouteSendContext {
+    implements ZLinkRouteMessageContext {
     DefaultRouteSendContext(
         String channelName,
         String packetName,

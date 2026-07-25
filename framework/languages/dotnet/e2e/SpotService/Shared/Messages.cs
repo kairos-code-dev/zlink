@@ -96,6 +96,10 @@ public sealed record SpotBackpressurePublishReq(
     bool Blocking = false,
     int StartSequence = 1);
 
+public sealed record SpotBackpressureSubmitRes(
+    int Sequence,
+    long ElapsedMilliseconds);
+
 public sealed record SpotBackpressureAttemptRes(
     int Sequence,
     string Status,

@@ -31,6 +31,11 @@ struct pending_actor_admission_t
     spot_id_t source_spot_id;
     spot_id_t target_spot_id;
     std::chrono::steady_clock::time_point deadline;
+    std::uint64_t completion_operation_id_high = 0;
+    std::uint64_t completion_operation_id_low = 0;
+    std::optional<message_t> completion_reply;
+    std::string completion_root_reference;
+    std::uint32_t completion_root_checksum = 0;
 };
 
 struct expired_actor_admission_t
@@ -106,6 +111,8 @@ class actor_transfer_coordinator_t
     evict_expired_forwarding (std::chrono::steady_clock::time_point now);
 
     bool try_add_admission (std::string transfer_id, pending_actor_admission_t admission);
+    std::optional<pending_actor_admission_t> admission (
+      const std::string &transfer_id) const;
     std::optional<pending_actor_admission_t> begin_commit (const std::string &transfer_id,
                                                            const actor_ref_t &source_actor,
                                                            const spot_id_t &target_spot_id);
@@ -113,6 +120,10 @@ class actor_transfer_coordinator_t
       const std::string &transfer_id,
       const actor_ref_t &source_actor,
       const spot_id_t &target_spot_id) const;
+    bool update_completion_root (
+      const std::string &transfer_id,
+      std::string reference,
+      std::uint32_t checksum);
     void fail_commit (const std::string &transfer_id, bool reconcile);
     void complete_commit (const std::string &transfer_id);
     std::vector<expired_actor_admission_t>

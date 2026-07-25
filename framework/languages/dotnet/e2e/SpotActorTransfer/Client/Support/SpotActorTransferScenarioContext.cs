@@ -30,19 +30,33 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             (Node: NodeB, Peers: new[] { "actor-a", "actor-c", "session-a", "session-b" }),
             (Node: NodeC, Peers: new[] { "actor-a", "actor-b", "session-a", "session-b" })
         };
+        var expectedSpotTypes = new[]
+        {
+            SpotActorTransferNames.UserSpotType("actor-a"),
+            SpotActorTransferNames.UserSpotType("actor-b"),
+            SpotActorTransferNames.UserSpotType("actor-c")
+        };
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        var observed = new List<string>();
         do
         {
             var ready = true;
+            observed.Clear();
             foreach (var (node, peers) in expected)
             {
                 var snapshot = (await node.Get("/mesh/ready").Async<MeshReadyRes>()).Body;
+                observed.Add(
+                    $"{snapshot.NodeRid}:peers={string.Join(',', snapshot.ReadyPeerRids)}"
+                    + $";spots={string.Join(',', snapshot.ReadySpotTypes)}");
                 if (peers.Any(peer => !snapshot.ReadyPeerRids.Contains(
                         peer,
-                        StringComparer.Ordinal)))
+                        StringComparer.Ordinal))
+                    || expectedSpotTypes.Any(spotType =>
+                        !snapshot.ReadySpotTypes.Contains(
+                            spotType,
+                            StringComparer.Ordinal)))
                 {
                     ready = false;
-                    break;
                 }
             }
 
@@ -50,7 +64,9 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             await Task.Delay(100);
         } while (DateTimeOffset.UtcNow < deadline);
 
-        throw new TimeoutException("SpotActorTransfer RouteMesh peers did not become ready.");
+        throw new TimeoutException(
+            "SpotActorTransfer RouteMesh peers did not become ready: "
+            + string.Join(" | ", observed));
     }
 
     public void Dispose()
@@ -65,7 +81,16 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         string spotRid,
         string mode = "accept")
     {
-        return (await client.Post("/spots").Body(new CreateSpotReq(spotRid, mode))
+        var (targetNodeRid, coordinator) = ReferenceEquals(client, NodeA)
+            ? ("actor-a", NodeB)
+            : ReferenceEquals(client, NodeB)
+                ? ("actor-b", NodeA)
+                : ReferenceEquals(client, NodeC)
+                    ? ("actor-c", NodeA)
+                    : throw new InvalidOperationException(
+                        "Spot target must be one of the scenario Actor nodes.");
+        return (await coordinator.Post("/spots")
+                   .Body(new CreateSpotReq(spotRid, mode, targetNodeRid))
                    .Async<CreateSpotRes>()).Body
                ?? throw new InvalidOperationException("Create spot response was null.");
     }
@@ -128,6 +153,15 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     {
         return (await client.Get($"/actors/{actorId}/ref").Async<ActorRefSnapshotRes>()).Body
                ?? throw new InvalidOperationException("Actor ref response was null.");
+    }
+
+    public async Task<ActorDestroyRes> DestroyActorAsync(
+        ZLinkHttpClient client,
+        string actorId)
+    {
+        return (await client.Post($"/actors/{actorId}/destroy")
+                   .Async<ActorDestroyRes>()).Body
+               ?? throw new InvalidOperationException("Actor destroy response was null.");
     }
 
     public async Task<ActorRefSnapshotRes> GetActorRefWithEvidenceAsync(
@@ -296,6 +330,31 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ZlinkStreamAssert.Ensure(bound.ActorId == actor.ActorId, $"{scenario} session bind actor mismatch.");
         return stream;
     }
+
+    public static async Task<BindActorSessionRes> BindAsync(
+        IZlinkStreamConnector stream,
+        string scenario,
+        ActorRefSnapshotRes actor)
+    {
+        var bound = await stream.Request(new BindActorSessionReq(
+                scenario,
+                actor.ActorId,
+                actor.NodeRid,
+                actor.Generation))
+            .Async<BindActorSessionRes>();
+        ZlinkStreamAssert.Ensure(
+            bound.ActorId == actor.ActorId
+            && bound.NodeRid == actor.NodeRid
+            && bound.Generation == actor.Generation,
+            $"{scenario} explicit session bind did not preserve the requested ActorRef.");
+        return bound;
+    }
+
+    public static async Task<SessionBindingsRes> GetSessionBindingsAsync(
+        IZlinkStreamConnector stream,
+        string scenario) =>
+        await stream.Request(new SessionBindingsReq(scenario))
+            .Async<SessionBindingsRes>();
 
     public async Task<IReadOnlyList<ActorEvidence>> WaitEvidenceAsync(
         ZLinkHttpClient client,

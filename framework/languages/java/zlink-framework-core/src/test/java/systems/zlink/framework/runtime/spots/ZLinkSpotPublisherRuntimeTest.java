@@ -69,7 +69,7 @@ final class ZLinkSpotPublisherRuntimeTest {
     }
 
     @Test
-    void noSubscriberAfterStartCompletesNormally() {
+    void noSubscriberAfterStartCompletesNormally() throws Exception {
         AtomicInteger coreCalls = new AtomicInteger();
         ZLinkSpotPublisherRuntime runtime = runtime(() -> {
             coreCalls.incrementAndGet();
@@ -79,6 +79,7 @@ final class ZLinkSpotPublisherRuntimeTest {
             ZLinkOneWayPublishAdmission result = submit(runtime, "missing").join();
 
             assertEquals(0, result.status());
+            assertTrue(awaitCount(coreCalls, 1));
             assertEquals(1, coreCalls.get());
         }
     }

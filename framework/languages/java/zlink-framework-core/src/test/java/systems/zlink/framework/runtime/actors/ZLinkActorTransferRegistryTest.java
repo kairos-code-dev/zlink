@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -126,6 +127,37 @@ final class ZLinkActorTransferRegistryTest {
         }
     }
 
-    record TestActor(String actorId, ZLinkActorContext context, String state) implements ZLinkActor {
+    record TestActor(String actorId, ZLinkActorContext suppliedContext, String state)
+        implements ZLinkActor {
+        @Override
+        public ZLinkActorContext context() {
+            return suppliedContext == null ? contextFor(actorId) : suppliedContext;
+        }
+    }
+
+    private static ZLinkActorContext contextFor(String actorId) {
+        return new ZLinkActorContext() {
+            @Override public String actorId() { return actorId; }
+            @Override public long objectGeneration() { return 1L; }
+            @Override public String meshName() { return "test"; }
+            @Override public java.util.Optional<String> spotId() {
+                return java.util.Optional.empty();
+            }
+            @Override public systems.zlink.framework.actors.ZLinkBoundSession boundSession() {
+                return null;
+            }
+            @Override public ZLinkActorJoinCall joinSpot(String spotId) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public ZLinkActorJoinCall joinSpot(String spotId, Object request) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public ZLinkActorJoinCall joinEntrySpot() {
+                throw new UnsupportedOperationException();
+            }
+            @Override public ZLinkActorJoinCall joinEntrySpot(Object request) {
+                throw new UnsupportedOperationException();
+            }
+        };
     }
 }

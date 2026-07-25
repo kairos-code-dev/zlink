@@ -44,16 +44,24 @@ class ActorJoinRegistrationScope {
     this.totalBytes += intent.requestBytes;
   }
 
-  async activate(): Promise<void> {
+  activateAfterHandlerTerminal(): void {
     this.open = false;
-    for (const intent of this.intents) {
-      await intent.execute();
-    }
+    setImmediate(() => {
+      // The handler reply is already terminal, so a deferred callback failure
+      // cannot replace that reply with a second request outcome.
+      void this.execute().catch(() => undefined);
+    });
   }
 
   discard(): void {
     this.open = false;
     for (const intent of this.intents) intent.discard();
+  }
+
+  private async execute(): Promise<void> {
+    for (const intent of this.intents) {
+      await intent.execute();
+    }
   }
 }
 
@@ -76,7 +84,7 @@ export async function runActorHandlerWithDeferredJoins<T>(
   const scope = new ActorJoinRegistrationScope();
   try {
     const result = await actorJoinScope.run(scope, async () => handler());
-    await scope.activate();
+    scope.activateAfterHandlerTerminal();
     return result;
   } catch (error) {
     scope.discard();

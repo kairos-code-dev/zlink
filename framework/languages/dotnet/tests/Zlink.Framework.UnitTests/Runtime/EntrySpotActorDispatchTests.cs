@@ -3857,6 +3857,25 @@ public sealed partial class EntrySpotActorDispatchTests
             return spot;
         }
 
+        public IZLinkBackendSpot GetOrCreateReservedSpot(
+            string targetSpotId,
+            ulong objectGeneration,
+            ulong authorityOwnerGeneration,
+            out bool created)
+        {
+            _ = objectGeneration;
+            _ = authorityOwnerGeneration;
+            return GetOrCreateSpot(targetSpotId, out created);
+        }
+
+        public void SetLocalActorAuthority(
+            ZLinkBackendActorRef actor,
+            ulong authorityOwnerGeneration)
+        {
+            _ = actor;
+            _ = authorityOwnerGeneration;
+        }
+
         public ZLinkSpotNodeStatus Status() => new(
             "entry",
             "inproc://entry",

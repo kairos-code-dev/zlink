@@ -112,7 +112,8 @@ class public_authority_store_adapter_t final :
           std::move (relocation_reference),
           checksum_crc32c,
           inventory_digest,
-          target_owner};
+          target_owner,
+          snapshot->payload};
         reference.target.node_id = std::move (target_node_id);
         reference.target.authority_owner_generation =
           source.authority_owner_generation + 1;
@@ -159,7 +160,172 @@ class public_authority_store_adapter_t final :
         return decode_current (result);
     }
 
+    authority_publish_result_t publish_completion (
+      object_kind_t kind,
+      const std::string &key,
+      const std::string &mesh_name,
+      std::uint64_t object_generation,
+      std::string relocation_reference,
+      std::uint32_t checksum_crc32c) override
+    {
+        const auto authority =
+          authority_key (object_ref_t{.kind = kind, .key = key});
+        const auto read =
+          _store->read_authority (authority).result ().value ();
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&read);
+        if (!snapshot
+            || snapshot->object_generation != object_generation)
+            return {authority_publish_status_t::conflict,
+                    decode_current (read)};
+        if (auto current = decode (*snapshot)) {
+            return current->relocation_reference
+                         == relocation_reference
+                       && current->checksum_crc32c
+                            == checksum_crc32c
+                     ? authority_publish_result_t{
+                         authority_publish_status_t::published,
+                         std::move (current)}
+                     : authority_publish_result_t{
+                         authority_publish_status_t::conflict,
+                         std::move (current)};
+        }
+
+        object_ref_t actor{
+          kind,
+          key,
+          snapshot->object_generation,
+          snapshot->authority_owner_generation,
+          mesh_name,
+          snapshot->owner.owner_id};
+        authority_relocation_reference_t reference{
+          actor,
+          actor,
+          std::move (relocation_reference),
+          checksum_crc32c,
+          {},
+          snapshot->owner,
+          snapshot->payload};
+        return store_preserving_authority (
+          authority, *snapshot, std::move (reference));
+    }
+
+    authority_publish_result_t replace_completion (
+      object_kind_t kind,
+      const std::string &key,
+      std::uint64_t object_generation,
+      const std::string &expected_reference,
+      std::uint32_t expected_checksum_crc32c,
+      std::string next_reference,
+      std::uint32_t next_checksum_crc32c) override
+    {
+        const auto authority =
+          authority_key (object_ref_t{.kind = kind, .key = key});
+        const auto read =
+          _store->read_authority (authority).result ().value ();
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&read);
+        auto current =
+          snapshot ? decode (*snapshot) : std::nullopt;
+        if (!snapshot || !current
+            || snapshot->object_generation != object_generation
+            || current->relocation_reference
+                 != expected_reference
+            || current->checksum_crc32c
+                 != expected_checksum_crc32c)
+            return {authority_publish_status_t::conflict,
+                    std::move (current)};
+        current->relocation_reference =
+          std::move (next_reference);
+        current->checksum_crc32c =
+          next_checksum_crc32c;
+        return store_preserving_authority (
+          authority, *snapshot, std::move (*current));
+    }
+
+    bool release_completion (
+      object_kind_t kind,
+      const std::string &key,
+      std::uint64_t object_generation,
+      const std::string &expected_reference,
+      std::uint32_t expected_checksum_crc32c) override
+    {
+        const auto authority =
+          authority_key (object_ref_t{.kind = kind, .key = key});
+        const auto read =
+          _store->read_authority (authority).result ().value ();
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&read);
+        const auto current =
+          snapshot ? decode (*snapshot) : std::nullopt;
+        if (!snapshot || !current
+            || snapshot->object_generation != object_generation
+            || current->relocation_reference
+                 != expected_reference
+            || current->checksum_crc32c
+                 != expected_checksum_crc32c)
+            return false;
+        const auto exchanged =
+          _store
+            ->compare_exchange_authority (
+              authority,
+              snapshot->store_version,
+              authority_put_t{
+                current->application_payload,
+                authority_generation_transition_t::preserve,
+                std::nullopt,
+                std::nullopt})
+            .result ()
+            .value ();
+        return std::holds_alternative<authority_stored_t> (
+          exchanged);
+    }
+
   private:
+    authority_publish_result_t store_preserving_authority (
+      const authority_key_t &key,
+      const authority_snapshot_t &snapshot,
+      authority_relocation_reference_t reference)
+    {
+        const auto expected_reference =
+          reference.relocation_reference;
+        const auto expected_checksum =
+          reference.checksum_crc32c;
+        const auto exchanged =
+          _store
+            ->compare_exchange_authority (
+              key,
+              snapshot.store_version,
+              authority_put_t{
+                encode (reference),
+                authority_generation_transition_t::preserve,
+                std::nullopt,
+                std::nullopt})
+            .result ()
+            .value ();
+        if (const auto *stored =
+              std::get_if<authority_stored_t> (&exchanged)) {
+            auto current = decode (stored->snapshot);
+            return current
+                       && current->relocation_reference
+                            == expected_reference
+                       && current->checksum_crc32c
+                            == expected_checksum
+                     ? authority_publish_result_t{
+                         authority_publish_status_t::published,
+                         std::move (current)}
+                     : authority_publish_result_t{
+                         authority_publish_status_t::failed,
+                         std::move (current)};
+        }
+        if (const auto *conflict =
+              std::get_if<authority_conflict_t> (&exchanged))
+            return {authority_publish_status_t::conflict,
+                    decode_current (conflict->current)};
+        return {authority_publish_status_t::failed,
+                std::nullopt};
+    }
+
     static bool same_owner (
       const location_owner_token_t &left,
       const location_owner_token_t &right) noexcept
@@ -212,7 +378,7 @@ class public_authority_store_adapter_t final :
       const authority_relocation_reference_t &reference)
     {
         std::vector<std::byte> output;
-        for (const auto value : std::string_view ("ZLRA1"))
+        for (const auto value : std::string_view ("ZLRA2"))
             output.push_back (
               static_cast<std::byte> (
                 static_cast<unsigned char> (value)));
@@ -230,6 +396,14 @@ class public_authority_store_adapter_t final :
         append_u32 (output, reference.checksum_crc32c);
         for (const auto value : reference.inventory_digest)
             output.push_back (static_cast<std::byte> (value));
+        append_u32 (
+          output,
+          static_cast<std::uint32_t> (
+            reference.application_payload.size ()));
+        output.insert (
+          output.end (),
+          reference.application_payload.begin (),
+          reference.application_payload.end ());
         return output;
     }
 
@@ -244,7 +418,7 @@ class public_authority_store_adapter_t final :
 
         bool consume_magic ()
         {
-            constexpr std::string_view magic = "ZLRA1";
+            constexpr std::string_view magic = "ZLRA2";
             if (_input.size () < magic.size ())
                 return false;
             for (const auto value : magic) {
@@ -341,6 +515,21 @@ class public_authority_store_adapter_t final :
                 return std::nullopt;
             value = *next;
         }
+        const auto application_payload_size = reader.u32 ();
+        if (!application_payload_size)
+            return std::nullopt;
+        std::vector<std::byte> application_payload;
+        application_payload.reserve (
+          *application_payload_size);
+        for (std::uint32_t index = 0;
+             index != *application_payload_size;
+             ++index) {
+            const auto next = reader.byte ();
+            if (!next)
+                return std::nullopt;
+            application_payload.push_back (
+              static_cast<std::byte> (*next));
+        }
         if (!reader.done ())
             return std::nullopt;
         const auto object_kind =
@@ -366,7 +555,8 @@ class public_authority_store_adapter_t final :
           std::move (*relocation_reference),
           *checksum,
           digest,
-          snapshot.owner};
+          snapshot.owner,
+          std::move (application_payload)};
     }
 
     static std::optional<authority_relocation_reference_t>

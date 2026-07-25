@@ -314,7 +314,7 @@ await spots.GetOrCreateAsync<OrderWorkflowSpot>(
     RoutingId.From(request.OrderId), new OrderSpotCreate(request.OrderId), ct);
 
 // actor handler 안 — 재접속해도 같은 actor로 이어진 client에 push(sticky LB 없음).
-await actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).SubmitAsync(ct);
+await actor.Context.BoundSession.Send(new OrderStatusChanged(orderId, status)).Async(ct);
 ```
 
 실행되는 근거 샘플: [SupportChat](../../common/sample/supportchat/README.ko.md) ·
@@ -514,7 +514,7 @@ public sealed class GetPriceHandler
     : IZLinkRequestHandler<PriceRequest, PriceReply>
 {
     public ValueTask<PriceReply> HandleAsync(
-        PriceRequest request, ZLinkRequestContext context, CancellationToken ct)
+        PriceRequest request, IZLinkMessageContext context, CancellationToken ct)
         => ValueTask.FromResult(new PriceReply(request.Symbol, 187.42m));   // 187.42m은 데모용 고정값(실제론 조회 결과)
 }
 
@@ -777,7 +777,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 
 - **framework adapter가 노출하는 모든 public 타입**(interface, record, enum,
   attribute, exception, DI 확장 메서드)은 `ZLink` prefix(대문자 `L`)를 쓴다. 예:
-  `IZLinkRouteClient`, `ZLinkRequestContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
+  `IZLinkRouteClient`, `IZLinkMessageContext`, `[ZLinkRequest]`, `AddZLinkFramework`,
   `ZLinkFrameworkException`.
 - **단, client 측 Stream Connector 패키지**(`Systems.Zlink.Stream.Connector`)의
   타입은 `Zlink` prefix(소문자 `l`)를 쓴다. 예: `IZlinkStreamConnector`,
@@ -794,7 +794,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 
 이 가이드가 설명하는 public API는 [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)의 계약
 카탈로그를 따른다. 구현이 진행되는 동안에도 인터페이스의 모양과 동사(`RequestToChannel`,
-`SubmitAsync`, `Bind`, `AddRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
+`Async`, `Bind`, `AddRequestHandler` 등)는 spec 문서를 기준으로 확인한다. 세부
 필드까지 정확한 정식 정의가 필요하면 항상 spec 문서를 교차 참조한다.
 
 ## 10. 이 가이드 읽는 순서

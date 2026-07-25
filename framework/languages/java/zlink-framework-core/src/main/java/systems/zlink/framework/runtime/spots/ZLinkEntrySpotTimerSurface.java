@@ -58,6 +58,11 @@ record ZLinkEntrySpotBackedContext(
     }
 
     @Override
+    public long objectGeneration() {
+        return entryContext.objectGeneration();
+    }
+
+    @Override
     public RoutingId nodeRid() {
         return entryContext.nodeRid();
     }

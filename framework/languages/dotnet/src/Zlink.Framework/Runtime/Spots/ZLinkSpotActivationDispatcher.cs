@@ -267,7 +267,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 runtime.Registration.Codecs,
                 _dispatchErrors,
                 _logger,
-                static (_, _, _) => ValueTask.CompletedTask,
+                static (_, _, _, _) => ValueTask.CompletedTask,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -317,11 +317,16 @@ internal sealed class ZLinkSpotActivationDispatcher
     private async ValueTask InvokeSubscriptionAsync(
         ZLinkSpotSubscriptionDescriptor descriptor,
         object? message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         try
         {
-            await handlerInvoker().InvokeSubscriptionAsync(descriptor, message, cancellationToken)
+            await handlerInvoker().InvokeSubscriptionAsync(
+                    descriptor,
+                    message,
+                    context,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

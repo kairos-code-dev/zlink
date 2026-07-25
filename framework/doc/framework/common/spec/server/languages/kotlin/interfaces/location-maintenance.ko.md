@@ -499,7 +499,7 @@ source node RID raw bytes, source lifecycle generation과 128-bit operation ID�
 route가 없으며 runtime은 현재 요청의 framing을 새로 만든다. Terminal은 원래 요청 deadline에서 최소 5분 유지한다.
 
 Java `ZLinkAuthoritySnapshot.pendingCreation()`은 Pending allocation에서 반드시 non-empty이고 Active에서는
-empty다. 값은 provider-issued reservation ID와 Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) 생성 요청의 immutable content
+empty다. 값은 provider-issued reservation ID와 Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) 생성 요청의 immutable content
 reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 반환한다. Target-owned Instance Spot의 cold
 activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager
 create content에는 이 envelope를 사용하지 않는다. Kotlin provider와 runtime은 별도 process-local reservation

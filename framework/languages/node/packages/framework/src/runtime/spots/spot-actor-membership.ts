@@ -16,7 +16,11 @@ import {
   ZLinkConfigurationException
 } from '../configuration';
 import { ZLinkDispatchErrorReporter } from '../channels';
-import { createActorMembership, ZLinkSpotActorDispatcher } from '../actors';
+import {
+  createActorMembership,
+  ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME,
+  ZLinkSpotActorDispatcher
+} from '../actors';
 import {
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
@@ -113,22 +117,22 @@ export class ZLinkSpotActorMembership {
     const remoteEntry = localEntryNodeRid !== undefined && !routingIdsEqual(entryNodeRid, localEntryNodeRid);
     if (!remoteEntry) {
       await activation.serial.execute(async () => {
-        activation.beginActorTransfer(actor.actorId);
+        activation.beginActorTransfer(actor.context.actorId);
         await activation.spot.onLeaveActor(createActorMembership(actor));
-        activation.commitActorDeparture(actor.actorId);
+        activation.commitActorDeparture(actor.context.actorId);
         this.options.actorTransferRuntime?.clearRoutedActor(actor);
       });
     }
     const request = BindingMessage.from(Buffer.alloc(0));
     try {
       const context = actor.context as typeof actor.context & {
-        joinEntrySpotForRuntime(
+        [ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME](
           nodeRid: RoutingId | undefined,
           request: unknown,
           signal?: AbortSignal
         ): Promise<boolean>;
       };
-      await context.joinEntrySpotForRuntime(
+      await context[ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME](
         entryNodeRid,
         ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data())),
         signal
@@ -146,9 +150,9 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotId);
     await activation.serial.execute(async () => {
-      activation.beginActorTransfer(actor.actorId);
+      activation.beginActorTransfer(actor.context.actorId);
       await activation.spot.onLeaveActor(createActorMembership(actor));
-      activation.commitActorDeparture(actor.actorId);
+      activation.commitActorDeparture(actor.context.actorId);
     });
   }
 
@@ -176,7 +180,7 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotId);
     await activation.serial.execute(async () => {
-      activation.cancelActorTransfer(actor.actorId);
+      activation.cancelActorTransfer(actor.context.actorId);
       await activation.spot.onJoinedActor(createActorMembership(actor));
     });
   }
@@ -205,7 +209,7 @@ export class ZLinkSpotActorMembership {
     if (activation === undefined) {
       return false;
     }
-    const joinedActor = activation.resolveJoinedActor(actor.actorId);
+    const joinedActor = activation.resolveJoinedActor(actor.context.actorId);
     if (joinedActor === undefined) {
       return false;
     }

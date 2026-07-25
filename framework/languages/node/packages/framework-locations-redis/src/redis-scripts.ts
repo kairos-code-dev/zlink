@@ -4,6 +4,22 @@ local time = redis.call('TIME')
 local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 `;
 
+export const PUT_RELOCATION_SCRIPT = PROLOGUE + `
+local stored = redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2], 'NX')
+if not stored then
+    return { 0, 0 }
+end
+return { 1, nowMs }
+`;
+
+export const RENEW_RELOCATION_SCRIPT = PROLOGUE + `
+local renewed = redis.call('PEXPIRE', KEYS[1], ARGV[1])
+if renewed ~= 1 then
+    return { 0, 0 }
+end
+return { 1, nowMs }
+`;
+
 export const WRITE_SCRIPT = PROLOGUE + `
 local intent = ARGV[1]
 local owner = ARGV[2]

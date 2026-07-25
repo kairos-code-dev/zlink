@@ -80,14 +80,15 @@ internal sealed class ZLinkChannelPublishDispatchPipeline(
                 decodedMessages.Add(endpoint.MessageType, message);
             }
 
-            var context = new ZLinkPublishContext(
+            var context = new ZLinkPublishMessageContext(
                 meshName,
                 scope.ChannelName,
                 scope.PacketName!,
                 scope.ContentType,
+                metadata: null,
+                header.CorrelationId,
                 topicMessage.Topic,
-                header.Source,
-                cancellationToken);
+                header.Source);
             try
             {
                 await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)

@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.ZLinkHandlerContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -15,11 +15,7 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
-import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkSendContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 
 final class ZLinkSpotHandlerInvoker {
     private final ZLinkMessageSerializer serializer;
@@ -43,7 +39,7 @@ final class ZLinkSpotHandlerInvoker {
         Map<String, String> metadata,
         String failureMessage) {
         Object message = deserialize(payload, registration.messageType());
-        ZLinkSpotActorSendContext context =
+        ZLinkMessageContext context =
             new ZLinkSpotActorSendHandlerContext(registration.packetName(), metadata);
         if (registration.handlerMethod() == null) {
             return invokeActorSendInterface(
@@ -74,7 +70,7 @@ final class ZLinkSpotHandlerInvoker {
         Map<String, String> metadata,
         String failureMessage) {
         Object message = deserialize(payload, registration.messageType());
-        ZLinkSpotActorRequestContext context =
+        ZLinkMessageContext context =
             new ZLinkSpotActorRequestHandlerContext(registration.packetName(), metadata);
         CompletionStage<Object> reply = registration.handlerMethod() == null
             ? invokeActorRequestInterface(
@@ -113,7 +109,7 @@ final class ZLinkSpotHandlerInvoker {
         Message payload,
         Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
-        ZLinkSendContext context = new ZLinkSpotSendHandlerContext(
+        ZLinkMessageContext context = new ZLinkSpotSendHandlerContext(
             registration.packetName(), null, metadata);
         try {
             Object handler = handlerFactory.create(registration.handlerType());
@@ -153,7 +149,7 @@ final class ZLinkSpotHandlerInvoker {
         Message payload,
         Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
-        ZLinkRequestContext context = new ZLinkSpotRequestHandlerContext(
+        ZLinkMessageContext context = new ZLinkSpotRequestHandlerContext(
             registration.packetName(), null, metadata);
         try {
             Object handler = handlerFactory.create(registration.handlerType());
@@ -204,7 +200,7 @@ final class ZLinkSpotHandlerInvoker {
         Message payload,
         Map<String, String> metadata) {
         Object message = deserialize(payload, registration.messageType());
-        ZLinkPublishContext context = new ZLinkSpotPublishHandlerContext(
+        ZLinkPublishMessageContext context = new ZLinkSpotPublishHandlerContext(
             channelName,
             registration.packetName(),
             topic,
@@ -238,7 +234,7 @@ final class ZLinkSpotHandlerInvoker {
         Method method,
         Object spot,
         ZLinkActor actor,
-        ZLinkHandlerContext context,
+        ZLinkMessageContext context,
         Object message) {
         Class<?>[] parameterTypes = ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 2) {
@@ -251,7 +247,7 @@ final class ZLinkSpotHandlerInvoker {
         Method method,
         Object spot,
         Object message,
-        ZLinkHandlerContext context) {
+        ZLinkMessageContext context) {
         Class<?>[] parameterTypes =
             ZLinkHandlerMethodInvoker.logicalParameterTypes(method);
         if (parameterTypes.length == 2) {
@@ -303,7 +299,7 @@ final class ZLinkSpotHandlerInvoker {
         SpotActorPacketHandlerRegistration registration,
         Object spotSurface,
         ZLinkActor actor,
-        ZLinkSpotActorSendContext context,
+        ZLinkMessageContext context,
         Object message,
         String failureMessage) {
         try {
@@ -327,7 +323,7 @@ final class ZLinkSpotHandlerInvoker {
         SpotActorPacketHandlerRegistration registration,
         Object spotSurface,
         ZLinkActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Object message,
         String failureMessage) {
         try {

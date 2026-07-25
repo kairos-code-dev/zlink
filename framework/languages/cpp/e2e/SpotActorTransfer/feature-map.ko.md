@@ -24,7 +24,7 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-D1 | `implemented` | local·remote location은 joined 완료 전 기존 ref를 유지하고 완료 뒤 committed ref로 바뀌며, local 지연 중 packet이 target handler에 먼저 도달하지 않고 commit 뒤 target에서 처리되는지 검사한다. |
 | ST-D2 | `implemented` | commit 뒤 source cleanup queue가 stale owner release를 실행하기 전후에 target packet과 generation snapshot이 유지되는지 검사한다. |
 | ST-E1 | `implemented` | transfer 전후 같은 connector의 bound push 수신을 검사한다. |
-| ST-E1A | `runtime contract implemented` | `test_cpp_framework_actor_gateway`가 same-generation route update만 허용하고 새 incarnation은 explicit bind해야 함을 검증한다. Process 간 relocation E2E는 아직 필요하다. 현재 E2E host는 이전 `SpotRid`·Actor Join async-result 표면을 사용하므로, public Actor·Spot handler의 deferred Join과 `OnJoinCompleted` evidence로 먼저 전환해야 한다. |
+| ST-E1A | `runtime partial; E2E blocked` | Public `actor_t`·`actor_factory_t<TActor>`·`actor_join_completion_t`와 source-generated operation ID를 사용하는 User Spot remote callback 경로는 구현했다. Target은 location commit 뒤 callback을 실행하고 성공 전에는 backlog를 열지 않으며, 실패한 callback은 같은 operation ID로 재시도하고 성공한 operation은 중복 실행하지 않는다. Relocation Store root에 reply와 cursor를 기록하고 target replacement에서 복구하는 경로는 아직 없다. |
 | ST-E2 | `implemented` | transfer-out adapter 실패로 commit 전 transfer를 거절하고, source의 기존 bound session이 follow-up notify를 받으며 target에는 `bound_push`·`joined` evidence가 없는지 검사한다. |
 | ST-F1 | `implemented` | source `handoff_backlog`와 target `backlog_enqueued`를 같은 transfer correlation으로 검사한다. target은 prepare 뒤 받은 전체 backlog를 queue에 넣은 다음 location을 공개하며 P1→P2→P3 처리 순서도 확인한다. |
 | ST-F2 | `implemented` | moving 중 B1/B2를 보내고 target의 `backlog_enqueued`가 `location_committed`보다 앞서는지 검사한다. location 공개 직후 D1을 보내 join caller가 완료를 읽기 전에 B1→B2→D1 순서가 유지되는지도 확인한다. |
@@ -32,6 +32,11 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-F4 | `implemented` | 같은 explicit old ref one-way send로 G1/G2를 보내고, G1의 구조화된 `straggler_forward`와 target 처리 뒤 `mapping_evicted`, G2의 구조화된 `stale_fail_fast`와 target 미처리를 검사한다. |
 | ST-F5 | `implemented` | actor-a→actor-b→actor-a의 다른 Spot으로 연속 이동하고, source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인한다. `mapping_evicted` 뒤 두 old ref가 즉시 실패하는지도 검사한다. |
 | ST-F6 | `implemented` | source와 target의 구조화 evidence에서 같은 request id와 request flag가 보존되는지 비교한다. 같은 request id의 재시도는 backlog와 target handler에 한 번만 남고, 긴 timeout은 원래 caller reply로, 짧은 timeout은 일반 timeout과 late reply로 끝나는지 검사한다. |
+| ST-H1 | `process-local implemented` | `test_cpp_framework_execution`이 handler terminal 뒤 deferred activation과 handler failure 시 폐기를 검증한다. |
+| ST-H2 | `runtime integrated; process E2E blocked` | Admission reply와 prepare·finalize commit envelope가 immutable root reference와 checksum을 전달한다. Target은 materialization 전에 root를 검증하고 process-local admission이 없으면 root 또는 exact Actor authority가 가리키는 최신 cursor로 복구한다. Location commit 뒤 authority에 `Committed` root를 publish하고 callback 성공 뒤 `Delivered` root로 CAS한 다음 backlog를 제출하며, authority reference를 해제한 뒤 root를 정리한다. Wire codec·authority CAS·replacement recovery·callback retry·generation fence focused test와 SpotActorTransfer 세 binary build가 통과했다. `ST-A1` process 실행은 create/join HTTP 500 뒤 cleanup 과정에서 peer가 `errno=113`으로 종료되어 실패했으며, callback outcome을 기다리는 process assertion 전환과 route failure 진단이 남았다. |
+| ST-H3 | `blocked` | Exact Context factory overload는 compile contract로 고정했다. ObjectGeneration을 유지하는 target Context와 source fencing을 process 간 E2E로 검증해야 한다. |
+| ST-H4 | `partial` | `defer()`의 detached·duplicate·64개 제한과 absolute timeout 경로는 source와 focused test에 있다. 모든 허용·거부 문맥과 오류 37..39 parity E2E가 남았다. |
+| ST-H5 | `blocked` | MessageContext와 containing Spot handler signature를 사용하는 E2E host 전환이 남았다. |
 
 ## 실행 범위
 

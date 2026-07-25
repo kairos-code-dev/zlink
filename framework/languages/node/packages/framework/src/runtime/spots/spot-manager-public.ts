@@ -231,15 +231,20 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
       timeoutMs: remainingMs,
       signal,
       generatedIdentity
-    }, async (target, deadlineSignal) => {
+    }, async (target, authority, deadlineSignal) => {
           const selected = selectFactory(this.options.factories, stableType, target.meshName);
           this.options.local.beginUserSpotPublication?.(target.meshName, spotId);
           try {
-            const result = await this.options.local.getOrCreate(
+            const result = await this.options.local.getOrCreateWithAuthority(
               target.meshName,
               selected.registration.implementation as Type<ZLinkSpot>,
               spotId,
               state.request,
+              {
+                stableType,
+                objectGeneration: authority.objectGeneration,
+                authorityOwnerGeneration: authority.authorityOwnerGeneration
+              },
               deadlineSignal
             );
             return {

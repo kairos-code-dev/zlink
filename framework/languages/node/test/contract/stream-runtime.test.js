@@ -1670,6 +1670,20 @@ test('actor state keeps opaque session binding coordinates across packet target 
   assert.equal(state.remoteBoundSessionTarget.sessionRid.toHex(), '00000001');
 });
 
+test('actor state applies a later native binding generation to the transfer target', () => {
+  const state = new framework.ZLinkActorRuntimeState('actor-session-generation');
+  state.setBoundSessionTransferTarget({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotId: 'session-entry'
+  });
+
+  state.setBoundSessionBindingGeneration(17n);
+
+  assert.equal(state.boundSessionBindingGeneration, 17n);
+  assert.equal(state.boundSessionTransferTarget.bindingGeneration, 17n);
+});
+
 test('runtime host actor packet target lets local joined actors use native gateway', () => {
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()

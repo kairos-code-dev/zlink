@@ -50,13 +50,13 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
                 out var message))
             return;
 
-        var context = new ZLinkSendContext(
+        var context = new ZLinkMessageContext(
             meshName,
             channelName,
             scope.PacketName!,
             scope.ContentType,
-            cancellationToken,
-            metadata);
+            metadata,
+            header.CorrelationId);
         try
         {
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)

@@ -116,12 +116,22 @@ export class ZLinkSpotRuntimeOptionsFactory {
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
-      createNativeSpot: (meshName, spotId) => {
+      createNativeSpot: (meshName, spotId, authority) => {
         const node = this.options.spotNodeRuntime()?.meshNode(meshName);
         if (node === undefined) {
           return undefined;
         }
-        const result = node.getOrCreateSpot(BindingRoutingId.from(String(spotId)));
+        const restored = authority === undefined
+          ? undefined
+          : node.restoreUserSpotAuthority?.(
+              String(spotId),
+              authority.stableType,
+              authority.objectGeneration,
+              authority.authorityOwnerGeneration
+            );
+        const result = restored === undefined
+          ? node.getOrCreateSpot(BindingRoutingId.from(String(spotId)))
+          : { spot: restored, created: true };
         return {
           routingId: spotId,
           lifecycleGeneration: result.spot.status().lifecycleGeneration,

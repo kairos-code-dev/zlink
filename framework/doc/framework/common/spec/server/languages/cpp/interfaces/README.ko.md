@@ -11,7 +11,7 @@ Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, 
 | [Common runtime](01-common-runtime.ko.md) | `dispatch`, `errors`, `messaging`, `codecs`와 `workers`의 공통 public type을 정의한다. |
 | [Configuration과 host](02-configuration-host.ko.md) | `configuration`, `http`, host, DI, module과 lifecycle public interface를 정의한다. |
 | [Channel messaging](03-channel-messaging.ko.md) | `channels`와 `handlers`, topology builder, Object role·capacity·weight와 automatic RID 계약을 정의한다. |
-| [Spots](04-spots.ko.md) | Global SpotId·SpotRef, relocation adapter와 callback, Instance Spot cold activation과 [User Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) manager를 정의한다. |
+| [Spots](04-spots.ko.md) | Global SpotId·SpotRef, relocation adapter와 callback, Instance Spot cold activation과 [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) manager를 정의한다. |
 | [Actors](05-actors.ko.md) | Global ActorId·ActorRef, relocation adapter, ID-only messaging, manager create와 exact mutation·bind를 정의한다. |
 | [STREAM session](06-stream-session.ko.md) | `streams`의 packet session과 Actor가 소유한 bound session의 연동 interface를 정의한다. |
 | [Location Store·Redis](07-location-store.ko.md) | Location record, MeshNode descriptor·capacity와 공식 Redis provider를 정의한다. |

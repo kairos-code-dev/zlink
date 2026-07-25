@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <vector>
@@ -124,6 +125,11 @@ struct reply_token_t
 {
     std::weak_ptr<public_host_runtime_t> host;
     std::shared_ptr<mesh::service_mailbox_record_t> request;
+    std::function<bool (const std::vector<zlink::message_t> &)>
+      local_reply;
+    std::function<bool (actor_join_result_t,
+                        const std::vector<zlink::message_t> &)>
+      local_actor_join;
 };
 
 struct receive_record_t
@@ -186,6 +192,7 @@ struct host_options_t
 {
     mesh::raw_mesh_node_options_t mesh;
     std::string entry_spot_name = "entry";
+    std::set<std::string> object_stable_types;
     std::size_t user_spot_operation_capacity = 65'536;
     std::chrono::milliseconds user_spot_operation_replay_retention =
       std::chrono::minutes (5);
@@ -447,6 +454,26 @@ class public_host_runtime_t :
       const stateful::object_ref_t &object,
       std::string actor_type) const;
     operation_id_t next_operation ();
+    zlink::submit_result_t begin_local_actor_join (
+      const actor_ref_t &actor,
+      const std::string &target_spot_id,
+      std::uint64_t target_spot_generation,
+      const std::vector<zlink::message_t> &parts,
+      operation_id_t &operation);
+    bool complete_local_actor_join (
+      operation_id_t operation,
+      std::string actor_type,
+      stateful::membership_token_t membership,
+      actor_join_result_t result,
+      const std::vector<zlink::message_t> &parts);
+    bool enqueue_local_actor_message (
+      const actor_ref_t &target,
+      record_kind_t kind,
+      const std::vector<zlink::message_t> &parts,
+      std::optional<operation_id_t> operation = std::nullopt);
+    bool complete_local_request (
+      operation_id_t operation,
+      const std::vector<zlink::message_t> &parts);
     void complete_operation (operation_id_t operation,
                              operation_kind_t kind,
                              foundation::operation_terminal_t terminal,
@@ -478,6 +505,14 @@ class public_host_runtime_t :
     std::map<std::pair<std::uint64_t, std::uint64_t>,
              std::pair<receive_record_t, std::vector<zlink::message_t>>>
       _completions;
+    struct local_application_dispatch_t
+    {
+        ready_record_t owner;
+        receive_record_t record;
+        std::vector<zlink::message_t> parts;
+    };
+    std::vector<local_application_dispatch_t>
+      _local_application_dispatches;
     std::map<std::string, stateful::object_ref_t> _spots;
     std::map<std::string, std::pair<std::string, stateful::object_ref_t>> _actors;
     std::map<std::string, std::string> _peer_endpoints;

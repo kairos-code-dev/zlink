@@ -42,13 +42,13 @@ import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
-import systems.zlink.framework.channels.ZLinkRouteRequestContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.ZLinkInvocationContext;
+import systems.zlink.framework.ZLinkHandlerInvocation;
 import systems.zlink.framework.ZLinkNext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -1102,11 +1102,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return context;
         }
@@ -1127,11 +1122,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Override
-        public String actorId() {
-            return actorId;
-        }
-
-        @Override
         public ZLinkActorContext context() {
             return context;
         }
@@ -1144,9 +1134,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
     public static final class PlayerActorFactory implements ZLinkActorFactory {
         @Override
         public CompletionStage<ZLinkActor> create(
-            String actorId,
             ZLinkActorContext context) {
-            return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+            return CompletableFuture.completedFuture(
+                new PlayerActor(context.actorId(), context));
         }
     }
 
@@ -1159,12 +1149,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public CompletionStage<ZLinkActor> create(
-            String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new InjectedPlayerActor(
-                actorId,
+                context.actorId(),
                 context,
-                dependency.format(actorId)));
+                dependency.format(context.actorId())));
         }
     }
 
@@ -1288,7 +1277,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<String> handle(
             String request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(dependency.format(request));
         }
     }
@@ -1304,7 +1293,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<ProfileReply> handle(
             FilteredProfileRequest request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(
                 new ProfileReply(dependency.format(request.profileId())));
         }
@@ -1319,7 +1308,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkInvocationContext context,
+            ZLinkHandlerInvocation context,
             ZLinkNext<T> next) {
             return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
@@ -1443,7 +1432,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Override
         public CompletionStage<String> handle(
             SpringRouteRequest request,
-            ZLinkRouteRequestContext context) {
+            ZLinkRouteMessageContext context) {
             return CompletableFuture.completedFuture(dependency.format(request.value()));
         }
     }
@@ -1471,16 +1460,21 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
     }
 
-    private static ZLinkRequestContext requestContext() {
-        return new ZLinkRequestContext() {
+    private static ZLinkMessageContext requestContext() {
+        return new ZLinkMessageContext() {
+            @Override
+            public java.util.Optional<String> meshName() {
+                return java.util.Optional.empty();
+            }
+
             @Override
             public java.util.Optional<String> channelName() {
                 return java.util.Optional.of("profile");
             }
 
             @Override
-            public java.util.Optional<String> packetName() {
-                return java.util.Optional.of("GetProfile");
+            public String packetName() {
+                return "GetProfile";
             }
 
             @Override
@@ -1491,6 +1485,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
             @Override
             public java.util.Map<String, String> metadata() {
                 return java.util.Map.of();
+            }
+
+            @Override
+            public java.util.Optional<String> correlationId() {
+                return java.util.Optional.empty();
             }
         };
     }

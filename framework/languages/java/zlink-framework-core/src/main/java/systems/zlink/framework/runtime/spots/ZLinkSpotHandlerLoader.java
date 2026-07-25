@@ -13,9 +13,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.ZLinkHandlerContext;
-import systems.zlink.framework.channels.ZLinkPublishContext;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
+import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkSpotRequest;
 import systems.zlink.framework.handlers.ZLinkSpotSubscription;
@@ -267,7 +266,7 @@ final class ZLinkSpotHandlerLoader {
                 handlerType,
                 method,
                 parameters,
-                ZLinkRequestContext.class,
+                ZLinkMessageContext.class,
                 "SPOT request handler method must have spot and request parameters: ");
             requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
             return new SpotPacketHandlerRegistration(
@@ -318,7 +317,7 @@ final class ZLinkSpotHandlerLoader {
                 handlerType,
                 method,
                 parameters,
-                ZLinkPublishContext.class,
+                ZLinkPublishMessageContext.class,
                 "SPOT subscription handler method must have spot and event parameters: ");
             requireExactSpotType(handlerType, expectedSpotType, parameters[0]);
             return new SpotSubscriptionHandlerRegistration(
@@ -339,7 +338,7 @@ final class ZLinkSpotHandlerLoader {
         Class<?> handlerType,
         Method method,
         Class<?>[] parameters,
-        Class<? extends ZLinkHandlerContext> contextType,
+        Class<?> contextType,
         String failurePrefix) {
         if (parameters.length == 2) {
             return;

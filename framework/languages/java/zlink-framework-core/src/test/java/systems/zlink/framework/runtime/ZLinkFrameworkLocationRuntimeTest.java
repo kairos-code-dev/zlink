@@ -423,6 +423,9 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
             LocationActor actor = LocationActorFactory.last.get();
+            assertEquals("player-join", actor.context().actorId());
+            assertEquals(1L, actor.context().objectGeneration());
+            assertEquals("rooms", actor.context().meshName());
 
             assertThrows(
                 systems.zlink.framework.errors.ZLinkFrameworkException.class,
@@ -539,8 +542,8 @@ class ZLinkFrameworkLocationRuntimeTest {
         static final AtomicReference<LocationActor> last = new AtomicReference<>();
 
         @Override
-        public CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context) {
-            LocationActor actor = new LocationActor(actorId, context);
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
+            LocationActor actor = new LocationActor(context.actorId(), context);
             last.set(actor);
             return CompletableFuture.completedFuture(actor);
         }
@@ -558,12 +561,10 @@ class ZLinkFrameworkLocationRuntimeTest {
         }
 
         @Override
-        public CompletionStage<ZLinkActor> create(
-            String actorId,
-            ZLinkActorContext context) {
+        public CompletionStage<ZLinkActor> create(ZLinkActorContext context) {
             invocations.incrementAndGet();
             return release.thenApply(
-                ignored -> new LocationActor(actorId, context));
+                ignored -> new LocationActor(context.actorId(), context));
         }
     }
 

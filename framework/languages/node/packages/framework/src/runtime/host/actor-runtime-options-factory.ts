@@ -58,6 +58,9 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly createActorLocationResolver: () => ZLinkStoreLocationResolvers | undefined;
   readonly forgetDestroyedActorRef: (actorId: string) => void;
   readonly rememberDestroyedActorRef: (actorId: string, actorRef: ActorRef) => void;
+  readonly publishActorAuthority: NonNullable<
+    ZLinkActorManagerOptions['publishActorAuthority']
+  >;
   readonly reportPostCommitError: (error: unknown) => void;
   readonly reportBoundSessionSendError: (error: unknown) => void;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
@@ -88,6 +91,7 @@ export class ZLinkActorRuntimeOptionsFactory {
     | 'actorRefResolver'
     | 'actorCreatedNotifier'
     | 'actorDestroyedCleanup'
+    | 'publishActorAuthority'
     | 'locationLifecycle'
     | 'boundSessionFactory'
     | 'actorTransferRegistry'
@@ -168,7 +172,7 @@ export class ZLinkActorRuntimeOptionsFactory {
           await this.options.createActorLocationResolver()?.resolveActorRef(actorId, signal)
       },
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {
-        this.options.forgetDestroyedActorRef(actor.actorId);
+        this.options.forgetDestroyedActorRef(actor.context.actorId);
         return this.options.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal);
       },
       actorDestroyedCleanup: (actorId) => {
@@ -177,7 +181,8 @@ export class ZLinkActorRuntimeOptionsFactory {
           this.options.rememberDestroyedActorRef(actorId, actorRef);
         }
         this.options.streamBindingRuntime.unbindActor(actorId);
-      }
+      },
+      publishActorAuthority: this.options.publishActorAuthority
     };
   }
 

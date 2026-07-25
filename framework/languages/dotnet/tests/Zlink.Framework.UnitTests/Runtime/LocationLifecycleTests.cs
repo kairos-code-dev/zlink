@@ -263,6 +263,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-a"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
         Assert.NotNull(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey(spotId)));
@@ -370,6 +371,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-a"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, first);
         var firstRow = await fixture.Store.ResolveSpotAsync(key);
@@ -382,6 +384,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-a"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
 
         Assert.Equal(ZLinkLocationWriteStatus.Stored, takeover);
@@ -415,6 +418,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-a"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, first);
 
@@ -426,6 +430,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-b"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
 
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, conflict);
@@ -529,6 +534,7 @@ public sealed class LocationLifecycleTests
             RoutingId.From("node-a"),
             1,
             ZLinkSpotKind.User,
+            authorityOwnerGeneration: 1,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
 

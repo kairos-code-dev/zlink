@@ -33,8 +33,6 @@ class KotlinDeferredActorJoinCompletionTest {
 
         var received: ZLinkActorJoinCompletion.Accepted? = null
 
-        override fun actorId(): String = "actor-a"
-
         override suspend fun onJoinCompletedSuspending(
             completion: ZLinkActorJoinCompletion,
         ) {

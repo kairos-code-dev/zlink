@@ -93,13 +93,13 @@ public sealed class ClientHeaderSession(
                         "game", // 호출 대상이 참여한 MeshName이다.
                         "play", // 그 mesh 안에서 선택할 ChannelName이다.
                         new ForwardInputCommand(input))
-                    .SubmitAsync(ct);
+                    .Async(ct);
                 break;
 
             case "Ping":
                 var ping = payload.Decode<Ping>();
                 // Client.Reply: 응답 helper. payload 수명을 framework가 관리한다(Client.Send, actor의 BoundSession.Send도 동일).
-                await context.Client.Reply(new Pong(ping.Sequence)).SubmitAsync(ct);
+                await context.Client.Reply(new Pong(ping.Sequence)).Async(ct);
                 break;
         }
     }
@@ -110,7 +110,7 @@ public sealed class ClientHeaderSession(
 
 | 표면 | 용도 |
 |------|------|
-| `Client.Send(msg).SubmitAsync(ct)` / `Client.Reply(msg).SubmitAsync(ct)` | client로 push / 요청에 응답 |
+| `Client.Send(msg).Async(ct)` / `Client.Reply(msg).Async(ct)` | client로 push / 요청에 응답 |
 | `Actors.Bound` / `BindAsync(...)` / `Actors.Find(...)` / `IZLinkSessionActor.RelayAsync(...)` | actor로 relay([07-actor-spot](07-actor-spot.ko.md)) |
 | `CloseAsync()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
@@ -284,7 +284,7 @@ var target = await spots.ResolveAsync("application", RoutingId.From(spotRid), ct
 
 // packet 이름은 command 타입 등록에서 확정된다 — 호출마다 지정하지 않는다.
 await routes.SendToSpot(target, command)
-    .SubmitAsync(ct);
+    .Async(ct);
 ```
 
 - **key는 애플리케이션 규약**이다. framework가 `"spot-rid"` 같은 이름을 강제하지

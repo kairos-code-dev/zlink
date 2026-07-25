@@ -50,10 +50,6 @@ public interface IZLinkSessionActors
     IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
 
     ValueTask<IZLinkSessionActor> BindAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
 

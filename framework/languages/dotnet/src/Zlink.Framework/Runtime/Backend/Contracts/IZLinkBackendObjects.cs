@@ -25,15 +25,29 @@ internal readonly record struct ZLinkBackendActorRef(
 
 internal interface IZLinkBackendAuthorityObserver
 {
+    void SetLocalOwnerLeaseGeneration(ulong ownerLeaseGeneration);
+
     void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
-        ulong authorityOwnerGeneration);
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration);
 
     void ObserveSpotAuthority(
         RoutingId nodeRid,
         string spotId,
         ulong objectGeneration,
-        ulong authorityOwnerGeneration);
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration);
+}
+
+internal interface IZLinkBackendLocalActorAuthorityReader
+{
+    bool TryGetLocalActorAuthority(
+        ZLinkBackendActorRef actor,
+        out ulong authorityOwnerGeneration,
+        out ulong ownerLeaseGeneration);
 }
 
 internal readonly record struct ZLinkBackendActorJoinResult(
@@ -73,6 +87,18 @@ internal readonly record struct ZLinkBackendSpotActorLifecycleEvent(
     ZLinkBackendActorLifecycleEventKind Kind,
     ZLinkBackendSpotActorLifecycleInfo Info);
 
+internal readonly record struct ZLinkBackendActorRouteContext(
+    MeshOperationId OperationId,
+    byte ForwardingHopCount,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
+    ulong ReplyRequestId = 0,
+    uint ReplyFlags = 0)
+{
+    internal bool IsDirectRoute => OperationId != default;
+}
+
 internal sealed record ZLinkBackendActorPart(
     ZLinkBackendActorRef Actor,
     RoutingId SourceNodeRid,
@@ -81,7 +107,8 @@ internal sealed record ZLinkBackendActorPart(
     uint Flags,
     Message Message,
     bool More,
-    ZLinkBackendActorRef? ReplyActor = null);
+    ZLinkBackendActorRef? ReplyActor = null,
+    ZLinkBackendActorRouteContext RouteContext = default);
 
 internal class ZLinkBackendActorJoinRequest(
     ZLinkBackendActorRef sourceActor,

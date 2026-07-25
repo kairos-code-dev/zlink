@@ -1,15 +1,15 @@
-using Microsoft.Extensions.DependencyInjection;
-using Zlink.Framework.Contracts.Messaging;
+﻿using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
-public sealed class ActorTransferTests
+public sealed class ActorRelocationProtocolTests
 {
     [Fact]
-    public async Task Transfer_admission_commit_and_target_continuation_keep_one_root_flow()
+    public async Task Relocation_admission_commit_and_target_continuation_keep_one_root_flow()
     {
         const string flowId = "0196f7c2-4cb4-7cc8-89d4-2d6aee6fca2d";
         var codecs = new ZLinkCodecRegistryBuilder();
@@ -32,9 +32,14 @@ public sealed class ActorTransferTests
                 "handoff-1",
                 DateTimeOffset.UtcNow.AddSeconds(1),
                 "source-spot",
-                RoutingId.From("source-node"),
-                ZLinkMessage.From("admission"),
-                codecs);
+                 RoutingId.From("source-node"),
+                 ZLinkMessage.From("admission"),
+                 codecs,
+                 actorGeneration: 1,
+                 actorAuthorityOwnerGeneration: 1,
+                 predictedPayloadBytes: 1024,
+                 targetSpotGeneration: 1,
+                 targetSpotAuthorityOwnerGeneration: 1);
             commitParts = ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
                 ZLinkClientCallCodec.CreateEnvelope(
                     ZLinkMessageKind.Request,
@@ -50,9 +55,9 @@ public sealed class ActorTransferTests
                 1,
                 null,
                 default,
-                ZLinkMessage.From("state"),
+                ZLinkRemoteActorJoinPackets.SnapshotRelocationContentType,
+                Reference(),
                 ZLinkMessage.From("join"),
-                [],
                 codecs);
         }
 
@@ -65,7 +70,7 @@ public sealed class ActorTransferTests
             "actor-route",
             "target-spot",
             new ZLinkSpotPacketRegistry(),
-            static () => throw new InvalidOperationException("Only internal transfer packets are expected."),
+            static () => throw new InvalidOperationException("Only internal relocation packets are expected."),
             codecs,
             new ZLinkDispatchErrorReporter(options),
             (_, header, _) =>
@@ -109,37 +114,7 @@ public sealed class ActorTransferTests
     }
 
     [Fact]
-    public async Task TransferRegistry_Invokes_CustomAdapter_With_TargetActorContext()
-    {
-        var services = new ServiceCollection()
-            .AddSingleton<TransferActorAdapter>()
-            .BuildServiceProvider();
-        var transfer = ZLinkActorTransferRegistry
-            .CreateRegistration<TransferActor, TransferActorAdapter>();
-        var source = new TransferActor("actor-1", new TestActorContext(), "source-state");
-        var state = await ZLinkActorTransferRegistry.TransferOutAsync(
-            services,
-            transfer,
-            source,
-            CancellationToken.None);
-        var targetContext = new TestActorContext();
-
-        var target = (TransferActor)await ZLinkActorTransferRegistry.TransferInAsync(
-            services,
-            transfer,
-            "actor-1",
-            targetContext,
-            state,
-            CancellationToken.None);
-
-        Assert.Equal("source-state", state.Decode<string>());
-        Assert.Equal("actor-1", target.ActorId);
-        Assert.Equal("source-state", target.State);
-        Assert.Same(targetContext, target.Context);
-    }
-
-    [Fact]
-    public void RemoteJoinPacket_Carries_TransferState_Separately_From_JoinRequest()
+    public void RemoteJoinPacket_Carries_RelocationReference_Separately_From_JoinRequest()
     {
         var codecs = new ZLinkCodecRegistryBuilder();
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -159,15 +134,108 @@ public sealed class ActorTransferTests
             1,
             RoutingId.From("source-node"),
             RoutingId.From("session-1"),
-            ZLinkMessage.From("transfer-state"),
+            ZLinkRemoteActorJoinPackets.SnapshotRelocationContentType,
+            Reference(),
             ZLinkMessage.From("join-request"),
-            [],
             codecs);
 
         var decoded = ZLinkRemoteActorJoinPackets.DecodeJoinRequest(parts);
 
-        Assert.Equal("transfer-state", ZLinkRemoteActorJoinPackets.DecodeTransferState(decoded, codecs).Decode<string>());
+        Assert.Equal(
+            ZLinkRemoteActorJoinPackets.SnapshotRelocationContentType,
+            decoded.RelocationContentType);
+        Assert.Equal("root-1", decoded.RelocationReference);
+        Assert.Equal((uint)17, decoded.RelocationChecksumCrc32c);
+        Assert.Equal(32, decoded.RelocationInventoryDigest.Length);
         Assert.Equal("join-request", ZLinkRemoteActorJoinPackets.DecodeJoinRequestPayload(decoded, codecs).Decode<string>());
+    }
+
+    private static ZLinkRelocationManifestReference Reference() =>
+        new(
+            "root-1",
+            17,
+            Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
+            1,
+            new byte[32]);
+
+    [Fact]
+    public void Actor_relocation_root_rejects_a_substituted_target_node_fence()
+    {
+        var aggregateId =
+            Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+        var request = new ZLinkRemoteActorJoinRequest(
+            "actor-1",
+            "player",
+            aggregateId.ToString("N"),
+            RoutingId.From("session-node").ToBytes().ToArray(),
+            RoutingId.From("session").ToBytes().ToArray(),
+            ZLinkRemoteActorJoinPackets.SnapshotRelocationContentType,
+            "root-1",
+            17,
+            aggregateId,
+            3,
+            new byte[32],
+            ZLinkEnvelopeCodec.DefaultContentType,
+            [1],
+            [],
+            "source-spot",
+            RoutingId.From("source-node").ToBytes().ToArray(),
+            7,
+            3,
+            ReservationToken: "reservation-1",
+            ReservedPayloadBytes: 1024,
+            TargetNodeRid: RoutingId.From("target-node").ToBytes().ToArray(),
+            TargetNodeGeneration: 11,
+            TargetSpotGeneration: 5,
+            TargetAuthorityOwnerGeneration: 4,
+            TargetSpotAuthorityOwnerGeneration: 2);
+        var recovery = new ZLinkActorRelocationRecoveryRecord(
+            request,
+            "target-spot",
+            RoutingId.From("target-node").ToBytes().ToArray(),
+            11,
+            5,
+            4,
+            0,
+            0,
+            null,
+            []);
+        var envelope = ZLinkActorRelocationRoot.Create(
+            ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor-1"),
+            7,
+            3,
+            aggregateId,
+            new byte[] { 2 },
+            [],
+            recovery);
+        var durableRecovery =
+            System.Text.Json.JsonSerializer.Deserialize<
+                ZLinkActorRelocationRecoveryRecord>(
+                envelope.Participants[0].RecoveryPayload.Span)!;
+        var changedParticipant = envelope.Participants[0] with
+        {
+            RecoveryPayload =
+                System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                    durableRecovery with
+                    {
+                        TargetNodeRid =
+                            RoutingId.From("other-target-node").ToBytes().ToArray()
+                    })
+        };
+        var changedEnvelope = envelope with
+        {
+            Participants = [changedParticipant]
+        };
+        var wire = request with
+        {
+            RelocationInventoryDigest = envelope.InventoryDigest.ToArray()
+        };
+
+        var error = Assert.Throws<ZLinkFrameworkException>(
+            () => ZLinkActorRelocationRoot.Load(wire, changedEnvelope));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RelocationDataLost, error.Kind);
+        Assert.False(error.IsRetriable);
     }
 
     [Fact]
@@ -193,6 +261,7 @@ public sealed class ActorTransferTests
                 ZLinkEnvelopeCodec.DefaultContentType,
                 [1, 2, 3],
                 0),
+            null,
             []);
         try
         {
@@ -210,10 +279,9 @@ public sealed class ActorTransferTests
         }
     }
 
-    // RouteMesh 10.0.0 hands the spot route dispatcher a framework-owned
-    // ZLinkBackendRouteReceived (drained from Core claims by the node pump) rather
-    // than a binding Received. The record owns a private copy of the parts and is
-    // disposed by the dispatcher, so the caller's originals remain valid.
+    // The Framework route dispatcher receives a framework-owned record. It owns a
+    // private copy of the parts and disposes that copy, so the caller's originals
+    // remain valid.
     private static ZLinkBackendRouteReceived CreateRoutedReceived(IReadOnlyList<Message> parts)
     {
         var owned = parts
@@ -227,62 +295,4 @@ public sealed class ActorTransferTests
             reply: null);
     }
 
-    private sealed class TransferActorAdapter : IZLinkActorTransferAdapter<TransferActor>
-    {
-        public ValueTask<ZLinkMessage> TransferOutAsync(
-            TransferActor actor,
-            CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            return ValueTask.FromResult(ZLinkMessage.From(actor.State));
-        }
-
-        public ValueTask<TransferActor> TransferInAsync(
-            string actorId,
-            IZLinkActorContext context,
-            ZLinkMessage state,
-            CancellationToken cancellationToken)
-        {
-            _ = cancellationToken;
-            return ValueTask.FromResult(new TransferActor(actorId, context, state.Decode<string>()));
-        }
-    }
-
-    private sealed class TransferActor(
-        string actorId,
-        IZLinkActorContext context,
-        string state) : IZLinkActor
-    {
-        public string ActorId { get; } = actorId;
-
-        public IZLinkActorContext Context { get; } = context;
-
-        public string State { get; } = state;
-    }
-
-    private sealed class TestActorContext : IZLinkActorContext
-    {
-        public string ActorId => "actor-1";
-
-        public ulong ObjectGeneration => 1;
-
-        public string MeshName => "play";
-
-        public string? SpotId => null;
-
-        public IZLinkBoundSession BoundSession => throw new NotSupportedException();
-
-        public IZLinkActorJoinSpotCall JoinSpot(
-            string spotId,
-            ZLinkMessage request)
-        {
-            throw new NotSupportedException();
-        }
-
-        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-            ZLinkMessage request)
-        {
-            throw new NotSupportedException();
-        }
-    }
 }

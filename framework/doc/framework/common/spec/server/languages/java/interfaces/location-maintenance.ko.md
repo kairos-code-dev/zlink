@@ -704,13 +704,21 @@ reference·checksum·retention을 검증한 뒤 Location authority CAS 한 번�
 `participants`는 [Location Store](../../../../01-glossary.ko.md#location-store)가 소유하는 bounded canonical participant set이고 `inventoryDigest`는 participant별
 mutation까지 포함한 exact 32-byte SHA-256이다. Relocation manifest의 inventory는 payload lookup projection일 뿐
 authority가 아니며 두 digest가 일치해야 restore와 replay를 시작한다.
-Aggregate prepare는 각 Reserved capacity fence를 `(aggregateId, aggregateGeneration)`에 원자적으로 연결하고
-Prepared로 전환한다. 연결된 fence를 `abortRelocationCapacity`로 직접 정리하면 `STALE`이고, 다른 aggregate가
-같은 fence를 prepare하면 mutation 없이 `ZLinkAggregateConflict`다. Participant payload·membership mutation,
-inventory digest, target owner와 fence 목록까지 정확히 같은 duplicate만
-`ZLinkAggregateAlreadyPrepared`다. `commitAggregate`와 `abortAggregate`만 연결된 fence를 최종 확정하거나
-해제한다. Commit 직전 target [descriptor](../../../../01-glossary.ko.md#descriptor)·owner lease가 stale이면 authority와 fence binding을 바꾸지 않고
-`STALE`을 반환한다.
+Aggregate prepare는 participant의 `ownerTransition`으로 두 mode를 판정한다. `NEW_OWNER`가 하나라도 있는
+relocation mode는 `PRESERVE` participant와 섞을 수 있지만 non-zero capacity bundle과 Reserved fence는
+`NEW_OWNER` participant의 durable allocation delta만 exact 합산하고 일대일 대응해야 한다. 각 fence를
+`(aggregateId, aggregateGeneration)`에 원자적으로 연결하고 Prepared로 전환한다. 연결된 fence를
+`abortRelocationCapacity`로 직접 정리하면 `STALE`이고 다른 aggregate가 같은 fence를 prepare하면 mutation 없이
+`ZLinkAggregateConflict`다.
+
+모든 participant가 `PRESERVE`이면 completion·steady-normalization mode다. Capacity는 exact zero이고 모든
+membership mutation은 empty여야 한다. Capacity reservation 없이 exact participant set의 authority payload만
+atomic하게 변경하며 owner, object generation, authority owner generation과 durable Active allocation을 유지한다.
+Zero capacity와 `NEW_OWNER`, non-zero capacity와 all-Preserve 조합은 `ZLinkAggregateConflict`이고 mutation은
+0이다. Participant payload·membership mutation, inventory digest, target owner와 mode별 fence 목록까지 정확히
+같은 duplicate만 `ZLinkAggregateAlreadyPrepared`다. `commitAggregate`와 `abortAggregate`만 relocation mode의
+연결된 fence를 최종 확정하거나 해제한다. Commit 직전 mode별 expectation이 stale이면 authority와 fence binding을
+바꾸지 않고 `STALE`을 반환한다.
 
 `RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있는 host는
 `ZLinkRelocationStore`를 정확히 하나 등록한다. Instance Spot factory가 없고 모든 factory가 `DISABLED`인

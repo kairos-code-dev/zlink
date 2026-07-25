@@ -936,19 +936,23 @@ Aggregate ID는 zero가 아닌 128-bit 값이고 aggregate generation은 `1..922
 authority key의 canonical byte order로 정렬하며 중복이 없는 bounded canonical participant set이다. 한 prepare는
 participant를 1..1024개 포함하며 participant payload와 [membership](../../../../01-glossary.ko.md#membership) mutation을 합친 encoded request가 1 MiB를
 넘을 수 없다. `inventoryDigest`는 participant set과 mutation 전체를 canonical encode한 bytes의 32-byte SHA-256이다.
-User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. `capacity`는 Actor slot
-`N`, Spot slot `1`, User Spot stable type slot `1`을 하나의 typed vector로 표현해야 한다.
-`prepareAggregate(...)`는 모든 participant expectation과 durable Active allocation을 exact-match하고,
-`targetDescriptor`, lifecycle generation과 `targetOwner`를 live/exact로 검증한 뒤 vector 전체를 같은
-transaction에서 reserved capacity로 예약한다. Participant set 또는 vector가 맞지 않으면 `"conflict"`이며
-mutation은 0이다. Exact duplicate prepare만 `"alreadyPrepared"`다. `commitAggregate(...)`는 aggregate
-record가 소유한 bundle만 소비해 모든 authority·membership·capacity
-변경을 한 번에 공개한다. Commit 직전에 source Active allocation exact match와 target descriptor
-lifecycle·owner lease를 다시 확인한다. Target이 stale이면 mutation 없이 fence를 bind 상태로 유지하며 source
-descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. 일부 participant만
-보이는 상태를 허용하지 않는다. `abortAggregate(...)`는 준비된
-변경을 폐기하고 bind된 fence의 target pending을 해제해 aborted로 닫는다. 같은 fence의 prepare·commit·abort 반복은 각각 `alreadyPrepared`, `alreadyCommitted`,
-`alreadyAborted`로 끝나며 stale fence는 다른 aggregate generation을 변경하지 않는다.
+`prepareAggregate(...)`는 participant의 `ownerTransition`으로 두 mode를 판정한다. `"newOwner"`가 하나라도
+있는 relocation mode는 `"preserve"` participant와 섞을 수 있다. `capacity`는 `"newOwner"` participant의
+durable allocation delta만 exact 합산한 non-zero typed vector여야 한다. User Spot initial relocation에서는 owner가
+바뀌는 Actor slot `N`, Spot slot `1`과 User Spot stable type slot `1`을 표현한다. 모든 participant expectation과
+durable Active allocation, `targetDescriptor`, lifecycle generation과 `targetOwner`를 exact 검증한 뒤 vector를
+같은 transaction에서 reserved capacity로 예약한다.
+
+모든 participant가 `"preserve"`이면 completion·steady-normalization mode다. `capacity`는 exact zero이고 모든
+`membershipMutation`은 empty여야 한다. Capacity reservation·mutation 없이 exact participant set의 payload만
+atomic하게 변경하며 owner, object generation, authority owner generation과 durable Active allocation을 유지한다.
+Zero capacity와 `"newOwner"`, non-zero capacity와 all-Preserve 조합은 `"conflict"`이고 mutation은 0이다.
+Exact duplicate prepare만 `"alreadyPrepared"`다. Relocation mode의 `commitAggregate(...)`는 aggregate bundle만
+소비해 authority·membership·capacity 변경을 한 번에 공개하고, completion·steady-normalization mode는 payload만
+변경한다. Commit 직전 mode별 expectation이 stale이면 mutation 없이 prepared 상태를 유지한다.
+`abortAggregate(...)`는 relocation mode의 target pending만 해제해 aborted로 닫는다. 같은 fence의
+prepare·commit·abort 반복은 각각 `alreadyPrepared`, `alreadyCommitted`, `alreadyAborted`로 끝나며 stale fence는
+다른 aggregate generation을 변경하지 않는다.
 
 `ZLinkLocationStore`는 MeshNode, owner lease와 generic authority CAS를 하나의 등록 단위로
 묶는다. ClientServer, fanout과 change stamp는 이 객체가 추가로 구현할 수 있는 선택 capability다.

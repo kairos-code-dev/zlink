@@ -12,11 +12,9 @@ public sealed class RedisAuthorityRelocationTests(
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore(out var keyPrefix);
         const string ownerId = "physical-schema-owner";
-        await store.RenewOwnerLeaseAsync(
+        var owner = await store.ClaimLiveOwnerAsync(
             ownerId,
-            RoutingId.From("physical-schema-node"),
             TimeSpan.FromMinutes(1));
-        var owner = new ZLinkLocationOwnerToken(ownerId, 1);
         await PublishDescriptorAsync(store, owner, RoutingId.From(ownerId));
         var key = new ZLinkAuthorityKey("zla1:a:physical-schema");
 
@@ -132,11 +130,9 @@ public sealed class RedisAuthorityRelocationTests(
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
         const string ownerId = "creation-terminal-owner";
-        await store.RenewOwnerLeaseAsync(
+        var owner = await store.ClaimLiveOwnerAsync(
             ownerId,
-            RoutingId.From("node-a"),
             TimeSpan.FromMinutes(1));
-        var owner = new ZLinkLocationOwnerToken(ownerId, 1);
         await PublishDescriptorAsync(store, owner, RoutingId.From(ownerId));
         var key = new ZLinkAuthorityKey("zla1:a:creation-terminal");
         var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
@@ -218,11 +214,9 @@ public sealed class RedisAuthorityRelocationTests(
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
         const string ownerId = "authority-owner-a";
-        await store.RenewOwnerLeaseAsync(
+        var owner = await store.ClaimLiveOwnerAsync(
             ownerId,
-            RoutingId.From("node-a"),
             TimeSpan.FromMinutes(1));
-        var owner = new ZLinkLocationOwnerToken(ownerId, 1);
         await PublishDescriptorAsync(
             store,
             owner,
@@ -311,7 +305,7 @@ public sealed class RedisAuthorityRelocationTests(
         var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(Request(key, owner, key.Value)));
         var pending = Assert.Single(
-            await store.ListMeshNodesAsync("game"),
+            (await store.ListMeshNodesAsync("game", default)).Items,
             value => value.Rid == rid);
         Assert.Equal(0, pending.Capacity.Actors.Active);
         Assert.Equal(1, pending.Capacity.Actors.Reserved);
@@ -321,7 +315,7 @@ public sealed class RedisAuthorityRelocationTests(
                 reserved.Reservation,
                 "ready"u8.ToArray()));
         var active = Assert.Single(
-            await store.ListMeshNodesAsync("game"),
+            (await store.ListMeshNodesAsync("game", default)).Items,
             value => value.Rid == rid);
         Assert.Equal(1, active.Capacity.Actors.Active);
         Assert.Equal(0, active.Capacity.Actors.Reserved);
@@ -507,16 +501,79 @@ public sealed class RedisAuthorityRelocationTests(
     }
 
     [SkippableFact]
+    public async Task Aggregate_Preserve_Normalization_Accepts_Zero_Capacity_Delta()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore();
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "preserve-owner",
+                TimeSpan.FromMinutes(1))).Token;
+        var nodeRid = RoutingId.From(owner.OwnerId);
+        await PublishDescriptorAsync(store, owner, nodeRid);
+
+        var key = new ZLinkAuthorityKey(
+            $"zla1:a:preserve-{Guid.NewGuid():N}");
+        var reservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(Request(key, owner, key.Value)));
+        var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                reservation.Reservation,
+                "ready"u8.ToArray()));
+        var request = new ZLinkAggregatePrepareRequest(
+            Guid.NewGuid(),
+            1,
+            [
+                new ZLinkAggregateParticipant(
+                    key,
+                    ready.Snapshot.StoreVersion,
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    "normalized"u8.ToArray(),
+                    ReadOnlyMemory<byte>.Empty)
+            ],
+            SHA256.HashData("preserve-inventory"u8),
+            new ZLinkMeshNodeDescriptorKey("game", nodeRid),
+            1,
+            new ZLinkCapacityVector(0, 0, null),
+            owner);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            store.PrepareAggregateAsync(
+                    request with
+                    {
+                        Participants =
+                        [
+                            request.Participants[0] with
+                            {
+                                MembershipMutation = new byte[] { 0x01 }
+                            }
+                        ]
+                    })
+                .AsTask());
+
+        var prepared = Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
+            await store.PrepareAggregateAsync(request));
+        Assert.Equal(
+            ZLinkAggregateCommitResult.Committed,
+            await store.CommitAggregateAsync(prepared.Fence));
+        var normalized = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(key));
+        Assert.Equal(
+            "normalized"u8.ToArray(),
+            normalized.Snapshot.Payload.ToArray());
+        Assert.Equal(owner.OwnerId, normalized.Snapshot.OwnerId);
+    }
+
+    [SkippableFact]
     public async Task Creation_Commit_Rechecks_Target_Descriptor_And_Abort_Cleans_Pending()
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
-        var owner = new ZLinkLocationOwnerToken("stale-target-owner", 1);
-        var rid = RoutingId.From(owner.OwnerId);
-        await store.RenewOwnerLeaseAsync(
-            owner.OwnerId,
-            rid,
+        var ownerId = "stale-target-owner";
+        var owner = await store.ClaimLiveOwnerAsync(
+            ownerId,
             TimeSpan.FromMinutes(1));
+        var rid = RoutingId.From(owner.OwnerId);
         await PublishDescriptorAsync(store, owner, rid);
         var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
@@ -541,12 +598,11 @@ public sealed class RedisAuthorityRelocationTests(
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
-        var owner = new ZLinkLocationOwnerToken("bounded-owner", 1);
-        var rid = RoutingId.From(owner.OwnerId);
-        await store.RenewOwnerLeaseAsync(
-            owner.OwnerId,
-            rid,
+        var ownerId = "bounded-owner";
+        var owner = await store.ClaimLiveOwnerAsync(
+            ownerId,
             TimeSpan.FromMinutes(1));
+        var rid = RoutingId.From(owner.OwnerId);
         Assert.Equal(
             ZLinkLocationWriteStatus.Stored,
             (await store.UpdateMeshNodeAsync(

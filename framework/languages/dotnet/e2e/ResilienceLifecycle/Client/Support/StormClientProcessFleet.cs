@@ -240,8 +240,7 @@ internal static class StormClientWorker
                         .TraceLabel($"storm-{index}");
                     var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                         .Listen("tcp://127.0.0.1:0")
-                        .UseAllocatedRoutingId(256, "storm")
-                        .SetRoutingIdAllocationGroup("resilience.storm");
+                        .SetRoutingIdPrefix("storm");
                     mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
                 });
             })

@@ -12,8 +12,7 @@ namespace GameQuest.QuestMission.Infrastructure.ZLink;
 
 internal sealed class PlayerQuestOwnerProvisioner(
     IZLinkSpotManager spots,
-    IZLinkSpotClient routes,
-    IZLinkSpotHandleResolver spotHandles)
+    IZLinkSpotClient routes)
 {
     public async ValueTask ApplyGameplayEventAsync(
         GameplayMsg gameplayEvent,
@@ -33,7 +32,7 @@ internal sealed class PlayerQuestOwnerProvisioner(
             .Async<SyncQuestProgressRes>(cancellationToken);
     }
 
-    private async ValueTask<SpotHandle> EnsureAddressAsync(
+    private async ValueTask<string> EnsureAddressAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
@@ -42,10 +41,6 @@ internal sealed class PlayerQuestOwnerProvisioner(
             spotRid,
             new PlayerQuestSpotCreateReq(playerId),
             cancellationToken);
-        return await spotHandles.ResolveSpotHandleAsync(
-                   SampleNames.MeshName,
-                   spotRid,
-                   cancellationToken)
-               ?? throw new InvalidOperationException($"Player quest spot '{spotRid}' was not found.");
+        return spotRid.ToString();
     }
 }

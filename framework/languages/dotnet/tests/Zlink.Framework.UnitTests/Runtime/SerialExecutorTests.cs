@@ -99,6 +99,30 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task RelocationIngressFreezeStopsNewAcknowledgementUntilDurableCommit()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var seal = await queue.SealRelocationAsync(CancellationToken.None);
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 7 },
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+
+        Assert.True(queue.TryFreezeRelocationIngress(
+            seal,
+            out var held));
+        Assert.Single(held);
+        Assert.False(queue.TryPostAccepted(
+            new byte[] { 8 },
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+
+        Assert.True(queue.TryAbortRelocation(seal));
+    }
+
+    [Fact]
     public async Task SerialExecutionQueue_Dispose_AbortsUnfinishedRelocationWithoutHanging()
     {
         var queue = CreateQueue(CancellationToken.None);

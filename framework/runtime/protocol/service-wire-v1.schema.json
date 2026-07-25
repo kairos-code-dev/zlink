@@ -335,9 +335,11 @@
       "frozenRecordKinds": ["actorSend", "actorRequest"],
       "forwardingKey": [
         "actorId",
-        "actorGeneration",
+        "objectGeneration",
         "sourceAuthorityOwnerGeneration",
-        "targetAuthorityOwnerGeneration"
+        "targetAuthorityOwnerGeneration",
+        "sourceOwnerLeaseGeneration",
+        "targetOwnerLeaseGeneration"
       ],
       "targetComparison": "exact-current-owner-authority-before-mailbox-admission",
       "publicExposure": "forbidden"
@@ -807,11 +809,11 @@
         "nodeRequest": { "operationKind": "nodeRequest", "operationId": "nonzero" },
         "channelSend": { "operationKind": "none", "operationId": "zero" },
         "channelRequest": { "operationKind": "channelRequest", "operationId": "nonzero" },
-        "spotSend": { "operationKind": "none", "operationId": "zero" },
+        "spotSend": { "operationKind": "none", "operationId": "nonzero-for-route-forward-dedupe" },
         "spotRequest": { "operationKind": "spotRequest", "operationId": "nonzero" },
         "spotMulticast": { "operationKind": "none", "operationId": "zero" },
         "spotControl": { "operationKinds": ["none", "actorJoin", "actorLeave", "actorDestroy"], "operationId": "nonzero-iff-operation-kind-non-none" },
-        "actorSend": { "operationKind": "none", "operationId": "zero" },
+        "actorSend": { "operationKind": "none", "operationId": "nonzero-for-route-forward-dedupe" },
         "actorRequest": { "operationKind": "actorRequest", "operationId": "nonzero" },
         "completion": { "operationKind": "non-none", "operationId": "nonzero" },
         "sendReady": { "operationKind": "none", "operationId": "zero" },
@@ -2381,7 +2383,8 @@
         { "name": "actor", "$ref": "actor-ref" },
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" },
+        { "name": "expectedOwnerLeaseGeneration", "$ref": "nonzero-u64" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -2392,7 +2395,8 @@
         { "name": "spot", "$ref": "spot-ref" },
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" }
+        { "name": "expectedAuthorityOwnerGeneration", "$ref": "nonzero-u64" },
+        { "name": "expectedOwnerLeaseGeneration", "$ref": "nonzero-u64" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -4160,6 +4164,9 @@
       "allowedFlags": ["metadata"],
       "requiredFlags": [],
       "body": [
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "routeForwardHopCount" } },
         { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
@@ -4174,6 +4181,9 @@
       "requiredFlags": [],
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "routeForwardHopCount" } },
         { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
@@ -4207,6 +4217,9 @@
         }
       ],
       "body": [
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "routeForwardHopCount" } },
         { "name": "sourceActor", "$ref": "optional-actor-ref" },
         { "name": "targetActor", "$ref": "actor-route-fence" },
         {
@@ -4235,6 +4248,9 @@
       ],
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "routeForwardHopCount" } },
         { "name": "sourceActor", "$ref": "optional-actor-ref" },
         { "name": "targetActor", "$ref": "actor-route-fence" },
         {

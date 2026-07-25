@@ -1,41 +1,41 @@
+using System.Text.Json;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 
-internal sealed class PlayActorTransferAdapter : IZLinkActorTransferAdapter<PlayActor>
+internal sealed class PlayActorRelocationAdapter
+    : IZLinkActorRelocationAdapter<PlayActor>
 {
-    public ValueTask<ZLinkMessage> TransferOutAsync(
+    public ValueTask<byte[]> CaptureAsync(
         PlayActor actor,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ZLinkMessage.From(new PlayActorTransferState(
+        return ValueTask.FromResult(JsonSerializer.SerializeToUtf8Bytes(
+            new PlayActorRelocationState(
             actor.RoomId,
             actor.Player,
             actor.DestroyAfterEntrySpotJoin,
             actor.Disconnected)));
     }
 
-    public ValueTask<PlayActor> TransferInAsync(
-        string actorId,
-        IZLinkActorContext context,
-        ZLinkMessage state,
+    public ValueTask RestoreAsync(
+        PlayActor actor,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var transferred = state.Decode<PlayActorTransferState>();
-        var actor = new PlayActor(actorId, context);
+        var transferred = JsonSerializer.Deserialize<PlayActorRelocationState>(
+            payload.Span) ?? throw new InvalidDataException("Actor relocation state is empty.");
         if (transferred.Player is not null) actor.ApplyPlayer(transferred.Player);
         if (!string.IsNullOrEmpty(transferred.RoomId)) actor.JoinRoom(transferred.RoomId);
         if (transferred.DestroyAfterEntrySpotJoin) actor.MarkForDestroyAfterRoomLeave();
         if (transferred.Disconnected) actor.MarkDisconnected();
-        return ValueTask.FromResult(actor);
+        return ValueTask.CompletedTask;
     }
 
-    private sealed record PlayActorTransferState(
+    private sealed record PlayActorRelocationState(
         string RoomId,
         PlayerInfo? Player,
         bool DestroyAfterEntrySpotJoin,

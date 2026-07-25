@@ -1266,9 +1266,11 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       frozenRecordKinds: ["actorSend", "actorRequest"],
       forwardingKey: [
         "actorId",
-        "actorGeneration",
+        "objectGeneration",
         "sourceAuthorityOwnerGeneration",
         "targetAuthorityOwnerGeneration",
+        "sourceOwnerLeaseGeneration",
+        "targetOwnerLeaseGeneration",
       ],
       targetComparison: "exact-current-owner-authority-before-mailbox-admission",
       publicExposure: "forbidden",
@@ -1724,14 +1726,20 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         nodeRequest: { operationKind: "nodeRequest", operationId: "nonzero" },
         channelSend: { operationKind: "none", operationId: "zero" },
         channelRequest: { operationKind: "channelRequest", operationId: "nonzero" },
-        spotSend: { operationKind: "none", operationId: "zero" },
+        spotSend: {
+          operationKind: "none",
+          operationId: "nonzero-for-route-forward-dedupe",
+        },
         spotRequest: { operationKind: "spotRequest", operationId: "nonzero" },
         spotMulticast: { operationKind: "none", operationId: "zero" },
         spotControl: {
           operationKinds: ["none", "actorJoin", "actorLeave", "actorDestroy"],
           operationId: "nonzero-iff-operation-kind-non-none",
         },
-        actorSend: { operationKind: "none", operationId: "zero" },
+        actorSend: {
+          operationKind: "none",
+          operationId: "nonzero-for-route-forward-dedupe",
+        },
         actorRequest: { operationKind: "actorRequest", operationId: "nonzero" },
         completion: { operationKind: "non-none", operationId: "nonzero" },
         sendReady: { operationKind: "none", operationId: "zero" },
@@ -4582,6 +4590,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
+    { name: "expectedOwnerLeaseGeneration", $ref: "nonzero-u64" },
   ], "$.types", "Spot route fence must carry exact ref, node and authority generations");
   const forwardMapping = types.get("route-forward-mapping-v1");
   requireFields(forwardMapping?.body, [
@@ -4602,6 +4611,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
+    { name: "expectedOwnerLeaseGeneration", $ref: "nonzero-u64" },
   ], "$.types", "Actor route fence must pair ActorRef with exact node and authority generations");
   requireFields(types.get("spot-ref")?.fields, [
     { name: "spotId", $ref: "text8" },

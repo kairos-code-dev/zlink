@@ -10,12 +10,11 @@ namespace SpotService.Server.Play.Spots;
 internal sealed class ScenarioActorFactory(EvidenceStore evidence) : IZLinkActorFactory<ScenarioActor>
 {
     public ValueTask<ScenarioActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new ScenarioActor(actorId, context, evidence));
+        return ValueTask.FromResult(new ScenarioActor(context.ActorId, context, evidence));
     }
 }
 

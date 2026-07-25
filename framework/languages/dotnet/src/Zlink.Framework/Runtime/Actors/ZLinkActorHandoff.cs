@@ -20,7 +20,8 @@ internal sealed record ZLinkActorHandoffFrame(
     uint Flags,
     byte[] Header,
     byte[] Body,
-    long ArrivalIndex);
+    long ArrivalIndex,
+    ZLinkBackendActorRouteContext RouteContext = default);
 
 internal static class ZLinkActorHandoffFrames
 {
@@ -37,7 +38,8 @@ internal static class ZLinkActorHandoffFrames
             frame.Flags,
             ZLinkStreamProtocolDefaults.EncodeHeader(frame.Header).ToArray(),
             frame.Body.ToArray(),
-            arrivalIndex);
+            arrivalIndex,
+            frame.RouteContext);
     }
 
     private static RoutingId RidOrDefault(byte[] rid) =>
@@ -64,6 +66,7 @@ internal static class ZLinkActorHandoffFrames
                     RidOrDefault(frame.SourceSessionRid),
                     frame.RequestId,
                     frame.Flags,
+                    frame.RouteContext,
                     ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header),
                     Message.From(frame.Body)));
             }

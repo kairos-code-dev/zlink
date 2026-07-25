@@ -60,8 +60,8 @@ internal sealed class ZLinkActorDispatchRouter(
             header.FlowOrigin is { } streamOrigin ? (ZLinkFlowOrigin)(byte)streamOrigin : null,
             _dispatchErrors.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
-        var actorId = actor.ActorId;
-        var state = actorSessions.GetOrCreate(actor.ActorId);
+        var actorId = actor.Context.ActorId;
+        var state = actorSessions.GetOrCreate(actor.Context.ActorId);
         var shouldPrune = false;
         ensureActorContext(actor, state);
 
@@ -249,7 +249,7 @@ internal sealed class ZLinkActorDispatchRouter(
             kindText,
             header.Name,
             correlationId: header.CorrelationId,
-            actorId: actor.ActorId,
+            actorId: actor.Context.ActorId,
             actorType: actor.GetType().FullName);
 
         scope.HandlerMissing(
@@ -272,7 +272,7 @@ internal sealed class ZLinkActorDispatchRouter(
             "ActorRequest",
             header.Name,
             correlationId: header.CorrelationId,
-            actorId: actor.ActorId,
+            actorId: actor.Context.ActorId,
             actorType: actor.GetType().FullName);
 
         scope.ReplyPathMissing(_logger, _dispatchErrors, exception);

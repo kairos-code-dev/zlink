@@ -31,12 +31,12 @@ internal sealed class ZLinkObservedLocationGenerations
             row.OwnerId,
             new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
 
-    internal bool AcceptSpot(ZLinkSpotLocation row) =>
+    internal bool AcceptSpot(ZLinkResolvedSpotLocation row) =>
         _spots.Accept(
             new ZLinkSpotLocationKey(row.SpotId),
             new ObservedVersion(row.SpotGeneration, 0));
 
-    internal void ObserveSpot(ZLinkSpotLocation row) =>
+    internal void ObserveSpot(ZLinkResolvedSpotLocation row) =>
         _spots.Observe(
             new ZLinkSpotLocationKey(row.SpotId),
             new ObservedVersion(row.SpotGeneration, 0));
@@ -46,15 +46,19 @@ internal sealed class ZLinkObservedLocationGenerations
     // per-node counter that legitimately restarts when the actor moves to
     // another node (core next_actor_generation) — generation-major ordering
     // would reject the post-transfer row as a lagging replica forever.
-    internal bool AcceptActor(ZLinkActorLocation row) =>
+    internal bool AcceptActor(ZLinkResolvedActorLocation row) =>
         _actors.Accept(
             new ZLinkActorLocationKey(row.ActorId),
-            new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
+            new ObservedVersion(
+                row.MembershipEpoch,
+                row.ActorRef.ObjectGeneration));
 
-    internal void ObserveActor(ZLinkActorLocation row) =>
+    internal void ObserveActor(ZLinkResolvedActorLocation row) =>
         _actors.Observe(
             new ZLinkActorLocationKey(row.ActorId),
-            new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
+            new ObservedVersion(
+                row.MembershipEpoch,
+                row.ActorRef.ObjectGeneration));
 
     /// <summary>A completed store listing is a confirmed view of the mesh:
     /// a floor held for a key the store no longer returns belongs to a

@@ -28,6 +28,12 @@ internal interface IZLinkDrainExecutor
         TimeSpan deadline,
         CancellationToken deadlineToken);
 
+    ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+        ZLinkFrameworkTerminationIntent intent,
+        TimeSpan deadline,
+        CancellationToken deadlineToken) =>
+        ExecuteAsync(deadline, deadlineToken);
+
     ValueTask ForceStopAsync(
         ZLinkDrainForceReason reason,
         CancellationToken cancellationToken);
@@ -79,9 +85,22 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
     public ValueTask<ZLinkDrainResult> DrainAsync(
         CancellationToken cancellationToken = default) =>
-        DrainAsync(DefaultDeadline, cancellationToken);
+        DrainAsync(
+            ZLinkFrameworkTerminationIntent.Shutdown,
+            DefaultDeadline,
+            cancellationToken);
 
     public async ValueTask<ZLinkDrainResult> DrainAsync(
+        TimeSpan deadline,
+        CancellationToken cancellationToken = default) =>
+        await DrainAsync(
+                ZLinkFrameworkTerminationIntent.Shutdown,
+                deadline,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask<ZLinkDrainResult> DrainAsync(
+        ZLinkFrameworkTerminationIntent intent,
         TimeSpan deadline,
         CancellationToken cancellationToken = default)
     {
@@ -98,7 +117,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             {
                 _admission.BeginDrain();
                 Volatile.Write(ref _state, "draining");
-                _operation = ExecuteSharedAsync(deadline);
+                _operation = ExecuteSharedAsync(intent, deadline);
             }
             operation = _operation;
         }
@@ -112,7 +131,9 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         return await _terminal.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<ZLinkDrainResult> ExecuteSharedAsync(TimeSpan deadline)
+    private async Task<ZLinkDrainResult> ExecuteSharedAsync(
+        ZLinkFrameworkTerminationIntent intent,
+        TimeSpan deadline)
     {
         using var flow = ZLinkFlowContext.Enter(
             null,
@@ -125,7 +146,10 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         {
             await PublishStateAsync(ZLinkDrainState.Draining).ConfigureAwait(false);
             using var deadlineSource = new CancellationTokenSource(deadline);
-            var forceReason = await _executor.ExecuteAsync(deadline, deadlineSource.Token)
+            var forceReason = await _executor.ExecuteAsync(
+                    intent,
+                    deadline,
+                    deadlineSource.Token)
                 .ConfigureAwait(false);
             result = forceReason is null
                 ? new Drained()

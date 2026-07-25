@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActor(
     ZLinkSessionContext context,
-    ActorRef actorRef,
+    string actorId,
     RoutingId sessionRid,
     string bindingToken)
     : IZLinkSessionActor
@@ -15,9 +15,29 @@ internal sealed class ZLinkSessionActor(
     internal RoutingId SessionRid { get; } = sessionRid;
 
     internal string BindingToken { get; } = bindingToken;
-    public string ActorId => Ref.ActorId;
+    public string ActorId { get; } = actorId;
 
-    public ActorRef Ref { get; } = actorRef;
+    public ActorRef Ref => Route.Ref;
+
+    internal ZLinkSessionBindingRoute Route
+    {
+        get
+        {
+            if (TryGetRoute(out var route))
+                return route;
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                $"Actor '{ActorId}' session binding is stale.",
+                true);
+        }
+    }
+
+    internal bool TryGetRoute(out ZLinkSessionBindingRoute route) =>
+        Context.Runtime.TryGetSessionActorRoute(
+            ActorId,
+            BindingToken,
+            this,
+            out route);
 
     public ValueTask RelayAsync(
         ZLinkMessage payload,

@@ -9,6 +9,19 @@ internal enum ZLinkServiceAdmissionDecision
     Reject
 }
 
+internal enum ZLinkServiceConnectionDirection
+{
+    Inbound = 1,
+    Outbound
+}
+
+internal enum ZLinkServiceDuplicateConnectionDecision
+{
+    NotDuplicate = 1,
+    KeepCurrent,
+    UseIncoming
+}
+
 internal static class ZLinkServiceAdmissionGuard
 {
     private static readonly HashSet<byte> MutableExtensionFields =
@@ -42,6 +55,40 @@ internal static class ZLinkServiceAdmissionGuard
         return ImmutableFieldsMatch(existing, incoming)
             ? ZLinkServiceAdmissionDecision.Accept
             : ZLinkServiceAdmissionDecision.Reject;
+    }
+
+    internal static ZLinkServiceDuplicateConnectionDecision SelectConnection(
+        RoutingId localRid,
+        RoutingId peerRid,
+        ulong currentLifecycleGeneration,
+        ZLinkServiceConnectionDirection currentDirection,
+        string currentDiscriminator,
+        ulong incomingLifecycleGeneration,
+        ZLinkServiceConnectionDirection incomingDirection,
+        string incomingDiscriminator)
+    {
+        if (currentLifecycleGeneration != 0
+            && currentLifecycleGeneration != incomingLifecycleGeneration)
+            return ZLinkServiceDuplicateConnectionDecision.NotDuplicate;
+
+        // Both peers derive the same surviving pipe: the lower RID owns the
+        // outbound side. Same-direction candidates use their stable
+        // connection-local discriminator as the final tie-breaker.
+        var preferredDirection = string.CompareOrdinal(
+                localRid.ToHex(),
+                peerRid.ToHex()) < 0
+            ? ZLinkServiceConnectionDirection.Outbound
+            : ZLinkServiceConnectionDirection.Inbound;
+        if (currentDirection != incomingDirection)
+            return currentDirection == preferredDirection
+                ? ZLinkServiceDuplicateConnectionDecision.KeepCurrent
+                : ZLinkServiceDuplicateConnectionDecision.UseIncoming;
+
+        return StringComparer.Ordinal.Compare(
+                currentDiscriminator,
+                incomingDiscriminator) <= 0
+            ? ZLinkServiceDuplicateConnectionDecision.KeepCurrent
+            : ZLinkServiceDuplicateConnectionDecision.UseIncoming;
     }
 
     private static bool ImmutableFieldsMatch(

@@ -1471,8 +1471,8 @@ public sealed partial class ZLinkRedisLocationStore
             || request.Participants.Count is < 1 or > 1024
             || request.InventoryDigest.Length != 32
             || request.TargetDescriptorLifecycleGeneration == 0
-            || !IsCapacityVectorValid(request.Capacity)
-            || request.TargetOwner.Generation is 0 or > long.MaxValue)
+            || !IsAggregateCapacityValid(request)
+            || request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Participants.Any(static value =>
                 value.AuthorityPayload.Length > 1024 * 1024))
@@ -1490,6 +1490,22 @@ public sealed partial class ZLinkRedisLocationStore
             throw new ArgumentException(
                 "Aggregate participant keys must be unique and canonically sorted.",
                 nameof(request));
+    }
+
+    private static bool IsAggregateCapacityValid(
+        ZLinkAggregatePrepareRequest request)
+    {
+        var preservesOwner = request.Participants.All(static participant =>
+            participant.OwnerTransition
+            == ZLinkAuthorityGenerationTransition.Preserve);
+        var hasNoCapacityDelta = request.Capacity.Actors == 0
+                                 && request.Capacity.Spots == 0
+                                 && request.Capacity.SpotType is null;
+        return preservesOwner
+            ? hasNoCapacityDelta
+              && request.Participants.All(static participant =>
+                  participant.MembershipMutation.IsEmpty)
+            : !hasNoCapacityDelta && IsCapacityVectorValid(request.Capacity);
     }
 
     private static bool IsCapacityVectorValid(ZLinkCapacityVector capacity)

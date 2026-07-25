@@ -26,10 +26,9 @@ internal sealed class PlayerSessionActor(
 internal sealed class PlayerSessionActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult<IZLinkActor>(new PlayerSessionActor(actorId, context));
+        ValueTask.FromResult<IZLinkActor>(new PlayerSessionActor(context.ActorId, context));
 }
 
 internal sealed class GameQuestEntrySpot(

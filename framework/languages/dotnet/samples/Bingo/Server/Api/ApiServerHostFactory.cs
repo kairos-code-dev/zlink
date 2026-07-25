@@ -40,8 +40,7 @@ public static class ApiServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
-                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
-                .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
+                .SetRoutingIdPrefix("api")
                 .Listen(node.MeshEndpoint);
             mesh.ChannelName(SampleNames.ApiChannel)
                 .AddHandlerGroup("api");
@@ -50,8 +49,7 @@ public static class ApiServerHostFactory
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "api",
-            SampleNames.ApiAllocationGroup,
-            [SampleNames.MeshName]));
+            SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

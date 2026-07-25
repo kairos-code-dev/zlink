@@ -37,17 +37,21 @@ internal static class ZLinkRemoteSessionBindingHandler
                 ZLinkFrameworkErrorKind.ActorSessionNotBound,
                 "Remote actor session binding source did not match the declared session node.");
 
-        await runtime.BindRemoteBoundSessionRouteAsync(
-                actor.ActorId,
-                nativeActorRef,
-                sessionNodeRid,
-                RoutingId.From(request.SessionRid),
+        if (!string.Equals(request.ActorId, actor.Context.ActorId, StringComparison.Ordinal)
+            || RoutingId.From(request.TargetNodeRid) != nativeActorRef.NodeRid
+            || request.ObjectGeneration != nativeActorRef.Generation)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                "Remote actor session binding request did not match the addressed Actor.");
+        var response = await runtime.BindRemoteBoundSessionRouteAsync(
+                request,
+                frame.SourceNodeRid,
                 cancellationToken)
             .ConfigureAwait(false);
         acknowledgeHandledFrame?.Invoke();
         await ZLinkActorBoundSessionRelay.SendReplyAsync(
                 runtime,
-                actor.ActorId,
+                actor.Context.ActorId,
                 frame.ReplyActor,
                 frame.SourceNodeRid,
                 frame.SourceSessionRid,
@@ -55,17 +59,18 @@ internal static class ZLinkRemoteSessionBindingHandler
                 frame.Flags,
                 boundSession.IsNoBind,
                 frame.Header,
-                AcknowledgedReply(),
+                AcknowledgedReply(response),
                 cancellationToken)
             .ConfigureAwait(false);
         await boundSession.DrainAsync(cancellationToken).ConfigureAwait(false);
         return true;
     }
 
-    private static ZLinkActorReply AcknowledgedReply() => new(
+    private static ZLinkActorReply AcknowledgedReply(
+        ZLinkRemoteSessionBindResponse response) => new(
         ZlinkStreamMessageKind.Response,
         ZlinkStreamCodec.Json,
-        ZLinkEnvelopeCodec.EncodeJsonBytes(new ZLinkRemoteSessionBindResponse(true)),
+        ZLinkEnvelopeCodec.EncodeJsonBytes(response),
         ZlinkStreamHeaderFlags.None,
         ZlinkStreamMetadata.Empty);
 }

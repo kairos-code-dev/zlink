@@ -17,7 +17,7 @@ internal static class SfD3StatusTransitionScenario
     {
         var before = await SfProbe.WaitStatusAsync(
             consumer,
-            SfProbe.Status(options.HeartbeatInterval * 6, storeHealthy: true, ownerLeaseHealthy: true),
+            SfProbe.Status(options.OwnerLeaseRenewInterval * 6, storeHealthy: true, ownerLeaseHealthy: true),
             "SF-D3: the pre-outage status was not healthy.");
 
         await processes.PauseStoreAsync();
@@ -26,7 +26,7 @@ internal static class SfD3StatusTransitionScenario
         {
             during = await SfProbe.WaitStatusAsync(
                 consumer,
-                SfProbe.Status(options.HeartbeatInterval * 8,
+                SfProbe.Status(options.OwnerLeaseRenewInterval * 8,
                     storeHealthy: false, ownerLeaseHealthy: false, requireLastError: true),
                 "SF-D3: the outage did not surface as unhealthy status with a last error.");
         }
@@ -37,7 +37,7 @@ internal static class SfD3StatusTransitionScenario
 
         var after = await SfProbe.WaitStatusAsync(
             consumer,
-            SfProbe.Status(options.HeartbeatInterval * 8,
+            SfProbe.Status(options.OwnerLeaseRenewInterval * 8,
                 storeHealthy: true,
                 ownerLeaseHealthy: true,
                 requireLastRefresh: true,

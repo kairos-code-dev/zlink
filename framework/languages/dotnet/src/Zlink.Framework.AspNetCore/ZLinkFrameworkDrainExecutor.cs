@@ -44,7 +44,16 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
     {
     }
 
+    public ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+        TimeSpan deadline,
+        CancellationToken deadlineToken) =>
+        ExecuteAsync(
+            ZLinkFrameworkTerminationIntent.Shutdown,
+            deadline,
+            deadlineToken);
+
     public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+        ZLinkFrameworkTerminationIntent intent,
         TimeSpan deadline,
         CancellationToken deadlineToken)
     {
@@ -89,7 +98,10 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         var spotsDrained = false;
         while (!spotsDrained)
         {
-            spotsDrained = await _operations.DrainSpots(deadlineToken).ConfigureAwait(false);
+            spotsDrained = await _operations.DrainSpots(
+                    intent == ZLinkFrameworkTerminationIntent.Retire,
+                    deadlineToken)
+                .ConfigureAwait(false);
             if (!spotsDrained)
                 await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
         }
@@ -130,7 +142,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         if (_operations.HasAutoConnect)
             await CaptureAsync(() => _operations.StopAutoConnect(CancellationToken.None), failures).ConfigureAwait(false);
         var ownerCleanupFailed = false;
-        if (_operations.HasLocationRuntime && !_locationOptions.AllocatedRoutingIdsEnabled)
+        if (_operations.HasLocationRuntime)
         {
             using var cleanupBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try
@@ -194,9 +206,6 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
     private async ValueTask<bool> CleanupOwnerAsync(CancellationToken cancellationToken)
     {
         if (!_operations.HasLocationRuntime) return true;
-        // Allocated routing ids require socket close -> location row removal -> slot release ->
-        // owner lease removal. The hosted stop sequence owns that ordering after drain.
-        if (_locationOptions.AllocatedRoutingIdsEnabled) return true;
         while (true)
         {
             try
@@ -270,7 +279,7 @@ internal sealed record ZLinkDrainExecutionOperations(
     Func<Task> WaitForAcceptedOperations,
     Func<CancellationToken, Task> WaitForAcceptedActorHandoffs,
     Func<CancellationToken, ValueTask<bool>> DrainActors,
-    Func<CancellationToken, ValueTask<bool>> DrainSpots,
+    Func<bool, CancellationToken, ValueTask<bool>> DrainSpots,
     Func<CancellationToken, ValueTask<bool>> DrainStreamSessions,
     Func<CancellationToken, ValueTask> FreezeOwnerWrites,
     Func<CancellationToken, ValueTask> CleanupOwner,

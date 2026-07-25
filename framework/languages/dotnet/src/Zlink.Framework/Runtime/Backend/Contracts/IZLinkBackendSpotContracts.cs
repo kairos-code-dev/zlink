@@ -192,38 +192,10 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         bool hasMore,
         SendFlags flags);
 
-    void BindRemoteActorBoundSession(
-        ZLinkBackendActorRef actor,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid);
-
     void CloseActorBoundSession(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken);
-
-    // Native actor-transfer fence primitives (RouteMesh 10.0.0). Prepare fences
-    // the actor and returns an opaque token; commit advances the membership epoch;
-    // activate promotes the target; abort releases the fence. The distributed
-    // authority that sequences these (S8-04A) is not implemented here.
-    ZLinkBackendActorTransferToken PrepareActorTransfer(
-        ZLinkBackendActorTransferPrepare prepare,
-        out ZLinkBackendActorTransferPrepareResult result,
-        TimeSpan timeout);
-
-    void CommitActorTransfer(
-        ZLinkBackendActorTransferToken token,
-        ulong newMembershipEpoch);
-
-    void ActivateActorTransfer(ZLinkBackendActorTransferToken token);
-
-    void AbortActorTransfer(ZLinkBackendActorTransferToken token);
-
-    // Registers the handler the node dispatch pump invokes for TransferControl
-    // records so transfer phases drive the framework transfer state machine. The
-    // orchestrating authority (S8-04A) registers the consumer; unset, the records
-    // are delivered to no consumer instead of being silently dropped.
-    void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler);
 
     // Framework service command 47/48 target. Startup installs the production
     // Spot catalog + Location Store adapter before the MeshNode begins
@@ -419,4 +391,35 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
         ZLinkBackendActorJoinRequest request,
         int joinResultCode,
         IReadOnlyList<Message> parts);
+}
+
+internal interface IZLinkBackendCommittedSpotForwarder
+{
+    SubmitResult ForwardSendToSpot(
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
+
+    bool ForwardRequestToSpot(
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata);
 }

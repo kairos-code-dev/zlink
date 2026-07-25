@@ -8,24 +8,44 @@ public sealed class LocationContracts
         new(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    [ContractExample(
-        typeof(IZLinkAllocatedRoutingIdProvider),
-        typeof(IZLinkRoutingIdSlotAllocationStore))]
-    public void Routing_id_slot_allocation_uses_one_optional_store_capability()
+    public void Location_contract_excludes_compatibility_lease_and_slot_allocation_surface()
     {
-        Assert.Contains(
-            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
-            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.AcquireRoutingIdSlotAsync));
-        Assert.Contains(
-            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
-            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.ReleaseRoutingIdSlotAsync));
-        Assert.Contains(
-            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
-            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.ListRoutingIdSlotsAsync));
+        var assembly = typeof(IZLinkLocationStore).Assembly;
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkRoutingIdSlotAllocationStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkAllocatedRoutingIdProvider"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAcquireResult"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkOwnerLeaseSnapshot"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkOwnerLeaseRenewal"));
 
+        var publicMethods =
+            typeof(Zlink.Framework.Locations.Redis.ZLinkRedisLocationStore)
+            .GetMethods();
+        var publicMethodNames = publicMethods
+            .Select(static method => method.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain("AcquireRoutingIdSlotAsync", publicMethodNames);
+        Assert.DoesNotContain("ListRoutingIdSlotsAsync", publicMethodNames);
+        Assert.DoesNotContain("ListOwnerLeasesAsync", publicMethodNames);
+        Assert.DoesNotContain("RemoveOwnerLeaseAsync", publicMethodNames);
+
+        var renew = Assert.Single(publicMethods.Where(
+            static method => method.Name == nameof(
+                IZLinkOwnerLeaseStore.RenewOwnerLeaseAsync)));
         Assert.Equal(
-            [nameof(ZLinkRoutingIdSlotAllocationMember.MeshName), nameof(ZLinkRoutingIdSlotAllocationMember.RoutingIdPrefix)],
-            typeof(ZLinkRoutingIdSlotAllocationMember).GetProperties().Select(static property => property.Name));
+            typeof(ZLinkLocationOwnerToken),
+            renew.GetParameters()[0].ParameterType);
+
+        var release = Assert.Single(publicMethods.Where(
+            static method => method.Name == nameof(
+                IZLinkOwnerLeaseStore.ReleaseOwnerLeaseAsync)));
+        Assert.Equal(
+            typeof(ZLinkLocationOwnerToken),
+            release.GetParameters()[0].ParameterType);
     }
 
     [Fact]
@@ -38,65 +58,27 @@ public sealed class LocationContracts
 
     [Fact]
     [ContractExample(
-        typeof(IZLinkActorLocationStore),
-        typeof(IZLinkActorTransferStore),
+        typeof(IZLinkLocationStore),
+        typeof(IZLinkAuthorityStore),
         typeof(IZLinkOwnerLeaseStore))]
-    public async Task Actor_store_issues_generations_and_guards_writes_with_owner_tokens()
+    public async Task Location_store_combines_authority_and_owner_lease_transaction_domain()
     {
-        var store = new ExampleActorLocationStore();
-        var ownerA = "owner-a";
-        var ownerB = "owner-b";
-
-        // NewClaim asks with no token; the store issues a fencing generation
-        // and returns it in the write result. This is the only path the
-        // store token travels — it is never distributed between nodes.
-        var claimed = await store.UpdateActorAsync(
-            MakeActor(ownerA),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
-        Assert.Equal(1UL, claimed.Generation);
-
-        // A concurrent NewClaim over a live row loses with RejectedConflict.
-        var lost = await store.UpdateActorAsync(
-            MakeActor(ownerB),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, lost.Status);
-
-        // Renew must present the current owner.
-        var renewed = await store.UpdateActorAsync(
-            MakeActor(ownerA),
-            ZLinkLocationWriteIntent.Renew);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, renewed.Status);
-        Assert.Equal(claimed.Generation, renewed.Generation);
-
-        // Takeover replaces a live row and gets a fresh generation.
-        var takeover = await store.UpdateActorAsync(
-            MakeActor(ownerB),
-            ZLinkLocationWriteIntent.Takeover);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, takeover.Status);
-        Assert.Equal(2UL, takeover.Generation);
-
-        // The replaced owner's next write is ignored as stale — that is how
-        // it learns it lost ownership and must deactivate its instance.
-        var stale = await store.UpdateActorAsync(
-            MakeActor(ownerA),
-            ZLinkLocationWriteIntent.Renew);
-        Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, stale.Status);
+        Assert.Contains(typeof(IZLinkAuthorityStore), typeof(IZLinkLocationStore).GetInterfaces());
+        Assert.Contains(typeof(IZLinkOwnerLeaseStore), typeof(IZLinkLocationStore).GetInterfaces());
+        Assert.Contains(
+            typeof(IZLinkAuthorityStore).GetMethods(),
+            static method => method.Name == nameof(IZLinkAuthorityStore.CompareExchangeAuthorityAsync));
 
         // Owner lease: the provider issues the exact generation token and
         // returns its own clock with each read.
         var leases = new ExampleOwnerLeaseStore();
         var leaseClaim = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
             await leases.ClaimOwnerLeaseAsync(
-                ownerB, TimeSpan.FromSeconds(15)));
+                "owner-b", TimeSpan.FromSeconds(15)));
         var read = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
-            await leases.ReadOwnerLeaseAsync(ownerB));
+            await leases.ReadOwnerLeaseAsync("owner-b"));
         Assert.Equal(StoreNow, read.StoreNow);
         Assert.Equal(leaseClaim.Token, read.Token);
-
-        var removedCount = await store.RemoveAllByOwnerAsync(
-            new ZLinkLocationOwnerToken(ownerB, takeover.Generation));
-        Assert.Equal(1, removedCount);
     }
 
     [Fact]
@@ -104,9 +86,8 @@ public sealed class LocationContracts
         typeof(IZLinkLocationStore),
         typeof(IZLinkMeshNodeLocationStore),
         typeof(IZLinkFanoutLocationStore),
-        typeof(IZLinkInstanceSpotLocationStore),
-        typeof(IZLinkSpotLocationStore))]
-    public async Task MeshNode_lists_are_snapshots_and_spot_actor_rows_are_resolve_only()
+        typeof(IZLinkAuthorityStore))]
+    public async Task MeshNode_lists_are_paged_and_object_authority_is_opaque()
     {
         // One physical store registers for every role at once:
         // AddLocationStore takes a single IZLinkLocationStore instance the
@@ -118,48 +99,59 @@ public sealed class LocationContracts
 
         // Descriptor lists are one point-in-time snapshot per mesh by
         // contract — reconcile diffs need one consistent list, never pages.
-        var descriptors = await meshNodes.ListMeshNodesAsync("play");
-        Assert.Single(descriptors);
+        var descriptors = await meshNodes.ListMeshNodesAsync(
+            "play",
+            new ZLinkPageRequest());
+        Assert.Single(descriptors.Items);
 
-        var spots = new ExampleSpotLocationStore();
-        await spots.UpdateSpotAsync(MakeSpot("owner-a"), ZLinkLocationWriteIntent.NewClaim);
-        var resolved = await spots.ResolveSpotAsync(
-            new ZLinkSpotLocationKey("spot-1"));
-        Assert.NotNull(resolved);
+        Assert.DoesNotContain(
+            typeof(IZLinkLocationStore).GetMethods(),
+            static method => method.Name.Contains("Spot", StringComparison.Ordinal)
+                             || method.Name.Contains("Actor", StringComparison.Ordinal));
 
-        // Spot and actor rows are resolve-only: no store-level listing
-        // surface exists for them (06-location-store §5).
+        // Spot and Actor ownership is available only through the opaque
+        // authority surface. Object-specific projection stores are not part
+        // of the public contract.
         Assert.DoesNotContain(
-            typeof(IZLinkSpotLocationStore).GetMethods(),
+            typeof(IZLinkLocationStore).GetMethods(),
             static method => method.Name.StartsWith("List", StringComparison.Ordinal));
-        Assert.DoesNotContain(
-            typeof(IZLinkActorLocationStore).GetMethods(),
-            static method => method.Name.StartsWith("List", StringComparison.Ordinal));
+        Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkInstanceSpotLocationStore"));
+        Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.InstanceSpotLocation"));
     }
 
     [Fact]
-    [ContractExample(
-        typeof(IZLinkMeshNodeLocationResolver),
-        typeof(IZLinkSpotHandleResolver),
-        typeof(IZLinkActorSpotHandleResolver))]
-    public async Task MeshNode_reads_are_live_and_messaging_resolvers_return_opaque_handles()
+    public void Object_and_mesh_routes_are_not_public_resolvers()
     {
-        var resolver = new ExampleLocationResolver();
+        var assembly = typeof(IZLinkLocationStore).Assembly;
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationResolver"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkSpotHandleResolver"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkActorSpotHandleResolver"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.SpotHandle"));
+    }
 
-        // MeshNode discovery is a live store read rather than a retained
-        // messaging handle.
-        var descriptors = await resolver.ListLiveMeshNodesAsync("play");
-        Assert.Single(descriptors);
+    [Fact]
+    public void Public_object_location_rows_exclude_internal_authority_axes()
+    {
+        var spotProperties = typeof(ZLinkSpotLocation).GetProperties()
+            .Select(static property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains(nameof(ZLinkSpotLocation.LeaseGeneration), spotProperties);
+        Assert.DoesNotContain("AuthorityOwnerGeneration", spotProperties);
+        Assert.DoesNotContain("OwnerLeaseGeneration", spotProperties);
 
-        // Messaging lookup returns an opaque handle. The framework, not the caller,
-        // owns its location snapshot updates and the safe request refresh rule.
-        var spotHandle = await resolver.ResolveSpotHandleAsync("play", "spot-1");
-        Assert.Null(spotHandle);
-
-        var actorSpotHandle = await resolver.ResolveActorSpotHandleAsync("play", "actor-1");
-        Assert.Null(actorSpotHandle);
-
-        Assert.Empty(typeof(SpotHandle).GetConstructors());
+        var actorProperties = typeof(ZLinkActorLocation).GetProperties()
+            .Select(static property => property.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Contains(nameof(ZLinkActorLocation.LeaseGeneration), actorProperties);
+        Assert.DoesNotContain("MembershipEpoch", actorProperties);
+        Assert.DoesNotContain("AuthorityOwnerGeneration", actorProperties);
+        Assert.DoesNotContain("OwnerLeaseGeneration", actorProperties);
     }
 
     [Fact]
@@ -181,14 +173,14 @@ public sealed class LocationContracts
 
         // Runtime query never goes through a cache, so it takes no freshness.
         var descriptors = await query.ListMeshNodeDescriptorsAsync("play");
-        Assert.Single(descriptors);
+        Assert.Single(descriptors.Items);
 
         var topology = await query.ListTopologyAsync(new ZLinkLocationTopologyFilter(MeshName: "play"));
         Assert.Single(topology.Items);
 
         var summaries = await query.ListServiceSummariesAsync(
             new ZLinkLocationServiceSummaryFilter(MeshName: "play"));
-        Assert.Single(summaries);
+        Assert.Single(summaries.Items);
 
         // A poller skips the full list query while the stamp is unchanged.
         // The stamp is an optimization, never a correctness authority.
@@ -197,20 +189,6 @@ public sealed class LocationContracts
             new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play"));
         Assert.Equal(1UL, stamp);
     }
-
-    private static ZLinkActorLocation MakeActor(string ownerId) => new(
-        "play",
-        "actor-1",
-        "player",
-        new ActorRef(RoutingId.From("node-1"), "actor-1", 1),
-        OwnerNodeRid: RoutingId.From("node-1"),
-        OwnerNodeGeneration: 1,
-        SpotId: "spot-1",
-        SpotGeneration: 0,
-        SpotKind: ZLinkSpotKind.Entry,
-        MembershipEpoch: 0,
-        OwnerId: ownerId,
-        UpdatedAt: StoreNow);
 
     private static ZLinkMeshNodeDescriptor MakeDescriptor(string ownerId) => new(
         "play",
@@ -224,87 +202,9 @@ public sealed class LocationContracts
         LeaseGeneration: 1,
         UpdatedAt: StoreNow);
 
-    private static ZLinkSpotLocation MakeSpot(string ownerId) => new(
-        "play",
-        "spot-1",
-        SpotGeneration: 1,
-        OwnerNodeRid: RoutingId.From("node-1"),
-        OwnerNodeGeneration: 1,
-        SpotKind: ZLinkSpotKind.User,
-        SpotType: "game",
-        OwnerId: ownerId,
-        UpdatedAt: StoreNow);
-
-    private sealed class ExampleActorLocationStore : IZLinkActorLocationStore
-    {
-        private ZLinkActorLocation? _row;
-        private ulong _generationCounter;
-        private ulong _rowGeneration;
-
-        public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
-            ZLinkActorLocation actor,
-            ZLinkLocationWriteIntent intent,
-            CancellationToken cancellationToken = default)
-        {
-            switch (intent)
-            {
-                case ZLinkLocationWriteIntent.NewClaim when _row is not null:
-                    return ValueTask.FromResult(ZLinkLocationWriteResult.RejectedConflict);
-                case ZLinkLocationWriteIntent.NewClaim:
-                case ZLinkLocationWriteIntent.Takeover:
-                    _generationCounter++;
-                    _row = actor;
-                    _rowGeneration = _generationCounter;
-                    return ValueTask.FromResult(
-                        ZLinkLocationWriteResult.Stored(_generationCounter, StoreNow));
-                case ZLinkLocationWriteIntent.Renew
-                    when _row is not null && _row.OwnerId == actor.OwnerId:
-                    _row = actor;
-                    return ValueTask.FromResult(
-                        ZLinkLocationWriteResult.Stored(_rowGeneration, StoreNow));
-                default:
-                    return ValueTask.FromResult(ZLinkLocationWriteResult.IgnoredStale);
-            }
-        }
-
-        public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
-            ZLinkActorLocationKey key,
-            ZLinkLocationOwnerToken owner,
-            CancellationToken cancellationToken = default)
-        {
-            if (_row is null || _row.OwnerId != owner.OwnerId || (long)_rowGeneration != owner.Generation)
-            {
-                return ValueTask.FromResult(ZLinkLocationWriteStatus.IgnoredStale);
-            }
-
-            _row = null;
-            return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
-        }
-
-        public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-            ZLinkActorLocationKey key,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_row);
-
-        public ValueTask<long> RemoveAllByOwnerAsync(
-            ZLinkLocationOwnerToken owner,
-            CancellationToken cancellationToken = default)
-        {
-            if (_row is null
-                || _row.OwnerId != owner.OwnerId
-                || (long)_rowGeneration != owner.Generation)
-            {
-                return ValueTask.FromResult(0L);
-            }
-
-            _row = null;
-            return ValueTask.FromResult(1L);
-        }
-    }
-
     private sealed class ExampleOwnerLeaseStore : IZLinkOwnerLeaseStore
     {
-        private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
+        private readonly Dictionary<string, Lease> _leases = [];
         private long _generation;
 
         public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
@@ -318,11 +218,7 @@ public sealed class LocationContracts
                     new ZLinkOwnerLeaseClaimResult.Conflict());
             var expiresAt = StoreNow + leaseTtl;
             var token = new ZLinkLocationOwnerToken(ownerId, ++_generation);
-            _leases[ownerId] = new ZLinkOwnerLease(
-                ownerId, default, expiresAt, StoreNow)
-            {
-                LeaseGeneration = token.LeaseGeneration
-            };
+            _leases[ownerId] = new Lease(token.LeaseGeneration, expiresAt);
             return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
                 new ZLinkOwnerLeaseClaimResult.Claimed(
                     token, expiresAt, StoreNow));
@@ -356,8 +252,7 @@ public sealed class LocationContracts
             var expiresAt = StoreNow + leaseTtl;
             _leases[token.OwnerId] = lease with
             {
-                LeaseExpiresAt = expiresAt,
-                UpdatedAt = StoreNow
+                LeaseExpiresAt = expiresAt
             };
             return ValueTask.FromResult<ZLinkOwnerLeaseRenewResult>(
                 new ZLinkOwnerLeaseRenewResult.Renewed(
@@ -375,6 +270,10 @@ public sealed class LocationContracts
             return ValueTask.FromResult(
                 ZLinkOwnerLeaseReleaseResult.Released);
         }
+
+        private readonly record struct Lease(
+            long LeaseGeneration,
+            DateTimeOffset LeaseExpiresAt);
     }
 
     private sealed class ExampleMeshNodeLocationStore : IZLinkMeshNodeLocationStore
@@ -400,68 +299,16 @@ public sealed class LocationContracts
             return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
         }
 
-        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
             string meshName,
+            ZLinkPageRequest page,
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<ZLinkMeshNodeDescriptor> items =
                 _row is { } row && row.MeshName == meshName ? [row] : [];
-            return ValueTask.FromResult(items);
+            return ValueTask.FromResult(
+                new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(items, null));
         }
-    }
-
-    private sealed class ExampleSpotLocationStore : IZLinkSpotLocationStore
-    {
-        private ZLinkSpotLocation? _row;
-
-        public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
-            ZLinkSpotLocation spot,
-            ZLinkLocationWriteIntent intent,
-            CancellationToken cancellationToken = default)
-        {
-            _row = spot;
-            return ValueTask.FromResult(ZLinkLocationWriteResult.Stored(spot.SpotGeneration, StoreNow));
-        }
-
-        public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
-            ZLinkSpotLocationKey key,
-            ZLinkLocationOwnerToken owner,
-            CancellationToken cancellationToken = default)
-        {
-            _row = null;
-            return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
-        }
-
-        public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-            ZLinkSpotLocationKey key,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(_row);
-    }
-
-    private sealed class ExampleLocationResolver :
-        IZLinkMeshNodeLocationResolver,
-        IZLinkSpotHandleResolver,
-        IZLinkActorSpotHandleResolver
-    {
-        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
-            string meshName,
-            CancellationToken cancellationToken = default)
-        {
-            IReadOnlyList<ZLinkMeshNodeDescriptor> items = [MakeDescriptor("owner-a")];
-            return ValueTask.FromResult(items);
-        }
-
-        public ValueTask<SpotHandle?> ResolveSpotHandleAsync(
-            string meshName,
-            string spotId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SpotHandle?>(null);
-
-        public ValueTask<SpotHandle?> ResolveActorSpotHandleAsync(
-            string meshName,
-            string actorId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<SpotHandle?>(null);
     }
 
     private sealed class ExampleLocationRuntimeQuery : IZLinkLocationRuntimeQuery
@@ -477,12 +324,15 @@ public sealed class LocationContracts
                 OwnerLeaseHealthy: true,
                 OwnerLeaseRenewedAt: StoreNow));
 
-        public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+            ListMeshNodeDescriptorsAsync(
             string meshName,
+            ZLinkPageRequest page = default,
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<ZLinkMeshNodeDescriptor> items = [MakeDescriptor("owner-a")];
-            return ValueTask.FromResult(items);
+            return ValueTask.FromResult(
+                new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(items, null));
         }
 
         public ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
@@ -501,8 +351,10 @@ public sealed class LocationContracts
                 ],
                 null));
 
-        public ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
+        public ValueTask<ZLinkLocationPage<ZLinkLocationServiceSummary>>
+            ListServiceSummariesAsync(
             ZLinkLocationServiceSummaryFilter filter,
+            ZLinkPageRequest page = default,
             CancellationToken cancellationToken = default)
         {
             IReadOnlyList<ZLinkLocationServiceSummary> items =
@@ -515,7 +367,8 @@ public sealed class LocationContracts
                     0,
                     StoreNow)
             ];
-            return ValueTask.FromResult(items);
+            return ValueTask.FromResult(
+                new ZLinkLocationPage<ZLinkLocationServiceSummary>(items, null));
         }
     }
 

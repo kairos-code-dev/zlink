@@ -24,17 +24,26 @@ public sealed class RedisStoreFailureTests
         await using var store = CreateUnreachableStore();
 
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.UpdateActorAsync(TestRows.Actor("owner-a"), ZLinkLocationWriteIntent.NewClaim));
+            await store.CompareExchangeAuthorityAsync(
+                new ZLinkAuthorityKey("unavailable:actor:actor-1"),
+                "missing-version",
+                new ZLinkAuthorityMutation.Put(
+                    new byte[] { 0x01 },
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    null)));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.RemoveActorAsync(
-                new ZLinkActorLocationKey("actor-1"),
-                new ZLinkLocationOwnerToken("owner-a", 1)));
+            await store.CompareExchangeAuthorityAsync(
+                new ZLinkAuthorityKey("unavailable:actor:actor-1"),
+                "missing-version",
+                new ZLinkAuthorityMutation.Delete()));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.RemoveAllByOwnerAsync(
                 new ZLinkLocationOwnerToken("owner-a", 1)));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.RenewOwnerLeaseAsync(
-                "owner-a", RoutingId.From("node-1"), TimeSpan.FromSeconds(15)));
+                new ZLinkLocationOwnerToken("owner-a", 1),
+                TimeSpan.FromSeconds(15)));
     }
 
     [Fact]
@@ -43,9 +52,10 @@ public sealed class RedisStoreFailureTests
         await using var store = CreateUnreachableStore();
 
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+            await store.ReadAuthorityAsync(
+                new ZLinkAuthorityKey("unavailable:actor:actor-1")));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.ListMeshNodesAsync("play"));
+            await store.ListMeshNodesAsync("play", default));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.GetChangeStampAsync(
                 new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.Actor, null)));

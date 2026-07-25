@@ -56,7 +56,7 @@ internal static class ConsumerHostFactory
             };
             framework.AddLocationStore(store);
             var locations = framework.ConfigureLocations();
-            locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+            locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             // The E2E compresses the lease TTL to three seconds. Scale the
             // renewal attempt bound with the heartbeat as well; retaining

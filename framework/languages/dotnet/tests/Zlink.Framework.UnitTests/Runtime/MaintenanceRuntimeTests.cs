@@ -46,6 +46,9 @@ public sealed class MaintenanceRuntimeTests
         Assert.Equal(ZLinkFrameworkTerminationIntent.Retire, completed.EffectiveIntent);
         Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, completed.Outcome);
         Assert.Equal(1, fixture.Executor.ExecuteCount);
+        Assert.Equal(
+            ZLinkFrameworkTerminationIntent.Retire,
+            fixture.Executor.Intent);
     }
 
     [Fact]
@@ -68,6 +71,9 @@ public sealed class MaintenanceRuntimeTests
         Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, first.EffectiveIntent);
         Assert.Equal(first, second);
         Assert.Equal(1, fixture.Executor.ExecuteCount);
+        Assert.Equal(
+            ZLinkFrameworkTerminationIntent.Shutdown,
+            fixture.Executor.Intent);
     }
 
     [Fact]
@@ -219,11 +225,26 @@ public sealed class MaintenanceRuntimeTests
 
         public int ExecuteCount { get; private set; }
 
+        public ZLinkFrameworkTerminationIntent? Intent { get; private set; }
+
         public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
             TimeSpan deadline,
             CancellationToken deadlineToken)
         {
+            return await ExecuteAsync(
+                    ZLinkFrameworkTerminationIntent.Shutdown,
+                    deadline,
+                    deadlineToken)
+                .ConfigureAwait(false);
+        }
+
+        public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+            ZLinkFrameworkTerminationIntent intent,
+            TimeSpan deadline,
+            CancellationToken deadlineToken)
+        {
             _ = deadline;
+            Intent = intent;
             ExecuteCount++;
             Started.TrySetResult();
             return await Complete.Task.WaitAsync(deadlineToken).ConfigureAwait(false);

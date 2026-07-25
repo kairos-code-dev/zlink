@@ -25,30 +25,31 @@ public sealed class ActorFactoryContracts
         var factory = new PlayerActorFactory(startingLoadout: "torch,potion");
         var context = new ExampleActorContext("player-8821");
 
-        var typed = await factory.CreateAsync("player-8821", context);
-        Assert.Equal("player-8821", typed.ActorId);
+        var typed = await factory.CreateAsync(context);
+        Assert.Equal("player-8821", typed.Context.ActorId);
         Assert.Same(context, typed.Context);
         Assert.Equal("torch,potion", typed.Loadout);
 
         IZLinkActorFactory untyped = factory;
-        var bridged = await untyped.CreateAsync("player-8822", context);
+        var bridgedContext = new ExampleActorContext("player-8822");
+        var bridged = await untyped.CreateAsync(bridgedContext);
 
         // The bridge is a default implementation on the typed contract, so
         // both entry points build the same concrete actor with the same
         // constructor dependencies.
         var bridgedPlayer = Assert.IsType<PlayerActor>(bridged);
-        Assert.Equal("player-8822", bridgedPlayer.ActorId);
+        Assert.Equal("player-8822", bridgedPlayer.Context.ActorId);
         Assert.Equal("torch,potion", bridgedPlayer.Loadout);
         Assert.Equal(2, factory.CreatedCount);
 
-        // The factory receives the identity and the context only. Nothing in
-        // the contract hands it a location row, an owner token or a message.
+        // Context owns identity; the factory does not receive a duplicate ID.
         var typedCreate = typeof(IZLinkActorFactory<PlayerActor>)
             .GetMethod(nameof(IZLinkActorFactory<PlayerActor>.CreateAsync))!;
         Assert.Equal(
-            [typeof(string), typeof(IZLinkActorContext), typeof(CancellationToken)],
+            [typeof(IZLinkActorContext), typeof(CancellationToken)],
             typedCreate.GetParameters().Select(parameter => parameter.ParameterType));
         Assert.Equal(typeof(ValueTask<PlayerActor>), typedCreate.ReturnType);
+        Assert.Null(typeof(IZLinkActor).GetProperty("ActorId"));
     }
 
     [Fact]
@@ -73,7 +74,6 @@ public sealed class ActorFactoryContracts
         // Source node: the actor has played for a while before play-node-b
         // starts retiring.
         var source = await factory.CreateAsync(
-            "player-8821",
             new ExampleActorContext("player-8821"));
         source.Rating = 1901;
         source.Loadout = "torch,potion,greatsword";
@@ -84,7 +84,6 @@ public sealed class ActorFactoryContracts
         // actor starts from the registered defaults and the adapter is the
         // only thing that carries the played-out state over.
         var target = await factory.CreateAsync(
-            "player-8821",
             new ExampleActorContext("player-8821"));
         Assert.Equal(0, target.Rating);
         Assert.Equal("torch,potion", target.Loadout);
@@ -93,7 +92,7 @@ public sealed class ActorFactoryContracts
 
         Assert.Equal(source.Rating, target.Rating);
         Assert.Equal(source.Loadout, target.Loadout);
-        Assert.Equal(source.ActorId, target.ActorId);
+        Assert.Equal(source.Context.ActorId, target.Context.ActorId);
 
         // Capture returns an owned byte[] and restore takes a read-only view;
         // the adapter sees application state only, never the relocation
@@ -110,11 +109,9 @@ public sealed class ActorFactoryContracts
                 .Select(parameter => parameter.ParameterType));
     }
 
-    private sealed class PlayerActor(string actorId, IZLinkActorContext context, string loadout)
+    private sealed class PlayerActor(IZLinkActorContext context, string loadout)
         : IZLinkActor
     {
-        public string ActorId { get; } = actorId;
-
         public IZLinkActorContext Context { get; } = context;
 
         public int Rating { get; set; }
@@ -127,12 +124,11 @@ public sealed class ActorFactoryContracts
         public int CreatedCount { get; private set; }
 
         public ValueTask<PlayerActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             CreatedCount++;
-            return ValueTask.FromResult(new PlayerActor(actorId, context, startingLoadout));
+            return ValueTask.FromResult(new PlayerActor(context, startingLoadout));
         }
     }
 

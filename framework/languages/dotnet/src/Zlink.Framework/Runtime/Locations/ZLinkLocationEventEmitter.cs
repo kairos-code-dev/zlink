@@ -14,7 +14,7 @@ internal sealed class ZLinkLocationEventEmitter
 {
     /// <summary>Emitter used when monitoring is not configured; every
     /// method is a no-op.</summary>
-    internal static readonly ZLinkLocationEventEmitter Disabled = new(null, null, null);
+    internal static readonly ZLinkLocationEventEmitter Disabled = new(null, null);
 
     private readonly IZLinkRuntimeEventPublisher? _publisher;
     private readonly IReadOnlyCollection<string> _peerSources;
@@ -26,15 +26,23 @@ internal sealed class ZLinkLocationEventEmitter
     internal ZLinkLocationEventEmitter(
         ZLinkMonitoringRegistration? registration,
         IZLinkRuntimeEventPublisher? publisher,
-        ZLinkSpotHandleRegistry? handles,
         ZLinkObservedLocationGenerations? observed = null)
     {
         _publisher = publisher;
-        _handles = handles;
         _observed = observed;
         _peerSources = registration?.LocationPeerSources ?? (IReadOnlyCollection<string>)Array.Empty<string>();
         _spotSources = registration?.LocationSpotSources ?? (IReadOnlyCollection<string>)Array.Empty<string>();
         _actorSources = registration?.LocationActorSources ?? (IReadOnlyCollection<string>)Array.Empty<string>();
+    }
+
+    internal ZLinkLocationEventEmitter(
+        ZLinkMonitoringRegistration? registration,
+        IZLinkRuntimeEventPublisher? publisher,
+        ZLinkSpotHandleRegistry? handles,
+        ZLinkObservedLocationGenerations? observed = null)
+        : this(registration, publisher, observed)
+    {
+        _handles = handles;
     }
 
     internal ValueTask DescriptorRowUpdatedAsync(ZLinkMeshNodeDescriptor descriptor, CancellationToken ct)
@@ -60,8 +68,6 @@ internal sealed class ZLinkLocationEventEmitter
 
     internal ValueTask SpotRowUpdatedAsync(ZLinkSpotLocation spot, CancellationToken ct)
     {
-        _observed?.ObserveSpot(spot);
-        _handles?.UpdateSpot(spot);
         return EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent.RowUpdated(
             source, DateTimeOffset.UtcNow,
             new ZLinkSpotLocationKey(spot.SpotId), spot), ct);
@@ -83,8 +89,6 @@ internal sealed class ZLinkLocationEventEmitter
 
     internal ValueTask ActorRowUpdatedAsync(ZLinkActorLocation actor, CancellationToken ct)
     {
-        _observed?.ObserveActor(actor);
-        _handles?.UpdateActor(actor);
         return EmitAsync(_actorSources, source => new ZLinkLocationActorEvent.RowUpdated(
             source, DateTimeOffset.UtcNow,
             new ZLinkActorLocationKey(actor.ActorId), actor), ct);

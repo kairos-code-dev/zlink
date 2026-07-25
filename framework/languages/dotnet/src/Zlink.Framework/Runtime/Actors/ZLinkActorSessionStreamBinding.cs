@@ -7,7 +7,7 @@ internal sealed partial class ZLinkActorSessionManager
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
     {
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        var state = _actorSessions.GetOrCreate(actor.Context.ActorId);
         BindActorContext(actor, state);
         await BindStreamAsync(state, stream, cancellationToken).ConfigureAwait(false);
 
@@ -19,7 +19,7 @@ internal sealed partial class ZLinkActorSessionManager
         IZLinkStream stream,
         CancellationToken cancellationToken = default)
     {
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        var state = _actorSessions.GetOrCreate(actor.Context.ActorId);
         BindActorContext(actor, state);
 
         var shouldUnbind = await ClearStreamBindingAsync(state, stream, cancellationToken)
@@ -27,7 +27,7 @@ internal sealed partial class ZLinkActorSessionManager
 
         if (!shouldUnbind) return;
 
-        await TryUnbindNativeActorAsync(state, actor.ActorId, stream, cancellationToken)
+        await TryUnbindNativeActorAsync(state, actor.Context.ActorId, stream, cancellationToken)
             .ConfigureAwait(false);
     }
 

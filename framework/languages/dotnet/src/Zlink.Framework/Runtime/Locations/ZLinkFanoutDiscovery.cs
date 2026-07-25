@@ -128,7 +128,7 @@ internal sealed class ZLinkFanoutDiscovery : IAsyncDisposable
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken)
     {
-        var owner = _locationRuntime.OwnerToken;
+        var owner = _locationRuntime.AdmissionOwnerToken;
         var identity = publisher.Identity;
         var snapshot = identity.Read();
         var descriptor = new ZLinkFanoutPublisherDescriptor(

@@ -345,6 +345,48 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         return true;
     }
 
+    internal bool TrySealRelocation(
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        out ZLinkSpotExecutionRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(admit);
+        if (!TryBeginRelocationBarrier(
+                holdAcceptedIngress: true,
+                out var barrier))
+        {
+            seal = null!;
+            return false;
+        }
+        if (!_queue.TrySealRelocation(admit, out var queueSeal))
+        {
+            AbortBarrier(barrier.Generation);
+            seal = null!;
+            return false;
+        }
+        MarkBarrierBoundary(barrier.Generation);
+        if (!barrier.Quiescent.Task.IsCompleted)
+        {
+            _queue.TryAbortRelocation(queueSeal);
+            AbortBarrier(barrier.Generation);
+            seal = null!;
+            return false;
+        }
+        seal = new ZLinkSpotExecutionRelocationSeal(
+            barrier.Generation,
+            queueSeal);
+        return true;
+    }
+
+    internal bool IsRelocationReady
+    {
+        get
+        {
+            lock (_barrierGate)
+                return _relocationBarrier is null
+                       && _activeApplicationClaims == 0;
+        }
+    }
+
     internal async ValueTask<ZLinkSpotExecutionRelocationSeal> SealRelocationAsync(
         CancellationToken cancellationToken)
     {
@@ -391,6 +433,24 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         }
     }
 
+    internal ValueTask ExecuteSealedRelocationAsync(
+        ZLinkSpotExecutionRelocationSeal seal,
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        ArgumentNullException.ThrowIfNull(operation);
+        lock (_barrierGate)
+        {
+            if (_relocationBarrier?.Generation != seal.Generation
+                || !_relocationBarrier.BoundaryReached
+                || !_relocationBarrier.Quiescent.Task.IsCompleted)
+                throw new InvalidOperationException(
+                    "SPOT relocation lifecycle requires the current quiescent seal.");
+        }
+        return ExecuteLifecycleOperationAsync(operation, cancellationToken);
+    }
+
     internal bool TryCommitRelocation(
         ZLinkSpotExecutionRelocationSeal seal,
         out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
@@ -408,6 +468,24 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             _relocationBarrier = null;
             Interlocked.Exchange(ref _stopping, 1);
             return true;
+        }
+    }
+
+    internal bool TryFreezeRelocationIngress(
+        ZLinkSpotExecutionRelocationSeal seal,
+        out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        lock (_barrierGate)
+        {
+            if (_relocationBarrier?.Generation != seal.Generation)
+            {
+                held = [];
+                return false;
+            }
+            return _queue.TryFreezeRelocationIngress(
+                seal.QueueSeal,
+                out held);
         }
     }
 

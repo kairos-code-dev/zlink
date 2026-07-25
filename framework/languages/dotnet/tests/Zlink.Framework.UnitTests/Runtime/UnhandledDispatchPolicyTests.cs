@@ -930,8 +930,7 @@ public sealed partial class UnhandledDispatchPolicyTests
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context
-            => throw new InvalidOperationException("Context is not needed by this test.");
+        public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
     }
 
     private sealed class TestActorSpot;

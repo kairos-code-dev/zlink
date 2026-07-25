@@ -19,8 +19,9 @@ public enum ZLinkLocationWriteStatus
 }
 
 /// <summary>
-/// Result of a store write. Stored returns the store-issued generation and
-/// the store update time; callers keep them as the owner token.
+/// Result of a store write. Stored returns the store-issued row generation
+/// and update time. Ownership fencing uses the separately claimed
+/// <see cref="ZLinkLocationOwnerToken"/>.
 /// </summary>
 public sealed record ZLinkLocationWriteResult(
     ZLinkLocationWriteStatus Status,
@@ -91,7 +92,3 @@ public abstract record ZLinkOwnerLeaseReadResult
 
     public sealed record Missing : ZLinkOwnerLeaseReadResult;
 }
-
-public sealed record ZLinkOwnerLeaseRenewal(
-    DateTimeOffset LeaseExpiresAt,
-    DateTimeOffset StoreNow);

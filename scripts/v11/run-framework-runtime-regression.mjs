@@ -133,7 +133,9 @@ function validateCandidate(candidate, candidatePath, language, repoRoot = reposi
   exactKeys(candidate, CANDIDATE_KEYS, "candidate manifest");
   assert(candidate.schema === "zlink-v11-ledger-candidate-v1", "unsupported candidate schema");
   const ledgerPattern = new RegExp(`^V11-M6[A-C]-${LANGUAGE_SUFFIX[language]}$`, "u");
-  assert(selfTest ? candidate.ledgerId === "SELF-TEST" : ledgerPattern.test(candidate.ledgerId),
+  const dotnetReference = language === "dotnet"
+    && candidate.ledgerId === "V11-M6-DN-REFERENCE";
+  assert(selfTest ? candidate.ledgerId === "SELF-TEST" : ledgerPattern.test(candidate.ledgerId) || dotnetReference,
     `candidate ledgerId does not match ${language}: ${candidate.ledgerId}`);
   assert(REVISION.test(candidate.baseRevision), "candidate baseRevision must be a full Git revision");
   git(repoRoot, ["cat-file", "-e", `${candidate.baseRevision}^{commit}`]);

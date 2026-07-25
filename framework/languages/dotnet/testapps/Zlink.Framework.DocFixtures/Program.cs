@@ -276,12 +276,11 @@ internal sealed record FixtureActorJoinReply(string RoomId);
 internal sealed class FixtureActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(new FixtureActor(context.ActorId, context));
     }
 }
 

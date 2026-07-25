@@ -5,7 +5,9 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateLocations(ZLinkFrameworkRegistration registration)
     {
         var locations = registration.Locations;
+        ValidateOwnerLeaseTimes(locations.Options);
         ValidateRelocationLimits(locations.Options);
+        ValidateObjectRoutingTimes(locations.Options);
         if (locations.StoreInstance is not null && locations.UseInMemoryStores)
         {
             throw new ZLinkConfigurationException(
@@ -13,34 +15,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 + "UseTestLocationStore.");
         }
 
-        var allocations = ZLinkRoutingIdAllocationCatalog.Collect(registration);
-        if (allocations.Count == 0) return;
-
-        locations.Options.AllocatedRoutingIdsEnabled = true;
-
-        if (!locations.Enabled)
-            throw new ZLinkConfigurationException(
-                "Allocated routing ids require AddLocationStore(...) or UseTestLocationStore().");
-        if (locations.StoreInstance is not null
-            && locations.StoreInstance is not IZLinkRoutingIdSlotAllocationStore)
-            throw new ZLinkConfigurationException(
-                "The registered location store does not provide routing-id slot allocation.");
-
-        ValidateAllocationTimes(locations.Options);
-        foreach (var allocation in allocations) ValidateAllocation(allocation);
-
-        foreach (var group in allocations.GroupBy(static allocation => allocation.GroupName, StringComparer.Ordinal))
-        {
-            var expectedCount = group.First().SlotCount;
-            if (group.Any(allocation => allocation.SlotCount != expectedCount))
-                throw new ZLinkConfigurationException(
-                    $"Routing-id allocation group '{group.Key}' must use one slot count for every member.");
-            var duplicate = group.GroupBy(static allocation => allocation.MemberName, StringComparer.Ordinal)
-                .FirstOrDefault(static members => members.Count() > 1);
-            if (duplicate is not null)
-                throw new ZLinkConfigurationException(
-                    $"Routing-id allocation group '{group.Key}' contains duplicate member '{duplicate.Key}'.");
-        }
     }
 
     private static void ValidateRelocationLimits(ZLinkLocationOptions options)
@@ -54,100 +28,37 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 "Relocation unit, callback, and payload in-flight limits must all be greater than zero.");
     }
 
-    private static void ValidateAllocationTimes(ZLinkLocationOptions options)
+    private static void ValidateOwnerLeaseTimes(ZLinkLocationOptions options)
     {
-        if (options.HeartbeatInterval <= TimeSpan.Zero
+        if (options.OwnerLeaseRenewInterval <= TimeSpan.Zero
             || options.OwnerLeaseTtl <= TimeSpan.Zero
-            || options.RoutingIdFencingMargin <= TimeSpan.Zero
+            || options.OwnerLeaseFencingMargin <= TimeSpan.Zero
             || options.OwnerLeaseRenewTimeout <= TimeSpan.Zero)
             throw new ZLinkConfigurationException(
-                "Allocated routing-id lease times must all be greater than zero.");
+                "Owner lease renewal, TTL, fencing margin, and renewal timeout "
+                + "must all be greater than zero.");
 
-        if (options.HeartbeatInterval + options.OwnerLeaseRenewTimeout
-            >= options.OwnerLeaseTtl - options.RoutingIdFencingMargin)
+        if (options.OwnerLeaseRenewInterval + options.OwnerLeaseRenewTimeout
+            >= options.OwnerLeaseTtl - options.OwnerLeaseFencingMargin)
             throw new ZLinkConfigurationException(
-                "Allocated routing-id lease times must satisfy HeartbeatInterval + "
-                + "OwnerLeaseRenewTimeout < OwnerLeaseTtl - RoutingIdFencingMargin.");
+                "OwnerLeaseRenewInterval + OwnerLeaseRenewTimeout must be "
+                + "less than OwnerLeaseTtl - OwnerLeaseFencingMargin.");
     }
 
-    private static void ValidateAllocation(ZLinkRoutingIdAllocationMemberRegistration allocation)
+    private static void ValidateObjectRoutingTimes(ZLinkLocationOptions options)
     {
-        if (allocation.SlotCount < 1)
+        if (options.RouteCacheMaxAge < TimeSpan.Zero
+            || options.RelocationForwardingWindow < TimeSpan.Zero)
             throw new ZLinkConfigurationException(
-                $"Routing-id allocation group '{allocation.GroupName}' must configure at least one slot.");
-        if (string.IsNullOrWhiteSpace(allocation.GroupName))
-            throw new ZLinkConfigurationException("Routing-id allocation group name must not be empty.");
-        if (string.IsNullOrWhiteSpace(allocation.Prefix))
+                "RouteCacheMaxAge and RelocationForwardingWindow must be greater than or equal to zero.");
+
+        if (options.RouteCacheMaxAge > TimeSpan.Zero
+            && options.RelocationForwardingWindow > TimeSpan.Zero
+            && options.RouteCacheMaxAge
+               > options.RelocationForwardingWindow - TimeSpan.FromSeconds(5))
             throw new ZLinkConfigurationException(
-                $"Routing-id allocation member '{allocation.MemberName}' must define a prefix.");
-
-        try
-        {
-            _ = RoutingId.From(allocation.Prefix + allocation.SlotCount.ToString(
-                System.Globalization.CultureInfo.InvariantCulture));
-        }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-        {
-            throw new ZLinkConfigurationException(
-                $"Routing-id allocation member '{allocation.MemberName}' can produce a routing id outside the 1..255 byte contract: {error.Message}");
-        }
-
-        if (allocation.HasExplicitRoutingId)
-            throw new ZLinkConfigurationException(
-                $"Routing-id allocation member '{allocation.MemberName}' cannot combine SetRoutingId and UseAllocatedRoutingId.");
-        if (!allocation.HasBindableRole)
-            throw new ZLinkConfigurationException(
-                $"Routing-id allocation member '{allocation.MemberName}' must enable a socket or SPOT node role.");
-    }
-}
-
-internal sealed record ZLinkRoutingIdAllocationMemberRegistration(
-    string GroupName,
-    string MemberName,
-    string Prefix,
-    int SlotCount,
-    bool HasExplicitRoutingId,
-    bool HasBindableRole,
-    Action<RoutingId> Apply);
-
-internal static class ZLinkRoutingIdAllocationCatalog
-{
-    internal static IReadOnlyList<ZLinkRoutingIdAllocationMemberRegistration> Collect(
-        ZLinkFrameworkRegistration registration)
-    {
-        var members = new List<ZLinkRoutingIdAllocationMemberRegistration>();
-        foreach (var channel in registration.Channels.Values)
-            if (channel.RoutingIdAllocation is { } allocation)
-                members.Add(Create(
-                    allocation,
-                    channel.ChannelName,
-                    channel.HasExplicitRoutingId,
-                    channel.Publisher is not null || channel.Subscriber is not null,
-                    routingId => channel.RoutingId = routingId));
-
-        foreach (var spot in registration.SpotNodes.Values)
-            if (spot.RoutingIdAllocation is { } allocation)
-                members.Add(Create(
-                    allocation,
-                    spot.SpotNodeName,
-                    spot.HasExplicitRoutingId,
-                    spot.Router is not null,
-                    routingId => spot.RoutingId = routingId));
-
-        return members;
+                "RouteCacheMaxAge must be at least five seconds shorter than "
+                + "RelocationForwardingWindow when both values are enabled.");
     }
 
-    private static ZLinkRoutingIdAllocationMemberRegistration Create(
-        ZLinkRoutingIdAllocationRegistration allocation,
-        string memberName,
-        bool hasExplicitRoutingId,
-        bool hasBindableRole,
-        Action<RoutingId> apply) => new(
-        allocation.GroupName ?? memberName,
-        memberName,
-        allocation.RoutingIdPrefix,
-        allocation.SlotCount,
-        hasExplicitRoutingId,
-        hasBindableRole,
-        apply);
 }

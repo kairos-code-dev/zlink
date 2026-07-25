@@ -20,7 +20,7 @@ async Task RestartProviderBAsync()
     providerBProcess = await processes.StartProviderBAsync();
     await SfProbe.WaitPeersAsync(
         consumer,
-        SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4, present: ["api-b"]),
+        SfProbe.PeerRows(options.OwnerLeaseTtl + options.OwnerLeaseRenewInterval * 4, present: ["api-b"]),
         "setup: restarted api-b did not re-register.");
 }
 

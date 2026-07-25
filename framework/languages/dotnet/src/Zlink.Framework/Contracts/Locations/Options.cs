@@ -9,25 +9,15 @@ public sealed class ZLinkLocationOptions
 {
     /// <summary>Owner lease renewal period. One write per runtime instance
     /// per interval; location rows are never written by heartbeat.</summary>
-    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan OwnerLeaseRenewInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Owner lease lifetime. Rows of an expired owner are treated
     /// as stale everywhere.</summary>
-    public TimeSpan OwnerLeaseTtl { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan OwnerLeaseTtl { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>Store re-read period when the store has no watch support.
     /// Also bounds the staleness of the local owner lease snapshot.</summary>
     public TimeSpan PollingInterval { get; set; } = TimeSpan.FromSeconds(1);
-
-    /// <summary>Default page size used when a list query passes a default
-    /// <see cref="ZLinkPageRequest"/>.</summary>
-    public int ListPageSize { get; set; } = 1000;
-
-    /// <summary>Additional mesh namespaces the operational query enumerates
-    /// beyond the ones this host advertises or dials. An observer host (an
-    /// ops console watching a mesh it never joins) lists the meshes it wants
-    /// location topology for.</summary>
-    public IList<string> ObservedMeshNames { get; } = new List<string>();
 
     /// <summary>Grace boundary for location-state failures. Existing ready
     /// connections remain available; after this time, auto connect does not
@@ -35,15 +25,28 @@ public sealed class ZLinkLocationOptions
     public TimeSpan StoreFailureGrace { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Time reserved to stop every socket that uses an allocated routing id before the
-    /// owner lease expires. This policy is used only when allocated routing ids are configured.
+    /// Time reserved for local authority fencing before the owner lease
+    /// expires.
     /// </summary>
-    public TimeSpan RoutingIdFencingMargin { get; set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan OwnerLeaseFencingMargin { get; set; } =
+        TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Maximum time allowed for one owner-lease renewal attempt.
     /// </summary>
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Maximum age of a positive Ready object route retained by this runtime.
+    /// Zero disables the route cache.
+    /// </summary>
+    public TimeSpan RouteCacheMaxAge { get; set; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Maximum lifetime of a committed source-to-target relocation forwarding mapping.
+    /// Zero disables forwarding.
+    /// </summary>
+    public TimeSpan RelocationForwardingWindow { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Maximum number of source relocation units that may be active in this process.
@@ -69,6 +72,4 @@ public sealed class ZLinkLocationOptions
     /// Maximum encoded relocation payload bytes retained by active payload stages.
     /// </summary>
     public long MaxRelocationPayloadInFlightBytes { get; set; } = 268_435_456;
-
-    internal bool AllocatedRoutingIdsEnabled { get; set; }
 }

@@ -155,6 +155,10 @@ internal sealed class ZLinkSpotActivationDispatcher
                 StringComparison.Ordinal)
             && !string.Equals(
                 header.MessageName,
+                ZLinkRemoteActorJoinPackets.AdmissionAbortPacketName,
+                StringComparison.Ordinal)
+            && !string.Equals(
+                header.MessageName,
                 ZLinkRemoteActorJoinPackets.CommitPacketName,
                 StringComparison.Ordinal)
             && !string.Equals(
@@ -191,6 +195,29 @@ internal sealed class ZLinkSpotActivationDispatcher
                     admissionReply,
                     typeof(ZLinkRemoteActorAdmissionReply));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, admissionReplyParts);
+                return true;
+            }
+
+            if (string.Equals(
+                    header.MessageName,
+                    ZLinkRemoteActorJoinPackets.AdmissionAbortPacketName,
+                    StringComparison.Ordinal))
+            {
+                var abortRequest =
+                    ZLinkRemoteActorJoinPackets.DecodeAdmissionAbortRequest(
+                        received.Parts);
+                runtime.AbortRoutedActorJoinAdmission(
+                    ZLinkSpotId.FromNativeRoutingId(nativeSpot.RoutingId),
+                    abortRequest);
+                var abortReplyParts = ZLinkSpotReplyEnvelope.EncodeResponseParts(
+                    channelName,
+                    header.MessageName,
+                    header.CorrelationId,
+                    abortRequest,
+                    typeof(ZLinkRemoteActorAdmissionAbortRequest));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(
+                    received,
+                    abortReplyParts);
                 return true;
             }
 
@@ -280,6 +307,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
             return header.MessageName is ZLinkRemoteActorJoinPackets.RequestPacketName
                 or ZLinkRemoteActorJoinPackets.AdmissionPacketName
+                or ZLinkRemoteActorJoinPackets.AdmissionAbortPacketName
                 or ZLinkRemoteActorJoinPackets.CommitPacketName
                 or ZLinkRemoteActorJoinPackets.HandoffCompletionPacketName;
         }

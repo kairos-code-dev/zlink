@@ -483,6 +483,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             var terminal = await DispatchFirstMessageAsync(
                     prepared.Activation,
                     operation,
+                    readySnapshot,
                     metadata,
                     payload,
                     cancellationToken)
@@ -656,6 +657,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         var terminal = await DispatchFirstMessageAsync(
                 activation,
                 operation,
+                snapshot,
                 record.Metadata,
                 record.Payload,
                 cancellationToken)
@@ -766,6 +768,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 var terminal = await DispatchFirstMessageAsync(
                         activation,
                         operation,
+                        stored.Snapshot,
                         metadata,
                         payload,
                         cancellationToken)
@@ -806,12 +809,18 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
     private async ValueTask<InstanceSpotActivationTerminal> DispatchFirstMessageAsync(
         ZLinkSpotActivation activation,
         InstanceSpotActivationOperation operation,
+        ZLinkAuthoritySnapshot authority,
         ReadOnlyMemory<byte>? metadata,
         IReadOnlyList<ReadOnlyMemory<byte>> payload,
         CancellationToken cancellationToken)
     {
         return await activation.DispatchDurableActivationAsync(
                 operation.OperationId,
+                operation.SourceNodeRid,
+                operation.SourceSpotId,
+                operation.Target.TargetNodeGeneration,
+                authority.AuthorityOwnerGeneration,
+                checked((ulong)authority.OwnerLeaseGeneration),
                 payload,
                 metadata,
                 operation.IsRequest,

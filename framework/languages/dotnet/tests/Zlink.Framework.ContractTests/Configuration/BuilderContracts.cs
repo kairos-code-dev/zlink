@@ -28,8 +28,7 @@ public sealed class BuilderContracts
         typeof(IZLinkRouteConfig),
         typeof(IZLinkOutboundRouteConfig),
         typeof(IZLinkSpotPublisherConfig),
-        typeof(IZLinkSpotSubscriberConfig),
-        typeof(IZLinkEntrySpotOptions))]
+        typeof(IZLinkSpotSubscriberConfig))]
     public void Framework_options_expose_the_10_0_registration_surface()
     {
         var methods = typeof(IZLinkFrameworkOptions)

@@ -1,3 +1,6 @@
+using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Spots;
+
 namespace Zlink.Framework.Locations.Redis.Tests;
 
 [Collection(RedisTestCollection.Name)]
@@ -12,25 +15,6 @@ public sealed class RedisLocationStoreTests
     public RedisLocationStoreTests(RedisTestFixture fixture)
     {
         _fixture = fixture;
-    }
-
-    [Fact]
-    public void ActorRef_Row_Json_Uses_Typed_Internal_Codec()
-    {
-        var json = ZLinkRedisLocationRowJson.Serialize(TestRows.Actor(OwnerA));
-
-        Assert.Contains("\"ActorRef\":{", json, StringComparison.Ordinal);
-        Assert.Contains("\"nodeRid\":", json, StringComparison.Ordinal);
-        Assert.Contains("\"actorId\":\"actor-1\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"generation\":1", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("node-1:1:actor-1", json, StringComparison.Ordinal);
-        Assert.Contains("\"SpotKind\":", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("LocationKind", json, StringComparison.Ordinal);
-
-        var roundtrip = ZLinkRedisLocationRowJson.Deserialize<ZLinkActorLocation>(json);
-        Assert.Equal(RoutingId.From("node-1"), roundtrip.ActorRef.NodeRid);
-        Assert.Equal("actor-1", roundtrip.ActorRef.ActorId);
-        Assert.Equal(1ul, roundtrip.ActorRef.Generation);
     }
 
     [Fact]
@@ -98,12 +82,7 @@ public sealed class RedisLocationStoreTests
     {
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore(out var prefix);
-        await store.RenewOwnerLeaseAsync(
-            OwnerA,
-            RoutingId.From("node-1"),
-            LeaseTtl);
-        var token = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
-            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+        var token = await store.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
 
         var keys = new ZLinkRedisLocationKeys(prefix);
         var leaseKey = keys.HybridOwnerLeaseKey(OwnerA).ToString();
@@ -183,32 +162,38 @@ public sealed class RedisLocationStoreTests
     }
 
     [SkippableFact]
-    public async Task Update_Resolve_Remove_Roundtrip_Preserves_Row_Fields()
+    public async Task Authority_Reserve_Commit_Read_Delete_Roundtrip_Preserves_Exact_Fields()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
         await setup;
 
-        var claimed = await store.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
-        Assert.Equal(1UL, claimed.Generation);
-        Assert.NotEqual(default, claimed.UpdatedAt);
+        var committed = await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        Assert.Equal(1UL, committed.ObjectGeneration);
+        Assert.Equal(1UL, committed.AuthorityOwnerGeneration);
+        Assert.Equal(OwnerA, committed.OwnerId);
+        Assert.Equal(ZLinkPlacementAllocationState.Active, committed.Allocation.State);
+        Assert.NotEqual(default, committed.StoreNow);
 
-        var resolved = await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1"));
-        Assert.NotNull(resolved);
-        Assert.Equal("actor-1", resolved!.ActorRef.ActorId);
-        Assert.Equal(RoutingId.From("node-1"), resolved.OwnerNodeRid);
-        Assert.Equal(ZLinkSpotKind.Entry, resolved.SpotKind);
-        Assert.Equal(string.Empty, resolved.SpotId);
-        Assert.Equal(OwnerA, resolved.OwnerId);
-        // UpdatedAt comes from the store clock, not from the row the writer
-        // sent (it carried a default timestamp).
-        Assert.Equal(claimed.UpdatedAt, resolved.UpdatedAt);
+        Assert.True(ZLinkActorAuthorityPayloadCodec.TryDecode(
+            committed.Payload.Span,
+            out var payload));
+        Assert.Equal("actor-1", payload.ActorId);
+        Assert.Equal("player", payload.StableType);
+        Assert.Equal(RoutingId.From("node-1"), payload.NodeRid);
+        Assert.Equal(ZLinkSpotKind.Entry, payload.CurrentSpotKind);
+        Assert.Equal("entry:test", payload.CurrentSpotId);
 
-        var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
-            new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                ActorAuthorityKey("actor-1"),
+                committed.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkAuthorityReadResult.Missing>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-1")));
     }
 
     [SkippableFact]
@@ -218,7 +203,7 @@ public sealed class RedisLocationStoreTests
         await setup;
 
         await store.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        var descriptors = await store.ListMeshNodesAsync("play");
+        var descriptors = (await store.ListMeshNodesAsync("play", default)).Items;
         var descriptor = Assert.Single(descriptors);
         Assert.Equal("tcp://127.0.0.1:5001", descriptor.Endpoint);
         Assert.Equal(100, descriptor.ChannelWeights["play"]);
@@ -235,16 +220,27 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(
             new ZLinkPopulationCapacity(0, 0, 1_000),
             descriptor.Capacity.Spots);
-        Assert.Empty(descriptor.Capacity.SpotTypes);
+        Assert.Equal(
+            [
+                new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "game",
+                    0,
+                    0,
+                    0)
+            ],
+            descriptor.Capacity.SpotTypes);
         Assert.Equal("wave-a", descriptor.MaintenanceWave);
-        var capability = Assert.Single(descriptor.ObjectCapabilities);
+        Assert.Equal(2, descriptor.ObjectCapabilities.Count);
+        var capability = descriptor.ObjectCapabilities.Single(
+            static item => item.ObjectKind == ZLinkPlacementObjectKind.Actor);
         Assert.Equal(ZLinkPlacementObjectKind.Actor, capability.ObjectKind);
         Assert.Equal("player", capability.StableType);
         Assert.Equal(0, capability.Limit);
     }
 
     [SkippableFact]
-    public async Task Concurrent_NewClaim_From_Two_Owners_Stores_Exactly_One()
+    public async Task Concurrent_Reserve_From_Two_Owners_Stores_Exactly_One()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
         await setup;
@@ -252,12 +248,34 @@ public sealed class RedisLocationStoreTests
         for (var attempt = 0; attempt < 10; attempt++)
         {
             var actorId = $"race-{attempt}";
+            await EnsureDescriptorAsync(
+                store,
+                OwnerA,
+                ZLinkPlacementObjectKind.Actor);
+            await EnsureDescriptorAsync(
+                store,
+                OwnerB,
+                ZLinkPlacementObjectKind.Actor);
             var claims = await Task.WhenAll(
-                store.UpdateActorAsync(TestRows.Actor(OwnerA, actorId), ZLinkLocationWriteIntent.NewClaim).AsTask(),
-                store.UpdateActorAsync(TestRows.Actor(OwnerB, actorId), ZLinkLocationWriteIntent.NewClaim).AsTask());
+                ReserveAuthorityAsync(
+                    store,
+                    OwnerA,
+                    actorId,
+                    ZLinkPlacementObjectKind.Actor).AsTask(),
+                ReserveAuthorityAsync(
+                    store,
+                    OwnerB,
+                    actorId,
+                    ZLinkPlacementObjectKind.Actor).AsTask());
 
-            Assert.Equal(1, claims.Count(result => result.Status == ZLinkLocationWriteStatus.Stored));
-            Assert.Equal(1, claims.Count(result => result.Status == ZLinkLocationWriteStatus.RejectedConflict));
+            Assert.Equal(
+                1,
+                claims.Count(static result =>
+                    result is ZLinkObjectReserveResult.Reserved));
+            Assert.Equal(
+                1,
+                claims.Count(static result =>
+                    result is ZLinkObjectReserveResult.Conflict));
         }
     }
 
@@ -267,102 +285,120 @@ public sealed class RedisLocationStoreTests
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
         await setup;
 
-        var first = await store.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, first.Status);
-        Assert.Equal(1UL, first.Generation);
+        var first = await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        Assert.Equal(1UL, first.ObjectGeneration);
 
-        var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
-            new ZLinkLocationOwnerToken(OwnerA, first.Generation));
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed);
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                ActorAuthorityKey("actor-1"),
+                first.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
 
         // Generation counters survive row removal, so a re-claim can never
         // reuse an old fencing token.
-        var reclaimed = await store.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, reclaimed.Status);
-        Assert.Equal(2UL, reclaimed.Generation);
+        var reclaimed = await CreateAuthorityAsync(
+            store,
+            OwnerB,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        Assert.True(reclaimed.ObjectGeneration > first.ObjectGeneration);
     }
 
     [SkippableFact]
-    public async Task Renew_Requires_Current_Owner_And_Keeps_Generation()
+    public async Task Preserve_Requires_Exact_Version_And_Keeps_Generations()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
         await setup;
-        var claimed = await store.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        var claimed = await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        var stored = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                ActorAuthorityKey("actor-1"),
+                claimed.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    claimed.Payload,
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    null)));
+        Assert.Equal(claimed.ObjectGeneration, stored.Snapshot.ObjectGeneration);
+        Assert.Equal(
+            claimed.AuthorityOwnerGeneration,
+            stored.Snapshot.AuthorityOwnerGeneration);
 
-        var renewed = await store.UpdateActorAsync(
-            TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, renewed.Status);
-        Assert.Equal(claimed.Generation, renewed.Generation);
-
-        var wrongOwner = await store.UpdateActorAsync(
-            TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.Renew);
-        Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, wrongOwner.Status);
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                ActorAuthorityKey("actor-1"),
+                claimed.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
     }
 
     [SkippableFact]
-    public async Task Takeover_Replaces_Live_Row_And_Old_Owner_Writes_Become_Stale()
-    {
-        await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
-        await setup;
-        var claimed = await store.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-
-        var takeover = await store.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.Takeover);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, takeover.Status);
-        Assert.True(takeover.Generation > claimed.Generation);
-
-        // The replaced owner learns it lost ownership from its next write.
-        var staleRenew = await store.UpdateActorAsync(
-            TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew);
-        Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRenew.Status);
-
-        var staleRemove = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
-            new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
-        Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRemove);
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
-    }
-
-    [SkippableFact]
-    public async Task Owner_Lease_Expiry_Makes_Rows_Claimable_Via_NewClaim()
+    public async Task Owner_Lease_Expiry_Does_Not_Silently_Replace_Authority()
     {
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore();
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), TimeSpan.FromMilliseconds(300));
-        await store.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), LeaseTtl);
+        await store.ClaimLiveOwnerAsync(OwnerA, TimeSpan.FromMilliseconds(300));
+        await store.ClaimLiveOwnerAsync(OwnerB, LeaseTtl);
 
-        var first = await store.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, first.Status);
+        var first = await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
 
-        var conflict = await store.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, conflict.Status);
-
-        // Owner A stops heartbeating; the Redis PX TTL expires the lease and
-        // A's rows become claimable without any row write.
-        var reclaimed = await WaitForStoredWriteAsync(
-            () => store.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.NewClaim));
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, reclaimed.Status);
-        Assert.Equal(2UL, reclaimed.Generation);
+        Assert.IsType<ZLinkObjectReserveResult.AlreadyExists>(
+            await ReserveAuthorityAsync(
+                store,
+                OwnerB,
+                "actor-1",
+                ZLinkPlacementObjectKind.Actor));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                ActorAuthorityKey("actor-1"),
+                first.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
     }
 
     [SkippableFact]
-    public async Task RemoveByOwner_Bulk_Removes_Only_That_Owners_Rows()
+    public async Task RemoveByOwner_RemovesOnlyEphemeralRowsForExactOwner()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
         await setup;
-        IZLinkActorLocationStore actors = store;
-        await actors.UpdateActorAsync(TestRows.Actor(OwnerA, "actor-1"), ZLinkLocationWriteIntent.NewClaim);
-        await actors.UpdateActorAsync(TestRows.Actor(OwnerA, "actor-2"), ZLinkLocationWriteIntent.NewClaim);
-        await actors.UpdateActorAsync(TestRows.Actor(OwnerB, "actor-3"), ZLinkLocationWriteIntent.NewClaim);
+        await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-1",
+            ZLinkPlacementObjectKind.Actor);
+        await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-2",
+            ZLinkPlacementObjectKind.Actor);
+        await CreateAuthorityAsync(
+            store,
+            OwnerB,
+            "actor-3",
+            ZLinkPlacementObjectKind.Actor);
 
         var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
             await store.ReadOwnerLeaseAsync(OwnerA)).Token;
         var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
-        Assert.Equal(2, removed);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-2")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-3")));
+        Assert.Equal(1, removed);
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-1")));
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-2")));
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-3")));
     }
 
     [SkippableFact]
@@ -389,42 +425,73 @@ public sealed class RedisLocationStoreTests
                 nodeRid: "node-b",
                 leaseGeneration: ownerBToken.LeaseGeneration),
             ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-a"), ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateSpotAsync(TestRows.Spot(OwnerB, "spot-b"), ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateActorAsync(TestRows.Actor(OwnerA, "actor-a"), ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateActorAsync(TestRows.Actor(OwnerB, "actor-b"), ZLinkLocationWriteIntent.NewClaim);
+        await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "spot-a",
+            ZLinkPlacementObjectKind.UserSpot);
+        await CreateAuthorityAsync(
+            store,
+            OwnerB,
+            "spot-b",
+            ZLinkPlacementObjectKind.UserSpot);
+        await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "actor-a",
+            ZLinkPlacementObjectKind.Actor);
+        await CreateAuthorityAsync(
+            store,
+            OwnerB,
+            "actor-b",
+            ZLinkPlacementObjectKind.Actor);
 
         var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
-        Assert.Equal(3, removed);
-        Assert.DoesNotContain(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerA);
-        Assert.Contains(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerB);
-        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-a")));
-        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-b")));
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-a")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-b")));
+        Assert.Equal(2, removed);
+        Assert.DoesNotContain((await store.ListMeshNodesAsync("play", default)).Items, row => row.OwnerId == OwnerA);
+        Assert.Contains((await store.ListMeshNodesAsync("play", default)).Items, row => row.OwnerId == OwnerB);
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(SpotAuthorityKey("spot-a")));
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(SpotAuthorityKey("spot-b")));
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-a")));
+        Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(ActorAuthorityKey("actor-b")));
     }
 
     [SkippableFact]
-    public async Task Spot_Update_Resolve_Remove_Roundtrip_Preserves_Row_Fields()
+    public async Task Spot_Authority_Roundtrip_Preserves_Payload_And_Fences_Delete()
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
         await setup;
 
-        var claimed = await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
+        var claimed = await CreateAuthorityAsync(
+            store,
+            OwnerA,
+            "spot-1",
+            ZLinkPlacementObjectKind.UserSpot);
+        Assert.True(ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
+            claimed.Payload.Span,
+            out var decoded));
+        Assert.Equal("spot-1", decoded.SpotId);
+        Assert.Equal("game", decoded.StableType);
+        Assert.Equal(RoutingId.From("node-1"), decoded.NodeRid);
+        Assert.Equal(OwnerA, decoded.OwnerId);
 
-        var key = new ZLinkSpotLocationKey("spot-1");
-        var resolved = await store.ResolveSpotAsync(key);
-        Assert.NotNull(resolved);
-        Assert.Equal("game", resolved!.SpotType);
-        Assert.Equal(RoutingId.From("node-1"), resolved.OwnerNodeRid);
-        Assert.Equal(ZLinkSpotKind.User, resolved.SpotKind);
-        Assert.Equal(OwnerA, resolved.OwnerId);
-
-        var removed = await store.RemoveSpotAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, removed);
-        Assert.Null(await store.ResolveSpotAsync(key));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                SpotAuthorityKey("spot-1"),
+                claimed.StoreVersion + "-stale",
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                SpotAuthorityKey("spot-1"),
+                claimed.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkAuthorityReadResult.Missing>(
+            await store.ReadAuthorityAsync(SpotAuthorityKey("spot-1")));
     }
 
     [SkippableFact]
@@ -438,13 +505,19 @@ public sealed class RedisLocationStoreTests
         var key = new ZLinkMeshNodeDescriptorKey("play", RoutingId.From("node-1"));
 
         // A stale token must not delete the live row; the current one must.
-        var stale = await store.RemoveMeshNodeAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation + 5));
+        var owner = await store.ReadOwnerLeaseAsync(OwnerA);
+        var current = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(owner).Token;
+        var stale = await store.RemoveMeshNodeAsync(
+            key,
+            new ZLinkLocationOwnerToken(
+                OwnerA,
+                checked(current.LeaseGeneration + 1)));
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, stale);
-        Assert.Single(await store.ListMeshNodesAsync("play"));
+        Assert.Single((await store.ListMeshNodesAsync("play", default)).Items);
 
-        var removed = await store.RemoveMeshNodeAsync(key, new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
+        var removed = await store.RemoveMeshNodeAsync(key, current);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, removed);
-        Assert.Empty(await store.ListMeshNodesAsync("play"));
+        Assert.Empty((await store.ListMeshNodesAsync("play", default)).Items);
     }
 
     [SkippableFact]
@@ -468,7 +541,7 @@ public sealed class RedisLocationStoreTests
         Assert.True(afterWriteMesh > beforeMesh);
         Assert.True(afterWriteKind > beforeKind);
 
-        await store.ListMeshNodesAsync("play");
+        await store.ListMeshNodesAsync("play", default);
         await store.GetChangeStampAsync(meshScope);
         Assert.Equal(afterWriteMesh, await store.GetChangeStampAsync(meshScope));
         Assert.Equal(afterWriteKind, await store.GetChangeStampAsync(kindScope));
@@ -482,28 +555,28 @@ public sealed class RedisLocationStoreTests
     }
 
     [SkippableFact]
-    public async Task Owner_Lease_Snapshot_Reports_StoreNow_And_Omits_Expired_Leases()
+    public async Task Owner_Lease_Read_Reports_StoreNow_And_Omits_Expired_Lease()
     {
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore();
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
-        await store.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), TimeSpan.FromMilliseconds(300));
+        var ownerA = await store.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
+        await store.ClaimLiveOwnerAsync(OwnerB, TimeSpan.FromMilliseconds(300));
 
-        var snapshot = await WaitForOwnerLeaseToExpireAsync(store, OwnerB);
-
-        var lease = Assert.Single(snapshot.Leases);
-        Assert.Equal(OwnerA, lease.OwnerId);
-        Assert.Equal(RoutingId.From("node-1"), lease.NodeRid);
-        Assert.NotEqual(default, snapshot.StoreNow);
+        await WaitForOwnerLeaseToExpireAsync(store, OwnerB);
+        var lease = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA));
+        Assert.Equal(ownerA, lease.Token);
+        Assert.NotEqual(default, lease.StoreNow);
         // Expiry is derived from StoreNow plus the remaining Redis TTL; the
         // application wall clock never participates in the comparison.
-        Assert.True(lease.LeaseExpiresAt > snapshot.StoreNow);
-        Assert.True(lease.LeaseExpiresAt - snapshot.StoreNow <= LeaseTtl);
-        Assert.True(lease.UpdatedAt <= snapshot.StoreNow);
+        Assert.True(lease.LeaseExpiresAt > lease.StoreNow);
+        Assert.True(lease.LeaseExpiresAt - lease.StoreNow <= LeaseTtl);
 
-        var removed = await store.RemoveOwnerLeaseAsync(OwnerA);
-        Assert.True(removed);
-        Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await store.ReleaseOwnerLeaseAsync(ownerA));
+        Assert.IsType<ZLinkOwnerLeaseReadResult.Missing>(
+            await store.ReadOwnerLeaseAsync(OwnerA));
     }
 
     [Fact]
@@ -514,8 +587,9 @@ public sealed class RedisLocationStoreTests
             ZLinkRedisLocationScripts.Write,
             ZLinkRedisLocationScripts.Remove,
             ZLinkRedisLocationScripts.RemoveAllByOwner,
-            ZLinkRedisLocationScripts.RenewLease,
-            ZLinkRedisLocationScripts.RemoveLease
+            ZLinkRedisLocationScripts.ClaimLease,
+            ZLinkRedisLocationScripts.RenewExactLease,
+            ZLinkRedisLocationScripts.ReleaseExactLease
         };
 
         Assert.All(scripts, script =>
@@ -562,14 +636,14 @@ public sealed class RedisLocationStoreTests
     {
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore(out var prefix);
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
+        await store.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
         var scope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play");
         await store.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Assert.True(await store.GetChangeStampAsync(scope) > 0);
 
         Assert.True(await _fixture.DeleteKeyAsync($"{prefix}:stamp:mesh:play"));
         Assert.Equal(0UL, await store.GetChangeStampAsync(scope));
-        Assert.Single(await store.ListMeshNodesAsync("play"));
+        Assert.Single((await store.ListMeshNodesAsync("play", default)).Items);
     }
 
     [SkippableFact]
@@ -577,90 +651,12 @@ public sealed class RedisLocationStoreTests
     {
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore(out var prefix);
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), LeaseTtl);
+        await store.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
         await store.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Assert.True(await _fixture.CountPrefixAsync(prefix) > 0);
 
         Assert.True(await _fixture.DeletePrefixAsync(prefix) > 0);
         Assert.Equal(0, await _fixture.CountPrefixAsync(prefix));
-    }
-
-    [SkippableFact]
-    public async Task RoutingIdSlotAllocation_IsAtomicIdempotentAndFenced()
-    {
-        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
-        await using var store = _fixture.CreateStore();
-        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone-") };
-        var acquired = await Task.WhenAll(Enumerable.Range(1, 20).Select(async owner =>
-            Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
-                new ZLinkRoutingIdSlotAcquireRequest(
-                    "zone",
-                    members,
-                    20,
-                    $"owner-{owner}",
-                    LeaseTtl)))));
-
-        Assert.Equal(Enumerable.Range(1, 20), acquired.Select(static item => item.Allocation.Slot).Order());
-        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, "overflow", LeaseTtl)));
-
-        var first = acquired.Single(static item => item.Allocation.Slot == 1).Allocation;
-        var retried = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, first.Owner.OwnerId, LeaseTtl)));
-        Assert.Equal(first.Owner, retried.Allocation.Owner);
-        Assert.Equal(
-            ZLinkRoutingIdSlotReleaseResult.Released,
-            await store.ReleaseRoutingIdSlotAsync("zone", first.Slot, first.Owner));
-        var recycled = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, "replacement", LeaseTtl)));
-        Assert.Equal(1, recycled.Allocation.Slot);
-        Assert.True(recycled.Allocation.Owner.Generation > first.Owner.Generation);
-        Assert.Equal(
-            ZLinkRoutingIdSlotReleaseResult.IgnoredStale,
-            await store.ReleaseRoutingIdSlotAsync("zone", first.Slot, first.Owner));
-
-        var snapshot = await store.ListRoutingIdSlotsAsync("zone");
-        Assert.Equal(20, snapshot.Allocations.Count);
-        Assert.Equal(members, snapshot.Members);
-    }
-
-    [SkippableFact]
-    public async Task RoutingIdSlotAllocation_FollowsSharedOwnerLeaseRenewal()
-    {
-        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
-        await using var store = _fixture.CreateStore();
-        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone") };
-        var initialTtl = TimeSpan.FromMilliseconds(500);
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), initialTtl);
-        await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerA, initialTtl));
-
-        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), TimeSpan.FromSeconds(2));
-        await Task.Delay(TimeSpan.FromMilliseconds(600));
-
-        Assert.Contains((await store.ListOwnerLeasesAsync()).Leases,
-            static lease => lease.OwnerId == OwnerA && lease.LeaseExpiresAt > lease.UpdatedAt);
-        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerB, LeaseTtl)));
-        var snapshot = await store.ListRoutingIdSlotsAsync("zone");
-        Assert.True(Assert.Single(snapshot.Allocations).LeaseExpiresAt > snapshot.StoreNow);
-    }
-
-    [SkippableFact]
-    public async Task RoutingIdSlotAllocation_AllowsAllocatedPeersFromAnotherGroup()
-    {
-        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
-        await using var store = _fixture.CreateStore();
-        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("play", "play") };
-
-        var play = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("bingo.play", members, 2, OwnerA, LeaseTtl)));
-        await store.UpdateMeshNodeAsync(
-            TestRows.MeshNode(OwnerA, nodeRid: $"play{play.Allocation.Slot}"),
-            ZLinkLocationWriteIntent.NewClaim);
-
-        Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
-            new ZLinkRoutingIdSlotAcquireRequest("bingo.session", members, 2, OwnerB, LeaseTtl)));
     }
 
     /// <summary>Creates an isolated store and starts the lease setup; tests
@@ -677,48 +673,177 @@ public sealed class RedisLocationStoreTests
         {
             foreach (var ownerId in owners)
             {
-                var result = await store.RenewOwnerLeaseAsync(ownerId, RoutingId.From("node-1"), LeaseTtl);
-                Assert.True(result.LeaseExpiresAt > result.StoreNow);
+                var token = await store.ClaimLiveOwnerAsync(ownerId, LeaseTtl);
+                var read = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+                    await store.ReadOwnerLeaseAsync(ownerId));
+                Assert.Equal(token, read.Token);
+                Assert.True(read.LeaseExpiresAt > read.StoreNow);
             }
         }
     }
 
-    private static async Task<ZLinkLocationWriteResult> WaitForStoredWriteAsync(
-        Func<ValueTask<ZLinkLocationWriteResult>> write)
+    private static ZLinkAuthorityKey ActorAuthorityKey(string actorId) =>
+        ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId);
+
+    private static ZLinkAuthorityKey SpotAuthorityKey(string spotId) =>
+        ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
+
+    private static async ValueTask EnsureDescriptorAsync(
+        ZLinkRedisLocationStore store,
+        string ownerId,
+        ZLinkPlacementObjectKind objectKind)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        ZLinkLocationWriteResult result;
-        do
-        {
-            result = await write();
-            if (result.Status == ZLinkLocationWriteStatus.Stored)
-            {
-                return result;
-            }
+        var owner = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(ownerId)).Token;
+        var nodeName = ownerId == OwnerB ? "node-2" : "node-1";
+        var nodeRid = RoutingId.From(nodeName);
+        if ((await store.ListMeshNodesAsync("play", default)).Items.Any(
+                item => item.Rid == nodeRid))
+            return;
 
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
-        } while (DateTimeOffset.UtcNow < deadline);
-
-        return result;
+        var descriptor = TestRows.MeshNode(
+            ownerId,
+            nodeRid: nodeName,
+            leaseGeneration: owner.LeaseGeneration);
+        var written = await store.UpdateMeshNodeAsync(
+            descriptor,
+            ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, written.Status);
+        Assert.Contains(
+            descriptor.ObjectCapabilities,
+            item => item.ObjectKind == objectKind);
     }
 
-    private static async Task<ZLinkOwnerLeaseSnapshot> WaitForOwnerLeaseToExpireAsync(
+    private static async ValueTask<ZLinkObjectReserveResult>
+        ReserveAuthorityAsync(
+            ZLinkRedisLocationStore store,
+            string ownerId,
+            string objectId,
+            ZLinkPlacementObjectKind objectKind)
+    {
+        await EnsureDescriptorAsync(store, ownerId, objectKind);
+        var owner = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(ownerId)).Token;
+        var nodeName = ownerId == OwnerB ? "node-2" : "node-1";
+        var nodeRid = RoutingId.From(nodeName);
+        var key = objectKind == ZLinkPlacementObjectKind.Actor
+            ? ActorAuthorityKey(objectId)
+            : SpotAuthorityKey(objectId);
+        var stableType = objectKind == ZLinkPlacementObjectKind.Actor
+            ? "player"
+            : "game";
+        var intent = System.Text.Encoding.UTF8.GetBytes(
+            $"create:{key.Value}:{ownerId}");
+        var creatingPayload = AuthorityPayload(
+            owner,
+            nodeRid,
+            objectId,
+            objectKind,
+            ready: false);
+        return await store.ReserveAsync(
+            new ZLinkObjectReservationRequest(
+                objectKind,
+                key,
+                stableType,
+                $"inline:{key.Value}",
+                System.Security.Cryptography.SHA256.HashData(intent),
+                intent.Length,
+                new ZLinkMeshNodeDescriptorKey("play", nodeRid),
+                1,
+                owner,
+                creatingPayload,
+                objectKind == ZLinkPlacementObjectKind.Actor
+                    ? new ZLinkCapacityVector(1, 0, null)
+                    : new ZLinkCapacityVector(
+                        0,
+                        1,
+                        new ZLinkSpotTypeCapacityDelta(
+                            ZLinkPlacementObjectKind.UserSpot,
+                            stableType,
+                            1))));
+    }
+
+    private static async ValueTask<ZLinkAuthoritySnapshot>
+        CreateAuthorityAsync(
+            ZLinkRedisLocationStore store,
+            string ownerId,
+            string objectId,
+            ZLinkPlacementObjectKind objectKind)
+    {
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await ReserveAuthorityAsync(
+                store,
+                ownerId,
+                objectId,
+                objectKind));
+        var nodeRid = RoutingId.From(ownerId == OwnerB ? "node-2" : "node-1");
+        var payload = AuthorityPayload(
+            reserved.Reservation.TargetOwner,
+            nodeRid,
+            objectId,
+            objectKind,
+            ready: true);
+        return Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                reserved.Reservation,
+                payload)).Snapshot;
+    }
+
+    private static byte[] AuthorityPayload(
+        ZLinkLocationOwnerToken owner,
+        RoutingId nodeRid,
+        string objectId,
+        ZLinkPlacementObjectKind objectKind,
+        bool ready)
+    {
+        if (objectKind == ZLinkPlacementObjectKind.Actor)
+        {
+            return ZLinkActorAuthorityPayloadCodec.Encode(
+                new ZLinkActorAuthorityPayload(
+                    ready
+                        ? ZLinkActorAuthorityState.Ready
+                        : ZLinkActorAuthorityState.Creating,
+                    "player",
+                    objectId,
+                    "entry:test",
+                    1,
+                    ZLinkSpotKind.Entry,
+                    owner.OwnerId,
+                    checked((ulong)owner.LeaseGeneration),
+                    "play",
+                    nodeRid,
+                    1));
+        }
+
+        return ZLinkUserSpotAuthorityPayloadCodec.Encode(
+            new ZLinkUserSpotAuthorityPayload(
+                ready
+                    ? ZLinkUserSpotAuthorityState.Ready
+                    : ZLinkUserSpotAuthorityState.Creating,
+                "game",
+                objectId,
+                owner.OwnerId,
+                checked((ulong)owner.LeaseGeneration),
+                "play",
+                nodeRid,
+                1));
+    }
+
+    private static async Task WaitForOwnerLeaseToExpireAsync(
         ZLinkRedisLocationStore store,
         string expiredOwnerId)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        ZLinkOwnerLeaseSnapshot snapshot;
         do
         {
-            snapshot = await store.ListOwnerLeasesAsync();
-            if (snapshot.Leases.All(lease => lease.OwnerId != expiredOwnerId))
-            {
-                return snapshot;
-            }
+            if (await store.ReadOwnerLeaseAsync(expiredOwnerId)
+                is ZLinkOwnerLeaseReadResult.Missing)
+                return;
 
             await Task.Delay(TimeSpan.FromMilliseconds(50));
         } while (DateTimeOffset.UtcNow < deadline);
 
-        return snapshot;
+        Assert.IsType<ZLinkOwnerLeaseReadResult.Missing>(
+            await store.ReadOwnerLeaseAsync(expiredOwnerId));
     }
 }

@@ -147,20 +147,6 @@ public sealed class ChannelContracts
             return new ExampleRouteSendCall();
         }
 
-        public IZLinkSendCall SendToSpot<TMessage>(
-            SpotHandle target,
-            TMessage message)
-        {
-            return new ExampleRouteSendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(
-            SpotHandle target,
-            TRequest request)
-        {
-            return new ExampleRouteRequestCall(new object());
-        }
-
         public IZLinkRequestCall RequestToNode<TRequest>(
             string routerChannelId,
             RoutingId targetNodeRid,

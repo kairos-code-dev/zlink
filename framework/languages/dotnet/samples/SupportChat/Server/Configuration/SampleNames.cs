@@ -8,6 +8,7 @@ public static class SampleNames
     public const string ApiChannel = "supportchat.api";
     public const string SupportChannel = "supportchat.support";
     public const string SupportActorType = "supportchat.user";
+    public const string ConversationSpotType = "supportchat.conversation";
     public const string SupportSpotNode = "supportchat.support.node";
     public const string SessionSpotNode = "supportchat.session.node";
     public const string SupportEntrySpotNode = "supportchat.entry.node";

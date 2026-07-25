@@ -103,17 +103,18 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void TicTacToe_Registers_Stateful_Actor_Transfer_Adapter()
+    public void TicTacToe_Registers_Stateful_Actor_Relocation_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
         var host = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
         var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
-            "Actors", "PlayActorTransferAdapter.cs"));
+            "Actors", "PlayActorRelocationAdapter.cs"));
 
-        Assert.Contains("AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>", host,
+        Assert.Contains("Snapshot<PlayActorRelocationAdapter>()", host,
             StringComparison.Ordinal);
-        Assert.Contains("IZLinkActorTransferAdapter<PlayActor>", adapter, StringComparison.Ordinal);
-        Assert.DoesNotContain("AddStatelessActorTransfer", host, StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorRelocationAdapter<PlayActor>", adapter, StringComparison.Ordinal);
+        Assert.Contains("ValueTask<byte[]> CaptureAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("ValueTask RestoreAsync", adapter, StringComparison.Ordinal);
     }
 
     [Fact]

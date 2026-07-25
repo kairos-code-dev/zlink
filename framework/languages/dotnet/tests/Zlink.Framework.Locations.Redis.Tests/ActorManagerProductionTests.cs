@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Configuration;
@@ -23,31 +24,30 @@ public sealed class ActorManagerProductionTests
         var inner = new ZLinkInMemoryLocationStore();
         var (store, capacityRace) = CapacityRaceLocationStore.Create(inner);
         var suffix = Guid.NewGuid().ToString("N");
-        var firstRid = RoutingId.From($"actor-a-{suffix}");
-        var secondRid = RoutingId.From($"actor-b-{suffix}");
-        var sourceRid = RoutingId.From($"actor-source-{suffix}");
         var firstEndpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
         var secondEndpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
         var sourceEndpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
 
         await using var firstProvider = BuildServer(
-            store, firstRid, firstEndpoint);
+            store, firstEndpoint);
         await using var secondProvider = BuildServer(
-            store, secondRid, secondEndpoint);
+            store, secondEndpoint);
         await using var sourceProvider = BuildClient(
             store,
-            sourceRid,
-            sourceEndpoint,
-            (firstRid, firstEndpoint),
-            (secondRid, secondEndpoint));
+            sourceEndpoint);
         var first = firstProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         var second = secondProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         var source = sourceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
-        await first.StartAsync(CancellationToken.None);
-        await second.StartAsync(CancellationToken.None);
-        await source.StartAsync(CancellationToken.None);
+        var firstHost = FrameworkHost(firstProvider);
+        var secondHost = FrameworkHost(secondProvider);
+        var sourceHost = FrameworkHost(sourceProvider);
+        await firstHost.StartAsync(CancellationToken.None);
+        await secondHost.StartAsync(CancellationToken.None);
+        await sourceHost.StartAsync(CancellationToken.None);
         try
         {
+            var firstRid = first.GetSpotNodeRuntime("objects").Node.RoutingId;
+            var secondRid = second.GetSpotNodeRuntime("objects").Node.RoutingId;
             await PublishServerDescriptorAsync(
                 inner,
                 first,
@@ -87,14 +87,15 @@ public sealed class ActorManagerProductionTests
         TestActorFactory.Reset();
         var store = new ZLinkInMemoryLocationStore();
         var suffix = Guid.NewGuid().ToString("N");
-        var rid = RoutingId.From($"actor-local-{suffix}");
         var endpoint = $"tcp://127.0.0.1:{FindFreeTcpPort()}";
-        await using var provider = BuildServer(store, rid, endpoint);
+        await using var provider = BuildServer(store, endpoint);
         var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var host = FrameworkHost(provider);
         Assert.NotNull(provider.GetService<TestActorFactory>());
-        await runtime.StartAsync(CancellationToken.None);
+        await host.StartAsync(CancellationToken.None);
         try
         {
+            var rid = runtime.GetSpotNodeRuntime("objects").Node.RoutingId;
             await PublishServerDescriptorAsync(
                 store,
                 runtime,
@@ -118,9 +119,12 @@ public sealed class ActorManagerProductionTests
         }
     }
 
+    private static IHostedService FrameworkHost(ServiceProvider provider) =>
+        provider.GetServices<IHostedService>().Single(service =>
+            service.GetType().Name == "ZLinkFrameworkHostedService");
+
     private static ServiceProvider BuildServer(
         IZLinkLocationStore store,
-        RoutingId rid,
         string endpoint)
     {
         var services = new ServiceCollection();
@@ -128,8 +132,7 @@ public sealed class ActorManagerProductionTests
         {
             options.AddLocationStore(store);
             var node = options.AddRouteMesh("objects")
-                .Listen(endpoint)
-                .SetRoutingId(rid);
+                .Listen(endpoint);
             node.Channel("objects").Server();
             node.Objects().Server()
                 .AddEntrySpot<TestEntrySpot>()
@@ -143,20 +146,15 @@ public sealed class ActorManagerProductionTests
 
     private static ServiceProvider BuildClient(
         IZLinkLocationStore store,
-        RoutingId rid,
-        string endpoint,
-        params (RoutingId Rid, string Endpoint)[] targets)
+        string endpoint)
     {
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(store);
             var node = options.AddRouteMesh("objects")
-                .Listen(endpoint)
-                .SetRoutingId(rid);
+                .Listen(endpoint);
             node.Channel("objects").Client();
-            foreach (var target in targets)
-                node.PeerConnections.Connect(target.Rid, target.Endpoint);
             node.Objects().Client();
         });
         return services.BuildServiceProvider();
@@ -176,65 +174,21 @@ public sealed class ActorManagerProductionTests
         string endpoint)
     {
         var node = runtime.GetSpotNodeRuntime("objects");
-        var entrySpotId = node.Registration.EntrySpotId
-                          ?? throw new InvalidOperationException(
-                              "The Entry Spot id was not assigned.");
-        ZLinkSpotLocation? entry = null;
+        ZLinkMeshNodeDescriptor? published = null;
         await WaitUntilAsync(async () =>
         {
-            entry = await store.ResolveSpotAsync(
-                new ZLinkSpotLocationKey(entrySpotId));
-            return entry is not null;
-        });
-        Assert.Equal(rid, entry!.OwnerNodeRid);
-        var generation = node.Node.MeshStatus().LifecycleGeneration;
-        Assert.Equal(generation, entry.OwnerNodeGeneration);
-        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
-            await store.ClaimOwnerLeaseAsync(
-                $"actor-owner-{Guid.NewGuid():N}",
-                TimeSpan.FromMinutes(1))).Token;
-        Assert.Equal(
-            ZLinkLocationWriteStatus.Stored,
-            (await store.UpdateSpotAsync(
-                entry with { OwnerId = owner.OwnerId },
-                ZLinkLocationWriteIntent.Takeover)).Status);
-        var result = await store.UpdateMeshNodeAsync(
-            new ZLinkMeshNodeDescriptor(
-                "objects",
-                rid,
-                generation,
-                1,
-                endpoint,
-                new Dictionary<string, int>(StringComparer.Ordinal)
-                {
-                    ["objects"] = 100
-                },
-                string.Empty,
-                owner.OwnerId,
-                owner.LeaseGeneration,
-                DateTimeOffset.UtcNow)
+            published = (await store.ListMeshNodesAsync("objects", default))
+                .Items
+                .SingleOrDefault(descriptor => descriptor.Rid == rid);
+            return published is
             {
-                ObjectRole = ZLinkMeshNodeObjectRole.Server,
-                State = ZLinkFrameworkRuntimeState.Serving,
-                EntrySpotId = entrySpotId,
-                PlacementWeight = 100,
-                ObjectCapabilities =
-                [
-                    new ZLinkObjectCapability(
-                        ZLinkPlacementObjectKind.Actor,
-                        "player",
-                        ZLinkObjectMaintenancePolicyKind.Disabled,
-                        false,
-                        0)
-                ],
-                Capacity = new ZLinkPlacementCapacity(
-                    new ZLinkPopulationCapacity(0, 0, 10),
-                    new ZLinkPopulationCapacity(0, 0, 0),
-                    Array.Empty<ZLinkSpotTypeCapacity>()),
-                ActivationConcurrency = new ZLinkActivationConcurrency(0, 128)
-            },
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, result.Status);
+                State: ZLinkFrameworkRuntimeState.Serving
+            } && published.Endpoint == endpoint;
+        });
+        var generation = node.Node.MeshStatus().LifecycleGeneration;
+        Assert.Equal(generation, published!.LifecycleGeneration);
+        Assert.False(string.IsNullOrEmpty(published.EntrySpotId));
+        Assert.True(published.PlacementWeight > 0);
     }
 
     private static async Task WaitUntilAsync(
@@ -275,13 +229,12 @@ public sealed class ActorManagerProductionTests
         }
 
         public ValueTask<TestActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _createCount);
-            return ValueTask.FromResult(new TestActor(actorId, context));
+            return ValueTask.FromResult(new TestActor(context.ActorId, context));
         }
     }
 

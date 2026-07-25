@@ -58,7 +58,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
         try
         {
             result = await handlerInvoker()
-                .InvokeActorJoinAsync(descriptor, actor.ActorId, payload.Request, cancellationToken)
+                .InvokeActorJoinAsync(descriptor, actor.Context.ActorId, payload.Request, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

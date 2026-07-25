@@ -349,8 +349,8 @@ public sealed partial class RegressionTests
         Assert.Equal(2, Regex.Matches(runner, "remove_owned_pid \\\"\\$pid\\\"").Count);
         Assert.Contains("if [[ \"$G4_PROVEN\" == \"1\" ]]; then g_pass ZW-G4; fi", runner,
             StringComparison.Ordinal);
-        Assert.Contains("ListRoutingIdSlotsAsync", reporter, StringComparison.Ordinal);
-        Assert.Contains("zoneRid={ZoneRid} reportRid={ReportRid}", reporter, StringComparison.Ordinal);
+        Assert.Contains("IZLinkRouteMeshRuntime routeMesh", reporter, StringComparison.Ordinal);
+        Assert.Contains("routeMesh.Snapshot(ZoneWorldNames.MeshName).Rid", reporter, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -39,7 +39,7 @@ internal static class SfA1BaselineScenario
         {
             var status = await SfProbe.WaitStatusAsync(
                 node,
-                SfProbe.Status(options.HeartbeatInterval * 4,
+                SfProbe.Status(options.OwnerLeaseRenewInterval * 4,
                     storeHealthy: true, ownerLeaseHealthy: true),
                 $"SF-A1: {name} runtime status did not report a healthy store and lease.");
             ZlinkStreamAssert.Ensure(

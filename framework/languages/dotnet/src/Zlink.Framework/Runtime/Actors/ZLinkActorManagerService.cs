@@ -26,7 +26,12 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         if (store is null)
             return runtime.TryGetCreatedActorState(actorId, out var local)
                    && local.NativeActorRef is { } actorRef
-                ? actorRef.ToNative()
+                ? actorRef.ToNative(
+                    local.Activation?.MeshName
+                    ?? local.Context?.MeshName
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorId}' does not have an owner Mesh."))
                 : null;
         var read = await store.ReadAuthorityAsync(
                 ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId),
@@ -40,9 +45,10 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             || authority.State != ZLinkActorAuthorityState.Ready)
             return null;
         return new ActorRef(
-            authority.NodeRid,
             actorId,
-            found.Snapshot.ObjectGeneration);
+            found.Snapshot.ObjectGeneration,
+            authority.MeshName,
+            authority.NodeRid);
     }
 
     public async ValueTask<SpotRef?> FindSpotAsync(
@@ -90,7 +96,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 || state.NativeActorRef is not { } current
                 || state.Actor is not { } instance)
                 return false;
-            if (current.Generation != actor.Generation)
+            if (current.Generation != actor.ObjectGeneration)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorGenerationStale,
                     $"Actor '{actor.ActorId}' generation is stale.");
@@ -110,7 +116,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         if (read is ZLinkAuthorityReadResult.Missing)
             return false;
         var snapshot = ((ZLinkAuthorityReadResult.Found)read).Snapshot;
-        if (snapshot.ObjectGeneration != actor.Generation)
+        if (snapshot.ObjectGeneration != actor.ObjectGeneration)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{actor.ActorId}' generation is stale.");
@@ -129,9 +135,10 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         // fences the logical incarnation by ActorId + ObjectGeneration and
         // always targets the current authority owner.
         var currentRef = new ActorRef(
-            authority.NodeRid,
             actor.ActorId,
-            snapshot.ObjectGeneration);
+            snapshot.ObjectGeneration,
+            authority.MeshName,
+            authority.NodeRid);
         var source = runtime.ResolveActorCreationSource(authority.MeshName);
         if (authority.NodeRid == source.Node.RoutingId)
         {
@@ -180,7 +187,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                         "Actor creation requires a Location Store.");
         var selectedMesh = source.Registration.SpotMeshChannelName
                            ?? source.Registration.SpotNodeName;
-        var descriptors = await store.ListMeshNodesAsync(selectedMesh, deadline.Token)
+        var descriptors = await store.ListAllMeshNodesAsync(selectedMesh, deadline.Token)
             .ConfigureAwait(false);
         var eligible = descriptors
             .Where(candidate => IsEligibleCandidate(candidate, actorType))
@@ -204,26 +211,14 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                     ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
                     $"No Ready Actor target is available for '{actorType}'.",
                     true);
-            var entry = await store.ResolveSpotAsync(
-                    new ZLinkSpotLocationKey(target.EntrySpotId!),
-                    deadline.Token)
-                .ConfigureAwait(false);
-            if (entry is null
-                || entry.SpotKind != ZLinkSpotKind.Entry
-                || entry.OwnerNodeRid != target.Rid
-                || entry.OwnerNodeGeneration != target.LifecycleGeneration)
-            {
-                eligible.Remove(target);
-                continue;
-            }
             var owner = new ZLinkLocationOwnerToken(target.OwnerId, target.LeaseGeneration);
             var creating = ZLinkActorAuthorityPayloadCodec.Encode(
                 new ZLinkActorAuthorityPayload(
                     ZLinkActorAuthorityState.Creating,
                     actorType,
                     actorId,
-                    entry.SpotId,
-                    entry.SpotGeneration,
+                    target.EntrySpotId!,
+                    target.LifecycleGeneration,
                     ZLinkSpotKind.Entry,
                     owner.OwnerId,
                     checked((ulong)owner.LeaseGeneration),
@@ -266,6 +261,22 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                         actorId,
                         actorType,
                         existing.Current,
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                if (joined is not null)
+                    return joined;
+                continue;
+            }
+            if (!createOnly
+                && reserve is ZLinkObjectReserveResult.Conflict(
+                    ZLinkAuthorityReadResult.Found found))
+            {
+                var joined = await JoinExistingAsync(
+                        store,
+                        key,
+                        actorId,
+                        actorType,
+                        found.Snapshot,
                         deadline.Token)
                     .ConfigureAwait(false);
                 if (joined is not null)
@@ -361,7 +372,11 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             if (current.Allocation.State == ZLinkPlacementAllocationState.Active
                 && authority.State == ZLinkActorAuthorityState.Ready)
                 return new ZLinkActorCreateResult.Existing(
-                    new ActorRef(authority.NodeRid, actorId, current.ObjectGeneration));
+                    new ActorRef(
+                        actorId,
+                        current.ObjectGeneration,
+                        authority.MeshName,
+                        authority.NodeRid));
             if (authority.State != ZLinkActorAuthorityState.Creating)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorLocationStale,

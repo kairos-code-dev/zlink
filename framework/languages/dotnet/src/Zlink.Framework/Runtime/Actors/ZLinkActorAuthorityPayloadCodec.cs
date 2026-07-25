@@ -22,6 +22,169 @@ internal sealed record ZLinkActorAuthorityPayload(
     RoutingId NodeRid,
     ulong NodeGeneration);
 
+internal enum ZLinkActorRelocationAuthorityPhase : byte
+{
+    Activated = 1,
+    Cleaning = 2,
+    Completed = 3,
+    Steady = 4
+}
+
+internal sealed record ZLinkActorRelocationAuthorityPayload(
+    Guid RelocationId,
+    ZLinkActorRelocationAuthorityPhase Phase,
+    ZLinkRemoteActorBoundSessionRoute BoundSessionRoute,
+    ReadOnlyMemory<byte> ApplicationPayload);
+
+internal static class ZLinkActorRelocationAuthorityPayloadCodec
+{
+    private const uint Magic = 0x50414c5a; // ZLAP
+    private const ushort Version = 2;
+    private const int MaximumBytes = 1024 * 1024;
+
+    internal static byte[] Encode(ZLinkActorRelocationAuthorityPayload value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.RelocationId == Guid.Empty
+            || value.Phase is < ZLinkActorRelocationAuthorityPhase.Activated
+                or > ZLinkActorRelocationAuthorityPhase.Steady
+            || value.ApplicationPayload.Length is < 1 or > MaximumBytes)
+            throw new ArgumentOutOfRangeException(nameof(value));
+
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        writer.Write(Magic);
+        writer.Write(Version);
+        writer.Write(value.RelocationId.ToByteArray());
+        writer.Write((byte)value.Phase);
+        writer.Write(value.BoundSessionRoute.IsBound);
+        if (value.BoundSessionRoute.IsBound)
+        {
+            WriteBytes(writer, value.BoundSessionRoute.NodeRid!.Value.ToBytes());
+            WriteBytes(writer, value.BoundSessionRoute.SessionRid!.Value.ToBytes());
+            WriteString(writer, value.BoundSessionRoute.BindingToken!);
+            writer.Write(value.BoundSessionRoute.BindingGeneration);
+            writer.Write(value.BoundSessionRoute.ObjectGeneration);
+            writer.Write(value.BoundSessionRoute.AuthorityOwnerGeneration);
+            WriteString(writer, value.BoundSessionRoute.MeshName!);
+            writer.Write(value.BoundSessionRoute.TargetNodeGeneration);
+            writer.Write(value.BoundSessionRoute.OwnerLeaseGeneration);
+            writer.Write(value.BoundSessionRoute.SessionOwnerNodeGeneration);
+            writer.Write(value.BoundSessionRoute.AcceptedHighWater);
+        }
+        writer.Write(value.ApplicationPayload.Length);
+        writer.Write(value.ApplicationPayload.Span);
+        writer.Flush();
+        writer.Write(ZLinkCrc32C.Compute(stream.GetBuffer().AsSpan(
+            0,
+            checked((int)stream.Length))));
+        writer.Flush();
+        if (stream.Length > MaximumBytes)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        return stream.ToArray();
+    }
+
+    internal static bool TryDecode(
+        ReadOnlySpan<byte> encoded,
+        out ZLinkActorRelocationAuthorityPayload value)
+    {
+        value = null!;
+        try
+        {
+            if (encoded.Length is < 32 or > MaximumBytes)
+                return false;
+            var expectedChecksum = BinaryPrimitives.ReadUInt32LittleEndian(
+                encoded[^sizeof(uint)..]);
+            if (expectedChecksum != ZLinkCrc32C.Compute(encoded[..^sizeof(uint)]))
+                return false;
+            using var stream = new MemoryStream(
+                encoded[..^sizeof(uint)].ToArray(),
+                writable: false);
+            using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+            if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version)
+                return false;
+            var relocationId = new Guid(ReadExact(reader, 16));
+            var phase = (ZLinkActorRelocationAuthorityPhase)reader.ReadByte();
+            ZLinkRemoteActorBoundSessionRoute route = default;
+            if (reader.ReadBoolean())
+            {
+                route = new ZLinkRemoteActorBoundSessionRoute(
+                    RoutingId.From(ReadBytes(reader)),
+                    RoutingId.From(ReadBytes(reader)),
+                    ReadString(reader),
+                    reader.ReadUInt64(),
+                    reader.ReadUInt64(),
+                    reader.ReadUInt64(),
+                    ReadString(reader),
+                    reader.ReadUInt64(),
+                    reader.ReadUInt64(),
+                    reader.ReadUInt64(),
+                    reader.ReadUInt64());
+                if (!route.IsBound)
+                    return false;
+            }
+            var applicationSize = reader.ReadInt32();
+            if (applicationSize is < 1 or > MaximumBytes)
+                return false;
+            var applicationPayload = ReadExact(reader, applicationSize);
+            if (stream.Position != stream.Length
+                || relocationId == Guid.Empty
+                || phase is < ZLinkActorRelocationAuthorityPhase.Activated
+                    or > ZLinkActorRelocationAuthorityPhase.Steady)
+                return false;
+            value = new ZLinkActorRelocationAuthorityPayload(
+                relocationId,
+                phase,
+                route,
+                applicationPayload);
+            return true;
+        }
+        catch (Exception error) when (error is IOException
+                                      or ArgumentException
+                                      or OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private static void WriteBytes(BinaryWriter writer, ReadOnlySpan<byte> value)
+    {
+        if (value.Length is < 1 or > byte.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        writer.Write((byte)value.Length);
+        writer.Write(value);
+    }
+
+    private static byte[] ReadBytes(BinaryReader reader)
+        => ReadExact(reader, reader.ReadByte());
+
+    private static void WriteString(BinaryWriter writer, string value)
+    {
+        var encoded = new UTF8Encoding(false, true).GetBytes(value);
+        if (encoded.Length is < 1 or > ushort.MaxValue || value.Contains('\0'))
+            throw new ArgumentOutOfRangeException(nameof(value));
+        writer.Write((ushort)encoded.Length);
+        writer.Write(encoded);
+    }
+
+    private static string ReadString(BinaryReader reader)
+    {
+        var value = new UTF8Encoding(false, true).GetString(
+            ReadExact(reader, reader.ReadUInt16()));
+        if (value.Length == 0 || value.Contains('\0'))
+            throw new InvalidDataException();
+        return value;
+    }
+
+    private static byte[] ReadExact(BinaryReader reader, int count)
+    {
+        var value = reader.ReadBytes(count);
+        if (value.Length != count)
+            throw new EndOfStreamException();
+        return value;
+    }
+}
+
 internal static class ZLinkActorAuthorityPayloadCodec
 {
     private static ReadOnlySpan<byte> Magic => "ZLAU"u8;
@@ -83,6 +246,32 @@ internal static class ZLinkActorAuthorityPayloadCodec
                 encoded,
                 out var relocation))
             encoded = relocation.ApplicationPayload.Span;
+        if (ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
+                encoded,
+                out var phase))
+        {
+            if (phase.Phase != ZLinkActorRelocationAuthorityPhase.Steady)
+            {
+                value = null!;
+                return false;
+            }
+            encoded = phase.ApplicationPayload.Span;
+        }
+        return TryDecodeDirect(encoded, out value);
+    }
+
+    internal static bool TryDecodeRelocating(
+        ReadOnlySpan<byte> encoded,
+        out ZLinkActorAuthorityPayload value)
+    {
+        if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                encoded,
+                out var relocation))
+            encoded = relocation.ApplicationPayload.Span;
+        if (ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
+                encoded,
+                out var phase))
+            encoded = phase.ApplicationPayload.Span;
         return TryDecodeDirect(encoded, out value);
     }
 

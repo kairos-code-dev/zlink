@@ -50,10 +50,39 @@ Entry Spot은 Object Server와 함께 준비된다. User Spot은 application이 
 | Host shutdown | Accepted turn을 정리한 뒤 `HostShutdown` reason으로 `OnClosing`을 호출한다. | 같은 shutdown closing 계약을 적용한다. | 같은 shutdown closing 계약을 적용한다. |
 | .NET 구현 type | `IZLinkEntrySpot`, Actor type을 지정하면 `IZLinkEntrySpot<TActor>` | `IZLinkSpot`, Actor type을 지정하면 `IZLinkSpot<TActor>` | `IZLinkInstanceSpot` |
 
-세 종류는 [Spot application queue](01-glossary.ko.md#spot-application-queue)에
-direct packet과 timer callback을 제출한다. Actor 업무 payload는 Spot queue를
-거치지 않고 Actor queue로 직접 전달한다. 다만 User Spot의 기본 `SpotWide` mode는
-Spot queue와 member Actor queue가 하나의 공통 execution gate를 사용하게 한다.
+Framework는 작업의 대상에 따라 실행을 기다릴 queue를 정한다. 세 종류의 Spot에
+전달된 direct packet과 timer callback은
+[Spot application queue](01-glossary.ko.md#spot-application-queue)에 넣는다.
+Actor에 전달된 업무 payload는 Spot queue를 거치지 않고 해당 Actor의 queue에
+바로 넣는다.
+
+Queue는 작업이 기다리는 위치를 정한다. Execution mode는 서로 다른 queue의 작업을
+동시에 실행할 수 있는지 정한다. User Spot의 기본 `SpotWide` mode에서는 queue를
+다음과 같이 사용한다.
+
+```text
++----------------------------------------------------------------------+
+| User Spot (SpotWide)                                                 |
+|                                                                      |
+| Direct packet ---+                                                   |
+| Timer callback --+--> [Spot queue] -----------+                      |
+|                                                |                     |
+| Actor A payload -----> [Actor A queue] --------+                     |
+|                                                +--> [SpotWide gate]  |
+| Actor B payload -----> [Actor B queue] --------+          |          |
+|                                                           v          |
+|                                                    [One callback]    |
++----------------------------------------------------------------------+
+```
+
+이 그림에서 Spot queue와 Actor queue는 서로 분리되어 있다. Actor payload가
+Spot queue를 경유하거나 여러 queue가 하나로 합쳐지는 것은 아니다. 다만 모든
+queue가 하나의 공통 execution gate를 사용하므로, 같은 User Spot에서는 Spot
+handler, timer callback과 member Actor handler 가운데 하나만 실행한다.
+
+이 그림은 User Spot의 기본 `SpotWide` mode만 보여준다. Entry Spot은 Spot 작업과
+Actor별 작업의 실행 범위를 분리한다. Instance Spot은 Actor membership을 지원하지
+않으므로 Actor queue가 없다.
 
 ### 3.1 Spot 종류별 lifecycle callback
 

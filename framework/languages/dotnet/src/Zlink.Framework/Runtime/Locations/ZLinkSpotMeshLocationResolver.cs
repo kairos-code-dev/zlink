@@ -38,7 +38,7 @@ internal sealed class ZLinkSpotMeshLocationResolver
                     new ZLinkActorLocationKey(actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (row is not null) return (row, true);
+            if (row is not null) return (row.ToPublic(), true);
             present |= rowPresent;
         }
 
@@ -55,7 +55,7 @@ internal sealed class ZLinkSpotMeshLocationResolver
                     new ZLinkSpotLocationKey(spotId),
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (row is not null) return row;
+            if (row is not null) return row.ToPublic();
         }
 
         return null;

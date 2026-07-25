@@ -407,12 +407,6 @@ public sealed class InstanceSpotContracts
         public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request) =>
             new ExampleSpotRequestCall();
 
-        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message) =>
-            new ExampleSendCall();
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request) =>
-            new ExampleRequestCall();
-
         public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message) =>
             new ExamplePublishCall();
 

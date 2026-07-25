@@ -56,7 +56,7 @@ internal static class ZLinkRedisLocationKinds
         Finalize = static (row, updatedAt, generation) => row with
         {
             UpdatedAt = updatedAt,
-            AuthorityOwnerGeneration = generation
+            LeaseGeneration = checked((long)generation)
         }
     };
 
@@ -71,7 +71,7 @@ internal static class ZLinkRedisLocationKinds
         Finalize = static (row, updatedAt, generation) => row with
         {
             UpdatedAt = updatedAt,
-            AuthorityOwnerGeneration = generation
+            LeaseGeneration = checked((long)generation)
         }
     };
 

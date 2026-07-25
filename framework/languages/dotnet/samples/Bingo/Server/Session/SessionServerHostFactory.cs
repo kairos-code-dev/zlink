@@ -43,8 +43,7 @@ public static class SessionServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
-                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
-                .SetRoutingIdAllocationGroup("bingo.session")
+                .SetRoutingIdPrefix("session")
                 .Listen(session.MeshEndpoint);
             mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.PlayChannel).SetWeight(0);
@@ -56,8 +55,7 @@ public static class SessionServerHostFactory
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "session",
-            "bingo.session",
-            [SampleNames.MeshName]));
+            SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

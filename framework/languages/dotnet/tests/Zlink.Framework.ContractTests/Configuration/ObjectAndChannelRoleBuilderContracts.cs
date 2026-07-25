@@ -86,6 +86,9 @@ public sealed class ObjectAndChannelRoleBuilderContracts
         Assert.NotNull(gatewayClient);
         Assert.Equal(ZLinkMeshNodeObjectRole.Client, gatewayObjects.Role);
         Assert.Empty(typeof(IZLinkMeshObjectClientBuilder).GetMembers());
+        Assert.DoesNotContain(
+            typeof(IZLinkMeshObjectServerBuilder),
+            typeof(IZLinkMeshNodeBuilder).GetInterfaces());
 
         // A play node hosts objects, so every factory registration - and the
         // relocation policy that governs how each moves - lands on Server().
@@ -345,15 +348,12 @@ public sealed class ObjectAndChannelRoleBuilderContracts
 
     private sealed class PlayerActor : IZLinkActor
     {
-        public string ActorId => "player-8821";
-
         public IZLinkActorContext Context => null!;
     }
 
     private sealed class PlayerActorFactory : IZLinkActorFactory<PlayerActor>
     {
         public ValueTask<PlayerActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(new PlayerActor());

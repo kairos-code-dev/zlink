@@ -10,22 +10,6 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
     public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
         ZLinkSpotAmbientContext.RequireCurrent().Outbound.RequestToSpot(spotId, request);
 
-    public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message)
-    {
-        return new ZLinkRoutedSpotSendCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireResolvedHandle(target),
-            message);
-    }
-
-    public IZLinkRequestCall RequestToSpot<TMessage>(SpotHandle target, TMessage request)
-    {
-        return new ZLinkRoutedSpotRequestCall<TMessage>(
-            ZLinkSpotAmbientContext.RequireCurrent(),
-            RequireResolvedHandle(target),
-            request);
-    }
-
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
         return ZLinkSpotAmbientContext.RequireCurrent().Outbound.Publish(channelName, topic, message);
@@ -39,12 +23,6 @@ internal sealed class ZLinkSpotOutboundService : IZLinkSpotOutbound
     public IZLinkRequestCall RequestToChannel<TMessage>(string channelName, TMessage request)
     {
         return ZLinkSpotAmbientContext.RequireCurrent().Outbound.RequestToChannel(channelName, request);
-    }
-
-    private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target)
-    {
-        return target as ZLinkResolvedSpotHandle
-               ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
 }
@@ -345,7 +323,9 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
                     snapshot.NodeRid,
                     snapshot.SpotId,
                     (ulong)snapshot.Generation,
+                    snapshot.NodeGeneration,
                     snapshot.AuthorityOwnerGeneration,
+                    snapshot.OwnerLeaseGeneration,
                     parts,
                     cancellationToken,
                     _metadata.Encode())
@@ -355,8 +335,10 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
                 "Spot send",
                 ZLinkFrameworkErrorKind.SpotRouteNotFound);
         }
-        catch
+        catch (ZLinkFrameworkException error)
+            when (ZLinkSpotHandleRequestExecution.IsStaleRoute(error))
         {
+            target.InvalidateRoute();
             throw;
         }
     }
@@ -431,7 +413,9 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
                         snapshot.NodeRid,
                         snapshot.SpotId,
                         (ulong)snapshot.Generation,
+                        snapshot.NodeGeneration,
                         snapshot.AuthorityOwnerGeneration,
+                        snapshot.OwnerLeaseGeneration,
                         parts,
                         timeout,
                         cancellationToken,

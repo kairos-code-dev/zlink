@@ -120,9 +120,10 @@ internal sealed class ZLinkActorOperationTarget(
         }
 
         var published = new ActorRef(
-            node.RoutingId,
             operation.ActorId,
-            snapshot.ObjectGeneration);
+            snapshot.ObjectGeneration,
+            meshName,
+            node.RoutingId);
         var readyPayload = ZLinkActorAuthorityPayloadCodec.Encode(
             authority with
             {
@@ -168,7 +169,7 @@ internal sealed class ZLinkActorOperationTarget(
             return Destroyed(false);
 
         var snapshot = ((ZLinkAuthorityReadResult.Found)read).Snapshot;
-        if (snapshot.ObjectGeneration != operation.Actor.Generation
+        if (snapshot.ObjectGeneration != operation.Actor.ObjectGeneration
             || snapshot.AuthorityOwnerGeneration
                 != operation.AuthorityOwnerGeneration
             || snapshot.Allocation.ObjectKind
@@ -193,7 +194,7 @@ internal sealed class ZLinkActorOperationTarget(
                 out var state)
             || state.NativeActorRef is not { } current
             || state.Actor is not { } instance
-            || current.Generation != operation.Actor.Generation
+            || current.Generation != operation.Actor.ObjectGeneration
             || current.NodeRid != node.RoutingId)
             throw Stale(
                 operation.Actor.ActorId,

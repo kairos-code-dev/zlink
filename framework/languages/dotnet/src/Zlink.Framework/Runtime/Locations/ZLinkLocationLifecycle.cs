@@ -23,14 +23,62 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
         _runtime = runtime;
         _runtime.OwnershipLost += OnOwnershipLost;
         ActorOwnership = new ZLinkActorOwnershipCoordinator(runtime, resolver);
-        SpotLocations = new ZLinkSpotLocationLifecycle(runtime, resolver);
+        SpotLocations = new ZLinkSpotLocationLifecycle(runtime);
     }
 
     internal ZLinkActorOwnershipCoordinator ActorOwnership { get; }
 
     internal ZLinkSpotLocationLifecycle SpotLocations { get; }
 
-    internal ZLinkLocationOwnerToken OwnerToken => _runtime.OwnerToken;
+    internal ZLinkLocationOwnerToken OwnerToken => _runtime.AdmissionOwnerToken;
+
+    internal ValueTask<ZLinkLocationWriteResult> WriteMeshNodeDescriptorAsync(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        _runtime.WriteDescriptorAsync(descriptor, intent, cancellationToken);
+
+    internal ValueTask<ZLinkLocationWriteResult> RemoveMeshNodeDescriptorAsync(
+        ZLinkMeshNodeDescriptorKey key,
+        CancellationToken cancellationToken = default) =>
+        _runtime.RemoveDescriptorAsync(key, cancellationToken);
+
+    internal async ValueTask<ZLinkFrameworkErrorKind> ClassifyMeshNodeClaimConflictAsync(
+        string meshName,
+        RoutingId routingId,
+        string entrySpotId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var descriptors = await _runtime.Store
+                .ListAllMeshNodesAsync(meshName, cancellationToken)
+                .ConfigureAwait(false);
+            if (descriptors.Any(descriptor => descriptor.Rid.Equals(routingId)))
+                return ZLinkFrameworkErrorKind.RoutingIdConflict;
+            if (descriptors.Any(
+                    descriptor => string.Equals(
+                        descriptor.EntrySpotId,
+                        entrySpotId,
+                        StringComparison.Ordinal)))
+                return ZLinkFrameworkErrorKind.SpotIdConflict;
+
+            var authority = await _runtime.Store.ReadAuthorityAsync(
+                    ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(entrySpotId),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (authority is ZLinkAuthorityReadResult.Found)
+                return ZLinkFrameworkErrorKind.SpotIdConflict;
+        }
+        catch when (!cancellationToken.IsCancellationRequested)
+        {
+            // Conflict classification is diagnostic only. A failed follow-up
+            // read must not turn the already terminal claim conflict into a
+            // second store operation or a retry.
+        }
+
+        return ZLinkFrameworkErrorKind.RoutingIdConflict;
+    }
 
     public ValueTask DisposeAsync()
     {

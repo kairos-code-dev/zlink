@@ -6,15 +6,13 @@ namespace Zlink.Framework.Contracts.Locations;
 /// </summary>
 public interface IZLinkLocationStore :
     IZLinkMeshNodeLocationStore,
-    IZLinkSpotLocationStore,
-    IZLinkActorLocationStore,
     IZLinkOwnerLeaseStore,
     IZLinkAuthorityStore
 {
     /// <summary>
-    /// Removes every location row left by an owner, regardless of kind.
-    /// Runtime shutdown and takeover cleanup use this path; implementations
-    /// should make it one atomic operation when their backend allows it.
+    /// Removes ephemeral descriptors owned by the exact host lease token.
+    /// Durable object authority and reservations remain until an explicit
+    /// versioned authority operation removes or completes them.
     /// </summary>
     ValueTask<long> RemoveAllByOwnerAsync(
         ZLinkLocationOwnerToken owner,
@@ -33,8 +31,9 @@ public interface IZLinkMeshNodeLocationStore
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+    ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
         string meshName,
+        ZLinkPageRequest page,
         CancellationToken cancellationToken = default);
 }
 
@@ -71,58 +70,6 @@ public interface IZLinkFanoutLocationStore
     ValueTask<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> ListFanoutPublishersAsync(
         string channelName,
         ZLinkPageRequest page,
-        CancellationToken cancellationToken = default);
-}
-
-// Legacy operational projections remain temporarily while runtime callers
-// move to opaque authority reads. They are not authority for placement.
-public interface IZLinkSpotLocationStore
-{
-    ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
-        ZLinkSpotLocation spot,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
-        ZLinkSpotLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-        ZLinkSpotLocationKey key,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkInstanceSpotLocationStore
-{
-    ValueTask<InstanceSpotClaimResult> ClaimInstanceSpotAsync(
-        InstanceSpotClaimRequest request,
-        CancellationToken cancellationToken = default);
-    ValueTask<InstanceSpotWriteResult> CommitInstanceSpotReadyAsync(
-        InstanceSpotFence fence,
-        ulong spotGeneration,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteResult> BeginInstanceSpotClosingAsync(
-        InstanceSpotFence fence,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteStatus> ReleaseInstanceSpotAsync(
-        InstanceSpotFence fence,
-        CancellationToken cancellationToken = default);
-    ValueTask<InstanceSpotResolveResult> ResolveInstanceSpotAsync(
-        ZLinkSpotLocationKey key,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkActorLocationStore
-{
-    ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
-        ZLinkActorLocation actor,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
-        ZLinkActorLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-        ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default);
 }
 

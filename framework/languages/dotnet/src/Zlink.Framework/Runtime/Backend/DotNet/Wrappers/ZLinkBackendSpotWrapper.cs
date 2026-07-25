@@ -8,6 +8,7 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // completion in the node completion table.
 internal sealed class ZLinkBackendSpotWrapper :
     IZLinkBackendSpot,
+    IZLinkBackendCommittedSpotForwarder,
     IZLinkBackendAuthorityObserver
 {
     private readonly IMeshNode _node;
@@ -39,32 +40,46 @@ internal sealed class ZLinkBackendSpotWrapper :
 
     public ulong LifecycleGeneration => _spot.Status().LifecycleGeneration;
 
+    public void SetLocalOwnerLeaseGeneration(ulong ownerLeaseGeneration) =>
+        RequireManagedNode().SetLocalOwnerLeaseGeneration(ownerLeaseGeneration);
+
     public void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         RequireManagedNode().ObserveActorAuthority(
-            actor.ToNative(),
-            authorityOwnerGeneration);
+            ToNativeActor(actor),
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
 
     public void ObserveSpotAuthority(
         RoutingId nodeRid,
         string spotId,
         ulong objectGeneration,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         RequireManagedNode().ObserveSpotAuthority(
             nodeRid,
             spotId,
             objectGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
 
     private ZLinkManagedMeshNode RequireManagedNode() =>
         _node as ZLinkManagedMeshNode
         ?? throw new InvalidOperationException(
             "Authority fencing requires the Framework managed MeshNode.");
+
+    private ActorRef ToNativeActor(ZLinkBackendActorRef actor) =>
+        actor.ToNative(RequireManagedNode().MeshName);
 
     internal ISpot NativeSpot => _spot;
 
@@ -201,6 +216,70 @@ internal sealed class ZLinkBackendSpotWrapper :
             timeout ?? default, flags, metadata);
         return AcceptRequestSubmit(submit, $"SPOT '{spotId}' on node '{targetRid}'")
                && _completions.RegisterRequest(operationId, callback);
+    }
+
+    public SubmitResult ForwardSendToSpot(
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata) =>
+        RequireManagedNode().ForwardSendToSpot(
+            SpotId,
+            targetRid,
+            spotId,
+            spotGeneration,
+            operationId,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration,
+            forwardingHopCount,
+            parts,
+            flags,
+            metadata);
+
+    public bool ForwardRequestToSpot(
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        RequestCallback callback,
+        SendFlags flags,
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata)
+    {
+        var submit = RequireManagedNode().ForwardRequestToSpot(
+            SpotId,
+            targetRid,
+            spotId,
+            spotGeneration,
+            operationId,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration,
+            forwardingHopCount,
+            parts,
+            out var transportOperationId,
+            timeout ?? default,
+            flags,
+            metadata);
+        return AcceptRequestSubmit(
+                   submit,
+                   $"forwarded SPOT '{spotId}' on node '{targetRid}'")
+               && _completions.RegisterRequest(
+                   transportOperationId,
+                   callback);
     }
 
     // Terminal admission failures (NotFound, InvalidState, ...) surface to the

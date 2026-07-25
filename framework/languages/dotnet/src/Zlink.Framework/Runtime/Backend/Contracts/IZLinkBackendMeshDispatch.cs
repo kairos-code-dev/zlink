@@ -31,7 +31,12 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         ulong? requestSeq,
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply,
         string? channelName = null,
-        ZLinkMessageMetadata? metadata = null)
+        ZLinkMessageMetadata? metadata = null,
+        MeshOperationId operationId = default,
+        ulong targetNodeGeneration = 0,
+        ulong authorityOwnerGeneration = 0,
+        ulong ownerLeaseGeneration = 0,
+        byte forwardingHopCount = 0)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
@@ -40,6 +45,11 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         _reply = reply;
         ChannelName = channelName;
         Metadata = metadata ?? ZLinkMessageMetadata.Empty;
+        OperationId = operationId;
+        TargetNodeGeneration = targetNodeGeneration;
+        AuthorityOwnerGeneration = authorityOwnerGeneration;
+        OwnerLeaseGeneration = ownerLeaseGeneration;
+        ForwardingHopCount = forwardingHopCount;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -59,7 +69,20 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
 
     public ulong? RequestSeq { get; }
 
+    public MeshOperationId OperationId { get; }
+
+    public ulong TargetNodeGeneration { get; }
+
+    public ulong AuthorityOwnerGeneration { get; }
+
+    public ulong OwnerLeaseGeneration { get; }
+
+    public byte ForwardingHopCount { get; }
+
     public bool CanReply => _reply is not null;
+
+    internal Func<IReadOnlyList<Message>, SendFlags, SubmitResult>?
+        CaptureReplyRoute() => _reply;
 
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {

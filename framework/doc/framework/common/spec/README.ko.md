@@ -40,6 +40,7 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 - [23 Spot과 Actor membership](23-spot-actor.ko.md)
 - [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)
 - [25 Stage wrapper on Spot](25-stage-wrapper-on-spot.ko.md)
+- [26 Spot·Actor routing](26-object-routing.ko.md)
 
 ## STREAM과 session
 

@@ -7,6 +7,7 @@ internal sealed class ZLinkSpotActorFrame(
     RoutingId sourceSessionRid,
     ulong requestId,
     uint flags,
+    ZLinkBackendActorRouteContext routeContext,
     ZlinkStreamHeader header,
     Message body) : IDisposable
 {
@@ -23,6 +24,8 @@ internal sealed class ZLinkSpotActorFrame(
     public ulong RequestId { get; } = requestId;
 
     public uint Flags { get; } = flags;
+
+    public ZLinkBackendActorRouteContext RouteContext { get; } = routeContext;
 
     public ZlinkStreamHeader Header { get; } = header;
 
@@ -101,6 +104,7 @@ internal static class ZLinkSpotActorFrameReader
             headerPart.SourceSessionRid,
             headerPart.RequestId,
             headerPart.Flags,
+            headerPart.RouteContext,
             header,
             body);
         return true;

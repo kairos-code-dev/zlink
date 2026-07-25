@@ -46,10 +46,9 @@ internal sealed class CourierActor(
 internal sealed class CourierActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IZLinkActor>(new CourierActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(new CourierActor(context.ActorId, context));
     }
 }

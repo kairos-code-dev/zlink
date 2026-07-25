@@ -11,6 +11,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Samples.Logging;
@@ -33,8 +34,10 @@ internal sealed class PlayServer(SampleSettings settings)
         builder.Services.AddZLinkFramework(options =>
         {
             options.DisableImplicitHandlerAutoRegistration();
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
+            var locations = options.ConfigureLocations();
+            locations.RouteCacheMaxAge = TimeSpan.Zero;
+            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(settings.RedisEndpoint)
                 .SetKeyPrefix(settings.RedisKeyPrefix)));
@@ -49,11 +52,18 @@ internal sealed class PlayServer(SampleSettings settings)
 
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
                 .Listen(settings.MeshEndpoint)
-                .SetRoutingId(RoutingId.From(settings.PlayMeshNodeRid))
+                .SetRoutingId(RoutingId.From(settings.PlayMeshNodeRid));
+            mesh.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
-                .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
-                .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor)
-                .AddSpotFactory<TicTacToeGame>();
+                .AddActorFactory<PlayActor, PlayActorFactory>(
+                    SampleTypes.PlayerActor,
+                    null,
+                    ZLinkRelocationPolicy<PlayActor>
+                        .Snapshot<PlayActorRelocationAdapter>())
+                .AddSpotFactory<TicTacToeGame>(
+                    SampleTypes.GameSpot,
+                    null,
+                    ZLinkRelocationPolicy<TicTacToeGame>.Disabled);
             mesh.ChannelName(SampleChannels.Api).SetWeight(0);
             var playA = mesh.ChannelName(SampleChannels.Play(0))
                 .SetWeight(settings.PlayIndex == 0 ? 100 : 0);

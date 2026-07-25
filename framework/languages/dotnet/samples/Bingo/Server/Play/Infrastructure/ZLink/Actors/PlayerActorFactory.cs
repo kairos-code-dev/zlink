@@ -2,13 +2,13 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Actors;
 
-internal sealed class PlayerActorFactory : IZLinkActorFactory
+internal sealed class PlayerActorFactory : IZLinkActorFactory<PlayerActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
+    public ValueTask<PlayerActor> CreateAsync(
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new PlayerActor(context.ActorId, context));
     }
 }

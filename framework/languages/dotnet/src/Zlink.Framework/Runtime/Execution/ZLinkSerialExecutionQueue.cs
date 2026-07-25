@@ -145,6 +145,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         {
             if (Volatile.Read(ref _completed) != 0
                 || _relocated
+                || _relocation?.IngressFrozen == true
                 || !TryReserveSlot())
             {
                 item = null!;
@@ -215,6 +216,37 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                 || _acceptedOperations != 0
                 || _sealRequest is not null
                 || Volatile.Read(ref _completed) != 0)
+            {
+                seal = null!;
+                return false;
+            }
+            seal = SealUnderLock();
+            return true;
+        }
+    }
+
+    internal bool TrySealRelocation(
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        out ZLinkSerialRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(admit);
+        lock (_admissionGate)
+        {
+            if (_relocated
+                || _relocation is not null
+                || _active is not null
+                || _acceptedOperations != 0
+                || _sealRequest is not null
+                || Volatile.Read(ref _completed) != 0)
+            {
+                seal = null!;
+                return false;
+            }
+            var captured = _queue
+                .Where(static item => item.AcceptedRecord is not null)
+                .Select(static item => item.AcceptedRecord!.Snapshot())
+                .ToArray();
+            if (!admit(captured))
             {
                 seal = null!;
                 return false;
@@ -317,6 +349,26 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             CompletePendingItem();
         }
         return true;
+    }
+
+    public bool TryFreezeRelocationIngress(
+        ZLinkSerialRelocationSeal seal,
+        out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        lock (_admissionGate)
+        {
+            if (!Matches(seal))
+            {
+                held = [];
+                return false;
+            }
+            _relocation!.IngressFrozen = true;
+            held = _relocation.Held
+                .Select(static item => item.AcceptedRecord!.Snapshot())
+                .ToArray();
+            return true;
+        }
     }
 
     private bool Matches(ZLinkSerialRelocationSeal seal)
@@ -608,6 +660,8 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         public Queue<ZLinkSerialWorkItem> Captured { get; } = captured;
 
         public Queue<ZLinkSerialWorkItem> Held { get; } = new();
+
+        public bool IngressFrozen { get; set; }
     }
 }
 

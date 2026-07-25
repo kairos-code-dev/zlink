@@ -23,7 +23,7 @@ internal static class SfD2LongOutageRecoveryScenario
             options.PollingInterval * 4,
             "SF-D2: provider routes were not ready before the store outage.");
 
-        var trafficWindow = options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4;
+        var trafficWindow = options.OwnerLeaseTtl * 2 + options.OwnerLeaseRenewInterval * 4;
         var traffic = Task.Run(() => DriveTolerantRequestsAsync(
             consumer,
             trafficWindow,
@@ -35,7 +35,7 @@ internal static class SfD2LongOutageRecoveryScenario
             // All leases expire during this window, and api-b really dies:
             // recovery has to tell a stale-but-alive peer from a dead one.
             await providerB.KillAsync();
-            await Task.Delay(options.OwnerLeaseTtl + options.HeartbeatInterval);
+            await Task.Delay(options.OwnerLeaseTtl + options.OwnerLeaseRenewInterval);
         }
         finally
         {
@@ -53,14 +53,14 @@ internal static class SfD2LongOutageRecoveryScenario
         // api-a re-registers its lease and row before any disconnect diff.
         await SfProbe.WaitPeersAsync(
             consumer,
-            SfProbe.PeerRows(options.HeartbeatInterval * 6, present: ["api-a"]),
+            SfProbe.PeerRows(options.OwnerLeaseRenewInterval * 6, present: ["api-a"]),
             "SF-D2: the surviving provider did not re-register after recovery.");
 
         // The dead peer drops out after the one-heartbeat re-registration
         // grace; the survivor keeps serving.
         await SfProbe.WaitPeersAsync(
             consumer,
-            SfProbe.PeerRows(options.OwnerLeaseTtl * 2 + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl * 2 + options.OwnerLeaseRenewInterval * 4,
                 absent: ["api-b"]),
             "SF-D2: the provider that died during the outage was not dropped after recovery.");
         await WaitForDeadProviderDisconnectAsync(consumer, options);
@@ -127,7 +127,7 @@ internal static class SfD2LongOutageRecoveryScenario
         ZLinkHttpClient consumer,
         ClientOptions options)
     {
-        var timeout = options.HeartbeatInterval + options.PollingInterval * 4;
+        var timeout = options.OwnerLeaseRenewInterval + options.PollingInterval * 4;
         var elapsed = Stopwatch.StartNew();
         var probeTimeoutMilliseconds = (int)Math.Clamp(
             Math.Ceiling(options.PollingInterval.TotalMilliseconds),

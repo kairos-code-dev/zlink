@@ -512,21 +512,34 @@ descriptor lifecycle과 target owner lease를 live/exact로 재검증한다. Sou
 stale·missing이어도 allocation match를 대체하지 않는다. Target이 stale이면 Conflict이며 authority row, capacity와
 fence state의 mutation은 0이다.
 
-Aggregate prepare의 relocation capacity fence 집합은 `NewOwner` participant와 정확히 일대일 대응해야 한다.
-Provider는 자신이 발급한 opaque fence의 reservation record가 participant authority key·expected StoreVersion,
-current authority의 source owner, aggregate target owner와 모두 같은지 확인하고 source·target descriptor lifecycle과
-placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는 요구하지 않고 target descriptor
-lifecycle과 owner lease만 live/exact로 확인한다. 누락·중복·추가 fence나 값 불일치가 하나라도 있으면 prepare를 conflict로 닫고
-participant, capacity, fence와 aggregate record를 변경하지 않는다.
+Aggregate prepare는 participant의 `OwnerTransition`에 따라 두 mode 가운데 하나로 닫힌다.
 
-Prepare 성공은 모든 `Reserved` fence를 같은 transaction에서 `(AggregateId, AggregateGeneration)`에 bind하고
-`Prepared`로 전이한다. Bind된 fence의 direct abort는 `Stale`이며 다른 aggregate prepare도 conflict와 mutation
-0으로 끝난다. 같은 aggregate generation의 exact duplicate prepare만 `AlreadyPrepared`다. `CommitAggregate`는
-source Active allocation exact match와 target descriptor lifecycle·owner lease를 다시 확인한다. Target이 stale이면
-participant·capacity·fence mutation 없이 `Stale`로 끝내고 fence는 recovery가 처리할 수 있도록 bind 상태를
-유지한다. Source descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. 유효한 bind된
-fence만 committed로 전이하고 capacity를 pending-to-active로 바꾼다. `AbortAggregate`는 bind된 fence의
-target reserved을 해제하고 aborted로 전이한다.
+- `NewOwner` participant가 하나라도 있으면 relocation mode다. `Preserve`와 `NewOwner`를 섞을 수 있지만
+  relocation capacity fence 집합과 non-zero typed capacity bundle은 `NewOwner` participant의 durable allocation
+  delta만 정확히 합산하고 각 `NewOwner`와 일대일 대응해야 한다. `Preserve` participant의 allocation은 bundle에
+  더하지 않고 그대로 유지한다.
+- 모든 participant가 `Preserve`이면 completion·steady-normalization mode다. Capacity는 exact zero이고 모든
+  `MembershipMutation`도 empty여야 한다. Capacity reservation이나 mutation 없이 exact participant set의 authority
+  payload만 atomic CAS하며 owner, `ObjectGeneration`, `AuthorityOwnerGeneration`과 durable Active allocation을
+  그대로 유지한다.
+
+Provider는 relocation mode에서 자신이 발급한 opaque fence의 reservation record가 participant authority key·
+expected StoreVersion, current authority의 source owner와 aggregate target owner에 일치하는지 확인하고 source·
+target descriptor lifecycle과 placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는
+요구하지 않고 target descriptor lifecycle과 owner lease만 live/exact로 확인한다. Zero capacity에 `NewOwner`가
+있거나 non-zero capacity인데 모든 participant가 `Preserve`이면 conflict다. Fence 누락·중복·추가, all-Preserve의
+non-empty membership mutation 또는 다른 값 불일치도 conflict이며 participant, capacity, fence와 aggregate record의
+mutation은 0이다.
+
+Relocation mode의 prepare 성공은 모든 `Reserved` fence를 같은 transaction에서 `(AggregateId,
+AggregateGeneration)`에 bind하고 `Prepared`로 전이한다. Completion·steady-normalization mode는 fence나 capacity
+reservation 없이 exact request를 `Prepared`로 기록한다. Bind된 fence의 direct abort는 `Stale`이며 다른 aggregate
+prepare도 conflict와 mutation 0으로 끝난다. 같은 aggregate generation의 exact duplicate prepare만
+`AlreadyPrepared`다. `CommitAggregate`는 relocation mode에서 source Active allocation exact match와 target
+descriptor lifecycle·owner lease를 다시 확인하고 유효한 fence만 committed로 전이해 capacity를
+pending-to-active로 바꾼다. Completion·steady-normalization mode에서는 exact participant expectation을 다시
+확인한 뒤 payload만 atomic하게 바꾼다. `AbortAggregate`는 relocation mode에서만 bind된 fence의 target reserved을
+해제하며 두 mode 모두 aggregate를 aborted로 닫는다.
 
 ### 7.2 Phase별 closed owner rule
 
@@ -561,11 +574,12 @@ User Spot과 그 member Actor는 하나의 maintenance aggregate다. Aggregate I
 Store transaction은 Spot owner, 모든 Actor owner와 membership visibility를 같은 commit generation으로 전환한다.
 Commit 전에는 partial target owner를 resolve하지 않고 commit 뒤에는 target aggregate 전체만 recovery한다.
 
-User Spot aggregate의 `PrepareAggregate`는 participant authority expectation 전체, target descriptor
-lifecycle·owner lease와 하나의 typed capacity bundle을 받는다. Bundle은 Spot slot 하나, 해당 User Spot
-stable type slot 하나와 participant Actor 수만큼의 Actor slot을 포함해야 한다. Provider는 participant의
-current Active allocation과 bundle inventory를 검증하고 target의 Actor·Spot·Spot type reserved count를
-하나의 transaction에서 증가시킨 뒤 aggregate record를 `Prepared`로 만든다.
+User Spot의 initial relocation aggregate에는 `NewOwner` participant가 있으므로 relocation mode를 사용한다.
+`PrepareAggregate`는 participant authority expectation 전체, target descriptor lifecycle·owner lease와 하나의
+non-zero typed capacity bundle을 받는다. Bundle은 `NewOwner` participant의 durable allocation delta만 합산하며,
+Spot slot 하나, 해당 User Spot stable type slot 하나와 owner가 바뀌는 participant Actor 수만큼의 Actor slot을
+포함해야 한다. Provider는 participant의 current Active allocation과 bundle inventory를 검증하고 target의
+Actor·Spot·Spot type reserved count를 하나의 transaction에서 증가시킨 뒤 aggregate record를 `Prepared`로 만든다.
 
 Target factory와 Snapshot adapter의 `Restore`는 Prepared CAS 전에 staging 상태로 완료한다. Accepted journal은
 이 단계에서 checksum, 순서와 fence를 검증해 target queue에 실행되지 않은 상태로 준비한다. Standalone Actor의
@@ -748,8 +762,10 @@ runtime-owned resource보다 늦게 남지 않는다.
   lifecycle과 capacity delta를 빠짐없이 반환하고 opaque payload와 중복되지 않는다.
 - Relocation reservation과 commit이 source request를 durable Active allocation에 exact-match하며 source
   descriptor·lease가 stale이어도 recovery를 허용하고 target descriptor·lease가 stale이면 no-write로 막는다.
-- Aggregate prepare가 모든 Reserved capacity fence를 aggregate generation에 atomic하게 bind하고 bind와 direct
-  abort race에서 둘 중 하나만 성공한다.
+- Aggregate prepare의 relocation mode가 `NewOwner` participant의 exact fence와 non-zero capacity bundle만
+  aggregate generation에 atomic하게 bind하고, all-Preserve completion·steady-normalization mode는 zero capacity와 empty
+  membership mutation에서 owner·generation·Active allocation을 유지한 채 payload만 atomic하게 바꾼다.
+- Zero capacity와 `NewOwner`, non-zero capacity와 all-Preserve 조합을 conflict와 mutation 0으로 거부한다.
 - Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity delta를 같은
   transaction에서 감소시킨다.
 - Creation request reference와 hash가 Ready 또는 fenced abort까지 유지되고 factory가 retry-safe하게 재개된다.

@@ -50,7 +50,7 @@ internal static class SessionHostFactory
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
                 var locations = framework.ConfigureLocations();
-                locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+                locations.OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1);
                 locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }

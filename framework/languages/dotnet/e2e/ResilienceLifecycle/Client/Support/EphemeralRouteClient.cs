@@ -46,8 +46,7 @@ internal static class EphemeralRouteClient
                         .TraceLabel($"ephemeral-{request.Marker}");
                     var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
                         .Listen("tcp://127.0.0.1:0")
-                        .UseAllocatedRoutingId(128, "ephemeral")
-                        .SetRoutingIdAllocationGroup("resilience.ephemeral");
+                        .SetRoutingIdPrefix("ephemeral");
                     mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
                 });
             })

@@ -362,12 +362,11 @@ public abstract class RegistrationValidationSupport
     protected sealed class TestActorFactory : IZLinkActorFactory<TestActor>
     {
         public ValueTask<TestActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(new TestActor(actorId, context));
+            return ValueTask.FromResult(new TestActor(context));
         }
     }
 
@@ -385,12 +384,8 @@ public abstract class RegistrationValidationSupport
             ValueTask.CompletedTask;
     }
 
-    protected sealed class TestActor(
-        string actorId,
-        IZLinkActorContext context) : IZLinkActor
+    protected sealed class TestActor(IZLinkActorContext context) : IZLinkActor
     {
-        public string ActorId { get; } = actorId;
-
         public IZLinkActorContext Context { get; } = context;
     }
 

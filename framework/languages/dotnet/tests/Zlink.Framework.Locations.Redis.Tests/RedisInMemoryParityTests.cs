@@ -3,12 +3,10 @@ using Zlink.Framework.Runtime.Locations;
 namespace Zlink.Framework.Locations.Redis.Tests;
 
 /// <summary>
-/// Behavioral parity is a contract requirement (draft 13절): a scenario that
-/// passes on the in-memory store must produce the same observable write
-/// results on the official Redis extension. This runs one operation script
-/// against both stores and compares every status and store-issued
-/// generation. Store-clock timestamps are excluded; the two stores read
-/// different clocks by design.
+/// Runs the same authority and owner-lifecycle operations against the
+/// in-memory provider and the official Redis extension. Store versions and
+/// timestamps are provider-owned, so parity compares result kinds, fencing
+/// generations and final visibility instead.
 /// </summary>
 [Collection(RedisTestCollection.Name)]
 public sealed class RedisInMemoryParityTests
@@ -30,80 +28,199 @@ public sealed class RedisInMemoryParityTests
         await using var redisStore = _fixture.CreateStore();
         var inMemoryStore = new ZLinkInMemoryLocationStore();
 
-        var redisTrace = await RunScenarioAsync(
-            redisStore, redisStore, redisStore, redisStore, redisStore);
-        var inMemoryTrace = await RunScenarioAsync(
-            inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore);
+        var redisTrace = await RunScenarioAsync(redisStore);
+        var inMemoryTrace = await RunScenarioAsync(inMemoryStore);
 
         Assert.Equal(inMemoryTrace, redisTrace);
     }
 
     private static async Task<IReadOnlyList<string>> RunScenarioAsync(
-        IZLinkMeshNodeLocationStore meshNodes,
-        IZLinkSpotLocationStore spots,
-        IZLinkActorLocationStore actors,
-        IZLinkOwnerLeaseStore leases,
         IZLinkLocationStore store)
     {
         var trace = new List<string>();
-        void Record(string step, ZLinkLocationWriteResult result) =>
-            trace.Add($"{step}={result.Status}:{result.Generation}");
-        void RecordStatus(string step, ZLinkLocationWriteStatus status) =>
-            trace.Add($"{step}={status}");
-        void RecordLease(string step, ZLinkOwnerLeaseClaimResult result) =>
-            trace.Add($"{step}=claimed:{result is ZLinkOwnerLeaseClaimResult.Claimed}");
-        void RecordBool(string step, bool removed) =>
-            trace.Add($"{step}=removed:{removed}");
 
         var leaseTtl = TimeSpan.FromSeconds(30);
-        RecordLease("lease-a", await leases.ClaimOwnerLeaseAsync(OwnerA, leaseTtl));
-        RecordLease("lease-b", await leases.ClaimOwnerLeaseAsync(OwnerB, leaseTtl));
-        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
-            await leases.ReadOwnerLeaseAsync(OwnerA)).Token;
+        var ownerA = await store.ClaimOwnerLeaseAsync(OwnerA, leaseTtl);
+        var ownerB = await store.ClaimOwnerLeaseAsync(OwnerB, leaseTtl);
+        RecordLease(trace, "lease-a", ownerA);
+        RecordLease(trace, "lease-b", ownerB);
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(ownerA).Token;
+        var ownerBToken = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(ownerB).Token;
+        await store.RenewOwnerLeaseAsync(ownerAToken, leaseTtl);
+        await store.RenewOwnerLeaseAsync(ownerBToken, leaseTtl);
 
-        // Actor lifecycle: claim, conflict, owner-guarded renew, takeover
-        // fencing, owner-guarded remove, re-claim after removal.
-        var claim = await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Record("actor-claim", claim);
-        Record("actor-claim-conflict",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.NewClaim));
-        Record("actor-renew",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew));
-        var takeover = await actors.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.Takeover);
-        Record("actor-takeover", takeover);
-        Record("actor-old-owner-renew",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew));
-        RecordStatus("actor-old-owner-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
-            new ZLinkLocationOwnerToken(OwnerA, claim.Generation)));
-        RecordStatus("actor-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
-            new ZLinkLocationOwnerToken(OwnerB, takeover.Generation)));
-        Record("actor-reclaim",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim));
+        await PublishDescriptorAsync(store, ownerAToken, "node-a");
+        await PublishDescriptorAsync(store, ownerBToken, "node-b");
 
-        // Spot rows plus bulk removal by owner.
-        Record("spot-claim-1",
-            await spots.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim));
-        Record("spot-claim-2",
-            await spots.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-2"), ZLinkLocationWriteIntent.NewClaim));
-        RecordStatus("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
-            new ZLinkSpotLocationKey("spot-1"),
-            new ZLinkLocationOwnerToken(OwnerB, 1)));
+        var firstReserve = await ReserveActorAsync(
+            store, ownerAToken, "node-a", "actor-1");
+        RecordReserve(trace, "actor-reserve", firstReserve);
+        var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(firstReserve);
+
+        RecordReserve(
+            trace,
+            "actor-reserve-conflict",
+            await ReserveActorAsync(store, ownerBToken, "node-b", "actor-1"));
+
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(first.Reservation, new byte[] { 0x22 }));
+        RecordSnapshot(trace, "actor-commit", committed.Snapshot);
+
+        var preserved = await store.CompareExchangeAuthorityAsync(
+            ActorKey("actor-1"),
+            committed.Snapshot.StoreVersion,
+            new ZLinkAuthorityMutation.Put(
+                new byte[] { 0x33 },
+                ZLinkAuthorityGenerationTransition.Preserve,
+                null,
+                null));
+        RecordAuthority(trace, "actor-preserve", preserved);
+        var preservedSnapshot =
+            Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(preserved).Snapshot;
+
+        RecordAuthority(
+            trace,
+            "actor-stale-delete",
+            await store.CompareExchangeAuthorityAsync(
+                ActorKey("actor-1"),
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        RecordAuthority(
+            trace,
+            "actor-delete",
+            await store.CompareExchangeAuthorityAsync(
+                ActorKey("actor-1"),
+                preservedSnapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+
+        var reclaimed = await ReserveActorAsync(
+            store, ownerBToken, "node-b", "actor-1");
+        RecordReserve(trace, "actor-reclaim", reclaimed);
+        var reclaimedReservation =
+            Assert.IsType<ZLinkObjectReserveResult.Reserved>(reclaimed).Reservation;
+        var reclaimedCommit = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(reclaimedReservation, new byte[] { 0x44 }));
+        RecordSnapshot(trace, "actor-reclaim-commit", reclaimedCommit.Snapshot);
+
+        var second = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await ReserveActorAsync(store, ownerAToken, "node-a", "actor-2"));
+        _ = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(second.Reservation, new byte[] { 0x55 }));
+
         trace.Add(
             $"remove-all-by-owner={await store.RemoveAllByOwnerAsync(ownerAToken)}");
-
-        // A removed owner lease makes that owner's remaining rows claimable.
-        var descriptorClaim = await meshNodes.UpdateMeshNodeAsync(
-            TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Record("mesh-node-claim", descriptorClaim);
-        RecordBool(
-            "lease-a-remove",
-            await leases.ReleaseOwnerLeaseAsync(ownerAToken)
-                == ZLinkOwnerLeaseReleaseResult.Released);
-        Record("mesh-node-claim-after-lease-removed",
-            await meshNodes.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerB), ZLinkLocationWriteIntent.NewClaim));
-
+        trace.Add(
+            $"actor-2={GetReadKind(await store.ReadAuthorityAsync(ActorKey("actor-2")))}");
+        trace.Add(
+            $"actor-1={GetReadKind(await store.ReadAuthorityAsync(ActorKey("actor-1")))}");
         return trace;
     }
+
+    private static void RecordLease(
+        ICollection<string> trace,
+        string step,
+        ZLinkOwnerLeaseClaimResult result) =>
+        trace.Add($"{step}=claimed:{result is ZLinkOwnerLeaseClaimResult.Claimed}");
+
+    private static void RecordReserve(
+        ICollection<string> trace,
+        string step,
+        ZLinkObjectReserveResult result)
+    {
+        var detail = result switch
+        {
+            ZLinkObjectReserveResult.Reserved reserved =>
+                FormatGenerations(
+                    reserved.Reservation.ObjectGeneration,
+                    reserved.Reservation.AuthorityOwnerGeneration),
+            ZLinkObjectReserveResult.Conflict(
+                ZLinkAuthorityReadResult.Found found) =>
+                FormatGenerations(
+                    found.Snapshot.ObjectGeneration,
+                    found.Snapshot.AuthorityOwnerGeneration),
+            _ => "-"
+        };
+        trace.Add($"{step}={result.GetType().Name}:{detail}");
+    }
+
+    private static void RecordAuthority(
+        ICollection<string> trace,
+        string step,
+        ZLinkAuthorityCompareExchangeResult result)
+    {
+        var detail = result switch
+        {
+            ZLinkAuthorityCompareExchangeResult.Stored stored =>
+                FormatGenerations(
+                    stored.Snapshot.ObjectGeneration,
+                    stored.Snapshot.AuthorityOwnerGeneration),
+            ZLinkAuthorityCompareExchangeResult.Conflict(
+                ZLinkAuthorityReadResult.Found found) =>
+                FormatGenerations(
+                    found.Snapshot.ObjectGeneration,
+                    found.Snapshot.AuthorityOwnerGeneration),
+            _ => "-"
+        };
+        trace.Add($"{step}={result.GetType().Name}:{detail}");
+    }
+
+    private static void RecordSnapshot(
+        ICollection<string> trace,
+        string step,
+        ZLinkAuthoritySnapshot snapshot) =>
+        trace.Add(
+            $"{step}=Committed:"
+            + FormatGenerations(
+                snapshot.ObjectGeneration,
+                snapshot.AuthorityOwnerGeneration));
+
+    private static async ValueTask PublishDescriptorAsync(
+        IZLinkLocationStore store,
+        ZLinkLocationOwnerToken owner,
+        string nodeRid)
+    {
+        var descriptor = TestRows.MeshNode(
+            owner.OwnerId,
+            nodeRid: nodeRid,
+            leaseGeneration: owner.LeaseGeneration);
+        var result = await store.UpdateMeshNodeAsync(
+            descriptor,
+            ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, result.Status);
+    }
+
+    private static ValueTask<ZLinkObjectReserveResult> ReserveActorAsync(
+        IZLinkLocationStore store,
+        ZLinkLocationOwnerToken owner,
+        string nodeRid,
+        string actorId)
+    {
+        var intent = System.Text.Encoding.UTF8.GetBytes($"create:{actorId}");
+        return store.ReserveAsync(
+            new ZLinkObjectReservationRequest(
+                ZLinkPlacementObjectKind.Actor,
+                ActorKey(actorId),
+                "player",
+                $"inline:{actorId}",
+                System.Security.Cryptography.SHA256.HashData(intent),
+                intent.Length,
+                new ZLinkMeshNodeDescriptorKey(
+                    "play",
+                    RoutingId.From(nodeRid)),
+                1,
+                owner,
+                new byte[] { 0x11 },
+                new ZLinkCapacityVector(1, 0, null)));
+    }
+
+    private static ZLinkAuthorityKey ActorKey(string actorId) =>
+        new($"parity:actor:{actorId}");
+
+    private static string GetReadKind(ZLinkAuthorityReadResult result) =>
+        result.GetType().Name;
+
+    private static string FormatGenerations(
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration) =>
+        $"{objectGeneration}:{authorityOwnerGeneration}";
 }

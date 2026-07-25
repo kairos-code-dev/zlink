@@ -1,6 +1,5 @@
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Eventing;
-using Zlink.Framework.Contracts.Locations;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
 using ZoneWorld.Server.ZoneNode.Application.Zone;
@@ -76,29 +75,18 @@ internal sealed class OpsReportAdapter(
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>
 internal sealed class NodeStatusReporter(
     IOpsReportPort ops,
-    IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
-    IZLinkRoutingIdSlotAllocationStore allocationStore,
+    IZLinkRouteMeshRuntime routeMesh,
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     ILogger<NodeStatusReporter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var allocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
-            "zoneworld.zone-node",
-            stoppingToken);
-        var snapshot = await allocationStore.ListRoutingIdSlotsAsync(
-            allocation.GroupName,
-            stoppingToken);
-        var lease = snapshot.Allocations.Single(item => item.Slot == allocation.Slot);
-        var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.MeshName].ToString();
+        stoppingToken.ThrowIfCancellationRequested();
+        var nodeRid = routeMesh.Snapshot(ZoneWorldNames.MeshName).Rid.ToString();
         logger.LogInformation(
-            "zone node allocation ready. node={NodeId} group={Group} slot={Slot} generation={Generation} "
-            + "meshRid={MeshRid}",
+            "zone node mesh identity ready. node={NodeId} meshRid={MeshRid}",
             maintenance.OwnNodeId,
-            allocation.GroupName,
-            allocation.Slot,
-            lease.Owner.Generation,
             nodeRid);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));

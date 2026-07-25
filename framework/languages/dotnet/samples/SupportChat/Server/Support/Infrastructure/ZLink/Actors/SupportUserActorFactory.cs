@@ -2,13 +2,13 @@ using Zlink.Framework.Contracts.Actors;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 
-internal sealed class SupportUserActorFactory : IZLinkActorFactory
+internal sealed class SupportUserActorFactory : IZLinkActorFactory<SupportUserActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
+    public ValueTask<SupportUserActor> CreateAsync(
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IZLinkActor>(new SupportUserActor(actorId, context));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new SupportUserActor(context.ActorId, context));
     }
 }

@@ -31,16 +31,19 @@ internal static class ZLinkDotNetBackendMappings
         };
     }
 
-    public static ZLinkSpotNodePeerEntry ToFramework(this MeshNodePeer peer)
+    public static ZLinkSpotNodePeerEntry ToFramework(
+        this MeshNodePeer peer,
+        string localEndpoint,
+        MeshPeerChannel? channel)
     {
         return new ZLinkSpotNodePeerEntry(
-            string.Empty,
-            string.Empty,
+            channel?.Name ?? string.Empty,
+            localEndpoint,
             peer.Endpoint,
             MapPeerSource(peer.Source),
             ZLinkSpotPeerKind.SpotMesh,
             MapPeerState(peer.State),
-            peer.ChannelCount,
+            channel is null ? 0 : checked((int)channel.Weight),
             0,
             peer.LastChangedMs);
     }
@@ -78,11 +81,20 @@ internal static class ZLinkDotNetBackendMappings
 
     public static ZLinkBackendActorRef ToBackend(this ActorRef actorRef)
     {
-        return new ZLinkBackendActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return new ZLinkBackendActorRef(
+            actorRef.NodeRid,
+            actorRef.ActorId,
+            actorRef.ObjectGeneration);
     }
 
-    public static ActorRef ToNative(this ZLinkBackendActorRef actorRef)
+    public static ActorRef ToNative(
+        this ZLinkBackendActorRef actorRef,
+        string meshName)
     {
-        return new ActorRef(actorRef.NodeRid, actorRef.ActorId, actorRef.Generation);
+        return new ActorRef(
+            actorRef.ActorId,
+            actorRef.Generation,
+            meshName,
+            actorRef.NodeRid);
     }
 }

@@ -28,6 +28,7 @@ internal static class ZLinkActorHandoffIngress
                             frame.SourceSessionRid,
                             frame.RequestId,
                             frame.Flags,
+                            frame.RouteContext,
                             frame.Header,
                             frame.Body))
                     {

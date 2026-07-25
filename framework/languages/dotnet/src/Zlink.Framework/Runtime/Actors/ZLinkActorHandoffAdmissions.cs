@@ -1,4 +1,8 @@
-namespace Zlink.Framework.Runtime.Actors;
+﻿namespace Zlink.Framework.Runtime.Actors;
+
+internal readonly record struct ZLinkActorHandoffAdmissionDecision(
+    ZLinkRemoteActorAdmissionReply Reply,
+    ZLinkRelocationPermitPool.ZLinkRelocationPermitLease Reservation);
 
 internal sealed class ZLinkActorHandoffAdmissions(
     TimeProvider? timeProvider = null,
@@ -27,6 +31,22 @@ internal sealed class ZLinkActorHandoffAdmissions(
         Func<CancellationToken, ValueTask<ZLinkRemoteActorAdmissionReply>> admit,
         CancellationToken cancellationToken)
     {
+        return await AdmitReservedAsync(
+                request,
+                targetSpotId,
+                async token => new ZLinkActorHandoffAdmissionDecision(
+                    await admit(token).ConfigureAwait(false),
+                    default),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitReservedAsync(
+        ZLinkRemoteActorAdmissionRequest request,
+        string targetSpotId,
+        Func<CancellationToken, ValueTask<ZLinkActorHandoffAdmissionDecision>> admit,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(admit);
         AdmissionExecution execution;
         var ownsExecution = false;
@@ -35,7 +55,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
             if (_pending.TryGetValue(request.HandoffId, out var pending))
             {
                 if (pending.Deadline <= _timeProvider.GetUtcNow())
-                    _pending.Remove(request.HandoffId);
+                    RemovePendingLocked(request.HandoffId);
                 else
                 {
                     if (!pending.Matches(request, targetSpotId))
@@ -65,10 +85,10 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         try
         {
-            var reply = await admit(cancellationToken).ConfigureAwait(false);
-            Register(request, targetSpotId, reply);
-            execution.Complete(reply);
-            return reply;
+            var decision = await admit(cancellationToken).ConfigureAwait(false);
+            RegisterReserved(request, targetSpotId, decision);
+            execution.Complete(decision.Reply);
+            return decision.Reply;
         }
         catch (Exception exception)
         {
@@ -97,7 +117,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
             if (_pending.TryGetValue(request.HandoffId, out var pending))
             {
                 if (pending.Deadline <= _timeProvider.GetUtcNow())
-                    _pending.Remove(request.HandoffId);
+                    RemovePendingLocked(request.HandoffId);
                 else if (pending.Matches(request, targetSpotId))
                 {
                     reply = pending.Reply;
@@ -115,42 +135,120 @@ internal sealed class ZLinkActorHandoffAdmissions(
         string targetSpotId,
         ZLinkRemoteActorAdmissionReply reply)
     {
-        if (string.IsNullOrWhiteSpace(request.HandoffId))
-            throw new InvalidOperationException("Remote actor admission requires a handoff id.");
-
-        var deadline = DateTimeOffset.FromUnixTimeMilliseconds(request.DeadlineUnixTimeMilliseconds);
-        if (deadline <= _timeProvider.GetUtcNow())
-            throw new TimeoutException(
-                $"Actor '{request.ActorId}' handoff admission deadline has expired.");
-
-        var pending = new PendingAdmission(request, targetSpotId, deadline, reply);
-        lock (_gate)
-        {
-            if (_pending.TryGetValue(request.HandoffId, out var existing))
-            {
-                if (existing.Deadline <= _timeProvider.GetUtcNow())
-                {
-                    _pending.Remove(request.HandoffId);
-                }
-                else
-                {
-                    if (!existing.Matches(request, targetSpotId))
-                        throw new InvalidOperationException(
-                            $"Handoff admission '{request.HandoffId}' is already assigned to another actor.");
-                    return;
-                }
-            }
-
-            _pending.Add(request.HandoffId, pending);
-            if (reply.Accepted) MarkDrainUnsafeLocked();
-        }
-
-        CancellationToken generationToken;
-        lock (_gate) generationToken = _generationStop.Token;
-        _ = ExpireAsync(request.HandoffId, pending, generationToken);
+        RegisterReserved(
+            request,
+            targetSpotId,
+            new ZLinkActorHandoffAdmissionDecision(reply, default));
     }
 
-    public void BeginCommit(ZLinkRemoteActorJoinRequest request, string targetSpotId)
+    public void RegisterRecoveredReservation(
+        ZLinkRemoteActorJoinRequest request,
+        string targetSpotId,
+        DateTimeOffset deadline,
+        ZLinkRelocationPermitPool.ZLinkRelocationPermitLease reservation)
+    {
+        var admission = new ZLinkRemoteActorAdmissionRequest(
+            request.ActorId,
+            request.ActorType,
+            request.SourceSpotId,
+            request.SourceNodeRid,
+            request.RequestContentType,
+            request.Request,
+            request.HandoffId,
+            deadline.ToUnixTimeMilliseconds(),
+            request.ActorGeneration,
+            request.ActorAuthorityOwnerGeneration,
+            request.ReservedPayloadBytes,
+            request.TargetSpotGeneration,
+            request.TargetSpotAuthorityOwnerGeneration);
+        var reply = new ZLinkRemoteActorAdmissionReply(
+            true,
+            ZLinkEnvelopeCodec.DefaultContentType,
+            [],
+            deadline.ToUnixTimeMilliseconds(),
+            request.ReservationToken,
+            request.ReservedPayloadBytes,
+            request.TargetNodeRid,
+            request.TargetNodeGeneration,
+            request.TargetSpotGeneration,
+            request.TargetAuthorityOwnerGeneration,
+            request.TargetSpotAuthorityOwnerGeneration);
+        RegisterReserved(
+            admission,
+            targetSpotId,
+            new ZLinkActorHandoffAdmissionDecision(reply, reservation));
+    }
+
+    private void RegisterReserved(
+        ZLinkRemoteActorAdmissionRequest request,
+        string targetSpotId,
+        ZLinkActorHandoffAdmissionDecision decision)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.HandoffId))
+                throw new InvalidOperationException("Remote actor admission requires a handoff id.");
+
+            var deadline = DateTimeOffset.FromUnixTimeMilliseconds(request.DeadlineUnixTimeMilliseconds);
+            if (deadline <= _timeProvider.GetUtcNow())
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DeadlineExceeded,
+                    $"Actor '{request.ActorId}' handoff admission deadline has expired.");
+
+            var pending = new PendingAdmission(
+                request,
+                targetSpotId,
+                deadline,
+                decision.Reply,
+                decision.Reservation);
+            lock (_gate)
+            {
+                if (_pending.TryGetValue(request.HandoffId, out var existing))
+                {
+                    if (existing.Deadline <= _timeProvider.GetUtcNow())
+                    {
+                        RemovePendingLocked(request.HandoffId);
+                    }
+                    else
+                    {
+                        if (!existing.Matches(request, targetSpotId))
+                            throw new InvalidOperationException(
+                                $"Handoff admission '{request.HandoffId}' is already assigned to another actor.");
+                        decision.Reservation.Dispose();
+                        return;
+                    }
+                }
+
+                _pending.Add(request.HandoffId, pending);
+                if (decision.Reply.Accepted) MarkDrainUnsafeLocked();
+            }
+
+            CancellationToken generationToken;
+            lock (_gate) generationToken = _generationStop.Token;
+            _ = ExpireAsync(request.HandoffId, pending, generationToken);
+        }
+        catch
+        {
+            decision.Reservation.Dispose();
+            throw;
+        }
+    }
+
+    public void BeginCommit(
+        ZLinkRemoteActorJoinRequest request,
+        string targetSpotId) =>
+        BeginCommitCore(request, targetSpotId, null);
+
+    public void BeginCommit(
+        ZLinkRemoteActorJoinRequest request,
+        string targetSpotId,
+        long actualPayloadBytes) =>
+        BeginCommitCore(request, targetSpotId, actualPayloadBytes);
+
+    private void BeginCommitCore(
+        ZLinkRemoteActorJoinRequest request,
+        string targetSpotId,
+        long? actualPayloadBytes)
     {
         lock (_gate)
         {
@@ -160,8 +258,9 @@ internal sealed class ZLinkActorHandoffAdmissions(
                     $"Actor '{request.ActorId}' does not have a matching pending handoff admission '{request.HandoffId}'.");
             if (pending.Deadline <= _timeProvider.GetUtcNow())
             {
-                _pending.Remove(request.HandoffId);
-                throw new TimeoutException(
+                RemovePendingLocked(request.HandoffId);
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DeadlineExceeded,
                     $"Actor '{request.ActorId}' handoff admission '{request.HandoffId}' has expired.");
             }
 
@@ -169,6 +268,8 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 throw new InvalidOperationException(
                     $"Actor '{request.ActorId}' handoff admission '{request.HandoffId}' was rejected.");
 
+            if (actualPayloadBytes is { } actual)
+                pending.ValidateCommit(request, targetSpotId, actual);
             pending.Committing = true;
         }
     }
@@ -177,7 +278,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
     {
         lock (_gate)
         {
-            _pending.Remove(handoffId);
+            RemovePendingLocked(handoffId);
             TryCompleteDrainSafeLocked();
         }
     }
@@ -186,7 +287,23 @@ internal sealed class ZLinkActorHandoffAdmissions(
     {
         lock (_gate)
         {
-            _pending.Remove(handoffId);
+            RemovePendingLocked(handoffId);
+            TryCompleteDrainSafeLocked();
+        }
+    }
+
+    public void AbortReservation(
+        ZLinkRemoteActorAdmissionAbortRequest request,
+        string targetSpotId)
+    {
+        lock (_gate)
+        {
+            if (!_pending.TryGetValue(request.HandoffId, out var pending))
+                return;
+            if (!pending.MatchesAbort(request, targetSpotId))
+                throw new InvalidOperationException(
+                    $"Actor '{request.ActorId}' admission abort does not match reservation '{request.HandoffId}'.");
+            RemovePendingLocked(request.HandoffId);
             TryCompleteDrainSafeLocked();
         }
     }
@@ -268,7 +385,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
             terminal.Reply = rejectedReply;
             terminal.Phase = ZLinkActorCommitPhase.Rejected;
-            _pending.Remove(request.HandoffId);
+            RemovePendingLocked(request.HandoffId);
             TrimTerminalOutcomesLocked();
         }
     }
@@ -333,7 +450,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
             terminal.Reply = rejectedReply;
             terminal.Phase = ZLinkActorCommitPhase.Expired;
-            _pending.Remove(request.HandoffId);
+            RemovePendingLocked(request.HandoffId);
             TrimTerminalOutcomesLocked();
             return true;
         }
@@ -416,6 +533,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
             _generationStop = new CancellationTokenSource();
             admitting = _admitting.Values.ToArray();
             _admitting.Clear();
+            foreach (var pending in _pending.Values) pending.Dispose();
             _pending.Clear();
             _terminal.Clear();
             _terminalOrder.Clear();
@@ -452,7 +570,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 && ReferenceEquals(current, pending)
                 && !current.Committing)
             {
-                _pending.Remove(handoffId);
+                RemovePendingLocked(handoffId);
                 TryCompleteDrainSafeLocked();
                 expired = true;
             }
@@ -476,6 +594,12 @@ internal sealed class ZLinkActorHandoffAdmissions(
             _drainSafe.TrySetResult();
     }
 
+    private void RemovePendingLocked(string handoffId)
+    {
+        if (_pending.Remove(handoffId, out var pending))
+            pending.Dispose();
+    }
+
     private static TaskCompletionSource CompletedSignal()
     {
         var signal = new TaskCompletionSource(
@@ -488,7 +612,8 @@ internal sealed class ZLinkActorHandoffAdmissions(
         ZLinkRemoteActorAdmissionRequest request,
         string targetSpotId,
         DateTimeOffset deadline,
-        ZLinkRemoteActorAdmissionReply reply)
+        ZLinkRemoteActorAdmissionReply reply,
+        ZLinkRelocationPermitPool.ZLinkRelocationPermitLease reservation) : IDisposable
     {
         public string ActorId { get; } = request.ActorId;
 
@@ -498,6 +623,54 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         public bool Committing { get; set; }
 
+        public void ValidateCommit(
+            ZLinkRemoteActorJoinRequest candidate,
+            string candidateTargetSpotId,
+            long actualPayloadBytes)
+        {
+            if (!Matches(candidate, candidateTargetSpotId)
+                || request.ActorGeneration != candidate.ActorGeneration
+                || request.ActorAuthorityOwnerGeneration
+                   != candidate.ActorAuthorityOwnerGeneration
+                || request.PredictedPayloadBytes
+                   != candidate.ReservedPayloadBytes
+                || string.IsNullOrEmpty(Reply.ReservationToken)
+                || !string.Equals(
+                    Reply.ReservationToken,
+                    candidate.ReservationToken,
+                    StringComparison.Ordinal)
+                || Reply.ReservedPayloadBytes != candidate.ReservedPayloadBytes
+                || Reply.TargetNodeGeneration != candidate.TargetNodeGeneration
+                || Reply.TargetSpotGeneration != candidate.TargetSpotGeneration
+                || Reply.TargetAuthorityOwnerGeneration
+                   != candidate.TargetAuthorityOwnerGeneration
+                || Reply.TargetSpotAuthorityOwnerGeneration
+                   != candidate.TargetSpotAuthorityOwnerGeneration
+                || Reply.TargetNodeRid is null
+                || candidate.TargetNodeRid is null
+                || !Reply.TargetNodeRid.AsSpan().SequenceEqual(
+                    candidate.TargetNodeRid))
+                throw new InvalidOperationException(
+                    $"Actor '{candidate.ActorId}' handoff commit does not match its target reservation.");
+            if (!reservation.TryShrinkPayload(actualPayloadBytes))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    $"Actor '{candidate.ActorId}' relocation payload exceeded its target reservation.");
+        }
+
+        public void Dispose() => reservation.Dispose();
+
+        public bool MatchesAbort(
+            ZLinkRemoteActorAdmissionAbortRequest candidate,
+            string candidateTargetSpotId) =>
+            string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
+            && string.Equals(request.HandoffId, candidate.HandoffId, StringComparison.Ordinal)
+            && string.Equals(
+                Reply.ReservationToken,
+                candidate.ReservationToken,
+                StringComparison.Ordinal)
+            && targetSpotId == candidateTargetSpotId;
+
         public bool Matches(ZLinkRemoteActorAdmissionRequest candidate, string candidateTargetSpotId)
             => string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(request.ActorType, candidate.ActorType, StringComparison.Ordinal)
@@ -505,13 +678,14 @@ internal sealed class ZLinkActorHandoffAdmissions(
                && request.DeadlineUnixTimeMilliseconds == candidate.DeadlineUnixTimeMilliseconds
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
                && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
-               && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
-               && request.Request.AsSpan().SequenceEqual(candidate.Request)
-               && targetSpotId == candidateTargetSpotId;
+                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
+                && request.Request.AsSpan().SequenceEqual(candidate.Request)
+                && targetSpotId == candidateTargetSpotId;
 
         public bool Matches(ZLinkRemoteActorJoinRequest candidate, string candidateTargetSpotId)
             => string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(request.ActorType, candidate.ActorType, StringComparison.Ordinal)
+               && string.Equals(request.HandoffId, candidate.HandoffId, StringComparison.Ordinal)
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
                && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
@@ -537,7 +711,14 @@ internal sealed class ZLinkActorHandoffAdmissions(
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
                && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
-               && request.Request.AsSpan().SequenceEqual(candidate.Request);
+               && request.Request.AsSpan().SequenceEqual(candidate.Request)
+               && request.ActorGeneration == candidate.ActorGeneration
+               && request.ActorAuthorityOwnerGeneration
+                  == candidate.ActorAuthorityOwnerGeneration
+               && request.PredictedPayloadBytes == candidate.PredictedPayloadBytes
+               && request.TargetSpotGeneration == candidate.TargetSpotGeneration
+               && request.TargetSpotAuthorityOwnerGeneration
+                  == candidate.TargetSpotAuthorityOwnerGeneration;
 
         public void Complete(ZLinkRemoteActorAdmissionReply reply) => _result.TrySetResult(reply);
 
@@ -576,6 +757,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                && Request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
                && targetSpotId == candidateTargetSpotId
                && string.Equals(candidate.TargetSpotId, candidateTargetSpotId, StringComparison.Ordinal)
+               && BoundSessionRouteMatches(Request, candidate)
                && (!requireRecordedCompletion
                    || Completion is not null
                    && Completion.OperationIdHigh == candidate.OperationIdHigh
@@ -587,7 +769,64 @@ internal sealed class ZLinkActorHandoffAdmissions(
                    && (Completion.Reply ?? []).AsSpan().SequenceEqual(candidate.Reply ?? []))
                && (!requireRecordedCompletion
                    || Completion is not null
+                   && BoundSessionRouteMatches(Completion, candidate)
                    && ZLinkActorHandoffRequestIdentity.FramesEqual(Completion.Frames, candidate.Frames));
+
+        private static bool BoundSessionRouteMatches(
+            ZLinkRemoteActorJoinRequest left,
+            ZLinkRemoteActorHandoffCompletionRequest right) =>
+            (left.BoundSessionNodeRid ?? []).AsSpan()
+                .SequenceEqual(right.BoundSessionNodeRid ?? [])
+            && (left.BoundSessionRid ?? []).AsSpan()
+                .SequenceEqual(right.BoundSessionRid ?? [])
+            && string.Equals(
+                left.BoundSessionBindingToken,
+                right.BoundSessionBindingToken,
+                StringComparison.Ordinal)
+            && left.BoundSessionBindingGeneration == right.BoundSessionBindingGeneration
+            && left.BoundSessionObjectGeneration == right.BoundSessionObjectGeneration
+            && left.BoundSessionAuthorityOwnerGeneration
+                == right.BoundSessionAuthorityOwnerGeneration
+            && string.Equals(
+                left.BoundSessionMeshName,
+                right.BoundSessionMeshName,
+                StringComparison.Ordinal)
+            && left.BoundSessionTargetNodeGeneration
+                == right.BoundSessionTargetNodeGeneration
+            && left.BoundSessionOwnerLeaseGeneration
+                == right.BoundSessionOwnerLeaseGeneration
+            && left.BoundSessionOwnerNodeGeneration
+                == right.BoundSessionOwnerNodeGeneration
+            && left.BoundSessionAcceptedHighWater
+                == right.BoundSessionAcceptedHighWater;
+
+        private static bool BoundSessionRouteMatches(
+            ZLinkRemoteActorHandoffCompletionRequest left,
+            ZLinkRemoteActorHandoffCompletionRequest right) =>
+            (left.BoundSessionNodeRid ?? []).AsSpan()
+                .SequenceEqual(right.BoundSessionNodeRid ?? [])
+            && (left.BoundSessionRid ?? []).AsSpan()
+                .SequenceEqual(right.BoundSessionRid ?? [])
+            && string.Equals(
+                left.BoundSessionBindingToken,
+                right.BoundSessionBindingToken,
+                StringComparison.Ordinal)
+            && left.BoundSessionBindingGeneration == right.BoundSessionBindingGeneration
+            && left.BoundSessionObjectGeneration == right.BoundSessionObjectGeneration
+            && left.BoundSessionAuthorityOwnerGeneration
+                == right.BoundSessionAuthorityOwnerGeneration
+            && string.Equals(
+                left.BoundSessionMeshName,
+                right.BoundSessionMeshName,
+                StringComparison.Ordinal)
+            && left.BoundSessionTargetNodeGeneration
+                == right.BoundSessionTargetNodeGeneration
+            && left.BoundSessionOwnerLeaseGeneration
+                == right.BoundSessionOwnerLeaseGeneration
+            && left.BoundSessionOwnerNodeGeneration
+                == right.BoundSessionOwnerNodeGeneration
+            && left.BoundSessionAcceptedHighWater
+                == right.BoundSessionAcceptedHighWater;
     }
 }
 
@@ -611,12 +850,59 @@ internal static class ZLinkActorHandoffRequestIdentity
                && string.Equals(left.HandoffId, right.HandoffId, StringComparison.Ordinal)
                && BytesEqual(left.BoundSessionNodeRid, right.BoundSessionNodeRid)
                && BytesEqual(left.BoundSessionRid, right.BoundSessionRid)
-               && string.Equals(left.TransferStateContentType, right.TransferStateContentType, StringComparison.Ordinal)
-               && left.TransferState.AsSpan().SequenceEqual(right.TransferState)
+               && string.Equals(
+                   left.BoundSessionBindingToken,
+                   right.BoundSessionBindingToken,
+                   StringComparison.Ordinal)
+               && left.BoundSessionBindingGeneration
+               == right.BoundSessionBindingGeneration
+               && left.BoundSessionObjectGeneration
+               == right.BoundSessionObjectGeneration
+               && left.BoundSessionAuthorityOwnerGeneration
+               == right.BoundSessionAuthorityOwnerGeneration
+               && string.Equals(
+                   left.BoundSessionMeshName,
+                   right.BoundSessionMeshName,
+                   StringComparison.Ordinal)
+               && left.BoundSessionTargetNodeGeneration
+               == right.BoundSessionTargetNodeGeneration
+               && left.BoundSessionOwnerLeaseGeneration
+               == right.BoundSessionOwnerLeaseGeneration
+               && left.BoundSessionOwnerNodeGeneration
+               == right.BoundSessionOwnerNodeGeneration
+               && left.BoundSessionAcceptedHighWater
+               == right.BoundSessionAcceptedHighWater
+               && string.Equals(left.RelocationContentType, right.RelocationContentType, StringComparison.Ordinal)
+               && string.Equals(
+                   left.RelocationReference,
+                   right.RelocationReference,
+                   StringComparison.Ordinal)
+               && left.RelocationChecksumCrc32c
+               == right.RelocationChecksumCrc32c
+               && left.RelocationAggregateId == right.RelocationAggregateId
+               && left.RelocationAggregateGeneration
+               == right.RelocationAggregateGeneration
+               && left.RelocationInventoryDigest.AsSpan().SequenceEqual(
+                   right.RelocationInventoryDigest)
                && string.Equals(left.RequestContentType, right.RequestContentType, StringComparison.Ordinal)
                && left.Request.AsSpan().SequenceEqual(right.Request)
                && string.Equals(left.SourceSpotId, right.SourceSpotId, StringComparison.Ordinal)
                && left.SourceNodeRid.AsSpan().SequenceEqual(right.SourceNodeRid)
+               && left.ActorGeneration == right.ActorGeneration
+               && left.ActorAuthorityOwnerGeneration
+               == right.ActorAuthorityOwnerGeneration
+               && string.Equals(
+                   left.ReservationToken,
+                   right.ReservationToken,
+                   StringComparison.Ordinal)
+               && left.ReservedPayloadBytes == right.ReservedPayloadBytes
+               && BytesEqual(left.TargetNodeRid, right.TargetNodeRid)
+               && left.TargetNodeGeneration == right.TargetNodeGeneration
+               && left.TargetSpotGeneration == right.TargetSpotGeneration
+               && left.TargetAuthorityOwnerGeneration
+               == right.TargetAuthorityOwnerGeneration
+               && left.TargetSpotAuthorityOwnerGeneration
+               == right.TargetSpotAuthorityOwnerGeneration
                && FramesEqual(left.HandoffFrames, right.HandoffFrames);
     }
 
@@ -632,6 +918,7 @@ internal static class ZLinkActorHandoffRequestIdentity
             if (a.ArrivalIndex != b.ArrivalIndex
                 || a.RequestId != b.RequestId
                 || a.Flags != b.Flags
+                || a.RouteContext != b.RouteContext
                 || !a.ReplyActorNodeRid.AsSpan().SequenceEqual(b.ReplyActorNodeRid)
                 || a.ReplyActorGeneration != b.ReplyActorGeneration
                 || !a.SourceNodeRid.AsSpan().SequenceEqual(b.SourceNodeRid)

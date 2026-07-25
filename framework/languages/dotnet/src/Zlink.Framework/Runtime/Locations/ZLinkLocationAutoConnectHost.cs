@@ -104,21 +104,15 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         foreach (var (name, spot) in registration.SpotNodes)
         {
             if (!state.SpotNodes.TryGetValue(name, out var node) || spot.Router is null) continue;
+            if (node.StartupState is not { } startupState) continue;
 
             var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
-            // An ephemeral bind (port 0) must advertise the endpoint Core
-            // actually bound — peers dial the descriptor row verbatim.
-            var endpoint = ZLinkNetworkEndpointResolver.Advertise(
-                node.Node.Status().LocalEndpoint ?? string.Empty,
-                spot.Router.AdvertiseHost,
-                spot.Router.BindHost,
-                registration.NetworkOptions);
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
                 ZLinkLocationRole.Spot,
-                RidOrNull(spot.RoutingId),
-                endpoint ?? string.Empty,
+                startupState.RoutingId,
+                startupState.Descriptor.Endpoint,
                 (uint)spot.Router.SocketConfig.Weight,
                 new SpotRouterExecutor(
                     node,
@@ -152,13 +146,21 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                     .ToDictionary(
                         static membership => membership.ChannelName,
                         static membership => membership.Weight,
-                        StringComparer.Ordinal));
+                        StringComparer.Ordinal),
+                startupState: startupState);
         }
 
             try
             {
                 foreach (var loop in _loops)
                     await loop.StartAsync(cancellationToken).ConfigureAwait(false);
+                foreach (var reconciler in _reconcilers)
+                {
+                    if (!await reconciler.MarkServingAsync(cancellationToken)
+                            .ConfigureAwait(false))
+                        throw new ZLinkConfigurationException(
+                            "The claimed MeshNode descriptor could not enter Serving state.");
+                }
             }
             catch (Exception startFailure)
             {
@@ -339,7 +341,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         int placementWeight = 100,
         ZLinkPlacementCapacity? capacity = null,
         ZLinkActivationConcurrency? activationConcurrency = null,
-        IReadOnlyDictionary<string, int>? channelWeights = null)
+        IReadOnlyDictionary<string, int>? channelWeights = null,
+        ZLinkMeshNodeStartupState? startupState = null)
     {
         // MeshNode descriptors always require a physical node identity.
         var advertisable = nodeRid is { Size: > 0 };
@@ -349,7 +352,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         var effectiveLifecycleGeneration = lifecycleGeneration == 0
             ? CreateLifecycleNonce()
             : lifecycleGeneration;
-        var row = advertisable
+        var row = startupState?.Descriptor ?? (advertisable
             ? new ZLinkMeshNodeDescriptor(
                 meshName, nodeRid!.Value,
                 effectiveLifecycleGeneration, DescriptorRevision: 1,
@@ -382,10 +385,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 ActivationConcurrency = activationConcurrency
                     ?? new ZLinkActivationConcurrency(0, 128)
             }
-            : null;
+            : null);
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events,
-            retainRemovedMembers);
+            retainRemovedMembers,
+            initiallyPublished: startupState is not null,
+            initialStoreGeneration: startupState?.StoreGeneration ?? 0);
         reconciler.RegisterPeerMetric();
         _reconcilers.Add(reconciler);
         _localReconcilers[(type, meshName, role)] = reconciler;

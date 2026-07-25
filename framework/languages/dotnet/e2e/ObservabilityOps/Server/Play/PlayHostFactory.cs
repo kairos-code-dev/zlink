@@ -19,6 +19,8 @@ namespace ObservabilityOps.Server.Play;
 
 internal static class PlayHostFactory
 {
+    private const string RoomSpotType = "observability-room";
+
     public static WebApplication Create(string[] args)
     {
         var options = PlayOptions.Parse(args);
@@ -35,12 +37,13 @@ internal static class PlayHostFactory
         if (options.MetricsEnabled) builder.Services.AddSingleton<MetricEvidenceCollector>();
         builder.Services.AddZLinkFramework(framework =>
         {
-            framework.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+            framework.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
             var locations = framework.ConfigureLocations();
-            locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+            locations.RouteCacheMaxAge = TimeSpan.Zero;
+            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
+            locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             locations.PollingInterval = TimeSpan.FromMilliseconds(250);
             framework.ConfigureDispatch()
@@ -51,11 +54,18 @@ internal static class PlayHostFactory
             var mesh18 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
+                .SetEntrySpotRoutingId(RoutingId.From(options.Rid));
+            mesh18.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
-                .AddActorFactory<PlayerActorFactory>(ObservabilityNames.PlayerActorType)
-                .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ObservabilityNames.PlayerActorType)
-                .AddSpotFactory<RoomSpot>();
+                .AddActorFactory<PlayerActor, PlayerActorFactory>(
+                    ObservabilityNames.PlayerActorType,
+                    null,
+                    ZLinkRelocationPolicy<PlayerActor>
+                        .Snapshot<PlayerActorRelocationAdapter>())
+                .AddSpotFactory<RoomSpot>(
+                    RoomSpotType,
+                    null,
+                    ZLinkRelocationPolicy<RoomSpot>.Disabled);
             mesh18.ChannelName(ObservabilityNames.PlayMesh);
         });
 

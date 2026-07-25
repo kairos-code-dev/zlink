@@ -5,41 +5,34 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     ZLinkSpotOutboundTransport outbound,
     ZLinkFrameworkRuntime runtime) : IZLinkSpotOutbound
 {
-    public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
-        new ZLinkInstanceSpotSendCall<TMessage>(runtime, spotId, message);
-
-    public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request) =>
-        new ZLinkInstanceSpotRequestCall<TRequest>(runtime, spotId, request);
-
-    public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message)
+    public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message)
     {
-        return new ZLinkRoutedSpotSendCall<TMessage>(activation, RequireResolvedHandle(target), message);
+        activation.EnsureOperationAllowed();
+        return new ZLinkInstanceSpotSendCall<TMessage>(runtime, spotId, message);
     }
 
-    public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request)
+    public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request)
     {
-        return new ZLinkRoutedSpotRequestCall<TRequest>(activation, RequireResolvedHandle(target), request);
+        activation.EnsureOperationAllowed();
+        return new ZLinkInstanceSpotRequestCall<TRequest>(runtime, spotId, request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
     {
+        activation.EnsureOperationAllowed();
         return new ZLinkCurrentSpotPublishCall<TEvent>(activation, channelName, topic, message);
     }
 
     public IZLinkSendCall SendToChannel<TMessage>(string channelName, TMessage message)
     {
+        activation.EnsureOperationAllowed();
         return new ZLinkCurrentSpotSendCall<TMessage>(activation, channelName, message);
     }
 
     public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request)
     {
+        activation.EnsureOperationAllowed();
         return new ZLinkCurrentSpotRequestCall<TRequest>(activation, channelName, request);
-    }
-
-    private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target)
-    {
-        return target as ZLinkResolvedSpotHandle
-               ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
@@ -49,6 +42,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation(countAsRequest: true);
         var requestTimeout = timeout ?? activation.DefaultRequestTimeout;
         var metricStarted = ZLinkRuntimeMetrics.StartChannelRequest();
@@ -81,6 +75,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation();
         return outbound.TrySendToChannelOnce(channelName, parts, metadata);
     }
@@ -91,6 +86,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation();
         return outbound.SendToChannelAsync(channelName, parts, cancellationToken, metadata);
     }
@@ -100,18 +96,23 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         return runtime.RequestToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
+            targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
             parts,
             timeout ?? activation.DefaultRequestTimeout,
             cancellationToken,
@@ -127,6 +128,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         Action release,
         IZLinkRuntimeFailureReporter errorSink)
     {
+        activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation();
         return await ZLinkLogicalMulticastSubmitter.SubmitAsync(
                 runtime.WorkerPool,
@@ -146,16 +148,21 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         return runtime.TrySendToSpotViaRouterChannelOnce(
             routerChannelId,
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
+            targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
             parts,
             metadata);
     }
@@ -165,17 +172,22 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
     {
+        activation.EnsureOperationAllowed();
         return runtime.SendToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
+            targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
             parts,
             cancellationToken,
             metadata);

@@ -26,10 +26,19 @@ internal sealed record ZLinkLocationRuntimePollingSnapshot(
             page = new ZLinkPageRequest(ContinuationToken: token);
         }
 
-        var summary = await query.ListServiceSummariesAsync(
-                new ZLinkLocationServiceSummaryFilter(),
-                cancellationToken)
-            .ConfigureAwait(false);
+        var summary = new List<ZLinkLocationServiceSummary>();
+        page = new ZLinkPageRequest();
+        while (true)
+        {
+            var result = await query.ListServiceSummariesAsync(
+                    new ZLinkLocationServiceSummaryFilter(),
+                    page,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            summary.AddRange(result.Items);
+            if (result.ContinuationToken is not { } token) break;
+            page = new ZLinkPageRequest(ContinuationToken: token);
+        }
 
         return new ZLinkLocationRuntimePollingSnapshot(
             status,

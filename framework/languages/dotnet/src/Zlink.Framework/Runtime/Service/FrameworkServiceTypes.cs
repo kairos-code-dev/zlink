@@ -36,7 +36,7 @@ internal enum MeshRecordKind
 {
     NodeSend = 1, NodeRequest, ChannelSend, ChannelRequest, SpotSend,
     SpotRequest, SpotMulticast, SpotControl, ActorSend, ActorRequest,
-    Completion, SendReady, TransferControl, InstanceSpotActivation
+    Completion, SendReady, InstanceSpotActivation
 }
 
 internal enum MeshOperationKind
@@ -68,23 +68,6 @@ internal sealed record MeshSendReadyData(
     MeshDestinationKind DestinationKind, RoutingId TargetNodeRid,
     string TargetSpotId, ActorRef TargetActor,
     string? ChannelName) : MeshRecordPayload;
-
-internal enum ActorTransferRole { Source = 1, Target = 2 }
-internal enum ActorTransferPhase { Preparing = 1, Fenced, Committed, Activated, Aborted }
-internal readonly record struct ActorTransferId(ulong High, ulong Low);
-internal readonly record struct ActorTransferToken(Guid Value);
-internal readonly record struct ActorTransferPrepare(
-    ActorTransferRole Role, ActorTransferId TransferId, ActorRef Actor,
-    ulong ExpectedMembershipEpoch, RoutingId PeerNodeRid, ulong FinalSequence,
-    ulong ReserveMessageCount, ulong ReserveByteCount);
-internal readonly record struct ActorTransferPrepareResult(
-    ActorTransferRole Role, ActorTransferId TransferId, ActorRef Actor,
-    ulong FinalSequence, ulong ReserveMessageCount, ulong ReserveByteCount);
-internal readonly record struct ActorTransferControl(
-    ActorTransferPhase Phase, ActorTransferRole Role, ActorTransferId TransferId,
-    ActorRef Actor, ulong MembershipEpoch, ulong FinalSequence,
-    int ResultCode, int FailureErrno);
-internal sealed record ActorTransferControlRecord(ActorTransferControl Control) : MeshRecordPayload;
 
 internal readonly record struct ObjectReservationFence(
     string ReservationId,
@@ -359,7 +342,11 @@ internal readonly struct MeshReceiveRecord
         MeshRecordPayload? kindData,
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null,
         Func<ActorJoinResult, IReadOnlyList<Message>, SendFlags, SubmitResult>?
-            joinReply = null)
+            joinReply = null,
+        ulong targetNodeGeneration = 0,
+        ulong authorityOwnerGeneration = 0,
+        ulong ownerLeaseGeneration = 0,
+        byte forwardingHopCount = 0)
     {
         Kind = kind; Domain = domain; SourceNodeRid = sourceNodeRid;
         SourceSpotId = sourceSpotId; SourceBindingGeneration = sourceBindingGeneration;
@@ -368,6 +355,10 @@ internal readonly struct MeshReceiveRecord
         PartOffset = partOffset; PartCount = partCount; TerminalResult = terminalResult;
         FailureErrno = failureErrno; KindData = kindData; _reply = reply;
         _joinReply = joinReply;
+        TargetNodeGeneration = targetNodeGeneration;
+        AuthorityOwnerGeneration = authorityOwnerGeneration;
+        OwnerLeaseGeneration = ownerLeaseGeneration;
+        ForwardingHopCount = forwardingHopCount;
     }
     public MeshRecordKind Kind { get; }
     public MeshReadyDomains Domain { get; }
@@ -384,6 +375,10 @@ internal readonly struct MeshReceiveRecord
     public int PartCount { get; }
     public int TerminalResult { get; }
     public int FailureErrno { get; }
+    public ulong TargetNodeGeneration { get; }
+    public ulong AuthorityOwnerGeneration { get; }
+    public ulong OwnerLeaseGeneration { get; }
+    public byte ForwardingHopCount { get; }
     public MeshRecordPayload? KindData { get; }
     public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
     public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;
@@ -396,7 +391,6 @@ internal readonly struct MeshReceiveRecord
     public ActorDestroyCompletion? ActorDestroyCompletion =>
         KindData as ActorDestroyCompletion;
     public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
-    public ActorTransferControl? TransferControl => (KindData as ActorTransferControlRecord)?.Control;
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None) =>
         _reply?.Invoke(parts, flags) ?? SubmitResult.Terminated;
     public SubmitResult ReplyJoin(
@@ -412,7 +406,7 @@ internal readonly struct MeshReceiveRecord
             MeshRecordKind.Completion,
             MeshReadyDomains.Infrastructure,
             default,
-            default,
+            string.Empty,
             0,
             default,
             operationId,
@@ -483,11 +477,6 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
         out MeshOperationId operationId, TimeSpan timeout = default);
     SubmitResult SendBoundSession(ActorRef actor, IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
     MeshOperationId CloseBoundSession(ActorRef actor, ulong expectedBindingGeneration, TimeSpan timeout = default);
-    ActorTransferToken PrepareActorTransfer(ActorTransferPrepare prepare,
-        out ActorTransferPrepareResult result, TimeSpan timeout = default);
-    void CommitActorTransfer(ActorTransferToken token, ulong newMembershipEpoch);
-    void ActivateActorTransfer(ActorTransferToken token);
-    void AbortActorTransfer(ActorTransferToken token);
     void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
     void SetActorCreateOperationTarget(IActorCreateOperationTarget target);
     void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target);

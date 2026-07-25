@@ -271,7 +271,10 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime : IZLinkFrameworkRuntime,
             var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
                 remaining = TimeSpan.FromTicks(1);
-            drained = await _shutdown.DrainAsync(remaining, CancellationToken.None)
+            drained = await _shutdown.DrainAsync(
+                    effectiveIntent,
+                    remaining,
+                    CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch

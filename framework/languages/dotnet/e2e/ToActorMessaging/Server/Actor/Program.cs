@@ -104,11 +104,10 @@ namespace ToActorMessaging.Actor
     internal sealed class TestActorFactory : IZLinkActorFactory
     {
         public ValueTask<IZLinkActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, context));
+            return ValueTask.FromResult<IZLinkActor>(new TestActor(context.ActorId, context));
         }
     }
 

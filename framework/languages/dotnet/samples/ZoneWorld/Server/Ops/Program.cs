@@ -56,11 +56,10 @@ builder.Services.AddZLinkFramework(options =>
     // These values govern registrations owned by Ops. Zone nodes keep the documented 30-second
     // defaults, so crash scenarios still exercise real lease expiry (§4.2 and §8.1).
     var locations = options.ConfigureLocations();
-    locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+    locations.OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1);
     locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
-    // Ops observes the zone mesh without joining it: the operational query
-    // enumerates it only when declared here (§8.1).
-    locations.ObservedMeshNames.Add(ZoneWorldNames.MeshName);
+    locations.OwnerLeaseFencingMargin = TimeSpan.FromSeconds(1);
+    locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(500);
 
     options.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)

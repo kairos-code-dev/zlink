@@ -11,7 +11,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
@@ -20,7 +22,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
+            targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
             parts,
             cancellationToken,
             metadata);
@@ -33,7 +37,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
@@ -41,7 +47,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
+            targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
             parts,
             metadata);
     }
@@ -51,7 +59,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
         CancellationToken cancellationToken,
@@ -61,7 +71,9 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 targetNodeRid,
                 targetSpotId,
                 targetSpotGeneration,
+                targetNodeGeneration,
                 authorityOwnerGeneration,
+                ownerLeaseGeneration,
                 parts,
                 timeout,
                 cancellationToken,

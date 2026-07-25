@@ -137,7 +137,7 @@ internal sealed class ZLinkSpotActorPacketDispatcher(
             kindName,
             header.Name,
             correlationId: header.CorrelationId,
-            actorId: actor.ActorId,
+            actorId: actor.Context.ActorId,
             actorType: actor.GetType().FullName);
     }
 

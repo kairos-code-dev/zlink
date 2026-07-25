@@ -31,28 +31,24 @@ public sealed class EntrySpotIdentityStoreTests
     public async Task DescriptorClaim_IsGlobalAndBlocksUserAndInstanceSpotClaims()
     {
         var store = new ZLinkInMemoryLocationStore();
-        var ownerA = await ClaimOwnerAsync(store, "owner-a", "node-a");
-        var ownerB = await ClaimOwnerAsync(store, "owner-b", "node-b");
+        var ownerA = await ClaimOwnerAsync(store, "owner-a");
+        var ownerB = await ClaimOwnerAsync(store, "owner-b");
 
         var claimed = await store.UpdateMeshNodeAsync(
             Descriptor(ownerA, "node-a", EntrySpotId),
             ZLinkLocationWriteIntent.NewClaim);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
 
-        var user = await store.UpdateSpotAsync(
-            UserSpot(ownerB, "node-b", EntrySpotId),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, user.Status);
+        Assert.IsType<ZLinkObjectReserveResult.Conflict>(
+            await store.ReserveAsync(
+                UserSpotReservation(ownerB, "node-b")));
 
-        var instance = await store.ClaimInstanceSpotAsync(
-            new InstanceSpotClaimRequest(
-                "play",
-                EntrySpotId,
-                "match",
-                RoutingId.From("node-b"),
-                1,
-                ownerB.OwnerId));
-        Assert.IsType<InstanceSpotClaimResult.Conflict>(instance);
+        Assert.IsType<ZLinkObjectReserveResult.Conflict>(
+            await store.ReserveAsync(
+                SpotReservation(
+                    ownerB,
+                    "node-b",
+                    ZLinkPlacementObjectKind.InstanceSpot)));
 
         var duplicate = await store.UpdateMeshNodeAsync(
             Descriptor(ownerB, "node-b", EntrySpotId),
@@ -60,7 +56,7 @@ public sealed class EntrySpotIdentityStoreTests
         Assert.Equal(
             ZLinkLocationWriteStatus.RejectedConflict,
             duplicate.Status);
-        Assert.Single(await store.ListMeshNodesAsync("play"));
+        Assert.Single((await store.ListMeshNodesAsync("play", default)).Items);
 
         Assert.IsType<ZLinkObjectReserveResult.Conflict>(
             await store.ReserveAsync(
@@ -68,11 +64,48 @@ public sealed class EntrySpotIdentityStoreTests
     }
 
     [Fact]
+    public async Task StartupConflictClassification_DistinguishesRidAndEntrySpot()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var runtimeOptions = new ZLinkLocationOptions();
+        var runtime = new ZLinkLocationRuntime(
+            runtimeOptions,
+            store,
+            store,
+            store);
+        await runtime.RenewOwnerLeaseOnceAsync();
+        var existingOwner = await ClaimOwnerAsync(store, "existing-owner");
+        _ = await store.UpdateMeshNodeAsync(
+            Descriptor(existingOwner, "node-a", EntrySpotId),
+            ZLinkLocationWriteIntent.NewClaim);
+        var tracker = new ZLinkOwnerLeaseTracker(store, runtimeOptions);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store,
+            store,
+            tracker,
+            new ZLinkObservedLocationGenerations());
+        await using var lifecycle = new ZLinkLocationLifecycle(runtime, resolvers);
+
+        Assert.Equal(
+            ZLinkFrameworkErrorKind.RoutingIdConflict,
+            await lifecycle.ClassifyMeshNodeClaimConflictAsync(
+                "play",
+                RoutingId.From("node-a"),
+                "other-entry-00000000-0000-4000-8000-000000000002"));
+        Assert.Equal(
+            ZLinkFrameworkErrorKind.SpotIdConflict,
+            await lifecycle.ClassifyMeshNodeClaimConflictAsync(
+                "play",
+                RoutingId.From("node-b"),
+                EntrySpotId));
+    }
+
+    [Fact]
     public async Task ExactDescriptorRemove_ReleasesEntrySpotClaim()
     {
         var store = new ZLinkInMemoryLocationStore();
-        var ownerA = await ClaimOwnerAsync(store, "owner-a", "node-a");
-        var ownerB = await ClaimOwnerAsync(store, "owner-b", "node-b");
+        var ownerA = await ClaimOwnerAsync(store, "owner-a");
+        var ownerB = await ClaimOwnerAsync(store, "owner-b");
         var descriptor = Descriptor(ownerA, "node-a", EntrySpotId);
         var claimed = await store.UpdateMeshNodeAsync(
             descriptor,
@@ -86,12 +119,10 @@ public sealed class EntrySpotIdentityStoreTests
                     descriptor.Rid),
                 new ZLinkLocationOwnerToken(
                     ownerA.OwnerId,
-                    checked((long)claimed.Generation + 1))));
-        Assert.Equal(
-            ZLinkLocationWriteStatus.RejectedConflict,
-            (await store.UpdateSpotAsync(
-                UserSpot(ownerB, "node-b", EntrySpotId),
-                ZLinkLocationWriteIntent.NewClaim)).Status);
+                    checked(ownerA.LeaseGeneration + 1))));
+        Assert.IsType<ZLinkObjectReserveResult.Conflict>(
+            await store.ReserveAsync(
+                UserSpotReservation(ownerB, "node-b")));
 
         Assert.Equal(
             ZLinkLocationWriteStatus.Stored,
@@ -99,27 +130,30 @@ public sealed class EntrySpotIdentityStoreTests
                 new ZLinkMeshNodeDescriptorKey(
                     descriptor.MeshName,
                     descriptor.Rid),
-                new ZLinkLocationOwnerToken(
-                    ownerA.OwnerId,
-                    checked((long)claimed.Generation))));
+                ownerA));
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                Descriptor(
+                    ownerB,
+                    "node-b",
+                    "play-entry-00000000-0000-4000-8000-000000000002"),
+                ZLinkLocationWriteIntent.NewClaim)).Status);
 
-        var user = await store.UpdateSpotAsync(
-            UserSpot(ownerB, "node-b", EntrySpotId),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, user.Status);
+        Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                UserSpotReservation(ownerB, "node-b")));
     }
 
     private static async ValueTask<ZLinkLocationOwnerToken> ClaimOwnerAsync(
         ZLinkInMemoryLocationStore store,
-        string ownerId,
-        string nodeRid)
+        string ownerId)
     {
         var claimed = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
             await store.ClaimOwnerLeaseAsync(ownerId, LeaseTtl));
-        await store.RenewOwnerLeaseAsync(
-            ownerId,
-            RoutingId.From(nodeRid),
-            LeaseTtl);
+        var read = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(ownerId));
+        Assert.Equal(claimed.Token, read.Token);
         return claimed.Token;
     }
 
@@ -143,30 +177,53 @@ public sealed class EntrySpotIdentityStoreTests
             UpdatedAt: default)
         {
             ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            ObjectCapabilities =
+            [
+                new ZLinkObjectCapability(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "match",
+                    ZLinkObjectMaintenancePolicyKind.Disabled,
+                    false,
+                    100),
+                new ZLinkObjectCapability(
+                    ZLinkPlacementObjectKind.InstanceSpot,
+                    "match",
+                    ZLinkObjectMaintenancePolicyKind.Disabled,
+                    false,
+                    100)
+            ],
+            Capacity = new ZLinkPlacementCapacity(
+                new ZLinkPopulationCapacity(0, 0, 0),
+                new ZLinkPopulationCapacity(0, 0, 100),
+                [
+                    new ZLinkSpotTypeCapacity(
+                        ZLinkPlacementObjectKind.UserSpot,
+                        "match",
+                        0,
+                        0,
+                        100),
+                    new ZLinkSpotTypeCapacity(
+                        ZLinkPlacementObjectKind.InstanceSpot,
+                        "match",
+                        0,
+                        0,
+                        100)
+                ]),
             EntrySpotId = entrySpotId,
             State = ZLinkFrameworkRuntimeState.Serving
         };
 
-    private static ZLinkSpotLocation UserSpot(
-        ZLinkLocationOwnerToken owner,
-        string nodeRid,
-        string spotId) =>
-        new(
-            "play",
-            spotId,
-            SpotGeneration: 1,
-            RoutingId.From(nodeRid),
-            OwnerNodeGeneration: 1,
-            ZLinkSpotKind.User,
-            SpotType: "match",
-            OwnerId: owner.OwnerId,
-            UpdatedAt: default);
-
     private static ZLinkObjectReservationRequest UserSpotReservation(
         ZLinkLocationOwnerToken owner,
         string nodeRid) =>
+        SpotReservation(owner, nodeRid, ZLinkPlacementObjectKind.UserSpot);
+
+    private static ZLinkObjectReservationRequest SpotReservation(
+        ZLinkLocationOwnerToken owner,
+        string nodeRid,
+        ZLinkPlacementObjectKind objectKind) =>
         new(
-            ZLinkPlacementObjectKind.UserSpot,
+            objectKind,
             ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(EntrySpotId),
             "match",
             "inline-v1:00000000:",
@@ -182,7 +239,7 @@ public sealed class EntrySpotIdentityStoreTests
                 0,
                 1,
                 new ZLinkSpotTypeCapacityDelta(
-                    ZLinkPlacementObjectKind.UserSpot,
+                    objectKind,
                     "match",
                     1)));
 }

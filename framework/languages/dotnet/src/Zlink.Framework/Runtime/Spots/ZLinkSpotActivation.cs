@@ -67,7 +67,6 @@ internal sealed partial class ZLinkSpotActivation :
             _runtime);
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
         InstanceHandlers = new ZLinkInstanceSpotHandlerRegistrySurface(this);
-        Outbound = _outboundEndpoint;
         _serial = new ZLinkSpotSerialExecutor(
             this,
             () => IsDisposed,
@@ -130,15 +129,33 @@ internal sealed partial class ZLinkSpotActivation :
 
     IZLinkInstanceSpotHandlerRegistry IZLinkInstanceSpotContext.Handlers => InstanceHandlers;
 
-    public IZLinkSpotOutbound Outbound { get; }
+    public IZLinkSpotOutbound Outbound
+    {
+        get
+        {
+            EnsureContextOperationAllowed();
+            return _outboundEndpoint;
+        }
+    }
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
+
+    void IZLinkCurrentSpotActivation.EnsureOperationAllowed() =>
+        EnsureContextOperationAllowed();
 
     public string SpotId => _spotId;
 
     public ulong ObjectGeneration => NativeSpot.LifecycleGeneration;
 
     public RoutingId NodeRid { get; }
+
+    private void EnsureContextOperationAllowed()
+    {
+        if (IsDisposed)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotMoving,
+                $"Spot context for '{SpotId}' cannot start an operation after owner cutover.");
+    }
 
     private void EnsureConfigurationOpen()
     {

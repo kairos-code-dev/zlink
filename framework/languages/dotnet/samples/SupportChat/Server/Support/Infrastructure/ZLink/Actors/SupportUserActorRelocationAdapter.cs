@@ -1,39 +1,39 @@
+using System.Text.Json;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Messaging;
-using Zlink.Framework.Contracts.Spots;
 
 namespace SupportChat.Server.Support.Infrastructure.ZLink.Actors;
 
-internal sealed class SupportUserActorTransferAdapter : IZLinkActorTransferAdapter<SupportUserActor>
+internal sealed class SupportUserActorRelocationAdapter
+    : IZLinkActorRelocationAdapter<SupportUserActor>
 {
-    public ValueTask<ZLinkMessage> TransferOutAsync(
+    public ValueTask<byte[]> CaptureAsync(
         SupportUserActor actor,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ZLinkMessage.From(new SupportUserActorTransferState(
+        return ValueTask.FromResult(JsonSerializer.SerializeToUtf8Bytes(
+            new SupportUserActorRelocationState(
             actor.DisplayName,
             actor.Role,
             actor.ParticipantId,
             actor.ConversationId)));
     }
 
-    public ValueTask<SupportUserActor> TransferInAsync(
-        string actorId,
-        IZLinkActorContext context,
-        ZLinkMessage state,
+    public ValueTask RestoreAsync(
+        SupportUserActor actor,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var transferred = state.Decode<SupportUserActorTransferState>();
-        var actor = new SupportUserActor(actorId, context);
+        var transferred = JsonSerializer.Deserialize<SupportUserActorRelocationState>(
+            payload.Span) ?? throw new InvalidDataException("Actor relocation state is empty.");
         actor.SetIdentity(transferred.DisplayName, transferred.Role, transferred.ParticipantId);
         if (!string.IsNullOrEmpty(transferred.ConversationId))
             actor.JoinConversation(transferred.ConversationId);
-        return ValueTask.FromResult(actor);
+        return ValueTask.CompletedTask;
     }
 
-    private sealed record SupportUserActorTransferState(
+    private sealed record SupportUserActorRelocationState(
         string DisplayName,
         string Role,
         string ParticipantId,

@@ -12,6 +12,7 @@ using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot.Notifications;
 using SupportChat.Server.Support.Infrastructure.ZLink.Spots.EntrySpot;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -39,8 +40,10 @@ public static class SupportServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
+            var locations = options.ConfigureLocations();
+            locations.RouteCacheMaxAge = TimeSpan.Zero;
+            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
@@ -53,11 +56,18 @@ public static class SupportServerHostFactory
                 .Listen(topology.MeshEndpoint)
                 // Discovery clients dial this server through its descriptor
                 // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(topology.MeshRoutingId)
+                .SetRoutingId(topology.MeshRoutingId);
+            mesh.Objects().Server()
                 .AddEntrySpot<SupportEntrySpot>()
-                .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
-                .AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>(SampleNames.SupportActorType)
-                .AddSpotFactory<ConversationSpot>();
+                .AddActorFactory<SupportUserActor, SupportUserActorFactory>(
+                    SampleNames.SupportActorType,
+                    null,
+                    ZLinkRelocationPolicy<SupportUserActor>
+                        .Snapshot<SupportUserActorRelocationAdapter>())
+                .AddSpotFactory<ConversationSpot>(
+                    SampleNames.ConversationSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ConversationSpot>.Disabled);
             mesh.ChannelName(SampleNames.SupportChannel)
                 .AddHandlerGroup("support");
             mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);

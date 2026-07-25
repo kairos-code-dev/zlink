@@ -142,12 +142,15 @@ internal sealed class ZLinkSpotRuntimeManager(
         bool joinExisting,
         CancellationToken cancellationToken)
     {
+        var locationStore = _locationStore
+            ?? throw new InvalidOperationException(
+                "Remote User Spot creation requires a Location Store.");
         var deadlineAt = DateTimeOffset.UtcNow.Add(timeout);
         using var deadlineToken = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
         deadlineToken.CancelAfter(timeout);
         var meshName = source.Registration.SpotNodeName;
-        var descriptors = await _locationStore!.ListMeshNodesAsync(
+        var descriptors = await locationStore.ListAllMeshNodesAsync(
                 meshName, deadlineToken.Token)
             .ConfigureAwait(false);
         var eligible = descriptors
@@ -189,7 +192,7 @@ internal sealed class ZLinkSpotRuntimeManager(
                     meshName,
                     target.Rid,
                     target.LifecycleGeneration));
-            var reserved = await _locationStore.ReserveAsync(
+            var reserved = await locationStore.ReserveAsync(
                     new ZLinkObjectReservationRequest(
                         ZLinkPlacementObjectKind.UserSpot,
                         key,
@@ -232,6 +235,21 @@ internal sealed class ZLinkSpotRuntimeManager(
                         requestedSpotId,
                         stableType,
                         existing.Current,
+                        deadlineAt,
+                        deadlineToken.Token)
+                    .ConfigureAwait(false);
+                if (joined.HasValue)
+                    return joined.Value;
+                continue;
+            }
+            if (joinExisting
+                && reserved is ZLinkObjectReserveResult.Conflict(
+                    ZLinkAuthorityReadResult.Found found))
+            {
+                var joined = await JoinExistingAsync(
+                        requestedSpotId,
+                        stableType,
+                        found.Snapshot,
                         deadlineAt,
                         deadlineToken.Token)
                     .ConfigureAwait(false);
@@ -287,7 +305,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         }
         catch
         {
-            await _locationStore.AbortAsync(snapshot, CancellationToken.None)
+            await locationStore.AbortAsync(snapshot, CancellationToken.None)
                 .ConfigureAwait(false);
             throw;
         }

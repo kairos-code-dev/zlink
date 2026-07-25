@@ -482,8 +482,8 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("app.MapPost", program, StringComparison.Ordinal);
         Assert.Contains("ActorNodeEndpoints.Map(app, options)", program, StringComparison.Ordinal);
         Assert.Contains("app.MapPost(\"/actors\"", endpoints, StringComparison.Ordinal);
-        Assert.DoesNotContain("class TransferActorAdapter", program, StringComparison.Ordinal);
-        Assert.Contains("class TransferActorAdapter", runtime, StringComparison.Ordinal);
+        Assert.DoesNotContain("class TransferActorRelocationAdapter", program, StringComparison.Ordinal);
+        Assert.Contains("class TransferActorRelocationAdapter", runtime, StringComparison.Ordinal);
         Assert.DoesNotContain("app.MapPost", runtime, StringComparison.Ordinal);
     }
 
@@ -502,7 +502,9 @@ public sealed partial class RegressionTests
 
         Assert.Contains("CleanupGatedLocationStore", host, StringComparison.Ordinal);
         Assert.Contains("IZLinkLocationStore", support, StringComparison.Ordinal);
-        Assert.Contains("inner.RemoveActorAsync(key, owner, cancellationToken)", support,
+        Assert.Contains("mutation is ZLinkAuthorityMutation.Delete", support,
+            StringComparison.Ordinal);
+        Assert.Contains("inner.CompareExchangeAuthorityAsync(", support,
             StringComparison.Ordinal);
         Assert.DoesNotContain("Zlink.Framework.Runtime", support, StringComparison.Ordinal);
 

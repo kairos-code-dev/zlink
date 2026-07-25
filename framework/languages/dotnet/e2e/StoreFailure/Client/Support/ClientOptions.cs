@@ -28,7 +28,7 @@ internal sealed record ClientOptions(
     public static ClientOptions Parse(string[] args)
         => E2eConfiguration.Load<ClientOptions>(args);
 
-    public TimeSpan HeartbeatInterval => TimeSpan.FromMilliseconds(LocationHeartbeatMs);
+    public TimeSpan OwnerLeaseRenewInterval => TimeSpan.FromMilliseconds(LocationHeartbeatMs);
 
     public TimeSpan OwnerLeaseTtl => TimeSpan.FromMilliseconds(LocationLeaseTtlMs);
 

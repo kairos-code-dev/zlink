@@ -11,7 +11,7 @@ public sealed class DeferredActorJoinDurabilityTests
     {
         var authority = CreateAuthority();
         var relocation = new TestRelocationStore();
-        var actor = new ActorRef(RoutingId.From("node-target"), "actor-1", 7);
+        var actor = new ActorRef("actor-1", 7, "play", RoutingId.From("node-target"));
         var operation = new ZLinkActorJoinOperationId(11, 29);
 
         var first = new ZLinkDeferredActorJoinCompletionJournal(authority, relocation);
@@ -44,7 +44,7 @@ public sealed class DeferredActorJoinDurabilityTests
     {
         var authority = CreateAuthority();
         var relocation = new TestRelocationStore();
-        var actor = new ActorRef(RoutingId.From("node-target"), "actor-1", 7);
+        var actor = new ActorRef("actor-1", 7, "play", RoutingId.From("node-target"));
         var operation = new ZLinkActorJoinOperationId(13, 31);
         var journal = new ZLinkDeferredActorJoinCompletionJournal(authority, relocation);
         var root = await journal.PrepareAsync(
@@ -77,7 +77,7 @@ public sealed class DeferredActorJoinDurabilityTests
     {
         var authority = CreateAuthority();
         var relocation = new TestRelocationStore();
-        var actor = new ActorRef(RoutingId.From("node-target"), "actor-1", 7);
+        var actor = new ActorRef("actor-1", 7, "play", RoutingId.From("node-target"));
         var operation = new ZLinkActorJoinOperationId(17, 37);
         var journal = new ZLinkDeferredActorJoinCompletionJournal(authority, relocation);
         var root = await journal.PrepareAsync(
@@ -324,8 +324,14 @@ public sealed class DeferredActorJoinDurabilityTests
         public ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
             string reference,
             TimeSpan retention,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            var now = DateTimeOffset.UtcNow;
+            return ValueTask.FromResult<ZLinkRelocationRenewResult>(
+                Payloads.ContainsKey(reference)
+                    ? new ZLinkRelocationRenewResult.Renewed(now + retention, now)
+                    : new ZLinkRelocationRenewResult.Missing());
+        }
 
         public ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
             string reference,
@@ -339,6 +345,6 @@ public sealed class DeferredActorJoinDurabilityTests
     private sealed class TestActor(string actorId) : IZLinkActor
     {
         public string ActorId { get; } = actorId;
-        public IZLinkActorContext Context => null!;
+        public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
     }
 }

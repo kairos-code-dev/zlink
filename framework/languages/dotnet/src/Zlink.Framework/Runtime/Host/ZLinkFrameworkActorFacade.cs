@@ -47,7 +47,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         CancellationToken cancellationToken)
     {
         var state = getState();
-        var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
+        var actorState = actorSessionManager.GetOrCreateState(actor.Context.ActorId);
         var node = getActorSpotNode();
         var localActivation = spots.GetActivationBySpotId(state, spotId);
 
@@ -117,6 +117,11 @@ internal sealed class ZLinkFrameworkActorFacade(
                        ?? throw new ZLinkFrameworkException(
                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref.");
-        return actorRef.ToNative();
+        var meshName = actorState.Activation?.MeshName
+                       ?? actorState.Context?.MeshName
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actorState.ActorId}' does not have an owner Mesh.");
+        return actorRef.ToNative(meshName);
     }
 }

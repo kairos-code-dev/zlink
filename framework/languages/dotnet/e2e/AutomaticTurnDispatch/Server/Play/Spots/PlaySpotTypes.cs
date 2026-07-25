@@ -24,12 +24,11 @@ internal sealed class AwaitEntrySpot(IZLinkEntrySpotContext context) : IZLinkEnt
 internal sealed class AwaitActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new AwaitActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(new AwaitActor(context.ActorId, context));
     }
 }
 

@@ -60,24 +60,23 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class TransferActorFactory(EvidenceStore evidence) : IZLinkActorFactory<TransferActor>
     {
         public ValueTask<TransferActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (evidence.NodeRid == "actor-b"
-                && actorId.StartsWith("actor-no-adapter-", StringComparison.Ordinal))
-                evidence.Add("transfer", actorId, "transfer_in_empty_default", "actor-factory");
-            return ValueTask.FromResult(new TransferActor(actorId, context, evidence));
+                && context.ActorId.StartsWith("actor-no-adapter-", StringComparison.Ordinal))
+                evidence.Add("transfer", context.ActorId, "transfer_in_empty_default", "actor-factory");
+            return ValueTask.FromResult(new TransferActor(context.ActorId, context, evidence));
         }
     }
 
-    internal sealed class TransferActorAdapter(
+    internal sealed class TransferActorRelocationAdapter(
         EvidenceStore evidence,
         TransferGateStore transferGates)
-        : IZLinkActorTransferAdapter<TransferActor>
+        : IZLinkActorRelocationAdapter<TransferActor>
     {
-        public async ValueTask<ZLinkMessage> TransferOutAsync(
+        public async ValueTask<byte[]> CaptureAsync(
             TransferActor actor,
             CancellationToken cancellationToken)
         {
@@ -91,7 +90,7 @@ namespace SpotActorTransfer.ActorNode
             if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
             {
                 evidence.Add("transfer", actor.ActorId, "transfer_out_empty", "custom-adapter");
-                return ZLinkMessage.Empty;
+                return [];
             }
 
             evidence.Add("transfer", actor.ActorId, "transfer_out", actor.StateVersion.ToString());
@@ -102,39 +101,37 @@ namespace SpotActorTransfer.ActorNode
                     .ConfigureAwait(false);
             }
 
-            return ZLinkMessage.From(new TransferStateDto(actor.ActorId, actor.StateVersion));
+            return JsonSerializer.SerializeToUtf8Bytes(
+                new TransferStateDto(actor.ActorId, actor.StateVersion));
         }
 
-        public ValueTask<TransferActor> TransferInAsync(
-            string actorId,
-            IZLinkActorContext context,
-            ZLinkMessage state,
+        public ValueTask RestoreAsync(
+            TransferActor actor,
+            ReadOnlyMemory<byte> payload,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (state.IsEmpty)
+            var actorId = actor.Context.ActorId;
+            if (payload.IsEmpty)
             {
                 evidence.Add("transfer", actorId, "transfer_in_empty", "custom-adapter");
-                return ValueTask.FromResult(new TransferActor(actorId, context, evidence)
-                {
-                    ActorType = SpotActorTransferNames.ActorTypeEmptyState
-                });
+                actor.ActorType = SpotActorTransferNames.ActorTypeEmptyState;
+                return ValueTask.CompletedTask;
             }
 
-            var dto = state.Decode<TransferStateDto>();
+            var dto = JsonSerializer.Deserialize<TransferStateDto>(payload.Span)
+                      ?? throw new InvalidDataException(
+                          "Actor relocation state is empty.");
             if (actorId.StartsWith("actor-fail-transfer-in-", StringComparison.Ordinal))
             {
                 evidence.Add("ST-C3", actorId, "transfer_in_failed", dto.StateVersion.ToString());
                 throw new InvalidOperationException("injected transfer in failure");
             }
 
-            var actor = new TransferActor(actorId, context, evidence)
-            {
-                ActorType = SpotActorTransferNames.ActorTypeStateful,
-                StateVersion = dto.StateVersion
-            };
+            actor.ActorType = SpotActorTransferNames.ActorTypeStateful;
+            actor.StateVersion = dto.StateVersion;
             evidence.Add("transfer", actorId, "transfer_in", actor.StateVersion.ToString());
-            return ValueTask.FromResult(actor);
+            return ValueTask.CompletedTask;
         }
     }
 

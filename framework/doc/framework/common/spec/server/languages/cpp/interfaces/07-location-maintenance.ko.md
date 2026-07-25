@@ -474,8 +474,8 @@ Creation과 relocation operation의 조건과 변경 결과는 다음과 같다.
 | `abort(...)` | Exact Creating authority와 reservation fence가 일치해야 한다. Current target lifecycle이나 lease는 요구하지 않는다. | Creating authority와 해당 target pending capacity를 함께 해제한다. | 같은 fence는 `object_already_aborted_t`, 다른 generation은 `object_abort_stale_t`, current authority 불일치는 `object_abort_conflict_t`다. 닫힌 결과에는 mutation이 0인 `authority_generation_exhausted_t`도 포함된다. |
 | `reserve_relocation_capacity(...)` | Request source가 current authority와 durable Active allocation에 일치하고 target이 live하며 capacity가 있어야 한다. | Target pending capacity만 예약하고 fence를 durable하게 유지한다. | 같은 ID와 같은 request는 `relocation_capacity_already_reserved_t`, 다른 내용은 `relocation_capacity_conflict_t`, target이 유효하지 않으면 `relocation_capacity_target_unavailable_t`, capacity가 부족하면 `relocation_capacity_exhausted_t`다. |
 | Standalone `new_owner` CAS | Reserved fence와 authority version, source·target owner가 모두 일치해야 한다. | Authority [owner](../../../../01-glossary.ko.md#owner) 변경, source active 감소와 target pending-to-active 변경을 한 transaction에서 처리한다. | Fence나 expectation이 다르면 current authority read를 포함한 `authority_conflict_t`이며 mutation은 0이다. |
-| `prepare_aggregate(...)` | 모든 participant expectation과 target reservation이 정확히 일치해야 한다. | Reserved fence를 aggregate ID·generation에 bind하고 durable Prepared record를 만든다. | Exact duplicate는 `aggregate_already_prepared_t`, 값 불일치는 `aggregate_prepare_conflict_t`, 다른 generation은 `aggregate_prepare_stale_t`이며 mutation은 0이다. 닫힌 결과에는 `authority_generation_exhausted_t`도 포함된다. |
-| `commit_aggregate(...)` | Prepared aggregate의 allocation과 target descriptor lifecycle·owner lease가 계속 일치해야 한다. | 모든 owner, AuthorityOwnerGeneration, membership visibility와 capacity를 한 transaction에서 전환한다. | 같은 fence는 `already_committed`, 다른 generation이나 stale target은 `stale`이며 mutation 없이 fence를 bind 상태로 유지한다. 닫힌 결과에는 `generation_exhausted`도 포함된다. |
+| `prepare_aggregate(...)` | `new_owner`가 있으면 해당 participant의 exact non-zero capacity만 합산한다. All-preserve이면 capacity는 zero이고 membership mutation은 모두 empty여야 한다. | Relocation mode는 Reserved fence를 bind한다. All-preserve mode는 reservation 없이 payload 변경을 durable Prepared record에 고정한다. | Zero+`new_owner`, non-zero+all-preserve와 다른 불일치는 `aggregate_prepare_conflict_t`이며 mutation은 0이다. Exact duplicate는 `aggregate_already_prepared_t`, 다른 generation은 `aggregate_prepare_stale_t`다. |
+| `commit_aggregate(...)` | Relocation mode는 allocation과 target descriptor·owner를, all-preserve mode는 participant expectation을 다시 확인한다. | Relocation mode는 owner·membership·capacity를 전환한다. All-preserve mode는 owner, 두 generation, membership과 Active allocation을 유지하고 payload만 atomic하게 바꾼다. | 같은 fence는 `already_committed`, 다른 generation이나 stale expectation은 `stale`이며 mutation은 0이다. 닫힌 결과에는 `generation_exhausted`도 포함된다. |
 | `abort_aggregate(...)` | 같은 aggregate generation이 아직 commit되지 않았어야 한다. | Prepared record와 bind된 fence의 target pending을 정리하고 fence를 aborted로 닫는다. | 같은 fence는 idempotent하고 다른 generation은 stale이다. |
 
 Aggregate lifecycle은 다음 순서로 진행한다.
@@ -535,19 +535,22 @@ authority row, capacity와 fence state의 mutation은 0이다.
 bounded canonical participant set이다. Participant는 최대 1024개이며 prepare request와 durable aggregate
 record의 encoded 크기는 각각 최대 1 MiB다. `inventory_digest`는 participant set과 mutation 전체를 canonical
 encode한 bytes의 SHA-256이다. Provider는 participant payload와 [membership](../../../../01-glossary.ko.md#membership) mutation을 해석하지 않는다.
-User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. `capacity_bundle`은 member
-Actor slot `N`, Spot slot `1`, User Spot stable type slot `1`을 하나의 typed bundle로 표현해야 한다.
-`prepare_aggregate(...)`는 모든 participant expectation과 durable Active allocation을 exact-match하고,
-`target_descriptor`, lifecycle generation과 `target_owner`를 live/exact로 검증한 뒤 bundle 전체를 같은
-transaction에서 reserved capacity로 예약한다. Participant set 또는 bundle이 맞지 않으면 conflict이며
-mutation은 0이다. `commit_aggregate(...)`는 모든 owner,
-[AuthorityOwnerGeneration](../../../../01-glossary.ko.md#authorityownergeneration), membership visibility와
-bundle 전체의 reserved-to-active 전환을 한 transaction에서 처리한다.
-Exact duplicate prepare만 already-prepared다. Commit은 source Active allocation match와 target descriptor
-lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease는 stale·missing이어도 allocation match가
-유지되면 허용하고 target이 stale이면 mutation 없이 fence를 bind 상태로 유지한다.
-`abort_aggregate(...)`는 commit 전 prepared record와 bind된
-fence의 target pending을 정리하고 fence를 aborted로 닫는다. 같은
+`prepare_aggregate(...)`는 participant의 `owner_transition`으로 두 mode를 판정한다. `new_owner`가 하나라도
+있는 relocation mode는 `preserve` participant와 섞을 수 있다. `capacity_bundle`은 `new_owner` participant의
+durable allocation delta만 exact 합산한 non-zero typed bundle이어야 한다. User Spot initial relocation에서는
+owner가 바뀌는 Actor slot `N`, Spot slot `1`과 User Spot stable type slot `1`을 표현한다. 모든 participant
+expectation과 durable Active allocation, `target_descriptor`, lifecycle generation과 `target_owner`를 exact
+검증한 뒤 bundle을 같은 transaction에서 reserved capacity로 예약한다.
+
+모든 participant가 `preserve`이면 completion·steady-normalization mode다. `capacity_bundle`은 exact zero이고
+모든 `membership_mutation`은 empty여야 한다. Capacity reservation·mutation 없이 exact participant set의
+payload만 atomic하게 변경하며 owner, object generation,
+[AuthorityOwnerGeneration](../../../../01-glossary.ko.md#authorityownergeneration)과 durable Active allocation을 유지한다.
+Zero capacity와 `new_owner`, non-zero capacity와 all-preserve 조합은 conflict이고 mutation은 0이다. Exact
+duplicate prepare만 already-prepared다. Relocation mode의 `commit_aggregate(...)`는 owner·membership·capacity를
+한 transaction에서 전환하고 completion·steady-normalization mode는 payload만 변경한다. Commit 직전 mode별
+expectation이 stale이면 mutation 없이 prepared 상태를 유지한다. `abort_aggregate(...)`는 relocation mode에서만
+target pending을 정리하고 fence를 aborted로 닫는다. 같은
 fence는 idempotent하고 다른 generation은 stale이며 expectation 하나가 다르면 participant, reservation, index와
 counter를 하나도 변경하지 않는다.
 

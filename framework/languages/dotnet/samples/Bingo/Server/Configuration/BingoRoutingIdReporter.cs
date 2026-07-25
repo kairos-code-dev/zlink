@@ -7,34 +7,23 @@ namespace Bingo.Server.Configuration;
 
 public sealed record BingoRoutingIdReport(
     string Role,
-    string GroupName,
-    IReadOnlyList<string> Members);
+    string MeshName);
 
 public sealed class BingoRoutingIdReporter(
     BingoRoutingIdReport report,
-    IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
+    IZLinkRouteMeshRuntime routeMesh,
     ILogger<BingoRoutingIdReporter> logger) : IHostedService
 {
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        var allocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
-            report.GroupName,
-            cancellationToken);
-        var memberRoutingIds = report.Members
-            .Select(member => new KeyValuePair<string, RoutingId>(
-                member,
-                allocation.MemberRoutingIds[member]))
-            .ToArray();
-        if (memberRoutingIds.Select(static member => member.Value).Distinct().Count() != 1)
-            throw new InvalidOperationException(
-                $"Bingo allocation group '{report.GroupName}' did not assign one shared routing id.");
-
+        cancellationToken.ThrowIfCancellationRequested();
+        var snapshot = routeMesh.Snapshot(report.MeshName);
         logger.LogInformation(
-            "bingo routing allocation ready. role={Role} group={Group} slot={Slot} members={Members}",
+            "bingo mesh identity ready. role={Role} mesh={Mesh} rid={RoutingId}",
             report.Role,
-            report.GroupName,
-            allocation.Slot,
-            string.Join(',', memberRoutingIds.Select(static member => $"{member.Key}={member.Value}")));
+            report.MeshName,
+            snapshot.Rid);
+        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

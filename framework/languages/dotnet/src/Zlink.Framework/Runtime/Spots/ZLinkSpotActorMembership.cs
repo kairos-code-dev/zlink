@@ -20,12 +20,12 @@ internal sealed class ZLinkSpotActorMembership
     {
         lock (_gate)
         {
-            if (_actorsById.TryGetValue(actor.ActorId, out var existing)
+            if (_actorsById.TryGetValue(actor.Context.ActorId, out var existing)
                 && !ReferenceEquals(existing, actor))
                 throw new InvalidOperationException(
-                    $"SPOT already has an actor with id '{actor.ActorId}'.");
+                    $"SPOT already has an actor with id '{actor.Context.ActorId}'.");
 
-            _actorsById[actor.ActorId] = actor;
+            _actorsById[actor.Context.ActorId] = actor;
         }
     }
 
@@ -41,9 +41,9 @@ internal sealed class ZLinkSpotActorMembership
     {
         lock (_gate)
         {
-            if (_actorsById.TryGetValue(actor.ActorId, out var existing)
+            if (_actorsById.TryGetValue(actor.Context.ActorId, out var existing)
                 && ReferenceEquals(existing, actor))
-                _actorsById.Remove(actor.ActorId);
+                _actorsById.Remove(actor.Context.ActorId);
         }
     }
 
@@ -51,7 +51,7 @@ internal sealed class ZLinkSpotActorMembership
     {
         lock (_gate)
             return _actorsById.Values
-                .OrderBy(static actor => actor.ActorId, StringComparer.Ordinal)
+                .OrderBy(static actor => actor.Context.ActorId, StringComparer.Ordinal)
                 .ToArray();
     }
 }

@@ -10,25 +10,27 @@ internal static class ZLinkActorSessionForwarder
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        ZLinkBackendActorRouteContext routeContext,
         ZlinkStreamHeader header,
         Message body)
     {
         var route = actorState.Handoff.RouteFrame(
             actorState.NativeActorRef,
             frameActor,
-            out var targetActor,
-            out var forwardingLease);
+            out var forwarding);
         if (route == ZLinkActorFrameRoute.Forward)
+        {
+            ValidateCommittedDirectRoute(forwarding!.Value, routeContext);
             runtime.ActorStragglerForwarder.Enqueue(
-                frameActor,
-                targetActor,
+                forwarding.Value,
                 sourceNodeRid,
                 sourceSessionRid,
                 requestId,
                 flags,
+                routeContext,
                 header,
-                body,
-                forwardingLease!);
+                body);
+        }
         if (route == ZLinkActorFrameRoute.Stale)
         {
             runtime.LogActorHandoff(
@@ -44,5 +46,30 @@ internal static class ZLinkActorSessionForwarder
 
         return route == ZLinkActorFrameRoute.Forward;
     }
+
+    private static void ValidateCommittedDirectRoute(
+        ZLinkActorForwardingMapping mapping,
+        ZLinkBackendActorRouteContext route)
+    {
+        if (!mapping.Lease.IsCommitted)
+            throw Stale(mapping, "the source-to-target mapping is not committed");
+        if (!route.IsDirectRoute)
+            return;
+        if (route.ForwardingHopCount >= 8)
+            throw Stale(mapping, "the forwarding chain reached the 8-hop limit");
+        if (route.TargetNodeGeneration != mapping.SourceNodeGeneration
+            || route.AuthorityOwnerGeneration
+               != mapping.SourceAuthorityOwnerGeneration
+            || route.OwnerLeaseGeneration
+               != mapping.SourceOwnerLeaseGeneration)
+            throw Stale(mapping, "the incoming route fence does not match the committed source");
+    }
+
+    private static ZLinkFrameworkException Stale(
+        ZLinkActorForwardingMapping mapping,
+        string reason) =>
+        new(
+            ZLinkFrameworkErrorKind.ActorLocationStale,
+            $"Actor ref '{mapping.SourceActor.ActorId}' cannot be forwarded because {reason}.");
 
 }

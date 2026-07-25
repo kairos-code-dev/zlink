@@ -8,9 +8,10 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
+        EnsureContextOperationAllowed();
         ArgumentNullException.ThrowIfNull(actor);
         if (ZLinkBoundSessionDispatchScope.TryDefer(
-                actor.ActorId,
+                actor.Context.ActorId,
                 ct => LeaveActorCoreAsync(actor, ct)))
             return ValueTask.CompletedTask;
 
@@ -56,7 +57,7 @@ internal sealed partial class ZLinkSpotActivation
             throw new InvalidOperationException(
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
 
-        TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.ActorId);
+        TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.Context.ActorId);
         var state = new ActorJoinCallState(actor, request, descriptor);
         if (ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this))
         {
@@ -70,7 +71,7 @@ internal sealed partial class ZLinkSpotActivation
                 await CommitActorJoinCoreAsync(state.Actor, cancellationToken)
                     .ConfigureAwait(false);
 
-            TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.ActorId);
+            TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.Context.ActorId);
             return state.Result;
         }
 
@@ -89,7 +90,7 @@ internal sealed partial class ZLinkSpotActivation
             state,
             cancellationToken);
 
-        TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.ActorId);
+        TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.Context.ActorId);
         return state.Result;
     }
 
@@ -157,10 +158,10 @@ internal sealed partial class ZLinkSpotActivation
             throw new InvalidOperationException(
                 $"SPOT '{Spot.GetType()}' does not declare an actor join callback.");
 
-        TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.ActorId);
+        TraceActorJoin(ZLinkMessageFlowOutcome.Received, actor.Context.ActorId);
         var result = await InvokeActorJoinAsync(descriptor, actor, request, cancellationToken)
             .ConfigureAwait(false);
-        TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.ActorId);
+        TraceActorJoin(ZLinkMessageFlowOutcome.Replied, actor.Context.ActorId);
         return result;
     }
 
@@ -225,6 +226,23 @@ internal sealed partial class ZLinkSpotActivation
                 static (activation, state, ct) => activation.NotifyJoinedActorCoreAsync(state, ct),
                 actor,
                 cancellationToken);
+    }
+
+    internal ValueTask CompleteTransferredActorJoinSealedAsync(
+        ZLinkActorRuntimeState actorState,
+        ZLinkSpotRelocationSeal seal,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        var actor = actorState.Actor
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
+        return _serial.ExecuteSealedRelocationAsync(
+            seal.QueueSeal,
+            (activation, ct) =>
+                activation.NotifyJoinedActorCoreAsync(actor, ct),
+            cancellationToken);
     }
 
     internal async ValueTask ReplayTransferredActorHandoffAsync(
@@ -310,7 +328,7 @@ internal sealed partial class ZLinkSpotActivation
         {
             _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
-                    actor.ActorId,
+                    actor.Context.ActorId,
                     SpotId,
                     spotGeneration,
                     cancellationToken)
@@ -391,13 +409,13 @@ internal sealed partial class ZLinkSpotActivation
             {
                 _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
                 await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
-                        actor.ActorId,
+                        actor.Context.ActorId,
                         SpotId,
                         spotGeneration,
                         cancellationToken)
                     .ConfigureAwait(false);
                 ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"location_committed actor={actor.ActorId} spot={SpotId}");
+                    $"location_committed actor={actor.Context.ActorId} spot={SpotId}");
             }
         }
         catch
@@ -428,7 +446,7 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        _actorsLeavingForEntrySpot.Remove(actor.ActorId);
+        _actorsLeavingForEntrySpot.Remove(actor.Context.ActorId);
         _actors.Add(actor);
         return await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken)
             .ConfigureAwait(false);
@@ -449,7 +467,7 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        _actorsLeavingForEntrySpot.Add(actor.ActorId);
+        _actorsLeavingForEntrySpot.Add(actor.Context.ActorId);
         try
         {
             await _runtime.JoinActorEntrySpotAsync(NodeRid, actor, ZLinkMessage.Empty, cancellationToken)
@@ -457,7 +475,7 @@ internal sealed partial class ZLinkSpotActivation
         }
         catch
         {
-            _actorsLeavingForEntrySpot.Remove(actor.ActorId);
+            _actorsLeavingForEntrySpot.Remove(actor.Context.ActorId);
             throw;
         }
     }
@@ -475,12 +493,12 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         _actors.RemoveIfCurrent(actor);
-        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        var actorState = _runtime.GetOrCreateActorState(actor.Context.ActorId);
         actorState.LeaveSpotIfCurrent(this);
 
         if (_runtime.LocationLifecycle is { } locations)
             await locations.ActorOwnership.NotifyActorLeftSpotAsync(
-                    actor.ActorId,
+                    actor.Context.ActorId,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -496,7 +514,7 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         _actors.RemoveIfCurrent(actor);
-        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        var actorState = _runtime.GetOrCreateActorState(actor.Context.ActorId);
         actorState.LeaveSpotIfCurrent(this);
 
         if (_actorHandlers is not null
@@ -510,7 +528,7 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        if (_actorsLeavingForEntrySpot.Remove(actor.ActorId)) return;
+        if (_actorsLeavingForEntrySpot.Remove(actor.Context.ActorId)) return;
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveDisconnected(actor.GetType(), out var descriptor)
@@ -525,7 +543,7 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor.ActorId, request, cancellationToken)
+        return await HandlerInvoker.InvokeActorJoinAsync(descriptor, actor.Context.ActorId, request, cancellationToken)
             .ConfigureAwait(false);
     }
 

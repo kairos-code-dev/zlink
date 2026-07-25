@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Systems.Zlink;
+using System.Text;
 using Zlink.Framework.Contracts.Locations;
 
 namespace SpotActorTransfer.ActorNode;
@@ -9,43 +9,65 @@ internal sealed class ActorCleanupGateStore(EvidenceStore evidence)
     private readonly ConcurrentDictionary<string, CleanupGate> _gates = new(StringComparer.Ordinal);
 
     public bool Arm(string actorId, string scenario) =>
-        _gates.TryAdd(actorId, new CleanupGate(scenario));
+        _gates.TryAdd(ActorAuthorityKey(actorId), new CleanupGate(scenario, actorId));
 
     public bool AllowAttempt(string actorId) =>
-        _gates.TryGetValue(actorId, out var gate) && gate.AllowAttempt.TrySetResult();
+        _gates.TryGetValue(ActorAuthorityKey(actorId), out var gate)
+        && gate.AllowAttempt.TrySetResult();
 
     public bool Release(string actorId) =>
-        _gates.TryGetValue(actorId, out var gate) && gate.Release.TrySetResult();
+        _gates.TryGetValue(ActorAuthorityKey(actorId), out var gate)
+        && gate.Release.TrySetResult();
+
+    public bool IsArmed(ZLinkAuthorityKey key) => _gates.ContainsKey(key.Value);
 
     public async ValueTask WaitBeforeRemoveAsync(
-        ZLinkActorLocationKey key,
+        ZLinkAuthorityKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken)
     {
-        if (!_gates.TryGetValue(key.ActorId, out var gate)) return;
+        if (!_gates.TryGetValue(key.Value, out var gate)) return;
 
         await gate.AllowAttempt.Task.WaitAsync(cancellationToken);
         if (Interlocked.Exchange(ref gate.AttemptObserved, 1) == 0)
-            evidence.Add(gate.Scenario, key.ActorId, "source_cleanup_attempt",
+            evidence.Add(gate.Scenario, gate.ActorId, "source_cleanup_attempt",
                 $"owner={owner.OwnerId};generation={owner.Generation}");
 
         await gate.Release.Task.WaitAsync(cancellationToken);
     }
 
     public void RecordCompleted(
-        ZLinkActorLocationKey key,
+        ZLinkAuthorityKey key,
         ZLinkLocationOwnerToken owner,
-        ZLinkLocationWriteStatus status)
+        ZLinkAuthorityCompareExchangeResult result)
     {
-        if (!_gates.TryRemove(key.ActorId, out var gate)) return;
+        if (!_gates.TryRemove(key.Value, out var gate)) return;
 
-        evidence.Add(gate.Scenario, key.ActorId, "source_cleanup_completed",
-            $"owner={owner.OwnerId};generation={owner.Generation};status={status}");
+        evidence.Add(gate.Scenario, gate.ActorId, "source_cleanup_completed",
+            $"owner={owner.OwnerId};generation={owner.Generation};status={result.GetType().Name}");
     }
 
-    private sealed class CleanupGate(string scenario)
+    private static string ActorAuthorityKey(string actorId)
+    {
+        var bytes = new UTF8Encoding(false, true).GetBytes(actorId);
+        var builder = new StringBuilder($"zla1:a:{bytes.Length}:");
+        foreach (var item in bytes)
+        {
+            if (item is >= (byte)'A' and <= (byte)'Z'
+                or >= (byte)'a' and <= (byte)'z'
+                or >= (byte)'0' and <= (byte)'9'
+                or (byte)'-' or (byte)'.' or (byte)'_' or (byte)'~')
+                builder.Append((char)item);
+            else
+                builder.Append('%').Append(item.ToString("X2"));
+        }
+        return builder.ToString();
+    }
+
+    private sealed class CleanupGate(string scenario, string actorId)
     {
         public string Scenario { get; } = scenario;
+        public string ActorId { get; } = actorId;
         public TaskCompletionSource AllowAttempt { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource Release { get; } =
@@ -66,16 +88,6 @@ internal sealed class CleanupGatedLocationStore(
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {
-    public async ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
-        ZLinkActorLocationKey key, ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default)
-    {
-        await cleanupGates.WaitBeforeRemoveAsync(key, owner, cancellationToken);
-        var status = await inner.RemoveActorAsync(key, owner, cancellationToken);
-        cleanupGates.RecordCompleted(key, owner, status);
-        return status;
-    }
-
     public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
@@ -88,45 +100,11 @@ internal sealed class CleanupGatedLocationStore(
         CancellationToken cancellationToken = default) =>
         inner.RemoveMeshNodeAsync(key, owner, cancellationToken);
 
-    public ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+    public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
         string meshName,
+        ZLinkPageRequest page,
         CancellationToken cancellationToken = default) =>
-        inner.ListMeshNodesAsync(meshName, cancellationToken);
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
-        ZLinkSpotLocation spot,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        inner.UpdateSpotAsync(spot, intent, cancellationToken);
-
-    public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
-        ZLinkSpotLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default) =>
-        inner.RemoveSpotAsync(key, owner, cancellationToken);
-
-    public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-        ZLinkSpotLocationKey key,
-        CancellationToken cancellationToken = default) =>
-        inner.ResolveSpotAsync(key, cancellationToken);
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
-        ZLinkActorLocation actor,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        inner.UpdateActorAsync(actor, intent, cancellationToken);
-
-    public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-        ZLinkActorLocationKey key,
-        CancellationToken cancellationToken = default) =>
-        inner.ResolveActorAsync(key, cancellationToken);
-
-    public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
-        string ownerId,
-        RoutingId nodeRid,
-        TimeSpan leaseTtl,
-        CancellationToken cancellationToken = default) =>
-        inner.RenewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl, cancellationToken);
+        inner.ListMeshNodesAsync(meshName, page, cancellationToken);
 
     public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
         string ownerId,
@@ -150,15 +128,6 @@ internal sealed class CleanupGatedLocationStore(
         CancellationToken cancellationToken = default) =>
         inner.ReleaseOwnerLeaseAsync(token, cancellationToken);
 
-    public ValueTask<bool> RemoveOwnerLeaseAsync(
-        string ownerId,
-        CancellationToken cancellationToken = default) =>
-        inner.RemoveOwnerLeaseAsync(ownerId, cancellationToken);
-
-    public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
-        CancellationToken cancellationToken = default) =>
-        inner.ListOwnerLeasesAsync(cancellationToken);
-
     public ValueTask<long> RemoveAllByOwnerAsync(
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
@@ -169,13 +138,31 @@ internal sealed class CleanupGatedLocationStore(
         CancellationToken cancellationToken = default) =>
         inner.ReadAuthorityAsync(key, cancellationToken);
 
-    public ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
+    public async ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
         ZLinkAuthorityKey key,
         string expectedStoreVersion,
         ZLinkAuthorityMutation mutation,
-        CancellationToken cancellationToken = default) =>
-        inner.CompareExchangeAuthorityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var owner = new ZLinkLocationOwnerToken(string.Empty, 0L);
+        var gatedDelete = mutation is ZLinkAuthorityMutation.Delete
+                          && cleanupGates.IsArmed(key);
+        if (gatedDelete)
+        {
+            if (await inner.ReadAuthorityAsync(key, cancellationToken)
+                    is ZLinkAuthorityReadResult.Found found)
+                owner = new ZLinkLocationOwnerToken(
+                    found.Snapshot.OwnerId,
+                    found.Snapshot.OwnerLeaseGeneration);
+            await cleanupGates.WaitBeforeRemoveAsync(key, owner, cancellationToken);
+        }
+
+        var result = await inner.CompareExchangeAuthorityAsync(
             key, expectedStoreVersion, mutation, cancellationToken);
+        if (gatedDelete)
+            cleanupGates.RecordCompleted(key, owner, result);
+        return result;
+    }
 
     public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
         string prefix,
@@ -235,52 +222,6 @@ internal sealed class CleanupGatedLocationStore(
         ZLinkAggregateFence fence,
         CancellationToken cancellationToken = default) =>
         inner.AbortAggregateAsync(fence, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferWriteResult> PrepareActorTransferAsync(
-        ZLinkActorTransferPrepareRequest request,
-        CancellationToken cancellationToken = default) =>
-        inner.PrepareActorTransferAsync(request, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferWriteResult> CommitActorTransferAsync(
-        string meshName,
-        string actorId,
-        Guid transferId,
-        string recoveryOwnerId,
-        CancellationToken cancellationToken = default) =>
-        inner.CommitActorTransferAsync(
-            meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferWriteResult> ActivateActorTransferAsync(
-        string meshName,
-        string actorId,
-        Guid transferId,
-        string recoveryOwnerId,
-        CancellationToken cancellationToken = default) =>
-        inner.ActivateActorTransferAsync(
-            meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferWriteResult> AbortActorTransferAsync(
-        string meshName,
-        string actorId,
-        Guid transferId,
-        string recoveryOwnerId,
-        CancellationToken cancellationToken = default) =>
-        inner.AbortActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferWriteResult> TakeOverActorTransferAsync(
-        string meshName,
-        string actorId,
-        Guid transferId,
-        string successorOwnerId,
-        TimeSpan recoveryLeaseTtl,
-        CancellationToken cancellationToken = default) =>
-        inner.TakeOverActorTransferAsync(meshName, actorId, transferId, successorOwnerId, recoveryLeaseTtl, cancellationToken);
-
-    public ValueTask<ZLinkActorTransferRecord?> ResolveActorTransferAsync(
-        string meshName,
-        string actorId,
-        CancellationToken cancellationToken = default) =>
-        inner.ResolveActorTransferAsync(meshName, actorId, cancellationToken);
 
     public ValueTask<ulong> GetChangeStampAsync(
         ZLinkLocationChangeStampScope scope, CancellationToken cancellationToken = default) =>

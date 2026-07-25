@@ -9,10 +9,6 @@ internal sealed class ZLinkFrameworkRegistration
 
     public TimeSpan DefaultRequestTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    public TimeSpan? ActorTransferTimeout { get; set; }
-
-    public TimeSpan? ActorTransferForwardWindow { get; set; }
-
     public TimeSpan DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
 
     public long ApplicationVersion { get; set; }
@@ -83,12 +79,6 @@ internal sealed class ZLinkFrameworkRegistration
                 assemblies.Add(instanceSpot.SpotType.Assembly);
 
             foreach (var actorFactoryType in spotNode.ActorFactories.Values) assemblies.Add(actorFactoryType.Assembly);
-
-            foreach (var transfer in spotNode.ActorTransfers.Values)
-            {
-                assemblies.Add(transfer.ActorType.Assembly);
-                assemblies.Add(transfer.AdapterType.Assembly);
-            }
 
             foreach (var handler in spotNode.RouteSendHandlers) assemblies.Add(handler.HandlerType.Assembly);
 
@@ -203,8 +193,6 @@ internal sealed class ZLinkChannelRegistration
     public RoutingId RoutingId { get; set; }
 
     public bool HasExplicitRoutingId { get; set; }
-
-    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
 
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
@@ -378,8 +366,6 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, Type> ActorFactories { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkActorTransferRegistration> ActorTransfers { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkObjectRelocationRegistration>
         SpotRelocations { get; } = new(StringComparer.Ordinal);
 
@@ -395,9 +381,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public string? RoutingIdPrefix { get; set; }
 
-    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
-
-    public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
+    public RoutingId PreparedRoutingId { get; set; }
 
     public string EntrySpotId { get; set; } = string.Empty;
 
@@ -420,20 +404,6 @@ internal sealed class ZLinkSpotNodeRegistration
     public int MaxPendingActivations { get; set; } = 128;
 }
 
-internal sealed class ZLinkRoutingIdAllocationRegistration
-{
-    public required int SlotCount { get; init; }
-
-    public required string RoutingIdPrefix { get; init; }
-
-    public string? GroupName { get; set; }
-}
-
-internal sealed record ZLinkActorTransferRegistration(
-    Type ActorType,
-    Type AdapterType,
-    IZLinkActorTransferInvoker Invoker);
-
 internal sealed record ZLinkInstanceSpotFactoryRegistration(
     Type SpotType,
     ZLinkInstanceSpotFactoryOptions Options);
@@ -455,37 +425,18 @@ internal sealed record ZLinkObjectPlacementOptions
 internal sealed class ZLinkActorCatalog
 {
     private IReadOnlyDictionary<string, Type> _factories = FrozenDictionary<string, Type>.Empty;
-    private IReadOnlyDictionary<string, ZLinkActorTransferRegistration> _transfers =
-        FrozenDictionary<string, ZLinkActorTransferRegistration>.Empty;
-
     public IReadOnlyDictionary<string, Type> Factories => _factories;
-
-    public IReadOnlyDictionary<string, ZLinkActorTransferRegistration> Transfers => _transfers;
 
     public void Build(IEnumerable<ZLinkSpotNodeRegistration> spotNodes)
     {
         var factories = new Dictionary<string, Type>(StringComparer.Ordinal);
-        var transfers = new Dictionary<string, ZLinkActorTransferRegistration>(StringComparer.Ordinal);
         foreach (var spotNode in spotNodes)
         {
             foreach (var (actorType, factoryType) in spotNode.ActorFactories)
                 factories.TryAdd(actorType, factoryType);
-
-            foreach (var (actorType, transfer) in spotNode.ActorTransfers)
-                if (!transfers.TryAdd(actorType, transfer))
-                    throw new ZLinkConfigurationException(
-                        $"Duplicate actor transfer '{actorType}' across SpotNodes.");
         }
 
         _factories = factories.ToFrozenDictionary(StringComparer.Ordinal);
-        _transfers = transfers.ToFrozenDictionary(StringComparer.Ordinal);
-    }
-
-    public bool TryGetTransfer(
-        string actorType,
-        out ZLinkActorTransferRegistration? transfer)
-    {
-        return _transfers.TryGetValue(actorType, out transfer);
     }
 
     public Type ResolveFactory(string actorType)
@@ -496,10 +447,6 @@ internal sealed class ZLinkActorCatalog
                 ZLinkFrameworkErrorKind.ActorCreateFailed,
                 $"Actor factory '{actorType}' is not registered.");
     }
-}
-
-internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
-{
 }
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration

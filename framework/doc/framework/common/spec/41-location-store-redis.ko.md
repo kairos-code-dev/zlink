@@ -399,10 +399,14 @@ Standalone NewOwner fence가 reserved 상태가 아니거나 authority key·expe
 match를 다시 확인하고 target descriptor lifecycle과 target owner lease만 live/exact로 재검증한다. Source
 descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면
 같은 Conflict와 mutation 0으로 끝낸다.
-User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. Aggregate prepare가
-participant expectation과 current Active allocation을 exact-match하고, target descriptor lifecycle·owner
-lease와 `Actor=N, Spot=1, User Spot type=1`인 typed bundle을 검증한다. Bundle 또는 participant
-inventory가 다르면 conflict이며 row·capacity·aggregate record를 변경하지 않는다.
+Aggregate prepare는 `OwnerTransition`에 따라 두 mode를 사용한다. `NewOwner`가 하나라도 있는 relocation mode는
+`Preserve` participant를 함께 포함할 수 있지만 non-zero typed capacity bundle은 `NewOwner` participant의 durable
+allocation delta만 exact 합산한다. User Spot initial relocation은 이 mode이며 `Actor=N, Spot=1, User Spot type=1`
+중 실제 `NewOwner` participant에 해당하는 delta만 예약한다. 모든 participant가 `Preserve`인 completion·steady-
+normalization mode는 exact zero capacity와 모든 empty membership mutation을 요구하고 capacity reservation 없이
+authority payload만 atomic하게 바꾼다. 이때 owner, `ObjectGeneration`, `AuthorityOwnerGeneration`과 durable Active
+allocation은 유지한다. Zero capacity와 `NewOwner`, non-zero capacity와 all-Preserve, bundle 또는 participant
+inventory 불일치는 conflict이며 row·capacity·aggregate record를 변경하지 않는다.
 
 ### 4.4 Bounded aggregate commit
 
@@ -416,15 +420,19 @@ inventory digest를 권한 원본으로 저장한다. Relocation Store manifest�
 위한 같은 digest의 projection일 뿐 authority가 아니다. Location Store transaction은 Relocation Store를 호출하거나
 두 Store 사이 2PC를 수행하지 않는다.
 
-`PrepareAggregate`는 모든 participant expectation과 target owner lease fence를 확인하고 durable
-`Reserved` record를 만든다. 같은 transaction에서 target typed capacity bundle 전체를 예약한다.
+`PrepareAggregate`는 모든 participant expectation을 확인하고 durable `Reserved` record를 만든다. Relocation
+mode에서는 target owner lease fence를 확인하고 `NewOwner` participant의 non-zero typed capacity bundle만 같은
+transaction에서 예약한다. Completion·steady-normalization mode에서는 all-Preserve, exact zero capacity와 empty
+membership mutation을 확인하고 capacity를 예약하지 않는다.
 `CommitAggregate`는 record의 exact generation, canonical participant set과 inventory digest, source Active
 allocation match와 target descriptor lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease가
 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면 participant·capacity·
 aggregate record를 바꾸지 않고 `Reserved`를 유지한다. 유효한 record만 소비해 모든 authority owner,
 `AuthorityOwnerGeneration`, membership index와 aggregate commit generation을 한 server-side transaction으로
-전환하고 record state를 `Committed`로 바꾼다. `AbortAggregate`는 commit 전 `Reserved` record의 target
-reserved bundle 전체를 정리하고 `Aborted`로 닫는다. 같은 aggregate generation의 duplicate operation은
+전환하고 record state를 `Committed`로 바꾼다. Completion·steady-normalization mode의 commit은 owner와 두
+generation, membership과 durable Active allocation을 유지하고 participant payload만 atomic하게 변경한다.
+`AbortAggregate`는 commit 전 `Reserved` record에서 relocation mode의 target reserved bundle만 정리하고
+`Aborted`로 닫는다. 같은 aggregate generation의 duplicate operation은
 idempotent하고 다른 generation은 stale다.
 
 이 transaction은 Session [binding route](01-glossary.ko.md#binding-route)를 저장하거나 갱신하지 않는다. Actor가
@@ -636,8 +644,11 @@ Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까�
 - Found·Stored·scan snapshot이 provider-owned Reserved·Active allocation metadata를 완전하게 반환한다.
 - Relocation reserve·standalone commit·aggregate commit이 request source를 durable Active allocation에
   exact-match하고 source descriptor·lease stale recovery는 허용하되 target stale commit은 no-write로 막는다.
-- Aggregate prepare가 User Spot 하나, 해당 Spot type 하나와 participant Actor 전체의 typed bundle을 한
-  transaction에서 예약한다.
+- Aggregate relocation prepare가 `NewOwner` participant의 non-zero typed bundle만 한 transaction에서 예약하고
+  mixed `Preserve` participant의 allocation을 유지한다.
+- Aggregate completion·steady-normalization prepare가 all-Preserve, zero capacity와 empty membership mutation만
+  허용하고 owner·generation·Active allocation을 유지한 payload-only atomic CAS를 수행한다.
+- Zero capacity와 `NewOwner`, non-zero capacity와 all-Preserve 조합을 conflict와 mutation 0으로 거부한다.
 - Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity bundle을 row와 함께
   atomic하게 제거한다.
 - Reserved reservation recovery가 elapsed time이 아니라 exact owner lease와 authority fence를 사용한다.

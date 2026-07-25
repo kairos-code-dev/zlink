@@ -32,17 +32,10 @@ internal static class ZLinkActorBoundSessionRelay
     {
         var isNoBind = IsNoBindRequest(requestId, flags);
         var scope = ZLinkBoundSessionDispatchScope.Enter(actorId);
-        // Only a frame carrying a session identity may (re)bind: an
-        // identity-less frame (a caller-routed actor dispatch) must neither
-        // overwrite the concrete session route registered by the bind confirm
-        // nor create a phantom empty binding on a never-bound actor — pushes
-        // to an unbound actor must fail ActorSessionNotBound.
-        if (!isNoBind && !sourceSessionRid.IsEmpty)
-            runtime.BindActorSession(
-                actorId,
-                sourceNodeRid,
-                sourceSessionRid,
-                ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid));
+        // The bind command owns the exact Mesh, NodeGeneration and owner-lease
+        // fences. A data frame may use that route but cannot recreate it from
+        // transport coordinates, because those coordinates do not carry the
+        // authority identity needed for a safe replacement.
 
         return new ZLinkActorBoundSessionDispatch(isNoBind, scope);
     }

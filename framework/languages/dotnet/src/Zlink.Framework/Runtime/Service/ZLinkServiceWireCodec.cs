@@ -37,6 +37,7 @@ internal static class ZLinkServiceWireCodec
     internal readonly record struct StatefulRecord(
         ServiceWireConstants.Command Command,
         ulong Correlation,
+        MeshOperationId OperationId,
         string SourceSpotId,
         string TargetSpotId,
         ulong TargetSpotGeneration,
@@ -44,6 +45,8 @@ internal static class ZLinkServiceWireCodec
         RoutingId TargetNodeRid,
         ulong TargetNodeGeneration,
         ulong AuthorityOwnerGeneration,
+        ulong OwnerLeaseGeneration,
+        byte ForwardingHopCount,
         bool HasMetadata);
 
     internal readonly record struct UserSpotOperationRecord(
@@ -448,15 +451,17 @@ internal static class ZLinkServiceWireCodec
             or ActorCreateResult.Created)
         {
             if (string.IsNullOrEmpty(completion.Actor.ActorId)
-                || completion.Actor.Generation == 0
+                || completion.Actor.ObjectGeneration == 0
+                || string.IsNullOrEmpty(completion.Actor.MeshName)
                 || completion.Actor.NodeRid.IsEmpty)
                 throw new ArgumentOutOfRangeException(nameof(completion));
             selected.Rid(completion.Actor.NodeRid);
             selected.Text8(completion.Actor.ActorId);
-            selected.U64(completion.Actor.Generation);
+            selected.U64(completion.Actor.ObjectGeneration);
         }
         else if (!string.IsNullOrEmpty(completion.Actor.ActorId)
-                 || completion.Actor.Generation != 0
+                 || completion.Actor.ObjectGeneration != 0
+                 || !string.IsNullOrEmpty(completion.Actor.MeshName)
                  || !completion.Actor.NodeRid.IsEmpty)
         {
             throw new ArgumentOutOfRangeException(nameof(completion));
@@ -475,6 +480,7 @@ internal static class ZLinkServiceWireCodec
 
     internal static bool TryDecodeActorCreateReply(
         ReplyRecord reply,
+        string meshName,
         out ActorCreateCompletion? completion,
         out DecodeError error)
     {
@@ -519,8 +525,8 @@ internal static class ZLinkServiceWireCodec
             if (!selected.TryRid(out var nodeRid)
                 || nodeRid.IsEmpty
                 || !selected.TryText8(out var actorId)
-                || !selected.TryU64(out var generation)
-                || generation == 0
+                || !selected.TryU64(out var objectGeneration)
+                || objectGeneration == 0
                 || selected.Remaining != 0)
             {
                 error = selected.Truncated
@@ -530,7 +536,11 @@ internal static class ZLinkServiceWireCodec
                         : DecodeError.InvalidField;
                 return false;
             }
-            actor = new ActorRef(nodeRid, actorId, generation);
+            actor = new ActorRef(
+                actorId,
+                objectGeneration,
+                meshName,
+                nodeRid);
         }
         else if (selected.Remaining != 0)
         {
@@ -624,31 +634,42 @@ internal static class ZLinkServiceWireCodec
     internal static byte[] EncodeSpot(
         ServiceWireConstants.Command command,
         ulong correlation,
+        MeshOperationId operationId,
         string sourceSpotId,
         string targetSpotId,
         ulong targetSpotGeneration,
         RoutingId targetNodeRid,
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
-        bool hasMetadata)
+        ulong ownerLeaseGeneration,
+        bool hasMetadata,
+        byte forwardingHopCount = 0)
     {
         var request = command == ServiceWireConstants.Command.SpotRequest;
         if (command is not (ServiceWireConstants.Command.SpotSend
             or ServiceWireConstants.Command.SpotRequest)
             || request != (correlation != 0)
+            || operationId.High == 0
+            || operationId.Low == 0
             || targetSpotGeneration == 0
             || targetNodeGeneration == 0
-            || authorityOwnerGeneration == 0)
+            || authorityOwnerGeneration == 0
+            || ownerLeaseGeneration == 0
+            || forwardingHopCount > 8)
             throw new ArgumentOutOfRangeException(nameof(command));
         var body = new WireWriter();
         if (request)
             body.U64(correlation);
+        body.U64(operationId.High);
+        body.U64(operationId.Low);
+        body.U8(forwardingHopCount);
         body.Text8(sourceSpotId);
         body.Text8(targetSpotId);
         body.U64(targetSpotGeneration);
         body.Rid(targetNodeRid);
         body.U64(targetNodeGeneration);
         body.U64(authorityOwnerGeneration);
+        body.U64(ownerLeaseGeneration);
         var result = Prefix(
             command,
             hasMetadata ? ServiceWireConstants.Flag.Metadata : ServiceWireConstants.Flag.None,
@@ -660,30 +681,43 @@ internal static class ZLinkServiceWireCodec
     internal static byte[] EncodeActor(
         ServiceWireConstants.Command command,
         ulong correlation,
+        MeshOperationId operationId,
         ActorRef targetActor,
         RoutingId targetNodeRid,
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
-        bool hasMetadata)
+        ulong ownerLeaseGeneration,
+        bool hasMetadata,
+        byte forwardingHopCount = 0)
     {
         var request = command == ServiceWireConstants.Command.ActorRequest;
         if (command is not (ServiceWireConstants.Command.ActorSend
             or ServiceWireConstants.Command.ActorRequest)
             || request != (correlation != 0)
-            || targetActor.Generation == 0
+            || operationId.High == 0
+            || operationId.Low == 0
+            || targetActor.ObjectGeneration == 0
+            || string.IsNullOrEmpty(targetActor.MeshName)
+            || targetActor.NodeRid != targetNodeRid
             || targetNodeGeneration == 0
-            || authorityOwnerGeneration == 0)
+            || authorityOwnerGeneration == 0
+            || ownerLeaseGeneration == 0
+            || forwardingHopCount > 8)
             throw new ArgumentOutOfRangeException(nameof(command));
         var body = new WireWriter();
         if (request)
             body.U64(correlation);
+        body.U64(operationId.High);
+        body.U64(operationId.Low);
+        body.U8(forwardingHopCount);
         body.U8(0); // optional source Actor: absent
         body.U16(0);
         body.Text8(targetActor.ActorId);
-        body.U64(targetActor.Generation);
+        body.U64(targetActor.ObjectGeneration);
         body.Rid(targetNodeRid);
         body.U64(targetNodeGeneration);
         body.U64(authorityOwnerGeneration);
+        body.U64(ownerLeaseGeneration);
         var result = Prefix(
             command,
             hasMetadata ? ServiceWireConstants.Flag.Metadata : ServiceWireConstants.Flag.None,
@@ -695,15 +729,17 @@ internal static class ZLinkServiceWireCodec
     internal static byte[] EncodeActorDestroy(ActorDestroyOperation operation)
     {
         if (operation.Correlation == 0
-            || operation.Actor.Generation == 0
+            || operation.Actor.ObjectGeneration == 0
+            || string.IsNullOrEmpty(operation.Actor.MeshName)
             || operation.TargetNodeRid.IsEmpty
+            || operation.Actor.NodeRid != operation.TargetNodeRid
             || operation.TargetNodeGeneration == 0
             || operation.AuthorityOwnerGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(operation));
         var body = new WireWriter();
         body.U64(operation.Correlation);
         body.Text8(operation.Actor.ActorId);
-        body.U64(operation.Actor.Generation);
+        body.U64(operation.Actor.ObjectGeneration);
         body.Rid(operation.TargetNodeRid);
         body.U64(operation.TargetNodeGeneration);
         body.U64(operation.AuthorityOwnerGeneration);
@@ -717,6 +753,7 @@ internal static class ZLinkServiceWireCodec
 
     internal static bool TryDecodeActorDestroy(
         ReadOnlySpan<byte> bytes,
+        string meshName,
         out ActorDestroyOperationRecord record,
         out DecodeError error)
     {
@@ -756,7 +793,11 @@ internal static class ZLinkServiceWireCodec
         record = new ActorDestroyOperationRecord(
             new ActorDestroyOperation(
                 correlation,
-                new ActorRef(targetNodeRid, actorId, objectGeneration),
+                new ActorRef(
+                    actorId,
+                    objectGeneration,
+                    meshName,
+                    targetNodeRid),
                 targetNodeRid,
                 targetNodeGeneration,
                 authorityOwnerGeneration));
@@ -766,6 +807,7 @@ internal static class ZLinkServiceWireCodec
 
     internal static bool TryDecodeStateful(
         ReadOnlySpan<byte> bytes,
+        string meshName,
         out StatefulRecord record,
         out DecodeError error)
     {
@@ -796,11 +838,29 @@ internal static class ZLinkServiceWireCodec
             error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
             return false;
         }
+        if (!reader.TryU64(out var operationHigh)
+            || operationHigh == 0
+            || !reader.TryU64(out var operationLow)
+            || operationLow == 0)
+        {
+            error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+        if (!reader.TryU8(out var forwardingHopCount)
+            || forwardingHopCount > 8)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : DecodeError.InvalidField;
+            return false;
+        }
 
-        string sourceSpotId = default;
-        string targetSpotId = default;
+        string sourceSpotId = string.Empty;
+        string targetSpotId = string.Empty;
         ulong targetSpotGeneration = 0;
         ActorRef targetActor = default;
+        string targetActorId = string.Empty;
+        ulong targetActorGeneration = 0;
         if (command is ServiceWireConstants.Command.SpotSend
             or ServiceWireConstants.Command.SpotRequest)
         {
@@ -821,16 +881,15 @@ internal static class ZLinkServiceWireCodec
                 || hasSource != 0
                 || !reader.TryU16(out var sourceLength)
                 || sourceLength != 0
-                || !reader.TryText8(out var actorId)
-                || !reader.TryU64(out var actorGeneration)
-                || actorGeneration == 0)
+                || !reader.TryText8(out targetActorId)
+                || !reader.TryU64(out targetActorGeneration)
+                || targetActorGeneration == 0)
             {
                 error = reader.Truncated
                     ? DecodeError.TruncatedField
                     : DecodeError.InvalidField;
                 return false;
             }
-            targetActor = new ActorRef(default, actorId, actorGeneration);
         }
 
         if (!reader.TryRid(out var targetNodeRid)
@@ -838,6 +897,8 @@ internal static class ZLinkServiceWireCodec
             || targetNodeGeneration == 0
             || !reader.TryU64(out var authorityOwnerGeneration)
             || authorityOwnerGeneration == 0
+            || !reader.TryU64(out var ownerLeaseGeneration)
+            || ownerLeaseGeneration == 0
             || reader.Remaining != 0)
         {
             error = reader.Truncated
@@ -847,14 +908,16 @@ internal static class ZLinkServiceWireCodec
                     : DecodeError.InvalidField;
             return false;
         }
-        if (!string.IsNullOrEmpty(targetActor.ActorId))
+        if (!string.IsNullOrEmpty(targetActorId))
             targetActor = new ActorRef(
-                targetNodeRid,
-                targetActor.ActorId,
-                targetActor.Generation);
+                targetActorId,
+                targetActorGeneration,
+                meshName,
+                targetNodeRid);
         record = new StatefulRecord(
             command,
             correlation,
+            new MeshOperationId(operationHigh, operationLow),
             sourceSpotId,
             targetSpotId,
             targetSpotGeneration,
@@ -862,6 +925,8 @@ internal static class ZLinkServiceWireCodec
             targetNodeRid,
             targetNodeGeneration,
             authorityOwnerGeneration,
+            ownerLeaseGeneration,
+            forwardingHopCount,
             (flags & ServiceWireConstants.Flag.Metadata) != 0);
         error = DecodeError.None;
         return true;
@@ -985,7 +1050,7 @@ internal static class ZLinkServiceWireCodec
                     descriptorVersion),
                 sourceNodeRid,
                 sourceNodeGeneration,
-                sourceSpotId,
+                sourceSpotId ?? string.Empty,
                 operationId,
                 request,
                 replyRouteId,

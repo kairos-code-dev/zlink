@@ -218,13 +218,6 @@ internal sealed class ZLinkSessionActorsContext(
     public IReadOnlyCollection<IZLinkSessionActor> Bound => actors.BoundActors;
 
     public ValueTask<IZLinkSessionActor> BindAsync(
-        IZLinkActor actor,
-        CancellationToken cancellationToken = default)
-    {
-        return actors.BindActorAsync(context, actor, cancellationToken);
-    }
-
-    public ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default)
     {

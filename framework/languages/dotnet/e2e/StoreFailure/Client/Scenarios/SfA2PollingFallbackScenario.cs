@@ -25,14 +25,14 @@ internal static class SfA2PollingFallbackScenario
             var providerC = await processes.StartProviderCAsync();
             await SfProbe.WaitPeersAsync(
                 observer,
-                SfProbe.PeerRows(options.PollingInterval * 8 + options.HeartbeatInterval,
+                SfProbe.PeerRows(options.PollingInterval * 8 + options.OwnerLeaseRenewInterval,
                     present: ["api-c"]),
                 "SF-A2: the added provider did not appear through pure polling.");
 
             await providerC.StopAsync();
             await SfProbe.WaitPeersAsync(
                 observer,
-                SfProbe.PeerRows(options.PollingInterval * 8 + options.HeartbeatInterval,
+                SfProbe.PeerRows(options.PollingInterval * 8 + options.OwnerLeaseRenewInterval,
                     absent: ["api-c"]),
                 "SF-A2: the removed provider did not disappear through pure polling.");
         }

@@ -27,7 +27,7 @@ internal static class SfB2GraceExceededScenario
             await SfProbe.DriveRequestsAsync(
                 consumer,
                 "sf-b2-grace",
-                options.StoreFailureGrace + options.HeartbeatInterval * 2,
+                options.StoreFailureGrace + options.OwnerLeaseRenewInterval * 2,
                 "SF-B2");
 
             var status = await SfProbe.GetStatusAsync(consumer);
@@ -42,11 +42,11 @@ internal static class SfB2GraceExceededScenario
 
         await SfProbe.WaitStatusAsync(
             consumer,
-            SfProbe.Status(options.HeartbeatInterval * 8, storeHealthy: true, ownerLeaseHealthy: true),
+            SfProbe.Status(options.OwnerLeaseRenewInterval * 8, storeHealthy: true, ownerLeaseHealthy: true),
             "SF-B2: the consumer's runtime status did not recover after the outage.");
         await SfProbe.WaitPeersAsync(
             consumer,
-            SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.OwnerLeaseRenewInterval * 4,
                 present: ["api-a", "api-b"]),
             "SF-B2: provider rows did not return to the live list after recovery.");
         await SfProbe.WaitRouteReadyAsync(

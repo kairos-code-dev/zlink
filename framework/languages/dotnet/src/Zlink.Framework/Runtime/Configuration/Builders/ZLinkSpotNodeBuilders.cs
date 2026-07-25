@@ -54,6 +54,13 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId)
     {
+        if (registration.HasExplicitRoutingId
+            || registration.RoutingIdPrefix is not null)
+            throw new ZLinkConfigurationException(
+                "MeshNode routing mode can be configured only once.");
+        if (routingId.Size == 0)
+            throw new ZLinkConfigurationException(
+                "MeshNode routing ID must not be empty.");
         registration.RoutingId = routingId;
         registration.HasExplicitRoutingId = true;
         return this;
@@ -61,7 +68,12 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkMeshNodeBuilder SetRoutingIdPrefix(string prefix)
     {
-        if (prefix.Length is < 1 or > 64
+        if (registration.HasExplicitRoutingId
+            || registration.RoutingIdPrefix is not null)
+            throw new ZLinkConfigurationException(
+                "MeshNode routing mode can be configured only once.");
+        if (string.IsNullOrEmpty(prefix)
+            || prefix.Length > 64
             || prefix.Any(static character =>
                 !((character >= 'A' && character <= 'Z')
                   || (character >= 'a' && character <= 'z')
@@ -174,23 +186,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkEntrySpotOptions ConfigureEntrySpot() => registration.EntrySpotOptions;
-
-    public IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
-        where TSpot : IZLinkSpot
-    {
-        EnsureServerRole();
-        if (!registration.SpotFactories.Add(typeof(TSpot)))
-            throw new ZLinkConfigurationException(
-                $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
-        registration.UserSpotFactoryOptions.Add(
-            typeof(TSpot),
-            new ZLinkUserSpotFactoryOptions());
-
-        return this;
-    }
-
-    public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+    internal void RegisterSpotFactory<TSpot>(
         string spotType,
         ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
@@ -219,10 +215,9 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
             relocation.AdapterType is { } spotAdapter
                 ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
                 : null);
-        return this;
     }
 
-    public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
+    internal void RegisterInstanceSpotFactory<TSpot>(
         string instanceSpotType,
         ZLinkInstanceSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
@@ -250,10 +245,9 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
             relocation.AdapterType is { } spotAdapter
                 ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
                 : null);
-        return this;
     }
 
-    public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
+    internal void RegisterEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
     {
         EnsureServerRole();
@@ -262,29 +256,9 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
                 $"Duplicate Entry Spot registry on MeshNode '{registration.SpotNodeName}'.");
 
         registration.EntrySpotType = typeof(TEntrySpot);
-        return this;
     }
 
-    IZLinkMeshObjectServerBuilder IZLinkMeshObjectServerBuilder.AddEntrySpot<TEntrySpot>()
-    {
-        AddEntrySpot<TEntrySpot>();
-        return this;
-    }
-
-    public IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory
-    {
-        EnsureServerRole();
-        ZLinkRegistrationBuilderGuard.AddUnique(
-            registration.ActorFactories,
-            actorType,
-            typeof(TFactory),
-            "Actor factory name must not be empty.",
-            $"Duplicate actor factory '{actorType}'.");
-        return this;
-    }
-
-    public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
+    internal void RegisterActorFactory<TActor, TFactory>(
         string actorType,
         ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
@@ -309,20 +283,6 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
             relocation.AdapterType is { } actorAdapter
                 ? new ZLinkActorRelocationAdapterInvoker<TActor>(actorAdapter)
                 : null);
-        return this;
-    }
-
-    public IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
-        where TActor : IZLinkActor
-        where TAdapter : class, IZLinkActorTransferAdapter<TActor>
-    {
-        ZLinkRegistrationBuilderGuard.AddUnique(
-            registration.ActorTransfers,
-            actorType,
-            ZLinkActorTransferRegistry.CreateRegistration<TActor, TAdapter>(),
-            "Actor transfer name must not be empty.",
-            $"Duplicate actor transfer '{actorType}'.");
-        return this;
     }
 
     private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
@@ -499,7 +459,7 @@ internal sealed class ZLinkMeshObjectServerBuilder(
     public IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : class, IZLinkEntrySpot
     {
-        _builder.AddEntrySpot<TEntrySpot>();
+        _builder.RegisterEntrySpot<TEntrySpot>();
         return this;
     }
 
@@ -507,29 +467,38 @@ internal sealed class ZLinkMeshObjectServerBuilder(
         string spotType,
         ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
-        where TSpot : class, IZLinkSpot =>
-        _builder.AddSpotFactory(spotType, options, relocation);
+        where TSpot : class, IZLinkSpot
+    {
+        _builder.RegisterSpotFactory(spotType, options, relocation);
+        return this;
+    }
 
     public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
         ZLinkInstanceSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
-        where TSpot : class, IZLinkInstanceSpot =>
-        _builder.AddInstanceSpotFactory(
+        where TSpot : class, IZLinkInstanceSpot
+    {
+        _builder.RegisterInstanceSpotFactory(
             instanceSpotType,
             options,
             relocation);
+        return this;
+    }
 
     public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
         ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
-        where TFactory : class, IZLinkActorFactory<TActor> =>
-        _builder.AddActorFactory<TActor, TFactory>(
+        where TFactory : class, IZLinkActorFactory<TActor>
+    {
+        _builder.RegisterActorFactory<TActor, TFactory>(
             actorType,
             options,
             relocation);
+        return this;
+    }
 }
 
 internal sealed class ZLinkMeshChannelRoleBuilder(

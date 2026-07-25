@@ -31,7 +31,9 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
@@ -39,7 +41,9 @@ internal sealed class ZLinkSpotOutboundTransport(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
         return ZLinkSubmitFailureMapper.AcceptOrThrow(
             nativeSpot.SendToSpot(
                 targetNodeRid,
@@ -55,7 +59,9 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata = default)
@@ -64,7 +70,9 @@ internal sealed class ZLinkSpotOutboundTransport(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
         return _submitter.SubmitAsync(
             parts,
             pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
@@ -83,9 +91,14 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
-        if (targetNodeRid == default || authorityOwnerGeneration == 0)
+        if (targetNodeRid == default
+            || targetNodeGeneration == 0
+            || authorityOwnerGeneration == 0
+            || ownerLeaseGeneration == 0)
             return;
         if (nativeSpot is not IZLinkBackendAuthorityObserver observer)
             throw new InvalidOperationException(
@@ -94,7 +107,9 @@ internal sealed class ZLinkSpotOutboundTransport(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
 
     /// <summary>Performs the first non-blocking ChannelName select-one
@@ -160,7 +175,9 @@ internal sealed class ZLinkSpotOutboundTransport(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
+        ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
         CancellationToken cancellationToken,
@@ -170,7 +187,9 @@ internal sealed class ZLinkSpotOutboundTransport(
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
         return _submitter.SubmitRequestAsync<IReadOnlyList<Message>>(
             parts,
             (pending, complete, fail) => nativeSpot.RequestToSpot(

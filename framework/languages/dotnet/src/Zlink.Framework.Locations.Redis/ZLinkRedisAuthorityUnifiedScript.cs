@@ -878,7 +878,7 @@ if op == 'prepareAggregate' then
             return cjson.encode({kind = 'conflict'})
         end
         if participant.ownerTransition == 'preserve' then
-            local leaseKey = KEYS[19 + participantCount + reservationCount + index]
+            local leaseKey = KEYS[19 + participantCount + index]
             if not leaseLive({ownerId = row.ownerId,
                 leaseGeneration = row.ownerLeaseGeneration}, leaseKey) then
                 return cjson.encode({kind = 'conflict'})

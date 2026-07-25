@@ -16,12 +16,12 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
-        var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
+        var actorState = actorSessionManager.GetOrCreateState(actor.Context.ActorId);
         var node = getActorSpotNode()
                    ?? throw new InvalidOperationException("Entry SPOT join requires a router-capable SpotNode.");
         var actorRef = actorState.NativeActorRef
                        ?? throw new InvalidOperationException(
-                           $"Actor '{actor.ActorId}' does not have a native Actor ref.");
+                           $"Actor '{actor.Context.ActorId}' does not have a native Actor ref.");
         var previousActivation = actorState.LiveActivation;
 
         using var completion = new ZLinkNativeReplyCompletion<ZLinkBackendActorJoinEntrySpotResult>(
@@ -36,7 +36,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 "JoinEntrySpot",
                 CorrelationId: correlationId,
                 SourceRid: spotNodeRid.ToString(),
-                ActorId: actor.ActorId));
+                ActorId: actor.Context.ActorId));
 
         var encodedRequest = request.Encode(registration.Codecs);
         using (var nativeRequest = ZLinkEnvelopeCodec.EncodePart(new ZLinkActorJoinSinglePartEnvelope(
@@ -51,7 +51,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                     registration.DefaultRequestTimeout))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Actor entry SPOT join submit failed for '{actor.ActorId}'.");
+                    $"Actor entry SPOT join submit failed for '{actor.Context.ActorId}'.");
         }
 
         var (result, replyParts) = await completion.Task.ConfigureAwait(false);
@@ -80,14 +80,14 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 "JoinEntrySpot",
                 CorrelationId: correlationId,
                 SourceRid: spotNodeRid.ToString(),
-                ActorId: actor.ActorId));
+                ActorId: actor.Context.ActorId));
 
-        var reply = DecodeEntrySpotJoinReply(result.Result, replyParts, actor.ActorId, spotNodeRid);
+        var reply = DecodeEntrySpotJoinReply(result.Result, replyParts, actor.Context.ActorId, spotNodeRid);
         var accepted = result.JoinResultCode == 0;
         if (result.Result != RequestResult.Ok)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor entry SPOT join failed for '{actor.ActorId}' with '{result.Result}'.");
+                $"Actor entry SPOT join failed for '{actor.Context.ActorId}' with '{result.Result}'.");
 
         if (accepted)
         {
@@ -113,7 +113,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         }
 
         return accepted
-            ? new ZLinkActorJoinResult.Accepted(result.Actor.ToNative(), reply)
+            ? new ZLinkActorJoinResult.Accepted(
+                result.Actor.ToNative(node.MeshStatus().MeshName),
+                reply)
             : new ZLinkActorJoinResult.Rejected(reply);
     }
 
@@ -145,10 +147,10 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                               candidate => candidate.Registration.Router is not null)
                           ?? throw new ZLinkFrameworkException(
                               ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                              $"Actor entry SPOT join failed for '{actor.ActorId}' because no router-capable MeshNode is registered.");
+                              $"Actor entry SPOT join failed for '{actor.Context.ActorId}' because no router-capable MeshNode is registered.");
 
         var request = ZLinkActorEntrySpotRoutePackets.CreateJoinRequest(
-            actor.ActorId,
+            actor.Context.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             sourceActorRef,
             previousActivation?.SpotId,
@@ -175,7 +177,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             .DecodeEnvelopeReplyAndDispose<ZLinkActorEntrySpotRouteJoinReply>(
                 replyParts,
                 "Actor EntrySpot join reply is empty.",
-                $"Actor EntrySpot join failed for '{actor.ActorId}'.",
+                $"Actor EntrySpot join failed for '{actor.Context.ActorId}'.",
                 registration.Codecs);
 
         var replyMessage = ZLinkActorEntrySpotRoutePackets.DecodeJoinReplyPayload(
@@ -200,7 +202,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 .ConfigureAwait(false);
         }
 
-        return new ZLinkActorJoinResult.Accepted(targetRef.ToNative(), replyMessage);
+        return new ZLinkActorJoinResult.Accepted(
+            targetRef.ToNative(nodeRuntime.Node.MeshStatus().MeshName),
+            replyMessage);
     }
 
     private async ValueTask<ZLinkActorJoinResult> JoinLocalEntrySpotAsync(
@@ -216,7 +220,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                          ?? throw new ZLinkFrameworkException(
                              ZLinkFrameworkErrorKind.ActorRouteNotFound,
                              $"Actor entry SPOT join target node '{targetNode.Node.RoutingId}' does not have an Entry Spot activation.");
-        var localTargetRef = targetNode.Node.ActorLookup(actor.ActorId);
+        var localTargetRef = targetNode.Node.ActorLookup(actor.Context.ActorId);
         var createdHere = localTargetRef is null;
         ZLinkBackendActorRef targetRef;
         if (localTargetRef is { } existing)
@@ -226,7 +230,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
         else
         {
             using var emptyCreateRequest = Message.From(ReadOnlySpan<byte>.Empty);
-            targetRef = targetNode.Node.CreateActor(actor.ActorId, emptyCreateRequest);
+            targetRef = targetNode.Node.CreateActor(actor.Context.ActorId, emptyCreateRequest);
         }
 
         ZLinkSpotActorJoinResult admission;
@@ -286,7 +290,9 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                 .ConfigureAwait(false);
         }
 
-        return new ZLinkActorJoinResult.Accepted(targetRef.ToNative(), reply);
+        return new ZLinkActorJoinResult.Accepted(
+            targetRef.ToNative(targetNode.Node.MeshStatus().MeshName),
+            reply);
     }
 
     private async ValueTask NotifyManagedEntrySpotJoinLifecycleAsync(

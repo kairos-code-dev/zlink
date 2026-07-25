@@ -114,6 +114,56 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void MeshNodeRoutingMode_CanBeConfiguredOnlyOnce()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                var mesh = options.AddRouteMesh("play");
+                mesh.SetRoutingIdPrefix("play");
+                mesh.SetRoutingId(RoutingId.From("fixed"));
+            }));
+    }
+
+    [Fact]
+    public void AutomaticRouteMesh_RejectsFixedRoutingId()
+    {
+        var services = new ServiceCollection();
+
+        var error = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                options.UseTestLocationStore();
+                options.AddRouteMesh("play")
+                    .Listen("tcp://127.0.0.1:7101")
+                    .SetRoutingId(RoutingId.From("fixed"));
+            }));
+
+        Assert.Contains("fixed routing ID", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManualRouteMesh_RejectsRoutingIdPrefix()
+    {
+        var services = new ServiceCollection();
+
+        var error = Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+            {
+                var mesh = options.AddRouteMesh("play")
+                    .Listen("tcp://127.0.0.1:7101")
+                    .SetRoutingIdPrefix("play");
+                mesh.PeerConnections.Connect(
+                    RoutingId.From("peer"),
+                    "tcp://127.0.0.1:7102");
+            }));
+
+        Assert.Contains("only with automatic discovery", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MeshNodeCapacitySetters_RecordIndependentActorSpotAndActivationLimits()
     {
         var services = new ServiceCollection();

@@ -24,9 +24,17 @@ public sealed class StreamContracts
 
         await session.OnConnectedAsync(CancellationToken.None);
         var actorRef =
-            await context.Actors.BindAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
+            await context.Actors.BindAsync(new Systems.Zlink.ActorRef(
+                "player-1",
+                1,
+                "actors",
+                RoutingId.From("actor-node")));
         var sameActorRef =
-            await context.Actors.BindOrGetAsync(new Systems.Zlink.ActorRef(RoutingId.From("actor-node"), "player-1", 1));
+            await context.Actors.BindOrGetAsync(new Systems.Zlink.ActorRef(
+                "player-1",
+                1,
+                "actors",
+                RoutingId.From("actor-node")));
         var boundActor = context.Actors.Find("player-1");
         await actorRef.RelayAsync(
             ZLinkMessage.From(new PlayerJoined("player-1")));
@@ -53,6 +61,19 @@ public sealed class StreamContracts
         Assert.Same(actorRef, boundActor);
         Assert.True(context.IsClosed);
         Assert.True(context.StreamClosed);
+    }
+
+    [Fact]
+    public void Session_actor_binding_accepts_only_an_exact_actor_ref()
+    {
+        var bindParameters = typeof(IZLinkSessionActors)
+            .GetMethods()
+            .Where(static method => method.Name == nameof(IZLinkSessionActors.BindAsync))
+            .Select(static method => method.GetParameters()[0].ParameterType)
+            .ToArray();
+
+        Assert.Equal(new[] { typeof(Systems.Zlink.ActorRef) }, bindParameters);
+        Assert.DoesNotContain(typeof(IZLinkActor), bindParameters);
     }
 
     [Fact]
@@ -224,15 +245,6 @@ public sealed class StreamContracts
         public bool StreamClosed { get; private set; }
 
         public IReadOnlyCollection<IZLinkSessionActor> Bound => _actors.Values.ToArray();
-
-        public ValueTask<IZLinkSessionActor> BindAsync(
-            IZLinkActor actor,
-            CancellationToken cancellationToken = default)
-        {
-            return BindAsync(
-                new Systems.Zlink.ActorRef(Systems.Zlink.RoutingId.From("actor-node"), actor.ActorId, 1),
-                cancellationToken);
-        }
 
         public ValueTask<IZLinkSessionActor> BindAsync(
             Systems.Zlink.ActorRef actorRef,

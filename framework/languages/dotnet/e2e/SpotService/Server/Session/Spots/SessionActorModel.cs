@@ -10,12 +10,11 @@ namespace SpotService.Server.Session.Spots;
 internal sealed class ScenarioActorFactory : IZLinkActorFactory<ScenarioActor>
 {
     public ValueTask<ScenarioActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(new ScenarioActor(actorId, context));
+        return ValueTask.FromResult(new ScenarioActor(context.ActorId, context));
     }
 }
 

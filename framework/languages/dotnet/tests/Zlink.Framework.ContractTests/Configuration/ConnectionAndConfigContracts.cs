@@ -12,7 +12,6 @@ public sealed class ConnectionAndConfigContracts
         typeof(IZLinkOutboundRouteConfig),
         typeof(IZLinkSpotPublisherConfig),
         typeof(IZLinkSpotSubscriberConfig),
-        typeof(IZLinkEntrySpotOptions),
         typeof(IZLinkDispatchOptions),
         typeof(IZLinkUnhandledDispatchOptions),
         typeof(IZLinkDiagnosticsOptions))]
@@ -62,11 +61,6 @@ public sealed class ConnectionAndConfigContracts
             Linger = TimeSpan.Zero
         };
 
-        var entrySpot = new EntrySpotOptions
-        {
-            RoutingId = RoutingId.From("entry")
-        };
-
         var dispatch = new DispatchOptions();
 
         Assert.True(socket.Immediate);
@@ -78,7 +72,6 @@ public sealed class ConnectionAndConfigContracts
         Assert.Equal(64, subscriber.ReceiveHighWaterMark);
         Assert.Equal(TimeSpan.FromMilliseconds(30), subscriber.ReceiveTimeout);
         Assert.Equal(TimeSpan.Zero, subscriber.Linger);
-        Assert.Equal(RoutingId.From("entry"), entrySpot.RoutingId);
         Assert.NotNull(dispatch.Unhandled);
     }
 
@@ -145,11 +138,6 @@ public sealed class ConnectionAndConfigContracts
         public TimeSpan? ReceiveTimeout { get; set; }
 
         public TimeSpan? Linger { get; set; }
-    }
-
-    internal sealed class EntrySpotOptions : IZLinkEntrySpotOptions
-    {
-        public RoutingId RoutingId { get; set; }
     }
 
     internal sealed class DispatchOptions : IZLinkDispatchOptions

@@ -642,7 +642,8 @@ public sealed class AuthorityStoreContracts
                 ZLinkObjectCreationCompletion.Created value => value.Terminal,
                 ZLinkObjectCreationCompletion.Rejected value => value.Terminal,
                 ZLinkObjectCreationCompletion.Failed value => ((ZLinkObjectCreationCompletion.Failed)
-                    completion).Terminal
+                    completion).Terminal,
+                _ => throw new ArgumentOutOfRangeException(nameof(completion))
             };
 
             if (_terminals.TryGetValue(publication.Operation, out var replay))

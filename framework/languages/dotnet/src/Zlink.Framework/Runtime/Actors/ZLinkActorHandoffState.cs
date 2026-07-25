@@ -339,8 +339,26 @@ internal sealed class ZLinkActorHandoffState(
     public IReadOnlyList<ZLinkActorHandoffFrame> CutoverCaptureToForwarding(
         int committedFrameCount,
         ZLinkBackendActorRef sourceActor,
-        ZLinkBackendActorRef targetActor)
+        ZLinkBackendActorRef targetActor,
+        string targetMeshName,
+        ulong sourceNodeGeneration,
+        ulong targetNodeGeneration,
+        ulong sourceAuthorityOwnerGeneration,
+        ulong targetAuthorityOwnerGeneration,
+        ulong sourceOwnerLeaseGeneration,
+        ulong targetOwnerLeaseGeneration)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetMeshName);
+        if (sourceNodeGeneration == 0
+            || targetNodeGeneration == 0
+            || sourceAuthorityOwnerGeneration == 0
+            || targetAuthorityOwnerGeneration
+               != checked(sourceAuthorityOwnerGeneration + 1)
+            || sourceOwnerLeaseGeneration == 0
+            || targetOwnerLeaseGeneration == 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(targetAuthorityOwnerGeneration),
+                "Actor forwarding requires an exact committed source-to-target authority fence.");
         lock (_forwardGate)
         {
             lock (_gate)
@@ -356,6 +374,13 @@ internal sealed class ZLinkActorHandoffState(
                 _forwarding = new ZLinkActorForwardingMapping(
                     sourceActor,
                     targetActor,
+                    targetMeshName,
+                    sourceNodeGeneration,
+                    targetNodeGeneration,
+                    sourceAuthorityOwnerGeneration,
+                    targetAuthorityOwnerGeneration,
+                    sourceOwnerLeaseGeneration,
+                    targetOwnerLeaseGeneration,
                     new ZLinkActorForwardingWindow(timeProvider));
                 _staleSourceActor = sourceActor;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.CutoverPending;
@@ -489,16 +514,16 @@ internal sealed class ZLinkActorHandoffState(
     public ZLinkActorFrameRoute RouteFrame(
         ZLinkBackendActorRef? currentActor,
         ZLinkBackendActorRef frameActor,
-        out ZLinkBackendActorRef targetActor,
-        out ZLinkActorForwardingWindow? forwardingWindow)
+        out ZLinkActorForwardingMapping? forwarding)
     {
         lock (_forwardGate)
         {
             lock (_gate)
             {
+                var targetActor = default(ZLinkBackendActorRef);
                 var route = ResolveFrameRouteLocked(currentActor, frameActor, out targetActor);
-                forwardingWindow = route == ZLinkActorFrameRoute.Forward
-                    ? _forwarding!.Value.Lease
+                forwarding = route == ZLinkActorFrameRoute.Forward
+                    ? _forwarding
                     : null;
                 return route;
             }
@@ -628,6 +653,13 @@ internal sealed class ZLinkActorHandoffState(
 internal readonly record struct ZLinkActorForwardingMapping(
     ZLinkBackendActorRef SourceActor,
     ZLinkBackendActorRef TargetActor,
+    string TargetMeshName,
+    ulong SourceNodeGeneration,
+    ulong TargetNodeGeneration,
+    ulong SourceAuthorityOwnerGeneration,
+    ulong TargetAuthorityOwnerGeneration,
+    ulong SourceOwnerLeaseGeneration,
+    ulong TargetOwnerLeaseGeneration,
     ZLinkActorForwardingWindow Lease);
 
 internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
@@ -651,6 +683,16 @@ internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
                     _ => false
                 };
             }
+        }
+    }
+
+    public bool IsCommitted
+    {
+        get
+        {
+            lock (_gate)
+                return _phase == ZLinkActorForwardingWindowPhase.Committed
+                       && timeProvider.GetElapsedTime(_committedAt) < _window;
         }
     }
 

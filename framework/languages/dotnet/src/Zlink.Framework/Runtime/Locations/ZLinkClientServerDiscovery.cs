@@ -154,7 +154,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken)
     {
-        var owner = _locationRuntime.OwnerToken;
+        var owner = _locationRuntime.AdmissionOwnerToken;
         var snapshot = server.Identity.Read();
         var descriptor = new ZLinkClientServerServerDescriptor(
             server.ChannelName,

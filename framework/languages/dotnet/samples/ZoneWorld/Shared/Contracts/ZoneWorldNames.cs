@@ -45,6 +45,7 @@ public static class ZoneWorldNames
     public const string SouthEastToSouthWestBorder = "zone.border.zone-se.zone-sw";
 
     public const string PlayerActorType = "zoneworld.player";
+    public const string ZoneSpotType = "zoneworld.zone";
 
     public const string GatewayStreamNode = "zoneworld.gateway";
     public const string OpsStreamNode = "zoneworld.ops";

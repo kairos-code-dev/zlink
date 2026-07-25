@@ -1,37 +1,9 @@
 namespace Zlink.Framework.Locations.Redis.Tests;
 
-/// <summary>Row factories shared by the Redis integration tests and the
-/// in-memory parity test. UpdatedAt is always store-issued; spot and
-/// lifecycle generations are writer-carried spec fields.</summary>
+/// <summary>Descriptor factories shared by the Redis integration tests and
+/// the in-memory parity test. UpdatedAt is always store-issued.</summary>
 internal static class TestRows
 {
-    internal static ZLinkActorLocation Actor(
-        string ownerId, string actorId = "actor-1") => new(
-        "play",
-        actorId,
-        "player",
-        new ActorRef(RoutingId.From("node-1"), actorId, 1),
-        OwnerNodeRid: RoutingId.From("node-1"),
-        OwnerNodeGeneration: 0,
-        SpotId: string.Empty,
-        SpotGeneration: 0,
-        SpotKind: ZLinkSpotKind.Entry,
-        MembershipEpoch: 0,
-        OwnerId: ownerId,
-        UpdatedAt: default);
-
-    internal static ZLinkSpotLocation Spot(
-        string ownerId, string spotId, string meshName = "play") => new(
-        meshName,
-        spotId,
-        SpotGeneration: 0,
-        OwnerNodeRid: RoutingId.From("node-1"),
-        OwnerNodeGeneration: 0,
-        SpotKind: ZLinkSpotKind.User,
-        SpotType: "game",
-        OwnerId: ownerId,
-        UpdatedAt: default);
-
     internal static ZLinkMeshNodeDescriptor MeshNode(
         string ownerId,
         string endpoint = "tcp://127.0.0.1:5001",
@@ -58,6 +30,12 @@ internal static class TestRows
                 "player",
                 ZLinkObjectMaintenancePolicyKind.Recreate,
                 HasSnapshotAdapter: false,
+                Limit: 0),
+            new ZLinkObjectCapability(
+                ZLinkPlacementObjectKind.UserSpot,
+                "game",
+                ZLinkObjectMaintenancePolicyKind.Recreate,
+                HasSnapshotAdapter: false,
                 Limit: 0)
         ],
         MaintenanceWave = "wave-a",
@@ -66,7 +44,14 @@ internal static class TestRows
         Capacity = new(
             new ZLinkPopulationCapacity(12, 2, 1_000),
             new ZLinkPopulationCapacity(0, 0, 1_000),
-            Array.Empty<ZLinkSpotTypeCapacity>()),
+            [
+                new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "game",
+                    0,
+                    0,
+                    0)
+            ]),
         EntrySpotId = EntrySpotId(meshName, nodeRid)
     };
 

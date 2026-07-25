@@ -10,10 +10,10 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer,
             "dispose",
@@ -43,13 +43,13 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
-        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
+        await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var countingResolver = new CountingPeerResolver(resolvers);
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -90,12 +90,12 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -105,9 +105,8 @@ public sealed class AutoConnectLoopTests
         var loop = new ZLinkAutoConnectLoop(
             reconciler, local, options, stampStore: store, timeProvider: time, leaseTracker: tracker);
 
-        await store.RenewOwnerLeaseAsync(
+        await store.ClaimLiveOwnerAsync(
             "late-owner",
-            RoutingId.From("r1"),
             TimeSpan.FromSeconds(15));
         await store.UpdateMeshNodeAsync(
             InMemoryLocationStoreTests.MeshNode(
@@ -125,7 +124,7 @@ public sealed class AutoConnectLoopTests
 
         // A reclaimed owner ID receives a different token. The stale
         // descriptor cannot become live merely because the owner ID matches.
-        await store.RenewOwnerLeaseAsync("late-owner", RoutingId.From("r1"), TimeSpan.FromSeconds(15));
+        await store.ClaimLiveOwnerAsync("late-owner", TimeSpan.FromSeconds(15));
         await loop.TickAsync();
         Assert.Empty(executor.Connected);
         Assert.Empty(executor.Disconnected);
@@ -137,9 +136,9 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
-        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(1));
+        await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(1));
         await store.UpdateMeshNodeAsync(
             InMemoryLocationStoreTests.MeshNode(
                 "peer-owner",
@@ -149,7 +148,7 @@ public sealed class AutoConnectLoopTests
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RetryExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -174,9 +173,9 @@ public sealed class AutoConnectLoopTests
         var options = new ZLinkLocationOptions
         {
             PollingInterval = TimeSpan.Zero,
-            HeartbeatInterval = TimeSpan.FromSeconds(1)
+            OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1)
         };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         var peer = InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1");
         var resolver = new SwitchablePeerResolver([peer]);
@@ -203,7 +202,7 @@ public sealed class AutoConnectLoopTests
         Assert.Empty(executor.Disconnected);
         Assert.Single(reconciler.ActiveTargets);
 
-        time.Advance(options.HeartbeatInterval + TimeSpan.FromMilliseconds(1));
+        time.Advance(options.OwnerLeaseRenewInterval + TimeSpan.FromMilliseconds(1));
         await loop.TickAsync();
         Assert.Single(executor.Disconnected);
     }

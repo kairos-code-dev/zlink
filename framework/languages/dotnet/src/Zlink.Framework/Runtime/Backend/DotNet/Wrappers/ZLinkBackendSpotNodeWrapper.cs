@@ -11,7 +11,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // loops.
 internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendSpotNode,
-    IZLinkBackendAuthorityObserver
+    IZLinkBackendAuthorityObserver,
+    IZLinkBackendLocalActorAuthorityReader
 {
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions = new();
@@ -44,32 +45,55 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public RoutingId RoutingId => _node.RoutingId;
 
+    public void SetLocalOwnerLeaseGeneration(ulong ownerLeaseGeneration) =>
+        RequireManagedNode().SetLocalOwnerLeaseGeneration(ownerLeaseGeneration);
+
     public void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         RequireManagedNode().ObserveActorAuthority(
-            actor.ToNative(),
-            authorityOwnerGeneration);
+            ToNativeActor(actor),
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
 
     public void ObserveSpotAuthority(
         RoutingId nodeRid,
         string spotId,
         ulong objectGeneration,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         RequireManagedNode().ObserveSpotAuthority(
             nodeRid,
             spotId,
             objectGeneration,
-            authorityOwnerGeneration);
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
+
+    public bool TryGetLocalActorAuthority(
+        ZLinkBackendActorRef actor,
+        out ulong authorityOwnerGeneration,
+        out ulong ownerLeaseGeneration) =>
+        RequireManagedNode().TryGetActorAuthority(
+            ToNativeActor(actor),
+            out authorityOwnerGeneration,
+            out ownerLeaseGeneration);
 
     private ZLinkManagedMeshNode RequireManagedNode() =>
         _node as ZLinkManagedMeshNode
         ?? throw new InvalidOperationException(
             "Authority fencing requires the Framework managed MeshNode.");
+
+    private ActorRef ToNativeActor(ZLinkBackendActorRef actor) =>
+        actor.ToNative(RequireManagedNode().MeshName);
 
     public void SetRoutingId(RoutingId routingId)
     {
@@ -312,10 +336,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             {
                 var actor = completion.Result is ActorCreateResult.Existing
                     or ActorCreateResult.Created
-                    ? new ActorRef(
-                        targetNodeRid,
-                        completion.Actor.ActorId,
-                        completion.Actor.Generation)
+                    ? completion.Actor
                     : default;
                 terminal.TrySetResult((
                     completion with { Actor = actor },
@@ -346,7 +367,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     {
         EnsureStarted();
         var submit = RequireManagedNode().DestroyActorRemote(
-            actor.ToNative(),
+            ToNativeActor(actor),
             targetNodeGeneration,
             authorityOwnerGeneration,
             out var operationId,
@@ -516,7 +537,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     {
         EnsureStarted();
         _node.SetActorAuthority(
-            actor.ToNative(),
+            ToNativeActor(actor),
             authorityOwnerGeneration);
     }
 
@@ -527,7 +548,25 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public IReadOnlyList<ZLinkSpotNodePeerEntry> Peers()
     {
-        return _node.Peers().Select(static peer => peer.ToFramework()).ToArray();
+        var localEndpoint = _node.Status().LocalEndpoint;
+        return _node.Peers()
+            .SelectMany(peer =>
+            {
+                var channels = peer.State is MeshPeerState.Admitted
+                    or MeshPeerState.Draining
+                    ? _node.PeerChannels(
+                        peer.RoutingId,
+                        peer.LifecycleGeneration)
+                    : [];
+                if (channels.Length == 0)
+                    return (IEnumerable<ZLinkSpotNodePeerEntry>)
+                        [peer.ToFramework(localEndpoint, channel: null)];
+                return channels
+                    .OrderBy(static channel => channel.Name, StringComparer.Ordinal)
+                    .Select(channel =>
+                        peer.ToFramework(localEndpoint, channel));
+            })
+            .ToArray();
     }
 
     public MeshNodeStatus MeshStatus()
@@ -638,7 +677,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         TimeSpan? timeout)
     {
         var operationId = _node.JoinSpot(
-            actor.ToNative(), destNodeRid, destSpotId, 0, new[] { message },
+            ToNativeActor(actor), destNodeRid, destSpotId, 0, new[] { message },
             timeout ?? default);
         return _completions.RegisterRequest(operationId, callback);
     }
@@ -652,7 +691,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         TimeSpan? timeout)
     {
         var operationId = _node.JoinSpot(
-            actor.ToNative(), destNodeRid, destSpotId, 0, parts, timeout ?? default);
+            ToNativeActor(actor), destNodeRid, destSpotId, 0, parts, timeout ?? default);
         return _completions.Register(operationId, (record, replyParts) =>
             callback(BuildJoinResult(record, actor), replyParts));
     }
@@ -665,7 +704,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         TimeSpan? timeout)
     {
         var operationId = _node.JoinEntrySpot(
-            actor.ToNative(), destNodeRid, new[] { request }, timeout ?? default);
+            ToNativeActor(actor), destNodeRid, new[] { request }, timeout ?? default);
         return _completions.Register(operationId, (record, replyParts) =>
             callback(BuildEntrySpotJoinResult(record, actor, destNodeRid), replyParts));
     }
@@ -702,7 +741,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var operationId = _node.DestroyActor(actor.ToNative(), timeout);
+        var operationId = _node.DestroyActor(ToNativeActor(actor), timeout);
         if (operationId == default) return;
 
         var completion = new TaskCompletionSource(
@@ -722,7 +761,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return _node.SendBoundSession(actor.ToNative(), parts, flags) == SubmitResult.Ok;
+        return _node.SendBoundSession(ToNativeActor(actor), parts, flags) == SubmitResult.Ok;
     }
 
     public SubmitResult SendToNode(
@@ -770,7 +809,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return _node.SendToActor(actor.ToNative(), parts, flags);
+        return _node.SendToActor(ToNativeActor(actor), parts, flags);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToActorAsync(
@@ -780,7 +819,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         CancellationToken cancellationToken)
     {
         var submit = _node.RequestToActor(
-            actor.ToNative(), parts, out var operationId, timeout ?? default);
+            ToNativeActor(actor), parts, out var operationId, timeout ?? default);
         if (submit != SubmitResult.Ok)
             throw new ZlinkSubmitException((ZlinkSubmitException.ErrorCode)(int)submit);
 
@@ -878,7 +917,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
         // SendBoundSession clones the parts (the caller keeps ownership), so this
         // wrapper disposes every clone it owns on success.
-        if (_node.SendBoundSession(actor.ToNative(), parts, flags) == SubmitResult.Ok)
+        if (_node.SendBoundSession(ToNativeActor(actor), parts, flags) == SubmitResult.Ok)
         {
             foreach (var part in parts) part.Dispose();
             return true;
@@ -891,93 +930,18 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         return false;
     }
 
-    // 10.0.0 binds a STREAM session to an actor through the owning STREAM node's
-    // IStreamSessionService.BindActor (see ZLinkBackendStreamSocketWrapper); the
-    // MeshNode/actor plane exposes no bind-remote-session primitive. The framework
-    // records the remote binding via ZLinkActorBoundSessionCoordinator.BindActorSession
-    // (the caller invokes it immediately after this), so this mesh-plane hook has
-    // no MeshNode action. Documented deviation, not a stub gap.
-    public void BindRemoteActorBoundSession(
-        ZLinkBackendActorRef actor,
-        RoutingId sourceNodeRid,
-        RoutingId sourceSessionRid)
-    {
-    }
-
     public void CloseActorBoundSession(
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ = _node.CloseBoundSession(actor.ToNative(), 0, timeout);
-    }
-
-    // Native actor-transfer fence wiring: the framework-owned transfer records map
-    // onto the bindings IMeshNode ActorTransfer API. The fence token is opaque and
-    // round-trips through commit/activate/abort. The distributed authority that
-    // decides when to prepare/commit/activate/abort (participant-set CAS, lease,
-    // crash recovery) is S8-04A and lives outside this seam.
-    public ZLinkBackendActorTransferToken PrepareActorTransfer(
-        ZLinkBackendActorTransferPrepare prepare,
-        out ZLinkBackendActorTransferPrepareResult result,
-        TimeSpan timeout)
-    {
-        var nativePrepare = new ActorTransferPrepare(
-            (ActorTransferRole)prepare.Role,
-            new ActorTransferId(prepare.TransferId.High, prepare.TransferId.Low),
-            prepare.Actor.ToNative(),
-            prepare.ExpectedMembershipEpoch,
-            prepare.PeerNodeRid,
-            prepare.FinalSequence,
-            prepare.ReserveMessageCount,
-            prepare.ReserveByteCount);
-        var token = _node.PrepareActorTransfer(nativePrepare, out var nativeResult, timeout);
-        result = new ZLinkBackendActorTransferPrepareResult(
-            (ZLinkBackendActorTransferRole)nativeResult.Role,
-            new ZLinkBackendActorTransferId(
-                nativeResult.TransferId.High, nativeResult.TransferId.Low),
-            nativeResult.Actor.ToBackend(),
-            nativeResult.FinalSequence,
-            nativeResult.ReserveMessageCount,
-            nativeResult.ReserveByteCount);
-        return new ZLinkBackendActorTransferToken(token);
-    }
-
-    public void CommitActorTransfer(
-        ZLinkBackendActorTransferToken token, ulong newMembershipEpoch)
-    {
-        _node.CommitActorTransfer(token.Native, newMembershipEpoch);
-    }
-
-    public void ActivateActorTransfer(ZLinkBackendActorTransferToken token)
-    {
-        _node.ActivateActorTransfer(token.Native);
-    }
-
-    public void AbortActorTransfer(ZLinkBackendActorTransferToken token)
-    {
-        _node.AbortActorTransfer(token.Native);
+        _ = _node.CloseBoundSession(ToNativeActor(actor), 0, timeout);
     }
 
     public void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler)
     {
         _pump.SetNodeRouteHandler(handler);
-    }
-
-    public void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler)
-    {
-        _pump.SetTransferControlHandler(control => handler(
-            new ZLinkBackendActorTransferControl(
-                (ZLinkBackendActorTransferPhase)control.Phase,
-                (ZLinkBackendActorTransferRole)control.Role,
-                new ZLinkBackendActorTransferId(
-                    control.TransferId.High, control.TransferId.Low),
-                control.Actor.ToBackend(),
-                control.MembershipEpoch,
-                control.FinalSequence,
-                control.ResultCode,
-                control.FailureErrno)));
     }
 
     public async ValueTask DisposeAsync()

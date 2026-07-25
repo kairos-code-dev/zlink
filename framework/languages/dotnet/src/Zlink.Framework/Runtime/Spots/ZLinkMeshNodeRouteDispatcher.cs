@@ -84,6 +84,22 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             descriptors = descriptors
                 .Append(ToRouteDescriptor(
                     ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkRemoteSessionBindRouteHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkRemoteSessionBindRequest,
+                            ZLinkRemoteSessionBindResponse>),
+                        ZLinkMessageKind.Request,
+                        ZLinkRemoteSessionBindingProtocol.PacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkRemoteSessionUnbindRouteHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkRemoteSessionUnbindRequest,
+                            ZLinkRemoteSessionUnbindResponse>),
+                        ZLinkMessageKind.Request,
+                        ZLinkRemoteSessionBindingProtocol.UnbindPacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
                         typeof(ZLinkRemoteSessionPushRelayHandler),
                         typeof(IZLinkRouteSendHandler<ZLinkRemoteSessionPushRelay>),
                         ZLinkMessageKind.Command,
@@ -99,7 +115,78 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                         typeof(ZLinkRemoteActorReplyRelayHandler),
                         typeof(IZLinkRouteSendHandler<ZLinkRemoteActorReplyRelay>),
                         ZLinkMessageKind.Command,
-                        ZLinkRemoteActorReplyProtocol.PacketName)));
+                        ZLinkRemoteActorReplyProtocol.PacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSessionRouteSealHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSessionRouteSealRequest,
+                            ZLinkSessionRouteSealReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSessionRouteCommitProtocol.SealPacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSessionRouteAbortHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSessionRouteAbortRequest,
+                            ZLinkSessionRouteSealReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSessionRouteCommitProtocol.AbortPacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSessionRouteCommitHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSessionRouteCommitRequest,
+                            ZLinkSessionRouteCommitReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSessionRouteCommitProtocol.PacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSessionRouteUnsealHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSessionRouteUnsealRequest,
+                            ZLinkSessionRouteCommitReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSessionRouteCommitProtocol.UnsealPacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSpotRelocationReplyRelayHandler),
+                        typeof(IZLinkRouteSendHandler<
+                            ZLinkSpotRelocationReplyRelay>),
+                        ZLinkMessageKind.Command,
+                        ZLinkSpotRelocationReplyRelayProtocol.PacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSpotRetireStageHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSpotRetireStageRequest,
+                            ZLinkSpotRetireReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSpotRetireProtocol.Stage)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSpotRetirePublishHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSpotRetirePublishRequest,
+                            ZLinkSpotRetireReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSpotRetireProtocol.Publish)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSpotRetireAbortHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSpotRetireAbortRequest,
+                            ZLinkSpotRetireReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSpotRetireProtocol.Abort)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkSpotRetireHeldRelayHandler),
+                        typeof(IZLinkRouteRequestHandler<
+                            ZLinkSpotRetireHeldRelay,
+                            ZLinkSpotRetireReply>),
+                        ZLinkMessageKind.Request,
+                        ZLinkSpotRetireProtocol.HeldRelay)));
         var routeDescriptors = descriptors.ToArray();
         var channelEndpoints = BuildChannelEndpoints(registration, spotNode).ToArray();
         if (routeDescriptors.Length == 0 && channelEndpoints.Length == 0)
@@ -333,10 +420,15 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkBackendRouteReceived received,
         ZLinkEnvelopeHeader header) =>
         received.ChannelName is null
-        && header.Kind == ZLinkMessageKind.Command
-        && header.MessageName is ZLinkRemoteSessionPushProtocol.PacketName
-            or ZLinkRemoteActorFrameProtocol.PacketName
-            or ZLinkRemoteActorReplyProtocol.PacketName;
+        && ((header.Kind == ZLinkMessageKind.Command
+             && header.MessageName is ZLinkRemoteSessionPushProtocol.PacketName
+                 or ZLinkRemoteActorFrameProtocol.PacketName
+                 or ZLinkRemoteActorReplyProtocol.PacketName)
+            || (header.Kind == ZLinkMessageKind.Request
+                && header.MessageName is ZLinkSessionRouteCommitProtocol.PacketName
+                    or ZLinkSessionRouteCommitProtocol.SealPacketName
+                    or ZLinkSessionRouteCommitProtocol.AbortPacketName
+                    or ZLinkSessionRouteCommitProtocol.UnsealPacketName));
 
     private async ValueTask DispatchNodeRouteAsync(
         ZLinkBackendRouteReceived received,

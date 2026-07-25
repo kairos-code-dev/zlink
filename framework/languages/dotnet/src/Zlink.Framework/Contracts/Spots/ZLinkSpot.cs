@@ -54,20 +54,6 @@ public readonly record struct ZLinkActorCreateResponse(bool Accepted, ZLinkMessa
     }
 }
 
-public interface IZLinkActorTransferAdapter<TActor>
-    where TActor : IZLinkActor
-{
-    ValueTask<ZLinkMessage> TransferOutAsync(
-        TActor actor,
-        CancellationToken cancellationToken);
-
-    ValueTask<TActor> TransferInAsync(
-        string actorId,
-        IZLinkActorContext context,
-        ZLinkMessage state,
-        CancellationToken cancellationToken);
-}
-
 public sealed class ZLinkSpotActorReplyOptions
 {
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
@@ -213,24 +199,6 @@ public interface IZLinkSpotOutbound
         string spotId,
         TRequest request);
 
-    /// <summary>
-    /// Sends through the current address held by the spot handle. The framework
-    /// refreshes the handle from location updates, but does not retry a one-way
-    /// send because delivery may already have occurred.
-    /// </summary>
-    IZLinkSendCall SendToSpot<TMessage>(
-        SpotHandle target,
-        TMessage message);
-
-    /// <summary>
-    /// Requests through the current address held by the spot handle. If the
-    /// address is invalidated during the request, the framework refreshes the
-    /// handle and retries once when doing so cannot duplicate a completed call.
-    /// </summary>
-    IZLinkRequestCall RequestToSpot<TRequest>(
-        SpotHandle target,
-        TRequest request);
-
     IZLinkPublishCall Publish<TEvent>(
         string channelName,
         string topic,
@@ -245,18 +213,11 @@ public interface IZLinkSpotOutbound
         TRequest request);
 }
 
-/// <summary>
-/// Sends and requests through resolved Spot handles outside a Spot callback.
-/// </summary>
 public interface IZLinkSpotClient
 {
     IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message);
 
     IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request);
-
-    IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
-
-    IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
 
 }
 

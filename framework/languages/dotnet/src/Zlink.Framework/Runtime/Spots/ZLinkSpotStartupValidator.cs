@@ -58,7 +58,7 @@ internal static class ZLinkSpotStartupValidator
 
         public IZLinkSpotHandlerRegistry Handlers { get; }
 
-        public string SpotId => default;
+        public string SpotId => string.Empty;
 
         public ulong ObjectGeneration => default;
 

@@ -59,7 +59,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                 $"Actor '{actorId}' does not have authority for durable Join completion.");
 
         var snapshot = found.Snapshot;
-        if (snapshot.ObjectGeneration != actor.Generation)
+        if (snapshot.ObjectGeneration != actor.ObjectGeneration)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{actorId}' authority generation changed before Join completion was prepared.");
@@ -71,7 +71,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
             return existing;
         }
 
-        if (!ZLinkActorAuthorityPayloadCodec.TryDecodeDirect(
+        if (!ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
                 snapshot.Payload.Span,
                 out _))
             throw new InvalidDataException(
@@ -79,13 +79,60 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
 
         var completion = new ZLinkDeferredJoinCompletionRecord(
             actorId,
-            actor.Generation,
+            actor.ObjectGeneration,
             operationId,
             actor,
             replyContentType,
             reply.ToArray(),
             ZLinkDeferredJoinCompletionCursor.Prepared);
-        var envelope = CreateEnvelope(key, snapshot, completion);
+        var replacedReference = default(string);
+        var replacedRootIsActorOnly = false;
+        var applicationAuthorityPayload = snapshot.Payload;
+        ZLinkRelocationEnvelope envelope;
+        if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                snapshot.Payload.Span,
+                out var currentPublication))
+        {
+            var current = await new ZLinkRelocationPublicationCoordinator(
+                    authorityStore,
+                    relocationStore)
+                .RecoverAsync(key, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new ZLinkRelocationDataLostException(
+                    $"Actor '{actorId}' relocation publication disappeared.");
+            if (current.Envelope.Participants.Count != 1
+                || current.Envelope.Participants[0].AuthorityKey != key)
+                throw new ZLinkRelocationDataLostException(
+                    $"Actor '{actorId}' Join completion cannot replace another relocation aggregate.");
+            var foundParticipant = false;
+            envelope = current.Envelope with
+            {
+                Participants = current.Envelope.Participants.Select(
+                        participant =>
+                        {
+                            if (participant.AuthorityKey != key)
+                                return participant;
+                            foundParticipant = true;
+                            return participant with
+                            {
+                                CompletionPayload =
+                                    ZLinkDeferredJoinCompletionCodec.Encode(
+                                        completion)
+                            };
+                        })
+                    .ToArray()
+            };
+            if (!foundParticipant)
+                throw new ZLinkRelocationDataLostException(
+                    $"Actor '{actorId}' relocation root does not contain its authority participant.");
+            replacedReference = current.Relocation.Reference;
+            replacedRootIsActorOnly = current.Envelope.Participants.Count == 1;
+            applicationAuthorityPayload = currentPublication.ApplicationPayload;
+        }
+        else
+        {
+            envelope = CreateEnvelope(key, snapshot, completion);
+        }
         var coordinator = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
             relocationStore);
@@ -96,11 +143,18 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                     ZLinkAuthorityGenerationTransition.Preserve,
                     snapshot.OwnerId,
                     snapshot.OwnerLeaseGeneration,
-                    snapshot.Payload,
+                    applicationAuthorityPayload,
                     null,
                     envelope),
                 cancellationToken)
             .ConfigureAwait(false);
+        if (replacedRootIsActorOnly
+            && replacedReference is not null
+            && !string.Equals(
+                replacedReference,
+                published.Relocation.Reference,
+                StringComparison.Ordinal))
+            await DeleteBestEffortAsync(replacedReference).ConfigureAwait(false);
         return new ZLinkDeferredJoinCompletionRoot(
             key,
             published.Relocation.Reference,
@@ -199,33 +253,25 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
         var updatedCompletion = current.Completion with { Cursor = next };
         var updatedEnvelope = current.Envelope with
         {
-            Participants =
-            [
-                current.Envelope.Participants[0] with
-                {
-                    ApplicationState =
-                        ZLinkDeferredJoinCompletionCodec.Encode(updatedCompletion)
-                }
-            ]
+            Participants = current.Envelope.Participants.Select(
+                    participant => participant.AuthorityKey
+                                   == root.AuthorityKey
+                        ? participant with
+                        {
+                    CompletionPayload =
+                        ZLinkDeferredJoinCompletionCodec.Encode(
+                                    updatedCompletion)
+                        }
+                        : participant)
+                .ToArray()
         };
-        var encoded = ZLinkRelocationEnvelopeCodec.Encode(updatedEnvelope);
-        var stored = await relocationStore.PutRelocationAsync(
-                encoded,
+        var tree = await ZLinkRelocationTreeStore.PutAsync(
+                relocationStore,
+                updatedEnvelope,
                 Retention,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (stored.ChecksumCrc32c != ZLinkCrc32C.Compute(encoded)
-            || stored.ExpiresAt <= stored.StoreNow)
-            throw new ZLinkRelocationDataLostException(
-                "Relocation Store did not preserve the deferred Join completion root.");
-        var verified = await relocationStore.GetRelocationAsync(
-                stored.Reference,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (verified is not ZLinkRelocationReadResult.Found rootRead
-            || !rootRead.Payload.Span.SequenceEqual(encoded))
-            throw new ZLinkRelocationDataLostException(
-                "Relocation Store failed deferred Join completion root verification.");
+        var stored = tree.Root;
 
         if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                 snapshot.Payload.Span,
@@ -276,21 +322,21 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                 snapshot.Payload.Span,
                 out var publication))
             return null;
-        var read = await relocationStore.GetRelocationAsync(
+        var envelope = await ZLinkRelocationTreeStore.GetAsync(
+                relocationStore,
                 publication.Reference,
+                publication.ChecksumCrc32c,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (read is not ZLinkRelocationReadResult.Found found
-            || ZLinkCrc32C.Compute(found.Payload.Span) != publication.ChecksumCrc32c)
-            throw new ZLinkRelocationDataLostException(
-                $"Published deferred Join root '{publication.Reference}' is missing or corrupt.");
-        var envelope = ZLinkRelocationEnvelopeCodec.Decode(found.Payload.Span);
-        if (envelope.Participants.Count != 1
-            || envelope.Participants[0].AuthorityKey != key)
+        var participant = envelope.Participants.SingleOrDefault(
+            item => item.AuthorityKey == key);
+        if (participant is null)
             throw new ZLinkRelocationDataLostException(
                 "Deferred Join completion manifest does not match Actor authority.");
+        if (participant.CompletionPayload.IsEmpty)
+            return null;
         var completion = ZLinkDeferredJoinCompletionCodec.Decode(
-            envelope.Participants[0].ApplicationState.Span);
+            participant.CompletionPayload.Span);
         return new ZLinkDeferredJoinCompletionRoot(
             key,
             publication.Reference,
@@ -316,9 +362,11 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
                     ZLinkPlacementObjectKind.Actor,
                     snapshot.ObjectGeneration,
                     snapshot.AuthorityOwnerGeneration,
-                    ZLinkDeferredJoinCompletionCodec.Encode(completion),
-                    [],
-                    [])
+                    ReadOnlyMemory<byte>.Empty,
+                    Array.Empty<ZLinkRelocationQueuedJob>(),
+                    Array.Empty<ZLinkRelocationLogicalTimer>(),
+                    ReadOnlyMemory<byte>.Empty,
+                    ZLinkDeferredJoinCompletionCodec.Encode(completion))
             ]);
     }
 
@@ -326,7 +374,10 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
     {
         try
         {
-            await relocationStore.DeleteRelocationAsync(reference, CancellationToken.None)
+            await ZLinkRelocationTreeStore.DeleteTreeAsync(
+                    relocationStore,
+                    reference,
+                    CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch
@@ -344,7 +395,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
         if (operationId.High == 0 && operationId.Low == 0)
             throw new ArgumentOutOfRangeException(nameof(operationId));
         if (!string.Equals(actor.ActorId, actorId, StringComparison.Ordinal)
-            || actor.Generation == 0)
+            || actor.ObjectGeneration == 0)
             throw new ArgumentException("Deferred Join completion Actor identity is invalid.");
     }
 
@@ -355,7 +406,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
     {
         if (completion.OperationId != operationId
             || completion.Actor != actor
-            || completion.ObjectGeneration != actor.Generation)
+            || completion.ObjectGeneration != actor.ObjectGeneration)
             throw new InvalidOperationException(
                 $"Actor '{actor.ActorId}' already has a different durable Join completion.");
     }
@@ -364,7 +415,7 @@ internal sealed class ZLinkDeferredActorJoinCompletionJournal(
 internal static class ZLinkDeferredJoinCompletionCodec
 {
     private const uint Magic = 0x5a4c4a43; // ZLJC
-    private const byte Version = 1;
+    private const byte Version = 2;
     private const int MaxBytes = 1024 * 1024;
 
     internal static byte[] Encode(ZLinkDeferredJoinCompletionRecord value)
@@ -377,8 +428,9 @@ internal static class ZLinkDeferredJoinCompletionCodec
         writer.Write(value.ObjectGeneration);
         writer.Write(value.OperationId.High);
         writer.Write(value.OperationId.Low);
+        WriteString(writer, value.Actor.MeshName);
         WriteRoutingId(writer, value.Actor.NodeRid);
-        writer.Write(value.Actor.Generation);
+        writer.Write(value.Actor.ObjectGeneration);
         writer.Write(value.ReplyContentType is not null);
         if (value.ReplyContentType is { } contentType) WriteString(writer, contentType);
         writer.Write(value.Reply.Length);
@@ -401,6 +453,7 @@ internal static class ZLinkDeferredJoinCompletionCodec
         var operation = new ZLinkActorJoinOperationId(
             reader.ReadUInt64(),
             reader.ReadUInt64());
+        var meshName = ReadString(reader);
         var nodeRid = ReadRoutingId(reader);
         var actorGeneration = reader.ReadUInt64();
         var contentType = reader.ReadBoolean() ? ReadString(reader) : null;
@@ -419,7 +472,7 @@ internal static class ZLinkDeferredJoinCompletionCodec
             actorId,
             generation,
             operation,
-            new ActorRef(nodeRid, actorId, generation),
+            new ActorRef(actorId, generation, meshName, nodeRid),
             contentType,
             reply,
             cursor);

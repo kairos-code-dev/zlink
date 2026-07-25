@@ -164,6 +164,7 @@ internal sealed class ZLinkUserSpotOperationTarget(
         }
         await catalog.PublishReservedAsync(
                 prepared,
+                operation.StableType,
                 operation.Reservation.ObjectGeneration,
                 operation.Reservation.AuthorityOwnerGeneration,
                 cancellationToken)
@@ -240,7 +241,7 @@ internal sealed class ZLinkUserSpotOperationTarget(
         bool closed;
         try
         {
-            closed = await catalog.CloseAsync(
+            closed = await catalog.CloseReservedAsync(
                     operation.Target.SpotId,
                     DateTimeOffset.FromUnixTimeMilliseconds(
                         checked((long)operation.DeadlineUnixMs)),
@@ -302,7 +303,7 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
                     ready.Payload.Span, out var authority)
                     ? authority.SpotId
-                    : default);
+                    : key.Value);
     }
 
     private UserSpotOperationTerminal SuccessCreate(

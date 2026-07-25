@@ -31,9 +31,11 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private ZLinkRuntimeExecutionScope? _executionScope;
     private readonly object _operationGate = new();
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
+    private readonly ZLinkLocationRuntime? _locationRuntime;
     private readonly ZLinkRelocationPermitPool _relocationPermits;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
+    private readonly ZLinkSpotRelocationReplyRoutes _spotRelocationReplyRoutes;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkComponentStateFactory _stateFactory;
     private readonly ZLinkStreamRuntimeManager _streams;
@@ -65,9 +67,12 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         Registration = registration;
         _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
         _locationLifecycle = services.GetService<ZLinkLocationLifecycle>();
+        _locationRuntime = services.GetService<ZLinkLocationRuntime>();
         _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
         _relocationPermits = new ZLinkRelocationPermitPool(
             registration.Locations.Options);
+        _spotRelocationReplyRoutes = new ZLinkSpotRelocationReplyRoutes(
+            registration.Locations.Options.RelocationForwardingWindow);
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
@@ -87,6 +92,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _actorBoundSessionCoordinator = new ZLinkActorBoundSessionCoordinator(
             _actorSessionManager.GetOrCreateState,
             () => GetActorSpotNode() ?? GetRouterSpotNodeOrNull(),
+            meshName => GetMeshNodeRuntime(meshName).Node,
             registration,
             () => ShutdownToken)
         {
@@ -97,8 +103,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             _actors,
             _actorSessionManager,
             services,
-            registration,
-            _relocationPermits);
+            registration);
         _actorStragglerForwarder = new ZLinkActorStragglerForwarder(this);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
@@ -149,6 +154,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     internal ZLinkRelocationPermitPool RelocationPermits =>
         _relocationPermits;
 
+    internal ZLinkSpotRelocationReplyRoutes SpotRelocationReplyRoutes =>
+        _spotRelocationReplyRoutes;
+
     internal async ValueTask<bool> DrainStreamSessionsAsync(CancellationToken cancellationToken)
     {
         var state = _state;
@@ -159,13 +167,16 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return drained;
     }
 
-    internal async ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken)
+    internal async ValueTask<bool> TryDrainSpotsAsync(
+        bool relocate,
+        CancellationToken cancellationToken)
     {
         var state = _state;
         if (state is null) return true;
         var drained = true;
         foreach (var spotNode in state.SpotNodes.Values)
-            drained &= await spotNode.TryDrainSpotsAsync(cancellationToken).ConfigureAwait(false);
+            drained &= await spotNode.TryDrainSpotsAsync(relocate, cancellationToken)
+                .ConfigureAwait(false);
         return drained;
     }
 
@@ -293,7 +304,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
         lock (_operationGate)
         {
-            if (_drainAdmission.IsSealed)
+            if (_drainAdmission.IsSealed
+                || (_locationRuntime is not null
+                    && !_locationRuntime.IsOwnerAdmissionOpen))
             {
                 lease = new ZLinkRuntimeOperationLease();
                 return false;
@@ -346,6 +359,18 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal IZLinkRouteClient RouteClient => Services.GetRequiredService<IZLinkRouteClient>();
 
+    internal ZLinkSpotNodeRuntime GetSpotNodeRuntime(RoutingId nodeRid)
+    {
+        var state = _state
+                    ?? throw new InvalidOperationException(
+                        "The framework runtime is not started.");
+        return state.SpotNodes.Values.SingleOrDefault(
+                   node => node.Node.RoutingId == nodeRid)
+               ?? throw new ZLinkFrameworkException(
+                   ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                   $"MeshNode '{nodeRid}' is not hosted by this runtime.");
+    }
+
     public bool IsStarted
         => Volatile.Read(ref _lifecyclePhase) == (int)ZLinkRuntimeLifecyclePhase.Running;
 
@@ -387,6 +412,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return GetStartedStateAsync(cancellationToken);
     }
 
+    internal RoutingId PrepareLocationNodeRoutingId()
+    {
+        var registration = Registration.SpotNodes.Values.FirstOrDefault();
+        return registration is null
+            ? RoutingId.From(Guid.NewGuid().ToString("n"))
+            : ZLinkSpotNodeInitializer.PrepareNodeRoutingId(registration);
+    }
+
     internal ValueTask PublishRuntimeEventAsync<TEvent>(
         TEvent @event,
         CancellationToken cancellationToken)
@@ -409,6 +442,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             try
             {
                 _state = await _stateFactory.CreateAsync().ConfigureAwait(false);
+                await RecoverPublishedRelocationsAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 lock (_operationGate) _acceptingOperations = true;
                 Volatile.Write(ref _lifecyclePhase, (int)ZLinkRuntimeLifecyclePhase.Running);
                 _locationLifecycle?.ResumeBackgroundWork();
@@ -535,6 +570,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             await CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
         if (state is not null) DetachErrorSink(state.ErrorSink);
         Capture(ResetActorRuntimeGeneration);
+        Capture(_spotRelocationReplyRoutes.Clear);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
 
@@ -619,7 +655,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     {
         if (!_acceptingOperations
             || Volatile.Read(ref _lifecyclePhase) != (int)ZLinkRuntimeLifecyclePhase.Running
-            || _state is not { } state)
+            || _state is not { } state
+            || (_locationRuntime is not null
+                && !_locationRuntime.IsOwnerAdmissionOpen))
             throw new InvalidOperationException("ZLink framework runtime is not accepting operations.");
         _activeOperations++;
         if (countAsRequest) _activeRequests++;

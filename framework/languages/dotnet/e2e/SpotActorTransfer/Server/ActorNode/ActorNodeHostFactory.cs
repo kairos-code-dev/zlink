@@ -38,11 +38,9 @@ internal static class ActorNodeHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
-            framework.ActorTransferTimeout = TimeSpan.FromSeconds(15);
             // The common ST-F4/F5 contract permits a short controller window so
             // the E2E verifies cutoff semantics without coupling the scenario to
             // the independently tested owner-lease TTL.
-            framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(2);
             var redisStore = new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix));
@@ -51,7 +49,9 @@ internal static class ActorNodeHostFactory
                 cleanupGates,
                 evidence));
             var locations = framework.ConfigureLocations();
-            locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
+            locations.RouteCacheMaxAge = TimeSpan.Zero;
+            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(2);
+            locations.OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1);
             locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
             locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
@@ -75,42 +75,36 @@ internal static class ActorNodeHostFactory
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeStateful,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>
+                        .Snapshot<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeEmptyState,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>
+                        .Snapshot<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeNoAdapter,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>.Recreate)
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeFailLeave,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>
+                        .Snapshot<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeFailTransferOut,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>
+                        .Snapshot<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
                     SpotActorTransferNames.ActorTypeFailTransferIn,
                     null,
-                    ZLinkRelocationPolicy<TransferActor>.Disabled)
+                    ZLinkRelocationPolicy<TransferActor>
+                        .Snapshot<TransferActorRelocationAdapter>())
                 .AddSpotFactory<TransferUserSpot>(
                     SpotActorTransferNames.UserSpotType(options.Rid),
                     null,
                     ZLinkRelocationPolicy<TransferUserSpot>.Disabled);
-            mesh28
-                .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(
-                    SpotActorTransferNames.ActorTypeStateful)
-                .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(
-                    SpotActorTransferNames.ActorTypeEmptyState)
-                .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(
-                    SpotActorTransferNames.ActorTypeFailLeave)
-                .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(
-                    SpotActorTransferNames.ActorTypeFailTransferOut)
-                .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(
-                    SpotActorTransferNames.ActorTypeFailTransferIn);
             mesh28.ChannelName(SpotActorTransferNames.Mesh);
         });
         return (builder.Build(), options);

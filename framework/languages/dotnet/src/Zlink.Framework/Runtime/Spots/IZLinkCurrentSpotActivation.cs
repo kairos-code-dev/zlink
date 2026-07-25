@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal interface IZLinkCurrentSpotActivation
 {
+    void EnsureOperationAllowed();
+
     string ChannelName { get; }
 
     string SpotId { get; }

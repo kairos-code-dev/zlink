@@ -45,8 +45,7 @@ builder.Services.AddZLinkFramework(options =>
     // factory. Membership is what lets it bind a session to an actor living on a zone
     // node and relay packets to it.
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
-        .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
-        .SetRoutingIdAllocationGroup("zoneworld.gateway")
+        .SetRoutingIdPrefix("gw0")
         .Listen(gateway.MeshEndpoint);
     mesh.ChannelName(ZoneWorldNames.ZoneChannel).SetWeight(0);
     mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);

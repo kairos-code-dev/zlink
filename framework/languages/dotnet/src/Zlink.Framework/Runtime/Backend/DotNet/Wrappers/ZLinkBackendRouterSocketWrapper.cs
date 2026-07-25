@@ -166,33 +166,6 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
         }
     }
 
-    // 10.0.0 removed spot addressing from the raw ROUTER socket; spot sends/requests
-    // now flow through the MeshNode spot plane (ISpot.SendToSpot/RequestToSpot).
-    // These stubs keep the seam compiling; see S8 route/spot-plane follow-up.
-    public bool SendToSpot(
-        RoutingId targetNodeRid,
-        string targetSpotId,
-        IReadOnlyList<Message> parts,
-        SendFlags flags)
-    {
-        throw new NotSupportedException(
-            "ROUTER-socket spot addressing was removed in RouteMesh 10.0.0; " +
-            "use the MeshNode spot plane.");
-    }
-
-    public bool RequestToSpot(
-        RoutingId targetNodeRid,
-        string targetSpotId,
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags,
-        TimeSpan? timeout)
-    {
-        throw new NotSupportedException(
-            "ROUTER-socket spot addressing was removed in RouteMesh 10.0.0; " +
-            "use the MeshNode spot plane.");
-    }
-
     public void Reply(
         RoutingId routingId,
         ulong requestSeq,

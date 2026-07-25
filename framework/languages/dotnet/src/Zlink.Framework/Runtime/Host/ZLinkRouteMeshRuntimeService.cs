@@ -589,20 +589,21 @@ internal sealed class ZLinkRouteMeshRuntimeService(
 
             var current = await _owner._locationQuery.ListMeshNodeDescriptorsAsync(
                     _meshName,
+                    default,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (_descriptors.Count == 0)
             {
                 lock (_gate)
                 {
-                    foreach (var descriptor in current)
+                    foreach (var descriptor in current.Items)
                         _descriptors[descriptor.Rid] = descriptor;
                 }
                 return;
             }
 
             var sourceRid = _nodeRuntime.Node.MeshStatus().RoutingId;
-            foreach (var descriptor in current)
+            foreach (var descriptor in current.Items)
             {
                 ZLinkMeshNodeDescriptor? previous;
                 lock (_gate)

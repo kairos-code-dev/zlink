@@ -13,6 +13,7 @@ using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Codecs.Protobuf;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Samples.Logging;
@@ -48,8 +49,10 @@ public static class PlayServerHostFactory
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+            options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
+            var locations = options.ConfigureLocations();
+            locations.RouteCacheMaxAge = TimeSpan.Zero;
+            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(configuration.RedisEndpoint)
                 .SetKeyPrefix(configuration.RedisKeyPrefix)));
@@ -60,21 +63,26 @@ public static class PlayServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(PlayServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
-                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
-                .SetRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
-                .Listen(node.MeshEndpoint)
+                .SetRoutingIdPrefix("play")
+                .Listen(node.MeshEndpoint);
+            mesh.Objects().Server()
                 .AddEntrySpot<BingoEntrySpot>()
-                .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
-                .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)
-                .AddSpotFactory<BingoRoom>();
+                .AddActorFactory<PlayerActor, PlayerActorFactory>(
+                    SampleNames.PlayerActorType,
+                    null,
+                    ZLinkRelocationPolicy<PlayerActor>
+                        .Snapshot<PlayerActorRelocationAdapter>())
+                .AddSpotFactory<BingoRoom>(
+                    SampleNames.RoomSpotType,
+                    null,
+                    ZLinkRelocationPolicy<BingoRoom>.Disabled);
             mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.PlayChannel);
             mesh.ChannelName(SampleNames.RoomChannel);
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "play",
-            SampleNames.PlayAllocationGroup,
-            [SampleNames.MeshName]));
+            SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

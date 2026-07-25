@@ -84,7 +84,7 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             0,
             0,
             MeshOwnerKind.Node,
-            default,
+            string.Empty,
             default,
             channelName,
             operationId,

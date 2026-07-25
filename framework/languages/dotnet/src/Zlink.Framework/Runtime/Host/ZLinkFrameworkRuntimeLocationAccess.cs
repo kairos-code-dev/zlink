@@ -14,29 +14,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         ZLinkSpotId.RequireCallerProvided(spotId, nameof(spotId));
-        if (Registration.Locations.ResolveStore() is not IZLinkAuthorityStore store)
-            return null;
-        var key = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
-        var read = await store.ReadAuthorityAsync(key, cancellationToken)
-            .ConfigureAwait(false);
-        if (read is not ZLinkAuthorityReadResult.Found found
-            || !TryResolveSpotAuthority(spotId, found.Snapshot, out var snapshot))
-            return null;
-        return new ZLinkResolvedSpotHandle(
-            snapshot,
-            found.Snapshot.AuthorityOwnerGeneration,
-            async token =>
-            {
-                var refreshed = await store.ReadAuthorityAsync(key, token)
-                    .ConfigureAwait(false);
-                if (refreshed is not ZLinkAuthorityReadResult.Found current
-                    || !TryResolveSpotAuthority(
-                        spotId,
-                        current.Snapshot,
-                        out var handle))
-                    return null;
-                return (handle, current.Snapshot.AuthorityOwnerGeneration);
-            });
+        var resolver = Services.GetService(typeof(ZLinkLocationAddressResolvers))
+            as ZLinkLocationAddressResolvers;
+        return resolver is null
+            ? null
+            : await resolver.ResolveSpotHandleAsync(
+                    spotId,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     internal async ValueTask<ZLinkResolvedSpotHandle?> ResolveInstanceSpotHandleAsync(
@@ -47,80 +32,36 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkSpotId.RequireCallerProvided(
             address.SpotId,
             nameof(address.SpotId));
-        var registeredStore = Registration.Locations.ResolveStore();
-        if (registeredStore is IZLinkAuthorityStore authorityStore)
-        {
-            var authorityKey = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(address.SpotId);
-            var read = await authorityStore.ReadAuthorityAsync(authorityKey, cancellationToken)
-                .ConfigureAwait(false);
-            if (read is not ZLinkAuthorityReadResult.Found authorityFound
-                || !TryResolveInstanceAuthority(
-                    address,
-                    authorityFound.Snapshot,
-                    out var snapshot))
-                return null;
-            return new ZLinkResolvedSpotHandle(
-                snapshot,
-                authorityFound.Snapshot.AuthorityOwnerGeneration,
-                async token =>
-                {
-                    var refreshed = await authorityStore.ReadAuthorityAsync(authorityKey, token)
-                        .ConfigureAwait(false);
-                    if (refreshed is not ZLinkAuthorityReadResult.Found current
-                        || !TryResolveInstanceAuthority(
-                            address,
-                            current.Snapshot,
-                            out var currentHandle))
-                        return null;
-                    return (
-                        currentHandle,
-                        current.Snapshot.AuthorityOwnerGeneration);
-                });
-        }
-
-        var store = registeredStore as IZLinkInstanceSpotLocationStore;
-        if (store is null) return null;
-
-        var key = new ZLinkSpotLocationKey(address.SpotId);
-        var resolved = await store.ResolveInstanceSpotAsync(key, cancellationToken)
-            .ConfigureAwait(false);
-        if (resolved is not InstanceSpotResolveResult.Found found
-            || found.Snapshot.Location.ActivationState != ZLinkSpotActivationState.Ready
-            || !string.Equals(
-                found.Snapshot.Location.InstanceSpotType,
-                address.InstanceSpotType,
-                StringComparison.Ordinal))
+        var rows = Services.GetService(typeof(ZLinkStoreLocationResolvers))
+            as ZLinkStoreLocationResolvers;
+        if (rows is null)
             return null;
-
-        var row = found.Snapshot.Location;
+        var row = await rows.ResolveSpotRowAsync(
+                new ZLinkSpotLocationKey(address.SpotId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (row is null
+            || row.SpotKind != ZLinkSpotKind.Instance
+            || (!string.IsNullOrEmpty(address.InstanceSpotType)
+                && !string.Equals(
+                    row.SpotType,
+                    address.InstanceSpotType,
+                    StringComparison.Ordinal)))
+            return null;
         return new ZLinkResolvedSpotHandle(
             new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotId,
                 row.SpotGeneration,
-                ZLinkSpotKind.Instance,
-                row.LocationGeneration),
-            row.LocationGeneration,
-            async token =>
-            {
-                var refreshed = await store.ResolveInstanceSpotAsync(key, token)
-                    .ConfigureAwait(false);
-                if (refreshed is not InstanceSpotResolveResult.Found current
-                    || current.Snapshot.Location.ActivationState
-                    != ZLinkSpotActivationState.Ready)
-                    return null;
-                var location = current.Snapshot.Location;
-                return (
-                    new ZLinkSpotHandleSnapshot(
-                        location.MeshName,
-                        location.OwnerNodeRid,
-                        location.SpotId,
-                        location.SpotGeneration,
-                        ZLinkSpotKind.Instance,
-                        location.LocationGeneration),
-                    location.LocationGeneration);
-            });
+                row.SpotKind,
+                row.AuthorityOwnerGeneration,
+                row.OwnerNodeGeneration),
+            row.AuthorityOwnerGeneration,
+            _ => ValueTask.FromResult<
+                (ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>(null),
+            () => rows.InvalidateSpotRoute(
+                new ZLinkSpotLocationKey(address.SpotId)));
     }
 
     internal async ValueTask<IReadOnlyList<Message>> ActivateInstanceSpotAsync(
@@ -136,7 +77,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     ?? throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.InvalidConfiguration,
                         "Instance Spot activation requires a Location Store.");
-        var descriptors = await store.ListMeshNodesAsync(
+        var descriptors = await store.ListAllMeshNodesAsync(
                 address.MeshName,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -202,78 +143,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 metadata,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private static bool TryResolveInstanceAuthority(
-        InstanceSpotIntentAddress address,
-        ZLinkAuthoritySnapshot snapshot,
-        out ZLinkSpotHandleSnapshot handle)
-    {
-        handle = default;
-        if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Active
-            || snapshot.Allocation.ObjectKind != ZLinkPlacementObjectKind.InstanceSpot
-            || !ZLinkInstanceSpotAuthorityPayloadCodec.TryDecode(
-                snapshot.Payload.Span,
-                out var payload)
-            || payload.State != ZLinkInstanceSpotAuthorityState.Ready
-            || !string.Equals(payload.SpotId, address.SpotId, StringComparison.Ordinal)
-            || (!string.IsNullOrEmpty(address.InstanceSpotType)
-                && !string.Equals(
-                payload.StableType,
-                address.InstanceSpotType,
-                StringComparison.Ordinal)))
-            return false;
-        handle = new ZLinkSpotHandleSnapshot(
-            payload.MeshName,
-            payload.NodeRid,
-            payload.SpotId,
-            snapshot.ObjectGeneration,
-            ZLinkSpotKind.Instance,
-            snapshot.AuthorityOwnerGeneration);
-        return true;
-    }
-
-    private static bool TryResolveSpotAuthority(
-        string spotId,
-        ZLinkAuthoritySnapshot snapshot,
-        out ZLinkSpotHandleSnapshot handle)
-    {
-        handle = default;
-        if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Active)
-            return false;
-        if (snapshot.Allocation.ObjectKind == ZLinkPlacementObjectKind.InstanceSpot
-            && ZLinkInstanceSpotAuthorityPayloadCodec.TryDecode(
-                snapshot.Payload.Span,
-                out var instance)
-            && instance.State == ZLinkInstanceSpotAuthorityState.Ready
-            && string.Equals(instance.SpotId, spotId, StringComparison.Ordinal))
-        {
-            handle = new ZLinkSpotHandleSnapshot(
-                instance.MeshName,
-                instance.NodeRid,
-                instance.SpotId,
-                snapshot.ObjectGeneration,
-                ZLinkSpotKind.Instance,
-                snapshot.AuthorityOwnerGeneration);
-            return true;
-        }
-        if (snapshot.Allocation.ObjectKind == ZLinkPlacementObjectKind.UserSpot
-            && ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
-                snapshot.Payload.Span,
-                out var user)
-            && user.State == ZLinkUserSpotAuthorityState.Ready
-            && string.Equals(user.SpotId, spotId, StringComparison.Ordinal))
-        {
-            handle = new ZLinkSpotHandleSnapshot(
-                user.MeshName,
-                user.NodeRid,
-                user.SpotId,
-                snapshot.ObjectGeneration,
-                ZLinkSpotKind.User,
-                snapshot.AuthorityOwnerGeneration);
-            return true;
-        }
-        return false;
     }
 
     private static bool IsEligibleInstanceCandidate(

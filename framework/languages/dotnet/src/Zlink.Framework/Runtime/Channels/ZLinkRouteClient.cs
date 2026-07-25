@@ -44,17 +44,6 @@ internal sealed class ZLinkSpotClient(ZLinkFrameworkRuntime runtime) : IZLinkSpo
     public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request) =>
         new ZLinkInstanceSpotRequestCall<TRequest>(runtime, spotId, request);
 
-    public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message) =>
-        new ZLinkRouteSpotSendCall<TMessage>(runtime, RequireResolvedHandle(target), message);
-
-    public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request) =>
-        new ZLinkRouteSpotRequestCall<TRequest>(runtime, RequireResolvedHandle(target), request);
-
-    private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target) =>
-        target as ZLinkResolvedSpotHandle
-        ?? throw new ArgumentException(
-            "Spot handle was not created by this framework runtime.",
-            nameof(target));
 }
 
 internal sealed class ZLinkChannelSendCall<TMessage>(
@@ -344,7 +333,9 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
                     snapshot.NodeRid,
                     snapshot.SpotId,
                     (ulong)snapshot.Generation,
+                    snapshot.NodeGeneration,
                     snapshot.AuthorityOwnerGeneration,
+                    snapshot.OwnerLeaseGeneration,
                     parts,
                     cancellationToken,
                     _metadata.Encode())
@@ -354,8 +345,10 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
                 "Spot send",
                 ZLinkFrameworkErrorKind.SpotRouteNotFound);
         }
-        catch
+        catch (ZLinkFrameworkException error)
+            when (ZLinkSpotHandleRequestExecution.IsStaleRoute(error))
         {
+            target.InvalidateRoute();
             throw;
         }
     }
@@ -432,7 +425,9 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
                         snapshot.NodeRid,
                         snapshot.SpotId,
                         (ulong)snapshot.Generation,
+                        snapshot.NodeGeneration,
                         snapshot.AuthorityOwnerGeneration,
+                        snapshot.OwnerLeaseGeneration,
                         parts,
                         timeout,
                         cancellationToken,

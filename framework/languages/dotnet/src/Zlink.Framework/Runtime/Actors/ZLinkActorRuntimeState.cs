@@ -12,6 +12,7 @@ internal sealed class ZLinkActorRuntimeState(
     private Task<IZLinkActor>? _actorCreationTask;
     private int _actorMetricActive;
     private ZLinkActorBoundSession? _boundSession;
+    private ZLinkPendingActorSessionRoute? _pendingSessionRoute;
     private TaskCompletionSource<Exception?>? _teardownAttempt;
 
     public string ActorId { get; } = actorId;
@@ -124,12 +125,16 @@ internal sealed class ZLinkActorRuntimeState(
 
     public void JoinSpot(ZLinkSpotActivation activation)
     {
+        Context?.UpdateSameNodeSpot(activation.SpotId);
         Activation = activation;
     }
 
     public void LeaveSpotIfCurrent(ZLinkSpotActivation activation)
     {
-        if (ReferenceEquals(Activation, activation)) Activation = null;
+        if (!ReferenceEquals(Activation, activation)) return;
+
+        Context?.UpdateSameNodeSpot(null);
+        Activation = null;
     }
 
     public void BindNativeActorRef(ZLinkBackendActorRef actorRef)
@@ -141,15 +146,16 @@ internal sealed class ZLinkActorRuntimeState(
     public bool BindActorInstance(IZLinkActor actor)
     {
         EnsureReusable();
-        if (!string.Equals(ActorId, actor.ActorId, StringComparison.Ordinal))
+        if (Context is { } expectedContext
+            && !ReferenceEquals(actor.Context, expectedContext))
             throw new InvalidOperationException(
-                $"Actor state id '{ActorId}' does not match actor id '{actor.ActorId}'.");
+                $"Actor '{ActorId}' must expose its framework-issued Context.");
 
         if (Actor is not null
             && !ReferenceEquals(Actor, actor)
             && (SessionId is not null || Activation is not null))
             throw new InvalidOperationException(
-                $"Actor id '{actor.ActorId}' is already bound to another actor instance.");
+                $"Actor id '{ActorId}' is already bound to another actor instance.");
 
         if (ReferenceEquals(Actor, actor)) return false;
 
@@ -190,15 +196,234 @@ internal sealed class ZLinkActorRuntimeState(
     public void BindSession(
         RoutingId? sessionNodeRid,
         RoutingId sessionRid,
-        string bindingToken)
+        string bindingToken,
+        ulong bindingGeneration = 1,
+        ulong objectGeneration = 0,
+        ulong authorityOwnerGeneration = 0,
+        string meshName = "",
+        ulong targetNodeGeneration = 1,
+        ulong ownerLeaseGeneration = 0,
+        ulong sessionOwnerNodeGeneration = 1,
+        ulong acceptedHighWater = 0)
     {
         EnsureReusable();
         if (bindingToken.Length == 0)
             throw new InvalidOperationException("Actor session binding token must not be empty.");
+        if (string.IsNullOrWhiteSpace(meshName)
+            || targetNodeGeneration == 0
+            || ownerLeaseGeneration == 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{ActorId}' session binding requires an exact Mesh, node lifecycle, and owner lease.");
 
         lock (_sessionGate)
         {
-            _boundSession = new ZLinkActorBoundSession(sessionNodeRid, sessionRid, bindingToken);
+            _boundSession = new ZLinkActorBoundSession(
+                sessionNodeRid,
+                sessionRid,
+                bindingToken,
+                bindingGeneration,
+                objectGeneration,
+                authorityOwnerGeneration,
+                meshName,
+                targetNodeGeneration,
+                ownerLeaseGeneration,
+                sessionOwnerNodeGeneration,
+                acceptedHighWater);
+        }
+    }
+
+    public void RecordBoundSessionAccepted(string bindingToken)
+    {
+        lock (_sessionGate)
+        {
+            if (_boundSession is not { } current
+                || !string.Equals(
+                    current.BindingToken,
+                    bindingToken,
+                    StringComparison.Ordinal))
+                return;
+            _boundSession = current with
+            {
+                AcceptedHighWater = checked(current.AcceptedHighWater + 1)
+            };
+        }
+    }
+
+    public void RecordRelocatedSessionAccepted(RoutingId sessionRid)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is { } pending
+                && pending.Route.SessionRid is { } pendingSessionRid
+                && pendingSessionRid == sessionRid)
+            {
+                _pendingSessionRoute = pending with
+                {
+                    Route = pending.Route with
+                    {
+                        AcceptedHighWater =
+                            checked(pending.Route.AcceptedHighWater + 1)
+                    }
+                };
+                return;
+            }
+
+            if (_boundSession is not { } current
+                || current.SessionRid != sessionRid)
+                return;
+            _boundSession = current with
+            {
+                AcceptedHighWater = checked(current.AcceptedHighWater + 1)
+            };
+        }
+    }
+
+    public void StageRelocationSessionRoute(
+        string handoffId,
+        ZLinkRemoteActorBoundSessionRoute route)
+    {
+        lock (_sessionGate)
+        {
+            if (!route.IsBound)
+            {
+                _pendingSessionRoute = null;
+                return;
+            }
+            if (_pendingSessionRoute is { } pending
+                && !string.Equals(
+                    pending.HandoffId,
+                    handoffId,
+                    StringComparison.Ordinal))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorMoving,
+                    $"Actor '{ActorId}' already stages another session route.");
+            _pendingSessionRoute = new ZLinkPendingActorSessionRoute(
+                handoffId,
+                route,
+                TargetActor: null,
+                TargetAuthorityOwnerGeneration: 0);
+        }
+    }
+
+    public void MarkRelocationSessionAuthorityCommitted(
+        string handoffId,
+        ZLinkBackendActorRef targetActor,
+        ulong targetAuthorityOwnerGeneration,
+        string targetMeshName,
+        ulong targetNodeGeneration,
+        ulong targetOwnerLeaseGeneration)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is not { } pending)
+                return;
+            if (!string.Equals(pending.HandoffId, handoffId, StringComparison.Ordinal)
+                || pending.Route.ObjectGeneration != targetActor.Generation
+                || string.IsNullOrWhiteSpace(targetMeshName)
+                || targetNodeGeneration == 0
+                || targetOwnerLeaseGeneration == 0
+                || targetAuthorityOwnerGeneration
+                <= pending.Route.AuthorityOwnerGeneration)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorGenerationStale,
+                    $"Actor '{ActorId}' staged session route does not match committed authority.");
+            _pendingSessionRoute = pending with
+            {
+                TargetActor = targetActor,
+                TargetAuthorityOwnerGeneration = targetAuthorityOwnerGeneration,
+                TargetMeshName = targetMeshName,
+                TargetNodeGeneration = targetNodeGeneration,
+                TargetOwnerLeaseGeneration = targetOwnerLeaseGeneration
+            };
+        }
+    }
+
+    public bool TryGetCommittedRelocationSessionRoute(
+        string handoffId,
+        out ZLinkPendingActorSessionRoute route)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is
+                {
+                    TargetActor: not null,
+                    TargetAuthorityOwnerGeneration: > 0
+                } pending
+                && string.Equals(
+                    pending.HandoffId,
+                    handoffId,
+                    StringComparison.Ordinal))
+            {
+                route = pending;
+                return true;
+            }
+        }
+
+        route = default;
+        return false;
+    }
+
+    public bool TryGetStagedRelocationSessionRoute(
+        string handoffId,
+        out ZLinkRemoteActorBoundSessionRoute route)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is { } pending
+                && string.Equals(
+                    pending.HandoffId,
+                    handoffId,
+                    StringComparison.Ordinal))
+            {
+                route = pending.Route;
+                return true;
+            }
+        }
+        route = default;
+        return false;
+    }
+
+    public void CompleteRelocationSessionRoute(string handoffId)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is not { } pending
+                || !string.Equals(
+                    pending.HandoffId,
+                    handoffId,
+                    StringComparison.Ordinal))
+                return;
+            var target = pending.TargetActor
+                         ?? throw new InvalidOperationException(
+                             "A session route cannot complete before authority commit.");
+            var route = pending.Route;
+            _boundSession = new ZLinkActorBoundSession(
+                route.NodeRid,
+                route.SessionRid!.Value,
+                route.BindingToken!,
+                route.BindingGeneration,
+                target.Generation,
+                pending.TargetAuthorityOwnerGeneration,
+                pending.TargetMeshName!,
+                pending.TargetNodeGeneration,
+                pending.TargetOwnerLeaseGeneration,
+                route.SessionOwnerNodeGeneration,
+                route.AcceptedHighWater);
+            _pendingSessionRoute = null;
+        }
+    }
+
+    public void AbortRelocationSessionRoute(string handoffId)
+    {
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is { } pending
+                && string.Equals(
+                    pending.HandoffId,
+                    handoffId,
+                    StringComparison.Ordinal))
+                _pendingSessionRoute = null;
         }
     }
 
@@ -300,6 +525,7 @@ internal sealed class ZLinkActorRuntimeState(
                 _teardownPending = false;
                 _teardownAttempt = null;
                 Handoff.Reset();
+                _pendingSessionRoute = null;
                 break;
             case ZLinkActorTerminalTransition.Migrated:
                 RetiredLocalActorRef = retiredLocalActor
@@ -419,8 +645,9 @@ internal sealed class ZLinkActorRuntimeState(
     public void EnsureContextValid()
     {
         if (ContextInvalidated)
-            throw new InvalidOperationException(
-                $"Actor context for '{ActorId}' is no longer valid because actor ownership moved to another SpotNode.");
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorMoving,
+                $"Actor context for '{ActorId}' cannot start an operation after owner cutover.");
     }
 
     public void InvalidateContext()
@@ -771,10 +998,29 @@ internal readonly record struct ZLinkActorTeardownOperation(
     bool OwnsExecution,
     bool NativeAlreadyDestroyed);
 
+// Actor-side delivery projection reconstructed from binding and relocation
+// payloads. It does not publish or replace the Session owner's binding route.
 internal readonly record struct ZLinkActorBoundSession(
     RoutingId? SessionNodeRid,
     RoutingId SessionRid,
-    string BindingToken);
+    string BindingToken,
+    ulong BindingGeneration = 1,
+    ulong ObjectGeneration = 0,
+    ulong AuthorityOwnerGeneration = 0,
+    string MeshName = "",
+    ulong TargetNodeGeneration = 1,
+    ulong OwnerLeaseGeneration = 0,
+    ulong SessionOwnerNodeGeneration = 1,
+    ulong AcceptedHighWater = 0);
+
+internal readonly record struct ZLinkPendingActorSessionRoute(
+    string HandoffId,
+    ZLinkRemoteActorBoundSessionRoute Route,
+    ZLinkBackendActorRef? TargetActor,
+    ulong TargetAuthorityOwnerGeneration,
+    string? TargetMeshName = null,
+    ulong TargetNodeGeneration = 0,
+    ulong TargetOwnerLeaseGeneration = 0);
 
 internal readonly record struct ZLinkActorCreationOperation(
     Task<IZLinkActor> Task,

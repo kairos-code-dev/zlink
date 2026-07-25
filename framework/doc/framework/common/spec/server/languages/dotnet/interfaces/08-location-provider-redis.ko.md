@@ -109,6 +109,14 @@ Spot kind별 write나 phase별 method를 제공하거나 payload를 해석하지
 정렬한다. Type별 `HasSnapshotAdapter`는 해당 kind의 Snapshot adapter 등록 여부만 저장하며 application state의
 format, version이나 contract ID를 저장하지 않는다. Weight·capacity·wave·state를 갱신해도 같은 capability 배열과
 adapter flag를 보존한다.
+
+Redis aggregate script는 기존 `PrepareAggregateAsync` request의 `OwnerTransition`으로 mode를 판정한다.
+`NewOwner`가 하나라도 있으면 해당 participant의 durable allocation delta만 합산한 non-zero capacity를 예약한다.
+모두 `Preserve`이면 exact zero capacity와 모든 empty membership mutation을 요구하고 reservation 없이 authority
+payload만 atomic하게 변경한다. 이 mode에서는 owner, `ObjectGeneration`, `AuthorityOwnerGeneration`과 durable
+Active allocation을 유지한다. Zero capacity와 `NewOwner`, non-zero capacity와 all-Preserve 조합은 `Conflict`이며
+Redis key, counter와 aggregate record의 mutation은 0이다. 이 동작은 새 public method 없이 같은
+`IZLinkAuthorityStore` aggregate operation으로 제공한다.
 Creation terminal key의 RID segment는 transport `RoutingId`의 exact raw bytes 길이와 그 raw bytes의
 lowercase hex를 사용한다. Canonical hex text를 UTF-8로 다시 encode하지 않는다. Raw bytes가 `node-a`이면
 segment는 `6:6e6f64652d61`이다.

@@ -351,20 +351,20 @@ ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 �
 - C++ source·package의 `zlink_framework_options_t::add_route_mesh(mesh_name)`은 목표 계약대로
   `mesh_node_builder_t`를 반환하지만 `spot_mesh_builder_t`와 `connect_peer_pub`도 공개 표면에 남아 있다.
 
-### 12.34 `.NET`·C++ ActorRef 필드 집합 불일치
+### 12.34 C++ ActorRef 필드 집합 불일치
 
 [상호작용 모델 §7](02-interaction-model.ko.md#7-spot과-actor)과
-[Actor 모델 §2](22-actor-model.ko.md#2-actor-identity와-서로-독립적인-상태)는 `ActorRef`를 owner node의 `NodeRid`,
-논리 `ActorId`, 현재 `Generation` 세 값으로 고정한다. endpoint, 내부 frame, location row와 Actor type은
-참조에 포함하지 않는다. `ActorRefSnapshot`도 같은 세 값만 보존하고 별도 인자 없이 참조로 복원한다.
+[Actor 모델 §2](22-actor-model.ko.md#2-actor-identity와-서로-독립적인-상태)는 `ActorRef`를 논리
+`ActorId`, `ObjectGeneration`, 현재 `MeshName`과 owner `NodeRid` 네 값으로 고정한다. endpoint,
+내부 frame, location row와 Actor type은 참조에 포함하지 않는다. 별도의 public snapshot type도
+제공하지 않는다.
 
-`.NET` binding의 값 타입은 세 값 외에 계약 밖 `IsUnchecked` 공개 property를 노출한다. C++ `actor_ref_t`는 `actor_type` 필드와 accessor를
-추가로 노출하고, `actor_ref_snapshot_t::to_actor_ref(actor_type)` 호출자가 snapshot에 없는 type을 다시
-주입해야 한다.
+C++ `actor_ref_t`는 `actor_type` 필드와 accessor를 추가로 노출하고,
+`actor_ref_snapshot_t::to_actor_ref(actor_type)` 호출자가 snapshot에 없는 type을 다시 주입해야 한다.
 
-`.NET`은 `IsUnchecked`를 공개 표면에서 제거해야 한다. C++은 `actor_ref_t`의 `actor_type`과 accessor를
-제거하고 snapshot 복원을 인자 없는 `to_actor_ref()`로 바꾼다. Actor handler 선택에 필요한 Actor type은
-Actor manager와 runtime registry가 소유하며 application의 참조 복원 호출자에게 전달하지 않는다.
+C++은 `actor_ref_t`를 네 target field로 맞추고 `actor_ref_snapshot_t`를 public 표면에서 제거해야 한다.
+Actor handler 선택에 필요한 Actor type은 Actor manager와 runtime registry가 소유하며 application의
+참조 복원 호출자에게 전달하지 않는다. `.NET`은 이미 target field와 snapshot 제거 계약에 맞는다.
 
 ### 12.35 C++ Actor lifetime 중 generation 변경
 

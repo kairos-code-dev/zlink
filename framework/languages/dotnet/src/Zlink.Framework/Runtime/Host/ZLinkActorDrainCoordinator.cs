@@ -9,11 +9,8 @@ internal sealed class ZLinkActorDrainCoordinator(
     ZLinkFrameworkActorFacade actors,
     ZLinkActorSessionManager actorSessions,
     IServiceProvider services,
-    ZLinkFrameworkRegistration registration,
-    ZLinkRelocationPermitPool permits)
+    ZLinkFrameworkRegistration registration)
 {
-    private readonly ZLinkRelocationPermitPool _permits = permits;
-
     public async ValueTask<ZLinkFrameworkTerminationReason?> PreflightAsync(
         CancellationToken cancellationToken)
     {
@@ -89,86 +86,68 @@ internal sealed class ZLinkActorDrainCoordinator(
             var eligible = targets.Where(target => target.NodeRid != sourceNode.Value).ToArray();
             if (eligible.Length == 0) return false;
 
-            var capture = IsSnapshotPolicy(actorType);
-            if (!_permits.TryAcquire(
-                    ZLinkRelocationPermitRequest.Outbound(
-                        payloadBytes: 0,
-                        capture),
-                    out var permit))
-                return false;
-            using (permit)
+            var start = (Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length;
+            for (var attempt = 0; attempt < eligible.Length; attempt++)
             {
-                var start = (Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length;
-                for (var attempt = 0; attempt < eligible.Length; attempt++)
+                var target = eligible[(start + attempt) % eligible.Length];
+                try
                 {
-                    var target = eligible[(start + attempt) % eligible.Length];
-                    try
-                    {
-                        // Entry Spot itself is not relocated. Its stable Spot ID
-                        // selects the target admission transaction that restores
-                        // this Actor and preserves ObjectGeneration.
-                        var result = await actors.JoinActorAsync(
-                                target.EntrySpotId,
-                                actor,
-                                ZLinkMessage.Empty,
-                                operationId: null,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                        if (result is not ZLinkActorJoinResult.Accepted)
-                        {
-                            ZLinkFrameworkDebugLog.SpotDiscovery(
-                                $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} result=rejected");
-                            continue;
-                        }
-                        ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
-                        return true;
-                    }
-                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch (ZLinkFrameworkException error)
+                    // Entry Spot itself is not relocated. Its stable Spot ID
+                    // selects the target admission transaction that restores
+                    // this Actor and preserves ObjectGeneration.
+                    var result = await actors.JoinActorAsync(
+                            target.EntrySpotId,
+                            actor,
+                            ZLinkMessage.Empty,
+                            operationId: null,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (result is not ZLinkActorJoinResult.Accepted)
                     {
                         ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} kind={error.Kind} message={error.Message}");
-                        // A peer can leave or reject admission after the location
-                        // snapshot. Try the remaining compatible entries before
-                        // the next bounded drain pass refreshes the store view.
+                            $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} result=rejected");
+                        continue;
                     }
-                    catch (ZlinkSubmitException error)
-                    {
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"drain handoff submit deferred actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
-                        // A native route request can be temporarily busy. The
-                        // next bounded drain pass retries with a refreshed view.
-                    }
-                    catch (TimeoutException error)
-                    {
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"drain handoff timed out actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
-                        // Target availability can change during one request. The
-                        // global drain deadline, not one request timeout, owns the
-                        // terminal DeadlineExceeded decision.
-                    }
-                    catch (ZLinkActorHandoffRejectedException error)
-                    {
-                        ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
-                        // A completed rollback leaves the source actor eligible
-                        // for the next bounded target refresh.
-                    }
+                    ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
+                    return true;
                 }
-                return false;
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (ZLinkFrameworkException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} kind={error.Kind} message={error.Message}");
+                    // A peer can leave or reject admission after the location
+                    // snapshot. Try the remaining compatible entries before
+                    // the next bounded drain pass refreshes the store view.
+                }
+                catch (ZlinkSubmitException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff submit deferred actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
+                    // A native route request can be temporarily busy. The
+                    // next bounded drain pass retries with a refreshed view.
+                }
+                catch (TimeoutException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff timed out actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
+                    // Target availability can change during one request. The
+                    // global drain deadline, not one request timeout, owns the
+                    // terminal DeadlineExceeded decision.
+                }
+                catch (ZLinkActorHandoffRejectedException error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
+                    // A completed rollback leaves the source actor eligible
+                    // for the next bounded target refresh.
+                }
             }
+            return false;
         }
-    }
-
-    private bool IsSnapshotPolicy(string actorType)
-    {
-        foreach (var node in registration.SpotNodes.Values)
-            if (node.ActorRelocations.TryGetValue(actorType, out var relocation))
-                return relocation.PolicyKind == 2;
-        return registration.ActorCatalog.TryGetTransfer(actorType, out _);
     }
 
     internal static string? ResolveMeshName(

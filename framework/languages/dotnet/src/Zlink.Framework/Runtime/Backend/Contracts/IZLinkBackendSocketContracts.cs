@@ -117,20 +117,6 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
         SendFlags flags,
         TimeSpan? timeout);
 
-    bool SendToSpot(
-        RoutingId targetNodeRid,
-        string targetSpotId,
-        IReadOnlyList<Message> parts,
-        SendFlags flags);
-
-    bool RequestToSpot(
-        RoutingId targetNodeRid,
-        string targetSpotId,
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags,
-        TimeSpan? timeout);
-
     void Reply(
         RoutingId routingId,
         ulong requestSeq,

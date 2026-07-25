@@ -14,7 +14,6 @@ public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
     IZLinkClientServerLocationStore,
     IZLinkFanoutLocationStore,
-    IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {
@@ -99,10 +98,28 @@ public sealed partial class ZLinkRedisLocationStore :
             },
             cancellationToken);
 
-    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
         string meshName,
+        ZLinkPageRequest page,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        var pageSize = page.PageSize <= 0 ? 100 : page.PageSize;
+        if (pageSize > 1000)
+            throw new ArgumentOutOfRangeException(nameof(page));
+        var offset = page.ContinuationToken is { } token
+            && int.TryParse(
+                token,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var parsed)
+            && parsed >= 0
+                ? parsed
+                : page.ContinuationToken is null
+                    ? 0
+                    : throw new ArgumentException(
+                        "The MeshNode continuation token is invalid.",
+                        nameof(page));
         return await ExecuteAsync(
                 async database =>
                 {
@@ -117,6 +134,7 @@ public sealed partial class ZLinkRedisLocationStore :
                         .ConfigureAwait(false);
                     var selected = rows
                         .Where(row => string.Equals(row.MeshName, meshName, StringComparison.Ordinal))
+                        .OrderBy(static row => row.Rid.ToString(), StringComparer.Ordinal)
                         .ToArray();
                     for (var index = 0; index < selected.Length; index++)
                     {
@@ -173,7 +191,14 @@ public sealed partial class ZLinkRedisLocationStore :
                                 spotTypes)
                         };
                     }
-                    return (IReadOnlyList<ZLinkMeshNodeDescriptor>)selected;
+                    var items = selected.Skip(offset).Take(pageSize).ToArray();
+                    var nextOffset = offset + items.Length;
+                    return new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(
+                        items,
+                        nextOffset < selected.Length
+                            ? nextOffset.ToString(
+                                System.Globalization.CultureInfo.InvariantCulture)
+                            : null);
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -340,70 +365,7 @@ public sealed partial class ZLinkRedisLocationStore :
             cancellationToken);
     }
 
-    // ----- spot store ------------------------------------------------------
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
-        ZLinkSpotLocation spot,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        WriteAsync(
-            ZLinkRedisLocationKinds.Spot,
-            spot,
-            intent,
-            cancellationToken,
-            spot.SpotId);
-
-    public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
-        ZLinkSpotLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default) =>
-        RemoveAsync(
-            ZLinkRedisLocationKinds.Spot.Tag,
-            ZLinkRedisLocationKeyCodec.EncodeSpotKey(key),
-            meshName: null,
-            owner, cancellationToken);
-
-    public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
-        ZLinkSpotLocationKey key,
-        CancellationToken cancellationToken = default) =>
-        ResolveAsync(ZLinkRedisLocationKinds.Spot, ZLinkRedisLocationKeyCodec.EncodeSpotKey(key), cancellationToken);
-
-    // ----- actor store -----------------------------------------------------
-
-    public ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
-        ZLinkActorLocation actor,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        WriteAsync(ZLinkRedisLocationKinds.Actor, actor, intent, cancellationToken);
-
-    public ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
-        ZLinkActorLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default) =>
-        RemoveAsync(
-            ZLinkRedisLocationKinds.Actor.Tag,
-            ZLinkRedisLocationKeyCodec.EncodeActorKey(key),
-            null,
-            owner, cancellationToken);
-
-    public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
-        ZLinkActorLocationKey key,
-        CancellationToken cancellationToken = default) =>
-        ResolveAsync(ZLinkRedisLocationKinds.Actor, ZLinkRedisLocationKeyCodec.EncodeActorKey(key), cancellationToken);
-
     // ----- owner lease store -----------------------------------------------
-
-    public async ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
-        string ownerId,
-        RoutingId nodeRid,
-        TimeSpan leaseTtl,
-        CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(
-                database => _commands.RenewOwnerLeaseAsync(database, ownerId, nodeRid, leaseTtl),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
 
     public async ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
         string ownerId,
@@ -463,16 +425,6 @@ public sealed partial class ZLinkRedisLocationStore :
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<bool> RemoveOwnerLeaseAsync(
-        string ownerId,
-        CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(
-                database => _commands.RemoveOwnerLeaseAsync(database, ownerId),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     public async ValueTask<long> RemoveAllByOwnerAsync(
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
@@ -486,15 +438,6 @@ public sealed partial class ZLinkRedisLocationStore :
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
-        CancellationToken cancellationToken = default)
-    {
-        return await ExecuteAsync(
-                _commands.ListOwnerLeasesAsync,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     // ----- change stamp store ----------------------------------------------
 
     public async ValueTask<ulong> GetChangeStampAsync(
@@ -503,43 +446,6 @@ public sealed partial class ZLinkRedisLocationStore :
     {
         return await ExecuteAsync(
                 database => _commands.GetChangeStampAsync(database, scope),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    // ----- routing-id slot allocation ------------------------------------
-
-    public async ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
-        ZLinkRoutingIdSlotAcquireRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        ZLinkRoutingIdSlotAllocationValidator.ValidateAcquire(request);
-        return await ExecuteAsync(
-                database => _commands.AcquireRoutingIdSlotAsync(database, request),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
-        string groupName,
-        int slot,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default)
-    {
-        ZLinkRoutingIdSlotAllocationValidator.ValidateRelease(groupName, slot, owner);
-        return await ExecuteAsync(
-                database => _commands.ReleaseRoutingIdSlotAsync(database, groupName, slot, owner),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
-        string groupName,
-        CancellationToken cancellationToken = default)
-    {
-        ZLinkRoutingIdSlotAllocationValidator.ValidateGroupName(groupName);
-        return await ExecuteAsync(
-                database => _commands.ListRoutingIdSlotsAsync(database, groupName),
                 cancellationToken)
             .ConfigureAwait(false);
     }

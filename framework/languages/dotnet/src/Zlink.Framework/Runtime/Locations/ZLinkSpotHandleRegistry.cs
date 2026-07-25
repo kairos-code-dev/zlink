@@ -19,7 +19,7 @@ internal sealed class ZLinkSpotHandleRegistry
     internal void RegisterActor(ZLinkActorLocationKey key, ZLinkResolvedSpotHandle handle)
         => Register(_actors, key, handle);
 
-    internal void UpdateSpot(ZLinkSpotLocation row)
+    internal void UpdateSpot(ZLinkResolvedSpotLocation row)
         => Apply(_spots, new ZLinkSpotLocationKey(row.SpotId), handle => handle.Update(
             new ZLinkSpotHandleSnapshot(
                 row.MeshName,
@@ -27,19 +27,21 @@ internal sealed class ZLinkSpotHandleRegistry
                 row.SpotId,
                 row.SpotGeneration,
                 row.SpotKind,
-                row.AuthorityOwnerGeneration),
+                row.AuthorityOwnerGeneration,
+                row.OwnerNodeGeneration,
+                checked((ulong)row.LeaseGeneration)),
             row.SpotGeneration));
 
     internal void RemoveSpot(ZLinkSpotLocationKey key, ulong spotGeneration)
         => Apply(_spots, key, handle => handle.Invalidate(spotGeneration));
 
-    internal void UpdateActor(ZLinkActorLocation row)
+    internal void UpdateActor(ZLinkResolvedActorLocation row)
         => Apply(
             _actors,
             new ZLinkActorLocationKey(row.ActorId),
             handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
 
-    private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
+    private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkResolvedActorLocation row)
         => row.SpotKind == ZLinkSpotKind.Entry || string.IsNullOrEmpty(row.SpotId)
             ? new ZLinkSpotHandleSnapshot(
                 row.MeshName,
@@ -47,14 +49,18 @@ internal sealed class ZLinkSpotHandleRegistry
                 row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.Entry,
-                row.AuthorityOwnerGeneration)
+                row.AuthorityOwnerGeneration,
+                row.OwnerNodeGeneration,
+                checked((ulong)row.LeaseGeneration))
             : new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
                 row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.User,
-                row.AuthorityOwnerGeneration);
+                row.AuthorityOwnerGeneration,
+                row.OwnerNodeGeneration,
+                checked((ulong)row.LeaseGeneration));
 
     internal void RemoveActor(ZLinkActorLocationKey key)
         => Apply(_actors, key, static handle => handle.InvalidateCurrent());

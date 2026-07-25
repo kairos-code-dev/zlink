@@ -68,7 +68,7 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Reconciler.TickAsync();
 
         var row = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(ZLinkFrameworkRuntimeState.Draining, row.State);
         Assert.True(row.DescriptorRevision > 1);
@@ -84,7 +84,7 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Reconciler.TickAsync();
 
         var row = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(0, row.ChannelWeights["play"]);
         Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
@@ -96,13 +96,13 @@ public sealed class AutoConnectReconcilerTests
         var fixture = await FixtureAsync();
         await fixture.Reconciler.TickAsync();
         var initial = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
 
         fixture.Reconciler.SetLocalPlacementWeight(10_000);
         await fixture.Reconciler.TickAsync();
         var placement = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(10_000, placement.PlacementWeight);
         Assert.True(
@@ -111,7 +111,7 @@ public sealed class AutoConnectReconcilerTests
         fixture.Reconciler.SetLocalWeight(10_000);
         await fixture.Reconciler.TickAsync();
         var channel = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(10_000, channel.ChannelWeights["play"]);
         Assert.True(
@@ -133,14 +133,14 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Reconciler.TickAsync();
 
         var updated = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(100, updated.ChannelWeights["play"]);
         Assert.Equal(300, updated.ChannelWeights["orders"]);
 
         Assert.True(await fixture.Reconciler.SetAllLocalChannelWeightsAsync(0));
         var drained = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.All(drained.ChannelWeights.Values, static weight => Assert.Equal(0, weight));
         Assert.True(drained.DescriptorRevision > updated.DescriptorRevision);
@@ -264,9 +264,8 @@ public sealed class AutoConnectReconcilerTests
             ZLinkOwnerLeaseReleaseResult.Released,
             await fixture.Store.ReleaseOwnerLeaseAsync(
                 new ZLinkLocationOwnerToken("peer-owner", 2)));
-        await fixture.Store.RenewOwnerLeaseAsync(
+        await fixture.Store.ClaimLiveOwnerAsync(
             "peer-owner",
-            RoutingId.From("peer-node"),
             TimeSpan.FromMinutes(10));
         await fixture.Store.UpdateMeshNodeAsync(
             Descriptor("r1", "tcp://r:9") with
@@ -367,8 +366,9 @@ public sealed class AutoConnectReconcilerTests
             ZLinkOwnerLeaseReleaseResult.Released,
             await fixture.Store.ReleaseOwnerLeaseAsync(
                 new ZLinkLocationOwnerToken("peer-owner", 2)));
-        await fixture.Store.RenewOwnerLeaseAsync(
-            "peer-owner-2", RoutingId.From("peer-node-2"), TimeSpan.FromMinutes(10));
+        await fixture.Store.ClaimLiveOwnerAsync(
+            "peer-owner-2",
+            TimeSpan.FromMinutes(10));
         var restarted = Descriptor("r1", "tcp://r:1") with
         {
             OwnerId = "peer-owner-2",
@@ -383,36 +383,80 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
-    public async Task Local_Row_Publish_Takes_Over_Same_Key_After_Process_Restart()
+    public async Task Local_Row_Publish_Rejects_A_Conflicting_Routing_Id()
     {
         var fixture = await FixtureAsync();
-        await fixture.Store.RenewOwnerLeaseAsync(
+        var oldOwner = await fixture.Store.ClaimLiveOwnerAsync(
             "old-local-owner",
-            RoutingId.From("old-local-node"),
             LeaseTtl);
-        await fixture.Store.UpdateMeshNodeAsync(
-            Descriptor("local", "tcp://l:1") with
-            {
-                OwnerId = "old-local-owner",
-                LeaseGeneration = 3
-            },
-            ZLinkLocationWriteIntent.NewClaim);
         Assert.Equal(
-            ZLinkOwnerLeaseReleaseResult.Released,
-            await fixture.Store.ReleaseOwnerLeaseAsync(
-                new ZLinkLocationOwnerToken("old-local-owner", 3)));
-
-        await fixture.Reconciler.TickAsync();
+            ZLinkLocationWriteStatus.Stored,
+            (await fixture.Store.UpdateMeshNodeAsync(
+                Descriptor("local", "tcp://l:1") with
+                {
+                    OwnerId = oldOwner.OwnerId,
+                    LeaseGeneration = oldOwner.LeaseGeneration
+                },
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            async () => await fixture.Reconciler.TickAsync());
 
         var row = Assert.Single(
-            await fixture.Store.ListMeshNodesAsync("play"),
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
             row => row.Rid.Equals(RoutingId.From("local")));
-        Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
-        // The row keeps the writer's core lifecycle generation verbatim;
-        // takeover fencing advances the store's owner token, not row content.
-        Assert.Equal(
-            Descriptor("local", "tcp://l:1").LifecycleGeneration,
-            row.LifecycleGeneration);
+        Assert.Equal(ZLinkFrameworkErrorKind.RoutingIdConflict, error.Kind);
+        Assert.Equal(oldOwner, new ZLinkLocationOwnerToken(
+            row.OwnerId,
+            row.LeaseGeneration));
+    }
+
+    [Fact]
+    public async Task Claimed_Startup_Row_Uses_Renew_Then_Exact_Owner_Cleanup()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        await runtime.RenewOwnerLeaseOnceAsync();
+        var preparing = Descriptor("local", "tcp://l:1") with
+        {
+            OwnerId = string.Empty,
+            LeaseGeneration = 0,
+            State = ZLinkFrameworkRuntimeState.Preparing
+        };
+        var claim = await runtime.WriteDescriptorAsync(
+            preparing,
+            ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, claim.Status);
+
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store, store, tracker, new ZLinkObservedLocationGenerations());
+        var reconciler = new ZLinkAutoConnectReconciler(
+            Local(
+                ZLinkLocationAutoConnectType.SpotMesh,
+                ZLinkLocationRole.Spot,
+                "local",
+                "tcp://l:1"),
+            preparing,
+            runtime,
+            resolvers,
+            new RecordingExecutor(),
+            options,
+            time,
+            initiallyPublished: true,
+            initialStoreGeneration: claim.Generation);
+
+        Assert.True(await reconciler.MarkServingAsync());
+        var serving = Assert.Single(
+            (await store.ListMeshNodesAsync("play", default)).Items);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, serving.State);
+        Assert.Equal(runtime.OwnerToken, new ZLinkLocationOwnerToken(
+            serving.OwnerId,
+            serving.LeaseGeneration));
+
+        await reconciler.ShutdownAsync();
+        Assert.Empty((await store.ListMeshNodesAsync("play", default)).Items);
     }
 
     [Fact]
@@ -435,11 +479,14 @@ public sealed class AutoConnectReconcilerTests
         await fixture.RemovePeerAsync("r1");
         fixture.PeerResolver.Fail = false;
         await fixture.Reconciler.TickAsync();
+        Assert.False(fixture.Reconciler.StoreFailed);
         Assert.Empty(fixture.Executor.Disconnected);
 
         // After the grace the fresh list wins and the vanished peer drops.
-        fixture.Time.Advance(TimeSpan.FromSeconds(11));
+        Assert.True(await fixture.Runtime.RenewOwnerLeaseOnceAsync());
+        fixture.Time.Advance(TimeSpan.FromSeconds(6));
         await fixture.Reconciler.TickAsync();
+        Assert.False(fixture.Reconciler.StoreFailed);
         Assert.Single(fixture.Executor.Disconnected);
     }
 
@@ -530,15 +577,18 @@ public sealed class AutoConnectReconcilerTests
         fixture.PeerResolver.Fail = false;
         await fixture.Reconciler.TickAsync();
 
+        Assert.False(fixture.Reconciler.StoreFailed);
         Assert.Empty(fixture.Executor.Disconnected);
         Assert.Equal(["tcp://r:1", "tcp://r:2"], fixture.Executor.Connected.Select(target => target.Endpoint));
         Assert.Equal(
             ["tcp://r:1", "tcp://r:2"],
             fixture.Reconciler.ActiveTargets.Select(target => target.Endpoint).Order());
 
-        fixture.Time.Advance(TimeSpan.FromSeconds(11));
+        Assert.True(await fixture.Runtime.RenewOwnerLeaseOnceAsync());
+        fixture.Time.Advance(TimeSpan.FromSeconds(6));
         await fixture.Reconciler.TickAsync();
 
+        Assert.False(fixture.Reconciler.StoreFailed);
         Assert.Equal("tcp://r:1", Assert.Single(fixture.Executor.Disconnected).Endpoint);
         Assert.Equal("tcp://r:2", Assert.Single(fixture.Reconciler.ActiveTargets).Endpoint);
     }
@@ -548,7 +598,7 @@ public sealed class AutoConnectReconcilerTests
     {
         var fixture = await FixtureAsync();
         await fixture.Reconciler.TickAsync();
-        var published = await fixture.Store.ListMeshNodesAsync("play");
+        var published = (await fixture.Store.ListMeshNodesAsync("play", default)).Items;
         Assert.Single(published);
 
         // Outage long enough for the local lease to expire and the row to
@@ -561,7 +611,7 @@ public sealed class AutoConnectReconcilerTests
         fixture.PeerResolver.Fail = false;
         await fixture.Reconciler.TickAsync();
 
-        published = await fixture.Store.ListMeshNodesAsync("play");
+        published = (await fixture.Store.ListMeshNodesAsync("play", default)).Items;
         Assert.Single(published);
         Assert.Equal(fixture.Runtime.OwnerId, published[0].OwnerId);
     }
@@ -572,16 +622,16 @@ public sealed class AutoConnectReconcilerTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
-        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
+        await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
         await store.UpdateMeshNodeAsync(
             Descriptor("r1", "tcp://r:1"),
             ZLinkLocationWriteIntent.NewClaim);
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
 
         // An EnableClient() dealer has neither a routing id nor an endpoint:
@@ -595,7 +645,7 @@ public sealed class AutoConnectReconcilerTests
         await reconciler.TickAsync();
 
         Assert.Equal("tcp://r:1", Assert.Single(executor.Connected).Endpoint);
-        var rows = await store.ListMeshNodesAsync("play");
+        var rows = (await store.ListMeshNodesAsync("play", default)).Items;
         Assert.Single(rows);
 
         // Shutdown has no row to remove and only tears down connections.
@@ -637,13 +687,13 @@ public sealed class AutoConnectReconcilerTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         configure?.Invoke(options);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
-        await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("peer-node"), TimeSpan.FromMinutes(10));
+        await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, store, tracker, new ZLinkObservedLocationGenerations());
         var failable = new FailablePeerResolver(resolvers);
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
@@ -673,8 +723,6 @@ public sealed class AutoConnectReconcilerTests
         ZLinkAutoConnectReconciler Reconciler,
         ManualTimeProvider Time)
     {
-        private readonly Dictionary<string, ulong> _generations = new(StringComparer.Ordinal);
-
         public async Task PublishPeerAsync(
             string rid,
             string endpoint,
@@ -687,17 +735,23 @@ public sealed class AutoConnectReconcilerTests
                     ? ZLinkFrameworkRuntimeState.Draining
                     : ZLinkFrameworkRuntimeState.Serving
             };
-            var result = await Store.UpdateMeshNodeAsync(
+            _ = await Store.UpdateMeshNodeAsync(
                 row,
                 takeover ? ZLinkLocationWriteIntent.Takeover : ZLinkLocationWriteIntent.NewClaim);
-            _generations[rid] = result.Generation;
         }
 
         public async Task RemovePeerAsync(string rid)
         {
-            await Store.RemoveMeshNodeAsync(
-                new ZLinkMeshNodeDescriptorKey("play", RoutingId.From(rid)),
-                new ZLinkLocationOwnerToken("peer-owner", _generations[rid]));
+            var row = Assert.Single(
+                (await Store.ListMeshNodesAsync("play", default)).Items,
+                candidate => candidate.Rid == RoutingId.From(rid));
+            Assert.Equal(
+                ZLinkLocationWriteStatus.Stored,
+                await Store.RemoveMeshNodeAsync(
+                    new ZLinkMeshNodeDescriptorKey("play", row.Rid),
+                    new ZLinkLocationOwnerToken(
+                        row.OwnerId,
+                        row.LeaseGeneration)));
         }
     }
 

@@ -8,19 +8,33 @@ internal sealed record ZLinkSpotAcceptedJournalRecord(
     RoutingId? SourceNodeRid,
     string? SpotId,
     ulong? RequestSequence,
+    ulong ReplyRouteId,
+    MeshOperationId OperationId,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
+    byte ForwardingHopCount,
     ZLinkMessageMetadata Metadata,
     IReadOnlyList<ReadOnlyMemory<byte>> Parts);
 
 internal static class ZLinkSpotAcceptedJournal
 {
     private const uint Magic = 0x5a4a5231; // ZJR1
-    private const ushort Version = 2;
+    private const ushort Version = 4;
     private const int MaxRecordBytes = 64 * 1024 * 1024;
     private const int MaxParts = 65_536;
 
-    internal static byte[] Encode(ZLinkBackendRouteReceived received)
+    internal static byte[] Encode(
+        ZLinkBackendRouteReceived received,
+        ulong replyRouteId = 0)
     {
         ArgumentNullException.ThrowIfNull(received);
+        if (received.OperationId == default
+            || received.TargetNodeGeneration == 0
+            || received.AuthorityOwnerGeneration == 0
+            || received.OwnerLeaseGeneration == 0)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record requires an exact operation and authority fence.");
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
         writer.Write(Magic);
@@ -30,6 +44,13 @@ internal static class ZLinkSpotAcceptedJournal
         writer.Write(received.RequestSeq.HasValue);
         if (received.RequestSeq is { } requestSequence)
             writer.Write(requestSequence);
+        writer.Write(replyRouteId);
+        writer.Write(received.OperationId.High);
+        writer.Write(received.OperationId.Low);
+        writer.Write(received.TargetNodeGeneration);
+        writer.Write(received.AuthorityOwnerGeneration);
+        writer.Write(received.OwnerLeaseGeneration);
+        writer.Write(received.ForwardingHopCount);
         WriteBytes(writer, ZLinkMeshMetadataCodec.Encode(received.Metadata).Span);
         if (received.Parts.Count > MaxParts)
             throw new InvalidOperationException(
@@ -59,6 +80,21 @@ internal static class ZLinkSpotAcceptedJournal
         var requestSequence = reader.ReadBoolean()
             ? reader.ReadUInt64()
             : (ulong?)null;
+        var replyRouteId = reader.ReadUInt64();
+        var operationId = new MeshOperationId(
+            reader.ReadUInt64(),
+            reader.ReadUInt64());
+        var targetNodeGeneration = reader.ReadUInt64();
+        var authorityOwnerGeneration = reader.ReadUInt64();
+        var ownerLeaseGeneration = reader.ReadUInt64();
+        var forwardingHopCount = reader.ReadByte();
+        if (operationId == default
+            || targetNodeGeneration == 0
+            || authorityOwnerGeneration == 0
+            || ownerLeaseGeneration == 0
+            || forwardingHopCount > 8)
+            throw new InvalidDataException(
+                "The accepted Spot journal authority fence is invalid.");
         var metadataFrame = ReadBytes(reader);
         if (!ZLinkMeshMetadataCodec.TryDecode(metadataFrame, out var metadata))
             throw new InvalidDataException(
@@ -77,6 +113,12 @@ internal static class ZLinkSpotAcceptedJournal
             sourceNodeRid,
             spotId,
             requestSequence,
+            replyRouteId,
+            operationId,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration,
+            forwardingHopCount,
             metadata,
             parts);
     }

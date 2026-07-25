@@ -125,7 +125,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
                     ZLinkDispatchErrorReason.HandlerException,
                     ZLinkDispatchErrorAction.ReplyError,
                     header.Name,
-                    ActorId: actor.ActorId,
+                    ActorId: actor.Context.ActorId,
                     CorrelationId: header.CorrelationId,
                     Exception: ex));
                 return new EntrySpotActorReplyDispatchResult(true, ZLinkActorReply.FromError(ex));
@@ -148,7 +148,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             kindName,
             header.Name,
             correlationId: header.CorrelationId,
-            actorId: actor.ActorId,
+            actorId: actor.Context.ActorId,
             actorType: actor.GetType().FullName);
     }
 

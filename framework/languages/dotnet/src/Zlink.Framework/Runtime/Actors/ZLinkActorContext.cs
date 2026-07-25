@@ -3,28 +3,30 @@ namespace Zlink.Framework.Runtime.Actors;
 internal sealed class ZLinkActorContext(
     ZLinkFrameworkRuntime runtime,
     ZLinkActorRuntimeState state,
+    string meshName,
+    ulong objectGeneration,
+    string? spotId,
     IZLinkBoundSessionService boundSessionService) : IZLinkActorContext
 {
+    private string? _spotId = spotId;
+
     private IZLinkActor CurrentActor
         => state.Actor ?? throw new InvalidOperationException(
             $"Actor '{state.ActorId}' has not been created.");
 
-    public string MeshName
-        => ZLinkActorDrainCoordinator.ResolveMeshName(
-               runtime.Registration,
-               state.ActorType ?? throw new InvalidOperationException(
-                   $"Actor '{state.ActorId}' does not have a registered actor type."))
-           ?? throw new InvalidOperationException(
-               $"Actor '{state.ActorId}' does not belong to a registered RouteMesh.");
+    public string MeshName { get; } = meshName;
 
     public string ActorId => state.ActorId;
 
-    public ulong ObjectGeneration
-        => state.NativeActorRef?.Generation
-           ?? throw new InvalidOperationException(
-               $"Actor '{state.ActorId}' does not have an object generation.");
+    public ulong ObjectGeneration { get; } = objectGeneration;
 
-    public string? SpotId => state.SpotId;
+    public string? SpotId => Volatile.Read(ref _spotId);
+
+    internal void UpdateSameNodeSpot(string? spotId)
+    {
+        state.EnsureContextValid();
+        Volatile.Write(ref _spotId, spotId);
+    }
 
     public IZLinkBoundSession BoundSession
     {
@@ -120,7 +122,7 @@ internal sealed class ZLinkActorJoinCall :
                 "Actor Join was already deferred.");
 
         var snapshot = _request.Snapshot(_runtime.Registration.Codecs);
-        var actorState = _runtime.GetOrCreateActorState(_actor.ActorId);
+        var actorState = _runtime.GetOrCreateActorState(_actor.Context.ActorId);
         var join = new ZLinkDeferredActorJoin(
             _runtime,
             actorState,
@@ -128,7 +130,7 @@ internal sealed class ZLinkActorJoinCall :
             actorState.NativeActorRef?.Generation
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{_actor.ActorId}' does not have a current object generation."),
+                $"Actor '{_actor.Context.ActorId}' does not have a current object generation."),
             _targetSpotId,
             snapshot,
             _timeout ?? _runtime.Registration.DefaultRequestTimeout);

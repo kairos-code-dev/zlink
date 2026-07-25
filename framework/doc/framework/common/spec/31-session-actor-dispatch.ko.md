@@ -144,6 +144,15 @@ push·ingress·close, 이전 Actor `ObjectGeneration`, 이전 authority owner와
 control 및 one-way record는 application queue에 넣지 않으며 one-way record에는 별도
 terminal route를 만들지 않는다.
 
+다른 owner나 다른 Actor generation으로 rebind할 때 새 Actor owner는 새 identity를
+등록한 뒤 이전 exact binding route에 tombstone을 제출한다. 이전 owner가 tombstone을
+확인한 뒤에만 새 owner가 bind terminal reply를 반환한다. Session owner는 이 reply를
+받기 전까지 기존 binding route를 유지하고, reply를 받은 뒤 새 route로 atomic하게
+교체한다. Tombstone 제출이 실패하거나 취소되면 새 bind는 terminal 성공이 아니며
+Session owner의 기존 binding도 바뀌지 않는다. 같은 owner에서 새 identity가 이전
+identity를 이미 atomic하게 대체한 경우에는 이전 identity tombstone이 새 identity를
+제거하지 않는다.
+
 Target에 exact Actor가 없고 active committed forwarding mapping이 있으면 original bind control request와 reply
 route를 mapping target으로 relay한다. Mapping이 없거나 만료됐으면 `ActorLocationStale`, 같은 ActorId의
 ObjectGeneration이 다르면 `ActorGenerationStale`, relocation pre-commit seal 중이면 `ActorMoving`으로 끝난다.

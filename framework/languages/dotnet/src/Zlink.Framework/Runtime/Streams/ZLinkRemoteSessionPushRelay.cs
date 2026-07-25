@@ -29,11 +29,250 @@ internal static class ZLinkRemoteActorReplyProtocol
     public const string PacketName = "$zlink.actor.reply-relay.v1";
 }
 
+// Relocation command 44/45. The target requests this only after the Actor
+// authority CAS and completion work have succeeded. The session owner is the
+// only writer of the bound-session route, so its ACK is the visibility fence.
+internal static class ZLinkSessionRouteCommitProtocol
+{
+    public const string PacketName = "$zlink.session.route-commit.v1";
+    public const string SealPacketName = "$zlink.session.route-seal.v1";
+    public const string AbortPacketName = "$zlink.session.route-abort.v1";
+    public const string UnsealPacketName = "$zlink.session.route-unseal.v1";
+}
+
+[ZLinkPacket(ZLinkSessionRouteCommitProtocol.SealPacketName)]
+internal sealed record ZLinkSessionRouteSealRequest(
+    string ActorId,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong ObjectGeneration,
+    ulong AuthorityOwnerGeneration,
+    string MeshName,
+    ulong TargetNodeGeneration,
+    ulong OwnerLeaseGeneration,
+    ulong SessionOwnerNodeGeneration,
+    string HandoffId);
+
+[ZLinkPacket(ZLinkSessionRouteCommitProtocol.AbortPacketName)]
+internal sealed record ZLinkSessionRouteAbortRequest(
+    string ActorId,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong ObjectGeneration,
+    ulong AuthorityOwnerGeneration,
+    string MeshName,
+    ulong TargetNodeGeneration,
+    ulong OwnerLeaseGeneration,
+    ulong SessionOwnerNodeGeneration,
+    string HandoffId);
+
+internal sealed record ZLinkSessionRouteSealReply(
+    bool Acknowledged,
+    ulong AcceptedHighWater);
+
+[ZLinkPacket(ZLinkSessionRouteCommitProtocol.PacketName)]
+internal sealed record ZLinkSessionRouteCommitRequest(
+    string ActorId,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong ObjectGeneration,
+    ulong PreviousAuthorityOwnerGeneration,
+    ulong TargetAuthorityOwnerGeneration,
+    string PreviousMeshName,
+    string TargetMeshName,
+    ulong PreviousTargetNodeGeneration,
+    ulong TargetNodeGeneration,
+    ulong PreviousOwnerLeaseGeneration,
+    ulong TargetOwnerLeaseGeneration,
+    ulong SessionOwnerNodeGeneration,
+    ulong AcceptedHighWater,
+    string HandoffId,
+    string TargetNodeRid);
+
+[ZLinkPacket(ZLinkSessionRouteCommitProtocol.UnsealPacketName)]
+internal sealed record ZLinkSessionRouteUnsealRequest(
+    string ActorId,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong ObjectGeneration,
+    ulong PreviousAuthorityOwnerGeneration,
+    ulong TargetAuthorityOwnerGeneration,
+    string PreviousMeshName,
+    string TargetMeshName,
+    ulong PreviousTargetNodeGeneration,
+    ulong TargetNodeGeneration,
+    ulong PreviousOwnerLeaseGeneration,
+    ulong TargetOwnerLeaseGeneration,
+    ulong SessionOwnerNodeGeneration,
+    ulong AcceptedHighWater,
+    string HandoffId,
+    string TargetNodeRid);
+
+internal sealed record ZLinkSessionRouteCommitReply(
+    bool Acknowledged,
+    ulong AcceptedHighWater);
+
+internal sealed class ZLinkSessionRouteSealHandler(ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteRequestHandler<
+        ZLinkSessionRouteSealRequest,
+        ZLinkSessionRouteSealReply>
+{
+    public async ValueTask<ZLinkSessionRouteSealReply> HandleAsync(
+        ZLinkSessionRouteSealRequest message,
+        ZLinkRouteMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = await runtime.SealSessionActorRouteAsync(
+            new ZLinkSessionRouteSeal(
+                message.ActorId,
+                message.BindingToken,
+                message.BindingGeneration,
+                message.ObjectGeneration,
+                message.AuthorityOwnerGeneration,
+                message.MeshName,
+                message.TargetNodeGeneration,
+                message.OwnerLeaseGeneration,
+                message.SessionOwnerNodeGeneration,
+                message.HandoffId),
+            cancellationToken).ConfigureAwait(false);
+        return new ZLinkSessionRouteSealReply(
+            result.Acknowledged,
+            result.AcceptedHighWater);
+    }
+}
+
+internal sealed class ZLinkSessionRouteAbortHandler(ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteRequestHandler<
+        ZLinkSessionRouteAbortRequest,
+        ZLinkSessionRouteSealReply>
+{
+    public ValueTask<ZLinkSessionRouteSealReply> HandleAsync(
+        ZLinkSessionRouteAbortRequest message,
+        ZLinkRouteMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = new ZLinkSessionRouteSeal(
+            message.ActorId,
+            message.BindingToken,
+            message.BindingGeneration,
+            message.ObjectGeneration,
+            message.AuthorityOwnerGeneration,
+            message.MeshName,
+            message.TargetNodeGeneration,
+            message.OwnerLeaseGeneration,
+            message.SessionOwnerNodeGeneration,
+            message.HandoffId);
+        var acknowledged = runtime.AbortSessionActorRouteSeal(request);
+        return ValueTask.FromResult(
+            new ZLinkSessionRouteSealReply(
+                acknowledged,
+                runtime.TryGetActorBoundSession(
+                    message.ActorId,
+                    out var session)
+                    ? session.AcceptedHighWater
+                    : 0));
+    }
+}
+
+internal sealed class ZLinkSessionRouteCommitHandler(ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteRequestHandler<
+        ZLinkSessionRouteCommitRequest,
+        ZLinkSessionRouteCommitReply>
+{
+    public ValueTask<ZLinkSessionRouteCommitReply> HandleAsync(
+        ZLinkSessionRouteCommitRequest message,
+        ZLinkRouteMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = runtime.CommitSessionActorRoute(
+            new ZLinkSessionRouteCommit(
+                message.ActorId,
+                message.BindingToken,
+                message.BindingGeneration,
+                message.ObjectGeneration,
+                message.PreviousAuthorityOwnerGeneration,
+                message.TargetAuthorityOwnerGeneration,
+                message.PreviousMeshName,
+                message.TargetMeshName,
+                message.PreviousTargetNodeGeneration,
+                message.TargetNodeGeneration,
+                message.PreviousOwnerLeaseGeneration,
+                message.TargetOwnerLeaseGeneration,
+                message.SessionOwnerNodeGeneration,
+                message.AcceptedHighWater,
+                message.HandoffId,
+                new ActorRef(
+                    message.ActorId,
+                    message.ObjectGeneration,
+                    message.TargetMeshName,
+                    RoutingId.FromHex(message.TargetNodeRid))));
+        return ValueTask.FromResult(
+            new ZLinkSessionRouteCommitReply(
+                result.Acknowledged,
+                result.AcceptedHighWater));
+    }
+}
+
+internal sealed class ZLinkSessionRouteUnsealHandler(ZLinkFrameworkRuntime runtime)
+    : IZLinkRouteRequestHandler<
+        ZLinkSessionRouteUnsealRequest,
+        ZLinkSessionRouteCommitReply>
+{
+    public ValueTask<ZLinkSessionRouteCommitReply> HandleAsync(
+        ZLinkSessionRouteUnsealRequest message,
+        ZLinkRouteMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
+        var request = new ZLinkSessionRouteCommit(
+            message.ActorId,
+            message.BindingToken,
+            message.BindingGeneration,
+            message.ObjectGeneration,
+            message.PreviousAuthorityOwnerGeneration,
+            message.TargetAuthorityOwnerGeneration,
+            message.PreviousMeshName,
+            message.TargetMeshName,
+            message.PreviousTargetNodeGeneration,
+            message.TargetNodeGeneration,
+            message.PreviousOwnerLeaseGeneration,
+            message.TargetOwnerLeaseGeneration,
+            message.SessionOwnerNodeGeneration,
+            message.AcceptedHighWater,
+            message.HandoffId,
+            new ActorRef(
+                message.ActorId,
+                message.ObjectGeneration,
+                message.TargetMeshName,
+                RoutingId.FromHex(message.TargetNodeRid)));
+        return ValueTask.FromResult(
+            new ZLinkSessionRouteCommitReply(
+                runtime.UnsealCommittedSessionActorRoute(request),
+                message.AcceptedHighWater));
+    }
+}
+
 internal sealed record ZLinkRemoteActorFrameRelay(
     string ActorId,
     ulong ActorGeneration,
+    string TargetNodeRid,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
     string SourceNodeRid,
     string SourceSessionRid,
+    ulong OperationIdHigh,
+    ulong OperationIdLow,
+    byte ForwardingHopCount,
+    ulong ReplyRequestId,
+    uint ReplyFlags,
     byte[] Header,
     byte[] Body);
 
@@ -54,6 +293,10 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         await runtime.DispatchRemoteActorFrameAsync(
                 message.ActorId,
                 message.ActorGeneration,
+                RoutingId.FromHex(message.TargetNodeRid),
+                message.TargetNodeGeneration,
+                message.AuthorityOwnerGeneration,
+                message.OwnerLeaseGeneration,
                 message.SourceNodeRid is { Length: > 0 } nodeHex
                     ? RoutingId.FromHex(nodeHex)
                     : default,
@@ -61,6 +304,12 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 message.SourceSessionRid is { Length: > 0 } sessionHex
                     ? RoutingId.FromHex(sessionHex)
                     : default,
+                new MeshOperationId(
+                    message.OperationIdHigh,
+                    message.OperationIdLow),
+                message.ForwardingHopCount,
+                message.ReplyRequestId,
+                message.ReplyFlags,
                 message.Header,
                 message.Body,
                 cancellationToken)
@@ -70,6 +319,15 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
 
 internal sealed record ZLinkRemoteSessionPushRelay(
     string ActorId,
+    ulong ObjectGeneration,
+    string MeshName,
+    string TargetNodeRid,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    ulong OwnerLeaseGeneration,
+    string BindingToken,
+    ulong BindingGeneration,
+    ulong SessionOwnerNodeGeneration,
     string SessionRid,
     byte[] Frame);
 
@@ -85,8 +343,7 @@ internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime r
         // forbids applying late pushes to a new binding, so it is dropped.
         // Backpressured writes retry within the request timeout.
         await runtime.DeliverRemoteSessionPushAsync(
-                message.ActorId,
-                RoutingId.FromHex(message.SessionRid),
+                message,
                 message.Frame,
                 cancellationToken)
             .ConfigureAwait(false);

@@ -75,11 +75,11 @@ internal sealed partial class ZLinkActorSessionManager(
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask<CreateActorResult> TransferAndBindActorAsync(
+    internal async ValueTask<CreateActorResult> RelocateAndBindActorAsync(
         string actorId,
         string actorType,
-        ZLinkActorTransferRegistration? transfer,
-        ZLinkMessage transferState,
+        ZLinkObjectRelocationRegistration relocation,
+        ReadOnlyMemory<byte> relocationState,
         ulong objectGeneration,
         ulong authorityOwnerGeneration,
         ZLinkActorClaimMode claimMode,
@@ -87,15 +87,15 @@ internal sealed partial class ZLinkActorSessionManager(
         CancellationToken cancellationToken = default)
     {
         var state = _actorSessions.GetOrCreate(actorId);
-        return await ActorCreation.TransferAndBindActorAsync(
+        return await ActorCreation.RelocateAndBindActorAsync(
                 state,
                 actorId,
                 actorType,
-            transfer,
-            transferState,
-            objectGeneration,
-            authorityOwnerGeneration,
-            claimMode,
+                relocation,
+                relocationState,
+                objectGeneration,
+                authorityOwnerGeneration,
+                claimMode,
                 publishActorRef,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -282,7 +282,7 @@ internal sealed partial class ZLinkActorSessionManager(
         var context = EnsureActorContext(state);
         if (!ReferenceEquals(actor.Context, context))
             throw new InvalidOperationException(
-                $"Actor '{actor.ActorId}' must expose the context provided by its factory.");
+                $"Actor '{actor.Context.ActorId}' must expose the context provided by its factory.");
 
         if (state.TryBeginActorConfiguration())
         {
@@ -304,9 +304,23 @@ internal sealed partial class ZLinkActorSessionManager(
 
     private ZLinkActorContext EnsureActorContext(ZLinkActorRuntimeState state)
     {
+        var actorType = state.ActorType
+                        ?? throw new InvalidOperationException(
+                            $"Actor '{state.ActorId}' does not have a registered actor type.");
+        var meshName = ZLinkActorDrainCoordinator.ResolveMeshName(
+                           runtime.Registration,
+                           actorType)
+                       ?? throw new InvalidOperationException(
+                           $"Actor '{state.ActorId}' does not belong to a registered RouteMesh.");
+        var objectGeneration = state.NativeActorRef?.Generation
+                               ?? throw new InvalidOperationException(
+                                   $"Actor '{state.ActorId}' does not have an object generation.");
         return state.GetOrCreateContext(() => new ZLinkActorContext(
             runtime,
             state,
+            meshName,
+            objectGeneration,
+            state.SpotId,
             boundSessionService));
     }
 

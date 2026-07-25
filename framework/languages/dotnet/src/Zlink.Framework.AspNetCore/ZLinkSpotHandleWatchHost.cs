@@ -8,7 +8,7 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkSpotHandleWatchHost(
     IZLinkLocationWatchStore? watchStore,
     ZLinkStoreLocationResolvers rows,
-    ZLinkSpotHandleRegistry handles,
+    ZLinkSpotHandleRegistry? handles,
     ZLinkLocationOptions options) : IHostedService, IAsyncDisposable
 {
     private readonly object _lifecycleGate = new();
@@ -24,7 +24,9 @@ internal sealed class ZLinkSpotHandleWatchHost(
                 throw new InvalidOperationException("The location watch host cannot be started more than once.");
 
             _stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var watches = new List<Task> { PollAsync(_stop.Token) };
+            var watches = new List<Task>();
+            if (handles is not null)
+                watches.Add(PollAsync(_stop.Token));
             if (watchStore is not null)
             {
                 watches.Add(WatchAsync(ZLinkLocationKind.Spot, _stop.Token));
@@ -119,7 +121,8 @@ internal sealed class ZLinkSpotHandleWatchHost(
                 // Each handle refreshes through its own logical lookup key;
                 // a key with no current row invalidates at its current
                 // version so a strictly newer row can resurrect it.
-                foreach (var handle in handles.SnapshotLiveHandles())
+                foreach (var handle in handles?.SnapshotLiveHandles()
+                         ?? Array.Empty<ZLinkResolvedSpotHandle>())
                 {
                     if (!await handle.RefreshAsync(cancellationToken).ConfigureAwait(false))
                         handle.InvalidateCurrent();
@@ -145,25 +148,30 @@ internal sealed class ZLinkSpotHandleWatchHost(
         // yet readable is simply left to the next poll.
         if (change.Key is ZLinkLocationKey.Spot(var spotKey))
         {
+            // A watch notification carries a newer store observation. Drop
+            // the positive route before resolving so the update cannot be
+            // satisfied by the older cached StoreVersion.
+            rows.InvalidateSpotRoute(spotKey);
             if (change.ChangeType is ZLinkLocationChangeType.Removed or ZLinkLocationChangeType.Expired)
             {
-                handles.RemoveSpot(spotKey, change.Generation);
+                handles?.RemoveSpot(spotKey, change.Generation);
                 return;
             }
 
             var row = await rows.ResolveSpotRowAsync(spotKey, cancellationToken).ConfigureAwait(false);
-            if (row is not null) handles.UpdateSpot(row);
+            if (row is not null) handles?.UpdateSpot(row);
             return;
         }
 
         if (change.Key is not ZLinkLocationKey.Actor(var actorKey)) return;
+        rows.InvalidateActorRoute(actorKey);
         if (change.ChangeType is ZLinkLocationChangeType.Removed or ZLinkLocationChangeType.Expired)
         {
-            handles.RemoveActor(actorKey);
+            handles?.RemoveActor(actorKey);
             return;
         }
 
         var actor = await rows.ResolveActorRowAsync(actorKey, cancellationToken).ConfigureAwait(false);
-        if (actor is not null) handles.UpdateActor(actor);
+        if (actor is not null) handles?.UpdateActor(actor);
     }
 }

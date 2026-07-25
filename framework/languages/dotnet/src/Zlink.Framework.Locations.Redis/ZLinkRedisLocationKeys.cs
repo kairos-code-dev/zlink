@@ -205,9 +205,6 @@ internal sealed class ZLinkRedisLocationKeys
 
     public RedisKey LeaseIndexKey() => $"{prefix}:leases";
 
-    public RedisKey RoutingIdAllocationGroupKey(string groupName) =>
-        $"{prefix}:ridalloc:{groupName}";
-
     // Actor transfer authority keys (spec 41 §2/§3.1). actorRowKey is the
     // length-prefixed MeshName + Actor ID; the transfer HASH is per transfer id
     // and P:transfer-by-actor holds the single active transfer id per actor.
@@ -226,7 +223,6 @@ internal sealed class ZLinkRedisLocationKeys
         ZLinkLocationChangeScopeKind.Spot => ZLinkRedisLocationKinds.Spot.Tag,
         ZLinkLocationChangeScopeKind.Actor => ZLinkRedisLocationKinds.Actor.Tag,
         ZLinkLocationChangeScopeKind.OwnerLease => "lease",
-        ZLinkLocationChangeScopeKind.ActorTransfer => "transfer",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown change stamp scope kind.")
     };
 }

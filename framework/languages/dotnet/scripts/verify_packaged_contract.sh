@@ -328,6 +328,7 @@ cat >"$CONSUMER_DIR/Program.cs" <<'EOF'
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Locations;
+using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Codecs.MessagePack;
@@ -347,14 +348,17 @@ var removedContracts = new[]
     "Zlink.Framework.Contracts.Handlers.ZLinkStreamRawAttribute",
     "Zlink.Framework.Contracts.Locations.IZLinkSpotRefResolver",
     "Zlink.Framework.Contracts.Locations.IZLinkActorAddressResolver",
+    "Zlink.Framework.Contracts.Locations.IZLinkSpotHandleResolver",
+    "Zlink.Framework.Contracts.Locations.IZLinkActorSpotHandleResolver",
+    "Zlink.Framework.Contracts.Locations.SpotHandle",
     "Zlink.Framework.Contracts.Actors.IZLinkActorJoinCall"
 }.Where(name => assembly.GetType(name) is not null).ToArray();
 if (removedContracts.Length > 0)
     throw new InvalidOperationException(
         $"Removed public contracts are present in the package: {string.Join(", ", removedContracts)}");
-if (!typeof(SpotHandle).IsAbstract
-    || !typeof(IZLinkSpotHandleResolver).GetMethods()
-        .Any(method => method.Name == "ResolveSpotHandleAsync")
+if (!typeof(ActorRef).IsValueType
+    || typeof(ActorRef).GetConstructor(
+        [typeof(string), typeof(ulong), typeof(string), typeof(RoutingId)]) is null
     || typeof(IZLinkActorDeferredJoinCall).GetMethods().Select(method => method.Name).Order().SequenceEqual(new[] { "Defer" }) == false)
     throw new InvalidOperationException("The frozen public contract is missing from the package.");
 var packagedAssemblies = new[]

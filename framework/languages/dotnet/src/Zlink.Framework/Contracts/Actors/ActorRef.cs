@@ -1,30 +1,50 @@
 namespace Systems.Zlink;
 
-/// <summary>Identifies an actor and the generation of its current lifecycle.</summary>
-public readonly struct ActorRef : IEquatable<ActorRef>
+/// <summary>
+/// Identifies one exact Actor incarnation and the owner route observed with it.
+/// </summary>
+public readonly record struct ActorRef
 {
-    public ActorRef(RoutingId nodeRid, string actorId, ulong generation)
+    public ActorRef(
+        string actorId,
+        ulong objectGeneration,
+        string meshName,
+        RoutingId nodeRid)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
         if (System.Text.Encoding.UTF8.GetByteCount(actorId) > 255)
             throw new ArgumentOutOfRangeException(nameof(actorId));
+        if (objectGeneration is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(objectGeneration));
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        if (nodeRid.IsEmpty)
+            throw new ArgumentException(
+                "Actor owner routing id must not be empty.",
+                nameof(nodeRid));
 
-        NodeRid = nodeRid;
         ActorId = actorId;
-        Generation = generation;
+        ObjectGeneration = objectGeneration;
+        MeshName = meshName;
+        NodeRid = nodeRid;
     }
 
-    public RoutingId NodeRid { get; }
     public string ActorId { get; }
-    public ulong Generation { get; }
 
-    public bool Equals(ActorRef other) =>
-        NodeRid.Equals(other.NodeRid)
-        && Generation == other.Generation
-        && string.Equals(ActorId, other.ActorId, StringComparison.Ordinal);
+    public ulong ObjectGeneration { get; }
 
-    public override bool Equals(object? obj) => obj is ActorRef other && Equals(other);
-    public override int GetHashCode() => HashCode.Combine(NodeRid, ActorId, Generation);
-    public static bool operator ==(ActorRef left, ActorRef right) => left.Equals(right);
-    public static bool operator !=(ActorRef left, ActorRef right) => !left.Equals(right);
+    public string MeshName { get; }
+
+    public RoutingId NodeRid { get; }
+
+    public void Deconstruct(
+        out string actorId,
+        out ulong objectGeneration,
+        out string meshName,
+        out RoutingId nodeRid)
+    {
+        actorId = ActorId;
+        objectGeneration = ObjectGeneration;
+        meshName = MeshName;
+        nodeRid = NodeRid;
+    }
 }

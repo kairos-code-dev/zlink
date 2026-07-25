@@ -8,6 +8,30 @@ internal readonly record struct ZLinkRelocationPermitRequest(
     long PayloadBytes,
     bool AllowOversizedPayload = false)
 {
+    internal static ZLinkRelocationPermitRequest OutboundUnit() =>
+        new(
+            OutboundUnits: 1,
+            InboundUnits: 0,
+            CaptureCallbacks: 0,
+            RestoreCallbacks: 0,
+            PayloadBytes: 0);
+
+    internal static ZLinkRelocationPermitRequest Capture() =>
+        new(
+            OutboundUnits: 0,
+            InboundUnits: 0,
+            CaptureCallbacks: 1,
+            RestoreCallbacks: 0,
+            PayloadBytes: 0);
+
+    internal static ZLinkRelocationPermitRequest Payload(long payloadBytes) =>
+        new(
+            OutboundUnits: 0,
+            InboundUnits: 0,
+            CaptureCallbacks: 0,
+            RestoreCallbacks: 0,
+            PayloadBytes: payloadBytes);
+
     internal static ZLinkRelocationPermitRequest Outbound(
         long payloadBytes,
         bool capture,
@@ -96,7 +120,7 @@ internal sealed class ZLinkRelocationPermitPool
             _restoreCallbacks += request.RestoreCallbacks;
             _payloadBytes = checked(_payloadBytes + request.PayloadBytes);
             _oversizedPayloadActive = oversized;
-            lease = new ZLinkRelocationPermitLease(this, request);
+            lease = new ZLinkRelocationPermitLease(this, request, oversized);
             return true;
         }
     }
@@ -125,7 +149,25 @@ internal sealed class ZLinkRelocationPermitPool
                && _payloadBytes <= _maxPayloadBytes - request.PayloadBytes;
     }
 
-    private void Release(ZLinkRelocationPermitRequest request)
+    private bool TryShrinkPayload(
+        ref ZLinkRelocationPermitRequest request,
+        long actualPayloadBytes)
+    {
+        if (actualPayloadBytes < 0)
+            throw new ArgumentOutOfRangeException(nameof(actualPayloadBytes));
+        lock (_gate)
+        {
+            if (actualPayloadBytes > request.PayloadBytes)
+                return false;
+            _payloadBytes -= request.PayloadBytes - actualPayloadBytes;
+            request = request with { PayloadBytes = actualPayloadBytes };
+            return true;
+        }
+    }
+
+    private void Release(
+        ZLinkRelocationPermitRequest request,
+        bool oversizedLease)
     {
         lock (_gate)
         {
@@ -134,7 +176,7 @@ internal sealed class ZLinkRelocationPermitPool
             _captureCallbacks -= request.CaptureCallbacks;
             _restoreCallbacks -= request.RestoreCallbacks;
             _payloadBytes -= request.PayloadBytes;
-            if (request.PayloadBytes > _maxPayloadBytes)
+            if (oversizedLease)
                 _oversizedPayloadActive = false;
 
             if (_outboundUnits < 0
@@ -183,23 +225,64 @@ internal sealed class ZLinkRelocationPermitPool
 
         internal ZLinkRelocationPermitLease(
             ZLinkRelocationPermitPool owner,
-            ZLinkRelocationPermitRequest request)
+            ZLinkRelocationPermitRequest request,
+            bool oversized)
         {
-            _state = new LeaseState(owner, request);
+            _state = new LeaseState(owner, request, oversized);
         }
+
+        internal long ReservedPayloadBytes => _state?.ReservedPayloadBytes ?? 0;
+
+        internal bool TryShrinkPayload(long actualPayloadBytes) =>
+            _state?.TryShrinkPayload(actualPayloadBytes) ?? false;
 
         public void Dispose() => _state?.Dispose();
 
-        private sealed class LeaseState(
-            ZLinkRelocationPermitPool owner,
-            ZLinkRelocationPermitRequest request) : IDisposable
+        private sealed class LeaseState : IDisposable
         {
-            private int _disposed;
+            private readonly object _gate = new();
+            private readonly ZLinkRelocationPermitPool _owner;
+            private readonly bool _oversized;
+            private ZLinkRelocationPermitRequest _request;
+            private bool _disposed;
+
+            internal LeaseState(
+                ZLinkRelocationPermitPool owner,
+                ZLinkRelocationPermitRequest request,
+                bool oversized)
+            {
+                _owner = owner;
+                _request = request;
+                _oversized = oversized;
+            }
+
+            internal long ReservedPayloadBytes
+            {
+                get
+                {
+                    lock (_gate) return _disposed ? 0 : _request.PayloadBytes;
+                }
+            }
+
+            internal bool TryShrinkPayload(long actualPayloadBytes)
+            {
+                lock (_gate)
+                {
+                    if (_disposed) return false;
+                    return _owner.TryShrinkPayload(
+                        ref _request,
+                        actualPayloadBytes);
+                }
+            }
 
             public void Dispose()
             {
-                if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                    owner.Release(request);
+                lock (_gate)
+                {
+                    if (_disposed) return;
+                    _disposed = true;
+                    _owner.Release(_request, _oversized);
+                }
             }
         }
     }

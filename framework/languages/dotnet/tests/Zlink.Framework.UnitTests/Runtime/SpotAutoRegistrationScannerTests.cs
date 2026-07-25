@@ -128,7 +128,7 @@ public sealed class SpotAutoRegistrationScannerTests
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context => throw new NotSupportedException();
+        public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
     }
 
     private sealed record AutoRoomPacket;

@@ -216,6 +216,11 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 
+    // Entry Spots are node-scoped and never cross an owner cutover.
+    void IZLinkCurrentSpotActivation.EnsureOperationAllowed()
+    {
+    }
+
     public string SpotId { get; }
 
     public ulong ObjectGeneration => _nativeSpot.LifecycleGeneration;
@@ -230,7 +235,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         cancellationToken.ThrowIfCancellationRequested();
 
         if (ZLinkBoundSessionDispatchScope.TryDefer(
-                actor.ActorId,
+                actor.Context.ActorId,
                 ct => DestroyActorCoreAsync(actor, ct)))
             return ValueTask.CompletedTask;
 
@@ -342,7 +347,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
     {
         return await AdmitActorJoinAsync(
                 descriptor,
-                actor.ActorId,
+                actor.Context.ActorId,
                 request,
                 cancellationToken)
             .ConfigureAwait(false);

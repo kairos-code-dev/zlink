@@ -28,10 +28,9 @@ internal sealed class CustomerActor(
 internal sealed class CustomerActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
-        return ValueTask.FromResult<IZLinkActor>(new CustomerActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(new CustomerActor(context.ActorId, context));
     }
 }

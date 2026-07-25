@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Zlink.Framework.Contracts.Configuration;
@@ -69,9 +70,6 @@ internal static class ZLinkRedisLocationRowJson
                 break;
             case ZLinkSpotLocation spot:
                 RequireUtf8Value(spot.SpotId, nameof(spot.SpotId));
-                break;
-            case InstanceSpotLocation instanceSpot:
-                RequireUtf8Value(instanceSpot.SpotId, nameof(instanceSpot.SpotId));
                 break;
         }
     }
@@ -462,15 +460,17 @@ internal static class ZLinkRedisLocationRowJson
 
             RoutingId nodeRid = default;
             string? actorId = null;
-            ulong generation = 0;
+            string? meshName = null;
+            ulong objectGeneration = 0;
             while (reader.Read())
             {
                 if (reader.TokenType == JsonTokenType.EndObject)
                 {
                     return new ActorRef(
-                        nodeRid,
                         actorId ?? throw new JsonException("ActorRef.actorId is required."),
-                        generation);
+                        objectGeneration,
+                        meshName ?? throw new JsonException("ActorRef.meshName is required."),
+                        nodeRid);
                 }
 
                 if (reader.TokenType != JsonTokenType.PropertyName)
@@ -492,9 +492,26 @@ internal static class ZLinkRedisLocationRowJson
                         actorId = reader.GetString();
                         break;
 
-                    case "generation":
-                    case "Generation":
-                        generation = reader.GetUInt64();
+                    case "objectGeneration":
+                    case "ObjectGeneration":
+                        var generationText = reader.GetString();
+                        if (string.IsNullOrEmpty(generationText)
+                            || (generationText.Length > 1 && generationText[0] == '0')
+                            || !ulong.TryParse(
+                                generationText,
+                                NumberStyles.None,
+                                CultureInfo.InvariantCulture,
+                                out objectGeneration)
+                            || objectGeneration is 0 or > long.MaxValue)
+                        {
+                            throw new JsonException(
+                                "ActorRef.objectGeneration must be a canonical positive decimal string.");
+                        }
+                        break;
+
+                    case "meshName":
+                    case "MeshName":
+                        meshName = reader.GetString();
                         break;
 
                     default:
@@ -509,9 +526,12 @@ internal static class ZLinkRedisLocationRowJson
         public override void Write(Utf8JsonWriter writer, ActorRef value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            writer.WriteString("nodeRid", value.NodeRid.IsEmpty ? string.Empty : value.NodeRid.ToHex());
             writer.WriteString("actorId", value.ActorId);
-            writer.WriteNumber("generation", value.Generation);
+            writer.WriteString(
+                "objectGeneration",
+                value.ObjectGeneration.ToString(CultureInfo.InvariantCulture));
+            writer.WriteString("meshName", value.MeshName);
+            writer.WriteString("nodeRid", value.NodeRid.IsEmpty ? string.Empty : value.NodeRid.ToHex());
             writer.WriteEndObject();
         }
 

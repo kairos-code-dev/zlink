@@ -215,7 +215,7 @@ public sealed class FlowCorrelationTests
     {
         public string ActorId { get; } = actorId;
 
-        public IZLinkActorContext Context => null!;
+        public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
 
         public void Configure()
         {

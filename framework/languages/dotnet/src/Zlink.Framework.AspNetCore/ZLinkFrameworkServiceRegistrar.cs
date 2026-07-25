@@ -92,6 +92,10 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddScoped<ZLinkRemoteSessionPushRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorFrameRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorReplyRelayHandler>();
+        services.TryAddScoped<ZLinkSpotRetireStageHandler>();
+        services.TryAddScoped<ZLinkSpotRetirePublishHandler>();
+        services.TryAddScoped<ZLinkSpotRetireAbortHandler>();
+        services.TryAddScoped<ZLinkSpotRetireHeldRelayHandler>();
 
         // Install the shared, runtime-mutable message-flow mode cell (seeded from the
         // configured mode) so SetMessageFlowMode can flip tracing on/off live and
@@ -124,6 +128,9 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkFrameworkRegistration>(),
                 provider.GetRequiredService<ZLinkHandlerRegistry>(),
                 provider.GetRequiredService<ZLinkHandlerDispatcher>()));
+        services.TryAddSingleton<ZLinkSpotRetireTargetRuntime>();
+        services.TryAddSingleton<IZLinkSpotRetireTarget>(static provider =>
+            provider.GetRequiredService<ZLinkSpotRetireTargetRuntime>());
         services.AddSingleton<IZLinkMessageMetadataPolicy, ZLinkMessageMetadataPolicy>();
         services.TryAddSingleton<IZLinkDrainExecutor>(provider =>
             new ZLinkFrameworkDrainExecutor(
@@ -155,8 +162,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<ZLinkLocationRuntime>(),
                 provider.GetRequiredService<ZLinkAutoConnectLifecycleCoordinator>(),
                 provider.GetService<ZLinkLocationLifecycle>(),
-                provider.GetService<ZLinkAllocatedRoutingIdRuntime>(),
-                provider.GetService<IHostApplicationLifetime>(),
                 provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>()));
 
         return services;
@@ -246,10 +251,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         foreach (var actorFactoryType in registration.ActorCatalog.Factories.Values)
             services.TryAddScoped(actorFactoryType);
 
-        foreach (var adapterType in registration.ActorCatalog.Transfers.Values
-                     .Select(static transfer => transfer.AdapterType))
-            services.TryAddScoped(adapterType);
-
         foreach (var adapterType in registration.SpotNodes.Values
                      .SelectMany(static node =>
                          node.SpotRelocations.Values
@@ -323,8 +324,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkLocationStoreInstanceOwner>());
             services.AddSingleton(store);
             services.AddSingleton<IZLinkMeshNodeLocationStore>(store);
-            services.AddSingleton<IZLinkSpotLocationStore>(store);
-            services.AddSingleton<IZLinkActorLocationStore>(store);
             services.AddSingleton<IZLinkOwnerLeaseStore>(store);
             if (store is IZLinkClientServerLocationStore clientServerStore)
                 services.AddSingleton(clientServerStore);
@@ -334,19 +333,14 @@ internal static class ZLinkFrameworkServiceRegistrar
                 services.AddSingleton(changeStamps);
             if (store is IZLinkLocationWatchStore watch)
                 services.AddSingleton(watch);
-            if (store is IZLinkRoutingIdSlotAllocationStore slotAllocator)
-                services.AddSingleton(slotAllocator);
         }
         else if (locations.UseInMemoryStores)
         {
-            services.AddSingleton<ZLinkInMemoryLocationStore>();
+            services.AddSingleton(
+                (ZLinkInMemoryLocationStore)locations.ResolveStore()!);
             services.AddSingleton<IZLinkLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkMeshNodeLocationStore>(
-                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-            services.AddSingleton<IZLinkSpotLocationStore>(
-                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-            services.AddSingleton<IZLinkActorLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkOwnerLeaseStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
@@ -355,8 +349,6 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkFanoutLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkLocationChangeStampStore>(
-                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
-            services.AddSingleton<IZLinkRoutingIdSlotAllocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
         }
         else
@@ -372,19 +364,16 @@ internal static class ZLinkFrameworkServiceRegistrar
         // The emitter is enabled only when AddZLinkMonitoring registered
         // location sources and the dispatcher; otherwise every emit is a
         // no-op and location flows pay nothing.
-        services.AddSingleton<ZLinkSpotHandleRegistry>();
         services.AddSingleton(static provider => new ZLinkLocationEventEmitter(
             provider.GetService<ZLinkMonitoringRegistration>(),
             provider.GetService<IZLinkRuntimeEventPublisher>(),
-            provider.GetRequiredService<ZLinkSpotHandleRegistry>(),
             provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
         // One observed-generation guard per runtime, shared by every read
         // surface, so no read path ever rolls the view backwards.
         services.AddSingleton<ZLinkObservedLocationGenerations>();
         services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
             provider.GetRequiredService<IZLinkMeshNodeLocationStore>(),
-            provider.GetRequiredService<IZLinkSpotLocationStore>(),
-            provider.GetRequiredService<IZLinkActorLocationStore>(),
+            provider.GetRequiredService<IZLinkLocationStore>(),
             provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
             provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
             events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
@@ -395,47 +384,27 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(provider => new ZLinkSpotMeshLocationResolver(
             registration,
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
-        services.AddSingleton(provider => new ZLinkLocationAddressResolvers(
-            provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
-            provider.GetRequiredService<ZLinkSpotHandleRegistry>()));
-        services.AddSingleton<IZLinkSpotHandleResolver>(
-            static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
-        services.AddSingleton<IZLinkActorSpotHandleResolver>(
-            static provider => provider.GetRequiredService<ZLinkLocationAddressResolvers>());
+        services.AddSingleton(static provider => new ZLinkLocationAddressResolvers(
+            provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
         services.AddSingleton(static provider => new ZLinkSpotHandleWatchHost(
             provider.GetService<IZLinkLocationWatchStore>(),
             provider.GetRequiredService<ZLinkStoreLocationResolvers>(),
-            provider.GetRequiredService<ZLinkSpotHandleRegistry>(),
-            provider.GetRequiredService<ZLinkLocationOptions>()));
+            handles: null,
+            options: provider.GetRequiredService<ZLinkLocationOptions>()));
         services.AddSingleton<IHostedService>(static provider =>
             provider.GetRequiredService<ZLinkSpotHandleWatchHost>());
         services.AddSingleton(static provider => new ZLinkLocationRuntime(
             provider.GetRequiredService<ZLinkLocationOptions>(),
             provider.GetRequiredService<IZLinkLocationStore>(),
             provider.GetRequiredService<IZLinkMeshNodeLocationStore>(),
-            provider.GetRequiredService<IZLinkSpotLocationStore>(),
-            provider.GetRequiredService<IZLinkActorLocationStore>(),
             provider.GetRequiredService<IZLinkOwnerLeaseStore>(),
             events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
-        if (registration.Locations.Options.AllocatedRoutingIdsEnabled)
-        {
-            services.AddSingleton(static provider => new ZLinkAllocatedRoutingIdRuntime(
-                provider.GetRequiredService<ZLinkFrameworkRegistration>(),
-                provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>(),
-                provider.GetRequiredService<ZLinkLocationRuntime>(),
-                provider.GetRequiredService<ZLinkLocationOptions>()));
-            services.AddSingleton<IZLinkAllocatedRoutingIdProvider>(static provider =>
-                provider.GetRequiredService<ZLinkAllocatedRoutingIdRuntime>());
-        }
         // Every mesh namespace this host can advertise or dial under; the
         // operational query enumerates these when no mesh filter is given.
         var registeredMeshNames = registration.Channels.Values
             .Select(static channel => channel.ChannelName)
             .Concat(registration.SpotNodes.Values.Select(static spot =>
                 spot.SpotMeshChannelName ?? spot.SpotNodeName))
-            // Observer hosts (an ops console watching a mesh it never joins)
-            // extend the enumeration scope explicitly.
-            .Concat(registration.Locations.Options.ObservedMeshNames)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         services.AddSingleton<IZLinkLocationRuntimeQuery>(

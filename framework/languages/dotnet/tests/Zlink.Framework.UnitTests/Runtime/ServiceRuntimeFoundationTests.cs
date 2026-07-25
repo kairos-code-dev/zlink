@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 using Systems.Zlink.Framework.Runtime.Protocol;
+using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
@@ -210,6 +211,84 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public void AdmissionGuard_SelectsOnePhysicalConnectionForExactPeerIncarnation()
+    {
+        var smaller = RoutingId.From("mesh-a");
+        var larger = RoutingId.From("mesh-z");
+
+        Assert.Equal(
+            ZLinkServiceDuplicateConnectionDecision.KeepCurrent,
+            ZLinkServiceAdmissionGuard.SelectConnection(
+                smaller,
+                larger,
+                currentLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Outbound,
+                "out:tcp://mesh-z:0001",
+                incomingLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Inbound,
+                "in:tcp://mesh-z:0002"));
+        Assert.Equal(
+            ZLinkServiceDuplicateConnectionDecision.UseIncoming,
+            ZLinkServiceAdmissionGuard.SelectConnection(
+                larger,
+                smaller,
+                currentLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Outbound,
+                "out:tcp://mesh-a:0002",
+                incomingLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Inbound,
+                "in:tcp://mesh-a:0001"));
+        Assert.Equal(
+            ZLinkServiceDuplicateConnectionDecision.KeepCurrent,
+            ZLinkServiceAdmissionGuard.SelectConnection(
+                smaller,
+                larger,
+                currentLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Outbound,
+                "out:tcp://mesh-z:0001",
+                incomingLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Outbound,
+                "out:tcp://mesh-z:0002"));
+        Assert.Equal(
+            ZLinkServiceDuplicateConnectionDecision.NotDuplicate,
+            ZLinkServiceAdmissionGuard.SelectConnection(
+                smaller,
+                larger,
+                currentLifecycleGeneration: 17,
+                ZLinkServiceConnectionDirection.Outbound,
+                "out:tcp://mesh-z:0001",
+                incomingLifecycleGeneration: 19,
+                ZLinkServiceConnectionDirection.Inbound,
+                "in:tcp://mesh-z:0002"));
+    }
+
+    [Fact]
+    public void SpotPeerMonitoring_MapsSignedAdmittedChannelWeight()
+    {
+        var peer = new MeshNodePeer(
+            ConnectionIntentId: 7,
+            Source: MeshPeerSource.Manual,
+            State: MeshPeerState.Admitted,
+            RoutingId: RoutingId.From("mesh-z"),
+            LifecycleGeneration: 17,
+            DescriptorRevision: 3,
+            Endpoint: "tcp://127.0.0.1:7002",
+            ChannelCount: 2,
+            LastError: 0,
+            LastChangedMs: 41);
+
+        var mapped = peer.ToFramework(
+            "tcp://127.0.0.1:7001",
+            new MeshPeerChannel("orders", 75));
+
+        Assert.Equal("orders", mapped.ChannelName);
+        Assert.Equal(75, mapped.Weight);
+        Assert.IsType<int>(mapped.Weight);
+        Assert.Equal("tcp://127.0.0.1:7001", mapped.LocalEndpoint);
+        Assert.NotEqual((int)peer.ChannelCount, mapped.Weight);
+    }
+
+    [Fact]
     public void ApplicationAndReplyRecords_RoundTripExactTerminalFields()
     {
         var request = ZLinkServiceWireCodec.EncodeApplication(
@@ -391,38 +470,116 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
-    public async Task InstanceStore_UsesExactFenceAcrossReadyAndRelease()
+    public async Task InstanceAuthority_UsesExactStoreVersionAcrossReadyAndRelease()
     {
         var store = new ZLinkInMemoryLocationStore();
         var ownerRid = RoutingId.From("owner");
-        await store.RenewOwnerLeaseAsync(
-            "owner", ownerRid, TimeSpan.FromMinutes(1));
-        var claim = Assert.IsType<InstanceSpotClaimResult.Claimed>(
-            await store.ClaimInstanceSpotAsync(new InstanceSpotClaimRequest(
-                "mesh", "spot", "cart", ownerRid, 3, "owner")));
-        var location = claim.Snapshot.Location;
-        var fence = new InstanceSpotFence(
-            location.MeshName,
-            location.SpotId,
-            location.OwnerId,
-            location.OwnerNodeGeneration,
-            location.LocationGeneration,
-            location.ActivationEpoch);
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "owner",
+                TimeSpan.FromMinutes(1))).Token;
+        var descriptor = new ZLinkMeshNodeDescriptor(
+            "mesh",
+            ownerRid,
+            3,
+            1,
+            "inproc://owner",
+            new Dictionary<string, int> { ["mesh"] = 100 },
+            string.Empty,
+            owner.OwnerId,
+            owner.LeaseGeneration,
+            DateTimeOffset.UtcNow)
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId = "entry-owner",
+            State = ZLinkFrameworkRuntimeState.Serving,
+            ObjectCapabilities =
+            [
+                new ZLinkObjectCapability(
+                    ZLinkPlacementObjectKind.InstanceSpot,
+                    "cart",
+                    ZLinkObjectMaintenancePolicyKind.Disabled,
+                    false,
+                    0)
+            ],
+            Capacity = new ZLinkPlacementCapacity(
+                new ZLinkPopulationCapacity(0, 0, 0),
+                new ZLinkPopulationCapacity(0, 0, 0),
+                [
+                    new ZLinkSpotTypeCapacity(
+                        ZLinkPlacementObjectKind.InstanceSpot,
+                        "cart",
+                        0,
+                        0,
+                        0)
+                ])
+        };
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                descriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
 
-        var ready = Assert.IsType<InstanceSpotWriteResult.Stored>(
-            await store.CommitInstanceSpotReadyAsync(fence, 9));
-        Assert.Equal(ZLinkSpotActivationState.Ready,
-            ready.Snapshot.Location.ActivationState);
-        Assert.Equal(9UL, ready.Snapshot.Location.SpotGeneration);
+        var key = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey("spot");
+        var creating = new ZLinkInstanceSpotAuthorityPayload(
+            ZLinkInstanceSpotAuthorityState.Creating,
+            "spot",
+            "cart",
+            "mesh",
+            ownerRid,
+            3,
+            owner.OwnerId,
+            checked((ulong)owner.LeaseGeneration),
+            null,
+            0,
+            0);
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                new ZLinkObjectReservationRequest(
+                    ZLinkPlacementObjectKind.InstanceSpot,
+                    key,
+                    "cart",
+                    "inline-v1:00000000:",
+                    new byte[32],
+                    0,
+                    new ZLinkMeshNodeDescriptorKey("mesh", ownerRid),
+                    3,
+                    owner,
+                    ZLinkInstanceSpotAuthorityPayloadCodec.Encode(creating),
+                    new ZLinkCapacityVector(
+                        0,
+                        1,
+                        new ZLinkSpotTypeCapacityDelta(
+                            ZLinkPlacementObjectKind.InstanceSpot,
+                            "cart",
+                            1)))));
+        var readyPayload = creating with
+        {
+            State = ZLinkInstanceSpotAuthorityState.Ready
+        };
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                reserved.Reservation,
+                ZLinkInstanceSpotAuthorityPayloadCodec.Encode(readyPayload)));
+        Assert.Equal(
+            reserved.Reservation.ObjectGeneration,
+            committed.Snapshot.ObjectGeneration);
+        Assert.Equal(
+            reserved.Reservation.AuthorityOwnerGeneration,
+            committed.Snapshot.AuthorityOwnerGeneration);
 
-        var stale = fence with { ActivationEpoch = fence.ActivationEpoch + 1 };
-        Assert.IsType<InstanceSpotWriteResult.Stale>(
-            await store.CommitInstanceSpotReadyAsync(stale, 10));
-        Assert.Equal(ZLinkLocationWriteStatus.Stored,
-            await store.ReleaseInstanceSpotAsync(fence));
-        Assert.IsType<InstanceSpotResolveResult.Missing>(
-            await store.ResolveInstanceSpotAsync(
-                new ZLinkSpotLocationKey("spot")));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                reserved.Reservation.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkAuthorityReadResult.Missing>(
+            await store.ReadAuthorityAsync(key));
     }
 
     [Fact]
@@ -440,7 +597,7 @@ public sealed class ServiceRuntimeFoundationTests
             MeshRecordKind.Completion,
             MeshReadyDomains.Infrastructure,
             default,
-            default,
+            string.Empty,
             0,
             default,
             operation,

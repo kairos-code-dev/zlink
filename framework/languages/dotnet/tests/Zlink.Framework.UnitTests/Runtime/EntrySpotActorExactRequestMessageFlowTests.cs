@@ -10,16 +10,20 @@ public sealed partial class EntrySpotActorDispatchTests
     [Fact]
     public async Task Flowless_Actor_Stream_Ingress_Creates_One_Inbound_Flow_For_Join_And_Reply()
     {
-        var node = new CapturingSpotNode();
-        var (runtime, _) = await CreateStartedRuntimeAsync(
+        var node = new CapturingSpotNode
+        {
+            ActorLookupResult = new ZLinkBackendActorRef(
+                RoutingId.From("entry-node"),
+                "flow-actor",
+                1)
+        };
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(
             node,
             messageFlowMode: ZLinkMessageFlowLogMode.KeyTransitions,
             includeJoinTarget: true);
         try
         {
-            var createdActor = await runtime.CreateActorAsync("flow-actor", "probe");
-            var actor = Assert.IsType<ProbeActor>(createdActor.Actor);
-            var actorRef = Assert.Single(node.CreatedActors);
+            var actor = RegisterProbeActor(runtime, actorRef);
             var target = await runtime.CreateAsync<JoinTargetSpot>();
             var probe = runtime.Services.GetRequiredService<FlowJoinProbe>();
             probe.TargetSpotId = target.Spot.SpotId;

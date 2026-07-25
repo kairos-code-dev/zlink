@@ -36,14 +36,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private readonly ConcurrentDictionary<string, ZLinkManagedSpot> _spots = new();
     private readonly ConcurrentDictionary<string, ManagedActor> _actors =
         new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<ActorTransferToken, ManagedTransfer> _transfers = new();
     private readonly ConcurrentDictionary<RemoteUserSpotOperationKey, RemoteUserSpotInvocation>
         _remoteUserSpotOperations = new();
     private readonly ConcurrentDictionary<RemoteActorCreateOperationKey, RemoteActorCreateInvocation>
         _remoteActorCreateOperations = new();
-    private readonly ConcurrentDictionary<ObservedSpotAuthorityKey, ulong>
+    private readonly ConcurrentDictionary<ObservedSpotAuthorityKey, ObservedAuthority>
         _observedSpotAuthorities = new();
-    private readonly ConcurrentDictionary<ObservedActorAuthorityKey, ulong>
+    private readonly ConcurrentDictionary<ObservedActorAuthorityKey, ObservedAuthority>
         _observedActorAuthorities = new();
     private readonly List<RawMeshMonitor> _monitors = new();
     private readonly ulong _lifecycleGeneration = NewNonZeroToken();
@@ -66,6 +65,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private ulong _nextActorGeneration;
     private ulong _nextSpotGeneration;
     private ulong _nextAuthorityOwnerGeneration;
+    private long _localOwnerLeaseGeneration = 1;
     private long _nextChannelSelection;
     private long _queuedMessages;
     private long _queuedBytes;
@@ -94,6 +94,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     }
 
     public RoutingId RoutingId => _routingId;
+    internal string MeshName => _meshName;
     public long MaxMessageSize { get; set; } = -1;
     public int RouterHighWaterMark { get; set; } = 1_000;
     public ulong MailboxMessageBudget { get; set; } = 10_000;
@@ -177,7 +178,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         {
             ThrowIfDisposed();
             var intent = checked(++_nextIntent);
-            var peer = new Peer(intent, endpoint, expectedRid);
+            var peer = new Peer(
+                intent,
+                endpoint,
+                expectedRid,
+                ZLinkServiceConnectionDirection.Outbound);
             _peersByIntent.Add(intent, peer);
             if (_state != MeshNodeState.Created)
                 ConnectPeerCore(peer);
@@ -853,7 +858,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         var entry = (ZLinkManagedSpot)EntrySpot();
         if (generation == 0 || generation > long.MaxValue)
             throw new InvalidOperationException("The Actor generation space was exhausted.");
-        var actorRef = new ActorRef(_routingId, actorId, generation);
+        var actorRef = new ActorRef(
+            actorId,
+            generation,
+            _meshName,
+            _routingId);
         var actor = new ManagedActor(
             actorRef,
             entry.SpotId,
@@ -900,12 +909,19 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong objectGeneration,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         ValidateObservedAuthority(
             targetNodeRid,
             objectGeneration,
-            authorityOwnerGeneration);
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
+        if (targetNodeGeneration == 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(targetNodeGeneration),
+                "The target node lifecycle generation must be non-zero.");
         if (string.IsNullOrEmpty(targetSpotId))
             throw new ArgumentException(
                 "The observed Spot routing id is required.",
@@ -914,35 +930,61 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             new ObservedSpotAuthorityKey(
                 targetNodeRid,
                 targetSpotId,
-                objectGeneration)] = authorityOwnerGeneration;
+                objectGeneration)] = new ObservedAuthority(
+                    targetNodeGeneration,
+                    authorityOwnerGeneration,
+                    ownerLeaseGeneration);
     }
 
     internal void ObserveActorAuthority(
         ActorRef actor,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         ValidateObservedAuthority(
             actor.NodeRid,
-            actor.Generation,
-            authorityOwnerGeneration);
+            actor.ObjectGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
         ArgumentException.ThrowIfNullOrWhiteSpace(actor.ActorId);
+        if (targetNodeGeneration == 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(targetNodeGeneration),
+                "The target node lifecycle generation must be non-zero.");
         _observedActorAuthorities[
             new ObservedActorAuthorityKey(
                 actor.NodeRid,
                 actor.ActorId,
-                actor.Generation)] = authorityOwnerGeneration;
+                actor.ObjectGeneration)] = new ObservedAuthority(
+                    targetNodeGeneration,
+                    authorityOwnerGeneration,
+                    ownerLeaseGeneration);
+    }
+
+    internal void SetLocalOwnerLeaseGeneration(ulong ownerLeaseGeneration)
+    {
+        if (ownerLeaseGeneration is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(ownerLeaseGeneration));
+        Volatile.Write(
+            ref _localOwnerLeaseGeneration,
+            checked((long)ownerLeaseGeneration));
     }
 
     internal bool TryGetActorAuthority(
         ActorRef actor,
-        out ulong authorityOwnerGeneration)
+        out ulong authorityOwnerGeneration,
+        out ulong ownerLeaseGeneration)
     {
         if (TryGetActor(actor, out var current))
         {
             authorityOwnerGeneration = current.AuthorityOwnerGeneration;
+            ownerLeaseGeneration = checked(
+                (ulong)Volatile.Read(ref _localOwnerLeaseGeneration));
             return true;
         }
         authorityOwnerGeneration = 0;
+        ownerLeaseGeneration = 0;
         return false;
     }
 
@@ -950,7 +992,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         var operation = BeginOperation(MeshOperationKind.ActorDestroy, timeout);
         if (!_actors.TryGetValue(actor.ActorId, out var current)
-            || current.Ref.Generation != actor.Generation
+            || current.Ref.ObjectGeneration != actor.ObjectGeneration
             || current.Ref.NodeRid != actor.NodeRid
             || !current.TryDrain())
         {
@@ -1207,61 +1249,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return operation.OperationId;
     }
 
-    public ActorTransferToken PrepareActorTransfer(
-        ActorTransferPrepare prepare,
-        out ActorTransferPrepareResult result,
-        TimeSpan timeout = default)
-    {
-        if (!TryGetActor(prepare.Actor, out var actor)
-            || actor.MembershipEpoch != prepare.ExpectedMembershipEpoch
-            || !actor.TrySeal())
-        {
-            result = default;
-            throw new InvalidOperationException(
-                "The Actor transfer fence is stale or already active.");
-        }
-        var token = new ActorTransferToken(Guid.NewGuid());
-        var transfer = new ManagedTransfer(token, prepare, actor);
-        if (!_transfers.TryAdd(token, transfer))
-            throw new InvalidOperationException("The Actor transfer token collided.");
-        result = new ActorTransferPrepareResult(
-            prepare.Role,
-            prepare.TransferId,
-            prepare.Actor,
-            prepare.FinalSequence,
-            prepare.ReserveMessageCount,
-            prepare.ReserveByteCount);
-        EnqueueTransferControl(transfer, ActorTransferPhase.Preparing, 0);
-        return token;
-    }
-
-    public void CommitActorTransfer(
-        ActorTransferToken token,
-        ulong newMembershipEpoch)
-    {
-        var transfer = RequireTransfer(token);
-        transfer.Commit(newMembershipEpoch);
-        EnqueueTransferControl(transfer, ActorTransferPhase.Committed, 0);
-    }
-
-    public void ActivateActorTransfer(ActorTransferToken token)
-    {
-        var transfer = RequireTransfer(token);
-        transfer.Activate();
-        transfer.Actor.Unseal();
-        _transfers.TryRemove(token, out _);
-        EnqueueTransferControl(transfer, ActorTransferPhase.Activated, 0);
-    }
-
-    public void AbortActorTransfer(ActorTransferToken token)
-    {
-        var transfer = RequireTransfer(token);
-        transfer.Abort();
-        transfer.Actor.Unseal();
-        _transfers.TryRemove(token, out _);
-        EnqueueTransferControl(transfer, ActorTransferPhase.Aborted, 0);
-    }
-
     public IStreamSessionService CreateStreamSessionService(IStreamSocket stream) =>
         new ZLinkManagedStreamSessionService(this, stream);
 
@@ -1378,6 +1365,86 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return result;
     }
 
+    internal SubmitResult ForwardSendToSpot(
+        string sourceSpotId,
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata) =>
+        SubmitSpot(
+            targetRid,
+            sourceSpotId,
+            spotId,
+            spotGeneration,
+            parts,
+            request: false,
+            operation: null,
+            flags,
+            metadata,
+            new ForwardedSpotRoute(
+                operationId,
+                targetNodeGeneration,
+                authorityOwnerGeneration,
+                ownerLeaseGeneration,
+                forwardingHopCount));
+
+    internal SubmitResult ForwardRequestToSpot(
+        string sourceSpotId,
+        RoutingId targetRid,
+        string spotId,
+        ulong spotGeneration,
+        MeshOperationId operationId,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        out MeshOperationId transportOperationId,
+        TimeSpan timeout,
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
+    {
+        if (!TryBeginOperation(
+                MeshOperationKind.SpotRequest,
+                timeout,
+                out var operation))
+        {
+            transportOperationId = default;
+            Publish(MeshMonitorEventKind.Backpressured);
+            return SubmitResult.Backpressured;
+        }
+        transportOperationId = operation.OperationId;
+        var result = SubmitSpot(
+            targetRid,
+            sourceSpotId,
+            spotId,
+            spotGeneration,
+            parts,
+            request: true,
+            operation,
+            flags,
+            metadata,
+            new ForwardedSpotRoute(
+                operationId,
+                targetNodeGeneration,
+                authorityOwnerGeneration,
+                ownerLeaseGeneration,
+                forwardingHopCount));
+        if (result != SubmitResult.Ok)
+        {
+            RemoveManagedOperation(operation);
+            transportOperationId = default;
+        }
+        return result;
+    }
+
     internal void ReleaseSpot(ZLinkManagedSpot spot)
     {
         if (spot.ActorCount != 0)
@@ -1483,14 +1550,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         var operation = BeginOperation(MeshOperationKind.StreamBind, timeout);
         operationId = operation.OperationId;
-        var found = TryGetActor(actorRef, out var actor);
-        if (!found || actor.IsSealed)
+        if (!TryGetActor(actorRef, out var actor))
         {
             CompleteManagedOperation(
                 operation,
-                found && actor.IsSealed
-                    ? RequestResult.Busy
-                    : RequestResult.NotFound,
+                RequestResult.NotFound,
                 0,
                 Array.Empty<Message>());
             return SubmitResult.Ok;
@@ -1636,11 +1700,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         bool request,
         PendingOperation? operation,
         SendFlags flags,
-        ReadOnlyMemory<byte> metadata)
+        ReadOnlyMemory<byte> metadata,
+        ForwardedSpotRoute? forwardedRoute = null)
     {
         ArgumentNullException.ThrowIfNull(parts);
         if (parts.Count == 0)
             throw new ArgumentException("Application payload is required.", nameof(parts));
+        var routedOperationId = forwardedRoute?.OperationId
+            ?? operation?.OperationId
+            ?? NextStandaloneOperationId();
         if (targetNodeRid != _routingId)
         {
             Peer? peer;
@@ -1648,26 +1716,47 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _peersByRid.TryGetValue(targetNodeRid, out peer);
             if (peer is null || !peer.Admitted)
                 return SubmitResult.NotConnected;
+            ObservedAuthority authority;
+            if (forwardedRoute is { } committed)
+            {
+                if (committed.OperationId == default
+                    || committed.TargetNodeGeneration == 0
+                    || committed.AuthorityOwnerGeneration == 0
+                    || committed.OwnerLeaseGeneration == 0
+                    || committed.ForwardingHopCount is 0 or > 8)
+                    return SubmitResult.InvalidState;
+                authority = new ObservedAuthority(
+                    committed.TargetNodeGeneration,
+                    committed.AuthorityOwnerGeneration,
+                    committed.OwnerLeaseGeneration);
+            }
+            else if (!_observedSpotAuthorities.TryGetValue(
+                         new ObservedSpotAuthorityKey(
+                             targetNodeRid,
+                             targetSpotId,
+                             targetSpotGeneration),
+                         out authority))
+            {
+                return SubmitResult.NotFound;
+            }
             if (targetSpotGeneration == 0
-                || !_observedSpotAuthorities.TryGetValue(
-                    new ObservedSpotAuthorityKey(
-                        targetNodeRid,
-                        targetSpotId,
-                        targetSpotGeneration),
-                    out var authorityOwnerGeneration))
+                || peer.LifecycleGeneration != authority.TargetNodeGeneration)
                 return SubmitResult.NotFound;
             var head = ZLinkServiceWireCodec.EncodeSpot(
                 request
                     ? ServiceWireConstants.Command.SpotRequest
                     : ServiceWireConstants.Command.SpotSend,
                 operation?.OperationId.Low ?? 0,
+                routedOperationId,
                 sourceSpotId,
                 targetSpotId,
                 targetSpotGeneration,
                 targetNodeRid,
-                peer.LifecycleGeneration,
-                authorityOwnerGeneration,
-                !metadata.IsEmpty);
+                authority.TargetNodeGeneration,
+                authority.AuthorityOwnerGeneration,
+                authority.OwnerLeaseGeneration,
+                !metadata.IsEmpty,
+                forwardedRoute?.ForwardingHopCount ?? 0);
             return SubmitStatefulWire(
                 peer,
                 head,
@@ -1680,6 +1769,25 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (targetSpotGeneration != 0
             && spot.LifecycleGeneration != targetSpotGeneration)
             return SubmitResult.InvalidState;
+        var hasLocalAuthority = _observedSpotAuthorities.TryGetValue(
+                new ObservedSpotAuthorityKey(
+                    targetNodeRid,
+                    targetSpotId,
+                    targetSpotGeneration),
+                out var localAuthority);
+        if (hasLocalAuthority
+            && (localAuthority.TargetNodeGeneration != _lifecycleGeneration
+                || localAuthority.AuthorityOwnerGeneration
+                   != spot.AuthorityOwnerGeneration
+                || localAuthority.OwnerLeaseGeneration
+                   != checked((ulong)Volatile.Read(
+                       ref _localOwnerLeaseGeneration))))
+            return SubmitResult.NotFound;
+        if (!hasLocalAuthority)
+            localAuthority = new ObservedAuthority(
+                _lifecycleGeneration,
+                spot.AuthorityOwnerGeneration,
+                checked((ulong)Volatile.Read(ref _localOwnerLeaseGeneration)));
 
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null;
         if (request && operation is not null)
@@ -1697,10 +1805,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             request ? MeshRecordKind.SpotRequest : MeshRecordKind.SpotSend,
             MeshReadyDomains.Application,
             _routingId,
-            default,
+            string.Empty,
             _lifecycleGeneration,
             default,
-            operation?.OperationId ?? default,
+            routedOperationId,
             request ? MeshOperationKind.SpotRequest : default,
             null,
             null,
@@ -1710,13 +1818,23 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             0,
             0,
             null,
-            reply);
+            reply,
+            targetNodeGeneration: localAuthority.TargetNodeGeneration,
+            authorityOwnerGeneration: localAuthority.AuthorityOwnerGeneration,
+            ownerLeaseGeneration: localAuthority.OwnerLeaseGeneration);
         EnqueueOwned(
             MailboxKey.ForSpot(spot, MeshReadyDomains.Application),
             record,
             retained);
         return SubmitResult.Ok;
     }
+
+    private readonly record struct ForwardedSpotRoute(
+        MeshOperationId OperationId,
+        ulong TargetNodeGeneration,
+        ulong AuthorityOwnerGeneration,
+        ulong OwnerLeaseGeneration,
+        byte ForwardingHopCount);
 
     private SubmitResult SubmitActor(
         ActorRef actorRef,
@@ -1729,6 +1847,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ArgumentNullException.ThrowIfNull(parts);
         if (parts.Count == 0)
             throw new ArgumentException("Application payload is required.", nameof(parts));
+        var routedOperationId = operation?.OperationId
+            ?? NextStandaloneOperationId();
         acceptedSequence = 0;
         if (actorRef.NodeRid != _routingId)
         {
@@ -1741,18 +1861,21 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     new ObservedActorAuthorityKey(
                         actorRef.NodeRid,
                         actorRef.ActorId,
-                        actorRef.Generation),
-                    out var authorityOwnerGeneration))
+                        actorRef.ObjectGeneration),
+                    out var authority)
+                || peer.LifecycleGeneration != authority.TargetNodeGeneration)
                 return SubmitResult.NotFound;
             var head = ZLinkServiceWireCodec.EncodeActor(
                 request
                     ? ServiceWireConstants.Command.ActorRequest
                     : ServiceWireConstants.Command.ActorSend,
                 operation?.OperationId.Low ?? 0,
+                routedOperationId,
                 actorRef,
                 actorRef.NodeRid,
-                peer.LifecycleGeneration,
-                authorityOwnerGeneration,
+                authority.TargetNodeGeneration,
+                authority.AuthorityOwnerGeneration,
+                authority.OwnerLeaseGeneration,
                 hasMetadata: false);
             return SubmitStatefulWire(
                 peer,
@@ -1763,9 +1886,25 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         if (!TryGetActor(actorRef, out var actor))
             return SubmitResult.NotFound;
-        if (actor.IsSealed)
-            return SubmitResult.Backpressured;
-
+        var hasLocalAuthority = _observedActorAuthorities.TryGetValue(
+                new ObservedActorAuthorityKey(
+                    actorRef.NodeRid,
+                    actorRef.ActorId,
+                    actorRef.ObjectGeneration),
+                out var localAuthority);
+        if (hasLocalAuthority
+            && (localAuthority.TargetNodeGeneration != _lifecycleGeneration
+                || localAuthority.AuthorityOwnerGeneration
+                   != actor.AuthorityOwnerGeneration
+                || localAuthority.OwnerLeaseGeneration
+                   != checked((ulong)Volatile.Read(
+                       ref _localOwnerLeaseGeneration))))
+            return SubmitResult.NotFound;
+        if (!hasLocalAuthority)
+            localAuthority = new ObservedAuthority(
+                _lifecycleGeneration,
+                actor.AuthorityOwnerGeneration,
+                checked((ulong)Volatile.Read(ref _localOwnerLeaseGeneration)));
         acceptedSequence = actor.NextSequence();
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null;
         if (request && operation is not null)
@@ -1783,10 +1922,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             request ? MeshRecordKind.ActorRequest : MeshRecordKind.ActorSend,
             MeshReadyDomains.Application,
             _routingId,
-            default,
+            string.Empty,
             _lifecycleGeneration,
             default,
-            operation?.OperationId ?? default,
+            routedOperationId,
             request ? MeshOperationKind.ActorRequest : default,
             null,
             null,
@@ -1796,7 +1935,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             0,
             0,
             null,
-            reply);
+            reply,
+            targetNodeGeneration: localAuthority.TargetNodeGeneration,
+            authorityOwnerGeneration: localAuthority.AuthorityOwnerGeneration,
+            ownerLeaseGeneration: localAuthority.OwnerLeaseGeneration);
         EnqueueOwned(
             MailboxKey.ForActor(actor, MeshReadyDomains.Application),
             record,
@@ -1922,7 +2064,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 MeshRecordKind.Completion,
                 MeshReadyDomains.Infrastructure,
                 default,
-                default,
+                string.Empty,
                 0,
                 default,
                 operation.OperationId,
@@ -1940,50 +2082,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private bool TryGetActor(ActorRef actorRef, out ManagedActor actor) =>
         _actors.TryGetValue(actorRef.ActorId, out actor!)
-        && actor.Ref.Generation == actorRef.Generation
+        && actor.Ref.ObjectGeneration == actorRef.ObjectGeneration
         && actor.Ref.NodeRid == actorRef.NodeRid
         && !actor.Draining;
-
-    private ManagedTransfer RequireTransfer(ActorTransferToken token) =>
-        _transfers.TryGetValue(token, out var transfer)
-            ? transfer
-            : throw new InvalidOperationException("The Actor transfer token is stale.");
-
-    private void EnqueueTransferControl(
-        ManagedTransfer transfer,
-        ActorTransferPhase phase,
-        int resultCode)
-    {
-        var control = new ActorTransferControl(
-            phase,
-            transfer.Prepare.Role,
-            transfer.Prepare.TransferId,
-            transfer.Actor.Ref,
-            transfer.Actor.MembershipEpoch,
-            transfer.Prepare.FinalSequence,
-            resultCode,
-            0);
-        EnqueueOwned(
-            MailboxKey.ForActor(transfer.Actor, MeshReadyDomains.Infrastructure),
-            new MeshReceiveRecord(
-                MeshRecordKind.TransferControl,
-                MeshReadyDomains.Infrastructure,
-                _routingId,
-                transfer.Actor.SpotId,
-                _lifecycleGeneration,
-                transfer.Actor.Ref,
-                default,
-                default,
-                null,
-                null,
-                null,
-                0,
-                0,
-                resultCode,
-                0,
-                new ActorTransferControlRecord(control)),
-            Array.Empty<Message>());
-    }
 
     private void EnqueueActorLifecycle(
         ZLinkManagedSpot spot,
@@ -2125,6 +2226,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         if (ZLinkServiceWireCodec.TryDecodeStateful(
                 head,
+                _meshName,
                 out var stateful,
                 out _))
         {
@@ -2157,6 +2259,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         if (ZLinkServiceWireCodec.TryDecodeActorDestroy(
                 head,
+                _meshName,
                 out var actorDestroyOperation,
                 out _))
         {
@@ -2208,7 +2311,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 kind,
                 MeshReadyDomains.Application,
                 sourceRid,
-                default,
+                string.Empty,
                 ResolvePeerGeneration(sourceRid),
                 default,
                 request ? new MeshOperationId(0, application.Correlation) : default,
@@ -2403,7 +2506,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (!_spots.TryGetValue(stateful.TargetSpotId, out var spot)
                 || spot.LifecycleGeneration != stateful.TargetSpotGeneration
                 || spot.AuthorityOwnerGeneration
-                    != stateful.AuthorityOwnerGeneration)
+                    != stateful.AuthorityOwnerGeneration
+                || stateful.OwnerLeaseGeneration
+                    != checked((ulong)Volatile.Read(
+                        ref _localOwnerLeaseGeneration)))
             {
                 DisposeParts(parts);
                 if (request)
@@ -2425,16 +2531,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (!TryGetActor(stateful.TargetActor, out var actor)
                 || actor.AuthorityOwnerGeneration
                     != stateful.AuthorityOwnerGeneration
-                || actor.IsSealed)
+                || stateful.OwnerLeaseGeneration
+                    != checked((ulong)Volatile.Read(
+                        ref _localOwnerLeaseGeneration)))
             {
                 DisposeParts(parts);
                 if (request)
                     SendTerminalReply(
                         sourceRid,
                         stateful.Correlation,
-                        actor is not null && actor.IsSealed
-                            ? RequestResult.Busy
-                            : RequestResult.Conflict,
+                        RequestResult.Conflict,
                         (uint)ServiceWireConstants.FrameworkErrorCode.ActorLocationStale,
                         Array.Empty<Message>(),
                         SendFlags.DontWait);
@@ -2465,9 +2571,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 sourceSpotId,
                 ResolvePeerGeneration(sourceRid),
                 sourceActor,
-                request
-                    ? new MeshOperationId(0, stateful.Correlation)
-                    : default,
+                stateful.OperationId,
                 request ? operationKind : default,
                 null,
                 null,
@@ -2477,7 +2581,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 0,
                 0,
                 null,
-                reply),
+                reply,
+                targetNodeGeneration: stateful.TargetNodeGeneration,
+                authorityOwnerGeneration: stateful.AuthorityOwnerGeneration,
+                ownerLeaseGeneration: stateful.OwnerLeaseGeneration,
+                forwardingHopCount: stateful.ForwardingHopCount),
             parts);
     }
 
@@ -3175,7 +3283,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         left.Operation with { Correlation = 0 }
         == right.Operation with { Correlation = 0 };
 
-    private static ActorCreateOperationTerminal ValidateActorCreateTerminal(
+    private ActorCreateOperationTerminal ValidateActorCreateTerminal(
         ActorCreateOperation operation,
         ActorCreateOperationTerminal terminal)
     {
@@ -3196,15 +3304,20 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             or ActorCreateResult.Created)
         {
             if (completion.Actor.ActorId != operation.ActorId
-                || completion.Actor.Generation
+                || completion.Actor.ObjectGeneration
                     != operation.Reservation.ObjectGeneration
+                || !string.Equals(
+                    completion.Actor.MeshName,
+                    _meshName,
+                    StringComparison.Ordinal)
                 || completion.Actor.NodeRid
                     != operation.Reservation.TargetNodeRid)
                 throw new InvalidOperationException(
                     "The Actor create completion does not match its reservation.");
         }
         else if (!string.IsNullOrEmpty(completion.Actor.ActorId)
-                 || completion.Actor.Generation != 0
+                 || completion.Actor.ObjectGeneration != 0
+                 || !string.IsNullOrEmpty(completion.Actor.MeshName)
                  || !completion.Actor.NodeRid.IsEmpty)
         {
             throw new InvalidOperationException(
@@ -3315,14 +3428,50 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ZLinkServiceAdmissionDecision decision;
         lock (_gate)
         {
-            peer = FindPeerForAdmission(sourceRid) ??
-                   new Peer(checked(++_nextIntent), admission.AdvertisedEndpoint, sourceRid);
+            peer = FindPeerForAdmission(sourceRid, command)
+                   ?? new Peer(
+                       checked(++_nextIntent),
+                       admission.AdvertisedEndpoint,
+                       sourceRid,
+                       ZLinkServiceConnectionDirection.Inbound);
             if (peer.ExpectedRid is { } expected && expected != sourceRid)
             {
                 peer.State = MeshPeerState.Error;
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
                 return;
             }
+
+            var duplicate = FindDuplicatePeer(sourceRid, peer);
+            if (duplicate is not null)
+            {
+                var duplicateDecision = ZLinkServiceAdmissionGuard.SelectConnection(
+                    _routingId,
+                    sourceRid,
+                    duplicate.LifecycleGeneration,
+                    duplicate.Direction,
+                    duplicate.Discriminator,
+                    admission.LifecycleGeneration,
+                    peer.Direction,
+                    peer.Discriminator);
+                if (duplicateDecision
+                    == ZLinkServiceDuplicateConnectionDecision.KeepCurrent)
+                {
+                    RetireDuplicatePeer(peer);
+                    if (command == ServiceWireConstants.Command.Hello
+                        && duplicate.Admitted)
+                        SendAdmission(
+                            duplicate,
+                            ServiceWireConstants.Command.Admit);
+                    Publish(
+                        MeshMonitorEventKind.PeerRejected,
+                        peerRid: sourceRid);
+                    return;
+                }
+                if (duplicateDecision
+                    == ZLinkServiceDuplicateConnectionDecision.UseIncoming)
+                    RetireDuplicatePeer(duplicate);
+            }
+
             decision = ZLinkServiceAdmissionGuard.Evaluate(
                 peer.Admission,
                 command,
@@ -3333,7 +3482,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 {
                     peer.State = MeshPeerState.Error;
                     peer.Admitted = false;
-                    _peersByRid.Remove(sourceRid);
+                    if (_peersByRid.TryGetValue(sourceRid, out var indexed)
+                        && ReferenceEquals(indexed, peer))
+                        _peersByRid.Remove(sourceRid);
                 }
                 Publish(MeshMonitorEventKind.ProtocolError, peerRid: sourceRid);
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
@@ -3414,7 +3565,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 {
                     peer.Admitted = false;
                     peer.State = MeshPeerState.Connecting;
-                    _peersByRid.Remove(peer.RoutingId);
+                    if (_peersByRid.TryGetValue(peer.RoutingId, out var indexed)
+                        && ReferenceEquals(indexed, peer))
+                        _peersByRid.Remove(peer.RoutingId);
                     peer.NextAdmissionTimestamp = now;
                     _state = _peersByRid.Count == 0
                         ? MeshNodeState.Started
@@ -3580,7 +3733,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     recordKind,
                     MeshReadyDomains.Application,
                     _routingId,
-                    default,
+                    string.Empty,
                     _lifecycleGeneration,
                     default,
                     correlation == 0 ? default : new MeshOperationId(0, correlation),
@@ -3671,6 +3824,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         {
             decoded = ZLinkServiceWireCodec.TryDecodeActorCreateReply(
                 reply,
+                _meshName,
                 out var actorCreateCompletion,
                 out _);
             completion = actorCreateCompletion;
@@ -3764,7 +3918,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 MeshRecordKind.Completion,
                 MeshReadyDomains.Infrastructure,
                 default,
-                default,
+                string.Empty,
                 0,
                 default,
                 operationId,
@@ -3793,7 +3947,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 MeshRecordKind.SendReady,
                 MeshReadyDomains.Infrastructure,
                 default,
-                default,
+                string.Empty,
                 0,
                 default,
                 default,
@@ -3808,7 +3962,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 new MeshSendReadyData(
                     MeshDestinationKind.Node,
                     default,
-                    default,
+                    string.Empty,
                     default,
                     null)),
             Array.Empty<Message>());
@@ -3983,14 +4137,63 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
     }
 
-    private Peer? FindPeerForAdmission(RoutingId sourceRid)
+    private Peer? FindPeerForAdmission(
+        RoutingId sourceRid,
+        ServiceWireConstants.Command command)
     {
-        if (_peersByRid.TryGetValue(sourceRid, out var exact))
+        if (_peersByRid.TryGetValue(sourceRid, out var exact)
+            && (command == ServiceWireConstants.Command.Update
+                || command == ServiceWireConstants.Command.Hello
+                    && exact.Direction == ZLinkServiceConnectionDirection.Inbound
+                || command == ServiceWireConstants.Command.Admit
+                    && exact.Direction == ZLinkServiceConnectionDirection.Outbound))
             return exact;
-        return _peersByIntent.Values.FirstOrDefault(peer =>
-            peer.ExpectedRid == sourceRid
-            || peer.PhysicalRoutingId == sourceRid
-            || (!peer.Admitted && peer.ExpectedRid is null));
+        if (command == ServiceWireConstants.Command.Hello)
+            return null;
+        return _peersByIntent.Values
+            .Where(peer =>
+                peer.Direction == ZLinkServiceConnectionDirection.Outbound
+                && (peer.ExpectedRid == sourceRid
+                    || peer.PhysicalRoutingId == sourceRid
+                    || (!peer.Admitted && peer.ExpectedRid is null)))
+            .OrderBy(static peer => peer.Discriminator, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    private Peer? FindDuplicatePeer(RoutingId sourceRid, Peer candidate)
+    {
+        if (_peersByRid.TryGetValue(sourceRid, out var admitted)
+            && !ReferenceEquals(admitted, candidate))
+            return admitted;
+        return _peersByIntent.Values
+            .Where(peer =>
+                !ReferenceEquals(peer, candidate)
+                && (peer.RoutingId == sourceRid
+                    || peer.ExpectedRid == sourceRid
+                    || peer.PhysicalRoutingId == sourceRid))
+            .OrderBy(static peer => peer.Discriminator, StringComparer.Ordinal)
+            .FirstOrDefault();
+    }
+
+    private void RetireDuplicatePeer(Peer peer)
+    {
+        _peersByIntent.Remove(peer.Intent);
+        if (!peer.RoutingId.IsEmpty
+            && _peersByRid.TryGetValue(peer.RoutingId, out var indexed)
+            && ReferenceEquals(indexed, peer))
+            _peersByRid.Remove(peer.RoutingId);
+        peer.Admitted = false;
+        peer.State = MeshPeerState.Closed;
+        if (peer.Direction == ZLinkServiceConnectionDirection.Outbound
+            && _socket is not null)
+            try
+            {
+                lock (_socketGate)
+                    _socket.Disconnect(peer.Endpoint);
+            }
+            catch (ZlinkException)
+            {
+            }
     }
 
     private ulong ResolvePeerGeneration(RoutingId sourceRid)
@@ -4004,7 +4207,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private void RemovePeer(Peer peer, bool disconnect)
     {
         _peersByIntent.Remove(peer.Intent);
-        if (!peer.RoutingId.IsEmpty)
+        if (!peer.RoutingId.IsEmpty
+            && _peersByRid.TryGetValue(peer.RoutingId, out var indexed)
+            && ReferenceEquals(indexed, peer))
             _peersByRid.Remove(peer.RoutingId);
         peer.Admitted = false;
         peer.State = MeshPeerState.Closed;
@@ -4078,10 +4283,23 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return generation;
     }
 
+    private MeshOperationId NextStandaloneOperationId()
+    {
+        lock (_operationGate)
+        {
+            var low = ++_nextOperation;
+            if (low == 0)
+                throw new InvalidOperationException(
+                    "The operation id space was exhausted.");
+            return new MeshOperationId(_lifecycleGeneration, low);
+        }
+    }
+
     private static void ValidateObservedAuthority(
         RoutingId targetNodeRid,
         ulong objectGeneration,
-        ulong authorityOwnerGeneration)
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         if (targetNodeRid.IsEmpty)
             throw new ArgumentException(
@@ -4091,6 +4309,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             throw new ArgumentOutOfRangeException(nameof(objectGeneration));
         if (authorityOwnerGeneration is 0 or > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(authorityOwnerGeneration));
+        if (ownerLeaseGeneration is 0 or > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(ownerLeaseGeneration));
     }
 
     private static long Add(long timestamp, TimeSpan duration)
@@ -4102,11 +4322,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private sealed class Peer(
         ulong intent,
         string endpoint,
-        RoutingId? expectedRid)
+        RoutingId? expectedRid,
+        ZLinkServiceConnectionDirection direction)
     {
         internal ulong Intent { get; } = intent;
         internal string Endpoint { get; } = endpoint;
         internal RoutingId? ExpectedRid { get; } = expectedRid;
+        internal ZLinkServiceConnectionDirection Direction { get; } = direction;
+        internal string Discriminator { get; } =
+            $"{(direction == ZLinkServiceConnectionDirection.Outbound ? "out" : "in")}:" +
+            $"{endpoint}:{intent:x16}";
         internal RoutingId RoutingId { get; set; }
         internal RoutingId PhysicalRoutingId { get; set; }
         internal ulong LifecycleGeneration { get; set; }
@@ -4144,7 +4369,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ActorRef Actor)
     {
         internal static MailboxKey ForNode(MeshReadyDomains domain) =>
-            new(MeshOwnerKind.Node, string.Empty, 0, domain, default, default);
+            new(MeshOwnerKind.Node, string.Empty, 0, domain, string.Empty, default);
 
         internal static MailboxKey ForSpot(
             ZLinkManagedSpot spot,
@@ -4163,9 +4388,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             new(
                 MeshOwnerKind.Actor,
                 actor.Ref.ActorId,
-                actor.Ref.Generation,
+                actor.Ref.ObjectGeneration,
                 domain,
-                default,
+                string.Empty,
                 actor.Ref);
     }
 
@@ -4178,6 +4403,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         RoutingId NodeRid,
         string ActorId,
         ulong ObjectGeneration);
+
+    private readonly record struct ObservedAuthority(
+        ulong TargetNodeGeneration,
+        ulong AuthorityOwnerGeneration,
+        ulong OwnerLeaseGeneration);
 
     private sealed class OwnedMailbox : IDisposable
     {
@@ -4290,7 +4520,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         private readonly object _gate = new();
         private long _sequence;
-        private bool _sealed;
         private bool _draining;
         private ActorBinding? _binding;
 
@@ -4306,14 +4535,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             {
                 lock (_gate)
                     return _draining;
-            }
-        }
-        internal bool IsSealed
-        {
-            get
-            {
-                lock (_gate)
-                    return _sealed;
             }
         }
         internal ActorBinding? Binding
@@ -4352,7 +4573,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         {
             lock (_gate)
             {
-                if (_draining || _sealed)
+                if (_draining)
                     return false;
                 _draining = true;
                 _binding = null;
@@ -4368,7 +4589,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             lock (_gate)
             {
                 if (_draining
-                    || _sealed
                     || SpotId != expected.SpotId
                     || SpotGeneration != expected.SpotGeneration
                     || MembershipEpoch != expected.MembershipEpoch)
@@ -4377,34 +4597,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 SpotGeneration = targetSpotGeneration;
                 MembershipEpoch = checked(MembershipEpoch + 1);
                 return true;
-            }
-        }
-
-        internal bool TrySeal()
-        {
-            lock (_gate)
-            {
-                if (_draining || _sealed)
-                    return false;
-                _sealed = true;
-                return true;
-            }
-        }
-
-        internal void Unseal()
-        {
-            lock (_gate)
-                _sealed = false;
-        }
-
-        internal void CommitMembershipEpoch(ulong epoch)
-        {
-            lock (_gate)
-            {
-                if (!_sealed || epoch <= MembershipEpoch)
-                    throw new InvalidOperationException(
-                        "The transfer membership epoch is stale.");
-                MembershipEpoch = epoch;
             }
         }
 
@@ -4438,49 +4630,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ZLinkManagedStreamSessionService Service,
         RoutingId SessionRid,
         ulong Generation);
-
-    private sealed class ManagedTransfer(
-        ActorTransferToken token,
-        ActorTransferPrepare prepare,
-        ManagedActor actor)
-    {
-        private int _phase = (int)ActorTransferPhase.Preparing;
-        internal ActorTransferToken Token { get; } = token;
-        internal ActorTransferPrepare Prepare { get; } = prepare;
-        internal ManagedActor Actor { get; } = actor;
-
-        internal void Commit(ulong membershipEpoch)
-        {
-            if (Interlocked.CompareExchange(
-                    ref _phase,
-                    (int)ActorTransferPhase.Committed,
-                    (int)ActorTransferPhase.Preparing)
-                != (int)ActorTransferPhase.Preparing)
-                throw new InvalidOperationException("The transfer is not preparing.");
-            Actor.CommitMembershipEpoch(membershipEpoch);
-        }
-
-        internal void Activate()
-        {
-            if (Interlocked.CompareExchange(
-                    ref _phase,
-                    (int)ActorTransferPhase.Activated,
-                    (int)ActorTransferPhase.Committed)
-                != (int)ActorTransferPhase.Committed)
-                throw new InvalidOperationException("The transfer is not committed.");
-        }
-
-        internal void Abort()
-        {
-            if (Interlocked.CompareExchange(
-                    ref _phase,
-                    (int)ActorTransferPhase.Aborted,
-                    (int)ActorTransferPhase.Preparing)
-                != (int)ActorTransferPhase.Preparing)
-                throw new InvalidOperationException(
-                    "Only an uncommitted transfer can be aborted.");
-        }
-    }
 
     private sealed class PendingOperation(
         MeshOperationId operationId,

@@ -43,7 +43,7 @@ public sealed class ActorCreateCommandRuntimeTests
                     "room",
                     ZLinkObjectMaintenancePolicyKind.Disabled,
                     false,
-                    0)
+                    10)
             ],
             Capacity = new(
                 new ZLinkPopulationCapacity(0, 0, 10),
@@ -158,7 +158,7 @@ public sealed class ActorCreateCommandRuntimeTests
             source.Status().AdmittedPeerCount == 1
             && target.Status().AdmittedPeerCount == 1);
 
-        var actor = new ActorRef(target.RoutingId, "actor-27", 17);
+        var actor = new ActorRef("actor-27", 17, "mesh", target.RoutingId);
         var targetGeneration = target.Status().LifecycleGeneration;
         Assert.Equal(
             SubmitResult.Ok,

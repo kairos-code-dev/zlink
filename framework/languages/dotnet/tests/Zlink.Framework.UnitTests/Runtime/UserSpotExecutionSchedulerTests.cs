@@ -11,7 +11,9 @@ public sealed class UserSpotExecutionSchedulerTests
         {
             SpotNodeName = "execution-node"
         };
-        IZLinkMeshObjectServerBuilder server = new ZLinkMeshNodeBuilder(registration);
+        IZLinkMeshObjectServerBuilder server = new ZLinkMeshNodeBuilder(registration)
+            .Objects()
+            .Server();
 
         server.AddSpotFactory<ExecutionTestSpot>(
             "execution.spot",
@@ -30,7 +32,9 @@ public sealed class UserSpotExecutionSchedulerTests
         {
             SpotNodeName = "invalid-execution-node"
         };
-        IZLinkMeshObjectServerBuilder invalid = new ZLinkMeshNodeBuilder(invalidRegistration);
+        IZLinkMeshObjectServerBuilder invalid = new ZLinkMeshNodeBuilder(invalidRegistration)
+            .Objects()
+            .Server();
         Assert.Throws<ZLinkConfigurationException>(() =>
             invalid.AddSpotFactory<OtherExecutionTestSpot>(
                 "invalid.execution.spot",

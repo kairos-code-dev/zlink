@@ -213,6 +213,7 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame.SourceSessionRid,
                     frame.RequestId,
                     frame.Flags,
+                    frame.RouteContext,
                     frame.Header,
                     frame.Body))
                 return false;
@@ -248,9 +249,9 @@ internal sealed class ZLinkActorInboundPipeline(
         {
             ZLinkActorBoundSessionRelay.RemoveNativeBinding(
                 runtime,
-                actor.ActorId,
+                actor.Context.ActorId,
                 frame.SourceSessionRid);
-            await endpoint.NotifyDisconnectedAsync(actor.ActorId, cancellationToken)
+            await endpoint.NotifyDisconnectedAsync(actor.Context.ActorId, cancellationToken)
                 .ConfigureAwait(false);
             acknowledgeHandledFrame?.Invoke();
             return;
@@ -258,7 +259,7 @@ internal sealed class ZLinkActorInboundPipeline(
 
         var boundSession = ZLinkActorBoundSessionRelay.EnterDispatch(
             runtime,
-            actor.ActorId,
+            actor.Context.ActorId,
             frame.SourceNodeRid,
             frame.SourceSessionRid,
             frame.RequestId,
@@ -294,7 +295,7 @@ internal sealed class ZLinkActorInboundPipeline(
                     if (acknowledgeHandledFrame is null)
                         await ZLinkActorBoundSessionRelay.SendReplyAsync(
                                 runtime,
-                                actor.ActorId,
+                                actor.Context.ActorId,
                                 frame.ReplyActor,
                                 frame.SourceNodeRid,
                                 frame.SourceSessionRid,
@@ -310,7 +311,7 @@ internal sealed class ZLinkActorInboundPipeline(
                                 "actor handoff reply",
                                 ct => ZLinkActorBoundSessionRelay.SendReplyAsync(
                                     runtime,
-                                    actor.ActorId,
+                                    actor.Context.ActorId,
                                     frame.ReplyActor,
                                     frame.SourceNodeRid,
                                     frame.SourceSessionRid,
@@ -410,7 +411,7 @@ internal sealed class ZLinkEntrySpotActorInboundEndpoint(
     {
         if (state.LiveActivation is not null)
             return await runtime.SubmitActorForReplyAsync(
-                    actor.ActorId,
+                    actor.Context.ActorId,
                     header,
                     body,
                     cancellationToken)
@@ -427,7 +428,7 @@ internal sealed class ZLinkEntrySpotActorInboundEndpoint(
         return result.Handled
             ? result.Reply
             : await runtime.SubmitActorForReplyAsync(
-                    actor.ActorId,
+                    actor.Context.ActorId,
                     header,
                     body,
                     cancellationToken)

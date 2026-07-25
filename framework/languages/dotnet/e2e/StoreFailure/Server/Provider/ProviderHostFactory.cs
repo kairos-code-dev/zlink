@@ -39,7 +39,7 @@ internal static class ProviderHostFactory
                     .SetKeyPrefix(options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 var locations = framework.ConfigureLocations();
-                locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+                locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
                 locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
                 locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(
                     Math.Max(100, options.LocationHeartbeatMs / 2));

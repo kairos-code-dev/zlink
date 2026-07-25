@@ -6,6 +6,42 @@ namespace Zlink.Framework.ContractTests.Actors;
 public sealed class ActorContracts
 {
     [Fact]
+    public void Actor_ref_public_shape_is_exact()
+    {
+        var propertyNames = typeof(ActorRef)
+            .GetProperties()
+            .Select(static property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[] { "ActorId", "MeshName", "NodeRid", "ObjectGeneration" },
+            propertyNames);
+        Assert.DoesNotContain(
+            typeof(ActorRef).GetProperties(),
+            static property => property.Name == "Generation");
+        Assert.Null(
+            typeof(IZLinkActor).Assembly.GetType(
+                "Zlink.Framework.Contracts.Actors.ActorRefSnapshot",
+                throwOnError: false));
+
+        var actorClientMethods = typeof(IZLinkActorClient)
+            .GetMethods()
+            .OrderBy(static method => method.Name, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(2, actorClientMethods.Length);
+        Assert.All(actorClientMethods, static method =>
+        {
+            var parameters = method.GetParameters();
+            Assert.Equal("actorId", parameters[0].Name);
+            Assert.Equal(typeof(string), parameters[0].ParameterType);
+            Assert.DoesNotContain(
+                parameters,
+                static parameter => parameter.ParameterType == typeof(ActorRef));
+        });
+    }
+
+    [Fact]
     [ContractExample(
         typeof(IZLinkActor),
         typeof(IZLinkActorContext),
@@ -29,7 +65,7 @@ public sealed class ActorContracts
         var manager = new ActorManager(factory, context);
         var actorClient = new ActorClient();
 
-        var actor = new PlayerActor("player-1", context);
+        var actor = new PlayerActor(context);
         var actorRef = (await manager.GetOrCreate("player-1", "player")
             .InMesh("actors")
             .Request(new JoinRoom("room-1"))
@@ -41,7 +77,6 @@ public sealed class ActorContracts
             _ => throw new InvalidOperationException("Actor creation was rejected.")
         };
         var foundActorRef = await manager.FindAsync("player-1");
-        var snapshot = ActorRefSnapshot.From(actorRef);
         actor.Context
             .JoinSpot("room-1", new JoinRoom("room-1"))
             .Defer();
@@ -49,21 +84,20 @@ public sealed class ActorContracts
             .JoinEntrySpot(ZLinkMessage.Empty)
             .Timeout(TimeSpan.FromSeconds(1))
             .Defer();
-        await actorClient.SendToActor("actors", actorRef, new JoinRoom("room-1"))
+        await actorClient.SendToActor(actorRef.ActorId, new JoinRoom("room-1"))
             .Async();
         var actorReply = await actorClient
-            .RequestToActor("actors", actorRef, new JoinRoom("room-1"))
+            .RequestToActor(actorRef.ActorId, new JoinRoom("room-1"))
             .Timeout(TimeSpan.FromSeconds(1))
             .Async<JoinedRoom>();
         var yieldedActorReply = await actorClient
-            .RequestToActor("actors", actorRef, new JoinRoom("room-1"))
+            .RequestToActor(actorRef.ActorId, new JoinRoom("room-1"))
             .Timeout(TimeSpan.FromSeconds(1))
             .Yield<JoinedRoom>();
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal(actorRef, foundActorRef);
-        Assert.Equal(actorRef, snapshot.ToActorRef());
-        Assert.Equal("player-1", actor.ActorId);
+        Assert.Equal("player-1", actor.Context.ActorId);
         Assert.Equal("room-1", actorReply.RoomId);
         Assert.Equal("room-1", yieldedActorReply.RoomId);
     }
@@ -71,23 +105,19 @@ public sealed class ActorContracts
     private sealed class ActorClient : IZLinkActorClient
     {
         public IZLinkActorSendCall SendToActor<TMessage>(
-            string meshName,
-            ActorRef actor,
+            string actorId,
             TMessage message)
         {
-            _ = meshName;
-            _ = actor;
+            _ = actorId;
             _ = message;
             return new ActorSendCall();
         }
 
         public IZLinkActorRequestCall RequestToActor<TRequest>(
-            string meshName,
-            ActorRef actor,
+            string actorId,
             TRequest request)
         {
-            _ = meshName;
-            _ = actor;
+            _ = actorId;
             _ = request;
             return new ActorRequestCall();
         }
@@ -135,11 +165,10 @@ public sealed class ActorContracts
     private sealed class ActorFactory : IZLinkActorFactory
     {
         public ValueTask<IZLinkActor> CreateAsync(
-            string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+            return ValueTask.FromResult<IZLinkActor>(new PlayerActor(context));
         }
     }
 
@@ -183,8 +212,12 @@ public sealed class ActorContracts
                 return new ZLinkActorCreateResult.Existing(existing);
 
             _ = actorType;
-            var actor = await factory.CreateAsync(actorId, context, cancellationToken);
-            var actorRef = new ActorRef(RoutingId.From("actor-node"), actor.ActorId, 1);
+            var actor = await factory.CreateAsync(context, cancellationToken);
+            var actorRef = new ActorRef(
+                actor.Context.ActorId,
+                1,
+                "actors",
+                RoutingId.From("actor-node"));
             _actors[actorId] = actorRef;
             return new ZLinkActorCreateResult.Created(actorRef, null);
         }
@@ -265,18 +298,16 @@ public sealed class ActorContracts
             string spotId,
             ZLinkMessage request)
         {
-            return new JoinSpotCall(ZLinkMessage.From(new JoinedRoom("room-1")));
+            return new JoinSpotCall();
         }
 
         public IZLinkActorJoinEntrySpotCall JoinEntrySpot(ZLinkMessage request)
         {
-            return new JoinEntrySpotCall(
-                new ActorRef(RoutingId.From("entry-node"), actorId, 1),
-                request);
+            return new JoinEntrySpotCall();
         }
     }
 
-    private sealed class JoinSpotCall(ZLinkMessage reply) : IZLinkActorJoinSpotCall
+    private sealed class JoinSpotCall : IZLinkActorJoinSpotCall
     {
         public void Defer()
         {
@@ -289,7 +320,7 @@ public sealed class ActorContracts
 
     }
 
-    private sealed class JoinEntrySpotCall(ActorRef result, ZLinkMessage reply) : IZLinkActorJoinEntrySpotCall
+    private sealed class JoinEntrySpotCall : IZLinkActorJoinEntrySpotCall
     {
         public void Defer()
         {
@@ -302,10 +333,8 @@ public sealed class ActorContracts
 
     }
 
-    private sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZLinkActor
+    private sealed class PlayerActor(IZLinkActorContext context) : IZLinkActor
     {
-        public string ActorId { get; } = actorId;
-
         public IZLinkActorContext Context { get; } = context;
     }
 

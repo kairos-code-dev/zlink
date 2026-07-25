@@ -167,29 +167,6 @@ public sealed class EnvelopeCodecTests
     }
 
     [Fact]
-    public void JsonEnvelope_RoundTrips_ActorRefSnapshot_RoutingId_As_Hex()
-    {
-        var snapshot = new ActorRefSnapshot(
-            RoutingId.From("delivery-courier-node-1"),
-            "courier-a",
-            3);
-        using var body = ZLinkEnvelopeCodec.EncodeBody(
-            new ActorSnapshotReply(snapshot),
-            typeof(ActorSnapshotReply),
-            null);
-
-        var decoded = (ActorSnapshotReply)ZLinkEnvelopeCodec.DecodeBody(
-            body,
-            typeof(ActorSnapshotReply),
-            ZLinkEnvelopeCodec.DefaultContentType,
-            null)!;
-
-        Assert.Equal(snapshot.NodeRid, decoded.Actor.NodeRid);
-        Assert.Equal("delivery-courier-node-1", decoded.Actor.NodeRid.ToString());
-        Assert.Equal(snapshot.ToActorRef(), decoded.Actor.ToActorRef());
-    }
-
-    [Fact]
     public void BoundSessionBindPacketName_Can_Be_Encoded_As_Stream_Send()
     {
         Assert.False(
@@ -372,5 +349,4 @@ public sealed class EnvelopeCodecTests
         Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
     }
 
-    private sealed record ActorSnapshotReply(ActorRefSnapshot Actor);
 }

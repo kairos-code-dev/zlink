@@ -22,8 +22,16 @@ public sealed class BackendStreamSocketConcurrencyTests
         var sessionRid = RoutingId.From("session");
         sessionProxy.Bindings =
         [
-            new StreamSessionBinding(sessionRid, new ActorRef(NodeRid, "actor-1", 1), 0, 0),
-            new StreamSessionBinding(sessionRid, new ActorRef(NodeRid, "actor-2", 1), 0, 0)
+            new StreamSessionBinding(
+                sessionRid,
+                new ActorRef("actor-1", 1, "actors", NodeRid),
+                0,
+                0),
+            new StreamSessionBinding(
+                sessionRid,
+                new ActorRef("actor-2", 1, "actors", NodeRid),
+                0,
+                0)
         ];
 
         await using var backend = new ZLinkBackendStreamSocketWrapper(

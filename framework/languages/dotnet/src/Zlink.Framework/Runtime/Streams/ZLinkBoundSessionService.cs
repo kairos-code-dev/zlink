@@ -7,7 +7,8 @@ internal sealed class ZLinkBoundSessionService(
     ZLinkFrameworkRuntime runtime) : IZLinkBoundSessionService
 {
     private readonly object _submitterGate = new();
-    private ZLinkAsyncSubmitter? _submitter;
+    private readonly Dictionary<string, ZLinkAsyncSubmitter> _submitters =
+        new(StringComparer.Ordinal);
 
     public IZLinkBoundSession Create(string actorId)
     {
@@ -133,8 +134,9 @@ internal sealed class ZLinkBoundSessionService(
         byte[] frame,
         CancellationToken cancellationToken)
     {
+        var route = ResolveSessionRoute(actorId);
         var message = Message.From(frame);
-        return GetSubmitter().SubmitAsync(
+        return GetSubmitter(route.MeshName).SubmitAsync(
             new[] { message },
             pending => runtime.SendActorBoundSession(
                 actorId,
@@ -143,22 +145,35 @@ internal sealed class ZLinkBoundSessionService(
             cancellationToken);
     }
 
-    private ZLinkAsyncSubmitter GetSubmitter()
+    private ZLinkAsyncSubmitter GetSubmitter(string meshName)
     {
         lock (_submitterGate)
-            return _submitter ??= runtime.CreateActorBoundSessionSubmitter();
+        {
+            if (_submitters.TryGetValue(meshName, out var submitter))
+                return submitter;
+            submitter = runtime.CreateActorBoundSessionSubmitter(meshName);
+            _submitters.Add(meshName, submitter);
+            return submitter;
+        }
     }
 
     public ValueTask ResetAsync()
     {
-        ZLinkAsyncSubmitter? submitter;
+        ZLinkAsyncSubmitter[] submitters;
         lock (_submitterGate)
         {
-            submitter = _submitter;
-            _submitter = null;
+            submitters = _submitters.Values.ToArray();
+            _submitters.Clear();
         }
 
-        return submitter?.DisposeAsync() ?? ValueTask.CompletedTask;
+        return DisposeAllAsync(submitters);
+    }
+
+    private static async ValueTask DisposeAllAsync(
+        IReadOnlyList<ZLinkAsyncSubmitter> submitters)
+    {
+        foreach (var submitter in submitters)
+            await submitter.DisposeAsync().ConfigureAwait(false);
     }
 
     private ZLinkActorBoundSession ResolveSessionRoute(string actorId)

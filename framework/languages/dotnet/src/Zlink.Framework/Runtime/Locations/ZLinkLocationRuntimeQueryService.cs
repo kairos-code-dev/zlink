@@ -64,18 +64,21 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             OwnerLeaseRenewedAt: health.RenewedAt));
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+        ListMeshNodeDescriptorsAsync(
         string meshName,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
     {
         var rows = await ListAcceptedDescriptorsAsync(meshName, cancellationToken)
             .ConfigureAwait(false);
-        return await _liveRows.FilterAsync(
+        var live = await _liveRows.FilterAsync(
                 rows,
                 static row => row.OwnerId,
                 static _ => true,
                 cancellationToken)
             .ConfigureAwait(false);
+        return PageInMemory(live, Normalize(page));
     }
 
     public async ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
@@ -108,8 +111,10 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         return PageInMemory(entries, Normalize(page));
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
+    public async ValueTask<ZLinkLocationPage<ZLinkLocationServiceSummary>>
+        ListServiceSummariesAsync(
         ZLinkLocationServiceSummaryFilter filter,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default)
     {
         var summaries = new List<ZLinkLocationServiceSummary>();
@@ -145,7 +150,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                 accumulator.LastUpdatedAt));
         }
 
-        return summaries;
+        return PageInMemory(summaries, Normalize(page));
     }
 
     private IEnumerable<string> MeshNamesOf(string? meshName) =>
@@ -154,7 +159,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             : _registeredMeshNames;
 
     private ZLinkPageRequest Normalize(ZLinkPageRequest page) =>
-        page.PageSize > 0 ? page : page with { PageSize = _options.ListPageSize };
+        page.PageSize > 0 ? page : page with { PageSize = 1000 };
 
     private async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListAcceptedDescriptorsAsync(
         string meshName,
@@ -164,7 +169,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
             _storeHealth,
             "mesh-node-query-read",
             cancellationToken,
-            storeToken => _meshNodeStore.ListMeshNodesAsync(meshName, storeToken)).ConfigureAwait(false);
+            storeToken => _meshNodeStore.ListAllMeshNodesAsync(meshName, storeToken)).ConfigureAwait(false);
         _observed.ReconcileDescriptors(meshName, rows);
         return rows.Where(_observed.AcceptDescriptor).ToArray();
     }
@@ -177,7 +182,9 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
         && (filter.NodeRid is null || entry.NodeRid.Equals(filter.NodeRid.Value))
         && (filter.State is null || entry.State == filter.State);
 
-    private static ZLinkLocationPage<T> PageInMemory<T>(List<T> entries, ZLinkPageRequest page)
+    private static ZLinkLocationPage<T> PageInMemory<T>(
+        IReadOnlyList<T> entries,
+        ZLinkPageRequest page)
     {
         var offset = 0;
         if (page.ContinuationToken is { } token && int.TryParse(token, out var parsed))

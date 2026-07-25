@@ -200,14 +200,12 @@ internal static class ConsumerHostFactory
 
     // A caller joins the providers' RouteMesh with its own membership and
     // issues ChannelName select-one calls through IZLinkRouteClient. The bind
-    // uses an ephemeral port and the routing id comes from a store-allocated
-    // group (spec 10 §1; fixed ids stay reserved for the providers).
+    // uses an ephemeral port and a Framework-generated lifecycle identity.
     internal static void JoinConsumerMesh(IZLinkFrameworkOptions framework, string ridPrefix)
     {
         var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
             .Listen("tcp://127.0.0.1:0")
-            .UseAllocatedRoutingId(slotCount: 128, routingIdPrefix: ridPrefix)
-            .SetRoutingIdAllocationGroup($"resilience.{ridPrefix}");
+            .SetRoutingIdPrefix(ridPrefix);
         mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
     }
 

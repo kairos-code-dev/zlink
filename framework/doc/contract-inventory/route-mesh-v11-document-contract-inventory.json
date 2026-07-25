@@ -471,10 +471,10 @@
         "required_fragments": [
           "## 3. Codex profile과 병렬 lane",
           "| `P-DEEP` | `gpt-5.6 high` |",
-          "| `P-HIGH` | `gpt-5.6-sol medium` |",
+          "| `P-HIGH` | `gpt-5.6-sol high` |",
           "| `P-DELIVERY` | `gpt-5.6 medium` |",
           "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
-          "이후 모든 독립 review는 `P-HIGH`의 Codex `gpt-5.6-sol medium` 단독 reviewer로 진행하며 Claude 병렬",
+          "이후 모든 독립 review는 `P-HIGH`의 Codex `gpt-5.6-sol high` 단독 reviewer로 진행하며 Claude 병렬",
           "reviewer를 두지 않는다.",
           "당시 실제 실행 이력이므로 변경하지 않는다.",
           "별도 상향",
@@ -529,7 +529,7 @@
         "required_fragments": [
           "1~4회차에는 `Critical`, `High`, `Medium`, `Low`의 모든 유효 finding을 반영한다.",
           "5회차부터 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 gate를 통과하지 못한다.",
-          "이후 모든 독립 review는 Codex `gpt-5.6-sol medium`(`P-HIGH`) 단독 reviewer가 수행하며 Claude 병렬"
+          "이후 모든 독립 review는 Codex `gpt-5.6-sol high`(`P-HIGH`) 단독 reviewer가 수행하며 Claude 병렬"
         ]
       },
       {

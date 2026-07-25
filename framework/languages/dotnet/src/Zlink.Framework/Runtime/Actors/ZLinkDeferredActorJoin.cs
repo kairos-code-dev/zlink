@@ -192,7 +192,7 @@ internal sealed class ZLinkDeferredActorJoin(
                             sourceNodeRid
                             ?? throw new ZLinkFrameworkException(
                                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                                $"Actor '{actor.ActorId}' does not have a current node identity."),
+                                $"Actor '{actor.Context.ActorId}' does not have a current node identity."),
                             actor,
                             request,
                             deadline.Token)

@@ -12,14 +12,28 @@ public sealed class ActorBoundSessionRelayTests
         var replacementToken = ZLinkActorBoundSessionBindingToken.Native(replacementRid);
         var calls = 0;
 
-        state.BindSession(null, originalRid, originalToken);
+        state.BindSession(
+            null,
+            originalRid,
+            originalToken,
+            objectGeneration: 1,
+            authorityOwnerGeneration: 1,
+            meshName: "actors",
+            ownerLeaseGeneration: 1);
         Assert.True(state.TryUseBoundSession(originalToken, _ =>
         {
             calls++;
             return true;
         }));
 
-        state.BindSession(null, replacementRid, replacementToken);
+        state.BindSession(
+            null,
+            replacementRid,
+            replacementToken,
+            objectGeneration: 1,
+            authorityOwnerGeneration: 2,
+            meshName: "actors",
+            ownerLeaseGeneration: 1);
         Assert.True(state.TryUseBoundSession(originalToken, _ =>
         {
             calls++;

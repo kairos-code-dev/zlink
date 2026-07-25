@@ -24,12 +24,12 @@ internal sealed class SessionAwaitEntrySpot(IZLinkEntrySpotContext context) : IZ
 internal sealed class SessionAwaitActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new SessionAwaitActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(
+            new SessionAwaitActor(context.ActorId, context));
     }
 }
 

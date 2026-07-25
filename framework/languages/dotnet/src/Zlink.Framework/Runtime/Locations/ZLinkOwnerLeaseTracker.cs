@@ -16,6 +16,8 @@ internal sealed class ZLinkOwnerLeaseTracker
         new(StringComparer.Ordinal);
     private long _liveSetVersion;
 
+    internal TimeProvider TimeProvider => _time;
+
     internal ZLinkOwnerLeaseTracker(
         IZLinkOwnerLeaseStore store,
         ZLinkLocationOptions options,
@@ -45,6 +47,25 @@ internal sealed class ZLinkOwnerLeaseTracker
         var snapshot = await GetSnapshotAsync(token.OwnerId, cancellationToken)
             .ConfigureAwait(false);
         return snapshot.Token == token && IsUnexpired(snapshot);
+    }
+
+    /// <summary>
+    /// Returns the conservative time left before the owner must stop accepting
+    /// new work. The lease can remain present after this point, but the
+    /// fencing margin is reserved for the owner to seal admission before the
+    /// provider expiry boundary.
+    /// </summary>
+    internal async ValueTask<TimeSpan?> GetOwnerTokenRemainingAdmissionLifetimeAsync(
+        ZLinkLocationOwnerToken token,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await GetSnapshotAsync(token.OwnerId, cancellationToken)
+            .ConfigureAwait(false);
+        if (snapshot.Token != token) return null;
+        var remaining = snapshot.LeaseExpiresAt - snapshot.StoreNow
+                        - _time.GetElapsedTime(snapshot.FetchedAt)
+                        - _options.OwnerLeaseFencingMargin;
+        return remaining > TimeSpan.Zero ? remaining : null;
     }
 
     /// <summary>

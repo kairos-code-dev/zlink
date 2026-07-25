@@ -9,7 +9,7 @@ public sealed class OwnerLeaseTrackerTests
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
-        await store.RenewOwnerLeaseAsync("owner-a", RoutingId.From("node-1"), TimeSpan.FromSeconds(15));
+        await store.ClaimLiveOwnerAsync("owner-a", TimeSpan.FromSeconds(15));
 
         // A long polling interval keeps the snapshot cached, so expiry is
         // judged from the snapshot's StoreNow plus local monotonic elapsed.
@@ -32,17 +32,53 @@ public sealed class OwnerLeaseTrackerTests
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
-        await store.RenewOwnerLeaseAsync("owner-a", RoutingId.From("node-1"), TimeSpan.FromMinutes(5));
+        var owner = await store.ClaimLiveOwnerAsync(
+            "owner-a",
+            TimeSpan.FromMinutes(5));
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.FromSeconds(1) };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         Assert.True(await tracker.IsOwnerLiveAsync("owner-a"));
 
         // The owner disappears from the store; the cached snapshot may keep
         // it alive for at most one polling interval.
-        await store.RemoveOwnerLeaseAsync("owner-a");
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await store.ReleaseOwnerLeaseAsync(owner));
         Assert.True(await tracker.IsOwnerLiveAsync("owner-a"));
 
         time.Advance(TimeSpan.FromSeconds(1));
         Assert.False(await tracker.IsOwnerLiveAsync("owner-a"));
+    }
+
+    [Fact]
+    public async Task Route_Admission_Stops_At_The_Lease_Fencing_Deadline()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var owner = await store.ClaimLiveOwnerAsync(
+            "owner-a",
+            TimeSpan.FromSeconds(15));
+        var options = new ZLinkLocationOptions
+        {
+            PollingInterval = TimeSpan.FromMinutes(10),
+            OwnerLeaseFencingMargin = TimeSpan.FromSeconds(5)
+        };
+        var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
+
+        Assert.Equal(
+            TimeSpan.FromSeconds(10),
+            await tracker.GetOwnerTokenRemainingAdmissionLifetimeAsync(owner));
+
+        time.AdvanceMonotonicOnly(TimeSpan.FromSeconds(9));
+        Assert.Equal(
+            TimeSpan.FromSeconds(1),
+            await tracker.GetOwnerTokenRemainingAdmissionLifetimeAsync(owner));
+
+        // The provider lease is still present for five more seconds, but new
+        // routes must not use that interval for admission.
+        time.AdvanceMonotonicOnly(TimeSpan.FromSeconds(1));
+        Assert.Null(
+            await tracker.GetOwnerTokenRemainingAdmissionLifetimeAsync(owner));
+        Assert.True(await tracker.IsOwnerTokenLiveAsync(owner));
     }
 }

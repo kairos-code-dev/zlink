@@ -258,27 +258,27 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_When_Multiple_SpotNodes_Own_ActorFactories()
+    public void AddZLinkFramework_Allows_Multiple_SpotNodes_To_Own_ActorFactories()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                var first = options.AddRouteMesh("actor-node-a")
-                    .Listen("tcp://127.0.0.1:6103");
-                first.Channel("actor-node-a").Server();
-                first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
-                var second = options.AddRouteMesh("actor-node-b")
-                    .Listen("tcp://127.0.0.1:6104");
-                second.Channel("actor-node-b").Server();
-                second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                    "mage", null, ZLinkRelocationPolicy<TestActor>.Disabled);
-            }));
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            var first = options.AddRouteMesh("actor-node-a")
+                .Listen("tcp://127.0.0.1:6103");
+            first.Channel("actor-node-a").Server();
+            first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+            var second = options.AddRouteMesh("actor-node-b")
+                .Listen("tcp://127.0.0.1:6104");
+            second.Channel("actor-node-b").Server();
+            second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "mage", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+        });
 
-        Assert.Contains("more than one SpotNode owns actor factories", exception.Message, StringComparison.Ordinal);
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetRequiredService<ZLinkFrameworkRegistration>());
     }
 
     [Fact]
@@ -398,28 +398,28 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenActorTypeIsDuplicatedAcrossNodes()
+    public void AddZLinkFramework_AllowsActorTypeOnMultipleEligibleNodes()
     {
         var services = new ServiceCollection();
 
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            services.AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                options.AddRelocationStore(new TestRelocationStore());
-                var first = options.AddRouteMesh("actor-node-a")
-                    .Listen("tcp://127.0.0.1:6201");
-                first.Channel("actor-node-a").Server();
-                first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
-                var second = options.AddRouteMesh("actor-node-b")
-                    .Listen("tcp://127.0.0.1:6202");
-                second.Channel("actor-node-b").Server();
-                second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
-            }));
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            options.AddRelocationStore(new TestRelocationStore());
+            var first = options.AddRouteMesh("actor-node-a")
+                .Listen("tcp://127.0.0.1:6201");
+            first.Channel("actor-node-a").Server();
+            first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+            var second = options.AddRouteMesh("actor-node-b")
+                .Listen("tcp://127.0.0.1:6202");
+            second.Channel("actor-node-b").Server();
+            second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+        });
 
-        Assert.Contains("more than one SpotNode owns actor factories", exception.Message, StringComparison.Ordinal);
+        using var provider = services.BuildServiceProvider();
+        Assert.NotNull(provider.GetRequiredService<ZLinkFrameworkRegistration>());
     }
 
     [Fact]
@@ -831,9 +831,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         await using var provider = services.BuildServiceProvider();
 
+        Assert.Same(backing, provider.GetRequiredService<IZLinkLocationStore>());
         Assert.Same(backing, provider.GetRequiredService<IZLinkMeshNodeLocationStore>());
-        Assert.Same(backing, provider.GetRequiredService<IZLinkSpotLocationStore>());
-        Assert.Same(backing, provider.GetRequiredService<IZLinkActorLocationStore>());
         Assert.Same(backing, provider.GetRequiredService<IZLinkOwnerLeaseStore>());
         Assert.Same(backing, provider.GetRequiredService<IZLinkLocationChangeStampStore>());
 
@@ -847,19 +846,46 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AllocatedRoutingIdPolicy_UsesTheContractDefaults()
+    public void LocationPolicy_UsesTheExactContractDefaults()
     {
         var options = new ZLinkLocationOptions();
 
-        Assert.Equal(TimeSpan.FromSeconds(10), options.HeartbeatInterval);
-        Assert.Equal(TimeSpan.FromSeconds(30), options.OwnerLeaseTtl);
-        Assert.Equal(TimeSpan.FromSeconds(5), options.RoutingIdFencingMargin);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.OwnerLeaseRenewInterval);
+        Assert.Equal(TimeSpan.FromSeconds(15), options.OwnerLeaseTtl);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.OwnerLeaseFencingMargin);
         Assert.Equal(TimeSpan.FromSeconds(3), options.OwnerLeaseRenewTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(15), options.RouteCacheMaxAge);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.RelocationForwardingWindow);
         Assert.Equal(64, options.MaxActiveOutboundRelocations);
         Assert.Equal(64, options.MaxActiveInboundRelocations);
         Assert.Equal(8, options.MaxConcurrentRelocationCaptures);
         Assert.Equal(8, options.MaxConcurrentRelocationRestores);
         Assert.Equal(268_435_456, options.MaxRelocationPayloadInFlightBytes);
+    }
+
+    [Theory]
+    [InlineData(-1, 30)]
+    [InlineData(15, -1)]
+    [InlineData(26, 30)]
+    public void AddZLinkFramework_RejectsInvalidObjectRoutingTimes(
+        int cacheSeconds,
+        int forwardingSeconds)
+    {
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                var locations = options.ConfigureLocations();
+                locations.RouteCacheMaxAge = TimeSpan.FromSeconds(cacheSeconds);
+                locations.RelocationForwardingWindow =
+                    TimeSpan.FromSeconds(forwardingSeconds);
+            }));
+
+        Assert.Contains(
+            cacheSeconds < 0 || forwardingSeconds < 0
+                ? "greater than or equal to zero"
+                : "at least five seconds shorter",
+            exception.Message,
+            StringComparison.Ordinal);
     }
 
     [Theory]
@@ -926,6 +952,18 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         await provider.DisposeAsync();
 
         Assert.Equal(1, tracker.DisposeCount);
+    }
+
+    [Fact]
+    public async Task HostStartup_Accepts_PublicLocationStore_WithoutHiddenProjection()
+    {
+        var store = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options => options.AddLocationStore(store));
+        using var host = builder.Build();
+
+        await host.StartAsync();
+        await host.StopAsync();
     }
 
     [Fact]
@@ -1147,32 +1185,4 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         }
     }
 
-    private sealed class FailOnceRoutingIdSlotStore(IZLinkRoutingIdSlotAllocationStore inner)
-        : IZLinkRoutingIdSlotAllocationStore
-    {
-        private int _acquireAttempts;
-
-        public int AcquireAttempts => Volatile.Read(ref _acquireAttempts);
-
-        public ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
-            ZLinkRoutingIdSlotAcquireRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            if (Interlocked.Increment(ref _acquireAttempts) == 1)
-                throw new IOException("transient allocation store failure");
-            return inner.AcquireRoutingIdSlotAsync(request, cancellationToken);
-        }
-
-        public ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
-            string groupName,
-            int slot,
-            ZLinkLocationOwnerToken owner,
-            CancellationToken cancellationToken = default) =>
-            inner.ReleaseRoutingIdSlotAsync(groupName, slot, owner, cancellationToken);
-
-        public ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
-            string groupName,
-            CancellationToken cancellationToken = default) =>
-            inner.ListRoutingIdSlotsAsync(groupName, cancellationToken);
-    }
 }

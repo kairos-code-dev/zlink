@@ -109,7 +109,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         while (true)
         {
             var submit = Session().BindActor(
-                sessionRid, actor.ToNative(), out var operationId, timeout);
+                sessionRid, ToNativeActor(actor), out var operationId, timeout);
             if (submit != SubmitResult.NotConnected || DateTime.UtcNow >= deadline)
             {
                 await AwaitOperationAsync(submit, operationId, cancellationToken)
@@ -120,6 +120,14 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
             await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private ActorRef ToNativeActor(ZLinkBackendActorRef actor)
+    {
+        if (_node is not ZLinkManagedMeshNode managed)
+            throw new InvalidOperationException(
+                "Actor binding requires the Framework managed MeshNode.");
+        return actor.ToNative(managed.MeshName);
     }
 
     public ValueTask UnbindActorAsync(

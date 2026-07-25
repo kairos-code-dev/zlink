@@ -272,7 +272,10 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         new ZLinkAuthorityReadResult.Missing(now)));
             if (_authorities.TryGetValue(request.Key.Value, out var existing))
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
-                    new ZLinkObjectReserveResult.AlreadyExists(existing));
+                    existing.Allocation.State == ZLinkPlacementAllocationState.Active
+                        ? new ZLinkObjectReserveResult.AlreadyExists(existing)
+                        : new ZLinkObjectReserveResult.Conflict(
+                            new ZLinkAuthorityReadResult.Found(existing)));
             if (!MatchesLiveTarget(
                     request.TargetDescriptor,
                     request.TargetNodeLifecycleGeneration,
@@ -844,7 +847,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         ? aggregate.Request.TargetOwner.OwnerId
                         : current.OwnerId,
                     OwnerLeaseGeneration = changesOwner
-                        ? checked((long)aggregate.Request.TargetOwner.Generation)
+                        ? aggregate.Request.TargetOwner.LeaseGeneration
                         : current.OwnerLeaseGeneration,
                     Allocation = changesOwner
                         ? current.Allocation with
@@ -1476,8 +1479,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
             || request.Participants.Count is < 1 or > 1024
             || request.InventoryDigest.Length != 32
             || request.TargetDescriptorLifecycleGeneration == 0
-            || !IsCapacityVectorValid(request.Capacity)
-            || request.TargetOwner.Generation is 0 or > long.MaxValue)
+            || !IsAggregateCapacityValid(request)
+            || request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Participants.Select(static value => value.Key.Value)
             .Distinct(StringComparer.Ordinal).Count() != request.Participants.Count)
@@ -1492,6 +1495,22 @@ internal sealed partial class ZLinkInMemoryLocationStore
             throw new ArgumentException(
                 "Aggregate participant keys must be canonically sorted.",
                 nameof(request));
+    }
+
+    private static bool IsAggregateCapacityValid(
+        ZLinkAggregatePrepareRequest request)
+    {
+        var preservesOwner = request.Participants.All(static participant =>
+            participant.OwnerTransition
+            == ZLinkAuthorityGenerationTransition.Preserve);
+        var hasNoCapacityDelta = request.Capacity.Actors == 0
+                                 && request.Capacity.Spots == 0
+                                 && request.Capacity.SpotType is null;
+        return preservesOwner
+            ? hasNoCapacityDelta
+              && request.Participants.All(static participant =>
+                  participant.MembershipMutation.IsEmpty)
+            : !hasNoCapacityDelta && IsCapacityVectorValid(request.Capacity);
     }
 
     private static bool CanIncrement(long value) => value < long.MaxValue;

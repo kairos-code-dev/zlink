@@ -71,9 +71,6 @@ public interface IZLinkMeshChannelServerBuilder
         where THandler : class;
 }
 
-// Temporary source-compatibility alias while existing samples and internal
-// tests move to Channel(...).Server(). It does not define a second runtime
-// Channel(...).Server() is the only serving membership surface.
 public interface IZLinkMeshObjectServerBuilder
 {
     IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
@@ -128,7 +125,7 @@ public sealed record ZLinkUserSpotFactoryOptions
         = ZLinkUserSpotExecutionMode.SpotWide;
 }
 
-public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
+public interface IZLinkMeshNodeBuilder
 {
     IZLinkMeshChannelRoleBuilder Channel(string channelName);
 

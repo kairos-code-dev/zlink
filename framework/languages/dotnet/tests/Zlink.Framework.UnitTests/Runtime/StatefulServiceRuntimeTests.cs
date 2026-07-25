@@ -14,7 +14,7 @@ public sealed class StatefulServiceRuntimeTests
     public void ActorCreationWireAndDurableTerminalPreserveIdentityAndRejectedReply()
     {
         var target = RoutingId.From("actor-target");
-        var actor = new ActorRef(target, "actor-1", 17);
+        var actor = new ActorRef("actor-1", 17, "play", target);
         var completion = new ActorCreateCompletion(ActorCreateResult.Created, actor);
         var replyFrame = ZLinkServiceWireCodec.EncodeActorCreateReply(
             31,
@@ -27,6 +27,7 @@ public sealed class StatefulServiceRuntimeTests
             out _));
         Assert.True(ZLinkServiceWireCodec.TryDecodeActorCreateReply(
             reply,
+            "play",
             out var decoded,
             out _));
         Assert.Equal(actor, decoded!.Actor);
@@ -274,40 +275,73 @@ public sealed class StatefulServiceRuntimeTests
         var spot = ZLinkServiceWireCodec.EncodeSpot(
             ServiceWireConstants.Command.SpotRequest,
             9,
+            new MeshOperationId(7, 8),
             sourceSpotId,
             spotId,
             10,
             nodeRid,
             11,
             12,
-            hasMetadata: true);
+            13,
+            hasMetadata: true,
+            forwardingHopCount: 2);
         Assert.True(ZLinkServiceWireCodec.TryDecodeStateful(
             spot,
+            "play",
             out var spotRecord,
             out var spotError));
         Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, spotError);
         Assert.Equal(9UL, spotRecord.Correlation);
+        Assert.Equal(new MeshOperationId(7, 8), spotRecord.OperationId);
         Assert.Equal(sourceSpotId, spotRecord.SourceSpotId);
         Assert.Equal(spotId, spotRecord.TargetSpotId);
         Assert.Equal(10UL, spotRecord.TargetSpotGeneration);
+        Assert.Equal(13UL, spotRecord.OwnerLeaseGeneration);
+        Assert.Equal<byte>(2, spotRecord.ForwardingHopCount);
 
-        var actor = new ActorRef(nodeRid, "wire-actor", 13);
+        var actor = new ActorRef("wire-actor", 13, "play", nodeRid);
         var actorBytes = ZLinkServiceWireCodec.EncodeActor(
             ServiceWireConstants.Command.ActorSend,
             0,
+            new MeshOperationId(17, 18),
             actor,
             nodeRid,
             14,
             15,
+            16,
             hasMetadata: false);
         Assert.True(ZLinkServiceWireCodec.TryDecodeStateful(
             actorBytes,
+            "play",
             out var actorRecord,
             out var actorError));
         Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, actorError);
         Assert.Equal(actor, actorRecord.TargetActor);
+        Assert.Equal(new MeshOperationId(17, 18), actorRecord.OperationId);
         Assert.Equal(14UL, actorRecord.TargetNodeGeneration);
         Assert.Equal(15UL, actorRecord.AuthorityOwnerGeneration);
+        Assert.Equal(16UL, actorRecord.OwnerLeaseGeneration);
+
+        var otherNodeRid = RoutingId.From("wire-node-other");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeActor(
+                ServiceWireConstants.Command.ActorSend,
+                0,
+                new MeshOperationId(17, 19),
+                actor,
+                otherNodeRid,
+                14,
+                15,
+                16,
+                hasMetadata: false));
+
+        actorBytes.AsSpan(actorBytes.Length - sizeof(ulong)).Clear();
+        Assert.False(ZLinkServiceWireCodec.TryDecodeStateful(
+            actorBytes,
+            "play",
+            out _,
+            out var zeroLeaseError));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.InvalidField, zeroLeaseError);
     }
 
     [Fact]
@@ -339,6 +373,15 @@ public sealed class StatefulServiceRuntimeTests
         Assert.True(actorClaim.Receive(received, RecvFlags.DontWait));
         Assert.Equal(MeshRecordKind.ActorSend, received[0].Kind);
         Assert.Equal(actor, ready[actorIndex].Actor);
+        Assert.NotEqual(default, received[0].OperationId);
+        Assert.Equal(node.Status().LifecycleGeneration, received[0].TargetNodeGeneration);
+        Assert.True(node.TryGetActorAuthority(
+            actor,
+            out var authorityOwnerGeneration,
+            out var ownerLeaseGeneration));
+        Assert.Equal(authorityOwnerGeneration, received[0].AuthorityOwnerGeneration);
+        Assert.Equal(ownerLeaseGeneration, received[0].OwnerLeaseGeneration);
+        Assert.Equal(1UL, ownerLeaseGeneration);
     }
 
     [Fact]
@@ -536,37 +579,6 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
-    public async Task TransferFenceBlocksAdmissionUntilAbort()
-    {
-        await using var context = Systems.Zlink.Zlink.CreateContext();
-        await using var node = NewNode(context, "transfer-node");
-        var actor = node.CreateActor("player-4");
-        Assert.True(node.ActorLookup(actor.ActorId, out var location));
-        DrainAndDispose(node);
-        var prepare = new ActorTransferPrepare(
-            ActorTransferRole.Source,
-            new ActorTransferId(1, 2),
-            actor,
-            location.MembershipEpoch,
-            RoutingId.From("peer"),
-            0,
-            16,
-            4096);
-        var token = node.PrepareActorTransfer(
-            prepare,
-            out var result,
-            TimeSpan.FromSeconds(1));
-        Assert.Equal(prepare.TransferId, result.TransferId);
-
-        using var payload = Message.From(new byte[] { 5 });
-        Assert.Equal(
-            SubmitResult.Backpressured,
-            node.SendToActor(actor, [payload]));
-        node.AbortActorTransfer(token);
-        Assert.Equal(SubmitResult.Ok, node.SendToActor(actor, [payload]));
-    }
-
-    [Fact]
     public async Task SessionBindingUsesExactActorGenerationAndRelaysToActorTurn()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -601,7 +613,11 @@ public sealed class StatefulServiceRuntimeTests
         Assert.True(claim.Receive(received, RecvFlags.DontWait));
         Assert.Equal(MeshRecordKind.ActorSend, received[0].Kind);
 
-        var stale = new ActorRef(actor.NodeRid, actor.ActorId, actor.Generation + 1);
+        var stale = new ActorRef(
+            actor.ActorId,
+            actor.ObjectGeneration + 1,
+            actor.MeshName,
+            actor.NodeRid);
         Assert.Equal(
             SubmitResult.NotFound,
             sessions.SendToActor(sessionRid, stale, [payload]));
@@ -649,6 +665,8 @@ public sealed class StatefulServiceRuntimeTests
         await using var context = Systems.Zlink.Zlink.CreateContext();
         await using var source = NewNode(context, "stateful-source");
         await using var target = NewNode(context, "stateful-target");
+        source.SetLocalOwnerLeaseGeneration(17);
+        target.SetLocalOwnerLeaseGeneration(17);
         var suffix = Guid.NewGuid().ToString("N");
         var sourceEndpoint = $"inproc://stateful-source-{suffix}";
         var targetEndpoint = $"inproc://stateful-target-{suffix}";
@@ -668,13 +686,44 @@ public sealed class StatefulServiceRuntimeTests
         DrainAndDispose(target);
 
         using var payload = Message.From(new byte[] { 8 });
-        Assert.True(target.TryGetActorAuthority(actor, out var actorAuthority));
-        source.ObserveActorAuthority(actor, actorAuthority);
+        Assert.True(target.TryGetActorAuthority(
+            actor,
+            out var actorAuthority,
+            out var actorOwnerLeaseGeneration));
+        Assert.Equal(17UL, actorOwnerLeaseGeneration);
+        source.ObserveActorAuthority(
+            actor,
+            checked(target.Status().LifecycleGeneration + 1),
+            actorAuthority,
+            17);
         source.ObserveSpotAuthority(
             target.RoutingId,
             spotId,
             spot.LifecycleGeneration,
-            spot.AuthorityOwnerGeneration);
+            checked(target.Status().LifecycleGeneration + 1),
+            spot.AuthorityOwnerGeneration,
+            17);
+        Assert.Equal(SubmitResult.NotFound, source.SendToActor(actor, [payload]));
+        Assert.Equal(
+            SubmitResult.NotFound,
+            source.EntrySpot().SendToSpot(
+                target.RoutingId,
+                spotId,
+                spot.LifecycleGeneration,
+                [payload]));
+
+        source.ObserveActorAuthority(
+            actor,
+            target.Status().LifecycleGeneration,
+            actorAuthority,
+            17);
+        source.ObserveSpotAuthority(
+            target.RoutingId,
+            spotId,
+            spot.LifecycleGeneration,
+            target.Status().LifecycleGeneration,
+            spot.AuthorityOwnerGeneration,
+            17);
         Assert.Equal(SubmitResult.Ok, source.SendToActor(actor, [payload]));
         Assert.Equal(
             SubmitResult.Ok,
@@ -765,19 +814,33 @@ public sealed class StatefulServiceRuntimeTests
             options.AddRelocationStore(relocationStore);
             var node = options.AddRouteMesh("objects")
                 .Listen(targetEndpoint)
-                .SetRoutingId(targetRid);
+                .SetRoutingIdPrefix($"production-target-{suffix}")
+                .SetSpotLimit(100);
             node.Objects().Server().AddSpotFactory<ProductionUserSpot>(
                 stableType,
-                null,
+                new ZLinkUserSpotFactoryOptions
+                {
+                    StableTypeLimit = 100
+                },
                 ZLinkRelocationPolicy<ProductionUserSpot>.Disabled);
         });
 
         await using var provider = services.BuildServiceProvider();
         var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        var autoConnect =
+            provider.GetRequiredService<ZLinkLocationAutoConnectHost>();
+        targetRid = runtime.PrepareLocationNodeRoutingId();
+        await locations.StartAsync(targetRid, CancellationToken.None);
         await runtime.StartAsync(CancellationToken.None);
+        await autoConnect.StartAsync(
+            await runtime.GetStartedStateForRoutingAsync(CancellationToken.None),
+            CancellationToken.None);
         try
         {
             var target = runtime.GetSpotNodeRuntime("objects");
+            Assert.NotNull(target.StartupState);
+            targetRid = target.Node.RoutingId;
             await using var sourceContext = Systems.Zlink.Zlink.CreateContext();
             await using var source = new ZLinkManagedMeshNode(sourceContext, "objects");
             source.SetRoutingId(sourceRid);
@@ -791,13 +854,10 @@ public sealed class StatefulServiceRuntimeTests
 
             var store = Assert.IsAssignableFrom<IZLinkLocationStore>(
                 runtime.Registration.Locations.ResolveStore());
-            var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
-                await store.ClaimOwnerLeaseAsync(
-                    $"production-owner-{suffix}",
-                    TimeSpan.FromMinutes(1)));
+            var owner = locations.OwnerToken;
             var targetGeneration = target.Node.MeshStatus().LifecycleGeneration;
             var descriptorKey = new ZLinkMeshNodeDescriptorKey("objects", targetRid);
-            var descriptor = new ZLinkMeshNodeDescriptor(
+            var expectedDescriptor = new ZLinkMeshNodeDescriptor(
                 "objects",
                 targetRid,
                 targetGeneration,
@@ -808,8 +868,8 @@ public sealed class StatefulServiceRuntimeTests
                     ["objects"] = 100
                 },
                 string.Empty,
-                owner.Token.OwnerId,
-                owner.Token.LeaseGeneration,
+                owner.OwnerId,
+                owner.LeaseGeneration,
                 DateTimeOffset.UtcNow)
             {
                 ObjectRole = ZLinkMeshNodeObjectRole.Server,
@@ -822,25 +882,32 @@ public sealed class StatefulServiceRuntimeTests
                         stableType,
                         ZLinkObjectMaintenancePolicyKind.Disabled,
                         false,
-                        0)
+                        100)
                 ],
                 Capacity = new ZLinkPlacementCapacity(
                     new ZLinkPopulationCapacity(0, 0, 0),
-                    new ZLinkPopulationCapacity(0, 0, 0),
+                    new ZLinkPopulationCapacity(0, 0, 100),
                     [
                         new ZLinkSpotTypeCapacity(
                             ZLinkPlacementObjectKind.UserSpot,
                             stableType,
                             0,
                             0,
-                            0)
+                            100)
                     ])
             };
-            Assert.Equal(
-                ZLinkLocationWriteStatus.Stored,
-                (await store.UpdateMeshNodeAsync(
-                    descriptor,
-                    ZLinkLocationWriteIntent.NewClaim)).Status);
+            var descriptors = (await store.ListMeshNodesAsync(
+                    "objects",
+                    new ZLinkPageRequest(100),
+                    CancellationToken.None))
+                .Items;
+            var descriptor = Assert.Single(
+                descriptors,
+                row => row.Rid == targetRid);
+            Assert.Equal(targetGeneration, descriptor.LifecycleGeneration);
+            Assert.Equal(expectedDescriptor.OwnerId, descriptor.OwnerId);
+            Assert.Equal(expectedDescriptor.LeaseGeneration,
+                descriptor.LeaseGeneration);
 
             var spotId = $"production-spot-{suffix}";
             var authorityKey = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
@@ -861,14 +928,14 @@ public sealed class StatefulServiceRuntimeTests
                         creationPayload.Length,
                         descriptorKey,
                         targetGeneration,
-                        owner.Token,
+                        owner,
                         ZLinkUserSpotAuthorityPayloadCodec.Encode(
                             new ZLinkUserSpotAuthorityPayload(
                                 ZLinkUserSpotAuthorityState.Creating,
                                 stableType,
                                 spotId,
-                                owner.Token.OwnerId,
-                                checked((ulong)owner.Token.LeaseGeneration),
+                                owner.OwnerId,
+                                checked((ulong)owner.LeaseGeneration),
                                 "objects",
                                 targetRid,
                                 targetGeneration)),
@@ -886,8 +953,8 @@ public sealed class StatefulServiceRuntimeTests
                 reservation.Reservation.AuthorityOwnerGeneration,
                 targetRid,
                 targetGeneration,
-                owner.Token.OwnerId,
-                checked((ulong)owner.Token.LeaseGeneration),
+                owner.OwnerId,
+                checked((ulong)owner.LeaseGeneration),
                 1);
             var deadline = checked(
                 (ulong)DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds());
@@ -982,14 +1049,14 @@ public sealed class StatefulServiceRuntimeTests
                         creationPayload.Length,
                         descriptorKey,
                         targetGeneration,
-                        owner.Token,
+                        owner,
                         ZLinkUserSpotAuthorityPayloadCodec.Encode(
                             new ZLinkUserSpotAuthorityPayload(
                                 ZLinkUserSpotAuthorityState.Creating,
                                 stableType,
                                 orphanRid,
-                                owner.Token.OwnerId,
-                                checked((ulong)owner.Token.LeaseGeneration),
+                                owner.OwnerId,
+                                checked((ulong)owner.LeaseGeneration),
                                 "objects",
                                 targetRid,
                                 targetGeneration)),
@@ -1008,8 +1075,8 @@ public sealed class StatefulServiceRuntimeTests
                             ZLinkUserSpotAuthorityState.Ready,
                             stableType,
                             orphanRid,
-                            owner.Token.OwnerId,
-                            checked((ulong)owner.Token.LeaseGeneration),
+                            owner.OwnerId,
+                            checked((ulong)owner.LeaseGeneration),
                             "objects",
                             targetRid,
                             targetGeneration))));
@@ -1053,7 +1120,11 @@ public sealed class StatefulServiceRuntimeTests
         }
         finally
         {
+            await autoConnect.StopAsync(CancellationToken.None);
             await runtime.StopAsync(CancellationToken.None);
+            await locations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
         }
     }
 
@@ -1071,8 +1142,7 @@ public sealed class StatefulServiceRuntimeTests
         ServiceProvider Build(
             RoutingId rid,
             string endpoint,
-            bool server,
-            ZLinkMeshPeerConnection? peer = null)
+            bool server)
         {
             var services = new ServiceCollection();
             services.AddZLinkFramework(options =>
@@ -1080,20 +1150,18 @@ public sealed class StatefulServiceRuntimeTests
                 options.AddLocationStore(locationStore);
                 var node = options.AddRouteMesh("objects")
                     .Listen(endpoint)
-                    .SetRoutingId(rid);
-                if (peer is { } connection)
-                {
-                    node.PeerConnections.Connect(
-                        connection.ExpectedRoutingId!.Value,
-                        connection.Endpoint);
-                }
+                    .SetRoutingIdPrefix(rid.ToString())
+                    .SetSpotLimit(100);
                 var objects = node.Objects();
                 if (server)
                 {
                     objects.Server()
                         .AddSpotFactory<ProductionUserSpot>(
                             "Tests.ProductionUserSpot",
-                            null,
+                            new ZLinkUserSpotFactoryOptions
+                            {
+                                StableTypeLimit = 100
+                            },
                             ZLinkRelocationPolicy<ProductionUserSpot>.Disabled);
                 }
                 else
@@ -1108,8 +1176,7 @@ public sealed class StatefulServiceRuntimeTests
         await using var sourceProvider = Build(
             sourceRid,
             sourceEndpoint,
-            false,
-            new ZLinkMeshPeerConnection(targetEndpoint, targetRid));
+            false);
         var target = targetProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         var source = sourceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         var targetLocations = targetProvider.GetRequiredService<ZLinkLocationRuntime>();
@@ -1118,10 +1185,14 @@ public sealed class StatefulServiceRuntimeTests
             targetProvider.GetRequiredService<ZLinkLocationAutoConnectHost>();
         var sourceAutoConnect =
             sourceProvider.GetRequiredService<ZLinkLocationAutoConnectHost>();
+        targetRid = target.PrepareLocationNodeRoutingId();
+        sourceRid = source.PrepareLocationNodeRoutingId();
         await targetLocations.StartAsync(targetRid, CancellationToken.None);
         await sourceLocations.StartAsync(sourceRid, CancellationToken.None);
         await target.StartAsync(CancellationToken.None);
         await source.StartAsync(CancellationToken.None);
+        targetRid = target.GetSpotNodeRuntime("objects").Node.RoutingId;
+        sourceRid = source.GetSpotNodeRuntime("objects").Node.RoutingId;
         await targetAutoConnect.StartAsync(
             await target.GetStartedStateForRoutingAsync(CancellationToken.None),
             CancellationToken.None);
@@ -1139,7 +1210,7 @@ public sealed class StatefulServiceRuntimeTests
             ZLinkMeshNodeDescriptor? currentDescriptor = null;
             for (var attempt = 0; attempt < 500 && currentDescriptor is null; attempt++)
             {
-                currentDescriptor = (await locationStore.ListMeshNodesAsync("objects"))
+                currentDescriptor = (await locationStore.ListMeshNodesAsync("objects", default)).Items
                     .SingleOrDefault(row => row.Rid == targetRid);
                 if (currentDescriptor is null)
                     await Task.Delay(10);

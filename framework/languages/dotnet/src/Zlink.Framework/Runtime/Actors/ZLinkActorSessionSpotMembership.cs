@@ -7,7 +7,7 @@ internal sealed partial class ZLinkActorSessionManager
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        var state = _actorSessions.GetOrCreate(actor.Context.ActorId);
         BindActorContext(actor, state);
 
         var previousActivation = await state.ExecuteLockedAsync(
@@ -28,7 +28,7 @@ internal sealed partial class ZLinkActorSessionManager
         IZLinkActor actor,
         CancellationToken cancellationToken = default)
     {
-        var state = _actorSessions.GetOrCreate(actor.ActorId);
+        var state = _actorSessions.GetOrCreate(actor.Context.ActorId);
         await state.ExecuteLockedAsync(
             () =>
             {

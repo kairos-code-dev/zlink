@@ -40,6 +40,22 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 registration.Locations.Enabled,
                 router.ManualConnections);
             router.ManualConnections.Freeze(router.AcquisitionMode);
+
+            var automatic =
+                router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect;
+            if (spotNode.HasExplicitRoutingId
+                && (automatic || spotNode.ObjectRoleSelected))
+                throw new ZLinkConfigurationException(
+                    $"MeshNode '{spotNode.SpotNodeName}' cannot use a fixed routing ID "
+                    + "with automatic discovery or an Object role.");
+            if (spotNode.RoutingIdPrefix is not null && !automatic)
+                throw new ZLinkConfigurationException(
+                    $"MeshNode '{spotNode.SpotNodeName}' can use a routing ID prefix "
+                    + "only with automatic discovery.");
+            if (spotNode.ObjectRoleSelected && !registration.Locations.Enabled)
+                throw new ZLinkConfigurationException(
+                    $"MeshNode '{spotNode.SpotNodeName}' requires a Location Store "
+                    + "when an Object role is configured.");
         }
         ValidateUniqueSpotFactories(spotNode, globalSpotFactories);
         ValidateUniqueEntrySpot(spotNode, globalEntrySpots);
@@ -51,8 +67,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         return spotNode.SpotFactories.Count > 0
                || spotNode.InstanceSpotFactories.Count > 0
                || spotNode.EntrySpotType is not null
-               || spotNode.ActorFactories.Count > 0
-               || spotNode.ActorTransfers.Count > 0;
+               || spotNode.ActorFactories.Count > 0;
     }
 
     private static void ValidateUniqueSpotFactories(

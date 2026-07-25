@@ -219,8 +219,15 @@ internal static class ZLinkRedisLocationScripts
                     'lifecycleGeneration'))
                     == tostring(value(right, 'LifecycleGeneration',
                         'lifecycleGeneration'))
-                and tostring(value(left, 'Endpoint', 'endpoint'))
-                    == tostring(value(right, 'Endpoint', 'endpoint'))
+                and (
+                    tostring(value(left, 'Endpoint', 'endpoint'))
+                        == tostring(value(right, 'Endpoint', 'endpoint'))
+                    or (
+                        tonumber(value(left, 'State', 'state')) == 0
+                        and tostring(value(left, 'Endpoint', 'endpoint')) == ''
+                        and tostring(value(right, 'Endpoint', 'endpoint')) ~= ''
+                    )
+                )
                 and tostring(value(left, 'SecurityIdentity',
                     'securityIdentity'))
                     == tostring(value(right, 'SecurityIdentity',
@@ -507,9 +514,15 @@ internal static class ZLinkRedisLocationScripts
     internal const string RemoveMeshNode = Prologue + """
 
         local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+        local current = cjson.decode(redis.call('HGET', KEYS[1], 'json') or '{}')
+        local leaseGeneration =
+            current.LeaseGeneration
+            or current.leaseGeneration
+            or current.OwnerLeaseGeneration
+            or current.ownerLeaseGeneration
         if not currentOwner
             or currentOwner ~= ARGV[1]
-            or tonumber(redis.call('HGET', KEYS[1], 'gen'))
+            or tonumber(leaseGeneration)
                 ~= tonumber(ARGV[2]) then
             return {'stale', 0, nowMs}
         end
@@ -625,29 +638,6 @@ internal static class ZLinkRedisLocationScripts
         return removed
         """;
 
-    /// <summary>
-    /// Owner lease upsert: SET with PX TTL so expiry is judged by the Redis
-    /// clock, plus index bookkeeping for the snapshot list. Returns nowMs.
-    ///
-    /// KEYS[1] lease key, KEYS[2] lease index set.
-    /// ARGV[1] owner id, ARGV[2] node rid hex, ARGV[3] TTL in ms.
-    /// </summary>
-    internal const string RenewLease = Prologue + """
-
-        local generation = redis.call('HGET', KEYS[1], 'generation')
-        if not generation then
-            generation = redis.call('HINCRBY', KEYS[3], 'leaseGeneration', 1)
-        end
-        redis.call('HSET', KEYS[1],
-            'ownerId', ARGV[1],
-            'generation', generation,
-            'expiresAt', nowMs + tonumber(ARGV[3]))
-        redis.call('PEXPIRE', KEYS[1], ARGV[3])
-        redis.call('SADD', KEYS[2], ARGV[1])
-        redis.call('HSET', KEYS[4], ARGV[1], ARGV[2] .. '|' .. nowMs)
-        return {nowMs, generation}
-        """;
-
     internal const string ClaimLease = Prologue + """
 
         if redis.call('EXISTS', KEYS[1]) == 1 then
@@ -664,7 +654,6 @@ internal static class ZLinkRedisLocationScripts
             'expiresAt', nowMs + tonumber(ARGV[2]))
         redis.call('PEXPIRE', KEYS[1], ARGV[2])
         redis.call('SADD', KEYS[2], ARGV[1])
-        redis.call('HSET', KEYS[4], ARGV[1], '|' .. nowMs)
         return {'claimed', nowMs, generation}
         """;
 
@@ -697,189 +686,7 @@ internal static class ZLinkRedisLocationScripts
         end
         redis.call('DEL', KEYS[1])
         redis.call('SREM', KEYS[2], ARGV[1])
-        redis.call('HDEL', KEYS[3], ARGV[1])
         return {'released', nowMs}
         """;
 
-    /// <summary>
-    /// Lease removal for the owner's own shutdown path. Returns removed
-    /// count, 0 or 1.
-    ///
-    /// KEYS[1] lease key, KEYS[2] lease index set. ARGV[1] owner id.
-    /// </summary>
-    internal const string RemoveLease = Prologue + """
-
-        local removed = redis.call('DEL', KEYS[1])
-        redis.call('SREM', KEYS[2], ARGV[1])
-        redis.call('HDEL', KEYS[3], ARGV[1])
-        return removed
-        """;
-
-    /// <summary>
-    /// Single snapshot of every live lease plus the store clock, so callers
-    /// can compute LeaseExpiresAt = StoreNow + PTTL without any application
-    /// wall clock. Index entries whose lease key already expired are cleaned
-    /// lazily. Returns {nowMs, {ownerId, value, pttlMs, ...}}.
-    ///
-    /// KEYS[1] lease index set, KEYS[2] compatibility metadata, followed by
-    /// one exact canonical lease key for every owner in ARGV.
-    /// </summary>
-    internal const string ListLeases = Prologue + """
-
-        local out = {}
-        for index, ownerId in ipairs(ARGV) do
-            local leaseKey = KEYS[index + 2]
-            local pttl = redis.call('PTTL', leaseKey)
-            if pttl < 0 then
-                redis.call('SREM', KEYS[1], ownerId)
-                redis.call('HDEL', KEYS[2], ownerId)
-            else
-                local generation = redis.call('HGET', leaseKey, 'generation')
-                local metadata = redis.call('HGET', KEYS[2], ownerId) or '|0'
-                out[#out + 1] = ownerId
-                out[#out + 1] = generation .. '|' .. metadata
-                out[#out + 1] = pttl
-            end
-        end
-        return {nowMs, out}
-        """;
-
-    /// <summary>
-    /// Atomically fixes group metadata, renews an idempotent owner claim, or assigns the lowest
-    /// logically expired/free slot. The owner lease is extended in the same Redis operation.
-    ///
-    /// KEYS[1] group hash, KEYS[2] owner lease key, KEYS[3] lease index,
-    /// KEYS[4] provider counters.
-    /// ARGV[1] canonical member JSON, ARGV[2] slot count, ARGV[3] owner id,
-    /// ARGV[4] lease TTL milliseconds. Remaining arguments pair with the
-    /// explicit canonical lease keys after KEYS[4].
-    /// </summary>
-    internal const string AcquireRoutingIdSlot = Prologue + """
-
-        local config = redis.call('HGET', KEYS[1], 'config')
-        local slotCount = tonumber(ARGV[2])
-        if not config then
-            redis.call('HSET', KEYS[1],
-                'config', ARGV[1], 'slotCount', slotCount, 'identityMode', 'allocated')
-        elseif config ~= ARGV[1] or tonumber(redis.call('HGET', KEYS[1], 'slotCount')) ~= slotCount then
-            return {'mismatch', config, redis.call('HGET', KEYS[1], 'slotCount'), nowMs}
-        end
-        local function leaseIsLive(owner, fallbackExpiry)
-            for index = 6, #ARGV do
-                if ARGV[index] == owner then
-                    return redis.call('EXISTS', KEYS[index - 1]) == 1
-                end
-            end
-            return tonumber(fallbackExpiry) > nowMs
-        end
-
-        local ownerField = 'owner:' .. ARGV[3]
-        if redis.call('EXISTS', KEYS[2]) == 0 then
-            local currentLeaseGeneration = redis.call('HGET', KEYS[4], 'leaseGeneration')
-            if currentLeaseGeneration == '9223372036854775807' then
-                return {'lease-exhausted', nowMs}
-            end
-            local leaseGeneration = redis.call('HINCRBY', KEYS[4], 'leaseGeneration', 1)
-            redis.call('HSET', KEYS[2],
-                'ownerId', ARGV[3],
-                'generation', leaseGeneration,
-                'expiresAt', nowMs + tonumber(ARGV[4]))
-            redis.call('PEXPIRE', KEYS[2], ARGV[4])
-            redis.call('SADD', KEYS[3], ARGV[3])
-        end
-        local existingSlot = tonumber(redis.call('HGET', KEYS[1], ownerField))
-        if existingSlot then
-            local value = redis.call('HGET', KEYS[1], 'slot:' .. existingSlot)
-            if value then
-                local currentOwner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
-                if currentOwner == ARGV[3] and redis.call('EXISTS', KEYS[2]) == 1 then
-                    local renewedExpiry = nowMs + tonumber(ARGV[4])
-                    redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
-                        currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
-                    redis.call('PEXPIRE', KEYS[2], ARGV[4])
-                    redis.call('SADD', KEYS[3], ARGV[3])
-                    return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
-                end
-            end
-        end
-
-        local selected = 0
-        for slot = 1, slotCount do
-            local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
-            if not value then
-                selected = slot
-                break
-            end
-            local currentOwner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
-            if not leaseIsLive(currentOwner, expiresAt) then
-                redis.call('HDEL', KEYS[1], 'owner:' .. currentOwner)
-                selected = slot
-                break
-            end
-        end
-
-        if selected == 0 then return {'exhausted', nowMs} end
-
-        local generationField = 'generation:' .. selected
-        local generation = redis.call('HINCRBY', KEYS[1], generationField, 1)
-        local expiresAt = nowMs + tonumber(ARGV[4])
-        redis.call('HSET', KEYS[1],
-            'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
-            ownerField, selected)
-        redis.call('HSET', KEYS[2], 'expiresAt', expiresAt)
-        redis.call('PEXPIRE', KEYS[2], ARGV[4])
-        redis.call('SADD', KEYS[3], ARGV[3])
-        return {'acquired', selected, generation, expiresAt, nowMs}
-        """;
-
-    /// <summary>Releases only an exact owner id and slot generation.</summary>
-    internal const string ReleaseRoutingIdSlot = Prologue + """
-
-        local slotField = 'slot:' .. ARGV[1]
-        local value = redis.call('HGET', KEYS[1], slotField)
-        if not value then return {'stale', nowMs} end
-        local currentOwner, generation = string.match(value, '([^|]*)|([^|]*)|')
-        if currentOwner ~= ARGV[2] or tonumber(generation) ~= tonumber(ARGV[3]) then
-            return {'stale', nowMs}
-        end
-        redis.call('HDEL', KEYS[1], slotField, 'owner:' .. currentOwner)
-        return {'released', nowMs}
-        """;
-
-    /// <summary>
-    /// Returns group metadata and all logically live slot values at one store time.
-    /// ARGV contains the owner id paired with each exact lease key after
-    /// KEYS[1].
-    /// </summary>
-    internal const string ListRoutingIdSlots = Prologue + """
-
-        local config = redis.call('HGET', KEYS[1], 'config')
-        if not config then return {'', 0, nowMs, {}} end
-        local slotCount = tonumber(redis.call('HGET', KEYS[1], 'slotCount'))
-        local allocations = {}
-        local function leaseExpiry(owner)
-            for index, indexedOwner in ipairs(ARGV) do
-                if indexedOwner == owner then
-                    local remaining = redis.call('PTTL', KEYS[index + 1])
-                    if remaining >= 0 then return nowMs + remaining end
-                    return nil
-                end
-            end
-            return nil
-        end
-        for slot = 1, slotCount do
-            local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
-            if value then
-                local owner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
-                local liveExpiry = leaseExpiry(owner)
-                if liveExpiry then
-                    allocations[#allocations + 1] = slot
-                    allocations[#allocations + 1] = owner
-                    allocations[#allocations + 1] = tonumber(generation)
-                    allocations[#allocations + 1] = liveExpiry
-                end
-            end
-        end
-        return {config, slotCount, nowMs, allocations}
-        """;
 }

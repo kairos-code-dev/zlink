@@ -11,12 +11,14 @@ internal sealed class ZLinkLocationStoreHealth
     private readonly Dictionary<string, string> _failures = new(StringComparer.Ordinal);
     private DateTimeOffset? _lastSuccessAt;
     private DateTimeOffset? _lastFailureAt;
+    private long _recoveryGeneration;
 
     internal void ReportSuccess(string source)
     {
         lock (_gate)
         {
-            _failures.Remove(source);
+            if (_failures.Remove(source))
+                _recoveryGeneration++;
             _lastSuccessAt = DateTimeOffset.UtcNow;
         }
     }
@@ -42,6 +44,15 @@ internal sealed class ZLinkLocationStoreHealth
                     ? null
                     : string.Join("; ", _failures.OrderBy(static pair => pair.Key)
                         .Select(static pair => $"{pair.Key}: {pair.Value}")));
+        }
+    }
+
+    internal long RecoveryGeneration
+    {
+        get
+        {
+            lock (_gate)
+                return _recoveryGeneration;
         }
     }
 

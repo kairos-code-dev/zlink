@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 
 using ObservabilityOps.Server.Support;
@@ -7,6 +8,7 @@ using ObservabilityOps.Shared;
 using StackExchange.Redis;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
@@ -18,6 +20,9 @@ namespace ObservabilityOps.Server.Workflow;
 
 internal static class WorkflowHostFactory
 {
+    private const string WorkflowSpotType = "observability-workflow";
+    private const string ProjectionSpotType = "observability-projection";
+
     public static WebApplication Create(string[] args)
     {
         var options = WorkflowOptions.Parse(args);
@@ -42,7 +47,7 @@ internal static class WorkflowHostFactory
         {
             framework.AddLocationStore(locationStore);
             var locations = framework.ConfigureLocations();
-            locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+            locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             framework.ConfigureDispatch().MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
@@ -50,9 +55,16 @@ internal static class WorkflowHostFactory
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));
             var mesh16 = framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .AddSpotFactory<WorkflowSpot>()
-                .AddSpotFactory<ProjectionSpot>();
+                .SetRoutingId(RoutingId.From(options.Rid));
+            mesh16.Objects().Server()
+                .AddSpotFactory<WorkflowSpot>(
+                    WorkflowSpotType,
+                    null,
+                    ZLinkRelocationPolicy<WorkflowSpot>.Disabled)
+                .AddSpotFactory<ProjectionSpot>(
+                    ProjectionSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ProjectionSpot>.Disabled);
             mesh16.ChannelName(ObservabilityNames.WorkflowMesh);
         });
 
@@ -62,22 +74,26 @@ internal static class WorkflowHostFactory
         app.MapPost("/workflows", async (CreateWorkflowReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
-            var created = string.Equals(request.Kind, "subscriber", StringComparison.Ordinal)
-                ? await spots.GetOrCreateAsync<ProjectionSpot, CreateWorkflowReq>(
-                    RoutingId.From(request.WorkflowRid), request, cancellationToken)
-                : await spots.GetOrCreateAsync<WorkflowSpot, CreateWorkflowReq>(
-                    RoutingId.From(request.WorkflowRid), request, cancellationToken);
-            return Results.Ok(new CreateWorkflowRes(created.SpotRid.ToString(), options.Rid, 0, "created"));
+            var spotType = string.Equals(
+                request.Kind, "subscriber", StringComparison.Ordinal)
+                ? ProjectionSpotType
+                : WorkflowSpotType;
+            var created = await spots.GetOrCreate(request.WorkflowRid, spotType)
+                .InMesh(ObservabilityNames.WorkflowMesh)
+                .Request(request)
+                .Async(cancellationToken);
+            return Results.Ok(new CreateWorkflowRes(
+                created.Spot.SpotId, options.Rid, 0, "created"));
         });
         app.MapPost("/workflows/{workflowRid}/advance", async (string workflowRid,
             AdvanceWorkflowReq request, IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes,
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(
-                             ObservabilityNames.WorkflowMesh,
-                             RoutingId.From(workflowRid),
-                             cancellationToken)
-                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+                ObservabilityNames.WorkflowMesh,
+                workflowRid,
+                cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, request).Async<AdvanceWorkflowRes>(cancellationToken);
             return Results.Ok(response);
         });
@@ -85,10 +101,10 @@ internal static class WorkflowHostFactory
             IZLinkSpotHandleResolver resolver, IZLinkSpotClient routes, CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(
-                             ObservabilityNames.WorkflowMesh,
-                             RoutingId.From(workflowRid),
-                             cancellationToken)
-                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+                ObservabilityNames.WorkflowMesh,
+                workflowRid,
+                cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, new ReadWorkflowReq())
                 .Async<ReadWorkflowRes>(cancellationToken);
             return Results.Ok(response);
@@ -98,10 +114,10 @@ internal static class WorkflowHostFactory
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(
-                             ObservabilityNames.WorkflowMesh,
-                             RoutingId.From(workflowRid),
-                             cancellationToken)
-                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+                ObservabilityNames.WorkflowMesh,
+                workflowRid,
+                cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var submit = await routes.SendToSpot(handle, request).SubmitAsync(cancellationToken);
             return Results.Ok(new
             {
@@ -113,10 +129,10 @@ internal static class WorkflowHostFactory
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(
-                             ObservabilityNames.WorkflowMesh,
-                             RoutingId.From(workflowRid),
-                             cancellationToken)
-                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+                ObservabilityNames.WorkflowMesh,
+                workflowRid,
+                cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             probe.Capture(handle);
             return Results.Ok();
         });
@@ -128,10 +144,10 @@ internal static class WorkflowHostFactory
             CancellationToken cancellationToken) =>
         {
             var handle = await resolver.ResolveSpotHandleAsync(
-                             ObservabilityNames.WorkflowMesh,
-                             RoutingId.From(workflowRid),
-                             cancellationToken)
-                         ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
+                ObservabilityNames.WorkflowMesh,
+                workflowRid,
+                cancellationToken)
+                ?? throw new InvalidOperationException($"Workflow '{workflowRid}' was not found.");
             var response = await routes.RequestToSpot(handle, request).Async<PublishProjectionRes>(cancellationToken);
             return Results.Ok(response);
         });
@@ -161,16 +177,17 @@ internal static class WorkflowHostFactory
             {
                 try
                 {
-                    if (await locationStore.ResolveSpotAsync(new ZLinkSpotLocationKey(
-                                ObservabilityNames.WorkflowMesh,
-                                Systems.Zlink.RoutingId.From(spotRid)))
-                            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500)) is { } row)
+                    if (await locationStore.ReadAuthorityAsync(SpotAuthorityKey(spotRid))
+                            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500))
+                        is ZLinkAuthorityReadResult.Found { Snapshot: var row })
                         spotRows =
                         [
                             new SpotRow(
-                                row.MeshName, row.OwnerNodeRid.ToString(),
-                                row.SpotRid.ToString(), row.SpotKind.ToString(),
-                                (long)row.SpotGeneration)
+                                row.Allocation.Descriptor.MeshName,
+                                row.Allocation.Descriptor.Rid.ToString(),
+                                spotRid,
+                                row.Allocation.ObjectKind.ToString(),
+                                checked((long)row.ObjectGeneration))
                         ];
                 }
                 catch (Exception)
@@ -204,4 +221,21 @@ internal static class WorkflowHostFactory
         request.ContainsAll.All(expected => entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
         && request.ContainsAnyGroups.All(group => group.Any(expected =>
             entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal))));
+
+    private static ZLinkAuthorityKey SpotAuthorityKey(string spotId)
+    {
+        var bytes = new UTF8Encoding(false, true).GetBytes(spotId);
+        var builder = new StringBuilder($"zla1:s:{bytes.Length}:");
+        foreach (var item in bytes)
+        {
+            if (item is >= (byte)'A' and <= (byte)'Z'
+                or >= (byte)'a' and <= (byte)'z'
+                or >= (byte)'0' and <= (byte)'9'
+                or (byte)'-' or (byte)'.' or (byte)'_' or (byte)'~')
+                builder.Append((char)item);
+            else
+                builder.Append('%').Append(item.ToString("X2"));
+        }
+        return new ZLinkAuthorityKey(builder.ToString());
+    }
 }

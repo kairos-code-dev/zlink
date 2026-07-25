@@ -49,7 +49,8 @@ public sealed class ContractSurfaceCoverage
         Assert.True(typeof(ZLinkActorJoinCompletion.Accepted).IsSealed);
         Assert.True(typeof(ZLinkActorJoinCompletion.Rejected).IsSealed);
         Assert.True(typeof(ZLinkActorJoinCompletion.Failed).IsSealed);
-        Assert.Empty(typeof(SpotHandle).GetConstructors());
+        Assert.Null(typeof(IZLinkSpotClient).Assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.SpotHandle"));
         Assert.Equal(
             new[] { "Connect", "Disconnect", "ListConnections" },
             typeof(IZLinkEndpointConnections).GetMethods().Select(method => method.Name).Order().ToArray());
@@ -64,7 +65,7 @@ public sealed class ContractSurfaceCoverage
             typeof(ZLinkLocationRuntimeEvent),
             typeof(ZLinkLocationPeerEvent), typeof(ZLinkLocationSpotEvent),
             typeof(ZLinkLocationActorEvent),
-            typeof(ZLinkSpotEvent), typeof(ZLinkRoutingIdSlotAcquireResult)
+            typeof(ZLinkSpotEvent)
         ];
 
         foreach (var root in roots)

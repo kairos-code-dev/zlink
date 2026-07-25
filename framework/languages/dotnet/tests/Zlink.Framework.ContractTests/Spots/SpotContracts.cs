@@ -7,7 +7,7 @@ namespace Zlink.Framework.ContractTests.Spots;
 public sealed class SpotContracts
 {
     [Fact]
-    public void Actor_join_and_transfer_public_contract_matches_common_spec()
+    public void Actor_join_and_relocation_public_contract_matches_common_spec()
     {
         var lifecycle = typeof(IZLinkUserSpotActorLifecycle<>).MakeGenericType(typeof(PlayerActor));
         var join = lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnActorJoinAsync));
@@ -26,6 +26,9 @@ public sealed class SpotContracts
         Assert.True(membership.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnLeaveActorAsync))!.IsAbstract);
         Assert.True(lifecycle.IsAssignableTo(membership));
         Assert.Null(typeof(IZLinkSpot).Assembly.GetType("Zlink.Framework.Contracts.Spots.ZLinkActorJoinAdmission"));
+        Assert.Null(typeof(IZLinkSpot).Assembly.GetType(
+            "Zlink.Framework.Contracts.Spots.IZLinkActorTransferAdapter`1"));
+        Assert.NotNull(typeof(IZLinkActorRelocationAdapter<>));
         Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddStatelessActorTransfer"));
         Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddActorTransferAdapter"));
     }
@@ -36,7 +39,6 @@ public sealed class SpotContracts
         typeof(IZLinkSpot<>),
         typeof(IZLinkSpotActorMembershipLifecycle<>),
         typeof(IZLinkUserSpotActorLifecycle<>),
-        typeof(IZLinkActorTransferAdapter<>),
         typeof(IZLinkEntrySpot),
         typeof(IZLinkEntrySpot<>),
         typeof(IZLinkActorHandlerRegistry),
@@ -69,9 +71,9 @@ public sealed class SpotContracts
         await context.LeaveActorAsync(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        await context.Outbound.SendToSpot((SpotHandle)null!, new RoomEvent("opened")).Async();
-        await context.Outbound.RequestToSpot((SpotHandle)null!, new JoinRoom("room-2")).Async<JoinedRoom>();
-        await context.Outbound.RequestToSpot((SpotHandle)null!, new JoinRoom("room-2")).Yield<JoinedRoom>();
+        await context.Outbound.SendToSpot("room-2", new RoomEvent("opened")).Async();
+        await context.Outbound.RequestToSpot("room-2", new JoinRoom("room-2")).Async<JoinedRoom>();
+        await context.Outbound.RequestToSpot("room-2", new JoinRoom("room-2")).Yield<JoinedRoom>();
         await context.Outbound.Publish("play-events", "room.events", new RoomEvent("opened")).Async();
         await context.Outbound.SendToChannel("api", new RoomEvent("opened")).Async();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
@@ -142,14 +144,14 @@ public sealed class SpotContracts
         IZLinkSpotOutbound spotOutbound = new SpotContext("room-1");
         IZLinkSpotOutbound entryOutbound = new EntrySpotContext("entry");
 
-        await spotOutbound.SendToSpot((SpotHandle)null!, new RoomEvent("spot-send")).Async();
-        await spotOutbound.RequestToSpot((SpotHandle)null!, new JoinRoom("room-2")).Async<JoinedRoom>();
+        await spotOutbound.SendToSpot("room-2", new RoomEvent("spot-send")).Async();
+        await spotOutbound.RequestToSpot("room-2", new JoinRoom("room-2")).Async<JoinedRoom>();
         await spotOutbound.Publish("play-events", "room.events", new RoomEvent("spot-publish")).Async();
         await spotOutbound.SendToChannel("api", new RoomEvent("spot-channel-send")).Async();
         await spotOutbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
 
-        await entryOutbound.SendToSpot((SpotHandle)null!, new RoomEvent("entry-send")).Async();
-        await entryOutbound.RequestToSpot((SpotHandle)null!, new JoinRoom("room-2")).Async<JoinedRoom>();
+        await entryOutbound.SendToSpot("room-2", new RoomEvent("entry-send")).Async();
+        await entryOutbound.RequestToSpot("room-2", new JoinRoom("room-2")).Async<JoinedRoom>();
         await entryOutbound.Publish("play-events", "room.events", new RoomEvent("entry-publish")).Async();
         await entryOutbound.SendToChannel("api", new RoomEvent("entry-channel-send")).Async();
         await entryOutbound.RequestToChannel("api", new JoinRoom("entry")).Async<JoinedRoom>();
@@ -171,8 +173,8 @@ public sealed class SpotContracts
             .Request(ZLinkMessage.Empty)
             .Async();
         IZLinkSpotClient localClient = new SpotOutbound();
-        await localClient.SendToSpot((SpotHandle)null!, new RoomEvent("opened")).Async();
-        var reply = await localClient.RequestToSpot((SpotHandle)null!, new JoinRoom("room-1")).Async<JoinedRoom>();
+        await localClient.SendToSpot("room-1", new RoomEvent("opened")).Async();
+        var reply = await localClient.RequestToSpot("room-1", new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
         await publisher.Publish("play", "play-events", "room.events", new RoomEvent("opened")).Async();
@@ -364,7 +366,7 @@ public sealed class SpotContracts
             0);
     }
 
-    private static string Admission(PlayerActor actor) => actor.ActorId;
+    private static string Admission(PlayerActor actor) => actor.Context.ActorId;
 
     private sealed record JoinRoom(string RoomId);
 
@@ -460,9 +462,24 @@ public sealed class SpotContracts
 
     private sealed class PlayerActor(string actorId) : IZLinkActor
     {
-        public string ActorId { get; } = actorId;
+        public IZLinkActorContext Context { get; } = new TestActorContext(actorId);
+    }
 
-        public IZLinkActorContext Context => null!;
+    private sealed class TestActorContext(string actorId) : IZLinkActorContext
+    {
+        public string ActorId => actorId;
+
+        public ulong ObjectGeneration => 1;
+
+        public string MeshName => "play";
+
+        public string? SpotId => "room-1";
+
+        public IZLinkBoundSession BoundSession => null!;
+
+        public IZLinkActorJoinSpotCall JoinSpot(string spotId, ZLinkMessage request) => null!;
+
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(ZLinkMessage request) => null!;
     }
 
     private sealed class SpotContext(string spotId) :
@@ -491,7 +508,7 @@ public sealed class SpotContracts
             IZLinkActor actor,
             CancellationToken cancellationToken = default)
         {
-            LeftActors.Add(actor.ActorId);
+            LeftActors.Add(actor.Context.ActorId);
             return ValueTask.CompletedTask;
         }
 
@@ -559,17 +576,7 @@ public sealed class SpotContracts
             new SpotSendCall();
 
         public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
-            new SpotRequestCall();
-
-        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
+            new SpotRequestCall(new JoinedRoom("room-1"));
 
         public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
         {
@@ -609,7 +616,7 @@ public sealed class SpotContracts
             IZLinkActor actor,
             CancellationToken cancellationToken = default)
         {
-            DestroyedActors.Add(actor.ActorId);
+            DestroyedActors.Add(actor.Context.ActorId);
             return ValueTask.CompletedTask;
         }
 
@@ -672,16 +679,6 @@ public sealed class SpotContracts
 
         public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
             new SpotRequestCall();
-
-        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
 
         public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
         {
@@ -752,10 +749,10 @@ public sealed class SpotContracts
         private readonly Dictionary<string, SpotRef> _spots = [];
 
         public IZLinkSpotCreateCall Create(string spotType) =>
-            new SpotCreateCall(this, $"{spotType}-1", spotType);
+            new SpotCreateCall(this, $"{spotType}-1");
 
         public IZLinkSpotGetOrCreateCall GetOrCreate(string spotId, string spotType) =>
-            new SpotGetOrCreateCall(this, spotId, spotType);
+            new SpotGetOrCreateCall(this, spotId);
 
         public ValueTask<SpotRef?> FindAsync(string spotId,
             CancellationToken cancellationToken = default)
@@ -794,8 +791,7 @@ public sealed class SpotContracts
 
         private sealed class SpotCreateCall(
             SpotManager manager,
-            string spotId,
-            string _) : SpotCall(manager, spotId), IZLinkSpotCreateCall
+            string spotId) : SpotCall(manager, spotId), IZLinkSpotCreateCall
         {
             public IZLinkSpotCreateCall InMesh(string meshName) => this;
             public IZLinkSpotCreateCall Request(ZLinkMessage request) => this;
@@ -807,8 +803,7 @@ public sealed class SpotContracts
 
         private sealed class SpotGetOrCreateCall(
             SpotManager manager,
-            string spotId,
-            string _) : SpotCall(manager, spotId), IZLinkSpotGetOrCreateCall
+            string spotId) : SpotCall(manager, spotId), IZLinkSpotGetOrCreateCall
         {
             public IZLinkSpotGetOrCreateCall InMesh(string meshName) => this;
             public IZLinkSpotGetOrCreateCall Request(ZLinkMessage request) => this;
@@ -825,17 +820,7 @@ public sealed class SpotContracts
             new SpotSendCall();
 
         public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
-            new SpotRequestCall();
-
-        public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TMessage>(SpotHandle address, TMessage request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
+            new SpotRequestCall(new JoinedRoom("room-1"));
 
         public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
         {
@@ -886,7 +871,7 @@ public sealed class SpotContracts
             ValueTask.CompletedTask;
     }
 
-    private sealed class SpotRequestCall : IZLinkSpotRequestCall
+    private sealed class SpotRequestCall(object? reply = null) : IZLinkSpotRequestCall
     {
         public IZLinkSpotRequestCall InstanceSpot() => this;
         public IZLinkSpotRequestCall InstanceSpot(string instanceSpotType) => this;
@@ -895,9 +880,9 @@ public sealed class SpotContracts
         public IZLinkSpotRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
         public IZLinkSpotRequestCall Timeout(TimeSpan timeout) => this;
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<TReply>(default!);
+            ValueTask.FromResult((TReply)reply!);
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<TReply>(default!);
+            Async<TReply>(cancellationToken);
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall

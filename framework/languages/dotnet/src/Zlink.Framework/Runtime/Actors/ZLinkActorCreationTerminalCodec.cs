@@ -45,7 +45,7 @@ internal static class ZLinkActorCreationTerminalCodec
 
         var bytes = body.ToArray();
         var result = new byte[checked(5 + bytes.Length)];
-        result[0] = 1;
+        result[0] = 2;
         BinaryPrimitives.WriteUInt32BigEndian(result.AsSpan(1, 4), checked((uint)bytes.Length));
         bytes.CopyTo(result, 5);
         if (result.Length > MaximumBytes)
@@ -63,7 +63,7 @@ internal static class ZLinkActorCreationTerminalCodec
         terminal = null!;
         var span = envelope.Span;
         if (span.Length is < 15 or > MaximumBytes
-            || span[0] != 1
+            || span[0] != 2
             || BinaryPrimitives.ReadUInt32BigEndian(span.Slice(1, 4)) != span.Length - 5)
             return false;
         var offset = 5;
@@ -128,10 +128,11 @@ internal static class ZLinkActorCreationTerminalCodec
         using var selected = new MemoryStream();
         if (completion.Result != ActorCreateResult.Rejected)
         {
+            WriteText8(selected, completion.Actor.ActorId);
+            WriteU64(selected, completion.Actor.ObjectGeneration);
+            WriteText8(selected, completion.Actor.MeshName);
             selected.WriteByte(checked((byte)completion.Actor.NodeRid.Size));
             selected.Write(completion.Actor.NodeRid.ToBytes());
-            WriteText8(selected, completion.Actor.ActorId);
-            WriteU64(selected, completion.Actor.Generation);
         }
         WriteU16(stream, checked((ushort)selected.Length));
         selected.Position = 0;
@@ -154,16 +155,20 @@ internal static class ZLinkActorCreationTerminalCodec
         ActorRef actor = default;
         if (result != ActorCreateResult.Rejected)
         {
-            if (end - offset < 1 + 1 + 8) return false;
+            if (!TryText8(span, ref offset, end, out var actorId)
+                || offset + 8 > end)
+                return false;
+            var objectGeneration = ReadU64(span, ref offset);
+            if (objectGeneration == 0
+                || !TryText8(span, ref offset, end, out var meshName)
+                || offset >= end)
+                return false;
             var ridLength = span[offset++];
             if (ridLength == 0 || offset + ridLength > end) return false;
             var nodeRid = RoutingId.From(span.Slice(offset, ridLength));
             offset += ridLength;
-            if (!TryText8(span, ref offset, end, out var actorId)
-                || offset + 8 != end)
-                return false;
-            actor = new ActorRef(nodeRid, actorId, ReadU64(span, ref offset));
-            if (actor.NodeRid.IsEmpty || actor.Generation == 0) return false;
+            if (offset != end) return false;
+            actor = new ActorRef(actorId, objectGeneration, meshName, nodeRid);
         }
         else if (length != 0) return false;
         offset = end;

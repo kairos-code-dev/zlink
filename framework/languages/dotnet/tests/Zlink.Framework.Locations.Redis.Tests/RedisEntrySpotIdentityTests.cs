@@ -44,12 +44,8 @@ public sealed class RedisEntrySpotIdentityTests(RedisTestFixture fixture)
         Assert.Equal(
             ZLinkLocationWriteStatus.RejectedConflict,
             duplicate.Status);
-        Assert.Single(await store.ListMeshNodesAsync("play"));
+        Assert.Single((await store.ListMeshNodesAsync("play", default)).Items);
 
-        var user = await store.UpdateSpotAsync(
-            UserSpot(ownerB, "node-b"),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, user.Status);
         Assert.IsType<ZLinkObjectReserveResult.Conflict>(
             await store.ReserveAsync(
                 UserSpotReservation(ownerB, "node-b")));
@@ -62,7 +58,7 @@ public sealed class RedisEntrySpotIdentityTests(RedisTestFixture fixture)
                     first.Rid),
                 new ZLinkLocationOwnerToken(
                     ownerA.OwnerId,
-                    checked((long)claimed.Generation + 1))));
+                    checked(ownerA.LeaseGeneration + 1))));
         Assert.True(await fixture.KeyExistsAsync(claimKey));
 
         Assert.Equal(
@@ -71,15 +67,22 @@ public sealed class RedisEntrySpotIdentityTests(RedisTestFixture fixture)
                 new ZLinkMeshNodeDescriptorKey(
                     first.MeshName,
                     first.Rid),
-                new ZLinkLocationOwnerToken(
-                    ownerA.OwnerId,
-                    checked((long)claimed.Generation))));
+                ownerA));
         Assert.False(await fixture.KeyExistsAsync(claimKey));
 
-        var afterRemove = await store.UpdateSpotAsync(
-            UserSpot(ownerB, "node-b"),
-            ZLinkLocationWriteIntent.NewClaim);
-        Assert.Equal(ZLinkLocationWriteStatus.Stored, afterRemove.Status);
+        var replacement = Descriptor(ownerB, "node-b") with
+        {
+            EntrySpotId =
+                "play-entry-00000000-0000-4000-8000-000000000002"
+        };
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                replacement,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                UserSpotReservation(ownerB, "node-b")));
     }
 
     private static ZLinkMeshNodeDescriptor Descriptor(
@@ -91,17 +94,28 @@ public sealed class RedisEntrySpotIdentityTests(RedisTestFixture fixture)
                 leaseGeneration: owner.LeaseGeneration)
             with
             {
-                EntrySpotId = EntrySpotId
+                EntrySpotId = EntrySpotId,
+                ObjectCapabilities =
+                [
+                    new ZLinkObjectCapability(
+                        ZLinkPlacementObjectKind.UserSpot,
+                        "match",
+                        ZLinkObjectMaintenancePolicyKind.Recreate,
+                        HasSnapshotAdapter: false,
+                        Limit: 1_000)
+                ],
+                Capacity = new(
+                    new ZLinkPopulationCapacity(0, 0, 1_000),
+                    new ZLinkPopulationCapacity(1_000, 0, 1_000),
+                    [
+                        new ZLinkSpotTypeCapacity(
+                            ZLinkPlacementObjectKind.UserSpot,
+                            "match",
+                            1_000,
+                            0,
+                            1_000)
+                    ])
             };
-
-    private static ZLinkSpotLocation UserSpot(
-        ZLinkLocationOwnerToken owner,
-        string nodeRid) =>
-        TestRows.Spot(owner.OwnerId, EntrySpotId) with
-        {
-            OwnerNodeRid = RoutingId.From(nodeRid),
-            OwnerNodeGeneration = 1
-        };
 
     private static ZLinkObjectReservationRequest UserSpotReservation(
         ZLinkLocationOwnerToken owner,

@@ -16,7 +16,7 @@ internal static class SfE1StoreDelayNonBlockingScenario
     {
         await SfProbe.WaitPeersAsync(
             consumer,
-            SfProbe.PeerRows(options.OwnerLeaseTtl + options.HeartbeatInterval * 4,
+            SfProbe.PeerRows(options.OwnerLeaseTtl + options.OwnerLeaseRenewInterval * 4,
                 present: ["api-a", "api-b"]),
             "SF-E1: baseline peers were not ready.");
 

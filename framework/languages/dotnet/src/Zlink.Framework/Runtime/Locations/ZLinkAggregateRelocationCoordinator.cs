@@ -24,6 +24,13 @@ internal sealed record ZLinkAggregateRelocationPublished(
     ZLinkRelocationStored Relocation,
     ZLinkRelocationEnvelope Envelope);
 
+internal sealed record ZLinkPreparedAggregateRelocation(
+    ZLinkAggregateFence Fence,
+    ZLinkRelocationStored Relocation,
+    ZLinkRelocationEnvelope Envelope,
+    IReadOnlyList<ZLinkAggregateRelocationParticipant> Participants,
+    ReadOnlyMemory<byte> InventoryDigest);
+
 internal sealed class ZLinkAggregateRelocationCoordinator(
     IZLinkAuthorityStore authorityStore,
     IZLinkRelocationStore relocationStore)
@@ -31,6 +38,21 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);
 
     internal async ValueTask<ZLinkAggregateRelocationPublished> PublishAsync(
+        ZLinkAggregateRelocationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var prepared = await PrepareAsync(request, cancellationToken)
+            .ConfigureAwait(false);
+        return await CommitAsync(prepared, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Stores and verifies the immutable root, then reserves the exact
+    /// authority aggregate without publishing it. The target must finish
+    /// factory and Restore staging before calling <see cref="CommitAsync"/>.
+    /// </summary>
+    internal async ValueTask<ZLinkPreparedAggregateRelocation> PrepareAsync(
         ZLinkAggregateRelocationRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -47,25 +69,30 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
             request.Participants
                 .Select(static participant => participant.Envelope)
                 .ToArray());
-        var root = ZLinkRelocationEnvelopeCodec.Encode(envelope);
-        var stored = await relocationStore.PutRelocationAsync(
-                root,
+        var tree = await ZLinkRelocationTreeStore.PutAsync(
+                relocationStore,
+                envelope,
                 Retention,
                 cancellationToken)
             .ConfigureAwait(false);
+        var stored = tree.Root;
         var fence = new ZLinkAggregateFence(
             request.AggregateId,
             request.AggregateGeneration);
         var prepared = false;
         try
         {
-            ValidateStored(root, stored);
-            var read = await relocationStore.GetRelocationAsync(
+            var restored = await ZLinkRelocationTreeStore.GetAsync(
+                    relocationStore,
                     stored.Reference,
+                    stored.ChecksumCrc32c,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (read is not ZLinkRelocationReadResult.Found found
-                || !found.Payload.Span.SequenceEqual(root))
+            if (restored.AggregateId != envelope.AggregateId
+                || restored.AggregateGeneration
+                   != envelope.AggregateGeneration
+                || !restored.InventoryDigest.Span.SequenceEqual(
+                    inventoryDigest.AsSpan()))
                 throw new ZLinkRelocationDataLostException(
                     "Relocation Store did not preserve the aggregate root.");
 
@@ -82,7 +109,7 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                             request.AggregateGeneration,
                             inventoryDigest,
                             request.TargetOwner.OwnerId,
-                            checked((long)request.TargetOwner.Generation),
+                            request.TargetOwner.LeaseGeneration,
                             participant.ApplicationAuthorityPayload)),
                     participant.MembershipMutation))
                 .ToArray();
@@ -116,18 +143,12 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                         "The aggregate relocation prepare was rejected.");
             }
 
-            var commit = await authorityStore.CommitAggregateAsync(
-                    fence,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (commit is not (ZLinkAggregateCommitResult.Committed
-                or ZLinkAggregateCommitResult.AlreadyCommitted))
-                throw new InvalidOperationException(
-                    $"The aggregate relocation commit failed with '{commit}'.");
-            return new ZLinkAggregateRelocationPublished(
+            return new ZLinkPreparedAggregateRelocation(
                 fence,
                 stored,
-                envelope);
+                envelope,
+                request.Participants,
+                inventoryDigest);
         }
         catch
         {
@@ -139,10 +160,12 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                     inventoryDigest)
                 .ConfigureAwait(false);
             if (published)
-                return new ZLinkAggregateRelocationPublished(
+                return new ZLinkPreparedAggregateRelocation(
                     fence,
                     stored,
-                    envelope);
+                    envelope,
+                    request.Participants,
+                    inventoryDigest);
 
             var safeToDelete = !prepared;
             if (prepared)
@@ -165,6 +188,205 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                 await DeleteOrphanAsync(stored.Reference).ConfigureAwait(false);
             throw;
         }
+    }
+
+    internal async ValueTask<ZLinkAggregateRelocationPublished> CommitAsync(
+        ZLinkPreparedAggregateRelocation prepared,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            await ZLinkRelocationTreeStore.RenewTreeAsync(
+                    relocationStore,
+                    prepared.Relocation.Reference,
+                    prepared.Relocation.ChecksumCrc32c,
+                    Retention,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var commit = await authorityStore.CommitAggregateAsync(
+                    prepared.Fence,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (commit is not (ZLinkAggregateCommitResult.Committed
+                or ZLinkAggregateCommitResult.AlreadyCommitted))
+                throw new InvalidOperationException(
+                    $"The aggregate relocation commit failed with '{commit}'.");
+        }
+        catch
+        {
+            if (!await IsPublishedAsync(
+                    prepared.Participants,
+                    prepared.Relocation,
+                    prepared.Envelope.AggregateId,
+                    prepared.Envelope.AggregateGeneration,
+                    prepared.InventoryDigest)
+                    .ConfigureAwait(false))
+                throw;
+        }
+
+        return new ZLinkAggregateRelocationPublished(
+            prepared.Fence,
+            prepared.Relocation,
+            prepared.Envelope);
+    }
+
+    internal async ValueTask CompleteSourceCleanupAsync(
+        ZLinkAggregateRelocationPublished published,
+        ZLinkMeshNodeDescriptorKey targetDescriptor,
+        ulong targetDescriptorLifecycleGeneration,
+        ZLinkLocationOwnerToken targetOwner,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(published);
+        var spot = published.Envelope.Participants.Single(
+            static participant => participant.ObjectKind
+                is ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot);
+        if (!ZLinkSpotRetireCompletionMarker.IsPending(
+                spot.CompletionPayload.Span))
+            throw new InvalidOperationException(
+                "The initial relocation root is not source-cleanup pending.");
+
+        var completedEnvelope = published.Envelope with
+        {
+            AggregateGeneration = checked(
+                published.Envelope.AggregateGeneration + 1),
+            Participants = published.Envelope.Participants.Select(
+                    participant => participant.AuthorityKey
+                                   == spot.AuthorityKey
+                        ? participant with
+                        {
+                            CompletionPayload =
+                                ZLinkSpotRetireCompletionMarker
+                                    .CreateCompleted()
+                        }
+                        : participant)
+                .ToArray()
+        };
+        var completedTree = await ZLinkRelocationTreeStore.PutAsync(
+                relocationStore,
+                completedEnvelope,
+                Retention,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var completed = completedTree.Root;
+        var mutations = new List<ZLinkAggregateParticipant>(
+            completedEnvelope.Participants.Count);
+        var alreadyCompleted = true;
+        foreach (var participant in completedEnvelope.Participants)
+        {
+            var read = await authorityStore.ReadAuthorityAsync(
+                    participant.AuthorityKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (read is not ZLinkAuthorityReadResult.Found found)
+                throw new ZLinkRelocationDataLostException(
+                    $"Relocation authority '{participant.AuthorityKey.Value}' disappeared before source cleanup completion.");
+            if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                    found.Snapshot.Payload.Span,
+                    out var current))
+            {
+                // A retry after target ACK can observe the steady payload.
+                continue;
+            }
+            if (current.AggregateId != completedEnvelope.AggregateId
+                || current.TargetOwnerId != targetOwner.OwnerId
+                || current.TargetOwnerLeaseGeneration
+                   != targetOwner.LeaseGeneration)
+                throw new ZLinkRelocationDataLostException(
+                    $"Relocation authority '{participant.AuthorityKey.Value}' has a different completion fence.");
+            if (current.AggregateGeneration
+                    == completedEnvelope.AggregateGeneration
+                && current.Reference == completed.Reference
+                && current.ChecksumCrc32c == completed.ChecksumCrc32c)
+                continue;
+            alreadyCompleted = false;
+            if (current.AggregateGeneration
+                    != published.Envelope.AggregateGeneration
+                || current.Reference != published.Relocation.Reference
+                || current.ChecksumCrc32c
+                   != published.Relocation.ChecksumCrc32c)
+                throw new ZLinkRelocationDataLostException(
+                    $"Relocation authority '{participant.AuthorityKey.Value}' is not source-cleanup pending.");
+            mutations.Add(new ZLinkAggregateParticipant(
+                participant.AuthorityKey,
+                found.Snapshot.StoreVersion,
+                ZLinkAuthorityGenerationTransition.Preserve,
+                ZLinkRelocationAuthorityPayloadCodec.Encode(
+                    current with
+                    {
+                        Reference = completed.Reference,
+                        ChecksumCrc32c = completed.ChecksumCrc32c,
+                        AggregateGeneration =
+                            completedEnvelope.AggregateGeneration
+                    }),
+                ReadOnlyMemory<byte>.Empty));
+        }
+        if (alreadyCompleted || mutations.Count == 0)
+            return;
+        if (mutations.Count != completedEnvelope.Participants.Count)
+            throw new ZLinkRelocationDataLostException(
+                "Relocation source-cleanup completion is partially visible.");
+
+        await ZLinkRelocationTreeStore.RenewTreeAsync(
+                relocationStore,
+                completed.Reference,
+                completed.ChecksumCrc32c,
+                Retention,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var prepare = await authorityStore.PrepareAggregateAsync(
+                new ZLinkAggregatePrepareRequest(
+                    completedEnvelope.AggregateId,
+                    completedEnvelope.AggregateGeneration,
+                    mutations,
+                    completedEnvelope.InventoryDigest,
+                    targetDescriptor,
+                    targetDescriptorLifecycleGeneration,
+                    new ZLinkCapacityVector(0, 0, null),
+                    targetOwner),
+                cancellationToken)
+            .ConfigureAwait(false);
+        var fence = prepare switch
+        {
+            ZLinkAggregatePrepareResult.Prepared value => value.Fence,
+            ZLinkAggregatePrepareResult.AlreadyPrepared value => value.Fence,
+            _ => throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotMoving,
+                "Source-cleanup completion authority prepare conflicted.",
+                true)
+        };
+        var commit = await authorityStore.CommitAggregateAsync(
+                fence,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (commit is not (
+                ZLinkAggregateCommitResult.Committed
+                or ZLinkAggregateCommitResult.AlreadyCommitted))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotMoving,
+                "Source-cleanup completion authority commit failed.",
+                true);
+        await DeleteOrphanAsync(published.Relocation.Reference)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask AbortAsync(
+        ZLinkPreparedAggregateRelocation prepared)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        var abort = await authorityStore.AbortAggregateAsync(
+                prepared.Fence,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (abort is not (ZLinkAggregateAbortResult.Aborted
+            or ZLinkAggregateAbortResult.AlreadyAborted))
+            throw new InvalidOperationException(
+                $"The aggregate relocation abort failed with '{abort}'.");
+        await DeleteOrphanAsync(prepared.Relocation.Reference)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<bool> IsPublishedAsync(
@@ -210,7 +432,8 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
     {
         try
         {
-            await relocationStore.DeleteRelocationAsync(
+            await ZLinkRelocationTreeStore.DeleteTreeAsync(
+                    relocationStore,
                     reference,
                     CancellationToken.None)
                 .ConfigureAwait(false);
@@ -228,7 +451,7 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                 nameof(request));
         if (request.AggregateGeneration is 0 or > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(request));
-        if (request.TargetOwner.Generation is 0 or > long.MaxValue)
+        if (request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Participants.Count is < 1 or > 1024)
             throw new ArgumentOutOfRangeException(nameof(request));
@@ -244,18 +467,6 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
         }
     }
 
-    private static void ValidateStored(
-        ReadOnlyMemory<byte> root,
-        ZLinkRelocationStored stored)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(stored.Reference);
-        if (stored.ChecksumCrc32c != ZLinkCrc32C.Compute(root.Span))
-            throw new ZLinkRelocationDataLostException(
-                "Relocation Store returned an invalid aggregate checksum.");
-        if (stored.ExpiresAt <= stored.StoreNow)
-            throw new InvalidDataException(
-                "Relocation Store returned a non-positive retention interval.");
-    }
 }
 
 internal static class ZLinkAggregateInventoryDigest

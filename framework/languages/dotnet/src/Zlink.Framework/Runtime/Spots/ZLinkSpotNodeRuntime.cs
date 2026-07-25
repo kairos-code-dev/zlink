@@ -42,13 +42,26 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         IZLinkChannelBackendAdapter channelAdapter,
         IZLinkBackendSpotNode node,
         string spotChannelName,
-        ZLinkLocationLifecycle? locationLifecycle)
+        ZLinkLocationLifecycle? locationLifecycle,
+        ZLinkMeshNodeStartupState? startupState = null,
+        string? entrySpotId = null)
     {
         _services = services;
         _runtime = runtime;
         _frameworkRegistration = frameworkRegistration;
         Registration = registration;
         Node = node;
+        if (locationLifecycle is not null)
+        {
+            if (node is not IZLinkBackendAuthorityObserver authorityObserver)
+                throw new InvalidOperationException(
+                    "The MeshNode backend does not support authority fencing.");
+            authorityObserver.SetLocalOwnerLeaseGeneration(
+                checked((ulong)locationLifecycle.OwnerToken.LeaseGeneration));
+        }
+        StartupState = startupState;
+        EntrySpotId = entrySpotId ?? startupState?.EntrySpotId
+            ?? registration.EntrySpotId;
         _taskRunner = new ZLinkRuntimeTaskRunner(
             runtime.ErrorSink,
             _stopSource.Token,
@@ -116,7 +129,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
     }
 
+    internal ZLinkMeshNodeStartupState? StartupState { get; }
+
+    internal string EntrySpotId { get; }
+
     public string Name => Registration.SpotNodeName;
+
+    internal ZLinkSpotNodeCatalog Catalog => _spots;
 
     public IReadOnlySet<Type> SpotFactories => Registration.SpotFactories;
 
@@ -401,12 +420,18 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
-        ulong authorityOwnerGeneration)
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration)
     {
         if (Node is not IZLinkBackendAuthorityObserver observer)
             throw new InvalidOperationException(
                 "The MeshNode backend does not support authority fencing.");
-        observer.ObserveActorAuthority(actor, authorityOwnerGeneration);
+        observer.ObserveActorAuthority(
+            actor,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
     }
 
     internal ValueTask<IReadOnlyList<Message>> RequestToNodeAsync(
@@ -528,11 +553,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public void ApplyEntrySpotIdBeforeBind()
     {
-        if (string.IsNullOrEmpty(Registration.EntrySpotId)) return;
+        if (string.IsNullOrEmpty(EntrySpotId)) return;
 
         _entrySpot = Node.EntrySpot();
         _entrySpot.SetRoutingId(
-            ZLinkSpotId.ToNativeRoutingId(Registration.EntrySpotId));
+            ZLinkSpotId.ToNativeRoutingId(EntrySpotId));
     }
 
     public async ValueTask InitializeEntrySpotAsync()
@@ -656,8 +681,12 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return await _spots.CloseAsync(spotId, cancellationToken);
     }
 
-    internal ValueTask<bool> TryDrainSpotsAsync(CancellationToken cancellationToken) =>
-        _spots.TryDrainAsync(cancellationToken);
+    internal ValueTask<bool> TryDrainSpotsAsync(
+        bool relocate,
+        CancellationToken cancellationToken) =>
+        relocate
+            ? _spots.TryRelocateForRetireAsync(cancellationToken)
+            : _spots.TryDrainAsync(cancellationToken);
 
     public ValueTask<bool> ConnectPeerAsync(string endpoint, CancellationToken cancellationToken)
     {
@@ -710,7 +739,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 _services,
                 scope,
                 entrySpot,
-                Registration.EntrySpotId,
+                EntrySpotId,
                 Registration.EntrySpotType,
                 Node.RoutingId,
                 Registration.SpotNodeName,

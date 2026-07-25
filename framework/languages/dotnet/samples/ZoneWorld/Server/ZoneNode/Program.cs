@@ -1,6 +1,7 @@
 using StackExchange.Redis;
 using Microsoft.Extensions.Configuration;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
@@ -54,8 +55,10 @@ builder.Services.AddSingleton<IOpsReportPort, OpsReportAdapter>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, LocalSpotEventHandler>();
 builder.Services.AddZLinkFramework(options =>
 {
-    options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-    options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
+    options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
+    var locations = options.ConfigureLocations();
+    locations.RouteCacheMaxAge = TimeSpan.Zero;
+    locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
@@ -82,15 +85,20 @@ builder.Services.AddZLinkFramework(options =>
     // The zone spots and the player actors. A player entering a zone joins the spot named
     // after it, and when that spot is on another node the join is the transfer — which is
     // why the transfer adapter is not optional (§2.6).
-    const string allocationGroup = "zoneworld.zone-node";
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
-        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
-        .SetRoutingIdAllocationGroup(allocationGroup)
-        .Listen(node.MeshEndpoint)
+        .SetRoutingIdPrefix("zn")
+        .Listen(node.MeshEndpoint);
+    mesh.Objects().Server()
         .AddEntrySpot<ZoneEntrySpot>()
-        .AddActorFactory<PlayerActorFactory>(ZoneWorldNames.PlayerActorType)
-        .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ZoneWorldNames.PlayerActorType)
-        .AddSpotFactory<ZoneSpot>();
+        .AddActorFactory<PlayerActor, PlayerActorFactory>(
+            ZoneWorldNames.PlayerActorType,
+            null,
+            ZLinkRelocationPolicy<PlayerActor>
+                .Snapshot<PlayerActorRelocationAdapter>())
+        .AddSpotFactory<ZoneSpot>(
+            ZoneWorldNames.ZoneSpotType,
+            null,
+            ZLinkRelocationPolicy<ZoneSpot>.Disabled);
     mesh.ChannelName(ZoneWorldNames.ZoneChannel);
 
     // The node's own channel. Ops calls the channel named after the node, so a call

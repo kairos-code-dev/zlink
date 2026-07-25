@@ -38,7 +38,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     {
         return _actorReplies.TryRemove(requestId, out reply!);
     }
-    private Action<ActorTransferControl>? _transferControlHandler;
     private Action<ZLinkBackendRouteReceived>? _nodeRouteHandler;
     private Action? _nodeSendReadyHandler;
     private readonly object _lifecycleGate = new();
@@ -97,13 +96,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     public void SetNodeSendReadyHandler(Action handler)
     {
         _nodeSendReadyHandler = handler;
-        EnsureStarted();
-    }
-
-    // Registers the node-level transfer-control sink (S8-04A authority consumer).
-    public void SetTransferControlHandler(Action<ActorTransferControl> handler)
-    {
-        _transferControlHandler = handler;
         EnsureStarted();
     }
 
@@ -255,13 +247,6 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             case MeshRecordKind.SendReady:
                 RaiseSendReady(record);
                 return;
-            case MeshRecordKind.TransferControl:
-                // Deliver the transfer-control phase to the registered framework
-                // sink so it drives the transfer state machine. The orchestrating
-                // authority (S8-04A) registers the consumer.
-                if (record.TransferControl is { } control)
-                    _transferControlHandler?.Invoke(control);
-                return;
         }
     }
 
@@ -296,7 +281,12 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             record.SourceSpotId,
             record.OperationId == default ? null : record.OperationId.Low,
             reply,
-            metadata: metadata);
+            metadata: metadata,
+            operationId: record.OperationId,
+            targetNodeGeneration: record.TargetNodeGeneration,
+            authorityOwnerGeneration: record.AuthorityOwnerGeneration,
+            ownerLeaseGeneration: record.OwnerLeaseGeneration,
+            forwardingHopCount: record.ForwardingHopCount);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }
@@ -328,7 +318,12 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             record.Kind is MeshRecordKind.ChannelSend or MeshRecordKind.ChannelRequest
                 ? record.ChannelName
                 : null,
-            metadata);
+            metadata,
+            record.OperationId,
+            record.TargetNodeGeneration,
+            record.AuthorityOwnerGeneration,
+            record.OwnerLeaseGeneration,
+            record.ForwardingHopCount);
         var handler = _nodeRouteHandler;
         if (handler is null)
         {

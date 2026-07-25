@@ -10,8 +10,9 @@ public interface IZLinkLocationRuntimeQuery
     ValueTask<ZLinkLocationRuntimeStatus> GetStatusAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
+    ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(
         string meshName,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkLocationPage<ZLinkLocationTopologyEntry>> ListTopologyAsync(
@@ -19,7 +20,8 @@ public interface IZLinkLocationRuntimeQuery
         ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 
-    ValueTask<IReadOnlyList<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
+    ValueTask<ZLinkLocationPage<ZLinkLocationServiceSummary>> ListServiceSummariesAsync(
         ZLinkLocationServiceSummaryFilter filter,
+        ZLinkPageRequest page = default,
         CancellationToken cancellationToken = default);
 }

@@ -38,7 +38,11 @@ internal sealed class ZLinkActorDirectory(
         if (runtime.TryGetCreatedActorState(actorId, out var state)
             && state.NativeActorRef is { } localActorRef)
         {
-            return (localActorRef.ToNative(), true);
+            var meshName = state.Activation?.MeshName
+                           ?? state.Context?.MeshName;
+            if (string.IsNullOrWhiteSpace(meshName))
+                return (null, true);
+            return (localActorRef.ToNative(meshName), true);
         }
 
         if (locations is null)

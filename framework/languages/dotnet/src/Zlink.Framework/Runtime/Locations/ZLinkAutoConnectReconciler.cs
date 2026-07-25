@@ -68,7 +68,9 @@ internal sealed class ZLinkAutoConnectReconciler
         ZLinkLocationOptions options,
         TimeProvider? timeProvider = null,
         ZLinkLocationEventEmitter? events = null,
-        bool retainRemovedMembers = false)
+        bool retainRemovedMembers = false,
+        bool initiallyPublished = false,
+        ulong initialStoreGeneration = 0)
     {
         _local = local;
         _localRow = localRow;
@@ -80,6 +82,8 @@ internal sealed class ZLinkAutoConnectReconciler
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
         _retainRemovedMembers = retainRemovedMembers;
+        _localPublished = initiallyPublished;
+        _localGeneration = initialStoreGeneration;
     }
 
     internal IReadOnlyCollection<ZLinkAutoConnectTarget> ActiveTargets => _active.Values;
@@ -176,6 +180,14 @@ internal sealed class ZLinkAutoConnectReconciler
         CancellationToken cancellationToken = default)
         => await PublishLocalMutationAsync(
             row => row with { State = ZLinkFrameworkRuntimeState.Draining },
+            cancellationToken).ConfigureAwait(false);
+
+    internal async ValueTask<bool> MarkServingAsync(
+        CancellationToken cancellationToken = default)
+        => await PublishLocalMutationAsync(
+            row => row.State == ZLinkFrameworkRuntimeState.Serving
+                ? row
+                : row with { State = ZLinkFrameworkRuntimeState.Serving },
             cancellationToken).ConfigureAwait(false);
 
     private async ValueTask<bool> PublishLocalMutationAsync(
@@ -318,6 +330,14 @@ internal sealed class ZLinkAutoConnectReconciler
         {
             throw;
         }
+        catch (ZLinkFrameworkException error)
+            when (error.Kind == ZLinkFrameworkErrorKind.RoutingIdConflict
+                  || error.Kind == ZLinkFrameworkErrorKind.SpotIdConflict)
+        {
+            // A conflicting local identity is a deterministic startup
+            // configuration failure, not a transient store outage.
+            throw;
+        }
         catch (Exception)
         {
             // Fail-static: keep the last desired set, compute no diff, and
@@ -335,7 +355,9 @@ internal sealed class ZLinkAutoConnectReconciler
             _storeFailed = false;
             _storeFailureStartedAt = null;
             _recoveryDeferUntil = _time.GetTimestamp()
-                + (long)(_options.HeartbeatInterval.TotalSeconds * _time.TimestampFrequency);
+                + (long)(
+                    _options.OwnerLeaseRenewInterval.TotalSeconds
+                    * _time.TimestampFrequency);
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
@@ -501,11 +523,12 @@ internal sealed class ZLinkAutoConnectReconciler
 
     internal async ValueTask ShutdownAsync(CancellationToken cancellationToken = default)
     {
-        if (_localPublished)
+        if (_localRow is not null && _localGeneration > 0)
         {
-            await _runtime.RemoveDescriptorAsync(LocalKey(), _localGeneration, cancellationToken)
+            await _runtime.RemoveDescriptorAsync(LocalKey(), cancellationToken)
                 .ConfigureAwait(false);
             _localPublished = false;
+            _localGeneration = 0;
         }
 
         foreach (var target in _active.Values)
@@ -523,44 +546,34 @@ internal sealed class ZLinkAutoConnectReconciler
             return;
         }
 
-        // First claim uses NewClaim; when our previous row is still alive
-        // (short outage, lease survived) the claim conflicts and a Renew
-        // with the last generation extends it instead.
+        if (_localGeneration > 0)
+        {
+            var renewed = await _runtime.WriteDescriptorAsync(
+                    _localRow,
+                    ZLinkLocationWriteIntent.Renew,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            _localPublished = renewed.Status == ZLinkLocationWriteStatus.Stored;
+            return;
+        }
+
         var claim = await _runtime.WriteDescriptorAsync(
             _localRow, ZLinkLocationWriteIntent.NewClaim, cancellationToken)
             .ConfigureAwait(false);
         if (claim.Status == ZLinkLocationWriteStatus.Stored)
         {
-            // The store-issued generation is the owner token for later
-            // renew/remove fencing; the row's LifecycleGeneration stays the
-            // writer's core value (spec 41 §3.1 keeps the domains apart).
+            // Store generation tracks the published row revision domain. The
+            // owner lease token remains the independent renew/remove fence.
             _localGeneration = claim.Generation;
             _localPublished = true;
             return;
         }
 
-        if (claim.Status == ZLinkLocationWriteStatus.RejectedConflict && _localGeneration > 0)
-        {
-            var renewed = await _runtime.WriteDescriptorAsync(
-                _localRow,
-                ZLinkLocationWriteIntent.Renew,
-                cancellationToken).ConfigureAwait(false);
-            _localPublished = renewed.Status == ZLinkLocationWriteStatus.Stored;
-            return;
-        }
-
         if (claim.Status == ZLinkLocationWriteStatus.RejectedConflict)
-        {
-            var takeover = await _runtime.WriteDescriptorAsync(
-                _localRow,
-                ZLinkLocationWriteIntent.Takeover,
-                cancellationToken).ConfigureAwait(false);
-            if (takeover.Status == ZLinkLocationWriteStatus.Stored)
-            {
-                _localGeneration = takeover.Generation;
-                _localPublished = true;
-            }
-        }
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RoutingIdConflict,
+                $"MeshNode RID '{_localRow.Rid}' is already claimed in mesh "
+                + $"'{_localRow.MeshName}'.");
     }
 
     private ZLinkMeshNodeDescriptorKey LocalKey() =>

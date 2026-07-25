@@ -89,14 +89,11 @@ public sealed partial class RegressionTests
     {
         var forbidden = new[]
         {
-            "ZLinkActorLocation",
-            "IZLinkActorLocationStore",
-            "IZLinkPeerLocationStore",
-            "IZLinkSpotLocationStore",
-            "IZLinkRouteLocationStore",
             "IZLinkLocationStore",
             "IZLinkOwnerLeaseStore",
-            "IZLinkActorAddressResolver"
+            "IZLinkAuthorityStore",
+            "IZLinkSpotHandleResolver",
+            "IZLinkActorSpotHandleResolver"
         };
 
         var offenders = EnumerateSourceFiles(ResolveSamplesRoot())

@@ -513,6 +513,15 @@ restore, owner와 membership aggregate commit, callback·replay·ACK 순서는 F
 authority·[membership](../../../../01-glossary.ko.md#membership) aggregate commit만 하나의 transaction domain에 포함하며 Application과 provider adapter에는
 이 순서를 조립하는 별도 public API가 없다.
 
+상속한 `prepareAggregate(...)`는 participant의 `ownerTransition`으로 두 mode를 판정한다. `NEW_OWNER`가 하나라도
+있는 relocation mode는 `PRESERVE` participant와 섞을 수 있지만 non-zero capacity bundle은 `NEW_OWNER`
+participant의 durable allocation delta만 exact 합산한다. 모든 participant가 `PRESERVE`인 completion·steady-
+normalization mode는 exact zero capacity와 모든 empty membership mutation을 요구한다. 이 mode는 capacity를
+예약하거나 바꾸지 않고 participant payload만 atomic하게 변경하며 owner, object generation, authority owner
+generation과 durable Active allocation을 유지한다. Zero capacity와 `NEW_OWNER`, non-zero capacity와
+all-Preserve 조합은 conflict이고 mutation은 0이다. Kotlin coroutine projection은 Java와 같은 request와 결과를
+사용하며 새 overload나 별도 normalization method를 추가하지 않는다.
+
 Kotlin descriptor와 provider는 Java `ZLinkObjectCapability.hasSnapshotAdapter()`를 그대로 사용한다. 이 값은 target에
 해당 object kind의 Snapshot adapter가 등록되어 있는지만 나타내며 application state의 format, version이나 contract
 ID를 광고하지 않는다. Kotlin 전용 descriptor field나 state contract 집합을 추가하지 않는다.

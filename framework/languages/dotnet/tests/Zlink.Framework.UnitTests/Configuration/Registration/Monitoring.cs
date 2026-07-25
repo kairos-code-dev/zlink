@@ -77,7 +77,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
 
             var profile = options.AddRouteMesh("profile")
                 .Listen("tcp://127.0.0.1:7101")
-                .SetRoutingId(RoutingId.From("profile"));
+                .SetRoutingIdPrefix("profile");
             profile.Channel("profile").Server()
                 .AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
 

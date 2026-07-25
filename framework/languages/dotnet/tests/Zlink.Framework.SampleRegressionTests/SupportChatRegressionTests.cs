@@ -45,17 +45,18 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void SupportChat_Registers_Stateful_Actor_Transfer_Adapter()
+    public void SupportChat_Registers_Stateful_Actor_Relocation_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("SupportChat");
         var host = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "SupportServerHostFactory.cs"));
         var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
-            "Actors", "SupportUserActorTransferAdapter.cs"));
+            "Actors", "SupportUserActorRelocationAdapter.cs"));
 
-        Assert.Contains("AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>", host,
+        Assert.Contains("Snapshot<SupportUserActorRelocationAdapter>()", host,
             StringComparison.Ordinal);
-        Assert.Contains("IZLinkActorTransferAdapter<SupportUserActor>", adapter, StringComparison.Ordinal);
-        Assert.DoesNotContain("AddStatelessActorTransfer", host, StringComparison.Ordinal);
+        Assert.Contains("IZLinkActorRelocationAdapter<SupportUserActor>", adapter, StringComparison.Ordinal);
+        Assert.Contains("ValueTask<byte[]> CaptureAsync", adapter, StringComparison.Ordinal);
+        Assert.Contains("ValueTask RestoreAsync", adapter, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -61,6 +61,26 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public async Task Retire_Uses_Spot_Relocation_Instead_Of_Explicit_Close()
+    {
+        var probe = new DrainExecutionProbe();
+        var executor = new ZLinkFrameworkDrainExecutor(
+            probe.Operations,
+            new ZLinkLocationOptions
+            {
+                PollingInterval = TimeSpan.FromMilliseconds(-5_099)
+            });
+
+        var reason = await executor.ExecuteAsync(
+            ZLinkFrameworkTerminationIntent.Retire,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Null(reason);
+        Assert.True(probe.LastSpotDrainWasRelocation);
+    }
+
+    [Fact]
     public async Task Drain_Executor_Seals_Admission_Before_Weight_Quiescence()
     {
         var probe = new DrainExecutionProbe();
@@ -175,27 +195,6 @@ public sealed class DrainCoordinatorTests
                 "stop-auto-connect",
                 "cleanup-owner",
                 "stop-location"
-            },
-            probe.Events);
-    }
-
-    [Fact]
-    public async Task AllocatedRoutingId_ForcedDrain_LeavesOwnerAndLeaseForHostedReleaseOrder()
-    {
-        var probe = new DrainExecutionProbe();
-        var options = new ZLinkLocationOptions { AllocatedRoutingIdsEnabled = true };
-        var executor = new ZLinkFrameworkDrainExecutor(probe.Operations, options);
-
-        await executor.ForceStopAsync(
-            ZLinkDrainForceReason.DeadlineExceeded,
-            CancellationToken.None);
-
-        Assert.Equal(
-            new[]
-            {
-                "drain-sessions",
-                "stop-runtime",
-                "stop-auto-connect"
             },
             probe.Events);
     }
@@ -729,6 +728,8 @@ public sealed class DrainCoordinatorTests
 
         public int WeightAttempts { get; private set; }
 
+        public bool LastSpotDrainWasRelocation { get; private set; }
+
         public ZLinkDrainExecutionOperations Operations => new(
             HasAutoConnect: true,
             HasLocationRuntime: true,
@@ -764,8 +765,9 @@ public sealed class DrainCoordinatorTests
                 Events.Add("drain-actors");
                 return ValueTask.FromResult(true);
             },
-            DrainSpots: _ =>
+            DrainSpots: (relocate, _) =>
             {
+                LastSpotDrainWasRelocation = relocate;
                 Events.Add("drain-spots");
                 return ValueTask.FromResult(true);
             },

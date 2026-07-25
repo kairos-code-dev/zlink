@@ -22,6 +22,7 @@ internal static class ActorNodeEndpoints
             var snapshot = meshRuntime.Snapshot(SpotActorTransferNames.Mesh);
             var descriptors = await locations.ListMeshNodesAsync(
                 SpotActorTransferNames.Mesh,
+                default,
                 cancellationToken);
             return Results.Ok(new MeshReadyRes(
                 options.Rid,
@@ -29,7 +30,7 @@ internal static class ActorNodeEndpoints
                     .Where(static peer => peer.Ready)
                     .Select(static peer => peer.Rid.ToString())
                     .ToArray(),
-                descriptors
+                descriptors.Items
                     .Where(static descriptor =>
                         descriptor.State == ZLinkFrameworkRuntimeState.Serving
                         && descriptor.ObjectRole == ZLinkMeshNodeObjectRole.Server)

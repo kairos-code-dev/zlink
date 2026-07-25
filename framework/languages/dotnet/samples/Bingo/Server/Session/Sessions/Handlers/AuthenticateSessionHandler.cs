@@ -13,7 +13,7 @@ internal sealed class AuthenticateBingoSessionHandler(
     IZLinkRouteClient channels,
     IZLinkSpotClient spotsClient,
     IZLinkSpotHandleResolver spots,
-    IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
+    IZLinkRouteMeshRuntime routeMesh,
     ILogger<AuthenticateBingoSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
@@ -32,10 +32,19 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var sessionAllocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
-            "bingo.session",
-            cancellationToken);
-        var preferredPlayNodeRid = RoutingId.From($"play{sessionAllocation.Slot}");
+        var preferredPlayNodeRid = routeMesh
+            .Snapshot(SampleNames.MeshName)
+            .Peers
+            .Where(static peer => peer.Ready)
+            .Where(peer => peer.ChannelNames.Contains(
+                SampleNames.PlayChannel,
+                StringComparer.Ordinal))
+            .OrderBy(static peer => peer.Rid.ToString(), StringComparer.Ordinal)
+            .Select(static peer => peer.Rid)
+            .FirstOrDefault();
+        if (preferredPlayNodeRid.Size == 0)
+            throw new InvalidOperationException(
+                "No Ready play MeshNode is available.");
         var playEntrySpot = await spots.ResolveSpotHandleAsync(
                                 SampleNames.MeshName,
                                 preferredPlayNodeRid,

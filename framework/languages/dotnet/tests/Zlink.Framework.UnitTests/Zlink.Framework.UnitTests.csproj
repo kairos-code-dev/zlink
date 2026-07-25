@@ -48,10 +48,12 @@
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
         <Compile Include="Contracts/SpotContractTests.cs"/>
         <Compile Include="Documentation/Regression.cs"/>
+        <Compile Include="Support/TestActorContext.cs"/>
+        <Compile Include="Support/OwnerLeaseTestSupport.cs"/>
         <Compile Include="Runtime/AutoConnectLoopTests.cs"/>
         <Compile Include="Runtime/AutoConnectLifecycleCoordinatorTests.cs"/>
         <Compile Include="Runtime/AutoConnectReconcilerTests.cs"/>
-        <Compile Include="Runtime/ActorTransferTests.cs"/>
+        <Compile Include="Runtime/ActorRelocationProtocolTests.cs"/>
         <Compile Include="Runtime/ActorHandoffTests.cs"/>
         <Compile Include="Runtime/ActorClientTests.cs"/>
         <Compile Include="Runtime/ActorBoundSessionRelayTests.cs"/>
@@ -107,6 +109,7 @@
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
         <Compile Include="Runtime/ReconciliationRunnerTests.cs"/>
         <Compile Include="Runtime/RelocationRuntimeTests.cs"/>
+        <Compile Include="Runtime/RelocationStartupRecoveryTests.cs"/>
         <Compile Include="Runtime/RouteCodecTests.cs"/>
         <Compile Include="Runtime/RuntimeConcurrencyBoundaryTests.cs"/>
         <Compile Include="Runtime/RuntimeMetricsTests.cs"/>

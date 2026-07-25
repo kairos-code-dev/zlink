@@ -72,7 +72,3 @@ public interface IZLinkSpotSubscriberConfig
 
     TimeSpan? Linger { get; set; }
 }
-
-public interface IZLinkEntrySpotOptions
-{
-}

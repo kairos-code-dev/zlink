@@ -13,6 +13,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdio>
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
@@ -137,6 +138,10 @@ bool wait_until_admitted (zlink::framework::detail::mesh_node_runtime_t &node)
             return true;
         std::this_thread::sleep_for (10ms);
     }
+    std::fprintf (stderr, "[vertical] admission timeout rid=%s peers=%zu state=%d\n",
+                  node.status ().routing_id ().to_string ().c_str (),
+                  node.admitted_peer_count (),
+                  static_cast<int> (node.status ().state));
     return false;
 }
 

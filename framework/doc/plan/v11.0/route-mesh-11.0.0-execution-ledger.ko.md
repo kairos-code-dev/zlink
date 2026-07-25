@@ -190,22 +190,28 @@ state machine 의미를 바꾸면 그때는 정리가 아니라 계약 변경이
 항목 ID만 참조하고 상태를 이중으로 기록하지 않는다. 이 log는 진행표가 아니며 row 상태의 기준은 계속 이
 ledger다.
 
-### 2.3 언어 병렬 구현과 최선안 조합 수렴
+### 2.3 구현 순서와 동형 수렴
 
-한 기능은 한 언어를 먼저 완성한 뒤 나머지가 번역하는 방식으로 만들지 않는다. 같은 계약 snapshot에서
-C++·.NET·JVM(Java·Kotlin)·Node.js lane이 같은 기능을 병렬로 구현하고, 네 구현이 모두 자체 gate를 통과한
-뒤 교차 리뷰로 최선안을 골라 다섯 언어를 같은 형태로 수렴시킨다. 기능 단위로 다음 네 단계를 반복한다.
+기본 순서는 .NET 우선이다. 계약이 확정된 기능은 .NET lane이 먼저 설계·구현하고 나머지 네 언어가 그 형태를
+미러링한다. 네 lane이 같은 기능을 각자 설계하면 설계 비용이 네 배가 될 뿐 아니라 발산 자체가 수렴 비용으로
+돌아오기 때문이다. 기능 단위로 다음 네 단계를 반복한다.
 
-1. **병렬 구현.** 각 lane이 같은 정식 spec·exact interface·wire schema를 입력으로 자기 언어 runtime을
-   구현하고 internal contract·regression을 통과시킨다. 다른 lane의 구현을 기다리거나 베끼지 않는다.
-2. **교차 리뷰.** 네 구현이 준비되면 §18의 `I4` 축으로 한 번에 비교한다. 비교 축은 component 분리와 이름,
-   state machine과 전이 조건, ownership·lock·queue 순서, 오류 분류와 복구, resource 해제 시점,
-   test 구성과 negative coverage다. 축마다 어느 언어 구현이 가장 나은지와 그 이유를 기록한다.
-3. **최선안 조합.** 축마다 선택한 구현을 모아 하나의 기준 형태를 만든다. 한 언어의 구현을 통째로 채택하지
-   않고 축 단위로 조합한다. 어느 축도 명확히 낫지 않으면 .NET 형태를 기본값으로 삼고 그 사유를 남긴다.
-4. **동형 수렴.** 선택한 기준 형태로 나머지 언어를 정렬해 다섯 언어가 같은 component 경계, 같은 이름 규칙,
-   같은 state machine, 같은 오류 분류와 같은 test 구성을 갖게 한다. 수렴 뒤 정식 spec·common internals·
-   다섯 exact interface에 반영하고, 남는 차이는 다음 단락의 허용 사유와 함께 기록한다.
+1. **기준 구현.** .NET lane이 정식 spec·exact interface·wire schema를 입력으로 구현하고 internal
+   contract·regression을 통과시킨다. 이 구현이 나머지 언어의 기준 형태가 된다.
+2. **미러링.** 나머지 lane이 기준 형태의 component 경계, state machine, ordering·ownership, 오류 분류,
+   resource 수명, test 구성을 자기 언어로 옮긴다. 형태를 바꾸려면 그 이유를 담당 row 증거 칸에 남긴다.
+3. **교차 리뷰.** 다섯 언어가 준비되면 §18의 `I4` 축으로 한 번에 비교한다. 이 단계는 순서와 무관하게 항상
+   수행하는 완료 gate다. 미러링은 형태를 미묘하게 비틀기 때문에 기준 구현이 있어도 리뷰 없이는 발산을
+   잡지 못한다. 비교 축은 component 분리와 이름, state machine과 전이 조건, ownership·lock·queue 순서,
+   오류 분류와 복구, resource 해제 시점, test 구성과 negative coverage다.
+4. **동형 수렴.** 리뷰에서 기준 구현보다 나은 형태가 나오면 그것을 새 기준으로 채택하고 .NET을 포함한
+   다섯 언어를 정렬한다. 축마다 선택과 사유를 기록하며, 우열이 분명하지 않으면 .NET 형태를 유지한다.
+   수렴 뒤 정식 spec·common internals·다섯 exact interface에 반영한다.
+
+실행 모델에 민감한 새 메커니즘은 예외다. 동시성, 순서, 수명 원시처럼 .NET 형태가 다른 실행 모델로 옮겨지지
+않을 수 있는 기능은 기준을 확정하기 전에 실행 모델이 가장 다른 C++(RAII·스레드)와 Node.js(event loop)
+두 곳에서 먼저 짧게 시험 구현한다. 다섯 언어를 모두 병렬로 설계하지 않는다. 시험 결과로 기준 형태를 정한
+뒤에는 다시 1~4단계를 따른다.
 
 한 개념에는 한 이름만 쓴다. 이름의 기준은 정식 spec과
 [공통 용어집](../../framework/common/spec/01-glossary.ko.md)이며, 코드 식별자·test 이름·문서 산문이 그 용어를

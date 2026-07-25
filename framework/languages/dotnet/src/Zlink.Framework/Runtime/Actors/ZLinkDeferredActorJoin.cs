@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -108,6 +109,10 @@ internal sealed class ZLinkDeferredActorJoin(
 {
     private readonly long _registeredTimestamp = Stopwatch.GetTimestamp();
     private readonly ZLinkActorJoinOperationId _operationId = CreateOperationId();
+
+    // The deferred Join runs detached from the callback that submitted it, so the
+    // causal flow of that callback is captured here and re-entered in RunAsync.
+    private readonly ZLinkFlowValue? _flow = ZLinkFlowContext.Current;
     private ZLinkActorDispatchMailbox.BarrierReservation? _barrier;
 
     public void ReserveBarrier()
@@ -141,6 +146,11 @@ internal sealed class ZLinkDeferredActorJoin(
         try
         {
             using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+            using var flow = ZLinkFlowContext.Enter(
+                _flow?.FlowId,
+                _flow?.Origin,
+                createIfAbsent: false,
+                ZLinkFlowOrigin.Application);
             using var dispatch = actorState.EnterDeferredJoinExecution();
             var remaining = timeout - Stopwatch.GetElapsedTime(_registeredTimestamp);
             if (remaining <= TimeSpan.Zero)

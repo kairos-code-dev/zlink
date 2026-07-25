@@ -63,5 +63,8 @@ public enum ZLinkFrameworkErrorKind
     SpotMoving = 33,
     RelocationDataLost = 34,
     SpotIdConflict = 35,
-    RuntimeShutdown = 36
+    RuntimeShutdown = 36,
+    RelocationDisabled = 37,
+    RelocationTargetUnavailable = 38,
+    RelocationFailed = 39
 }

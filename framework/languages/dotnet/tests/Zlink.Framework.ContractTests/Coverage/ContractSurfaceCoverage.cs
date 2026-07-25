@@ -30,7 +30,8 @@ public sealed class ContractSurfaceCoverage
         Assert.DoesNotContain(typeof(IZLinkSendCall).GetMethods(), method => method.Name == "PacketName");
         Assert.DoesNotContain(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "PacketName");
         Assert.Contains(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "Yield");
-        Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name is "PacketName" or "Async");
+        Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name == "PacketName");
+        Assert.Contains(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name == "Async");
         Assert.DoesNotContain(typeof(IZLinkActorRequestCall).GetMethods(), method => method.Name == "PacketName");
         Assert.Equal(
             new[] { "Defer" },
@@ -94,16 +95,24 @@ public sealed class ContractSurfaceCoverage
     [Fact]
     public void Every_public_contract_interface_has_a_scenario_example()
     {
-        var exportedContracts = new[]
+        var exportedContractTypes = new[]
             {
                 typeof(IZLinkFrameworkOptions).Assembly,
                 typeof(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension).Assembly
             }
             .Distinct()
             .SelectMany(static assembly => assembly.GetExportedTypes())
-            .Where(type => type is { IsInterface: true, Namespace: not null }
-                           && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
-            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .Where(static type => type.Namespace is not null
+                                  && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
+            .ToHashSet();
+
+        // Every exported interface must have a worked example. Closed-union abstract records
+        // (ZLinkActorCreateResult, ZLinkActorJoinCompletion, ...) are equally part of the public
+        // contract surface and may be cited by an example, but citing them is not mandatory --
+        // so they widen the "is this a real contract type" check without widening the mandate.
+        var exportedContracts = exportedContractTypes
+            .Where(static type => type.IsInterface)
+            .OrderBy(static type => type.FullName, StringComparer.Ordinal)
             .ToArray();
 
         var coveredContracts = typeof(ContractExampleAttribute).Assembly
@@ -119,7 +128,7 @@ public sealed class ContractSurfaceCoverage
             .ToHashSet();
 
         var unknown = coveredContracts
-            .Where(type => !exportedContracts.Contains(type))
+            .Where(type => !exportedContractTypes.Contains(type))
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
             .Select(type => type.FullName)
             .ToArray();

@@ -19,8 +19,12 @@ public sealed class SpotContracts
             request => Assert.Equal(typeof(ZLinkMessage), request.ParameterType),
             cancellation => Assert.Equal(typeof(CancellationToken), cancellation.ParameterType));
 
-        Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnJoinedActorAsync))!.IsAbstract);
-        Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnLeaveActorAsync))!.IsAbstract);
+        // Join admission lives on the User Spot lifecycle; membership callbacks live on the
+        // shared membership lifecycle that both User and Entry Spots implement.
+        var membership = typeof(IZLinkSpotActorMembershipLifecycle<>).MakeGenericType(typeof(PlayerActor));
+        Assert.True(membership.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnJoinedActorAsync))!.IsAbstract);
+        Assert.True(membership.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnLeaveActorAsync))!.IsAbstract);
+        Assert.True(lifecycle.IsAssignableTo(membership));
         Assert.Null(typeof(IZLinkSpot).Assembly.GetType("Zlink.Framework.Contracts.Spots.ZLinkActorJoinAdmission"));
         Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddStatelessActorTransfer"));
         Assert.NotNull(typeof(IZLinkMeshNodeBuilder).GetMethod("AddActorTransferAdapter"));

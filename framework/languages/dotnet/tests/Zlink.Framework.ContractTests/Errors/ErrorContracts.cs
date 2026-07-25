@@ -32,7 +32,25 @@ public sealed class ErrorContracts
                 [nameof(ZLinkFrameworkErrorKind.WorkerTimedOut)] = 18,
                 [nameof(ZLinkFrameworkErrorKind.WorkerFailed)] = 19,
                 [nameof(ZLinkFrameworkErrorKind.ActorLocationStale)] = 20,
-                [nameof(ZLinkFrameworkErrorKind.ActorCreateRejected)] = 21
+                [nameof(ZLinkFrameworkErrorKind.ActorCreateRejected)] = 21,
+                [nameof(ZLinkFrameworkErrorKind.ObjectClientNotConfigured)] = 22,
+                [nameof(ZLinkFrameworkErrorKind.MeshSelectionRequired)] = 23,
+                [nameof(ZLinkFrameworkErrorKind.MeshNotFound)] = 24,
+                [nameof(ZLinkFrameworkErrorKind.InvalidConfiguration)] = 25,
+                [nameof(ZLinkFrameworkErrorKind.AlreadySubmitted)] = 26,
+                [nameof(ZLinkFrameworkErrorKind.ActorGenerationStale)] = 27,
+                [nameof(ZLinkFrameworkErrorKind.ActorMoving)] = 28,
+                [nameof(ZLinkFrameworkErrorKind.DeadlineExceeded)] = 29,
+                [nameof(ZLinkFrameworkErrorKind.PlacementCapacityExhausted)] = 30,
+                [nameof(ZLinkFrameworkErrorKind.RoutingIdConflict)] = 31,
+                [nameof(ZLinkFrameworkErrorKind.SpotGenerationStale)] = 32,
+                [nameof(ZLinkFrameworkErrorKind.SpotMoving)] = 33,
+                [nameof(ZLinkFrameworkErrorKind.RelocationDataLost)] = 34,
+                [nameof(ZLinkFrameworkErrorKind.SpotIdConflict)] = 35,
+                [nameof(ZLinkFrameworkErrorKind.RuntimeShutdown)] = 36,
+                [nameof(ZLinkFrameworkErrorKind.RelocationDisabled)] = 37,
+                [nameof(ZLinkFrameworkErrorKind.RelocationTargetUnavailable)] = 38,
+                [nameof(ZLinkFrameworkErrorKind.RelocationFailed)] = 39
             },
             Enum.GetValues<ZLinkFrameworkErrorKind>()
                 .ToDictionary(static value => value.ToString(), static value => (int)value, StringComparer.Ordinal));

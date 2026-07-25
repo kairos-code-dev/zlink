@@ -15,6 +15,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     private readonly Dictionary<string, Connection> _connections =
         new(StringComparer.Ordinal);
     private readonly List<Task> _retired = [];
+    private Task? _disposeTask;
 
     internal ZLinkClientServerClientRuntime(
         string channelName,
@@ -249,8 +250,27 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                        $"ClientServer client '{_channelName}' has no connection intent to monitor.");
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
+        Task task;
+        TaskCompletionSource? start = null;
+        lock (_gate)
+        {
+            if (_disposeTask is null)
+            {
+                start = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _disposeTask = DisposeCoreAsync(start.Task);
+            }
+            task = _disposeTask;
+        }
+        start?.TrySetResult();
+        return new ValueTask(task);
+    }
+
+    private async Task DisposeCoreAsync(Task started)
+    {
+        await started.ConfigureAwait(false);
         Connection[] values;
         Task[] retired;
         lock (_gate)
@@ -260,9 +280,15 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             retired = _retired.ToArray();
             _retired.Clear();
         }
+
+        var failures = new ZLinkFailureCollector();
         foreach (var value in values)
-            await value.DisposeAsync().ConfigureAwait(false);
-        await Task.WhenAll(retired).ConfigureAwait(false);
+            await failures.CaptureAsync(value.DisposeAsync).ConfigureAwait(false);
+        foreach (var task in retired)
+            await failures.CaptureAsync(
+                    () => new ValueTask(task))
+                .ConfigureAwait(false);
+        failures.ThrowIfAny();
     }
 
     private void AddOrReplace(
@@ -417,6 +443,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         private readonly IZLinkBackendSocketMonitor _monitor;
         private ZLinkClientServerServerDescriptor? _expected;
         private bool _disposed;
+        private Task? _disposeTask;
         private bool _admissionStarted;
         private bool _admissionCompleted;
         private bool _ready;
@@ -579,26 +606,55 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             _ = RetryAdmissionAsync();
         }
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
+            Task task;
+            TaskCompletionSource? start = null;
             lock (_gate)
             {
-                if (_disposed) return;
-                _disposed = true;
-                _ready = false;
+                if (_disposeTask is null)
+                {
+                    _disposed = true;
+                    _ready = false;
+                    start = new TaskCompletionSource(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
+                    _disposeTask = DisposeCoreAsync(start.Task);
+                }
+                task = _disposeTask;
             }
-            await _admissionStop.CancelAsync().ConfigureAwait(false);
+            start?.TrySetResult();
+            return new ValueTask(task);
+        }
+
+        private async Task DisposeCoreAsync(Task started)
+        {
+            await started.ConfigureAwait(false);
+            var failures = new ZLinkFailureCollector();
+            await failures.CaptureAsync(
+                    () => new ValueTask(_admissionStop.CancelAsync()))
+                .ConfigureAwait(false);
             Task[] admissionTasks;
             lock (_gate) admissionTasks = _admissionTasks.ToArray();
             foreach (var admissionTask in admissionTasks)
-                await IgnoreCancellationAsync(admissionTask)
+                await failures.CaptureAsync(
+                        () => new ValueTask(
+                            IgnoreCancellationAsync(admissionTask)))
                     .ConfigureAwait(false);
             if (_controlTask is not null)
-                await IgnoreCancellationAsync(_controlTask).ConfigureAwait(false);
+                await failures.CaptureAsync(
+                        () => new ValueTask(
+                            IgnoreCancellationAsync(_controlTask)))
+                    .ConfigureAwait(false);
             if (_livenessTask is not null)
-                await IgnoreCancellationAsync(_livenessTask).ConfigureAwait(false);
+                await failures.CaptureAsync(
+                        () => new ValueTask(
+                            IgnoreCancellationAsync(_livenessTask)))
+                    .ConfigureAwait(false);
             if (_reconnectTask is not null)
-                await IgnoreCancellationAsync(_reconnectTask).ConfigureAwait(false);
+                await failures.CaptureAsync(
+                        () => new ValueTask(
+                            IgnoreCancellationAsync(_reconnectTask)))
+                    .ConfigureAwait(false);
             try
             {
                 Socket.Disconnect(_endpoint);
@@ -606,10 +662,14 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             catch
             {
             }
-            await _monitor.DisposeAsync().ConfigureAwait(false);
-            await Submitter.DisposeAsync().ConfigureAwait(false);
-            await Socket.DisposeAsync().ConfigureAwait(false);
-            _admissionStop.Dispose();
+            await failures.CaptureAsync(_monitor.DisposeAsync)
+                .ConfigureAwait(false);
+            await failures.CaptureAsync(Submitter.DisposeAsync)
+                .ConfigureAwait(false);
+            await failures.CaptureAsync(Socket.DisposeAsync)
+                .ConfigureAwait(false);
+            failures.Capture(_admissionStop.Dispose);
+            failures.ThrowIfAny();
         }
 
         private static async Task IgnoreCancellationAsync(Task task)

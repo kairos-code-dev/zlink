@@ -125,6 +125,16 @@ Server `ROUTER`로 실제 ClientServer record를 전송한다. Codec, admission,
 timeout, correlation과 reply 처리를 생략하는 local transport 우회 경로는 제공하지
 않는다.
 
+이 local 후보 규칙은 ClientServer 경로에만 적용한다. RouteMesh 경로에서는 보내는
+MeshNode 자신이 같은 ChannelName의 Server role을 등록했더라도 후보에 들어가지
+않는다. RouteMesh 후보는 [10 Channel topology](10-channel-topology.ko.md) §4.2가
+descriptor에 게시하는 Server membership이고, 그 set은 remote target이 될 수 있는
+membership만 나타내기 때문이다. 선택된 target에는 같은 문서 §4.2.1의 기존 RouteMesh
+peer 연결로 보내며 Channel 등록은 새 socket을 만들지 않는데, MeshNode는 자기 자신과
+peer 연결을 맺지 않는다. 따라서 자기 자신만 그 ChannelName의 Server인 MeshNode에서
+RouteMesh select-one을 호출하면 후보가 없으며, 이때는 target 없음으로 실패한다.
+같은 process에서 처리하려면 ClientServer 경로를 쓴다.
+
 ```mermaid
 sequenceDiagram
     participant Caller

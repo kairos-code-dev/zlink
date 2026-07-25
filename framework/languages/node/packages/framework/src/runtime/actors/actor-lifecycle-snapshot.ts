@@ -53,7 +53,8 @@ function lifecycleSource(actor: ZLinkActor): ZLinkActorLifecycleSnapshotSource {
   // A caller can hand in a value that carries no Framework context at all, so the
   // failure path reports the configuration error instead of dereferencing it.
   const actorId = context?.actorId ?? '<unknown>';
-  const source = context?.[ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?.();
+  const snapshot = context?.[ZLINK_ACTOR_LIFECYCLE_SNAPSHOT];
+  const source = snapshot === undefined ? undefined : snapshot.call(context);
   if (source === undefined) {
     throw new ZLinkConfigurationException(
       `Actor '${actorId}' does not expose a framework lifecycle identity snapshot.`

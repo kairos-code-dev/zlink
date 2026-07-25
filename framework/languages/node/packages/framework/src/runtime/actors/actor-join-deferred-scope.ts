@@ -19,6 +19,10 @@ class ActorJoinRegistrationScope {
   private totalBytes = 0;
   private open = true;
 
+  // Ledger 2.3: a deferred join runs in registration order right after the
+  // handler terminal and before the next queued turn, matching the C++ serial
+  // queue's deferred-after-active list.
+
   register(intent: DeferredActorJoin): void {
     if (!this.open) {
       intent.discard();
@@ -44,13 +48,16 @@ class ActorJoinRegistrationScope {
     this.totalBytes += intent.requestBytes;
   }
 
-  activateAfterHandlerTerminal(): void {
+  async activateAfterHandlerTerminal(): Promise<void> {
     this.open = false;
-    setImmediate(() => {
-      // The handler reply is already terminal, so a deferred callback failure
-      // cannot replace that reply with a second request outcome.
-      void this.execute().catch(() => undefined);
-    });
+    if (this.intents.length === 0) {
+      return;
+    }
+    // The handler reply is already terminal, so a deferred callback failure
+    // cannot replace that reply with a second request outcome. The work still
+    // runs before the next queued turn, which is what the C++ serial queue does
+    // with its deferred-after-active list.
+    await this.execute().catch(() => undefined);
   }
 
   discard(): void {
@@ -84,7 +91,7 @@ export async function runActorHandlerWithDeferredJoins<T>(
   const scope = new ActorJoinRegistrationScope();
   try {
     const result = await actorJoinScope.run(scope, async () => handler());
-    scope.activateAfterHandlerTerminal();
+    await scope.activateAfterHandlerTerminal();
     return result;
   } catch (error) {
     scope.discard();

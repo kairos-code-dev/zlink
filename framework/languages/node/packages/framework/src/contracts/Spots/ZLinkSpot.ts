@@ -1,6 +1,6 @@
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkMessage } from '../Common';
-import type { ZLinkActorJoinRequest, ZLinkActorMembership } from '../RouteMesh';
+import type { ZLinkActorMembership } from '../RouteMesh';
 import type {
   ZLinkEntrySpotContext,
   ZLinkInstanceSpotContext,
@@ -35,7 +35,10 @@ export interface ZLinkSpotActorMembershipLifecycle {
 }
 
 export interface ZLinkUserSpotActorLifecycle extends ZLinkSpotActorMembershipLifecycle {
-  onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  // Admission observes the joining Actor by identity only. The framework keeps
+  // fencing state such as the expected membership epoch inside the runtime so an
+  // application callback never has to reason about it.
+  onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
 }
 
 export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkUserSpotActorLifecycle {

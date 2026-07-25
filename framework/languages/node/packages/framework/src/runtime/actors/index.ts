@@ -115,6 +115,7 @@ export {
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from './bound-session-wire';
 export {
+  actorJoinIdentity,
   createActorJoinRequest,
   createActorMembership,
   ZLINK_ACTOR_LIFECYCLE_SNAPSHOT,

@@ -1,6 +1,5 @@
 import type {
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
@@ -25,10 +24,9 @@ import {
 } from '../messaging/payload-codec';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
-import { createActorJoinRequest } from '../actors/actor-lifecycle-snapshot';
 
 interface ZLinkNativeActorJoinAdmissionTarget {
-  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
 }
 
@@ -64,10 +62,7 @@ export class ZLinkSpotNativeActorJoinAdmission {
         const response: ZLinkSpotActorJoinResponse = await this.options.serial.execute(async () =>
           this.options.defaultAccept || target.onActorJoin === undefined
             ? { accepted: this.options.defaultAccept }
-            : target.onActorJoin(
-              createActorJoinRequest(actor, request.info.targetActor, request.info.joinEpoch),
-              joinPayload
-            )
+            : target.onActorJoin(actorId, joinPayload)
         );
         accepted = response.accepted;
         reply = response.reply === undefined

@@ -2,7 +2,6 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
@@ -53,7 +52,7 @@ const ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3;
  * drains only need the callbacks declared here.
  */
 interface ZLinkActorJoinAdmissionTarget {
-  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
   onJoinedActor?(actor: ZLinkActorMembership): Promise<void>;
   onLeaveActor?(actor: ZLinkActorMembership): Promise<void>;
   onDisconnectActor?(actor: ZLinkActorMembership): Promise<void>;

@@ -19,7 +19,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkMessageSerializer } from '../../contracts';
-import { createActorJoinRequest, createActorMembership } from './actor-lifecycle-snapshot';
+import { actorJoinIdentity, createActorMembership } from './actor-lifecycle-snapshot';
 import { runActorHandlerWithDeferredJoins } from './actor-join-deferred-scope';
 
 export enum ZLinkActorPacketKind {
@@ -187,7 +187,7 @@ export class ZLinkSpotActorDispatcher {
       const onActorJoin = (this.options.spot as Partial<ZLinkSpot>).onActorJoin;
       return onActorJoin === undefined
         ? { accepted: false }
-        : await onActorJoin.call(this.options.spot, createActorJoinRequest(actor), payload);
+        : await onActorJoin.call(this.options.spot, actorJoinIdentity(actor), payload);
     });
   }
 

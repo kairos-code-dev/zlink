@@ -1,6 +1,5 @@
 import type {
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkSpotActorJoinResponse
@@ -34,7 +33,7 @@ import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedActorAdmissionTarget {
-  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
 }
 
 interface ZLinkSpotRoutedActorAdmissionOptions {
@@ -235,21 +234,15 @@ export class ZLinkSpotRoutedActorAdmission {
     const joinPayload = wrapFrameworkPayloadMessage(request, this.options.messageSerializers);
     const actorRef = decoded.actorRef;
     if (actorRef === undefined) {
+      // The commit half of the routed transfer materializes the Actor from this
+      // ActorRef, so a request without one is rejected before admission runs
+      // rather than after the application already accepted it.
       throw new Error(`Remote actor '${decoded.actorId}' join identity is missing its ActorRef.`);
     }
-    const joinRequest: ZLinkActorJoinRequest = Object.freeze({
-      actor: Object.freeze({
-        nodeRid: actorRef.nodeRid,
-        actorId: actorRef.actorId,
-        generation: actorRef.generation
-      }),
-      actorType: decoded.actorType,
-      expectedMembershipEpoch: decoded.expectedMembershipEpoch
-    });
     return this.options.serial.execute(async () =>
       this.options.defaultAccept || target.onActorJoin === undefined
         ? { accepted: this.options.defaultAccept }
-        : target.onActorJoin(joinRequest, joinPayload)
+        : target.onActorJoin(actorRef.actorId, joinPayload)
     );
   }
 

@@ -5,7 +5,6 @@ import type {
   ZLinkMessageSerializer,
   ZLinkInstanceSpot,
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkProviderResolver,
@@ -53,7 +52,6 @@ import type {
 import { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkWorkerRuntime } from '../workers';
 import {
-  createActorJoinRequest,
   createActorMembership,
   type ZLinkDeferredJoinAcceptedRoot,
   type ZLinkRemoteBoundSessionTarget
@@ -960,20 +958,9 @@ export class DefaultZLinkSpotManager {
           actorId: rawActorRef.actorId,
           generation: rawActorRef.generation
         };
-        const joinRequest: ZLinkActorJoinRequest = actor === undefined
-          ? Object.freeze({
-              actor: Object.freeze({ ...actorRef }),
-              actorType: transferRequest!.actorType,
-              expectedMembershipEpoch: transferRequest!.expectedMembershipEpoch
-            })
-          : createActorJoinRequest(
-              actor,
-              actorRef as ActorRef,
-              transferRequest?.expectedMembershipEpoch ?? control.previousMembershipEpoch
-            );
         const response: ZLinkSpotActorJoinResponse = await activation.serial.execute(async () =>
           activation.spot.onActorJoin(
-            joinRequest,
+            actorRef.actorId,
             wrapFrameworkPayloadMessage(request, this.options.messageSerializers)
           )
         );

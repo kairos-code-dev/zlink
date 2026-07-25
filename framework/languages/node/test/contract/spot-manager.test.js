@@ -1561,8 +1561,8 @@ test('spot manager local actor join awaits entry leave before commit and joined 
   const events = [];
   let finishLeave;
   class StageSpot {
-    async onActorJoin(actor, request) {
-      events.push(`join:${actor.actor.actorId}:${request.decode()}`);
+    async onActorJoin(actorId, request) {
+      events.push(`join:${actorId}:${request.decode()}`);
       return { accepted: true, reply: 'joined' };
     }
     async onJoinedActor(actor) {
@@ -1651,8 +1651,8 @@ test('user Spot join runs source leave on the caller turn without target-to-sour
     constructor(context) {
       this.context = context;
     }
-    async onActorJoin(actor) {
-      events.push(`admit:${this.context.spotId}:${actor.actor.actorId}`);
+    async onActorJoin(actorId) {
+      events.push(`admit:${this.context.spotId}:${actorId}`);
       return { accepted: true };
     }
     async onLeaveActor(actor) {
@@ -1772,8 +1772,8 @@ test('routed actor transfer separates admission from materialization and commit'
   let admissionGate;
   let transferInGate;
   const target = {
-    async onActorJoin(actor, request) {
-      events.push(`admission:${actor.actor.actorId}:${request.decode()}`);
+    async onActorJoin(actorId, request) {
+      events.push(`admission:${actorId}:${request.decode()}`);
       await admissionGate;
       return { accepted: true, reply: 'admitted' };
     },

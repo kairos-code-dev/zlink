@@ -19,6 +19,15 @@ interface ZLinkActorLifecycleSnapshotContext {
   readonly [ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?: () => ZLinkActorLifecycleSnapshotSource;
 }
 
+/**
+ * Identity an admission callback observes. Join admission decides on the Actor's
+ * identity alone, so the runtime resolves it from the same framework snapshot the
+ * membership values use instead of handing the application the fencing state.
+ */
+export function actorJoinIdentity(actor: ZLinkActor): string {
+  return lifecycleSource(actor).actorRef.actorId;
+}
+
 export function createActorJoinRequest(
   actor: ZLinkActor,
   actorRef?: ActorRef,

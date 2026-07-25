@@ -1,6 +1,5 @@
 import type {
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
@@ -33,7 +32,7 @@ import type { ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
 interface ZLinkRoutedFrameAdmissionTarget {
-  onActorJoin?(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+  onActorJoin?(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
 }
 
 interface ZLinkSpotRoutedFrameDispatchOptions {

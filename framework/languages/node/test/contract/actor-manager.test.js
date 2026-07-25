@@ -2845,9 +2845,9 @@ function createEntryActorRuntime(resolveActor, destroyActor = async () => {}) {
 test('ZLinkEntrySpotActivation does not expose Entry admission on the native dispatch round-trip', async () => {
   const events = [];
   class EntrySpot {
-    async onActorJoin(actor, request) {
+    async onActorJoin(actorId, request) {
       const reason = request.decode();
-      events.push(`entryJoin:${actor.actor.actorId}:${reason}`);
+      events.push(`entryJoin:${actorId}:${reason}`);
       return reason === 'blocked'
         ? { accepted: false, reply: 'entry-reject-reply' }
         : { accepted: true, reply: 'entry-accept-reply' };
@@ -3195,8 +3195,8 @@ test('ZLinkSpotActorDispatcher commits actor join only when onActorJoin accepts'
   const dispatcher = new framework.ZLinkSpotActorDispatcher({
     registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
     spot: {
-      async onActorJoin(actor, request) {
-        events.push(`join:${actor.actor.actorId}:${request.decode()}`);
+      async onActorJoin(actorId, request) {
+        events.push(`join:${actorId}:${request.decode()}`);
         return accept
           ? { accepted: true, reply: 'accept-reply' }
           : { accepted: false, reply: 'reject-reply' };

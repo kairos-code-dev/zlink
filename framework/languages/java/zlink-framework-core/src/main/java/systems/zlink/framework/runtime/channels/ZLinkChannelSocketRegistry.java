@@ -848,6 +848,16 @@ final class ZLinkChannelSocketRegistry {
         for (ChannelRegistration registration : registrations.values()) {
             registration.detachRuntimeConnections();
         }
+        // ClientServer physical connections close first so that spec 55
+        // section 6 holds here too: the admission monitor never outlives the
+        // DEALER it observes. Draining ownedSockets in insertion order would
+        // close the DEALER before its monitor.
+        Set<ClientServerConnection> physical =
+            java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+        physical.addAll(clientServerConnections.values());
+        for (ClientServerConnection connection : physical) {
+            closeClientServerPhysical(connection);
+        }
         closeAll(ownedSockets, java.util.Collections.newSetFromMap(new IdentityHashMap<>()));
         ownedSockets.clear();
         clientServerConnections.clear();

@@ -3,7 +3,6 @@ package systems.zlink.framework.spring;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -659,8 +658,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 List.of(
                     "factory.channel",
                     "create.context",
+                    "factory.monitoring",
                     "create.dealer",
                     "dealer.setChannelName.profile",
+                    "monitoring.open.dealer",
+                    "create.socketMonitor",
+                    "socketMonitor.onEvent",
                     "dealer.connect.inproc://profile-server"),
                 backendFactory.calls());
         }
@@ -669,9 +672,14 @@ final class ZLinkFrameworkAutoConfigurationTest {
             List.of(
                 "factory.channel",
                 "create.context",
+                "factory.monitoring",
                 "create.dealer",
                 "dealer.setChannelName.profile",
+                "monitoring.open.dealer",
+                "create.socketMonitor",
+                "socketMonitor.onEvent",
                 "dealer.connect.inproc://profile-server",
+                "close.socketMonitor",
                 "close.dealer",
                 "close.context"),
             backendFactory.calls());

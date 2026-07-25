@@ -42,13 +42,24 @@ final class HostTest {
         }
 
         assertFalse(lifecycle.isRunning());
+        // The ClientServer client DEALER carries an admission monitor: spec 12
+        // section 4.4 verifies ChannelName, server RID and lifecycle generation
+        // on the transport even for a manual endpoint, and spec 55 section 3
+        // only marks the connection ready after that admission. The monitor is
+        // subscribed before connect so the readiness event cannot be missed, and
+        // spec 55 section 6 closes it no later than the connection it observes.
         assertEquals(
             List.of(
                 "factory.channel",
                 "create.context",
+                "factory.monitoring",
                 "create.dealer",
                 "dealer.setChannelName.profile",
+                "monitoring.open.dealer",
+                "create.socketMonitor",
+                "socketMonitor.onEvent",
                 "dealer.connect.inproc://profile-server",
+                "close.socketMonitor",
                 "close.dealer",
                 "close.context"),
             backendFactory.calls());

@@ -135,6 +135,20 @@ peer 연결을 맺지 않는다. 따라서 자기 자신만 그 ChannelName의 S
 RouteMesh select-one을 호출하면 후보가 없으며, 이때는 target 없음으로 실패한다.
 같은 process에서 처리하려면 ClientServer 경로를 쓴다.
 
+두 경로는 후보가 아직 없을 때의 처리도 다르다. RouteMesh는 위와 같이 즉시 target
+없음으로 실패한다. ClientServer는 ready 후보가 없으면 호출 시점에 제한된 시간 동안
+기다린 뒤 실패한다. 대기 한도는 해당 호출의 request timeout과 5초 중 짧은 쪽이고,
+그 안에 ready 후보가 생기지 않으면 target 없음으로 실패한다. Framework startup은
+local ClientServer admission 완료를 기다리지 않는다.
+
+두 경로를 다르게 정하는 이유는 후보가 없다는 사실의 의미가 다르기 때문이다. RouteMesh에서
+후보 없음은 그 ChannelName의 Server membership을 게시한 peer가 없다는 뜻이고, 기다린다고
+생기지 않는다. ClientServer에서 local Server는 같은 process 설정에 이미 존재하며 admission만
+아직 끝나지 않은 상태다. 이 구간에서 즉시 실패하면 application은 startup 직후 호출에서
+설정이 옳은데도 no-target을 받는다. 이 대기는 admission을 유발하지 않고 이미 진행 중인
+admission이 끝나기를 기다릴 뿐이며, local 여부와 무관하게 remote ClientServer 후보에도
+같게 적용한다.
+
 ```mermaid
 sequenceDiagram
     participant Caller

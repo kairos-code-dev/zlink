@@ -411,8 +411,19 @@ final class LocationContractTest {
             Map.entry("SPOT_MOVING", 33),
             Map.entry("RELOCATION_DATA_LOST", 34),
             Map.entry("SPOT_ID_CONFLICT", 35),
-            Map.entry("RUNTIME_SHUTDOWN", 36)));
-        assertRetriableOnly(ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED, ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE);
+            Map.entry("RUNTIME_SHUTDOWN", 36),
+            Map.entry("RELOCATION_DISABLED", 37),
+            Map.entry("RELOCATION_TARGET_UNAVAILABLE", 38),
+            Map.entry("RELOCATION_FAILED", 39)));
+        assertRetriableOnly(
+            ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+            ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+            ZLinkFrameworkErrorKind.ACTOR_MOVING,
+            ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
+            ZLinkFrameworkErrorKind.PLACEMENT_CAPACITY_EXHAUSTED,
+            ZLinkFrameworkErrorKind.SPOT_MOVING,
+            ZLinkFrameworkErrorKind.RELOCATION_TARGET_UNAVAILABLE,
+            ZLinkFrameworkErrorKind.RELOCATION_FAILED);
 
         assertEnumValues(ZLinkLocationAutoConnectType.class, Map.of(
             "INVALID", 0,

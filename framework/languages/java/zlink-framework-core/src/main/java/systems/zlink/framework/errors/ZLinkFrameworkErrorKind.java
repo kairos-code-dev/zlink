@@ -37,7 +37,10 @@ public enum ZLinkFrameworkErrorKind {
     SPOT_MOVING(33),
     RELOCATION_DATA_LOST(34),
     SPOT_ID_CONFLICT(35),
-    RUNTIME_SHUTDOWN(36);
+    RUNTIME_SHUTDOWN(36),
+    RELOCATION_DISABLED(37),
+    RELOCATION_TARGET_UNAVAILABLE(38),
+    RELOCATION_FAILED(39);
 
     private final int value;
 
@@ -49,8 +52,23 @@ public enum ZLinkFrameworkErrorKind {
         return value;
     }
 
+    /**
+     * Default retry classification fixed by the public error kind table in
+     * {@code framework/doc/framework/common/spec/05-framework-api.ko.md} §13. Retry policy stays
+     * with the kind so callers never need a per-surface table.
+     */
     public boolean retriable() {
-        return this == ROUTE_NOT_CONNECTED || this == ACTOR_LOCATION_STALE;
+        return switch (this) {
+            case ROUTE_NOT_CONNECTED,
+                ACTOR_LOCATION_STALE,
+                ACTOR_MOVING,
+                DEADLINE_EXCEEDED,
+                PLACEMENT_CAPACITY_EXHAUSTED,
+                SPOT_MOVING,
+                RELOCATION_TARGET_UNAVAILABLE,
+                RELOCATION_FAILED -> true;
+            default -> false;
+        };
     }
 
     public static ZLinkFrameworkErrorKind fromValue(int value) {

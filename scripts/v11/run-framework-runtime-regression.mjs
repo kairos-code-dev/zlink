@@ -363,6 +363,12 @@ function jvmPlan() {
     command("jvm-internal-http-client", "internal", cwd, ...gradle,
       `${runtime}:zlink-http-client:test`,
       `${runtime}:zlink-http-client-kotlin:test`),
+    // Held out of the gate until it was green: its 4 failures were invisible
+    // because no gate ran the module, and one of them was a real runtime defect
+    // (an admission monitor closed after its own DEALER, aborting the JVM and
+    // truncating the suite to 9 of 31). Measured after the fixes: 31/31.
+    command("jvm-internal-spring", "internal", cwd, ...gradle,
+      `${runtime}:zlink-framework-spring-boot-starter:test`),
     command("jvm-resource-regression", "resource", cwd, ...gradle,
       `${runtime}:zlink-framework-core:test`,
       "--tests", "*CloseGateTest", "--tests", "*TeardownExecutorTest",

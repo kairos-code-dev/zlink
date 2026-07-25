@@ -275,10 +275,15 @@ function cppPlan() {
       ...dependencyArguments),
     command("cpp-runtime-compile", "compile", cwd, "cmake", "--build", build, "--target",
       "zlink_framework", "zlink_http_client", "zlink_stream_connector"),
+    // contract_headers pins the public header contract: the exact members of every
+    // declared type plus a negative probe that fails to COMPILE if a removed marker
+    // name reappears. It was outside every gate plan, so nothing enforced it.
     command("cpp-public-build", "public-declaration", cwd, "cmake", "--build", build, "--target",
-      "test_cpp_framework_layout_contract", "test_cpp_framework_target_contract"),
+      "test_cpp_framework_layout_contract", "test_cpp_framework_target_contract",
+      "test_cpp_framework_contract_headers"),
     command("cpp-public-test", "public-declaration", cwd, "ctest", "--test-dir", build,
-      "--output-on-failure", "-R", "^test_cpp_framework_(layout|target)_contract$"),
+      "--output-on-failure", "-R",
+      "^test_cpp_framework_(layout_contract|target_contract|contract_headers)$"),
     command("cpp-internal-build", "internal", cwd, "cmake", "--build", build, "--target",
       ...internalTargets),
     command("cpp-internal-test", "internal", cwd, "ctest", "--test-dir", build,

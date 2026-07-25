@@ -7,15 +7,15 @@ const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 
 class PlayerActor {
-  constructor(actorId, context) {
-    this.actorId = actorId;
+  constructor(context) {
+    this.actorId = context.actorId;
     this.context = context;
   }
 }
 
 class PlayerFactory {
-  create(actorId, context) {
-    return new PlayerActor(actorId, context);
+  async create(context, _signal) {
+    return new PlayerActor(context);
   }
 }
 
@@ -162,7 +162,7 @@ test('entry spot actor packets use actor mailboxes without entry-wide serial dis
   const events = [];
   class EntrySpot {}
   class SlowPacketHandler {
-    async handle(actor, _context, message) {
+    async handle(_spot, actor, _context, message) {
       events.push(`${actor.actorId}:${message}:start`);
       if (message === 'block') {
         await delay(40);
@@ -176,8 +176,8 @@ test('entry spot actor packets use actor mailboxes without entry-wide serial dis
     actorType: PlayerActor,
     handlerType: SlowPacketHandler
   }]);
-  await fixture.manager.create('actor-a', 'player');
-  await fixture.manager.create('actor-b', 'player');
+  await fixture.manager.getOrCreateActor('actor-a', 'player');
+  await fixture.manager.getOrCreateActor('actor-b', 'player');
 
   const firstA = fixture.router.submit('actor-a', (snapshot) =>
     fixture.dispatcher.dispatchSend(snapshot.actor, 'packet', 'block'));
@@ -226,7 +226,7 @@ test('entry spot actor handler submit surfaces outbound failure immediately', as
     handlerType: YieldPacketHandler
   }], { channelClient });
   outbound = fixture.activation.context.outbound;
-  await fixture.manager.create('actor-yield', 'player');
+  await fixture.manager.getOrCreateActor('actor-yield', 'player');
 
   await fixture.router.submit('actor-yield', (snapshot) =>
     fixture.dispatcher.dispatchSend(snapshot.actor, 'yield', 'run'));
@@ -238,7 +238,7 @@ test('entry spot actor handler submit surfaces outbound failure immediately', as
 test('joined user spot actors keep per-actor mailbox dispatch off the entry line', async () => {
   class IdleEntrySpot {}
   const fixture = await createEntryFixture(IdleEntrySpot);
-  await fixture.manager.create('alice', 'player');
+  await fixture.manager.getOrCreateActor('alice', 'player');
   fixture.manager.getState('alice').setJoinedSpot('stage-1', { context: { spotId: 'stage-1' } });
 
   let releaseEntry;
@@ -322,7 +322,7 @@ test('detached request continuation re-enters the entry spot serial line', async
 test('request submit keeps the entry turn until its reply completes', async () => {
   const events = [];
   const channelClient = {
-    requestToChannel(_meshName, _channelName, request) {
+    requestToChannel(_channelName, request) {
       return {
         packetName() { return this; },
         timeout() { return this; },
@@ -357,19 +357,22 @@ test('request submit keeps the entry turn until its reply completes', async () =
   assert.deepEqual(events, ['handler:start', 'request:ping', 'handler:reply:ping', 'next']);
 });
 
-test('yield request await inside an entry turn releases the serial line until reply resumes it', async () => {
+test('yield request from an entry turn is rejected because Entry forbids Yield', async () => {
+  // 04-async-execution-policy.ko.md SS1.1: "PerActor와 Entry에서 Yield가
+  // 금지되는 기존 규칙도 바뀌지 않는다." spot-entry-activation.ts
+  // constructs its serial executor with yieldAllowed=false
+  // (`new ZLinkSpotSerialExecutor(undefined, 'entry', false)`, 787d173c40)
+  // to enforce exactly this, so `.yield()` from an Entry Spot turn must
+  // reject synchronously and never reach the outbound submit.
   const events = [];
-  let resolveReply;
   const channelClient = {
-    requestToChannel(_meshName, _channelName, request) {
+    requestToChannel(_channelName, request) {
       return {
         packetName() { return this; },
         timeout() { return this; },
         submit() {
           events.push(`request:${request}`);
-          return new Promise((resolve) => {
-            resolveReply = resolve;
-          });
+          return Promise.resolve('reply:ping');
         }
       };
     },
@@ -382,35 +385,32 @@ test('yield request await inside an entry turn releases the serial line until re
     serial, channelClient, undefined, undefined, undefined, undefined, undefined, 'test-mesh'
   );
 
-  const yielded = serial.execute(async () => {
-    events.push('handler:start');
-    const reply = await outbound.requestToChannel('api', 'ping').yield();
-    events.push(`handler:${reply}`);
-  });
-  const next = serial.execute(() => {
-    events.push('next');
-  });
-
-  await delay(10);
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'next']);
-  resolveReply('reply:ping');
-  await Promise.all([yielded, next]);
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
+  await assert.rejects(
+    serial.execute(async () => {
+      events.push('handler:start');
+      await outbound.requestToChannel('api', 'ping').yield();
+    }),
+    (error) => error instanceof framework.ZLinkConfigurationException
+      && /yield requires a SpotWide User Spot or Instance Spot application handler/.test(error.message)
+  );
+  assert.deepEqual(events, ['handler:start']);
 });
 
-test('yield from an injected outbound releases the ambient entry turn', async () => {
+test('yield from an injected outbound is still gated by the ambient entry turn', async () => {
+  // The outbound's own bound serial executor is irrelevant here: yield()
+  // captures the *ambient* turn via AsyncLocalStorage
+  // (execution/index.ts captureZLinkSpotSerialTurn), so an outbound built
+  // on a default (yieldAllowed=true) executor still rejects when invoked
+  // from inside an Entry Spot's turn.
   const events = [];
-  let resolveReply;
   const channelClient = {
-    requestToChannel(_meshName, _channelName, request) {
+    requestToChannel(_channelName, request) {
       return {
         packetName() { return this; },
         timeout() { return this; },
         submit() {
           events.push(`request:${request}`);
-          return new Promise((resolve) => {
-            resolveReply = resolve;
-          });
+          return Promise.resolve('reply:ping');
         }
       };
     },
@@ -430,20 +430,15 @@ test('yield from an injected outbound releases the ambient entry turn', async ()
     'test-mesh'
   );
 
-  const yielded = ownerSerial.execute(async () => {
-    events.push('handler:start');
-    const reply = await injectedOutbound.requestToChannel('api', 'ping').yield();
-    events.push(`handler:${reply}`);
-  });
-  const next = ownerSerial.execute(() => {
-    events.push('next');
-  });
-
-  await delay(10);
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'next']);
-  resolveReply('reply:ping');
-  await Promise.all([yielded, next]);
-  assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
+  await assert.rejects(
+    ownerSerial.execute(async () => {
+      events.push('handler:start');
+      await injectedOutbound.requestToChannel('api', 'ping').yield();
+    }),
+    (error) => error instanceof framework.ZLinkConfigurationException
+      && /yield requires a SpotWide User Spot or Instance Spot application handler/.test(error.message)
+  );
+  assert.deepEqual(events, ['handler:start']);
 });
 
 test('runIoWorker promise continuation re-enters the owning spot serial executor', async () => {
@@ -467,7 +462,7 @@ test('runIoWorker promise continuation re-enters the owning spot serial executor
     void context.runIoWorker(async () => {
       events.push('work');
       return 21 * 2;
-    }).async().then((result) => {
+    }).submit().then((result) => {
       events.push(`completed:${result}:executing=${serial.isExecuting}`);
       completed();
     });
@@ -499,7 +494,7 @@ test('runCpuWorker executes synchronous work on a worker thread', async () => {
 
   const workerThreadId = await fixture.activation.context
     .runCpuWorker(() => require('node:worker_threads').threadId)
-    .async();
+    .submit();
 
   assert.notEqual(workerThreadId, mainThreadId);
 });
@@ -510,7 +505,7 @@ test('runCpuWorker rejects async work and enforces its timeout', async () => {
   const context = fixture.activation.context;
 
   await assert.rejects(
-    () => context.runCpuWorker(async () => 'wrong-kind').async(),
+    () => context.runCpuWorker(async () => 'wrong-kind').submit(),
     /requires a synchronous function/
   );
   await assert.rejects(
@@ -518,7 +513,7 @@ test('runCpuWorker rejects async work and enforces its timeout', async () => {
       const deadline = Date.now() + 50;
       while (Date.now() < deadline) { /* occupy the CPU worker */ }
       return 'late';
-    }).timeoutMs(5).async(),
+    }).timeoutMs(5).submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.WorkerTimedOut
@@ -537,7 +532,7 @@ test('runIoWorker async keeps the current Spot turn until worker completion', as
     const result = await context.runIoWorker(async () => {
       await delay(5);
       return 'done';
-    }).async();
+    }).submit();
     events.push(`handler:${result}`);
   });
   const next = serial.execute(() => {
@@ -548,34 +543,24 @@ test('runIoWorker async keeps the current Spot turn until worker completion', as
   assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
 });
 
-test('runIoWorker yield releases the current Spot turn until worker completion resumes it', async () => {
+test('runIoWorker yield from an entry turn is rejected because Entry forbids Yield', async () => {
+  // Same Entry-forbids-Yield rule as the outbound yield tests above; here it
+  // is DefaultZLinkWorkerCall.yield() (workers/index.ts) that must reject.
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
   const context = fixture.activation.context;
   const events = [];
-  let releaseWork;
-  const workGate = new Promise((resolve) => {
-    releaseWork = resolve;
-  });
 
-  const yielded = serial.execute(async () => {
-    events.push('handler:start');
-    const result = await context.runIoWorker(async () => {
-      await workGate;
-      return 'done';
-    }).yield();
-    events.push(`handler:${result}`);
-  });
-  const next = serial.execute(() => {
-    events.push('next');
-  });
-
-  await delay(10);
-  assert.deepEqual(events, ['handler:start', 'next']);
-  releaseWork();
-  await Promise.all([yielded, next]);
-  assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
+  await assert.rejects(
+    serial.execute(async () => {
+      events.push('handler:start');
+      await context.runIoWorker(async () => 'done').yield();
+    }),
+    (error) => error instanceof framework.ZLinkConfigurationException
+      && /yield requires a SpotWide User Spot or Instance Spot application handler/.test(error.message)
+  );
+  assert.deepEqual(events, ['handler:start']);
 });
 
 test('runIoWorker async also works when the call is created outside a Spot turn', async () => {
@@ -583,7 +568,7 @@ test('runIoWorker async also works when the call is created outside a Spot turn'
   const serial = new framework.ZLinkSpotSerialExecutor();
   const call = ioWorkerCall(worker, serial, async () => 'done');
 
-  assert.equal(await call.async(), 'done');
+  assert.equal(await call.submit(), 'done');
 });
 
 test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block the dispatcher', async () => {
@@ -594,15 +579,15 @@ test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block
     while (Date.now() < deadline) { /* occupy the CPU worker */ }
     return 'long';
   });
-  const longJob = longCall.async();
+  const longJob = longCall.submit();
   await waitFor(() => worker.inFlightCount === 1);
   const queuedCall = cpuWorkerCall(worker, serial, () => 'queued');
-  const queuedJob = queuedCall.async();
+  const queuedJob = queuedCall.submit();
 
   const overflowCall = cpuWorkerCall(worker, serial, () => 'overflow');
   const startedAt = Date.now();
   await assert.rejects(
-    () => overflowCall.async(),
+    () => overflowCall.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.WorkerQueueFull
@@ -615,7 +600,7 @@ test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block
 
   const errors = [];
   const overflowCallback = cpuWorkerCall(worker, serial, () => 'overflow');
-  void overflowCallback.async().then(
+  void overflowCallback.submit().then(
     () => errors.push('completed'),
     (error) => serial.execute(() => errors.push(`error:${error.kind}:executing=${serial.isExecuting}`))
   );
@@ -638,7 +623,7 @@ test('runIoWorker timeout fails the caller and drops the late completion without
     return 'late';
   }).timeoutMs(10);
   await assert.rejects(
-    () => submitCall.async(),
+    () => submitCall.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.WorkerTimedOut
@@ -649,7 +634,7 @@ test('runIoWorker timeout fails the caller and drops the late completion without
     await delay(40);
     return 'late';
   }).timeoutMs(10);
-  void callbackCall.async().then(
+  void callbackCall.submit().then(
     (result) => events.push(`completed:${result}`),
     (error) => events.push(`error:${error.kind}`)
   );
@@ -666,7 +651,7 @@ test('runIoWorker work failure surfaces as WorkerFailed wrapping the cause', asy
     throw cause;
   });
   await assert.rejects(
-    () => call.async(),
+    () => call.submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.WorkerFailed
@@ -679,7 +664,7 @@ test('runIoWorker call accepts only one terminator', async () => {
   const serial = new framework.ZLinkSpotSerialExecutor();
 
   const asyncFirst = ioWorkerCall(worker, serial, async () => 'done');
-  const pending = asyncFirst.async();
+  const pending = asyncFirst.submit();
   assert.throws(
     () => asyncFirst.submit(),
     (error) =>
@@ -693,24 +678,36 @@ test('runIoWorker call accepts only one terminator', async () => {
     submitted = true;
     return 'done';
   });
-  assert.equal(submitFirst.submit(), undefined);
+  // submit() always returns Promise<T> (ZLinkWorkerCall<T> per
+  // contracts/Spots/Contracts.ts) -- in practice a thenable
+  // ZLinkSerialDeliveredPromise, not a native Promise instance. The second
+  // call is the "only one terminator" case under test, not the first.
+  const submitFirstPending = submitFirst.submit();
+  assert.equal(typeof submitFirstPending.then, 'function');
   assert.throws(
-    () => submitFirst.async(),
+    () => submitFirst.submit(),
     (error) =>
       error instanceof framework.ZLinkConfigurationException
       && /only one terminator/.test(error.message)
   );
   await waitFor(() => submitted);
+  assert.equal(await submitFirstPending, 'done');
 
+  // yield() requires an active SpotWide turn (requireZLinkYieldTurn,
+  // execution/index.ts), unlike submit(), so this leg has to run inside
+  // serial.execute(...) instead of calling yield() at module scope.
   const yieldFirst = ioWorkerCall(worker, serial, async () => 'done');
-  const yielded = yieldFirst.yield();
-  assert.throws(
-    () => yieldFirst.submit(),
-    (error) =>
-      error instanceof framework.ZLinkConfigurationException
-      && /only one terminator/.test(error.message)
-  );
-  assert.equal(await yielded, 'done');
+  const yieldResult = await serial.execute(async () => {
+    const yielded = yieldFirst.yield();
+    assert.throws(
+      () => yieldFirst.submit(),
+      (error) =>
+        error instanceof framework.ZLinkConfigurationException
+        && /only one terminator/.test(error.message)
+    );
+    return await yielded;
+  });
+  assert.equal(yieldResult, 'done');
 });
 
 test('worker options are accepted on the framework options builder and validated', () => {

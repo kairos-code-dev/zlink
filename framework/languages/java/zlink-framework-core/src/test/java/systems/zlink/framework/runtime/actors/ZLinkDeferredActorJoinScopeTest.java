@@ -238,4 +238,96 @@ final class ZLinkDeferredActorJoinScopeTest {
             List.of("barrier-reserved", "handler-terminal", "join"),
             order);
     }
+
+    @Test
+    void aFailingDirectJoinStillRunsLaterJoinsAndTheHandlerReplySurvives() {
+        List<String> order = new ArrayList<>();
+
+        CompletionStage<String> handler = ZLinkDeferredActorJoinHandlerScope.run(
+            actorId -> actorId.equals("actor-a") || actorId.equals("actor-b"),
+            () -> {
+                ZLinkDeferredActorJoinScope.register(
+                    "actor-a",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> {
+                        order.add("join-a");
+                        return CompletableFuture.failedFuture(
+                            new IllegalStateException("join-a failed"));
+                    });
+                ZLinkDeferredActorJoinScope.register(
+                    "actor-b",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> {
+                        order.add("join-b");
+                        return CompletableFuture.completedFuture(null);
+                    });
+                order.add("handler-terminal");
+                return CompletableFuture.completedFuture("reply-value");
+            });
+
+        // Ledger route-mesh-11.0.0 §2.3 decoupling axis: the handler's own
+        // terminal reply must survive a later deferred join's failure, and
+        // that failure must not stop registration-order siblings from running.
+        assertEquals("reply-value", handler.toCompletableFuture().join());
+        assertEquals(
+            List.of("handler-terminal", "join-a", "join-b"),
+            order);
+    }
+
+    @Test
+    void aFailingBarrierJoinStillActivatesLaterRegisteredJoinsAndDoesNotWedgeTheirQueue() {
+        ZLinkActorDispatchSerials serials = new ZLinkActorDispatchSerials();
+        List<String> order = new ArrayList<>();
+
+        CompletionStage<Void> handler = ZLinkDeferredActorJoinHandlerScope.run(
+            actorId -> actorId.equals("actor-a") || actorId.equals("actor-b"),
+            () -> {
+                ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                    "actor-a",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> {
+                        order.add("join-a");
+                        return CompletableFuture.failedFuture(
+                            new IllegalStateException("join-a transport failure"));
+                    },
+                    operation -> serials.enqueueBarrier("actor-a", operation));
+                ZLinkDeferredActorJoinScope.registerWithActorBarrier(
+                    "actor-b",
+                    0,
+                    Long.MAX_VALUE,
+                    () -> {
+                        order.add("join-b");
+                        return CompletableFuture.completedFuture(null);
+                    },
+                    operation -> serials.enqueueBarrier("actor-b", operation));
+                order.add("handler-terminal");
+                return CompletableFuture.completedFuture(null);
+            });
+
+        // The dispatch stage still settles only after every registered
+        // barrier has run (same ordering as Node's await before returning
+        // the captured handler result), but it settles normally: join-a's
+        // own failure never reaches it or replaces its outcome.
+        handler.toCompletableFuture().join();
+        assertEquals(
+            List.of("handler-terminal", "join-a", "join-b"),
+            order);
+
+        // If join-a's failure had short-circuited the registration-order
+        // chain, actor-b's activation latch would never fire and its queue
+        // would stay wedged behind that barrier turn forever. Prove it did
+        // not: a turn enqueued after the barrier still runs.
+        List<String> followUp = new ArrayList<>();
+        serials.enqueue(serials.prepare("actor-b"), () -> {
+                followUp.add("actor-b-next-turn");
+                return CompletableFuture.completedFuture(null);
+            })
+            .toCompletableFuture()
+            .join();
+
+        assertEquals(List.of("actor-b-next-turn"), followUp);
+    }
 }

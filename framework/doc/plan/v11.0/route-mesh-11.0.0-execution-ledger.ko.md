@@ -52,6 +52,49 @@ C++ vertical test는 generated protocol include 누락(수정함)과 제거된 `
 겹쳐 있었다. Machine inventory에서 이 파일의 disposition은 `retain-framework-owned-service-runtime`이고
 removal gate는 `V11-M8-CLEAN-CPP`이므로 삭제하지 않고 Framework 소유 service runtime API로 이관한다.
 
+#### 0.1.1 검증 층 정리 (같은 날 후속 실행)
+
+위 표의 수치 일부는 그 시점의 측정이며 이후 갱신됐다. 이 절이 최신이다.
+
+가장 중요한 발견은 개별 결함이 아니라 **측정 자체가 신뢰할 수 없었다**는 점이다. 세 형태가 반복됐다.
+
+1. **검증이 실행되지 않음.** `Zlink.Framework.ContractTests`가 컴파일되지 않아 `M6-RUNTIME` 게이트가
+   `dotnet-public-declarations` 단계에서 중단됐고 test를 0개 실행했다. JVM `--tests` glob이 98개 test
+   클래스 중 35개만 선택했고, 누락된 63개에 오류 kind 표를 고정하는 유일한 test가 있었다. C++
+   `test_cpp_framework_contract_headers`와 3363줄짜리 `test_cpp_framework_channel_messaging.cpp`가
+   어떤 게이트에도 없었다. Node CI 게이트의 skip 목록에 hang하는 파일 두 개가 들어 있었다.
+2. **검증이 자기 자신과 비교.** Node 오류 kind 검사가 낡은 기대값 37과 실제 37을 비교해 초록이었다.
+   `pickEnumValues`가 실제 enum을 기대 key set으로 투영해 추가된 멤버가 비교에 참여하지 못했다.
+3. **검증이 권위의 부정을 단언.** 커밋 `859fcf07fe`가 completion union을 C++ exact interface에
+   추가하면서 같은 커밋에서 게이트 검사를 "존재 금지"로 뒤집었다.
+
+JVM spring-boot starter는 SIGABRT로 31개 중 9개에서 잘린 상태를 "14 tests"로 보고하고 있었다. 원인은
+admission monitor를 자기 DEALER보다 나중에 닫은 실제 런타임 결함이었다(`55-transport-liveness.ko.md` §6).
+
+게이트에 편입한 것은 C++ public header contract, JVM `core:test` 전체(35/98 → 98/98 클래스), JVM codec
+모듈 2개, JVM http-client 2개다. 편입 원칙은 `BLK-030`에 있다 — **넣기 전에 먼저 실측한다.** 통과하지
+않는 스위트를 넣으면 row를 보호하는 게 아니라 막는다. 그래서 JVM testkit(4 실패·컴파일 오류 100),
+spring-boot starter(4 실패), C++ channel messaging(게이트 83 발화)은 편입하지 않았다.
+
+편입 직후 실제 결함이 드러났다. C++ header contract에서 3건, spring-boot에서 3건, 그리고 한 번도
+실행된 적 없던 C++ channel messaging의 첫 실행이 `BLK-033`을 잡았다.
+
+해소된 blocker: `BLK-004`(낡은 vendored 네이티브 아티팩트, .NET 791/791), `BLK-006`(RouteMesh 자기 후보
+제외 판정·spec 명문화), `BLK-008`(join 시그니처 5개 언어 정렬), `BLK-013`(C++ multicast slot 회계,
+800회 스트레스 0 실패), `BLK-031`(런타임 옳음·테스트 낡음). `BLK-009`는 5개 중 4개 해소되고
+`channel-client.test.js`만 남았다(네이티브 `zlink_ctx_term` 블록, Node lane 소유 경로 밖).
+
+새로 연 것: `BLK-023`·`BLK-030`·`BLK-032`~`BLK-035`. 이 중 `BLK-033`(C++)과 `BLK-034`(JVM)은 같은
+모양이다 — 같은 프로세스 ClientServer 서버가 admission을 완료하지 못한다. spec이 세 문단을 할애한
+경로이므로 공통 계약 갭 여부를 조사 중이다.
+
+**다음 작업자가 먼저 알아야 할 것.** 이 저장소에 동시 작업 중인 Codex 세션이 있다. `.NET` 트리를
+계속 재작성하고 있어 빌드 오류 수가 시간대에 따라 0에서 1000까지 요동한다. `V11-M6A-DN` 게이트,
+candidate manifest, contract snapshot은 그 트리가 안정된 뒤에 생성해야 한다. 반쯤 마이그레이션된
+표면을 snapshot으로 고정하면 그 자체가 잘못된 기준이 된다. 동시 편집으로 `BLK-009` ID가 한 번
+중복 발급됐고(C++ 쪽을 `BLK-020`으로 이동), 여러 lane의 미완성 작업이 남의 커밋에 함께 쓸려
+들어간 사례가 있다.
+
 ## 1. 목표 구조와 범위
 
 Core 11.0은 context, message, raw socket, transport, poller와 generic monitor만 제공한다. MeshNode, Channel,
@@ -1396,6 +1439,29 @@ registration을 삭제하거나 runtime 통과용 compatibility helper를 추가
 |---|---|---|---|---|---|---|
 | `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-R4B` | 수정 진행 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | Public raw ROUTER·DEALER·PUB·SUB API로 node·Channel send/request, ClientServer 독립 admission·send/request, Location descriptor publish/watch/CAS, manual·automatic classic fanout과 publisher별 reconnect, bounded mailbox, terminal-once registry, 5초/15초 liveness를 구현했다. 실제 `mesh_node_runtime` public host가 Framework-owned raw owner를 생성하고 app·host dispatch를 이 경계로 연결한다. ClientServer public configuration은 exact `client()`·`server()` role builder로 분리했고 legacy `enable_client`·`enable_server`와 parent의 role별 socket option을 제거했다. 같은 ChannelName의 dual role과 서로 다른 ChannelName의 동일 역할은 허용하고 같은 ChannelName·role 중복은 socket bind 전에 거부한다. Server RID는 public builder가 아니라 runtime lifecycle identity 경계에서 생성한다. `listen(0)`은 실제 bound port를 보존하면서 advertise host만 descriptor에 반영하며, 같은 process의 local Server도 기존 DEALER→ROUTER admission·request/reply 경계를 사용한다. Contract headers, M6A runtime과 `SameProcessClientServerUsesLocalReadyServerWithoutExternalStoreOrManualEndpoint`, `ClientServerPortZeroPublishesAdvertiseHostWithBoundPort`, 역할 중복·다중 ChannelName을 포함한 resolver 36/36이 통과했다. Compatibility header나 Core·bindings 수정은 없고 Sample·E2E 변경·실행은 0이다. Sample·E2E의 legacy builder callsite는 재활성화 단계 migration gap으로 남긴다. 2026-07-25 자율 실행에서 `zlink_cpp_framework_mesh_node_vertical_test`를 Framework 소유 runtime API로 이관해 전 구간 통과시켰다. 제거된 `zlink::service::*` record type을 `runtime::host::*`로 옮기고, pull batch(drain_ready·ready_batch_t·receive_batch_t·claim)를 `dispatch_ready` push callback으로 다시 썼으며, generated protocol include 누락과 spot·actor handle 시그니처, actor stable type 선언, Location store·runtime 등록과 owner lease 순서를 v11 형태로 맞췄다. Runtime 쪽에서는 `MaxMessageSize` 0(= Framework 추가 상한 없음)이 options→runtime 경계에서 음수 sentinel로 바뀌어 거부되던 spec 위반을 고쳤고(`10-channel-topology.ko.md`), mesh node runtime에 `admitted_peer_count()`를 추가해 검증이 transport topology 내부로 손을 뻗지 않게 했다. Cross-process admission 실패의 원인은 `BLK-007`로 기록·해결했다. `ctest`로 m6a·m6b·m6c runtime과 vertical test를 함께 실행해 4/4 통과했다. 관련 blocked issue: `BLK-006`, `BLK-010`, `BLK-011`, `BLK-012`, `BLK-013`, `BLK-020`. |
 | `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-R4B` | 수정 진행 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | 최신 `Systems.Zlink` 11.0.0 package의 public raw API로 managed MeshNode를 구현했다. 실제 두 node admission·remote `ToChannel`을 포함한 foundation 11/11과 backend·monitor·dispatch·Location 62/62가 통과했다. R5A 수정에서 descriptor extension의 필수·unknown TLV와 원본 descriptor bytes를 보존하고, 같은 lifecycle의 revision 증가·같은 revision exact-byte idempotence·immutable field 변경 거부를 mutation 전에 검사했다. Foundation focused regression 13/13이 통과했다. 2026-07-25 fanout checkpoint에서 exact builder·lifecycle RID·전용 descriptor/store와 discovery aggregate, publisher identity별 SUB receive loop, 5초 beacon, 첫 유효 record 뒤 Ready, 15초 inactivity reconnect와 event를 production path에 연결했다. Redis provider는 descriptor fence·paging·channel index와 owner cleanup을 같은 Lua transaction으로 처리한다. Generic auto-connect에 Fanout switch를 추가하는 안과 descriptor lifecycle·connection ownership을 전용 aggregate에 숨기는 안을 비교해 후자를 선택했다. Fanout·non-fanout startup 7/7, Redis fanout 3/3, fanout·monitoring 17/17, builder contract 6/6과 diff-check가 통과했다. `.NET` source에는 physical connection identity 기반 duplicate-pipe 판정과 exact topology compatibility 제거가 남아 있고, Location store exact surface는 별도 convergence lane에서 진행 중이다. 상수로 완료 처리하지 않았다. Sample·E2E 변경·실행은 0이다. 관련 blocked issue: `BLK-001`, `BLK-002`, `BLK-004`, `BLK-006`, `BLK-015`. |
+
+`V11-M6A-DN` Location exact checkpoint(2026-07-25):
+
+- `IZLinkLocationStore`의 public inheritance를 MeshNode descriptor, owner lease와 authority capability로
+  줄였다. Spot·Actor projection interface는 public provider contract에서 제거하고 남은 lifecycle
+  사용처만 internal로 격리했다.
+- MeshNode provider enumeration과 operational query를 `ZLinkPageRequest`와
+  `ZLinkLocationPage<T>` 계약으로 전환했다. Runtime의 topology·placement consumer는 모든 provider
+  page를 내부에서 조립하므로 paging 정책이 application 호출부로 새지 않는다. In-memory와 Redis는
+  RID 순서와 opaque continuation을 사용하고 page size `1..1000`을 검증한다.
+- 사용처가 없고 exact authority·relocation 계약과 중복되던 `IZLinkActorTransferStore` family,
+  in-memory·Redis 구현과 전용 Redis script를 제거했다. `ActorTransfer` change-stamp scope도 함께
+  제거했다.
+- POSD 검토에서는 기존 projection을 이름만 바꾼 internal adapter로 감싸는 안과 authority payload
+  read·mutation으로 lifecycle 자체를 바꾸는 안을 비교했다. 전자는 custom provider가 exact
+  `IZLinkLocationStore`만 구현할 때 실패하고 지식을 두 군데 유지하므로 선택하지 않았다. 이번
+  checkpoint는 public inheritance와 paging만 닫았다. Entry Spot·Actor lifecycle의 legacy
+  projection write·resolve를 authority-only 흐름으로 바꾸기 전까지 internal projection과 Redis
+  public projection method, owner lease list·강제 remove helper는 남은 gap이다.
+- Framework·Redis·ASP.NET source와 Unit·Contract·Redis test project build가 warning·error 0으로
+  통과했다. Location focused Unit 98/98, Contract 6/6과 실제 Redis 37/37이 skip 없이 통과했다.
+  따라서 compile·paging·provider 회귀는 닫았지만 authority-only lifecycle gap 때문에 row를 완료
+  처리하지 않는다.
 | `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 수정 진행 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | 최신 `systems.zlink:zlink:11.0.0` public raw binding만 사용해 Framework ROUTER owner와 exact hello·admit·update, Node·Channel send/request/reply, bounded mailbox, Location CAS/watch, placement selector, reconnect와 5초/15초 liveness를 구현했다. Classic fanout connection fence·beacon·timeout contract를 포함한 service·binding regression과 M5 foundation, Java·Kotlin compile이 통과했다. 전체 core test 383개 중 M6B stateful Spot·Actor 구현을 요구하는 기존 6개만 격리됐다. Sample·E2E 변경·실행은 0이다. 관련 blocked issue: `BLK-006`, `BLK-016`, `BLK-017`, `BLK-018`. |
 | `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 수정 진행 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | Public raw binding만 사용하는 owner에 admission, node·Channel send/request, mailbox, topology·placement, Location CAS, liveness와 전용 ClientServer·fanout registry를 구현하고 public host factory를 연결해 제거된 `createMeshNode` 의존을 없앴다. Framework TypeScript compile, M6A 7/7, M5 4/4와 changed-source ESLint가 통과했다. M6B 기능은 가짜 성공 없이 `NotSupported`로 유지하며 Sample·E2E 변경·실행은 0이다. 관련 blocked issue: `BLK-006`, `BLK-009`. |
 | `V11-R5A` | Topology runtime slice 독립 review; Codex 단독 reviewer | Codex review lane, `P-HIGH` | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 수정 진행 | topology·dispatch·placement·authority·liveness와 실행 격리의 I1·I2·I3 review clean, §2.3 조합 수렴의 I4 clean | Codex 5.6 sol xhigh review에서 확인한 C++ public host의 삭제된 Core Service header·owner 잔존은 Framework raw owner·stateful runtime을 실제 app·MeshNode·Spot·Actor·STREAM host 경계에 연결해 해소했다. 전체 C++ framework compile과 focused regression 5/5가 통과했다. .NET descriptor의 ObjectRole·security·placement/capacity configuration과 physical connection identity 기반 duplicate-pipe 판정은 public-contract parity 후속 조건으로 남는다. Sample·E2E source 변경은 0이다. 지금까지의 round는 Codex `gpt-5.6-sol xhigh`와 Claude `claude-sonnet-5` 두 reviewer가 수행했고, 남은 round는 Codex `gpt-5.6-sol medium` 단독 reviewer가 수행한다. |
@@ -1740,6 +1806,25 @@ accounting domain에 승격해야 하며, 현재 source admission은 unit·Captu
 Instance Spot의 ready-first scheduler, target capacity reservation·factory·Restore-before-commit,
 accepted reply relay ACK, timer·queue aggregate restore, STREAM fence와 descriptor
 `Retiring`/`Draining` publication도 남아 있다.
+
+.NET Actor Retire 후속 checkpoint(2026-07-25)에서 source remote handoff transaction이 outbound unit,
+Capture callback과 Capture 뒤 측정한 payload lease를 같은 process-wide accounting domain에서 소유하도록
+연결했다. Outbound unit과 필요한 Capture permit을 source seal 전에 예약하고, exact
+`IZLinkActorRelocationAdapter`의 `CaptureAsync` 결과와 request·bound session·accepted frame bytes를 합산해
+64 MiB unit 상한과 256 MiB in-flight gate를 적용한다. Payload gate를 얻지 못하면 기존 handoff rollback이
+같은 source generation의 admission을 복원한다. Target은 wire policy marker와 등록 policy를 exact match로
+검증하고 factory로 Actor를 만든 뒤 같은 scoped instance에 `RestoreAsync`를 실행한다. Factory·Restore와
+ObjectGeneration 검증이 모두 끝난 뒤 authority visibility commit과 joined notification을 진행한다.
+동일 handoff identity 비교에는 ObjectGeneration과 AuthorityOwnerGeneration도 포함한다. Framework source와
+UnitTests build, relocation permit·exact adapter·Actor handoff·maintenance focused 76/76,
+`git diff --check`가 통과했다. 넓은 Actor transfer·Entry Spot·deferred join 실행은 80건 중 52건이
+통과했고 28건은 병렬 ObjectContext 전환 중 test Actor가 유효한 Context를 제공하지 않거나 actor type을
+등록하지 않은 기존 fixture gap으로 실패했다.
+
+이 후속 checkpoint도 `V11-M6C-DN` 완료 증거가 아니다. Target의 기존 takeover claim을 typed capacity
+reservation과 exact authority publication 한 경계로 수렴하고 Restore 실패가 source authority를 훼손하지
+않는 contract test를 추가해야 한다. User Spot aggregate·Instance Spot scheduler, accepted reply relay ACK,
+timer·queue aggregate restore, STREAM fence와 descriptor publication gap도 그대로 남아 있다.
 
 Node multi-Mesh host drain checkpoint(2026-07-24)에서 공개 per-Mesh `Drain`·`AwaitDrained`의
 multi-Mesh 거부 계약은 유지하면서 NestJS shutdown 전용 aggregate coordinator를 연결했다. Host 경로는

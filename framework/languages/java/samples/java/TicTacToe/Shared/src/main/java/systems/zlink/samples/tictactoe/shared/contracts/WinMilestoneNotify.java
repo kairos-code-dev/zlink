@@ -4,6 +4,5 @@ public record WinMilestoneNotify(
     String roomId,
     String actorId,
     String displayName,
-    int wins,
-    String receivingSpotNodeRid) {
+    int wins) {
 }

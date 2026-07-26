@@ -51,7 +51,7 @@ public final class DispatchServerApplication {
             ZLinkMeshNodeBuilder courierRoutes = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             courierRoutes
                 .listen("inproc://deliverydispatch-dispatch-courier-client")
-                .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"));
+                .useAllocatedRoutingId(16, "delivery-dispatch");
         };
     }
 
@@ -73,11 +73,9 @@ public final class DispatchServerApplication {
     @Bean
     DispatchWorker dispatchWorker(
         systems.zlink.framework.channels.ZLinkClient channels,
-        systems.zlink.framework.channels.ZLinkRouteClient routes,
-        systems.zlink.framework.spots.SpotHandleResolver spotHandles,
-        DeliveryOfferStore offers,
-        SampleTopology topology) {
-        return new DispatchWorker(channels, routes, spotHandles, offers, topology);
+        systems.zlink.framework.actors.ZLinkActorClient actors,
+        DeliveryOfferStore offers) {
+        return new DispatchWorker(channels, actors, offers);
     }
 
     @Bean(destroyMethod = "close")

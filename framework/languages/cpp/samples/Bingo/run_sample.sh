@@ -259,8 +259,6 @@ document = {
             "playBSpotRouterEndpoint": play_b_spot_router,
             "sessionSpotEndpoint": session_spot_endpoint,
             "sessionRouterEndpoint": session_router_endpoint,
-            "sessionASpotNodeRid": "1201-spot",
-            "sessionBSpotNodeRid": "1202-spot",
             "streamEndpoint": stream_endpoint,
             "sessionAStreamEndpoint": session_a_stream,
             "sessionBStreamEndpoint": session_b_stream,

@@ -1,4 +1,4 @@
-// SM-F2: route client → remote target Spot 시나리오를 검증한다.
+// SM-F2: ToSpot 다른 MeshNode owner 호출 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

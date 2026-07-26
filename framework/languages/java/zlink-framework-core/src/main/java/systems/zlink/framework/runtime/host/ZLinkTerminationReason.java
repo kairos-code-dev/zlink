@@ -9,7 +9,8 @@ public enum ZLinkTerminationReason {
     DEADLINE_EXCEEDED(5),
     RELOCATION_FAILED(6),
     TEARDOWN_FAILED(7),
-    RUNTIME_NOT_READY(8);
+    RUNTIME_NOT_READY(8),
+    MANUAL_TOPOLOGY_UNSUPPORTED(9);
 
     private final int wireValue;
 

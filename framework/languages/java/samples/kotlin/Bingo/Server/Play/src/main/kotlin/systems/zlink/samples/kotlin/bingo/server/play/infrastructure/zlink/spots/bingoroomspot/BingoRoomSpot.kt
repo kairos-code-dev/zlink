@@ -216,7 +216,6 @@ class BingoRoomSpot(
                     event.itemId,
                     event.itemName,
                     event.rarity,
-                    context.nodeRid().toString(),
                 )
             )
         }
@@ -230,11 +229,11 @@ class BingoRoomSpot(
             request.roomId != settings.observedRoomId ||
             !observers.containsKey(actor.actorId())
         ) {
-            return StopObservingBingoEventsRes(false, context.nodeRid().toString())
+            return StopObservingBingoEventsRes(false)
         }
         observers.remove(actor.actorId())
         context.leaveActor(actor).exceptionally { null }
-        return StopObservingBingoEventsRes(true, context.nodeRid().toString())
+        return StopObservingBingoEventsRes(true)
     }
 
     private suspend fun leaveFinishedActors(change: BingoRoomGame.Change) {

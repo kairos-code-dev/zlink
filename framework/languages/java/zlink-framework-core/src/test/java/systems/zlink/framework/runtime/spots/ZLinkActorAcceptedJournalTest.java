@@ -29,7 +29,13 @@ final class ZLinkActorAcceptedJournalTest {
                     ZLinkActorAcceptedJournal.encode(
                         "actor-1",
                         header,
-                        payload));
+                        payload,
+                        ZLinkAcceptedJournalTestRecords.actor(
+                            "actor-1",
+                            19,
+                            "probe",
+                            Map.of("trace", "value"),
+                            new byte[] {1, 2, 3})));
 
             assertEquals("actor-1", record.actorId());
             assertEquals(header, record.header());

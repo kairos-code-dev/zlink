@@ -78,7 +78,7 @@ public final class Program {
                 .addHandlerGroup(SampleNames.SupportChannel);
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
             node.listen(support.routerEndpoint())
-                .setRoutingId(support.routingId());
+                .useAllocatedRoutingId(16, "support-owner");
             node.addEntrySpot(SupportEntrySpot.class);
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory.class);
             node.addActorTransferAdapter(

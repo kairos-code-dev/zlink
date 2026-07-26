@@ -44,7 +44,7 @@
 | `.NET: Server/Play/Infrastructure/ZLink/Actors/PlayerActor.cs` | `Server/Play/src/main/kotlin/.../infrastructure/zlink/actors/PlayerActor.kt` | actor-adapter | done | bound session push를 감싼다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Actors/PlayerActorFactory.cs` | `Server/Play/src/main/kotlin/.../infrastructure/zlink/actors/PlayerActorFactory.kt` | actor-adapter | done | player actor 생성 책임. |
 | `.NET: Server/Play/Infrastructure/ZLink/Handlers/AllocateBingoRoomHandler.cs` | `Server/Play/src/main/kotlin/.../infrastructure/zlink/handlers/AllocateBingoRoomHandler.kt` | channel-handler | done | Api의 room allocation 요청을 application use case로 연결한다. |
-| `.NET: Server/Play/Infrastructure/ZLink/Handlers/EnsurePlayerActorHandler.cs` | `Server/Play/src/main/kotlin/.../infrastructure/zlink/handlers/EnsurePlayerActorHandler.kt` | channel-handler | done | player actor 준비와 actor ref 응답. |
+| `.NET: player actor 준비와 session bind` | `Server/Session/src/main/kotlin/.../AuthenticateSessionHandler.kt`; `Server/Play/src/main/kotlin/.../spots/entryspot/BingoEntrySpot.kt` | actor-lifecycle | done | Session이 global `getOrCreate` 결과의 exact `ActorRef`를 bind하고 Entry Spot lifecycle이 create request를 적용한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/BingoEntrySpot.cs` | `Server/Play/src/main/kotlin/.../spots/entryspot/BingoEntrySpot.kt` | spot-adapter | done | actor admission, room join, observer join 흐름. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/MatchBingoActorHandler.cs` | `Server/Play/src/main/kotlin/.../spots/entryspot/handlers/MatchBingoActorHandler.kt` | spot-handler | done | actor matching request 처리. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/ObserveBingoEventsHandler.cs` | `Server/Play/src/main/kotlin/.../spots/entryspot/handlers/ObserveBingoEventsHandler.kt` | spot-handler | done | observer용 local room join 처리. |
@@ -69,7 +69,7 @@
 | common: Api 2개, Session 2개, Play 2개 실행 | `run_sample.sh`, `run_sample.ps1` | runner | done | 실제 process 경계로 role을 실행하고 공통 위치 store로 서로를 찾는다. |
 | common: actor/session binding | `Session/.../BingoSession.kt`, `AuthenticateSessionHandler.kt`, `PlayerActor.kt` | runtime-flow | done | 인증 후 actor를 만들고 bound session push 경로를 사용한다. |
 | common: Entry Spot에서 room Spot join | `BingoEntrySpot.kt`, `MatchBingoActorHandler.kt` | spot-flow | done | actor matching 후 room Spot으로 join한다. |
-| common: remote room Spot join 검증 | `BingoClientScenario.kt` | validation | done | `player-2.ActorNodeRid != RoomOwnerNodeRid` 의미를 검증한다. |
+| common: global room Spot join 검증 | `BingoClientScenario.kt` | validation | done | client는 Actor·room의 owner NodeRid를 비교하지 않고 같은 `RoomId`의 상태와 notify 결과를 확인한다. |
 | common: Spot pub/sub reward fan-out | `BingoRoomSpot.kt`, `BingoRewardAcquiredEventHandler.kt` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.kt` | external-adapter | done | Redis를 application port 뒤에 둔다. |
 | common: Redis-backed location store | `SampleLocationStore.kt`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |

@@ -95,6 +95,9 @@ class actor_gateway_state_t
     using bound_session_sender_t = std::function<result_t<void> (
       const actor_ref_t &, std::uint64_t, const stream_header_t &, const zlink::message_t &)>;
     using membership_query_t = std::function<std::optional<spot_id_t> (const actor_ref_t &)>;
+    using join_barrier_reserver_t =
+      std::function<result_t<std::shared_ptr<deferred_barrier_t>> (
+        const actor_ref_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
     std::map<std::string, std::function<task_t<void> (std::string, const zlink::message_t &)>>
@@ -109,6 +112,7 @@ class actor_gateway_state_t
     bound_session_registrar_t bound_session_registrar;
     bound_session_sender_t bound_session_sender;
     membership_query_t membership_query;
+    join_barrier_reserver_t join_barrier_reserver;
     serializer_registry_t *serializers = nullptr;
     dispatch_options_t dispatch;
     std::uint64_t next_binding_token = 1;
@@ -129,6 +133,8 @@ class actor_gateway_runtime_t
     bool actor_disconnected (std::string actor_id) const;
     actor_context_t actor_context (const actor_ref_t &actor_ref,
                                    std::uint64_t source_binding_generation = 0) const;
+    bool same_context_source_fence (const actor_context_t &left,
+                                    const actor_context_t &right) const noexcept;
     result_t<void> update_actor_ref (const actor_ref_t &actor_ref);
     result_t<void> destroy_actor (const actor_ref_t &actor_ref);
     void bind_session_stream (std::string actor_id,
@@ -161,6 +167,8 @@ class actor_gateway_runtime_t
     void on_join_entry_spot (actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher);
     void on_relay (actor_gateway_state_t::relay_dispatcher_t dispatcher);
     void on_membership (actor_gateway_state_t::membership_query_t query);
+    void on_join_barrier (
+      actor_gateway_state_t::join_barrier_reserver_t reserver);
     void on_disconnect (actor_gateway_state_t::disconnect_dispatcher_t dispatcher);
     void on_bound_session (actor_gateway_state_t::bound_session_registrar_t registrar);
     void on_bound_session_send (actor_gateway_state_t::bound_session_sender_t sender);

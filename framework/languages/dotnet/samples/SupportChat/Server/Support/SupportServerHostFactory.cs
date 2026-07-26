@@ -54,9 +54,7 @@ public static class SupportServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                // Discovery clients dial this server through its descriptor
-                // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(topology.MeshRoutingId);
+                .SetRoutingIdPrefix("support-owner");
             mesh.Objects().Server()
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActor, SupportUserActorFactory>(

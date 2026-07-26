@@ -110,15 +110,12 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     ASSERT_TRUE (authenticated.accepted);
 
     sample_topology_t topology;
-    const allocate_bingo_room_res_t allocated{"two-player-room-1",
-                                              topology.selected_play_node_rid ()};
+    const allocate_bingo_room_res_t allocated{"two-player-room-1"};
 
     zlink::framework::service_collection_t entry_services;
     entry_services.add_scoped<zlink::framework::session_actor_manager_t> ();
     bingo_entry_spot_t entry_spot (topology, entry_services.build_provider ());
-    const actor_ref_snapshot_t actor{node_rid_t::from_string (
-                                       topology.selected_play_node_rid ()),
-                                     authenticated.actor_id, 1};
+    const actor_ref_snapshot_t actor{node_rid_t{}, authenticated.actor_id, 1};
 
     player_actor_factory_t actor_factory;
     const auto player_actor = actor_factory.create (actor, authenticated.display_name);
@@ -144,9 +141,9 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     zlink::framework::spot_context_t entry_context;
     entry_spot.configure (entry_context);
     const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 3U);
-    EXPECT_EQ (entry_handlers[0].kind, zlink::framework::spot_handler_kind_t::packet);
-    EXPECT_EQ (entry_handlers[0].packet_name, ensure_player_actor_req_t::packet_name);
+    ASSERT_EQ (entry_handlers.size (), 2U);
+    EXPECT_EQ (entry_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
+    EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined = room_spot.on_actor_join (
@@ -222,18 +219,17 @@ TEST (CppFrameworkSampleParity, BingoRoomIdsAreUniqueAcrossAllocatorInstances)
       public:
         bingo_match_reservation_t reserve (const std::string &,
                                            const std::string &,
-                                           const std::string &preferred_owner_node_rid,
                                            const std::string &new_room_id,
                                            int) override
         {
-            return {new_room_id, preferred_owner_node_rid, true};
+            return {new_room_id};
         }
     } first_queue, second_queue;
 
     bingo_room_allocator_t first (first_queue);
     bingo_room_allocator_t second (second_queue);
-    const auto first_room = first.allocate ("two-player", "player-1", "play-a");
-    const auto second_room = second.allocate ("two-player", "player-2", "play-b");
+    const auto first_room = first.allocate ("two-player", "player-1");
+    const auto second_room = second.allocate ("two-player", "player-2");
 
     EXPECT_NE (first_room.room_id, second_room.room_id)
       << "independent Play processes must not allocate the same spot routing id";
@@ -347,8 +343,8 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
                                     std::string ("tictactoe-game"),
                                     topology.stream_endpoint,
                                     {topology.stream_endpoint, topology.play_b_stream_endpoint},
-                                    {{topology.stream_endpoint, topology.play_a_node_rid},
-                                     {topology.play_b_stream_endpoint, topology.play_b_node_rid}},
+                                    {{topology.stream_endpoint},
+                                     {topology.play_b_stream_endpoint}},
                                     sample_names_t::required_level};
     EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
@@ -381,16 +377,15 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
 }
 
-TEST (CppFrameworkSampleParity, TicTacToeSeparatesInternalRoomJoinResponse)
+TEST (CppFrameworkSampleParity, TicTacToeRegistersDeferredRoomJoin)
 {
-    const auto contracts = read_file (
-      cpp_language_root () / "samples/TicTacToe/Shared/Contracts/messages.hpp");
     const auto handler = read_file (
       cpp_language_root ()
       / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play_actor_join_game_handler.hpp");
-    EXPECT_NE (contracts.find ("struct tictactoe_game_join_res_t"), std::string::npos);
-    EXPECT_NE (handler.find ("async<tictactoe_game_join_res_t>"), std::string::npos)
-      << "room admission must decode the documented internal response, not JoinGameRes";
+    EXPECT_NE (handler.find (".defer ()"), std::string::npos)
+      << "actor join must register the exact deferred terminal";
+    EXPECT_EQ (handler.find (".async<"), std::string::npos)
+      << "actor join must not expose an awaitable result";
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeUsesFrameworkOwnedSpotLocationResolution)
@@ -736,20 +731,19 @@ TEST (CppFrameworkSampleParity, ShoppingMallClientFlowLivesInScenario)
       << "the client entrypoint must not retain scenario orchestration";
 }
 
-TEST (CppFrameworkSampleParity, SampleRoomJoinHandlersRejectRejectedVariants)
+TEST (CppFrameworkSampleParity, SampleRoomJoinHandlersUseDeferredTerminal)
 {
     for (const auto &relative : {
            "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
            "match_bingo_actor_handler.hpp",
            "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/"
-           "play_actor_join_game_handler.hpp",
-           "samples/SupportChat/Server/Support/main.cpp"}) {
+           "play_actor_join_game_handler.hpp"}) {
         const auto path = cpp_language_root () / relative;
         const auto handler = read_file (path);
-        EXPECT_EQ (handler.find ("std::visit"), std::string::npos)
-          << path << " must not flatten accepted and rejected actor join variants";
-        EXPECT_NE (handler.find ("actor_join_accepted_t"), std::string::npos)
-          << path << " must explicitly require an accepted actor join";
+        EXPECT_NE (handler.find (".defer ()"), std::string::npos)
+          << path << " must register the deferred actor join terminal";
+        EXPECT_EQ (handler.find ("actor_join_accepted_t"), std::string::npos)
+          << path << " must receive completion through the actor callback";
     }
 }
 
@@ -1277,6 +1271,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     const auto client_main = read_file (tictactoe_root / "Client/main.cpp");
     const auto create_game_handler =
       read_file (tictactoe_root / "Server/Api/Handlers/create_game_http_handler.hpp");
+    const auto play_create_game_handler =
+      read_file (tictactoe_root / "Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp");
     const auto play_factory =
       read_file (tictactoe_root / "Server/Play/play_server_host_factory.hpp");
 
@@ -1321,9 +1317,11 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (create_game_handler.find (".request (sample_names_t::play_channel, create_request)"),
                std::string::npos);
     EXPECT_NE (play_factory.find ("add_singleton<tictactoe_game_creator_t"), std::string::npos);
-    EXPECT_NE (play_factory.find ("redis_room_route_store_t"), std::string::npos);
-    /* Application은 port에만 의존한다(공통 sample spec §7). */
-    EXPECT_NE (play_factory.find ("add_singleton<room_route_store_t>"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("redis_room_route_store_t"), std::string::npos);
+    EXPECT_EQ (play_factory.find ("add_singleton<room_route_store_t>"), std::string::npos);
+    EXPECT_NE (play_create_game_handler.find ("spot_manager_t"), std::string::npos);
+    EXPECT_NE (play_create_game_handler.find (".get_or_create (response.room_id"),
+               std::string::npos);
     EXPECT_NE (play_factory.find (".group (\"play\")"), std::string::npos);
     EXPECT_NE (play_factory.find (".add<create_game_handler_t> ()"), std::string::npos);
     EXPECT_EQ (api_factory.find ("add_singleton<create_game_room_handler_t>"), std::string::npos);

@@ -76,15 +76,15 @@ public static class PlayServerHostFactory
                     SampleNames.RoomSpotType,
                     null,
                     ZLinkRelocationPolicy<BingoRoom>.Disabled);
-            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.PlayChannel);
-            mesh.ChannelName(SampleNames.RoomChannel);
+            mesh.Channel(SampleNames.ApiChannel).Client();
+            mesh.Channel(SampleNames.PlayChannel).Server()
+                .AddHandlerGroup("play");
+            mesh.Channel(SampleNames.RoomChannel).Server();
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "play",
             SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
-
         return builder.Build();
     }
 }

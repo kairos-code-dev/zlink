@@ -118,9 +118,7 @@ class spot_node_builder_state_t
           deserialize_instance;
         std::function<std::shared_ptr<void> (actor_context_t &)>
           create_context_instance;
-        std::function<task_t<void> (
-          void *, std::uint64_t, std::uint64_t, const actor_ref_t &,
-          const std::optional<message_t> &)> on_join_completed;
+        actor_join_completion_callback_t on_join_completed;
     };
     struct actor_transfer_registration_t
     {
@@ -160,6 +158,8 @@ class spot_node_builder_state_t
       committed_join_locations;
     std::set<std::pair<std::uint64_t, std::uint64_t>>
       delivered_join_completions;
+    std::set<std::pair<std::uint64_t, std::uint64_t>>
+      delivering_join_completions;
         std::shared_ptr<runtime::stateful::relocation_store_port_t>
           relocation_store;
         std::shared_ptr<runtime::stateful::authority_relocation_port_t>
@@ -292,7 +292,9 @@ class spot_context_state_t
     std::shared_ptr<spot_node_builder_state_t> node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     node_rid_t node_rid;
+    std::string mesh_name;
     spot_id_t spot_id;
+    std::uint64_t object_generation = 1;
     std::string spot_name;
     user_spot_execution_mode_t execution_mode =
       user_spot_execution_mode_t::spot_wide;
@@ -394,7 +396,11 @@ class spot_node_runtime_t
     local_spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
     local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_id_t spot_id);
     local_spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_id_t spot_id, zlink::message_t request);
+    get_or_create_spot (std::string spot_name,
+                        spot_id_t spot_id,
+                        zlink::message_t request,
+                        std::uint64_t object_generation = 1,
+                        std::string mesh_name = {});
     task_t<zlink::message_t> dispatch_instance_activation (
       const spot_id_t &spot_id,
       std::string packet_name,
@@ -511,7 +517,9 @@ class spot_node_runtime_t
       spot_id_t spot_id,
       const zlink::message_t &request,
       const std::optional<zlink::message_t> &actor_snapshot = std::nullopt,
-      actor_context_t actor_context = {});
+      actor_context_t actor_context = {},
+      std::uint64_t completion_operation_id_high = 0,
+      std::uint64_t completion_operation_id_low = 0);
     result_t<actor_join_reply_t>
     join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
                                       spot_id_t spot_id,
@@ -555,6 +563,14 @@ class spot_node_runtime_t
     std::size_t cleanup_expired_actor_admissions_at (
       std::chrono::steady_clock::time_point now);
     std::string next_actor_transfer_id ();
+    result_t<std::shared_ptr<deferred_barrier_t>>
+    reserve_actor_join_barrier (const actor_ref_t &actor_ref);
+    std::pair<std::uint64_t, std::uint64_t>
+    actor_join_operation_id (std::string_view transfer_id) const;
+    result_t<void>
+    deliver_actor_join_completion (const actor_ref_t &actor_ref,
+                                   const actor_join_completion_t &completion,
+                                   std::optional<spot_id_t> source_spot_id = std::nullopt);
     // In-flight handoff (spot-actor §10): drains the packets preserved while the
     // actor was moving, in arrival order. The commit path calls this once to fill
     // the commit request and once more after the ack for packets that raced it.
@@ -896,7 +912,7 @@ class spot_node_runtime_t
         if (found == _state->spot_contexts_by_id.end ()) {
             return std::nullopt;
         }
-        return found->second;
+        return spot_context_t (found->second._state);
     }
 
     template <typename TSpot, typename TActor>
@@ -1091,7 +1107,9 @@ class spot_node_runtime_t
     create_spot_context_unlocked (std::string spot_name,
                                   spot_id_t spot_id,
                                   zlink::message_t request,
-                                  std::unique_lock<std::recursive_mutex> &node_lock);
+                                  std::unique_lock<std::recursive_mutex> &node_lock,
+                                  std::uint64_t object_generation = 1,
+                                  std::string mesh_name = {});
     result_t<spot_context_t> actor_join_context_unlocked (spot_id_t spot_id,
                                                           const zlink::message_t &request);
     result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>

@@ -75,7 +75,6 @@ class PlayEntrySpot(
             actorId = event.actorId,
             displayName = event.displayName,
             wins = event.wins,
-            receivingSpotNodeRid = settings.playSpotNodeRid,
         )
         milestoneObservers.toList().forEach { observer ->
             observer.context().boundSession()

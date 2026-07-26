@@ -40,8 +40,7 @@ public static class CustomerGatewayHostFactory
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingId(topology.CustomerSpotNodeRid)
-                .SetEntrySpotRoutingId(topology.CustomerSpotNodeRid)
+                .SetRoutingIdPrefix("customer-gateway")
                 .AddEntrySpot<CustomerEntrySpot>()
                 .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
             mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
@@ -49,7 +48,7 @@ public static class CustomerGatewayHostFactory
             mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
-                .EnableActorDispatch(SampleNames.MeshName)
+                .EnableActorDispatch()
                 .AddSession<CustomerSession>();
         });
 

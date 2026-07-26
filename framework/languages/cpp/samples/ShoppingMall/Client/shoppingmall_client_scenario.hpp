@@ -94,7 +94,7 @@ class shoppingmall_client_scenario_t
           start_order_req_t{"cart-success", "addr-office", "pm-ok", "order-pending-001"};
         auto pending_ok = api_a.post ("/self-check/idempotency/pending")
                             .body (pending_mapping_req_t{pending_req.idempotency_key,
-                                                         "order-pending-0001", "api-a"})
+                                                         "order-pending-0001"})
                             .submit<ok_res_t> ().result ().value ().body;
         ensure (pending_ok.ok, "pending hook");
         auto pending = api_b.post ("/orders/start").body (pending_req).submit<start_order_res_t> ().result ().value ().body;

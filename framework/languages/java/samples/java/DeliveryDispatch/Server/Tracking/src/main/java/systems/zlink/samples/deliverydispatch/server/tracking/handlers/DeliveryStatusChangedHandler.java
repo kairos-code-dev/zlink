@@ -34,7 +34,7 @@ public final class DeliveryStatusChangedHandler
         return actorRefs.find(SAMPLE_CUSTOMER_ID).thenApply(found -> {
             var actor = found.orElseThrow(() -> new IllegalStateException(
                 "customer actor not found: " + SAMPLE_CUSTOMER_ID));
-            actors.sendToActor(actor, new Messages.DeliveryStatusUpdatedMsg(
+            actors.sendToActor(actor.actorId(), new Messages.DeliveryStatusUpdatedMsg(
                     request.deliveryId(), SAMPLE_CUSTOMER_ID, request.status(),
                     request.courierId(), request.occurredAt()))
                 .submit();

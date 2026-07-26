@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 
 #include <stdexcept>
@@ -56,8 +55,6 @@ struct sample_topology_t
           section.get ("playBStreamEndpoint").value_or (topology.play_b_stream_endpoint);
         topology.api_node = section.get ("apiNode").value_or (topology.api_node);
         topology.play_node = section.get ("playNode").value_or (topology.play_node);
-        topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
-        topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
         // The sample owns its Redis via run_sample.sh/run_sample.ps1, which
         // provisions an isolated container; require the endpoint so a stray
         // direct run never silently falls back to a developer's local Redis.
@@ -71,12 +68,6 @@ struct sample_topology_t
         topology.redis_key_prefix =
           section.get ("redisKeyPrefix").value_or (topology.redis_key_prefix);
         topology.log_dir = section.require ("logDir");
-        if (auto value = section.get ("sessionRid")) {
-            topology.session_rid = zlink::routing_id_t::from (*value);
-        }
-        if (auto value = section.get ("playRid")) {
-            topology.play_rid = zlink::routing_id_t::from (*value);
-        }
         return topology;
     }
 
@@ -103,12 +94,8 @@ struct sample_topology_t
     std::string log_dir = "logs";
     std::string api_node = "a";
     std::string play_node = "a";
-    std::string play_a_node_rid = "play-node-1";
-    std::string play_b_node_rid = "play-node-2";
     std::string redis_endpoint;
     std::string redis_key_prefix = "zlink:tictactoe-cpp:room:";
-    zlink::routing_id_t session_rid = zlink::routing_id_t::from ("1101");
-    zlink::routing_id_t play_rid = zlink::routing_id_t::from ("2202");
 
     std::string selected_api_endpoint () const
     {
@@ -172,20 +159,11 @@ struct sample_topology_t
         return play_node == "b" ? play_a_spot_router_endpoint : play_b_spot_router_endpoint;
     }
 
-    std::string peer_play_node_rid () const
-    {
-        return play_node == "b" ? play_a_node_rid : play_b_node_rid;
-    }
-
     std::string selected_stream_endpoint () const
     {
         return play_node == "b" ? play_b_stream_endpoint : play_a_stream_endpoint;
     }
 
-    std::string selected_play_node_rid () const
-    {
-        return play_node == "b" ? play_b_node_rid : play_a_node_rid;
-    }
 };
 
 } // namespace zlink::samples::tictactoe

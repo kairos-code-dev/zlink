@@ -2,6 +2,8 @@
 
 #include "runtime/stateful/maintenance_runtime.hpp"
 #include "runtime/stateful/public_store_adapters.hpp"
+#include "runtime/stateful/raw_stateful_dispatch.hpp"
+#include "runtime/mesh/raw_mesh_node_owner.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -1668,6 +1670,201 @@ void test_durable_join_completion_replacement_and_ordering (
 }
 
 } // namespace
+void test_production_relocation_restore_and_replay_vertical (
+  test_context_t &test)
+{
+    namespace mesh = zlink::framework::runtime::mesh;
+    namespace protocol = zlink::framework::runtime::protocol;
+    using namespace std::chrono_literals;
+
+    const auto bytes = [] (const std::string &value) {
+        return std::vector<std::uint8_t> (value.begin (), value.end ());
+    };
+    const auto descriptor = [&] (const std::string &rid) {
+        return mesh::service_node_descriptor_t{
+          "mesh", bytes (rid), 1, 1, "tcp://127.0.0.1:0", {},
+          mesh::service_node_state_t::preparing};
+    };
+
+    mesh::raw_mesh_node_owner_t source_transport (
+      {descriptor ("maintenance-source")});
+    mesh::raw_mesh_node_owner_t target_transport (
+      {descriptor ("maintenance-target")});
+    source_transport.start ();
+    target_transport.start ();
+    const auto source_descriptor =
+      source_transport.topology ().local_descriptor ();
+    const auto target_descriptor =
+      target_transport.topology ().local_descriptor ();
+    const auto deadline = std::chrono::steady_clock::now () + 5s;
+    test.require (
+      source_transport.connect_peer (
+        target_transport.endpoint (), target_descriptor),
+      "production relocation vertical must connect source to target");
+    while ((!source_transport.topology ().peer (
+               target_descriptor.node_routing_id)
+            || !target_transport.topology ().peer (
+              source_descriptor.node_routing_id))
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source_transport.drain_monitor_events (now);
+        (void) target_transport.drain_monitor_events (now);
+        (void) source_transport.pump_one (now);
+        (void) target_transport.pump_one (now);
+        std::this_thread::yield ();
+    }
+    test.require (
+      source_transport.topology ().peer (
+        target_descriptor.node_routing_id).has_value ()
+        && target_transport.topology ().peer (
+          source_descriptor.node_routing_id).has_value (),
+      "production relocation vertical requires two Ready owners");
+
+    stateful_object_runtime_t source_objects;
+    stateful_object_runtime_t target_objects;
+    const auto actor = create_actor (
+      source_objects, "production-replay-actor",
+      "maintenance-source");
+
+    protocol::frozen_application_record_t accepted;
+    accepted.kind = protocol::frozen_record_kind_t::actor_request;
+    accepted.source_kind = protocol::frozen_source_kind_t::node;
+    accepted.source = {
+      "source-owner", 17, source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation};
+    accepted.operation = {
+      0x1111222233334444ULL, 0x5555666677778888ULL};
+    accepted.operation_kind = 4;
+    accepted.reply_route_id = 77;
+    accepted.body = protocol::frozen_actor_application_body_t{
+      {actor.key, actor.object_generation,
+       source_descriptor.node_routing_id,
+       source_descriptor.lifecycle_generation,
+       actor.authority_owner_generation, 19},
+      {"ActorPacket", "application/json", bytes ("accepted")}};
+
+    const auto canonical =
+      protocol::encode_frozen_application_record (accepted);
+    test.require (
+      source_objects.enqueue (
+        actor, turn_domain_t::application,
+        {1, protocol::encode_frozen_record (canonical)})
+        == stateful_error_t::none,
+      "production relocation vertical must queue a canonical accepted request");
+
+    raw_relocation_replay_coordinator_t source_wire (source_transport);
+    raw_relocation_replay_coordinator_t target_wire (target_transport);
+    auto roots = std::make_shared<memory_relocation_store_t> ();
+    auto authority = std::make_shared<memory_authority_store_t> ();
+    maintenance_runtime_t maintenance (
+      source_objects, authority, roots);
+    maintenance.attach_relocation_wire (source_wire);
+
+    const protocol::relocation_id_t relocation{301, 302};
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "coordinator-owner", 23, bytes ("coordinator-rid"), 29,
+      "authority-store-version"};
+    object_ref_t target_actor = actor;
+    target_actor.node_id = "maintenance-target";
+    ++target_actor.authority_owner_generation;
+
+    int target_restore = 0;
+    int target_stage = 0;
+    int target_abort = 0;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> acknowledged;
+    eligible_relocation_unit_t::canonical_wire_context_t wire_context{
+      .relocation = relocation,
+      .target_attempt_generation = 31,
+      .coordinator = coordinator,
+      .target_node_routing_id = target_descriptor.node_routing_id,
+      .target_node_generation = target_descriptor.lifecycle_generation,
+      .participant_ids = {1},
+      .prepare_target =
+        [&] (const std::vector<frozen_object_state_t> &participants,
+             const std::vector<protocol::relocation_data_t> &records) {
+            if (participants.size () != 1 || records.size () != 1
+                || !records.front ().frozen_record)
+                return false;
+            const auto &frozen = *records.front ().frozen_record;
+            if (frozen.source != accepted.source
+                || frozen.operation != accepted.operation
+                || frozen.reply_route_id != accepted.reply_route_id)
+                return false;
+
+            auto restored = participants.front ();
+            restored.pending_application.clear ();
+            const auto restore_error = target_objects.restore_relocation (
+              std::move (restored), target_actor,
+              {"production-restore", 1, digest_with (0x31)});
+            if (restore_error != stateful_error_t::none
+                && restore_error != stateful_error_t::already_exists)
+                return false;
+            ++target_restore;
+
+            return target_wire.register_target ({
+              relocation, 31, coordinator, 1, accepted.source,
+              records.front ().object,
+              [&] (const protocol::relocation_data_t &record) {
+                  if (!record.frozen_record)
+                      return false;
+                  ++target_stage;
+                  return target_objects.enqueue (
+                           target_actor, turn_domain_t::application,
+                           {record.sequence,
+                            protocol::encode_frozen_record (
+                              *record.frozen_record)})
+                         == stateful_error_t::none;
+              }});
+        },
+      .acknowledged =
+        [&] (std::uint64_t participant, std::uint64_t high_water) {
+            acknowledged.emplace_back (participant, high_water);
+        },
+      .abort_target = [&] { ++target_abort; }};
+
+    const auto result = maintenance.relocate (
+      actor, "maintenance-target", {"target-owner", 37},
+      {"capacity-fence"}, 1024 * 1024, digest_with (0x31),
+      wire_context);
+    test.require (
+      result.terminal == relocation_terminal_t::completed
+        && result.replay_records.size () == 1
+        && target_restore == 1 && target_abort == 0,
+      "maintenance must prepare target Restore and retain one replay record");
+
+    raw_relocation_replay_result_t target_result =
+      raw_relocation_replay_result_t::no_data;
+    raw_relocation_replay_result_t source_result =
+      raw_relocation_replay_result_t::no_data;
+    while ((target_result == raw_relocation_replay_result_t::no_data
+            || source_result == raw_relocation_replay_result_t::no_data)
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        if (target_result == raw_relocation_replay_result_t::no_data) {
+            (void) target_transport.pump_one (now);
+            target_result = target_wire.pump_one ();
+        }
+        if (source_result == raw_relocation_replay_result_t::no_data) {
+            (void) source_transport.pump_one (now);
+            source_result = source_wire.pump_one ();
+        }
+        std::this_thread::yield ();
+    }
+    test.require (
+      target_result == raw_relocation_replay_result_t::applied
+        && source_result
+             == raw_relocation_replay_result_t::ack_advanced
+        && target_stage == 1
+        && acknowledged
+             == std::vector<std::pair<std::uint64_t, std::uint64_t>>{
+               {1, 1}}
+        && target_objects.pending (
+             target_actor, turn_domain_t::application) == 1,
+      "command 31/32 must stage the exact request and persist monotonic ACK");
+
+    source_transport.close ();
+    target_transport.close ();
+}
 
 int main ()
 {
@@ -1687,5 +1884,6 @@ int main ()
     test_public_relocation_store_adapter (test);
     test_public_authority_store_adapter (test);
     test_durable_join_completion_replacement_and_ordering (test);
+    test_production_relocation_restore_and_replay_vertical (test);
     return test.failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

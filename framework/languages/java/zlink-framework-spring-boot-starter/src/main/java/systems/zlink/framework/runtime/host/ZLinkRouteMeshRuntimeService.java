@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
+import java.util.function.BiFunction;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.MeshMonitorEvent;
 import systems.zlink.contracts.service.spot.MeshMonitorEventKind;
@@ -26,6 +27,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.Drained;
 import systems.zlink.framework.monitoring.ForceStopped;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshDrainResult;
@@ -39,13 +41,20 @@ import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkDrainControl;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
+import systems.zlink.framework.locations.ZLinkCapacityUsage;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkMeshNodeMonitoringProjection;
 
 public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoCloseable {
     private static final long MONITOR_IDLE_NANOS = 10_000_000L;
+    private static final long DESCRIPTOR_POLL_NANOS = 100_000_000L;
 
     private final Supplier<Map<String, ZLinkInternalMeshNode>> nodes;
     private final Supplier<ZLinkLocationRuntimeQuery> locationRuntime;
+    private final BiFunction<String, RoutingId, ZLinkMeshNodeMonitoringProjection>
+        placementProjection;
     private final ZLinkDrainControl drainControl;
     private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
     private final Map<String, MonitorHub> monitorHubs = new ConcurrentHashMap<>();
@@ -56,6 +65,7 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         this(
             lifecycle::monitoringSpotSources,
             lifecycle::monitoringLocationRuntimeQuery,
+            lifecycle::monitoringMeshNodeProjection,
             lifecycle);
     }
 
@@ -63,9 +73,24 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         Supplier<Map<String, ZLinkInternalMeshNode>> nodes,
         Supplier<ZLinkLocationRuntimeQuery> locationRuntime,
         ZLinkDrainControl drainControl) {
+        this(
+            nodes,
+            locationRuntime,
+            (meshName, rid) -> defaultPlacement(nodes.get().get(meshName)),
+            drainControl);
+    }
+
+    ZLinkRouteMeshRuntimeService(
+        Supplier<Map<String, ZLinkInternalMeshNode>> nodes,
+        Supplier<ZLinkLocationRuntimeQuery> locationRuntime,
+        BiFunction<String, RoutingId, ZLinkMeshNodeMonitoringProjection> placementProjection,
+        ZLinkDrainControl drainControl) {
         this.nodes = java.util.Objects.requireNonNull(nodes, "nodes");
         this.locationRuntime =
             java.util.Objects.requireNonNull(locationRuntime, "locationRuntime");
+        this.placementProjection = java.util.Objects.requireNonNull(
+            placementProjection,
+            "placementProjection");
         this.drainControl = java.util.Objects.requireNonNull(drainControl, "drainControl");
     }
 
@@ -75,6 +100,8 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         var status = node.status();
         List<MeshPeerEntry> peers = node.peers();
         ZLinkMeshNodeState state = mapNodeState(status.state());
+        ZLinkMeshNodeMonitoringProjection placement =
+            placementProjection.apply(meshName, status.routingId());
         List<ZLinkMeshChannelSnapshot> channels = node.channelWeights().entrySet().stream()
             .sorted(Map.Entry.comparingByKey())
             .map(channel -> {
@@ -103,12 +130,20 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             descriptorSources(peers),
             peers.stream().map(peer -> mapPeer(node, peer)).toList(),
             channels,
+            List.of(),
             new ZLinkMeshClaimSnapshot(
                 state == ZLinkMeshNodeState.SERVING,
                 status.pendingApplicationMessages(),
                 state == ZLinkMeshNodeState.SERVING || state == ZLinkMeshNodeState.DRAINING,
                 status.pendingInfrastructureMessages()),
             locationSnapshot(),
+            placement.objectRole(),
+            placement.placementWeight(),
+            placement.objectCapacity(),
+            placement.activationConcurrency(),
+            placement.objectCapabilities(),
+            placement.placementReservationFailureCount(),
+            placement.lastPlacementReservationFailure(),
             new ZLinkMeshDrainSnapshot(
                 state,
                 Optional.empty(),
@@ -407,6 +442,7 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
     private final class MonitorHub implements AutoCloseable {
         private final String meshName;
         private final ZLinkInternalMeshNode node;
+        private final ZLinkMeshNodeMonitoringProjection initialPlacement;
         private final Object gate = new Object();
         private final List<ObserverSubscription> observers = new ArrayList<>();
         private volatile boolean stopped;
@@ -415,6 +451,9 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         MonitorHub(String meshName, ZLinkInternalMeshNode node) {
             this.meshName = meshName;
             this.node = node;
+            this.initialPlacement = placementProjection.apply(
+                meshName,
+                node.status().routingId());
         }
 
         void subscribe(Flow.Subscriber<? super ZLinkMeshRuntimeEvent> subscriber, int capacity) {
@@ -467,6 +506,8 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                 List<MeshPeerEntry> previousPeers = List.copyOf(node.peers());
                 String previousChannels = channelSignature(node, previousPeers);
                 String previousLocationState = locationSnapshot().state();
+                ZLinkMeshNodeMonitoringProjection previousPlacement = initialPlacement;
+                long nextDescriptorPoll = System.nanoTime() + DESCRIPTOR_POLL_NANOS;
                 while (!stopped) {
                     MeshMonitorEvent nativeEvent = null;
                     if (monitor != null) {
@@ -480,6 +521,20 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                             }
                             monitor = null;
                         }
+                    }
+                    long now = System.nanoTime();
+                    if (now >= nextDescriptorPoll) {
+                        var status = node.status();
+                        ZLinkMeshNodeMonitoringProjection currentPlacement =
+                            placementProjection.apply(meshName, status.routingId());
+                        if (!samePlacementCapacity(previousPlacement, currentPlacement)) {
+                            publish(List.of(placementChangedEvent(
+                                meshName,
+                                status.routingId(),
+                                currentPlacement.descriptorRevision())));
+                        }
+                        previousPlacement = currentPlacement;
+                        nextDescriptorPoll = now + DESCRIPTOR_POLL_NANOS;
                     }
                     if (nativeEvent == null) {
                         var status = node.status();
@@ -672,6 +727,49 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             Optional.empty(),
             Optional.empty(),
             Optional.of(state),
+            Optional.empty());
+    }
+
+    private ZLinkMeshRuntimeEvent placementChangedEvent(
+        String meshName,
+        RoutingId sourceRid,
+        long descriptorRevision) {
+        return new ZLinkMeshRuntimeEvent(
+            "zlink.runtime.object.placement_changed",
+            nextSequence(meshName),
+            Instant.now(),
+            meshName,
+            sourceRid,
+            Optional.of(sourceRid),
+            Optional.empty(),
+            optionalPositive(descriptorRevision),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of("updated"),
+            Optional.empty());
+    }
+
+    private static boolean samePlacementCapacity(
+        ZLinkMeshNodeMonitoringProjection left,
+        ZLinkMeshNodeMonitoringProjection right) {
+        return left.objectCapacity().equals(right.objectCapacity())
+            && left.activationConcurrency().equals(right.activationConcurrency());
+    }
+
+    private static ZLinkMeshNodeMonitoringProjection defaultPlacement(
+        ZLinkInternalMeshNode node) {
+        return new ZLinkMeshNodeMonitoringProjection(
+            node == null ? 0 : node.status().descriptorRevision(),
+            ZLinkMeshNodeObjectRole.NONE,
+            node == null ? 0 : node.placementWeight(),
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(0, 0, 0),
+                List.of()),
+            new ZLinkActivationConcurrency(0, 128),
+            List.of(),
+            0,
             Optional.empty());
     }
 

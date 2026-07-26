@@ -1,52 +1,53 @@
 namespace Zlink.Framework.Runtime.Spots;
 
-internal static class ZLinkSpotRelocationReplyRelayProtocol
+internal sealed class ZLinkRelocationReplyTarget(
+    ZLinkFrameworkRuntime runtime,
+    IZLinkAuthorityStore authorityStore) : IRelocationReplyRelayTarget
 {
-    internal const string PacketName =
-        "zlink.internal.spot.relocation.reply.v1";
-}
-
-[ZLinkPacket(ZLinkSpotRelocationReplyRelayProtocol.PacketName)]
-internal sealed record ZLinkSpotRelocationReplyRelay(
-    ulong ReplyRouteId,
-    string SpotId,
-    ulong ObjectGeneration,
-    ulong TargetAuthorityOwnerGeneration,
-    int HopCount,
-    byte[][] Parts);
-
-internal sealed class ZLinkSpotRelocationReplyRelayHandler(
-    ZLinkFrameworkRuntime runtime)
-    : IZLinkRouteSendHandler<ZLinkSpotRelocationReplyRelay>
-{
-    public ValueTask HandleAsync(
-        ZLinkSpotRelocationReplyRelay message,
-        ZLinkRouteMessageContext context,
+    public async ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord?> RelayAsync(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        RoutingId sourceNodeRid,
+        IReadOnlyList<Message> payload,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var parts = message.Parts
-            .Select(static part => Message.From(part))
-            .ToArray();
-        var submitted = false;
+        var consumed = false;
         try
         {
-            submitted = runtime.SpotRelocationReplyRoutes.TryRelay(
-                            message.ReplyRouteId,
-                            message.SpotId,
-                            message.ObjectGeneration,
-                            context.SourceNodeRid,
-                            message.TargetAuthorityOwnerGeneration,
-                            message.HopCount,
-                            parts,
-                            SendFlags.None)
-                        == SubmitResult.Ok;
+            if (!runtime.SpotRelocationReplyRoutes.TryGetRelayBinding(
+                    relay,
+                    sourceNodeRid,
+                    out var binding))
+                return null;
+            var authority = await authorityStore.ReadAuthorityAsync(
+                    binding.AuthorityKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (authority is not ZLinkAuthorityReadResult.Found found
+                || !StringComparer.Ordinal.Equals(
+                    found.Snapshot.StoreVersion,
+                    relay.Coordinator.ExpectedAuthorityStoreVersion))
+                return null;
+
+            var result = runtime.SpotRelocationReplyRoutes.TryRelay(
+                relay,
+                sourceNodeRid,
+                payload,
+                SendFlags.None,
+                out consumed,
+                out var alreadyTerminal);
+            if (result != SubmitResult.Ok)
+                return null;
+            return new ZLinkServiceWireCodec.ReplyRelayAckRecord(
+                relay.RelocationId,
+                relay.Coordinator,
+                relay.OperationId,
+                binding.RequestSource,
+                alreadyTerminal ? (byte)2 : (byte)1);
         }
         finally
         {
-            if (!submitted)
-                ZLinkMessageParts.DisposeAll(parts);
+            if (!consumed)
+                ZLinkMessageParts.DisposeAll(payload);
         }
-        return ValueTask.CompletedTask;
     }
 }

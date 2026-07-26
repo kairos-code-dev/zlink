@@ -459,7 +459,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void SessionActorDispatch_Registers_Stream_Node_Without_Explicit_Relay_Target()
+    public void SessionActorDispatch_Allows_Multiple_Object_Meshes_Without_Inferred_Relay_Target()
     {
         var services = new ServiceCollection();
 
@@ -478,8 +478,15 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 }
             }
             {
+                var mesh = options.AddRouteMesh("actor-node-2");
+                mesh.Channel("actor-node-2").Server();
+                mesh.Objects().Client();
+                mesh.Listen("tcp://127.0.0.1:7303");
+            }
+            {
                 var stream = options.AddStreamNode("stream.node");
                 stream.Bind("tcp://127.0.0.1:9100");
+                stream.EnableActorDispatch();
                 stream.AddSession<TestHeaderSession>();
             }
         });
@@ -488,7 +495,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
 
         Assert.Single(registration.StreamNodes);
-        Assert.Single(registration.SpotNodes);
+        Assert.Equal(2, registration.SpotNodes.Count);
+        Assert.True(registration.StreamNodes["stream.node"].ActorDispatchEnabled);
     }
 
     [Fact]
@@ -933,6 +941,24 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                         locations.MaxRelocationPayloadInFlightBytes = 0;
                         break;
                 }
+            }));
+
+        Assert.Contains("greater than zero", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("polling")]
+    [InlineData("store-grace")]
+    public void AddZLinkFramework_RejectsNonPositiveLocationPollingTimes(string option)
+    {
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(framework =>
+            {
+                var locations = framework.ConfigureLocations();
+                if (option == "polling")
+                    locations.PollingInterval = TimeSpan.Zero;
+                else
+                    locations.StoreFailureGrace = TimeSpan.Zero;
             }));
 
         Assert.Contains("greater than zero", exception.Message, StringComparison.Ordinal);

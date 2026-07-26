@@ -74,7 +74,7 @@ public class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(mission.logDirectory() + "/flow-" + mission.instanceName() + ".log")
                 .traceLabel(mission.instanceName());
-            options.addClientServerChannel(SampleNames.questOwnerChannelFor(mission.instanceName()))
+            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
                 .enableServer(mission.channelEndpoint())
                 .addHandlerGroup("quest-owner");
             options.addClientServerChannel(SampleNames.questNotificationChannelFor("api-a"))
@@ -83,7 +83,7 @@ public class Program {
                 .enableClient();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.PlayerQuestSpotDiscovery);
             node.listen(mission.spotRouterEndpoint())
-                .setRoutingId(mission.routingId());
+                .useAllocatedRoutingId(16, "gamequest-mission-owner");
             node.addSpotFactory(PlayerQuestSpot.class);
         };
     }

@@ -22,7 +22,7 @@ namespace zlink::samples::deliverydispatch
 
 using namespace framework;
 
-static std::string g_node_rid;
+static std::string g_instance_name;
 
 class courier_actor_t
 {
@@ -129,10 +129,10 @@ class courier_entry_spot_t : public entry_spot_t
         }
         auto bound = co_await actors.bind_or_get (actor.value ().ref ()).submit ();
         auto joined = co_await bound.context ()
-                        .join_entry_spot (node_rid_t::from_string (g_node_rid), request)
+                        .join_entry_spot (request)
                         .async ();
         std::cerr << "deliverydispatch courier-route: ensured courier=" << request.courier_id
-                  << " node=" << g_node_rid << "\n";
+                  << " instance=" << g_instance_name << "\n";
         co_return ensure_courier_actor_res_t{
           request.courier_id,
           actor_ref_snapshot_t::from (
@@ -212,23 +212,21 @@ int main (int argc, char **argv)
     auto app = app_t::create ();
     const auto configuration = load_sample_configuration (app, argc, argv);
     const auto &topology = configuration.topology;
-    const std::string node_rid = configuration.role.node_rid;
-    if (node_rid.empty ()) {
-        throw std::runtime_error ("sample.role.nodeRid is required for the courier actor node");
+    const std::string instance_name = configuration.role.instance_name;
+    if (instance_name.empty ()) {
+        throw std::runtime_error (
+          "sample.role.instanceName is required for the courier actor node");
     }
-    g_node_rid = node_rid;
-    const auto spot_router_endpoint = node_rid == sample_names_t::courier_actor_node_1
+    g_instance_name = instance_name;
+    const auto spot_router_endpoint = instance_name == sample_names_t::courier_actor_instance_1
                                         ? topology.courier_actor_node_1_router_endpoint
                                         : topology.courier_actor_node_2_router_endpoint;
-    const auto spot_endpoint = node_rid == sample_names_t::courier_actor_node_1
-                                 ? topology.courier_actor_node_1_endpoint
-                                 : topology.courier_actor_node_2_endpoint;
 
     app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
         options.configure_dispatch ()
           .message_flow (message_flow_log_mode_t::key_transitions)
           .trace_log_file (configuration.flow_log_path ())
-          .trace_label ("deliverydispatch-" + node_rid);
+          .trace_label ("deliverydispatch-" + instance_name);
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         auto runtime =
@@ -239,7 +237,7 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::dispatch_route_channel)
           .enable_client ();
         auto actor_mesh = options.add_route_mesh (sample_names_t::courier_actor_discovery);
-        actor_mesh.set_routing_id (zlink::routing_id_t::from (node_rid))
+        actor_mesh.use_allocated_routing_id (16, "delivery-courier")
           .listen (spot_router_endpoint);
         actor_mesh.channel_name (sample_names_t::courier_actor_discovery);
         actor_mesh.add_entry_spot<courier_entry_spot_t> (

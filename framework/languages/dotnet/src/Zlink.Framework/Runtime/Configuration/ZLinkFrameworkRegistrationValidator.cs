@@ -123,9 +123,8 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         var objectMeshes = registration.SpotNodes.Values
             .Where(static node => node.ObjectRoleSelected)
             .ToArray();
-        if (objectMeshes.Length != 1)
+        if (objectMeshes.Length == 0)
             throw new ZLinkConfigurationException(
-                $"STREAM node '{streamNode.StreamNodeName}' requires exactly one local Object Client or Server MeshNode.");
-        streamNode.ActorDispatchMeshName = objectMeshes[0].SpotNodeName;
+                $"STREAM node '{streamNode.StreamNodeName}' requires at least one local Object Client or Server MeshNode.");
     }
 }

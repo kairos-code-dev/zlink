@@ -11,27 +11,24 @@ internal sealed class RedisBingoMatchQueue(
     private const string Script = """
                                   local key = KEYS[1]
                                   local actorId = ARGV[1]
-                                  local ownerRid = ARGV[2]
-                                  local newRoomId = ARGV[3]
-                                  local requiredPlayers = tonumber(ARGV[4])
-                                  local nowMs = ARGV[5]
+                                  local newRoomId = ARGV[2]
+                                  local requiredPlayers = tonumber(ARGV[3])
+                                  local nowMs = ARGV[4]
 
                                   local roomId = redis.call('HGET', key, 'RoomId')
                                   if not roomId then
                                     redis.call('HMSET', key,
                                       'RoomId', newRoomId,
-                                      'OwnerPlayNodeRid', ownerRid,
                                       'ReservedActorIds', actorId,
                                       'RequiredPlayers', requiredPlayers,
                                       'CreatedAtUnixMs', nowMs)
-                                    return { newRoomId, ownerRid }
+                                    return newRoomId
                                   end
 
-                                  local existingOwnerRid = redis.call('HGET', key, 'OwnerPlayNodeRid')
                                   local actors = redis.call('HGET', key, 'ReservedActorIds') or ''
                                   local needle = '|' .. actorId .. '|'
                                   if string.find('|' .. actors .. '|', needle, 1, true) then
-                                    return { roomId, existingOwnerRid }
+                                    return roomId
                                   end
 
                                   local count = 0
@@ -42,11 +39,10 @@ internal sealed class RedisBingoMatchQueue(
                                   if count >= requiredPlayers then
                                     redis.call('HMSET', key,
                                       'RoomId', newRoomId,
-                                      'OwnerPlayNodeRid', ownerRid,
                                       'ReservedActorIds', actorId,
                                       'RequiredPlayers', requiredPlayers,
                                       'CreatedAtUnixMs', nowMs)
-                                    return { newRoomId, ownerRid }
+                                    return newRoomId
                                   end
 
                                   if actors == '' then
@@ -58,34 +54,31 @@ internal sealed class RedisBingoMatchQueue(
                                   if count + 1 >= requiredPlayers then
                                     redis.call('DEL', key)
                                   end
-                                  return { roomId, existingOwnerRid }
+                                  return roomId
                                   """;
 
     public async ValueTask<BingoMatchReservation> ReserveAsync(
         string mode,
         string actorId,
-        string preferredOwnerNodeRid,
         string newRoomId,
         int requiredPlayers,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var values = (RedisResult[]?)await redis.GetDatabase().ScriptEvaluateAsync(
+        var value = await redis.GetDatabase().ScriptEvaluateAsync(
             Script,
             [MatchKey(mode)],
             [
                 actorId,
-                preferredOwnerNodeRid,
                 newRoomId,
                 requiredPlayers,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             ]);
-        if (values is not { Length: 2 })
+        var roomId = (string?)value;
+        if (string.IsNullOrWhiteSpace(roomId))
             throw new InvalidOperationException("Redis match queue returned an invalid reservation.");
 
-        return new BingoMatchReservation(
-            (string)values[0]!,
-            (string)values[1]!);
+        return new BingoMatchReservation(roomId);
     }
 
     private RedisKey MatchKey(string mode)

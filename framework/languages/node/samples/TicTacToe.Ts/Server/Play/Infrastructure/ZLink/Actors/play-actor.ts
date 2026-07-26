@@ -109,8 +109,7 @@ class DeliverPlayNotificationHandler {
         value.roomId,
         value.actorId,
         value.displayName,
-        value.wins,
-        value.receivingSpotNodeRid
+        value.wins
       ));
       return;
     }

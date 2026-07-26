@@ -53,6 +53,14 @@ Channel send/request는 ChannelName 하나로 대상을 지정한다. 샘플은 
 - 로컬 sample runner는 기본 BindHost `127.0.0.1`과 automatic port 0을 사용한다. Container·Kubernetes
   배포는 `ConfigureNetwork()`에 Pod 또는 Service에서 remote peer가 연결할 AdvertiseHost를
   명시한다. Wildcard BindHost를 descriptor의 advertised endpoint로 기록하지 않는다.
+- Sample은 특정 MeshNode의 `NodeRid`를 설정값, message field나 업무 상수로 미리 공유하지 않는다.
+  Actor·Spot 생성과 direct messaging은 global `ActorId`·`SpotId`와 Location Store 기반 배치를
+  사용하며, caller가 owner node를 선택하거나 owner `NodeRid`를 전달하지 않는다. 수동 topology도
+  peer endpoint만 구성하고 상대 `NodeRid`를 application route로 사용하지 않는다.
+- Node direct messaging이나 운영 관측을 보여 주는 경우에는 runtime descriptor에서 현재 발견한
+  `NodeRid`만 그 시점의 target 또는 표시 값으로 사용할 수 있다. 이를 저장해 다음 실행의 고정
+  target으로 사용하거나 Actor·Spot 위치를 추론해서는 안 된다. 업무상 `NodeId`가 필요한 sample은
+  transport `NodeRid`와 다른 domain identifier로 정의하고 framework routing에 사용하지 않는다.
 - STREAM과 classic Pub/Sub은 Channel egress가 아니므로 독립 listener를 유지한다.
 
 언어별 sample topology regression은 다음 공통 fixture를 읽어야 한다. 같은 기대값을 언어별 source에
@@ -80,7 +88,7 @@ framework/doc/framework/common/sample/fixtures/
 | sample | Client 역할 | Server 역할 |
 |---|---|---|
 | Bingo | Session·Play: `bingo.api`; Api: `bingo.room` | Api: `bingo.api`; Play: `bingo.room` (reward Logical Multicast 대상 포함) |
-| TicTacToe | Play: `tictactoe.api`; Api: `play-0`, `play-1` | Api: `tictactoe.api`; 각 Play: 자기 play Channel; milestone 대상은 Play만 등록 |
+| TicTacToe | Play: `tictactoe.api`; Api: `tictactoe.play` | Api: `tictactoe.api`; 두 Play: `tictactoe.play`; milestone 대상은 Play만 등록 |
 | SupportChat | Session: api·support; Api: support; Support: api | Api: api; Support: support |
 | DeliveryDispatch | CourierActorNode: dispatch; ClientServer의 Dispatch: tracking | RouteMesh의 Dispatch: dispatch; ClientServer의 Tracking: tracking |
 | ShoppingMall | 없음. CommerceApi는 Order ID의 global SpotRid로 direct Spot call을 시작하고 `InstanceSpot("shoppingmall.order-workflow")` marker를 명시한다 | 없음. OrderWorkflow는 `OrderWorkflowSpot` Instance factory만 제공 |

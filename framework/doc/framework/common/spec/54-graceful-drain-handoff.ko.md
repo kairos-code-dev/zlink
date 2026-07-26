@@ -93,12 +93,13 @@ Result는 호출을 처리한 `EffectiveIntent`, `Outcome`, `Reason`을 함께 �
 | 값 | Outcome | 허용 reason | 계약 |
 |---:|---|---|---|
 | 0 | `Stopped` | `None` | 요청한 host 종료가 정상 완료됨 |
-| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` | `Retire`가 첫 relocation commit 전에 continuity를 준비하지 못해 reversible 작업을 정리하고 `Serving`을 복원함 |
+| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady`, `ManualTopologyUnsupported` | `Retire`가 첫 relocation commit 전에 continuity를 준비하지 못해 reversible 작업을 정리하고 `Serving`을 복원함 |
 | 2 | `ForceStopped` | `DeadlineExceeded`, `RelocationFailed`, `TeardownFailed` | admission을 닫은 뒤 bounded teardown으로 host resource를 정리함 |
 
 Outcome wire 값은 `Stopped=0`, `Blocked=1`, `ForceStopped=2`다. Reason wire 값은 `None=0`,
 `TargetUnavailable=1`, `StoreUnavailable=2`, `RelocationDisabled=3`, `StateIncompatible=4`,
-`DeadlineExceeded=5`, `RelocationFailed=6`, `TeardownFailed=7`, `RuntimeNotReady=8`이다. 정의하지 않은 outcome과
+`DeadlineExceeded=5`, `RelocationFailed=6`, `TeardownFailed=7`, `RuntimeNotReady=8`,
+`ManualTopologyUnsupported=9`이다. 정의하지 않은 outcome과
 reason 조합은 protocol 오류다.
 
 Published Location [authority](01-glossary.ko.md#authority)가 가리키는 Relocation root의 permanent missing, checksum mismatch 또는 inventory digest
@@ -174,16 +175,35 @@ relocation unit을 seal하거나 final target reservation을 만들지 않는다
 
 1. Barrier가 새 Spot·Actor 생성, join, Instance placement, session binding과 inbound relocation을 inventory와
    직렬화한다.
-2. 모든 local MeshNode의 Actor, [Spot](01-glossary.ko.md#spot), timer, session과 진행 중인 infrastructure operation을 inventory한다.
-3. Location authority, 필요한 Relocation Store와 target descriptor의 lease를 확인한다.
-4. Standalone Actor, User Spot aggregate와 Instance Spot의 relocation policy, Snapshot adapter capability와 target의
+2. Host가 사용하는 service topology가 모두 automatic discovery인지 확인한다. Local manual RouteMesh peer,
+   ClientServer client endpoint, fanout subscriber endpoint 또는 Location Store에 descriptor를 게시하지 않는
+   manual fanout publisher가 하나라도 있으면 `ManualTopologyUnsupported`로 차단한다. 이 조건은 endpoint가
+   현재 연결되어 있는지와 관계없이 registration을 기준으로 판단한다. Automatic server·publisher·MeshNode가
+   listener 주소를 명시적으로 bind하는 설정 자체는 manual topology가 아니다.
+3. 모든 local MeshNode의 Actor, [Spot](01-glossary.ko.md#spot), timer, session과 진행 중인 infrastructure operation을 inventory한다.
+4. Location authority, 필요한 Relocation Store와 target descriptor의 lease를 확인한다.
+5. Standalone Actor, User Spot aggregate와 Instance Spot의 relocation policy, Snapshot adapter capability와 target의
    bounded headroom을 확인한다. Exact inventory가 아직 없으므로 final reservation은 만들지 않는다.
-5. Target이 `Serving`이고 application version, type capability, maintenance wave와 bounded capacity를
-   모두 만족하는지 확인한다.
+6. Target이 `Serving`이고 application version, type capability, maintenance wave와 bounded capacity를
+   모두 만족하는지 확인한다. Target application version은 source와 같거나 커야 하므로 same-version maintenance와
+   N→N+1 patch를 모두 허용하고 더 오래된 version으로는 이전하지 않는다. Source에 maintenance wave가 설정되어
+   있으면 같은 wave의 target은 제외하고 다른 wave의 compatible target만 사용한다.
+7. Source가 읽은 각 automatic RouteMesh의 complete descriptor snapshot에는 source 자신을 제외한 non-draining
+   replacement peer가 최소 하나 있어야 한다. 각 replacement peer는 Core peer table에서 같은 RID와 lifecycle
+   generation이 `Admitted`이고 `Ready`여야 한다. 빈 snapshot, source 자신만 있는 snapshot, 모든 remote peer가
+   draining인 snapshot, descriptor publication 또는 connect intent만으로는 이 조건을 충족하지 않는다. 아직
+   준비되지 않은 peer가 있으면 host state와 admission을 바꾸지 않고 deadline까지 새 snapshot과 Core peer table의
+   수렴을 기다린다.
 
 Preflight가 성공하면 host state와 descriptor를 `Retiring`으로 게시한다. 이 publication부터 새 [ChannelName](01-glossary.ko.md#channelname)·Logical
 Multicast selection, object placement, membership 변경, inbound relocation target과 신규 session binding에서 host를
 제외한다. 기존 [owner](01-glossary.ko.md#owner)로 직접 들어오는 application message와 timer는 unit별 seal 전까지 계속 처리한다.
+
+여러 MeshNode의 `Retiring` descriptor를 게시하다 일부 write가 실패하거나 응답을 확인할 수 없으면, Framework는
+시도한 descriptor 전체를 `Serving`으로 되돌린다. 모든 rollback write를 확인한 경우에만 host state와 admission을
+유지하고 `Blocked/StoreUnavailable`을 반환한다. 하나라도 rollback을 확인할 수 없으면 Location Store에는 이미
+`Retiring`이 공개됐을 수 있으므로 `Serving`으로 복원됐다고 보고하지 않는다. 이 경우 신규 admission을 닫고 bounded
+cleanup을 수행한 뒤 `ForceStopped/TeardownFailed`로 끝낸다.
 
 Framework는 다음 세 종류를 relocation unit으로 inventory한다.
 
@@ -207,12 +227,40 @@ capture하거나 일부 participant만 seal하지 않는다.
 `Serving`이고 readiness, descriptor와 application admission도 그대로 유지된다. 한 process에
 여러 MeshNode가 있으면 한 Mesh의 blocker가 host 전체 `Retire`를 차단한다.
 
-Maintenance barrier나 target reservation을 deadline 전에 확보하지 못하면 `TargetUnavailable`, Store read·write
+Maintenance barrier, target reservation 또는 automatic RouteMesh의 exact peer readiness를 deadline 전에 확보하지
+못하면 `TargetUnavailable`, Store read·write
 또는 lease 확인이 실패하면 `StoreUnavailable`, relocation policy가 허용하지 않으면 `RelocationDisabled`를
 사용한다. Application version·type·Snapshot adapter capability가 맞지 않거나 허용된 attempt에서
 `Capture`·`Restore`가 모두 실패하면 `StateIncompatible`를 사용한다. Framework가 operation deadline 때문에
 callback을 취소하면 `DeadlineExceeded`를 사용한다. Framework는 application state bytes를 해석하거나 별도 state
 contract ID를 비교하지 않는다.
+
+### 3.1 Rolling replacement topology 순서
+
+Framework가 지원하는 `Retire`는 참여하는 framework host와 client가 모두 automatic discovery를 사용하는
+closed-world 구성을 전제로 한다. Deployment는 replacement node를 먼저 할당하고 시작한다. Framework는 새 node가
+descriptor를 게시했다는 사실만으로 기존 host를 종료하지 않는다. Source가 exact RID와 lifecycle generation의
+peer를 Core table에서 `Admitted`·`Ready`로 확인한 뒤에만 `Retiring`을 게시한다.
+
+Runtime preflight가 직접 차단할 수 있는 범위는 해당 host의 local registration이다. 다른 process가 Framework
+밖에서 만든 manual connection이나 외부 client의 endpoint 구성은 source runtime이 관찰할 수 없다. 따라서 참여
+process 전체가 automatic discovery만 사용한다는 조건은 deployment가 보장해야 하는 전제이며, Framework가 cluster
+전체의 외부 connection mode를 검사했다고 해석하지 않는다.
+
+그 뒤에는 다음 순서를 유지한다.
+
+1. Green node가 `Serving` descriptor를 게시하고 source의 automatic RouteMesh에서 exact peer가 `Ready`가 된다.
+2. Old host가 `Retiring`을 게시해 새 selection과 placement에서 제외된다.
+3. Stateful relocation을 target의 `Prepared`, authority commit과 steady normalization까지 진행한다.
+4. 모든 relocation unit이 source dispatch에서 분리된 뒤 old host가 `Draining`을 게시하고 accepted work,
+   reply, STREAM과 session barrier를 완료한다.
+5. Descriptor와 owner lease를 release한다.
+6. 마지막으로 peer connection, listener와 raw transport를 disconnect한다.
+
+Automatic ClientServer client와 fanout subscriber는 green descriptor를 발견해 새 connection을 만들고 old descriptor의
+`Retiring`·`Draining` 상태를 새 selection에 반영한다. Old connection은 해당 topology의 accepted work와 barrier가
+끝나기 전에 descriptor 변화만을 이유로 닫지 않는다. Framework는 manual endpoint가 replacement node를 가리키도록
+바뀌었는지 증명할 수 없으므로 manual topology를 이 순서의 일부로 인정하지 않는다.
 
 ## 4. Bounded sliding relocation
 
@@ -230,10 +278,12 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
    callback이나 `Capture`를 시작하지 않는다.
 3. Seal 시점에 실행하지 않은 message queue, accepted journal, timer logical registration·pending tick과 Framework
    manifest·metadata를 exact boundary로 고정한다. `Snapshot`이면 `Capture`를 실행해 application state를 추가한다.
-4. Immutable relocation root를 저장하고 `Captured` authority를 연결한 뒤 exact inventory로 target reservation,
-   factory와 필요한 `Restore`를 완료한다. Accepted journal과 timer state는 실행하지 않은 채 staging한다.
-5. `Prepared` CAS 뒤 owner·membership을 target으로 commit한다. Source ingress hold에 도착한 message는 original
-   operation identity와 generation을 유지해 committed target으로 relay한다.
+4. Target factory와 `Restore`에 필요한 initial staging root를 저장한 뒤 exact inventory로 target reservation과
+   staging을 완료한다. 이 root는 target admission을 열거나 public authority의 복원 근거로 사용하지 않는다.
+5. Commit 경계에서 source ingress hold의 high-water를 고정한다. Initial state와 hold journal을 함께 가리키는
+   final immutable manifest를 저장하고 검증한 뒤 `Prepared` CAS와 owner·membership commit을 수행한다. Location
+   authority는 이 final manifest만 공개한다. Hold message는 original operation identity와 generation을 유지해
+   committed target으로 relay한다.
 6. Standalone Actor는 target lifecycle callback과 accepted message·journal replay를 완료하고 Framework timer를
    자동 복원한다. 그 뒤 old Entry membership과 남은 source resource의 durable cleanup,
    `Completed`를 마친다. 같은 ObjectGeneration의 Actor가 Session에 bind되어 있으면
@@ -253,8 +303,10 @@ Payload byte에는 application state, seal 시점의 미실행 message queue, ac
 registration·pending tick, relocation manifest와 Framework metadata를 모두 포함한다. Queue turn 경계에서
 Framework는 admission sequencing fence를 잠시 유지해 현재 accepted framework-owned bytes와 count를 고정한다.
 Permit 획득에 실패하면 fence를 해제하고 새 ingress를 source queue에 계속 수락하며 semantic seal이나 ingress hold를
-만들지 않는다. Permit 획득에 성공하면 같은 경계에서 seal하므로 그 뒤 도착한 ingress는 reservation 계산에 섞지 않고
-source ingress hold로 보낸다.
+만들지 않는다. Permit 획득에 성공하면 같은 경계에서 seal하므로 그 뒤 도착한 ingress는 source ingress hold로 보낸다.
+Framework는 실제 도착량을 permit에 나중에 더하지 않는다. Hold는 최대 1,024개 record와 journal header를 포함한
+16 MiB encoded size로 제한하며, 이 최대 크기를 seal 시점의 byte reservation에 포함한다. Final manifest가 그
+범위 안에서 만들어지면 actual encoded size로만 reservation을 축소한다.
 
 Application state 크기를 미리 묻는 public callback이나 application 제공 estimate는 두지 않는다. Snapshot participant
 하나의 reservation은 [23 Spot Actor](23-spot-actor.ko.md)가 정한 64 MiB 최대값을 사용한다. Framework-owned
@@ -272,9 +324,10 @@ Actual size로 축소한 뒤 window 안에 들어오더라도 해당 aggregate�
 유지한다. 따라서 큰 aggregate와 normal unit이 서로의 partial permit을 보유한 채 대기하지 않는다. Standalone
 Actor와 Instance Spot unit은 configured byte gate 안에서만 admit한다.
 
-Seal 뒤 source로 들어온 application ingress는 relocation payload에 추가하지 않고 bounded source ingress hold에
-보관한다. Commit 전 abort는 hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 target으로 relay한다.
-Hold의 message·byte 상한을 넘은 request는 `TargetMoving`, one-way operation은 moving drop으로 끝낸다. Source는
+Seal 뒤 source로 들어온 application ingress는 initial staging root에 추가하지 않고 bounded source ingress hold에
+보관한다. Commit 경계에서 final immutable manifest의 accepted journal에 포함해 durable하게 만든 뒤 authority를
+commit한다. Commit 전 abort는 hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 target으로 relay한다.
+Hold의 message·byte 상한을 넘은 request는 `SpotMoving`, one-way operation은 moving drop으로 끝낸다. Source는
 commit 전에 hold를 target application handler로 전달하지 않는다.
 
 모든 relocation unit이 source dispatch에서 분리되고 source ingress hold가 commit 또는 abort로 정리된 뒤 host를
@@ -292,9 +345,10 @@ Store failure가 첫 relocation commit 전에 발생하면 durable abort와 reve
 `StoreUnavailable`은 `ForceStopped` reason으로 사용하지 않는다.
 
 Deadline이 preflight 또는 첫 unit commit 전에 도달하면 relocation reference와 reservation을 정리하고 source
-authority와 admission을 원래 상태로 복원한 뒤 `Blocked/DeadlineExceeded`로 끝낸다. 첫 unit commit 뒤에는 deadline을
-이유로 `Blocked`로 되돌리지 않는다. 이 시점 이후 deadline은 bounded teardown과 recovery handoff를 수행한 뒤
-`ForceStopped/DeadlineExceeded`로 한 번만 완료한다.
+authority와 admission을 원래 상태로 복원한다. Automatic RouteMesh의 exact peer readiness가 끝까지 수렴하지 않은
+경우는 `Blocked/TargetUnavailable`, 그 밖의 precommit deadline은 `Blocked/DeadlineExceeded`로 끝낸다. 첫 unit
+commit 뒤에는 deadline을 이유로 `Blocked`로 되돌리지 않는다. 이 시점 이후 deadline은 bounded teardown과 recovery
+handoff를 수행한 뒤 `ForceStopped/DeadlineExceeded`로 한 번만 완료한다.
 
 Descriptor를 `Draining`으로 게시했다는 이유만으로 peer connection을 즉시 끊지 않는다. In-flight reply,
 relocation control과 STREAM barrier가 같은 ROUTER connection을 사용할 수 있기 때문이다.
@@ -334,8 +388,10 @@ provider 부재는 `Shutdown`을 차단하지 않는다. Hardware failure나 SIG
 | ClientServer server | 새 target selection에서 제외하되 이미 수락한 handler와 reply route를 유지한다. | handler admission을 닫고 accepted request의 reply route만 유지한다. |
 | classic fanout publisher | 새 automatic subscriber 연결을 만들지 않고 이미 수락한 event를 처리한다. | publish admission을 닫고 이미 수락한 event만 처리한다. |
 
-Retire relocation에서 seal 뒤 도착한 request는 retry 가능한 `TargetMoving`으로 끝내고 one-way operation은
-[shutdown](01-glossary.ko.md#shutdown) drop으로 관측한다. Framework가 새 operation ID로 다른 owner에 숨은 재제출을 시작하지 않는다.
+Retire relocation에서 seal 뒤 이전 owner에 도착한 operation은 bounded source ingress hold에 먼저 보관한다.
+Commit하면 같은 operation ID와 generation으로 target에 relay하고 abort하면 source queue에 되돌린다. Hold의
+message·byte 상한을 넘은 request만 retry 가능한 `SpotMoving`으로 끝내며 one-way operation은 moving drop으로
+관측한다. Framework가 새 operation ID로 다른 owner에 숨은 재제출을 시작하지 않는다.
 [23 Spot Actor](23-spot-actor.ko.md)의 bounded stale-route forwarding이 적용되는 Actor message는 같은 operation
 ID와 object·authority owner generation fence를 유지하며 별도 application retry로 취급하지 않는다. Shutdown에서 seal 뒤
 도착한 request는 shutdown 결과로 끝난다.
@@ -416,8 +472,9 @@ relocation과 session barrier가 사용하는 fence를 잃을 수 있다. Barrie
 4. Peer connection, listener, executor와 binding raw transport를 닫는다.
 
 Store failure 뒤에도 local readiness와 admission seal은 닫힌 상태를 유지한다. Deadline까지 authority나 cleanup을
-확인할 수 없으면 `Stopped`로 보고하지 않고 bounded teardown 뒤 `ForceStopped`를 완료한다. Manual peer mode는
-store record 대신 admission된 peer control로 state를 전파하고 barrier 뒤 connection을 닫는다.
+확인할 수 없으면 `Stopped`로 보고하지 않고 bounded teardown 뒤 `ForceStopped`를 완료한다. Manual peer를 포함한
+host는 `Retire` preflight에서 차단되지만 `Shutdown`은 admission된 peer control로 state를 전파하고 barrier 뒤
+connection을 닫는다.
 
 ## 9. 관측 정보
 
@@ -440,6 +497,16 @@ relocation 진행을 막지 않는다.
 ## 10. 구현 및 contract test 검증 요구
 
 - `Retire` preflight blocker가 있으면 host state가 `Serving`이고 모든 local admission이 유지된다.
+- Manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
+  하나라도 있으면 `Retire`가 `Blocked/ManualTopologyUnsupported`로 끝나며 `Shutdown`은 계속 동작한다.
+- Automatic RouteMesh의 descriptor만 게시된 상태에서는 `Retire` preflight가 통과하지 않는다. Source Core peer
+  table에서 exact RID와 lifecycle generation이 `Admitted`·`Ready`가 된 뒤에만 `Retiring`을 게시한다.
+- Automatic RouteMesh의 complete snapshot이 비어 있거나 source 자신만 포함하거나 모든 remote peer가 draining이면
+  replacement가 없는 것으로 판정하여 `Blocked/TargetUnavailable`로 끝난다.
+- Rolling replacement는 green `Ready`, old `Retiring`, relocation, old `Draining`과 barrier, descriptor·owner lease
+  release, disconnect 순서를 지킨다.
+- Same-version target과 더 높은 application version target은 compatible하고, 더 낮은 version과 source와 같은
+  maintenance wave의 target은 preflight에서 제외한다.
 - Multi-Mesh host의 preflight가 all-or-none으로 동작하고 unit seal은 permit 기반 sliding window로 진행된다.
 - `Retire` 성공은 supported standalone Actor·User Spot aggregate·Instance Spot continuity, session barrier와 host
   cleanup을 모두 완료한다.

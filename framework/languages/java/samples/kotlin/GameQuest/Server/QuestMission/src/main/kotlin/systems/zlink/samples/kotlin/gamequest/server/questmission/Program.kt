@@ -76,7 +76,7 @@ class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${mission.logDirectory}/flow-${mission.instanceName}.log")
                 .traceLabel(mission.instanceName)
-            options.addClientServerChannel(SampleNames.questOwnerChannelFor(mission.instanceName))
+            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
                 .enableServer(mission.channelEndpoint)
                 .addHandlerGroup("quest-owner")
         }

@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -37,7 +36,7 @@ class CustomerGatewayApplication {
                 .traceLabel("customer-gateway")
             val node = options.addRouteMesh(SampleNames.CustomerSpotMesh)
             node.listen(SampleTopology.CustomerSpotRouterEndpoint)
-                .setRoutingId(RoutingId.from(SampleTopology.CustomerSpotNodeRid))
+                .useAllocatedRoutingId(16, "delivery-customer")
             node.addEntrySpot(CustomerEntrySpot::class.java)
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory::class.java)
             options.addStreamNode(SampleNames.CustomerStreamNode)

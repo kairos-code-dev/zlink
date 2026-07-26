@@ -74,7 +74,28 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate) return _spots.Count == 0;
     }
 
-    internal async ValueTask<bool> TryRelocateForRetireAsync(
+    internal ValueTask<ZLinkFrameworkTerminationReason?> PreflightRetireAsync(
+        ZLinkRetirePreflightPlan plan,
+        CancellationToken cancellationToken)
+    {
+        (ZLinkSpotActivation Activation, bool Instance)[] units;
+        lock (_gate)
+        {
+            if (_spots.Count == 0)
+                return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(null);
+            if (_retireScheduler is null)
+                return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(
+                    ZLinkFrameworkTerminationReason.RelocationDisabled);
+            units = _spots.Values
+                .Select(activation => (
+                    activation,
+                    _instanceSpotTypes.ContainsKey(activation.SpotId)))
+                .ToArray();
+        }
+        return _retireScheduler.PreflightAsync(units, plan, cancellationToken);
+    }
+
+    internal async ValueTask<ZLinkSpotDrainResult> TryRelocateForRetireAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -82,9 +103,9 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             if (_spots.Count == 0)
-                return true;
+                return new ZLinkSpotDrainResult(true, 0);
             if (_retireScheduler is null)
-                return false;
+                return new ZLinkSpotDrainResult(false, 0);
             units = _spots.Values
                 .Select(activation => (
                     activation,
@@ -99,7 +120,9 @@ internal sealed class ZLinkSpotNodeCatalog(
                            .Max();
         var moves = units.Select(unit => RelocateAsync(unit).AsTask()).ToArray();
         var results = await Task.WhenAll(moves).ConfigureAwait(false);
-        return results.All(static result => result);
+        return new ZLinkSpotDrainResult(
+            results.All(static result => result),
+            checked((ulong)results.Count(static result => result)));
 
         async ValueTask<bool> RelocateAsync(
             (ZLinkSpotActivation Activation, bool Instance) unit)
@@ -116,6 +139,10 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
             catch (OperationCanceledException)
                 when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (ZLinkAuthorityGenerationExhaustedException)
             {
                 throw;
             }
@@ -1240,6 +1267,13 @@ internal sealed class ZLinkSpotNodeCatalog(
             _completion.TrySetException(error);
         }
     }
+}
+
+internal readonly record struct ZLinkSpotDrainResult(
+    bool Completed,
+    ulong CommittedUnitCount)
+{
+    internal bool HasCommitted => CommittedUnitCount != 0;
 }
 
 internal sealed record PreparedReservedSpot(

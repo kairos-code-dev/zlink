@@ -36,7 +36,8 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         ulong targetNodeGeneration = 0,
         ulong authorityOwnerGeneration = 0,
         ulong ownerLeaseGeneration = 0,
-        byte forwardingHopCount = 0)
+        byte forwardingHopCount = 0,
+        ulong sourceNodeGeneration = 0)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
@@ -50,6 +51,7 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         AuthorityOwnerGeneration = authorityOwnerGeneration;
         OwnerLeaseGeneration = ownerLeaseGeneration;
         ForwardingHopCount = forwardingHopCount;
+        SourceNodeGeneration = sourceNodeGeneration;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -78,6 +80,8 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
     public ulong OwnerLeaseGeneration { get; }
 
     public byte ForwardingHopCount { get; }
+
+    public ulong SourceNodeGeneration { get; }
 
     public bool CanReply => _reply is not null;
 

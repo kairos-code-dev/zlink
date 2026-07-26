@@ -23,7 +23,6 @@ class redis_bingo_match_queue_t final : public bingo_match_queue_t
 
     bingo_match_reservation_t reserve (const std::string &mode,
                                        const std::string &actor_id,
-                                       const std::string &preferred_owner_node_rid,
                                        const std::string &new_room_id,
                                        int required_players) override
     {
@@ -31,12 +30,12 @@ class redis_bingo_match_queue_t final : public bingo_match_queue_t
                                            std::chrono::system_clock::now ().time_since_epoch ())
                                            .count ());
         auto reply =
-          execute ({"EVAL", script (), "1", match_key (mode), actor_id, preferred_owner_node_rid,
-                    new_room_id, std::to_string (required_players), now});
-        if (reply.size () != 2) {
+          execute ({"EVAL", script (), "1", match_key (mode), actor_id, new_room_id,
+                    std::to_string (required_players), now});
+        if (reply.size () != 1) {
             throw std::runtime_error ("Redis match queue returned an invalid reservation.");
         }
-        return {reply[0], reply[1], false};
+        return {reply[0]};
     }
 
   private:
@@ -49,27 +48,24 @@ class redis_bingo_match_queue_t final : public bingo_match_queue_t
     {
         return R"(local key = KEYS[1]
 local actorId = ARGV[1]
-local ownerRid = ARGV[2]
-local newRoomId = ARGV[3]
-local requiredPlayers = tonumber(ARGV[4])
-local nowMs = ARGV[5]
+local newRoomId = ARGV[2]
+local requiredPlayers = tonumber(ARGV[3])
+local nowMs = ARGV[4]
 
 local roomId = redis.call('HGET', key, 'RoomId')
 if not roomId then
   redis.call('HMSET', key,
     'RoomId', newRoomId,
-    'OwnerPlayNodeRid', ownerRid,
     'ReservedActorIds', actorId,
     'RequiredPlayers', requiredPlayers,
     'CreatedAtUnixMs', nowMs)
-  return { newRoomId, ownerRid }
+  return { newRoomId }
 end
 
-local existingOwnerRid = redis.call('HGET', key, 'OwnerPlayNodeRid')
 local actors = redis.call('HGET', key, 'ReservedActorIds') or ''
 local needle = '|' .. actorId .. '|'
 if string.find('|' .. actors .. '|', needle, 1, true) then
-  return { roomId, existingOwnerRid }
+  return { roomId }
 end
 
 local count = 0
@@ -80,11 +76,10 @@ end
 if count >= requiredPlayers then
   redis.call('HMSET', key,
     'RoomId', newRoomId,
-    'OwnerPlayNodeRid', ownerRid,
     'ReservedActorIds', actorId,
     'RequiredPlayers', requiredPlayers,
     'CreatedAtUnixMs', nowMs)
-  return { newRoomId, ownerRid }
+  return { newRoomId }
 end
 
 if actors == '' then
@@ -96,7 +91,7 @@ redis.call('HSET', key, 'ReservedActorIds', actors)
 if count + 1 >= requiredPlayers then
   redis.call('DEL', key)
 end
-return { roomId, existingOwnerRid })";
+return { roomId })";
     }
 
     static std::pair<std::string, std::string> split_endpoint (std::string endpoint)

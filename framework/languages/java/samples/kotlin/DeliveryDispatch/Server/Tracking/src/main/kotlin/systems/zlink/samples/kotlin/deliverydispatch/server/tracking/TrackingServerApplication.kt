@@ -36,7 +36,7 @@ class TrackingServerApplication {
             options.addHandlersFromPackageOf(TrackingServerApplication::class.java)
             options.addRouteMesh(SampleNames.CustomerSpotMesh)
                 .listen(SampleTopology.TrackingSpotEndpoint)
-                .setRoutingId(RoutingId.from("tracking"))
+                .useAllocatedRoutingId(16, "delivery-tracking")
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(SampleTopology.TrackingChannelEndpoint)
                 .setRoutingId(RoutingId.from("delivery-tracking-server"))

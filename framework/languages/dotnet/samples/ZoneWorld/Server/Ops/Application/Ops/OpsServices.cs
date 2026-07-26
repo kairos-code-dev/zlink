@@ -43,7 +43,7 @@ public sealed class MaintenanceService(
             ? new SetMaintenanceRes(
                 nodeId,
                 enabled,
-                ZoneTopology.ZonesOf(nodeId),
+                [],
                 ZoneWorldErrors.NodeUnavailable)
             : new SetMaintenanceRes(applied.NodeId, applied.Enabled, applied.Zones);
     }
@@ -60,7 +60,7 @@ public sealed class NodeDiagnosticsService(IWorldOperationsPort operations)
         return diagnostics is null
             ? new NodeDiagnosticsRes(
                 nodeId,
-                ZoneTopology.ZonesOf(nodeId),
+                [],
                 PlayerCount: 0,
                 Maintenance: false,
                 ZoneWorldErrors.NodeUnavailable)

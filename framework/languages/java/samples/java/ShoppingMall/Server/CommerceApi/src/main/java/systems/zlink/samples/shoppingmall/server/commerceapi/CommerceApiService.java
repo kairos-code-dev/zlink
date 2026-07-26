@@ -43,7 +43,7 @@ public final class CommerceApiService {
 
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(mapping.orderId())),
+                SampleNames.OrderWorkflowChannel,
                 workflowRequest)
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.StartOrderWorkflowRes.class)
@@ -64,7 +64,7 @@ public final class CommerceApiService {
 
     public CompletionStage<Messages.RebuildOrderProjectionRes> rebuildProjection(String orderId) {
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(orderId)),
+                SampleNames.OrderWorkflowChannel,
                 new Messages.RebuildOrderProjectionReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.RebuildOrderProjectionRes.class);
@@ -87,7 +87,7 @@ public final class CommerceApiService {
         store.saveOrderPaymentMethod(mapping.orderId(), request.paymentMethodId());
         Messages.StartOrderWorkflowReq workflowRequest = workflowRequest(request, mapping.orderId(), cart);
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(mapping.orderId())),
+                SampleNames.OrderWorkflowChannel,
                 new Messages.PrepareInventoryReservedCheckpointReq(workflowRequest))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);
@@ -95,7 +95,7 @@ public final class CommerceApiService {
 
     public CompletionStage<Messages.ContinueOrderWorkflowRes> continueOrder(String orderId) {
         return channels.requestToChannel(
-                SampleNames.orderWorkflowChannelFor(topology.ownerWorkflowName(orderId)),
+                SampleNames.OrderWorkflowChannel,
                 new Messages.ContinueOrderWorkflowReq(orderId))
             .timeout(SampleTimings.WorkflowTimeout)
             .submit(Messages.ContinueOrderWorkflowRes.class);

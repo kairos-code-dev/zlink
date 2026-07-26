@@ -2,6 +2,11 @@ using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.Runtime.Locations;
 
+internal sealed class ZLinkRetiringPublicationRollbackException(
+    IReadOnlyList<Exception> failures) : Exception(
+    "A partial Retiring publication could not be restored to Serving.",
+    failures.Count == 1 ? failures[0] : new AggregateException(failures));
+
 /// <summary>
 /// Builds one reconcile loop per auto-connect capability from the framework
 /// registration and the started runtime state. Dialing capabilities get an
@@ -222,6 +227,104 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         }
     }
 
+    internal async ValueTask<bool> MarkRetiringAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            try
+            {
+                var published = true;
+                if (_clientServerDiscovery is not null)
+                    published &= await _clientServerDiscovery.MarkRetiringAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                if (_fanoutDiscovery is not null)
+                    published &= await _fanoutDiscovery.MarkRetiringAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                foreach (var reconciler in _reconcilers)
+                    published &= await reconciler.MarkRetiringAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                if (published) return true;
+            }
+            catch (Exception publicationFailure)
+            {
+                var rollbackFailures = await RestoreServingAsync().ConfigureAwait(false);
+                if (rollbackFailures.Count != 0)
+                {
+                    rollbackFailures.Insert(0, publicationFailure);
+                    throw new ZLinkRetiringPublicationRollbackException(rollbackFailures);
+                }
+                throw;
+            }
+
+            var failures = await RestoreServingAsync().ConfigureAwait(false);
+            if (failures.Count != 0)
+                throw new ZLinkRetiringPublicationRollbackException(failures);
+            return false;
+
+            async ValueTask<List<Exception>> RestoreServingAsync()
+            {
+                var failures = new List<Exception>();
+                if (_clientServerDiscovery is not null)
+                    await RestoreAsync(_clientServerDiscovery.MarkServingAsync)
+                        .ConfigureAwait(false);
+                if (_fanoutDiscovery is not null)
+                    await RestoreAsync(_fanoutDiscovery.MarkServingAsync)
+                        .ConfigureAwait(false);
+                foreach (var reconciler in _reconcilers)
+                    await RestoreAsync(reconciler.MarkServingAsync)
+                        .ConfigureAwait(false);
+                return failures;
+
+                async ValueTask RestoreAsync(
+                    Func<CancellationToken, ValueTask<bool>> restore)
+                {
+                    try
+                    {
+                        if (!await restore(CancellationToken.None).ConfigureAwait(false))
+                            failures.Add(new InvalidOperationException(
+                                "A descriptor did not confirm its Serving rollback."));
+                    }
+                    catch (Exception error)
+                    {
+                        failures.Add(error);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
+    internal async ValueTask<bool> MarkServingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var restored = true;
+            if (_clientServerDiscovery is not null)
+                restored &= await _clientServerDiscovery.MarkServingAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            if (_fanoutDiscovery is not null)
+                restored &= await _fanoutDiscovery.MarkServingAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            foreach (var reconciler in _reconcilers)
+                restored &= await reconciler.MarkServingAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            return restored;
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+    }
+
     internal async ValueTask FreezeOwnerWritesAsync(
         CancellationToken cancellationToken = default)
     {
@@ -405,6 +508,14 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         return _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
             ? reconciler.KnowsPeer(nodeRid)
+            : null;
+    }
+
+    public IReadOnlyList<ZLinkRouteMeshPeerIdentity>? GetCompleteRouteMeshPeers(
+        string meshName)
+    {
+        return _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
+            ? reconciler.CompleteMeshPeers()
             : null;
     }
 

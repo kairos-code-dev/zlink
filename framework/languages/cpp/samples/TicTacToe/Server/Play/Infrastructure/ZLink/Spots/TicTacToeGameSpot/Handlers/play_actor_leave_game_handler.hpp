@@ -7,7 +7,7 @@ namespace zlink::samples::tictactoe
 {
 
 inline void tictactoe_game_spot_t::leave_game (const player_actor_t &actor,
-                                               const spot_actor_send_context_t &,
+                                               const message_context_t &,
                                                const leave_game_req_t &request)
 {
     if (request.room_id != match ().snapshot ().room_id) {

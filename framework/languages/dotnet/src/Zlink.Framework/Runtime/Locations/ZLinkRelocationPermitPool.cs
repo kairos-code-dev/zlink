@@ -64,11 +64,7 @@ internal readonly record struct ZLinkRelocationPermitRequest(
 internal sealed class ZLinkRelocationPermitPool
 {
     private readonly object _gate = new();
-    private readonly int _maxOutboundUnits;
-    private readonly int _maxInboundUnits;
-    private readonly int _maxCaptureCallbacks;
-    private readonly int _maxRestoreCallbacks;
-    private readonly long _maxPayloadBytes;
+    private readonly ZLinkLocationOptions _options;
     private int _outboundUnits;
     private int _inboundUnits;
     private int _captureCallbacks;
@@ -79,21 +75,8 @@ internal sealed class ZLinkRelocationPermitPool
     internal ZLinkRelocationPermitPool(ZLinkLocationOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _maxOutboundUnits = Positive(
-            options.MaxActiveOutboundRelocations,
-            nameof(options.MaxActiveOutboundRelocations));
-        _maxInboundUnits = Positive(
-            options.MaxActiveInboundRelocations,
-            nameof(options.MaxActiveInboundRelocations));
-        _maxCaptureCallbacks = Positive(
-            options.MaxConcurrentRelocationCaptures,
-            nameof(options.MaxConcurrentRelocationCaptures));
-        _maxRestoreCallbacks = Positive(
-            options.MaxConcurrentRelocationRestores,
-            nameof(options.MaxConcurrentRelocationRestores));
-        _maxPayloadBytes = Positive(
-            options.MaxRelocationPayloadInFlightBytes,
-            nameof(options.MaxRelocationPayloadInFlightBytes));
+        _options = options;
+        _ = ReadLimits();
     }
 
     internal bool TryAcquire(
@@ -103,12 +86,13 @@ internal sealed class ZLinkRelocationPermitPool
         Validate(request);
         lock (_gate)
         {
-            var oversized = request.PayloadBytes > _maxPayloadBytes;
-            if (_outboundUnits > _maxOutboundUnits - request.OutboundUnits
-                || _inboundUnits > _maxInboundUnits - request.InboundUnits
-                || _captureCallbacks > _maxCaptureCallbacks - request.CaptureCallbacks
-                || _restoreCallbacks > _maxRestoreCallbacks - request.RestoreCallbacks
-                || !CanAdmitPayload(request, oversized))
+            var limits = ReadLimits();
+            var oversized = request.PayloadBytes > limits.MaxPayloadBytes;
+            if (_outboundUnits > limits.MaxOutboundUnits - request.OutboundUnits
+                || _inboundUnits > limits.MaxInboundUnits - request.InboundUnits
+                || _captureCallbacks > limits.MaxCaptureCallbacks - request.CaptureCallbacks
+                || _restoreCallbacks > limits.MaxRestoreCallbacks - request.RestoreCallbacks
+                || !CanAdmitPayload(request, oversized, limits.MaxPayloadBytes))
             {
                 lease = default;
                 return false;
@@ -121,6 +105,46 @@ internal sealed class ZLinkRelocationPermitPool
             _payloadBytes = checked(_payloadBytes + request.PayloadBytes);
             _oversizedPayloadActive = oversized;
             lease = new ZLinkRelocationPermitLease(this, request, oversized);
+            return true;
+        }
+    }
+
+    internal bool CanAcquire(ZLinkRelocationPermitRequest request)
+    {
+        Validate(request);
+        lock (_gate)
+        {
+            var limits = ReadLimits();
+            var oversized = request.PayloadBytes > limits.MaxPayloadBytes;
+            return _outboundUnits <= limits.MaxOutboundUnits - request.OutboundUnits
+                && _inboundUnits <= limits.MaxInboundUnits - request.InboundUnits
+                && _captureCallbacks <= limits.MaxCaptureCallbacks
+                    - request.CaptureCallbacks
+                && _restoreCallbacks <= limits.MaxRestoreCallbacks
+                    - request.RestoreCallbacks
+                && CanAdmitPayload(request, oversized, limits.MaxPayloadBytes);
+        }
+    }
+
+    internal bool TryGetInboundOffer(out ulong messages, out ulong bytes)
+    {
+        lock (_gate)
+        {
+            var limits = ReadLimits();
+            var remainingBytes = limits.MaxPayloadBytes - _payloadBytes;
+            if (_oversizedPayloadActive
+                || _inboundUnits >= limits.MaxInboundUnits
+                || _restoreCallbacks >= limits.MaxRestoreCallbacks
+                || remainingBytes <= 0)
+            {
+                messages = 0;
+                bytes = 0;
+                return false;
+            }
+            bytes = checked((ulong)remainingBytes);
+            // Every frozen record occupies at least one encoded byte. This is
+            // a conservative message allowance from the same actual budget.
+            messages = bytes;
             return true;
         }
     }
@@ -139,15 +163,33 @@ internal sealed class ZLinkRelocationPermitPool
 
     private bool CanAdmitPayload(
         ZLinkRelocationPermitRequest request,
-        bool oversized)
+        bool oversized,
+        long maxPayloadBytes)
     {
         if (oversized)
             return request.AllowOversizedPayload
                    && !_oversizedPayloadActive
                    && _payloadBytes == 0;
         return !_oversizedPayloadActive
-               && _payloadBytes <= _maxPayloadBytes - request.PayloadBytes;
+               && _payloadBytes <= maxPayloadBytes - request.PayloadBytes;
     }
+
+    private Limits ReadLimits() => new(
+        Positive(
+            _options.MaxActiveOutboundRelocations,
+            nameof(_options.MaxActiveOutboundRelocations)),
+        Positive(
+            _options.MaxActiveInboundRelocations,
+            nameof(_options.MaxActiveInboundRelocations)),
+        Positive(
+            _options.MaxConcurrentRelocationCaptures,
+            nameof(_options.MaxConcurrentRelocationCaptures)),
+        Positive(
+            _options.MaxConcurrentRelocationRestores,
+            nameof(_options.MaxConcurrentRelocationRestores)),
+        Positive(
+            _options.MaxRelocationPayloadInFlightBytes,
+            nameof(_options.MaxRelocationPayloadInFlightBytes)));
 
     private bool TryShrinkPayload(
         ref ZLinkRelocationPermitRequest request,
@@ -218,6 +260,13 @@ internal sealed class ZLinkRelocationPermitPool
         value > 0
             ? value
             : throw new ArgumentOutOfRangeException(name, value, "The limit must be greater than zero.");
+
+    private readonly record struct Limits(
+        int MaxOutboundUnits,
+        int MaxInboundUnits,
+        int MaxCaptureCallbacks,
+        int MaxRestoreCallbacks,
+        long MaxPayloadBytes);
 
     internal readonly struct ZLinkRelocationPermitLease : IDisposable
     {

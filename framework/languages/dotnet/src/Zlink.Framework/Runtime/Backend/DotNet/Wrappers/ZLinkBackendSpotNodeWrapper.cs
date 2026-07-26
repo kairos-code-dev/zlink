@@ -11,6 +11,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // loops.
 internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendSpotNode,
+    IZLinkBackendRelocationReplyRelay,
+    IZLinkBackendCanonicalRelocationReservation,
     IZLinkBackendAuthorityObserver,
     IZLinkBackendLocalActorAuthorityReader
 {
@@ -25,6 +27,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     private readonly object _lifecycleGate = new();
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
+
     // First registered mesh channel; spot wrappers publish/subscribe on it
     // (Spot logical multicast uses the router plane).
     private bool _bound;
@@ -210,6 +213,81 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
     {
         _node.SetInstanceSpotActivationTarget(target);
+    }
+
+    public void SetRelocationReplyRelayTarget(IRelocationReplyRelayTarget target)
+    {
+        _node.SetRelocationReplyRelayTarget(target);
+    }
+
+    public void SetCanonicalRelocationReservationTarget(
+        ICanonicalRelocationReservationTarget target)
+    {
+        _node.SetCanonicalRelocationReservationTarget(target);
+    }
+
+    public ValueTask<ZLinkServiceWireCodec.RelocationReservedRecord>
+        ReserveCanonicalRelocationAsync(
+            RoutingId targetNodeRid,
+            ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        return RequireManagedNode().ReserveCanonicalRelocationAsync(
+            targetNodeRid, prepare, timeout, cancellationToken);
+    }
+
+    public ValueTask StageCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+        IReadOnlyList<ZLinkServiceWireCodec.RelocationDataRecord> data,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        return RequireManagedNode().StageCanonicalRelocationAsync(
+            targetNodeRid, prepare, data, timeout, cancellationToken);
+    }
+
+    public ValueTask CompleteCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationCompleteRecord complete,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        return RequireManagedNode().CompleteCanonicalRelocationAsync(
+            targetNodeRid, complete, cancellationToken);
+    }
+
+    public void CancelCanonicalRelocation(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationWireId relocationId,
+        ulong targetAttemptGeneration,
+        ZLinkServiceWireCodec.RelocationCoordinatorFence coordinator)
+    {
+        EnsureStarted();
+        RequireManagedNode().CancelCanonicalRelocation(targetNodeRid,
+            relocationId, targetAttemptGeneration, coordinator);
+    }
+
+    public ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord>
+        RelayRelocationReplyAsync(
+            RoutingId targetNodeRid,
+            ZLinkServiceWireCodec.ReplyRelayRecord relay,
+            ZLinkServiceWireCodec.RequestSourceFence expectedSource,
+            IReadOnlyList<Message> payload,
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        return RequireManagedNode().RelayRelocationReplyAsync(
+            targetNodeRid,
+            relay,
+            expectedSource,
+            payload,
+            timeout,
+            cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<Message>> ActivateInstanceSpotAsync(

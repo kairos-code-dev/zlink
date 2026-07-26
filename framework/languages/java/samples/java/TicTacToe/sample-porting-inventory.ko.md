@@ -18,7 +18,7 @@
 | 기준 | Java 대응 | 분류 | 상태 | 비고 |
 |------|-----------|------|------|------|
 | `.NET: Client/Program.cs` | `Client/src/main/java/.../client/Program.java` | client-entry | done | API URL과 timeout을 읽고 self-check scenario를 실행한다. |
-| `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/java/.../client/TicTacToeClientScenario.java` | validation | done | 연속 room의 owner round-robin과 고유 ID, 가득 찬 room의 join 거절, 진행 중 leave 무시, 종료 후 client leave 기반 destroy, host/guest/observer stream 연결, 인증, join, move, win, milestone push를 검증한다. host와 guest가 자기 join 알림을 받지 않는지도 typed callback으로 직접 계수한다. |
+| `.NET: Client/TicTacToeClientScenario.cs` | `Client/src/main/java/.../client/TicTacToeClientScenario.java` | validation | done | 연속 room의 전역 ID와 framework owner 선택, 가득 찬 room의 join 거절, 진행 중 leave 무시, 종료 후 client leave 기반 destroy, host/guest/observer stream 연결, 인증, join, move, win, milestone push를 검증한다. host와 guest가 자기 join 알림을 받지 않는지도 typed callback으로 직접 계수한다. |
 | common: client는 API 응답의 Play endpoint 사용 | `TicTacToeClientScenario.java` | validation | done | client 설정에 Play endpoint를 미리 넣지 않고 API 응답의 endpoint 목록으로 연결한다. |
 | common: push 대기는 connector public wait API 사용 | `TicTacToeClientScenario.java` | validation | done | `PlayerJoinedNotify`, `GameStateNotify`, `WinMilestoneNotify`를 typed wait path로 기다린다. |
 | common: inbound observer는 connect 전에 등록 | `TicTacToeClientScenario.java` | validation | done | host·guest·observer connector 생성 직후 observer를 등록한다. marker는 역할, message kind, packet name, request sequence와 payload byte length를 포함하며 payload 검증이나 push 대기를 대신하지 않는다. |
@@ -36,7 +36,7 @@
 |------|-----------|------|------|------|
 | `.NET: Server/Program.cs` | `Server/src/main/java/.../server/api/ApiProgram.java`, `server/play/PlayProgram.java` | server-entry | done | API와 Play를 별도 실행 진입점으로 시작하며 각 진입점은 설정 파일 경로만 받는다. |
 | `.NET: Server/Api/*` | `Server/src/main/java/.../server/api/*` | api-role | done | `/games` HTTP endpoint를 제공하고 player authentication request handler를 API channel builder에 직접 등록한다. |
-| `.NET: Server/Configuration/*` | `Server/src/main/java/.../server/configuration/*` | server-config | done | sample endpoint, Redis endpoint, routing id, logging, location store 설정을 모은다. |
+| `.NET: Server/Configuration/*` | `Server/src/main/java/.../server/configuration/*` | server-config | done | sample endpoint, Redis endpoint, logging, location store 설정을 모은다. RouteMesh routing id는 runtime allocation을 사용한다. |
 | `.NET: Server/Play/PlayServer.cs` | `Server/src/main/java/.../server/play/PlayServer.java` | play-role | done | Play channel server, API channel client, stream server, actor runtime, Spot route/pubsub endpoint를 구성한다. Play request와 session packet handler는 각 builder에 직접 등록한다. |
 | common: Play domain 경계 | `server/play/domain/tictactoe/*` | domain | done | board, turn, win/draw 판정을 framework 타입 없이 표현한다. |
 | common: game creation use case | `server/play/application/gamecreation/TicTacToeGameCreator.java` | application | done | room 생성과 Redis room route 기록을 조율한다. |
@@ -51,7 +51,7 @@
 | Redis room route store | `run_sample.sh`, `SampleLocationStore`, `RedisRoomRouteStore` | external-adapter | done | runner가 실행별 전용 Docker Redis를 만들고 그 endpoint만 사용한다. |
 | manual registration gate | `run_sample.sh` | validation | done | Java server source에 `addHandlersFromPackageOf(...)`가 있으면 역할을 시작하기 전에 실패한다. |
 | API A/B와 Play A/B scale-out | `run_sample.sh` | validation | done | API 2개, Play 2개를 띄우고 manual channel, Spot route, Spot pub/sub endpoint를 서로 연결한다. |
-| observer cross-node milestone | runner grep + client marker | validation | done | observer가 owner가 아닌 Play에 연결하고, API 응답의 endpoint/rid 매핑과 `WinMilestoneNotify`의 실제 수신 node rid가 같은지 확인한다. |
+| observer milestone | runner grep + client marker | validation | done | observer가 별도 Play stream에 연결하고 `WinMilestoneNotify`의 business payload와 누적 win count를 확인한다. physical owner와 수신 NodeRid는 성공 조건으로 사용하지 않는다. |
 | message flow marker | `TICTACTOE_LOG_DIR` grep | validation | done | runner가 role별 flow log의 `message flow` marker를 확인한다. |
 | final marker | `run_sample.sh` | validation | done | client의 `tictactoe completed` 계열 marker와 `PASS TicTacToe.Java`를 확인한다. |
 

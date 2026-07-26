@@ -307,7 +307,6 @@ struct pending_mapping_req_t
     static constexpr const char *packet_name = "PendingMappingReq";
     std::string idempotency_key;
     std::string order_id;
-    std::string owner_instance_id;
 };
 
 struct delete_projection_req_t
@@ -605,15 +604,13 @@ inline void from_json (const nlohmann::json &json, ensure_order_workflow_spot_re
 inline void to_json (nlohmann::json &json, const pending_mapping_req_t &value)
 {
     json = {{"idempotencyKey", value.idempotency_key},
-            {"orderId", value.order_id},
-            {"ownerInstanceId", value.owner_instance_id}};
+            {"orderId", value.order_id}};
 }
 
 inline void from_json (const nlohmann::json &json, pending_mapping_req_t &value)
 {
     value.idempotency_key = json_string (json, "idempotencyKey", "idempotency_key");
     value.order_id = json_string (json, "orderId", "order_id");
-    value.owner_instance_id = json_string (json, "ownerInstanceId", "owner_instance_id");
 }
 
 inline void to_json (nlohmann::json &json, const delete_projection_req_t &value)

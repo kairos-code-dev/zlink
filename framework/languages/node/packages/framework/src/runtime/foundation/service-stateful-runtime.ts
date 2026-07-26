@@ -290,6 +290,22 @@ export class ServiceStatefulRuntime {
     );
   }
 
+  restoreSpotAuthority(
+    spotId: string,
+    objectKind: 'user_spot' | 'instance_spot',
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpotState {
+    this.requireOpen();
+    return this.registry.restoreSpot(
+      { spotId, generation },
+      objectKind === 'user_spot' ? 'user' : 'instance',
+      stableType,
+      authorityOwnerGeneration
+    );
+  }
+
   entrySpot(): ServiceSpotState {
     return this.registry.createEntrySpot(this.nodeRid);
   }
@@ -297,6 +313,30 @@ export class ServiceStatefulRuntime {
   createActor(actorId: string, stableType = 'actor'): ServiceActorState {
     this.requireOpen();
     return this.registry.createActor(actorId, stableType);
+  }
+
+  restoreActorAuthority(
+    actorId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint,
+    spotId: string,
+    spotGeneration: bigint,
+    membershipEpoch: bigint
+  ): ServiceActorState {
+    this.requireOpen();
+    return this.registry.restoreActor(
+      { nodeRid: this.nodeRid, actorId, generation },
+      stableType,
+      { spotId, generation: spotGeneration },
+      membershipEpoch,
+      authorityOwnerGeneration
+    );
+  }
+
+  discardRelocatedActor(actor: ServiceActorRef): void {
+    this.requireOpen();
+    this.registry.destroyActor(actor);
   }
 
   restoreActorSessionBinding(

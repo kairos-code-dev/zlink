@@ -5,12 +5,10 @@ import {
 } from '@zlink-systems/nestjs';
 import { DeliveryStatusChangedReq, DeliveryStatusUpdatedMsg, PacketNames } from '../../../Shared/Contracts/messages';
 import { EvidenceStore } from '../../Configuration/evidence-store';
-import { SampleNames } from '../../../Shared/Configuration/sample-names';
 import type {
   ZLinkActorClient,
   ZLinkRequestContext,
-  ZLinkRequestHandler,
-  ZLinkLocationStore
+  ZLinkRequestHandler
 } from '@zlink-systems/framework';
 import type { DeliveryStatusChangedRes } from '../../../Shared/Contracts/messages';
 
@@ -18,21 +16,13 @@ import type { DeliveryStatusChangedRes } from '../../../Shared/Contracts/message
 class DeliveryStatusChangedHandler implements ZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes> {
   constructor(
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
-    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore,
     private readonly evidence: EvidenceStore
   ) {}
 
   async handle(request: DeliveryStatusChangedReq, context: ZLinkRequestContext): Promise<DeliveryStatusChangedRes> {
     void context;
     this.evidence.append(request);
-    const customerActor = (await this.locations.resolveActor({
-      meshName: SampleNames.routeMesh,
-      actorId: request.customerId
-    }))?.actorRef;
-    if (customerActor === undefined) {
-      throw new Error(`Customer actor '${request.customerId}' was not registered in the location store.`);
-    }
-    await this.actors.sendToActor(SampleNames.routeMesh, customerActor, new DeliveryStatusUpdatedMsg(
+    await this.actors.sendToActor(request.customerId, new DeliveryStatusUpdatedMsg(
       request.deliveryId,
       request.customerId,
       request.status,

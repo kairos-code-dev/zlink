@@ -31,7 +31,7 @@ public final class ApiServer {
                 String endpoint = index == settings.playIndex()
                     ? settings.playChannelEndpoint()
                     : settings.playChannelEndpoints().get(index);
-                options.addClientServerChannel(SampleNames.playChannel(index))
+                options.addClientServerChannel(SampleNames.PlayChannel)
                     .enableClient(endpoint);
             }
         };

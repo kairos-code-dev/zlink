@@ -20,7 +20,6 @@ import { VerifyStopObservingAtSpotReq } from './bingo-room-operation-handlers';
 
 interface StopObservationDecision {
   readonly stopped: boolean;
-  readonly observerNodeRid: string;
 }
 
 @zlinkSpotActorRequestHandler({
@@ -48,7 +47,7 @@ class StopObservingBingoEventsHandler
       .requestToSpot(spot, new VerifyStopObservingAtSpotReq(actor.actorId, request.roomId))
       .yield<StopObservationDecision>();
     if (decision.stopped) await actor.context.leaveSpot();
-    return new StopObservingBingoEventsRes(decision);
+    return new StopObservingBingoEventsRes({ stopped: decision.stopped });
   }
 }
 

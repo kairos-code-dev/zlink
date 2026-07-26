@@ -1438,6 +1438,157 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task RelocationReplyRelayUsesRawCommandsAndRetriesAfterAckLoss()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "relay-source");
+        await using var target = NewNode(context, "relay-target");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://relay-source-{suffix}";
+        var targetEndpoint = $"inproc://relay-target-{suffix}";
+        source.SetBind(sourceEndpoint);
+        target.SetBind(targetEndpoint);
+        source.ConnectPeer(targetEndpoint, target.RoutingId);
+        target.ConnectPeer(sourceEndpoint, source.RoutingId);
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "request-owner",
+            17,
+            target.RoutingId,
+            target.Status().LifecycleGeneration);
+        var relayTarget = new RecordingReplyRelayTarget(
+            requestSource,
+            dropFirstAcknowledgement: true,
+            corruptSecondSource: true);
+        target.SetRelocationReplyRelayTarget(relayTarget);
+        source.Start();
+        target.Start();
+        await WaitUntilAsync(() => source.Status().AdmittedPeerCount == 1
+                                  && target.Status().AdmittedPeerCount == 1);
+
+        var relay = new ZLinkServiceWireCodec.ReplyRelayRecord(
+            new MeshOperationId(21, 22),
+            23,
+            new ZLinkServiceWireCodec.RelocationWireId(24, 25),
+            source.Status().LifecycleGeneration,
+            new ZLinkServiceWireCodec.RelocationCoordinatorFence(
+                "coordinator",
+                26,
+                source.RoutingId,
+                source.Status().LifecycleGeneration,
+                "store-27"),
+            28,
+            29,
+            0,
+            ServiceWireConstants.FrameworkErrorCode.None);
+        var payload = new[] { Message.From(new byte[] { 7, 8, 9 }) };
+        try
+        {
+            await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await source.RelayRelocationReplyAsync(
+                    target.RoutingId,
+                    relay,
+                    requestSource,
+                    payload,
+                    TimeSpan.FromMilliseconds(50),
+                    CancellationToken.None));
+            await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await source.RelayRelocationReplyAsync(
+                    target.RoutingId,
+                    relay,
+                    requestSource,
+                    payload,
+                    TimeSpan.FromMilliseconds(50),
+                    CancellationToken.None));
+            var ack = await source.RelayRelocationReplyAsync(
+                target.RoutingId,
+                relay,
+                requestSource,
+                payload,
+                TimeSpan.FromSeconds(3),
+                CancellationToken.None);
+
+            Assert.Equal((byte)2, ack.Status);
+            Assert.Equal(requestSource, ack.RequestSource);
+            Assert.Equal(3, relayTarget.InvocationCount);
+            Assert.All(relayTarget.Payloads, bytes =>
+                Assert.Equal(new byte[] { 7, 8, 9 }, bytes));
+            await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await source.RelayRelocationReplyAsync(
+                    target.RoutingId,
+                    relay with
+                    {
+                        TerminalResult = 105,
+                        FailureCode = ServiceWireConstants.FrameworkErrorCode
+                            .RequestFailed
+                    },
+                    requestSource,
+                    payload,
+                    TimeSpan.FromSeconds(1),
+                    CancellationToken.None));
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(payload);
+        }
+    }
+
+    [Fact]
+    public void RelocationReplyPendingKeysSeparateTheSameOperationAcrossSources()
+    {
+        var sourceA = RoutingId.From("relay-source-a");
+        var sourceB = RoutingId.From("relay-source-b");
+        var relay = new ZLinkServiceWireCodec.ReplyRelayRecord(
+            new MeshOperationId(41, 42),
+            43,
+            new ZLinkServiceWireCodec.RelocationWireId(44, 45),
+            46,
+            new ZLinkServiceWireCodec.RelocationCoordinatorFence(
+                "coordinator",
+                47,
+                RoutingId.From("relay-target"),
+                48,
+                "store-49"),
+            48,
+            49,
+            0,
+            ServiceWireConstants.FrameworkErrorCode.None);
+        var keyA = ZLinkManagedMeshNode.PendingReplyRelayKey.Create(
+            sourceA,
+            relay);
+        var keyB = ZLinkManagedMeshNode.PendingReplyRelayKey.Create(
+            sourceB,
+            relay);
+
+        Assert.NotEqual(keyA, keyB);
+        Assert.Equal(
+            keyA,
+            ZLinkManagedMeshNode.PendingReplyRelayKey.Create(
+                sourceA,
+                new ZLinkServiceWireCodec.ReplyRelayAckRecord(
+                    relay.RelocationId,
+                    relay.Coordinator,
+                    relay.OperationId,
+                    new ZLinkServiceWireCodec.RequestSourceFence(
+                        "owner-a", 50, sourceA, 51),
+                    1)));
+        var exactSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "owner-a", 50, sourceA, 51);
+        Assert.True(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            sourceA, 51, exactSource, exactSource));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            sourceA, 51, exactSource, exactSource with { OwnerId = "owner-b" }));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            sourceA, 51, exactSource, exactSource with { LeaseGeneration = 52 }));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            sourceA, 51, exactSource, exactSource with { NodeRid = sourceB }));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            sourceA, 51, exactSource, exactSource with { NodeGeneration = 52 }));
+        Assert.True(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(0, 1));
+        Assert.True(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(105, 0));
+        Assert.False(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(105, 1));
+    }
+
+    [Fact]
     public async Task RemoteInstanceSpotColdActivationDispatchesFirstMessageThroughCommand39()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -1601,6 +1752,41 @@ public sealed class StatefulServiceRuntimeTests
                 remoteUserSpotTerminalRetention);
         node.SetRoutingId(RoutingId.From(rid));
         return node;
+    }
+
+    private sealed class RecordingReplyRelayTarget(
+        ZLinkServiceWireCodec.RequestSourceFence requestSource,
+        bool dropFirstAcknowledgement,
+        bool corruptSecondSource = false) : IRelocationReplyRelayTarget
+    {
+        internal int InvocationCount { get; private set; }
+        internal List<byte[]> Payloads { get; } = [];
+
+        public ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord?> RelayAsync(
+            ZLinkServiceWireCodec.ReplyRelayRecord relay,
+            RoutingId sourceNodeRid,
+            IReadOnlyList<Message> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            InvocationCount++;
+            Payloads.Add(Assert.Single(payload).ToArray());
+            ZLinkMessageParts.DisposeAll(payload);
+            if (dropFirstAcknowledgement && InvocationCount == 1)
+                return ValueTask.FromResult<
+                    ZLinkServiceWireCodec.ReplyRelayAckRecord?>(null);
+            var acknowledgedSource = corruptSecondSource && InvocationCount == 2
+                ? requestSource with { OwnerId = "wrong-owner" }
+                : requestSource;
+            return ValueTask.FromResult<
+                ZLinkServiceWireCodec.ReplyRelayAckRecord?>(
+                new ZLinkServiceWireCodec.ReplyRelayAckRecord(
+                    relay.RelocationId,
+                    relay.Coordinator,
+                    relay.OperationId,
+                    acknowledgedSource,
+                    2));
+        }
     }
 
     private static List<MeshReceiveRecord> DrainRecords(ZLinkManagedMeshNode node)

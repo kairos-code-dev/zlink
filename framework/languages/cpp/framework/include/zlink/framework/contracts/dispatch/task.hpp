@@ -24,6 +24,17 @@ namespace detail
 
 using task_scheduler_t = std::function<void (std::function<void ()>)>;
 
+class deferred_barrier_t
+{
+  public:
+    virtual ~deferred_barrier_t () = default;
+    virtual result_t<void> activate (std::function<void ()> work) = 0;
+    virtual void cancel () noexcept = 0;
+};
+
+using deferred_barrier_reserver_t =
+  std::function<result_t<std::shared_ptr<deferred_barrier_t>> ()>;
+
 class serial_turn_t
 {
   public:
@@ -33,7 +44,9 @@ class serial_turn_t
     virtual task_scheduler_t resume_scheduler () = 0;
     virtual bool belongs_to (const void *owner) const noexcept = 0;
     virtual bool allows_yield () const noexcept = 0;
-    virtual result_t<void> defer (std::function<void ()> work) = 0;
+    virtual result_t<void> defer (std::function<void ()> work,
+                                  std::function<void ()> cancel = {}) = 0;
+    virtual void cancel_deferred () noexcept = 0;
 };
 
 inline thread_local std::shared_ptr<serial_turn_t> current_serial_turn_handle;
@@ -100,7 +113,9 @@ inline bool current_serial_turn_allows_yield ()
     return turn && !turn->released () && turn->allows_yield ();
 }
 
-inline result_t<void> defer_current_serial_turn (std::function<void ()> work)
+inline result_t<void> defer_current_serial_turn (
+  std::function<void ()> work,
+  std::function<void ()> cancel = {})
 {
     auto turn = capture_current_serial_turn ();
     if (!turn || turn->released ()) {
@@ -108,7 +123,7 @@ inline result_t<void> defer_current_serial_turn (std::function<void ()> work)
           framework_error_kind_t::invalid_configuration,
           "Actor join defer requires an open Framework handler turn");
     }
-    return turn->defer (std::move (work));
+    return turn->defer (std::move (work), std::move (cancel));
 }
 
 template <typename T> task_t<T> unsupported_yield_task ();

@@ -1,3 +1,5 @@
+using Systems.Zlink.Framework.Runtime.Protocol;
+
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
@@ -8,6 +10,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         bool allowOversizedPayload,
         out IDisposable permit)
     {
+        if (_drainAdmission.IsDraining)
+        {
+            permit = null!;
+            return false;
+        }
         if (_relocationPermits.TryAcquire(
                 ZLinkRelocationPermitRequest.Inbound(
                     payloadBytes,
@@ -22,37 +29,44 @@ internal sealed partial class ZLinkFrameworkRuntime
         return false;
     }
 
-    internal SubmitResult TryRelaySpotReplyOnce(
-        string sourceMeshName,
+    internal async ValueTask<ZLinkRelocationReplyAckState> RelaySpotReplyAsync(
         RoutingId sourceNodeRid,
-        ZLinkSpotRelocationReplyRelay relay)
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        ZLinkServiceWireCodec.RequestSourceFence expectedSource,
+        IReadOnlyList<byte[]> payload,
+        CancellationToken cancellationToken)
     {
-        var header = ZLinkClientCallCodec.CreateEnvelope(
-            ZLinkMessageKind.Command,
-            sourceMeshName,
-            ZLinkSpotRelocationReplyRelayProtocol.PacketName);
-        var parts = ZLinkEnvelopeCodec.EncodeParts(
-            header,
-            relay,
-            typeof(ZLinkSpotRelocationReplyRelay),
-            Registration.Codecs);
+        var node = GetSpotNodeRuntime(relay.Coordinator.NodeRid);
+        var messages = payload.Select(static part => Message.From(part)).ToArray();
+        ZLinkServiceWireCodec.ReplyRelayAckRecord ack;
         try
         {
-            return GetMeshNodeRuntime(sourceMeshName).Node.SendToNode(
-                sourceNodeRid,
-                parts,
-                SendFlags.DontWait);
+            ack = await node.RelayRelocationReplyAsync(
+                    sourceNodeRid,
+                    relay,
+                    expectedSource,
+                    messages,
+                    node.Registration.DefaultRequestTimeout
+                    ?? Registration.DefaultRequestTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
-            ZLinkMessageParts.DisposeAll(parts);
+            ZLinkMessageParts.DisposeAll(messages);
         }
+        if (ack.RequestSource != expectedSource)
+            return ZLinkRelocationReplyAckState.NotAcknowledged;
+        return ack.Status == 2
+            ? ZLinkRelocationReplyAckState.AlreadyTerminal
+            : ZLinkRelocationReplyAckState.TerminalReceived;
     }
 
     internal async ValueTask<TargetStage> StageInboundSpotAggregateAsync(
-        ZLinkSpotRetireStageRequest request,
+        ZLinkCanonicalSpotStageContext request,
         ZLinkRelocationEnvelope envelope,
         IDisposable inboundPermit,
+        ZLinkPreparedAggregateRelocation? preparedAggregate,
         CancellationToken cancellationToken)
     {
         var targetRid = RoutingId.FromHex(request.TargetNodeRid);
@@ -189,6 +203,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 ?? throw new InvalidOperationException(
                     "Target staging admission seal was not created."),
                 inboundPermit,
+                preparedAggregate,
                 spotParticipant.AuthorityOwnerGeneration,
                 targetOwnerGeneration,
                 request.MeshName,
@@ -267,16 +282,18 @@ internal sealed partial class ZLinkFrameworkRuntime
                     sessionCommits.Add((actorState, sessionCommit));
             }
 
-            await normalizeAuthority(cancellationToken)
+            await PublishCatalogBeforeNormalizationAsync(
+                    stage,
+                    () =>
+                    {
+                        foreach (var actorState in stage.ActorStates)
+                            _actorSessionManager.PublishReservedActor(
+                                actorState.ActorId);
+                        stage.Node.Catalog.PublishRelocatedReserved(
+                            stage.Spot);
+                    },
+                    () => normalizeAuthority(cancellationToken))
                 .ConfigureAwait(false);
-            if (Volatile.Read(ref stage.LocalCatalogPublished) == 0)
-            {
-                foreach (var actorState in stage.ActorStates)
-                    _actorSessionManager.PublishReservedActor(
-                        actorState.ActorId);
-                stage.Node.Catalog.PublishRelocatedReserved(stage.Spot);
-                Volatile.Write(ref stage.LocalCatalogPublished, 1);
-            }
             foreach (var (actorState, sessionCommit) in sessionCommits)
             {
                 await UnsealCompletedSessionRouteAsync(
@@ -296,6 +313,22 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             stage.PublishGate.Release();
         }
+    }
+
+    internal static async ValueTask PublishCatalogBeforeNormalizationAsync(
+        TargetStage stage,
+        Action publishCatalog,
+        Func<ValueTask> normalizeAuthority)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        ArgumentNullException.ThrowIfNull(publishCatalog);
+        ArgumentNullException.ThrowIfNull(normalizeAuthority);
+        if (Volatile.Read(ref stage.LocalCatalogPublished) == 0)
+        {
+            publishCatalog();
+            Volatile.Write(ref stage.LocalCatalogPublished, 1);
+        }
+        await normalizeAuthority().ConfigureAwait(false);
     }
 
     internal async ValueTask PrepareInboundSpotAggregateAsync(
@@ -324,7 +357,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
     }
 
-    private static async ValueTask PrepareInboundSpotAggregateCoreAsync(
+    private async ValueTask PrepareInboundSpotAggregateCoreAsync(
         TargetStage stage,
         ZLinkRelocationParticipantEnvelope spotParticipant,
         CancellationToken cancellationToken)
@@ -343,25 +376,412 @@ internal sealed partial class ZLinkFrameworkRuntime
                 stage.TargetAuthorityOwnerGeneration,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (Volatile.Read(ref stage.JobsStaged) != 0)
-            return;
         var replayJobs = spotParticipant.AcceptedJobs
             .Concat(stage.HeldRecords)
             .OrderBy(static job => job.AcceptedSequence)
             .ToArray();
+        if (!stage.Envelope.CanonicalLogicalStream.IsEmpty)
+            await RestoreCanonicalReplayProgressAsync(
+                    stage,
+                    replayJobs,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        var replayed = Volatile.Read(ref stage.ReplayedJobCount);
+        if (replayed > replayJobs.Length)
+            throw new ZLinkRelocationDataLostException(
+                $"Target SPOT '{stage.Spot.Activation.SpotId}' replay cursor exceeds its accepted journal.");
+        if (replayed == replayJobs.Length)
+            return;
         await stage.Spot.Activation.ReplayAcceptedJobsAsync(
                 replayJobs,
                 stage.SourceMeshName,
-                stage.TargetAuthorityOwnerGeneration,
                 stage.TargetAdmissionSeal,
                 Volatile.Read(ref stage.ReplayedJobCount),
-                () => Interlocked.Increment(ref stage.ReplayedJobCount),
+                (job, journal, capturedReply, ct) =>
+                    CompleteAcceptedReplayAsync(
+                        stage,
+                        job,
+                        journal,
+                        capturedReply,
+                        ct),
                 cancellationToken)
             .ConfigureAwait(false);
         if (Volatile.Read(ref stage.ReplayedJobCount) != replayJobs.Length)
             throw new ZLinkRelocationDataLostException(
                 $"Target SPOT '{stage.Spot.Activation.SpotId}' did not complete every accepted replay.");
-        Volatile.Write(ref stage.JobsStaged, 1);
+    }
+
+    private async ValueTask RestoreCanonicalReplayProgressAsync(
+        TargetStage stage,
+        IReadOnlyList<ZLinkRelocationQueuedJob> replayJobs,
+        CancellationToken cancellationToken)
+    {
+        var authorityStore = Registration.Locations.ResolveStore()
+                             ?? throw new ZLinkConfigurationException(
+                                 "Location Store is not registered.");
+        var relocationStore = Registration.Locations.RelocationStoreInstance
+                              ?? throw new ZLinkConfigurationException(
+                                  "Relocation Store is not registered.");
+        var targetOwner = LocationLifecycle?.OwnerToken
+                          ?? throw new ZLinkConfigurationException(
+                              "Location runtime is not registered.");
+        var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
+            stage.TargetMeshName,
+            stage.Node.Node.RoutingId);
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authorityStore,
+            relocationStore);
+        var current = await coordinator.ReadCanonicalRootAsync(
+                stage.Envelope,
+                targetOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var participant = current.Participants.Single(static candidate =>
+            candidate.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot);
+
+        foreach (var completion in participant.TerminalCompletions
+                     .Where(static candidate => candidate.DeliveryState == 0))
+        {
+            var job = replayJobs.SingleOrDefault(candidate =>
+                candidate.AcceptedSequence == completion.AcceptedSequence
+                && candidate.CanonicalRequest is { } request
+                && request.OperationHigh == completion.OperationHigh
+                && request.OperationLow == completion.OperationLow)
+                      ?? throw new ZLinkRelocationDataLostException(
+                          "Canonical pending reply has no matching accepted request.");
+            var request = job.CanonicalRequest!;
+            var replyParts = EncodeCanonicalReply(
+                stage.SourceMeshName,
+                request,
+                completion);
+            var acknowledged = await TryRelayCanonicalReplyAsync(
+                    RoutingId.FromHex(completion.SourceNodeRid),
+                    await CreateCanonicalReplyRelayAsync(
+                            authorityStore,
+                            stage,
+                            participant,
+                            request,
+                            completion,
+                            cancellationToken)
+                        .ConfigureAwait(false),
+                    completion,
+                    replyParts,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!await CompleteCanonicalReplyDeliveryAsync(
+                    stage,
+                    completion,
+                    acknowledged,
+                    coordinator,
+                    targetDescriptor,
+                    targetOwner,
+                    cancellationToken)
+                .ConfigureAwait(false))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SpotMoving,
+                    "The canonical pending reply has neither an acknowledgement nor exact source lease expiry proof.",
+                    true);
+        }
+
+        Interlocked.Exchange(
+            ref stage.ReplayedJobCount,
+            replayJobs.Count(job => job.AcceptedSequence <= participant.ReplayCursor));
+    }
+
+    private async ValueTask CompleteAcceptedReplayAsync(
+        TargetStage stage,
+        ZLinkRelocationQueuedJob job,
+        ZLinkSpotAcceptedJournalRecord journal,
+        byte[][]? capturedReply,
+        CancellationToken cancellationToken)
+    {
+        if (stage.Envelope.CanonicalLogicalStream.IsEmpty)
+        {
+            if (capturedReply is not null)
+                throw new ZLinkRelocationDataLostException(
+                    "A legacy relocation reply has no exact request-source fence for service-wire relay.");
+            Interlocked.Increment(ref stage.ReplayedJobCount);
+            return;
+        }
+
+        var request = job.CanonicalRequest
+                      ?? throw new ZLinkRelocationDataLostException(
+                          "Canonical replay record has no request projection.");
+        ZLinkCanonicalTerminalCompletion? completion = null;
+        if (request.ReplyRouteId != 0)
+        {
+            if (capturedReply is null)
+                throw new ZLinkRelocationDataLostException(
+                    "Canonical request replay completed without a terminal reply.");
+            completion = ZLinkRelocationEnvelopeCodec
+                .CreateCanonicalTerminalCompletion(
+                    request.OperationHigh,
+                    request.OperationLow,
+                    request.Source.OwnerId,
+                    request.Source.OwnerLeaseGeneration,
+                    request.Source.NodeRid,
+                    request.Source.NodeGeneration,
+                    stage.Envelope.Participants.Single(static participant =>
+                            participant.ObjectKind
+                            is ZLinkPlacementObjectKind.UserSpot
+                            or ZLinkPlacementObjectKind.InstanceSpot)
+                        .CanonicalParticipantId,
+                    job.AcceptedSequence,
+                    terminalResult: 0,
+                    errorCode: 0,
+                    deliveryState: 0,
+                    DecodeCanonicalReply(capturedReply));
+        }
+
+        var authorityStore = Registration.Locations.ResolveStore()
+                             ?? throw new ZLinkConfigurationException(
+                                 "Location Store is not registered.");
+        var relocationStore = Registration.Locations.RelocationStoreInstance
+                              ?? throw new ZLinkConfigurationException(
+                                  "Relocation Store is not registered.");
+        var targetOwner = LocationLifecycle?.OwnerToken
+                          ?? throw new ZLinkConfigurationException(
+                              "Location runtime is not registered.");
+        var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
+            stage.TargetMeshName,
+            stage.Node.Node.RoutingId);
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authorityStore,
+            relocationStore);
+        _ = await coordinator.AdvanceCanonicalReplayAsync(
+                stage.Envelope,
+                stage.Envelope.Participants.Single(static participant =>
+                        participant.ObjectKind
+                        is ZLinkPlacementObjectKind.UserSpot
+                        or ZLinkPlacementObjectKind.InstanceSpot)
+                    .CanonicalParticipantId,
+                job.AcceptedSequence,
+                completion,
+                targetDescriptor,
+                stage.TargetNodeLifecycleGeneration,
+                targetOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (completion is not null)
+        {
+            var sourceNodeRid = RoutingId.FromHex(completion.SourceNodeRid);
+            var participant = stage.Envelope.Participants.Single(
+                static candidate => candidate.ObjectKind
+                    is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot);
+            var acknowledged = await TryRelayCanonicalReplyAsync(
+                    sourceNodeRid,
+                    await CreateCanonicalReplyRelayAsync(
+                            authorityStore,
+                            stage,
+                            participant,
+                            request,
+                            completion,
+                            cancellationToken)
+                        .ConfigureAwait(false),
+                    completion,
+                    capturedReply!,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!await CompleteCanonicalReplyDeliveryAsync(
+                    stage,
+                    completion,
+                    acknowledged,
+                    coordinator,
+                    targetDescriptor,
+                    targetOwner,
+                    cancellationToken)
+                .ConfigureAwait(false))
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SpotMoving,
+                    "The canonical request reply has neither an acknowledgement nor exact source lease expiry proof.",
+                    true);
+        }
+
+        Interlocked.Increment(ref stage.ReplayedJobCount);
+    }
+
+    private async ValueTask<bool> CompleteCanonicalReplyDeliveryAsync(
+        TargetStage stage,
+        ZLinkCanonicalTerminalCompletion completion,
+        ZLinkRelocationReplyAckState acknowledgement,
+        ZLinkAggregateRelocationCoordinator coordinator,
+        ZLinkMeshNodeDescriptorKey targetDescriptor,
+        ZLinkLocationOwnerToken targetOwner,
+        CancellationToken cancellationToken)
+    {
+        if (acknowledgement is
+            ZLinkRelocationReplyAckState.TerminalReceived
+            or ZLinkRelocationReplyAckState.AlreadyTerminal)
+        {
+            _ = await coordinator.AcknowledgeCanonicalReplyAsync(
+                    stage.Envelope,
+                    completion,
+                    acknowledgement
+                    == ZLinkRelocationReplyAckState.AlreadyTerminal
+                        ? (byte)2
+                        : (byte)1,
+                    targetDescriptor,
+                    stage.TargetNodeLifecycleGeneration,
+                    targetOwner,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        var store = Registration.Locations.ResolveStore()
+                    ?? throw new ZLinkConfigurationException(
+                        "Location Store is not registered.");
+        var lease = await store.ReadOwnerLeaseAsync(
+                completion.SourceOwnerId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!IsExactSourceLeaseExpired(lease, completion))
+            return false;
+        _ = await coordinator.ExpireCanonicalReplySourceLeaseAsync(
+                stage.Envelope,
+                completion,
+                targetDescriptor,
+                stage.TargetNodeLifecycleGeneration,
+                targetOwner,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return true;
+    }
+
+    private async ValueTask<ZLinkRelocationReplyAckState>
+        TryRelayCanonicalReplyAsync(
+        RoutingId sourceNodeRid,
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        ZLinkCanonicalTerminalCompletion completion,
+        IReadOnlyList<byte[]> payload,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await RelaySpotReplyAsync(
+                    sourceNodeRid,
+                    relay,
+                    new ZLinkServiceWireCodec.RequestSourceFence(
+                        completion.SourceOwnerId,
+                        completion.SourceOwnerLeaseGeneration,
+                        RoutingId.FromHex(completion.SourceNodeRid),
+                        completion.SourceNodeGeneration),
+                    payload,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return ZLinkRelocationReplyAckState.NotAcknowledged;
+        }
+    }
+
+    private async ValueTask<ZLinkServiceWireCodec.ReplyRelayRecord>
+        CreateCanonicalReplyRelayAsync(
+            IZLinkAuthorityStore authorityStore,
+            TargetStage stage,
+            ZLinkRelocationParticipantEnvelope participant,
+            ZLinkCanonicalAcceptedRequest request,
+            ZLinkCanonicalTerminalCompletion completion,
+            CancellationToken cancellationToken)
+    {
+        var authority = await authorityStore.ReadAuthorityAsync(
+                participant.AuthorityKey,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (authority is not ZLinkAuthorityReadResult.Found found)
+            throw new ZLinkRelocationDataLostException(
+                "The canonical reply relay authority is missing.");
+        var targetOwner = LocationLifecycle?.OwnerToken
+                          ?? throw new ZLinkConfigurationException(
+                              "Location runtime is not registered.");
+        return new ZLinkServiceWireCodec.ReplyRelayRecord(
+            new MeshOperationId(
+                completion.OperationHigh,
+                completion.OperationLow),
+            request.ReplyRouteId,
+            new ZLinkServiceWireCodec.RelocationWireId(
+                stage.Envelope.CanonicalRelocationHigh,
+                stage.Envelope.CanonicalRelocationLow),
+            stage.TargetNodeLifecycleGeneration,
+            new ZLinkServiceWireCodec.RelocationCoordinatorFence(
+                targetOwner.OwnerId,
+                checked((ulong)targetOwner.LeaseGeneration),
+                stage.Node.Node.RoutingId,
+                stage.TargetNodeLifecycleGeneration,
+                found.Snapshot.StoreVersion),
+            completion.ParticipantId,
+            completion.AcceptedSequence,
+            completion.TerminalResult,
+            (ServiceWireConstants.FrameworkErrorCode)completion.ErrorCode);
+    }
+
+    internal static bool IsExactSourceLeaseExpired(
+        ZLinkOwnerLeaseReadResult lease,
+        ZLinkCanonicalTerminalCompletion completion) =>
+        lease switch
+        {
+            ZLinkOwnerLeaseReadResult.Missing => true,
+            ZLinkOwnerLeaseReadResult.Found found =>
+                completion.SourceOwnerLeaseGeneration > long.MaxValue
+                || !StringComparer.Ordinal.Equals(
+                    found.Token.OwnerId,
+                    completion.SourceOwnerId)
+                || found.Token.LeaseGeneration
+                   != checked((long)completion.SourceOwnerLeaseGeneration)
+                || found.LeaseExpiresAt <= found.StoreNow,
+            _ => false
+        };
+
+    private static ZLinkCanonicalApplicationPayload DecodeCanonicalReply(
+        IReadOnlyList<byte[]> replyParts)
+    {
+        var parts = replyParts.Select(static part => Message.From(part)).ToArray();
+        try
+        {
+            var header = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            if (parts.Length != 2)
+                throw new ZLinkRelocationDataLostException(
+                    "Canonical terminal reply must contain header and body parts.");
+            return new ZLinkCanonicalApplicationPayload(
+                header.MessageName,
+                header.ContentType,
+                parts[1].ToArray());
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    private static byte[][] EncodeCanonicalReply(
+        string channelName,
+        ZLinkCanonicalAcceptedRequest request,
+        ZLinkCanonicalTerminalCompletion completion)
+    {
+        var payload = completion.Payload
+                      ?? throw new ZLinkRelocationDataLostException(
+                          "Canonical terminal reply has no application payload.");
+        using var header = ZLinkEnvelopeCodec.EncodeHeader(
+            new ZLinkEnvelopeHeader(
+                ZLinkMessageKind.Response,
+                channelName,
+                payload.PacketName,
+                payload.ContentType,
+                request.ReplyRouteId.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                null,
+                null,
+                null,
+                null));
+        return [header.ToArray(), payload.Payload.ToArray()];
     }
 
     internal async ValueTask AbortInboundSpotAggregateAsync(TargetStage stage)
@@ -369,64 +789,27 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (Volatile.Read(ref stage.Published) != 0)
             return;
         foreach (var actorState in stage.ActorStates)
-        {
-            try
-            {
-                await _actorSessionManager.RollbackTransferredActorAsync(
-                        actorState.ActorId,
-                        CancellationToken.None)
-                    .ConfigureAwait(false);
-            }
-            catch
-            {
-            }
-        }
+            await _actorSessionManager.RollbackTransferredActorAsync(
+                    actorState.ActorId,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
         await stage.Node.Catalog.DiscardReservedAsync(stage.Spot)
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask RelayCommittedSpotRecordsAsync(
+    internal ValueTask RelayCommittedSpotRecordsAsync(
         ZLinkSpotRetireReservation reservation,
         ZLinkAggregateRelocationPublished relocation,
         IReadOnlyList<ZLinkAcceptedWorkRecord> held,
         CancellationToken cancellationToken)
     {
-        var records = held
-            .OrderBy(static record => record.AcceptedSequence)
-            .Select(static record => new ZLinkSpotRetireHeldRecord(
-                record.AcceptedSequence,
-                record.Payload.ToArray()))
-            .ToArray();
-        ZLinkSpotRetireTargetRuntime.ValidateHeldRecords(records);
-        var spotParticipant = relocation.Envelope.Participants.Single(
-            static participant => participant.ObjectKind
-                is ZLinkPlacementObjectKind.UserSpot
-                or ZLinkPlacementObjectKind.InstanceSpot);
-        var reply = await RouteClient.RequestToNode(
-                reservation.TargetDescriptor.MeshName,
-                reservation.TargetDescriptor.Rid,
-                new ZLinkSpotRetireHeldRelay(
-                    relocation.Fence.AggregateId,
-                    relocation.Fence.AggregateGeneration,
-                    reservation.Inventory.SpotId,
-                    spotParticipant.ObjectGeneration,
-                    spotParticipant.AuthorityOwnerGeneration,
-                    checked(spotParticipant.AuthorityOwnerGeneration + 1),
-                    reservation.Inventory.SourceNodeLifecycleGeneration,
-                    reservation.Inventory.SourceOwner.OwnerId,
-                    checked((ulong)reservation.Inventory.SourceOwner
-                        .LeaseGeneration),
-                    reservation.TargetDescriptorLifecycleGeneration,
-                    reservation.TargetOwner.OwnerId,
-                    checked((ulong)reservation.TargetOwner.LeaseGeneration),
-                    HopCount: 1,
-                    records))
-            .Async<ZLinkSpotRetireReply>(cancellationToken)
-            .ConfigureAwait(false);
-        if (!reply.Acknowledged)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.SpotMoving,
-                $"Target did not durably accept held ingress for SPOT '{reservation.Inventory.SpotId}'.",
-                true);
+        // The accepted queue, including ingress held at the cutoff, is already
+        // part of the one immutable root. Command 31 transfers that journal;
+        // no second network relay is allowed after authority publication.
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = reservation;
+        _ = relocation;
+        _ = held;
+        return ValueTask.CompletedTask;
     }
 }

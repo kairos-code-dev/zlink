@@ -15,9 +15,6 @@ public sealed class SampleRoleOptions
 
     public string WorkDir { get; set; } = string.Empty;
 
-    /// <summary>Only a courier actor node fills this in. It is what makes the same executable
-    /// node-1 or node-2 without a role switch on the command line.</summary>
-    public string? NodeRid { get; set; }
 }
 
 /// <summary>
@@ -57,7 +54,7 @@ public sealed record SampleConfiguration(SampleTopology Topology, SampleRoleOpti
         Require(role.LogDir, "sample.role.logDir");
         Require(role.WorkDir, "sample.role.workDir");
 
-        return new SampleConfiguration(topology.ToTopology(role.Name, role.NodeRid), role);
+        return new SampleConfiguration(topology.ToTopology(role.Name), role);
     }
 
     private static void Require(string value, string key)

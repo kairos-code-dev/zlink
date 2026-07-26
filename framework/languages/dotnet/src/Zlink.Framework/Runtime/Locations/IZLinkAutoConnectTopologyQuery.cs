@@ -10,4 +10,12 @@ namespace Zlink.Framework.Runtime.Locations;
 internal interface IZLinkAutoConnectTopologyQuery
 {
     bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid);
+
+    IReadOnlyList<ZLinkRouteMeshPeerIdentity>? GetCompleteRouteMeshPeers(
+        string meshName) => null;
 }
+
+internal readonly record struct ZLinkRouteMeshPeerIdentity(
+    RoutingId NodeRid,
+    ulong LifecycleGeneration,
+    bool Draining);

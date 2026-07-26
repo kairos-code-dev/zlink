@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
@@ -16,9 +17,12 @@ import java.util.function.Consumer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 
 /** Owns the transfer-only backlog and bounded source-retirement state. */
 final class ZLinkActorTransferHandoff implements AutoCloseable {
+    static final int MAX_FORWARDING_MESSAGES = 1024;
+    static final long MAX_FORWARDING_BYTES = 16L * 1024L * 1024L;
     private final ScheduledExecutorService retirementsExecutor =
         Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "zlink-actor-transfer-retirement");
@@ -114,9 +118,20 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         ZLinkBackendActorRef targetActorRef,
         Duration window,
         Consumer<ForwardingSource> retirement) {
+        retain(actorId, sourceActorRef, targetActorRef, null, window, retirement);
+    }
+
+    synchronized void retain(
+        String actorId,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef,
+        SpotTransportAddress targetAddress,
+        Duration window,
+        Consumer<ForwardingSource> retirement) {
         requireOpen();
         ForwardingSource source = new ForwardingSource(
-            sourceActorRef, targetActorRef, forwardingToken.incrementAndGet());
+            sourceActorRef, targetActorRef, targetAddress,
+            forwardingToken.incrementAndGet());
         forwardingSources.put(actorId, source);
         Retention retained = new Retention(actorId, source, retirement);
         retirements.add(retained);
@@ -152,6 +167,36 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
 
     int forwardingSourceCount() {
         return forwardingSources.size();
+    }
+
+    <T> CompletionStage<T> forward(
+        String actorId,
+        long objectGeneration,
+        long payloadBytes,
+        java.util.function.Supplier<CompletionStage<T>> submission) {
+        ForwardingSource source = forwardingSources.get(actorId);
+        if (source == null
+            || source.sourceActorRef().generation() != objectGeneration
+            || source.targetActorRef().generation() != objectGeneration) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "committed forwarding mapping is unavailable or stale"));
+        }
+        if (!source.tryAcquire(payloadBytes)) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "committed forwarding mapping queue exceeds 1024 messages or 16 MiB"));
+        }
+        CompletionStage<T> submitted;
+        try {
+            submitted = java.util.Objects.requireNonNull(
+                submission.get(), "forwarding submission returned null");
+        } catch (RuntimeException failure) {
+            source.release(payloadBytes);
+            return java.util.concurrent.CompletableFuture.failedFuture(failure);
+        }
+        return submitted.whenComplete(
+            (ignored, failure) -> source.release(payloadBytes));
     }
 
     @Override
@@ -226,9 +271,49 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         }
     }
 
-    record ForwardingSource(
-        ZLinkBackendActorRef sourceActorRef,
-        ZLinkBackendActorRef targetActorRef,
-        long token) {
+    static final class ForwardingSource {
+        private final ZLinkBackendActorRef sourceActorRef;
+        private final ZLinkBackendActorRef targetActorRef;
+        private final SpotTransportAddress targetAddress;
+        private final long token;
+        private int pendingMessages;
+        private long pendingBytes;
+
+        private ForwardingSource(
+            ZLinkBackendActorRef sourceActorRef,
+            ZLinkBackendActorRef targetActorRef,
+            SpotTransportAddress targetAddress,
+            long token) {
+            this.sourceActorRef = java.util.Objects.requireNonNull(
+                sourceActorRef, "sourceActorRef");
+            this.targetActorRef = java.util.Objects.requireNonNull(
+                targetActorRef, "targetActorRef");
+            this.targetAddress = targetAddress;
+            this.token = token;
+        }
+
+        ZLinkBackendActorRef sourceActorRef() { return sourceActorRef; }
+        ZLinkBackendActorRef targetActorRef() { return targetActorRef; }
+        SpotTransportAddress targetAddress() { return targetAddress; }
+        long token() { return token; }
+
+        private synchronized boolean tryAcquire(long bytes) {
+            if (bytes < 0 || bytes > MAX_FORWARDING_BYTES
+                || pendingMessages >= MAX_FORWARDING_MESSAGES
+                || pendingBytes + bytes > MAX_FORWARDING_BYTES) {
+                return false;
+            }
+            pendingMessages++;
+            pendingBytes += bytes;
+            return true;
+        }
+
+        private synchronized void release(long bytes) {
+            pendingMessages--;
+            pendingBytes -= bytes;
+        }
+
+        synchronized int pendingMessages() { return pendingMessages; }
+        synchronized long pendingBytes() { return pendingBytes; }
     }
 }

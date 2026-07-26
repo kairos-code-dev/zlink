@@ -1,10 +1,10 @@
 package systems.zlink.samples.deliverydispatch.server.couriersession.sessions;
 
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ActorRefSnapshot;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
+import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.spots.SpotHandle;
-import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
@@ -12,8 +12,6 @@ import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -21,21 +19,15 @@ import java.util.concurrent.CompletionStage;
 public final class CourierSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
-    private final ZLinkRouteClient routes;
-    private final SpotHandleResolver spotHandles;
-    private final SampleTopology topology;
+    private final ZLinkActorManager actors;
 
     public CourierSession(
         ZLinkSessionContext context,
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
-        ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles,
-        SampleTopology topology) {
+        ZLinkActorManager actors) {
         this.context = context;
         this.handlers = handlers;
-        this.routes = routes;
-        this.spotHandles = spotHandles;
-        this.topology = topology;
+        this.actors = actors;
     }
 
     @Override
@@ -87,37 +79,28 @@ public final class CourierSession implements ZLinkSession {
         return findOrEnsureActor(request.courierId()).thenCompose(actorRef -> {
             ZLinkSessionActor bound = context.actors().find(actorRef.actorId()).orElse(null);
             CompletionStage<ZLinkSessionActor> actorStage = bound == null
-                ? context.actors().bind(actorRef.toActorRef())
+                ? context.actors().bind(actorRef)
                 : CompletableFuture.completedFuture(bound);
+            ActorRefSnapshot snapshot = ActorRefSnapshot.from(actorRef);
             Messages.BindCourierSessionReq relayed = new Messages.BindCourierSessionReq(
-                request.courierId(), actorRef, context.sessionId());
+                request.courierId(), snapshot, context.sessionId());
             return actorStage.thenCompose(actor ->
                 actor.relay(dispatch, ZLinkMessage.of(relayed)).thenApply(ignored -> null));
         });
     }
 
-    private CompletionStage<systems.zlink.framework.actors.ActorRefSnapshot> findOrEnsureActor(
+    private CompletionStage<ActorRef> findOrEnsureActor(
         String courierId) {
-        String placement = topology.courierPlacement(courierId);
-        return resolveSpot(placement).thenCompose(address -> routes
-                .requestToSpot(
-                    address,
-                    new Messages.FindCourierActorReq(courierId))
-                .timeout(SampleTimings.RequestTimeout)
-                .submit(Messages.FindCourierActorRes.class)
-                .thenCompose(found -> found.actor() != null
-                    ? CompletableFuture.completedFuture(found.actor())
-                    : routes.requestToSpot(
-                            address,
-                            new Messages.EnsureCourierActorReq(courierId))
-                        .timeout(SampleTimings.RequestTimeout)
-                        .submit(Messages.EnsureCourierActorRes.class)
-                        .thenApply(Messages.EnsureCourierActorRes::actor)));
-    }
-
-    private CompletionStage<SpotHandle> resolveSpot(String placement) {
-        return spotHandles.resolveSpotHandle(RoutingId.from(placement))
-            .thenApply(found -> found.orElseThrow(() ->
-                new IllegalStateException("courier Spot is not registered: " + placement)));
+        return actors.getOrCreate(courierId, SampleNames.CourierActorType,
+                new Messages.EnsureCourierActorReq(courierId))
+            .thenApply(result -> {
+                if (result instanceof ZLinkActorCreateResult.Existing existing) {
+                    return existing.actor();
+                }
+                if (result instanceof ZLinkActorCreateResult.Created created) {
+                    return created.actor();
+                }
+                throw new IllegalStateException("Courier Actor creation was rejected.");
+            });
     }
 }

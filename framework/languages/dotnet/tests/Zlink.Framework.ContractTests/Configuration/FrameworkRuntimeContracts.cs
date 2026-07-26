@@ -13,6 +13,12 @@ namespace Zlink.Framework.ContractTests.Configuration;
 public sealed class FrameworkRuntimeContracts
 {
     [Fact]
+    public void Manual_topology_blocker_keeps_wire_value_nine()
+    {
+        Assert.Equal(9, (int)ZLinkFrameworkTerminationReason.ManualTopologyUnsupported);
+    }
+
+    [Fact]
     [ContractExample(typeof(IZLinkFrameworkRuntime))]
     public async Task Host_runtime_retires_with_continuity_and_reports_one_terminal_result()
     {

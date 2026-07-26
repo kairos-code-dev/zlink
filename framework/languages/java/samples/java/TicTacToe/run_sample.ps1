@@ -150,10 +150,8 @@ try {
             [int]$StreamPort,
             [int]$SpotPort,
             [int]$PubPort,
-            [string]$NodeRid,
             [int]$PeerSpotPort,
-            [int]$PeerPubPort,
-            [string]$PeerNodeRid)
+            [int]$PeerPubPort)
         $path = Join-Path $RunDir "$Name.properties"
         @(
         "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiAChannelPort",
@@ -164,8 +162,6 @@ try {
         "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PubPort",
         "sample.redisEndpoint=$RedisEndpoint",
         "sample.redisKeyPrefix=$RedisKeyPrefix",
-        "sample.playSpotNodeRid=$NodeRid",
-        "sample.peerPlaySpotNodeRid=$PeerNodeRid",
         "sample.peerSpotEndpoint=tcp://127.0.0.1:$PeerSpotPort",
         "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PeerPubPort",
         "sample.logDirectory=$LogDir"
@@ -176,9 +172,9 @@ try {
     $ApiAConfig = Write-ApiConfig "api-a" $ApiAPort $ApiAChannelPort
     $ApiBConfig = Write-ApiConfig "api-b" $ApiBPort $ApiBChannelPort
     $PlayAConfig = Write-PlayConfig "play-a" $PlayAChannelPort $PlayAStreamPort `
-        $PlayASpotPort $PlayAPubPort "tic-play-alpha" $PlayBSpotPort $PlayBPubPort "tic-play-beta"
+        $PlayASpotPort $PlayAPubPort $PlayBSpotPort $PlayBPubPort
     $PlayBConfig = Write-PlayConfig "play-b" $PlayBChannelPort $PlayBStreamPort `
-        $PlayBSpotPort $PlayBPubPort "tic-play-beta" $PlayASpotPort $PlayAPubPort "tic-play-alpha"
+        $PlayBSpotPort $PlayBPubPort $PlayASpotPort $PlayAPubPort
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Server:installDist", ":Client:installDist", "--quiet")
 

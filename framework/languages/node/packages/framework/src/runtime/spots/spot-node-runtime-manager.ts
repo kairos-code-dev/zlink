@@ -370,7 +370,8 @@ export class ZLinkSpotNodeRuntimeManager {
                 : this.effectiveChannelWeight(meshName, channelName, channel.weight ?? 100)
             ])
         ),
-        applicationVersion: 1n,
+        applicationVersion: this.options.registration.applicationVersion,
+        maintenanceWave: this.options.registration.maintenanceWave,
         spotTypes: [
           ...userSpots.map(([stableType]) => stableType),
           ...instanceSpots.map(([stableType]) => stableType),
@@ -402,6 +403,29 @@ export class ZLinkSpotNodeRuntimeManager {
         updatedAt: result.updatedAt
       });
     }
+  }
+
+  async reconcileAndPublishMeshNodeState(
+    state: ZLinkFrameworkRuntimeState,
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const location = this.locationAutoConnect;
+    const node = this.meshNodes.get(meshName);
+    if (location === undefined || node === undefined) return;
+    const status = node.status();
+    const owner = location.runtime.currentOwnerToken;
+    if (owner === undefined) return;
+    const current = (await location.runtime.listLiveMeshNodes(meshName, signal))
+      .find((descriptor) =>
+        String(descriptor.rid) === String(status.routingId)
+        && descriptor.lifecycleGeneration === status.lifecycleGeneration
+        && descriptor.ownerId === owner.ownerId
+        && descriptor.leaseGeneration === owner.leaseGeneration);
+    if (current !== undefined) {
+      this.publishedMeshNodeDescriptors.set(meshName, current);
+    }
+    await this.publishMeshNodeState(state, signal, meshName);
   }
 
   private entrySpotId(

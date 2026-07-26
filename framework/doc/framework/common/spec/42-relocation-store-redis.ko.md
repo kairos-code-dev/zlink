@@ -107,7 +107,9 @@ Cross-store 저장 순서는 다음과 같다.
 1. Relocation Store에 모든 immutable chunk를 저장한다.
 2. Root manifest를 저장하고 reference, checksum, canonical inventory digest와 retention을 검증한다.
 3. `Captured` 또는 root replacement [authority](01-glossary.ko.md#authority) CAS가 Location Store에 reference, checksum, phase와 count를 연결한다.
-4. CAS에 연결되지 않은 root와 chunk는 orphan retention 또는 idempotent cleanup으로 제거한다.
+4. CAS에 연결되지 않은 root와 chunk는 orphan retention 또는 idempotent cleanup으로 제거한다. Content-addressed
+   chunk는 여러 immutable root가 공유할 수 있으므로 provider가 reference count를 보장하지 않으면 root manifest만
+   즉시 삭제하고 chunk는 retention으로 정리한다.
 
 `Captured`와 `Prepared` CAS 직전에 complete tree의 모든 component가 renew threshold보다 긴 remaining lifetime을
 갖는지 검증하고 필요하면 tree 전체를 renew한다. Missing 또는 partial renew는 precommit abort이며 Location

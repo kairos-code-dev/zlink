@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Configuration;
 
 namespace Bingo.Server.Configuration;
 

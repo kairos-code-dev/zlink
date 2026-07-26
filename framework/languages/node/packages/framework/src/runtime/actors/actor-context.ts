@@ -1,5 +1,4 @@
 import type {
-  ActorRef,
   RoutingId,
   SpotId,
   ZLinkActor,
@@ -84,16 +83,6 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
 
   get objectGeneration(): bigint {
     return this.state.nativeActorRef?.generation ?? 1n;
-  }
-
-  // Runtime-internal identity view. The exact interface keeps `actorId` and
-  // `objectGeneration` public; the framework itself needs the whole ref for
-  // transfer, join and Entry Spot notification paths.
-  get actorRef(): ActorRef | undefined {
-    const nativeActorRef = this.state.nativeActorRef;
-    return nativeActorRef === undefined
-      ? undefined
-      : toFrameworkActorRef(nativeActorRef);
   }
 
   get spotId(): SpotId | undefined {
@@ -434,7 +423,7 @@ async function notifyJoinFailure(
     : new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestFailed,
         'Deferred actor join failed.',
-        true,
+        false,
         error
       );
   await actor.onJoinCompleted?.({

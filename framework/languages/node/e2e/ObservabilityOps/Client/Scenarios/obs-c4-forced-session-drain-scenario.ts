@@ -1,4 +1,4 @@
-// OBS-C4: 강제 종료 + 세션 종료 통지 시나리오를 검증한다.
+// OBS-C4: Shutdown closing callback + 세션 종료 통지 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

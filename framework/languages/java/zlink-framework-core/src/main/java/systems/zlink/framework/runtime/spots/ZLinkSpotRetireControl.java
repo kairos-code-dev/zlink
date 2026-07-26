@@ -23,6 +23,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
 
 /**
  * Infrastructure-only request/reply bridge for User Spot relocation control.
@@ -35,9 +36,13 @@ final class ZLinkSpotRetireControl {
     private static final int STAGE = 1;
     private static final int PUBLISH = 2;
     private static final int ABORT = 3;
+    private static final int FINALIZE = 4;
+    private static final int RELAY_REPLY = 5;
+    private static final int RELAY_ACK = 126;
     private static final int ACK = 127;
     private static final int MAX_TEXT_BYTES = 4096;
     private static final int MAX_COMMAND_BYTES = 1024 * 1024;
+    private static final int MAX_PARTICIPANTS = 1024;
 
     private ZLinkSpotRetireControl() {
     }
@@ -94,6 +99,39 @@ final class ZLinkSpotRetireControl {
                 timeout);
         }
 
+        CompletionStage<Void> finalizeAfterCompletion(
+            RoutingId targetNodeRid,
+            Fence fence,
+            Duration timeout) {
+            return invoke(
+                targetNodeRid,
+                fence,
+                encodeFence(FINALIZE, fence),
+                timeout);
+        }
+
+        CompletionStage<ZLinkSpotRelocationReplyRoutes.Ack> relayReply(
+            RoutingId sourceNodeRid,
+            Fence fence,
+            ZLinkSpotRelocationReplyRoutes.Relay relay,
+            Duration timeout) {
+            return node.requestRelocationControl(
+                    sourceNodeRid,
+                    encodeRelay(fence, relay),
+                    timeout)
+                .thenApply(reply -> decodeRelayAck(reply, fence));
+        }
+
+        CompletionStage<byte[]> relayCanonicalReply(
+            RoutingId sourceNodeRid,
+            ZLinkServiceRelocationWireCodec.RequestSourceFence expectedSource,
+            byte[] command33,
+            List<byte[]> payload,
+            Duration timeout) {
+            return node.requestRelocationReplyRelay(
+                sourceNodeRid, expectedSource, command33, payload, timeout);
+        }
+
         private CompletionStage<Void> invoke(
             RoutingId targetNodeRid,
             Fence expectedFence,
@@ -126,6 +164,13 @@ final class ZLinkSpotRetireControl {
             RoutingId transportSource,
             byte[] encoded) {
             Command command = decode(encoded);
+            if (command instanceof RelayReplyCommand relay) {
+                return endpoint.relayReply(
+                        transportSource,
+                        relay.relay())
+                    .thenApply(ack -> encodeRelayAck(
+                        relay.fence(), ack));
+            }
             if (command instanceof StageCommand stage) {
                 if (!stage.request().sourceNodeRid().equals(transportSource)) {
                     return failed(new IllegalArgumentException(
@@ -141,6 +186,9 @@ final class ZLinkSpotRetireControl {
             }
             if (command instanceof PublishCommand) {
                 return publish(slot);
+            }
+            if (command instanceof FinalizeCommand) {
+                return finalizeAfterCompletion(slot);
             }
             return abort(slot);
         }
@@ -213,6 +261,27 @@ final class ZLinkSpotRetireControl {
                 .thenCompose(ignored -> endpoint.abort(slot.request))
                 .thenApply(ignored -> encodeAck(slot.request.fence()));
         }
+
+        private CompletionStage<byte[]> finalizeAfterCompletion(Slot slot) {
+            synchronized (slot) {
+                if (slot.aborted) {
+                    return failed(new IllegalStateException(
+                        "aborted relocation cannot be finalized"));
+                }
+                if (slot.published == null) {
+                    return failed(new IllegalStateException(
+                        "unpublished relocation cannot be finalized"));
+                }
+                if (slot.finalized != null) {
+                    return slot.finalized;
+                }
+                slot.finalized = slot.published
+                    .thenCompose(ignored -> endpoint.finalizeAfterCompletion(
+                        slot.request))
+                    .thenApply(ignored -> encodeAck(slot.request.fence()));
+                return slot.finalized;
+            }
+        }
     }
 
     interface TargetEndpoint {
@@ -221,6 +290,15 @@ final class ZLinkSpotRetireControl {
         CompletionStage<Void> publish(StageRequest request);
 
         CompletionStage<Void> abort(StageRequest request);
+
+        CompletionStage<Void> finalizeAfterCompletion(StageRequest request);
+
+        default CompletionStage<ZLinkSpotRelocationReplyRoutes.Ack> relayReply(
+            RoutingId transportSource,
+            ZLinkSpotRelocationReplyRoutes.Relay relay) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "relocation reply relay is unavailable"));
+        }
     }
 
     record Fence(UUID aggregateId, long aggregateGeneration) {
@@ -247,8 +325,50 @@ final class ZLinkSpotRetireControl {
         String spotId,
         String stableType,
         boolean instanceSpot,
+        boolean restoreSpotSnapshot,
         String relocationReference,
-        long relocationChecksum) {
+        long relocationChecksum,
+        List<ParticipantFence> participants,
+        List<SessionRouteFence> sessionRoutes) {
+        StageRequest(
+            Fence fence,
+            RoutingId sourceNodeRid,
+            long sourceNodeGeneration,
+            String sourceOwnerId,
+            long sourceOwnerLeaseGeneration,
+            RoutingId targetNodeRid,
+            long targetNodeGeneration,
+            String targetOwnerId,
+            long targetOwnerLeaseGeneration,
+            String meshName,
+            String spotId,
+            String stableType,
+            boolean instanceSpot,
+            boolean restoreSpotSnapshot,
+            String relocationReference,
+            long relocationChecksum,
+            List<ParticipantFence> participants) {
+            this(
+                fence,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                sourceOwnerId,
+                sourceOwnerLeaseGeneration,
+                targetNodeRid,
+                targetNodeGeneration,
+                targetOwnerId,
+                targetOwnerLeaseGeneration,
+                meshName,
+                spotId,
+                stableType,
+                instanceSpot,
+                restoreSpotSnapshot,
+                relocationReference,
+                relocationChecksum,
+                participants,
+                List.of());
+        }
+
         StageRequest {
             Objects.requireNonNull(fence, "fence");
             Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
@@ -259,6 +379,10 @@ final class ZLinkSpotRetireControl {
             requireText(spotId, "spotId");
             requireText(stableType, "stableType");
             requireText(relocationReference, "relocationReference");
+            participants = List.copyOf(Objects.requireNonNull(
+                participants, "participants"));
+            sessionRoutes = List.copyOf(Objects.requireNonNull(
+                sessionRoutes, "sessionRoutes"));
             if (sourceNodeGeneration <= 0
                 || sourceOwnerLeaseGeneration <= 0
                 || targetNodeGeneration <= 0
@@ -268,11 +392,107 @@ final class ZLinkSpotRetireControl {
                 throw new IllegalArgumentException(
                     "relocation stage contains an invalid generation or checksum");
             }
+            if (participants.isEmpty()
+                || participants.size() > MAX_PARTICIPANTS) {
+                throw new IllegalArgumentException(
+                    "relocation participant count is invalid");
+            }
+            String previous = null;
+            for (ParticipantFence participant : participants) {
+                if (previous != null
+                    && compareUtf8(previous, participant.authorityKey()) >= 0) {
+                    throw new IllegalArgumentException(
+                        "relocation participants are not canonical");
+                }
+                previous = participant.authorityKey();
+            }
+            previous = null;
+            for (SessionRouteFence route : sessionRoutes) {
+                if (previous != null
+                    && compareUtf8(previous, route.actorId()) >= 0) {
+                    throw new IllegalArgumentException(
+                        "Session routes are not canonical");
+                }
+                boolean actorMatches = participants.stream().anyMatch(
+                    participant -> participant.objectKind() == 1
+                        && participant.objectId().equals(route.actorId())
+                        && participant.objectGeneration()
+                            == route.actorObjectGeneration()
+                        && participant.sourceAuthorityOwnerGeneration()
+                            == route.sourceAuthorityOwnerGeneration());
+                if (!actorMatches) {
+                    throw new IllegalArgumentException(
+                        "Session route is outside Actor inventory");
+                }
+                previous = route.actorId();
+            }
+        }
+    }
+
+    record SessionRouteFence(
+        String actorId,
+        long actorObjectGeneration,
+        long sourceAuthorityOwnerGeneration,
+        String sourceAuthorityStoreVersion,
+        RoutingId sessionOwnerNodeRid,
+        long sessionOwnerNodeGeneration,
+        String sessionOwnerId,
+        long sessionOwnerLeaseGeneration,
+        RoutingId sessionRid,
+        long bindingGeneration,
+        long lastAcceptedSessionSequence) {
+        SessionRouteFence {
+            requireText(actorId, "actorId");
+            requireText(
+                sourceAuthorityStoreVersion, "sourceAuthorityStoreVersion");
+            Objects.requireNonNull(
+                sessionOwnerNodeRid, "sessionOwnerNodeRid");
+            requireText(sessionOwnerId, "sessionOwnerId");
+            Objects.requireNonNull(sessionRid, "sessionRid");
+            positive(actorObjectGeneration, "actorObjectGeneration");
+            positive(
+                sourceAuthorityOwnerGeneration,
+                "sourceAuthorityOwnerGeneration");
+            positive(
+                sessionOwnerNodeGeneration,
+                "sessionOwnerNodeGeneration");
+            positive(
+                sessionOwnerLeaseGeneration,
+                "sessionOwnerLeaseGeneration");
+            positive(bindingGeneration, "bindingGeneration");
+            if (lastAcceptedSessionSequence < 0) {
+                throw new IllegalArgumentException(
+                    "lastAcceptedSessionSequence must not be negative");
+            }
+        }
+    }
+
+    record ParticipantFence(
+        String authorityKey,
+        int objectKind,
+        String objectId,
+        String stableType,
+        boolean restoreSnapshot,
+        long objectGeneration,
+        long sourceAuthorityOwnerGeneration) {
+        ParticipantFence {
+            requireText(authorityKey, "authorityKey");
+            if (objectKind != 1 && objectKind != 2) {
+                throw new IllegalArgumentException(
+                    "participant objectKind must be Actor or User Spot");
+            }
+            requireText(objectId, "objectId");
+            requireText(stableType, "stableType");
+            positive(objectGeneration, "objectGeneration");
+            positive(
+                sourceAuthorityOwnerGeneration,
+                "sourceAuthorityOwnerGeneration");
         }
     }
 
     private sealed interface Command permits
-        StageCommand, PublishCommand, AbortCommand {
+        StageCommand, PublishCommand, AbortCommand, FinalizeCommand,
+        RelayReplyCommand {
         Fence fence();
     }
 
@@ -286,11 +506,20 @@ final class ZLinkSpotRetireControl {
     private record AbortCommand(Fence fence) implements Command {
     }
 
+    private record FinalizeCommand(Fence fence) implements Command {
+    }
+
+    private record RelayReplyCommand(
+        Fence fence,
+        ZLinkSpotRelocationReplyRoutes.Relay relay) implements Command {
+    }
+
     private static final class Slot {
         private final StageRequest request;
         private final byte[] stageDigest;
         private final CompletableFuture<Void> staged = new CompletableFuture<>();
         private CompletionStage<byte[]> published;
+        private CompletionStage<byte[]> finalized;
         private boolean aborted;
 
         private Slot(StageRequest request, byte[] stageDigest) {
@@ -314,13 +543,64 @@ final class ZLinkSpotRetireControl {
             writeText(output, request.spotId());
             writeText(output, request.stableType());
             output.writeBoolean(request.instanceSpot());
+            output.writeBoolean(request.restoreSpotSnapshot());
             writeText(output, request.relocationReference());
             output.writeInt((int) request.relocationChecksum());
+            output.writeInt(request.participants().size());
+            for (ParticipantFence participant : request.participants()) {
+                writeText(output, participant.authorityKey());
+                output.writeByte(participant.objectKind());
+                writeText(output, participant.objectId());
+                writeText(output, participant.stableType());
+                output.writeBoolean(participant.restoreSnapshot());
+                output.writeLong(participant.objectGeneration());
+                output.writeLong(
+                    participant.sourceAuthorityOwnerGeneration());
+            }
+            output.writeInt(request.sessionRoutes().size());
+            for (SessionRouteFence route : request.sessionRoutes()) {
+                writeText(output, route.actorId());
+                output.writeLong(route.actorObjectGeneration());
+                output.writeLong(route.sourceAuthorityOwnerGeneration());
+                writeText(output, route.sourceAuthorityStoreVersion());
+                writeRid(output, route.sessionOwnerNodeRid());
+                output.writeLong(route.sessionOwnerNodeGeneration());
+                writeText(output, route.sessionOwnerId());
+                output.writeLong(route.sessionOwnerLeaseGeneration());
+                writeRid(output, route.sessionRid());
+                output.writeLong(route.bindingGeneration());
+                output.writeLong(route.lastAcceptedSessionSequence());
+            }
         });
     }
 
     private static byte[] encodeFence(int kind, Fence fence) {
         return write(kind, output -> writeFence(output, fence));
+    }
+
+    private static byte[] encodeRelay(
+        Fence fence,
+        ZLinkSpotRelocationReplyRoutes.Relay relay) {
+        return write(RELAY_REPLY, output -> {
+            writeFence(output, fence);
+            output.writeLong(relay.operation().high());
+            output.writeLong(relay.operation().low());
+            output.writeLong(relay.replyRouteId());
+            writeText(output, relay.spotId());
+            output.writeLong(relay.objectGeneration());
+            writeText(output, relay.sourceOwnerId());
+            output.writeLong(relay.sourceOwnerLeaseGeneration());
+            writeRid(output, relay.sourceNodeRid());
+            output.writeLong(relay.sourceNodeGeneration());
+            output.writeLong(relay.targetNodeGeneration());
+            output.writeLong(relay.targetAuthorityOwnerGeneration());
+            output.writeInt(relay.hopCount());
+            output.writeInt(relay.parts().size());
+            for (byte[] part : relay.parts()) {
+                output.writeInt(part.length);
+                output.write(part);
+            }
+        });
     }
 
     private static byte[] encodeAck(Fence fence) {
@@ -344,26 +624,153 @@ final class ZLinkSpotRetireControl {
             Command command;
             if (kind == STAGE) {
                 Fence fence = readFence(input);
+                RoutingId sourceNode = readRid(input);
+                long sourceNodeGeneration = positive(
+                    input.readLong(), "sourceNodeGeneration");
+                String sourceOwner = readText(input);
+                long sourceOwnerGeneration = positive(
+                    input.readLong(), "sourceOwnerLeaseGeneration");
+                RoutingId targetNode = readRid(input);
+                long targetNodeGeneration = positive(
+                    input.readLong(), "targetNodeGeneration");
+                String targetOwner = readText(input);
+                long targetOwnerGeneration = positive(
+                    input.readLong(), "targetOwnerLeaseGeneration");
+                String meshName = readText(input);
+                String spotId = readText(input);
+                String stableType = readText(input);
+                boolean instanceSpot = input.readBoolean();
+                boolean restoreSpotSnapshot = input.readBoolean();
+                String reference = readText(input);
+                long checksum = Integer.toUnsignedLong(input.readInt());
+                int participantCount = input.readInt();
+                if (participantCount < 1
+                    || participantCount > MAX_PARTICIPANTS) {
+                    throw new IllegalArgumentException(
+                        "relocation participant count is invalid");
+                }
+                java.util.ArrayList<ParticipantFence> participants =
+                    new java.util.ArrayList<>(participantCount);
+                for (int index = 0; index < participantCount; index++) {
+                    participants.add(new ParticipantFence(
+                        readText(input),
+                        input.readUnsignedByte(),
+                        readText(input),
+                        readText(input),
+                        input.readBoolean(),
+                        positive(input.readLong(), "objectGeneration"),
+                        positive(
+                            input.readLong(),
+                            "sourceAuthorityOwnerGeneration")));
+                }
+                int sessionRouteCount = input.readInt();
+                if (sessionRouteCount < 0
+                    || sessionRouteCount > MAX_PARTICIPANTS) {
+                    throw new IllegalArgumentException(
+                        "Session route count is invalid");
+                }
+                java.util.ArrayList<SessionRouteFence> sessionRoutes =
+                    new java.util.ArrayList<>(sessionRouteCount);
+                for (int index = 0; index < sessionRouteCount; index++) {
+                    sessionRoutes.add(new SessionRouteFence(
+                        readText(input),
+                        positive(input.readLong(), "actorObjectGeneration"),
+                        positive(
+                            input.readLong(),
+                            "sourceAuthorityOwnerGeneration"),
+                        readText(input),
+                        readRid(input),
+                        positive(
+                            input.readLong(),
+                            "sessionOwnerNodeGeneration"),
+                        readText(input),
+                        positive(
+                            input.readLong(),
+                            "sessionOwnerLeaseGeneration"),
+                        readRid(input),
+                        positive(input.readLong(), "bindingGeneration"),
+                        nonnegative(
+                            input.readLong(),
+                            "lastAcceptedSessionSequence")));
+                }
                 command = new StageCommand(new StageRequest(
                     fence,
-                    readRid(input),
-                    positive(input.readLong(), "sourceNodeGeneration"),
-                    readText(input),
-                    positive(input.readLong(), "sourceOwnerLeaseGeneration"),
-                    readRid(input),
-                    positive(input.readLong(), "targetNodeGeneration"),
-                    readText(input),
-                    positive(input.readLong(), "targetOwnerLeaseGeneration"),
-                    readText(input),
-                    readText(input),
-                    readText(input),
-                    input.readBoolean(),
-                    readText(input),
-                    Integer.toUnsignedLong(input.readInt())));
+                    sourceNode,
+                    sourceNodeGeneration,
+                    sourceOwner,
+                    sourceOwnerGeneration,
+                    targetNode,
+                    targetNodeGeneration,
+                    targetOwner,
+                    targetOwnerGeneration,
+                    meshName,
+                    spotId,
+                    stableType,
+                    instanceSpot,
+                    restoreSpotSnapshot,
+                    reference,
+                    checksum,
+                    participants,
+                    sessionRoutes));
             } else if (kind == PUBLISH) {
                 command = new PublishCommand(readFence(input));
             } else if (kind == ABORT) {
                 command = new AbortCommand(readFence(input));
+            } else if (kind == FINALIZE) {
+                command = new FinalizeCommand(readFence(input));
+            } else if (kind == RELAY_REPLY) {
+                Fence fence = readFence(input);
+                var operation = new ZLinkSpotRelocationReplyRoutes.OperationId(
+                    input.readLong(), input.readLong());
+                long replyRouteId = positive(
+                    input.readLong(), "replyRouteId");
+                String spotId = readText(input);
+                long objectGeneration = positive(
+                    input.readLong(), "objectGeneration");
+                String sourceOwnerId = readText(input);
+                long sourceOwnerLeaseGeneration = positive(
+                    input.readLong(), "sourceOwnerLeaseGeneration");
+                RoutingId sourceNodeRid = readRid(input);
+                long sourceNodeGeneration = positive(
+                    input.readLong(), "sourceNodeGeneration");
+                long targetNodeGeneration = positive(
+                    input.readLong(), "targetNodeGeneration");
+                long targetAuthorityOwnerGeneration = positive(
+                    input.readLong(), "targetAuthorityOwnerGeneration");
+                int hopCount = input.readInt();
+                int partCount = input.readInt();
+                if (partCount < 1 || partCount > 64) {
+                    throw new IllegalArgumentException(
+                        "relocation reply part count is invalid");
+                }
+                java.util.ArrayList<byte[]> parts =
+                    new java.util.ArrayList<>(partCount);
+                for (int index = 0; index < partCount; index++) {
+                    int length = input.readInt();
+                    if (length < 0 || length > MAX_COMMAND_BYTES) {
+                        throw new IllegalArgumentException(
+                            "relocation reply part is too large");
+                    }
+                    byte[] part = input.readNBytes(length);
+                    if (part.length != length) {
+                        throw new EOFException();
+                    }
+                    parts.add(part);
+                }
+                command = new RelayReplyCommand(fence,
+                    new ZLinkSpotRelocationReplyRoutes.Relay(
+                        operation,
+                        replyRouteId,
+                        spotId,
+                        objectGeneration,
+                        sourceOwnerId,
+                        sourceOwnerLeaseGeneration,
+                        sourceNodeRid,
+                        sourceNodeGeneration,
+                        targetNodeGeneration,
+                        targetAuthorityOwnerGeneration,
+                        hopCount,
+                        parts));
             } else {
                 throw new IllegalArgumentException(
                     "relocation command kind is invalid");
@@ -401,6 +808,41 @@ final class ZLinkSpotRetireControl {
         } catch (IOException failure) {
             throw new IllegalArgumentException(
                 "relocation acknowledgment is invalid", failure);
+        }
+    }
+
+    private static byte[] encodeRelayAck(
+        Fence fence,
+        ZLinkSpotRelocationReplyRoutes.Ack ack) {
+        return write(RELAY_ACK, output -> {
+            writeFence(output, fence);
+            output.writeByte(ack.ordinal());
+        });
+    }
+
+    private static ZLinkSpotRelocationReplyRoutes.Ack decodeRelayAck(
+        byte[] encoded,
+        Fence expectedFence) {
+        try {
+            DataInputStream input = new DataInputStream(
+                new ByteArrayInputStream(encoded));
+            if (input.readInt() != MAGIC
+                || input.readUnsignedByte() != VERSION
+                || input.readUnsignedByte() != RELAY_ACK
+                || !readFence(input).equals(expectedFence)) {
+                throw new IllegalArgumentException(
+                    "relocation reply acknowledgment is invalid");
+            }
+            int state = input.readUnsignedByte();
+            if (state >= ZLinkSpotRelocationReplyRoutes.Ack.values().length
+                || input.available() != 0) {
+                throw new IllegalArgumentException(
+                    "relocation reply acknowledgment state is invalid");
+            }
+            return ZLinkSpotRelocationReplyRoutes.Ack.values()[state];
+        } catch (IOException failure) {
+            throw new IllegalArgumentException(
+                "relocation reply acknowledgment is invalid", failure);
         }
     }
 
@@ -506,6 +948,19 @@ final class ZLinkSpotRetireControl {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
+    }
+
+    private static long nonnegative(long value, String name) {
+        if (value < 0) {
+            throw new IllegalArgumentException(name + " must not be negative");
+        }
+        return value;
+    }
+
+    private static int compareUtf8(String left, String right) {
+        return Arrays.compareUnsigned(
+            left.getBytes(StandardCharsets.UTF_8),
+            right.getBytes(StandardCharsets.UTF_8));
     }
 
     private static byte[] sha256(byte[] value) {

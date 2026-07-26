@@ -200,9 +200,8 @@ internal sealed class ZLinkSpotLocationLifecycle(
                     $"Spot '{spotId}' authority is owned by another runtime.",
                     true);
             if (result is ZLinkAuthorityCompareExchangeResult.GenerationExhausted)
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InvalidConfiguration,
-                    $"Spot '{spotId}' authority generation is exhausted.");
+                throw new ZLinkAuthorityGenerationExhaustedException(
+                    $"removing Spot '{spotId}' authority");
         }
 
         lock (_gate)

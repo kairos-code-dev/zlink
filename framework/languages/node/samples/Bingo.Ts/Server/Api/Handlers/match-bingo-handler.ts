@@ -23,12 +23,11 @@ class MatchBingoHandler implements ZLinkRequestHandler<MatchBingoApiReq, MatchBi
         SampleNames.playChannel,
         new AllocateBingoRoomReq({
           mode: request.mode,
-          actorId: request.actorId,
-          preferredOwnerNodeRid: request.actorNodeRid
+          actorId: request.actorId
         })
       )
       .submit<AllocateBingoRoomRes>();
-    return new MatchBingoApiRes({ roomId: allocated.roomId, roomOwnerNodeRid: allocated.roomOwnerNodeRid });
+    return new MatchBingoApiRes({ roomId: allocated.roomId });
   }
 }
 

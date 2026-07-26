@@ -12,7 +12,7 @@ internal sealed class ReportBingoResultHandler(
 {
     public ValueTask<ReportBingoResultRes> HandleAsync(
         ReportBingoResultReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

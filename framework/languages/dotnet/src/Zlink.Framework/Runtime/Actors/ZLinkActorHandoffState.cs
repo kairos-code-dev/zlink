@@ -120,6 +120,7 @@ internal sealed class ZLinkActorHandoffState(
         {
             if (_sourcePhase != ZLinkActorSourceHandoffPhase.Capturing
                 && _targetPhase is not (ZLinkActorTargetHandoffPhase.Importing
+                    or ZLinkActorTargetHandoffPhase.AuthorityCommitted
                     or ZLinkActorTargetHandoffPhase.Replaying))
                 return false;
 
@@ -182,6 +183,44 @@ internal sealed class ZLinkActorHandoffState(
             _importedFrameCount = _frames.Count;
             _sourceTrailingImported = false;
             return true;
+        }
+    }
+
+    internal void BeginCanonicalMaintenanceImport(
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(handoffId);
+        ArgumentNullException.ThrowIfNull(frames);
+        lock (_gate)
+        {
+            if (string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
+                && _targetPhase is ZLinkActorTargetHandoffPhase.Importing
+                    or ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                    or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.Completed)
+                return;
+            if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
+                    or ZLinkActorSourceHandoffPhase.CutoverPending
+                    or ZLinkActorSourceHandoffPhase.ForwardingCommitted
+                || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
+                    or ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                    or ZLinkActorTargetHandoffPhase.NotifyingJoined
+                    or ZLinkActorTargetHandoffPhase.Prepared
+                    or ZLinkActorTargetHandoffPhase.Replaying
+                    or ZLinkActorTargetHandoffPhase.Quarantined)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' already has an active handoff transaction.");
+            _handoffId = handoffId;
+            _joinRequest = null;
+            _preparation = null;
+            _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
+            _frames.Clear();
+            _arrivalIndex = 0;
+            foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
+                _frames.Add(frame with { ArrivalIndex = _arrivalIndex++ });
+            _importedFrameCount = _frames.Count;
+            _sourceTrailingImported = true;
         }
     }
 
@@ -445,6 +484,22 @@ internal sealed class ZLinkActorHandoffState(
                 _importedFrameCount = 0;
             }
 
+            return _frames.ToArray();
+        }
+    }
+
+    internal IReadOnlyList<ZLinkActorHandoffFrame>
+        PrepareCanonicalMaintenanceReplay(string handoffId)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
+                || _targetPhase is not (
+                    ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                    or ZLinkActorTargetHandoffPhase.Replaying))
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' has no committed canonical maintenance import.");
+            _targetPhase = ZLinkActorTargetHandoffPhase.Replaying;
             return _frames.ToArray();
         }
     }

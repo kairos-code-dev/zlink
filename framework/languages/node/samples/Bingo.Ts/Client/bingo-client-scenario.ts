@@ -64,10 +64,6 @@ class BingoClientScenario {
     zlinkStreamAssert.ensure(client1Auth.actorId === BingoSamplePlayers.player1, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(client2Auth.actorId === BingoSamplePlayers.player2, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(observerAuth.actorId === BingoSamplePlayers.observer, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client1Auth.actorNodeRid.length > 0, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client2Auth.actorNodeRid.length > 0, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(observerAuth.actorNodeRid.length > 0, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client2Auth.actorNodeRid !== client1Auth.actorNodeRid, 'Sample scenario assertion failed.');
 
     // 2. player-1 matches first, gets a waiting room, and receives no self-join notify.
     const [client1MatchRes] = await Promise.all([
@@ -80,7 +76,6 @@ class BingoClientScenario {
     zlinkStreamAssert.ensure(stateOf(client1MatchRes).roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(stateOf(client1MatchRes).status === BingoRoomStatus.WaitingForPlayers, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(stateOf(client1MatchRes).hostActorId === client1Auth.actorId, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client1MatchRes.roomOwnerNodeRid === client1Auth.actorNodeRid, 'Sample scenario assertion failed.');
 
     // 3. The third client observes rewards through a local BingoRoom on SessionB's Play node.
     const observed = await observer
@@ -88,8 +83,6 @@ class BingoClientScenario {
       .packetName(PacketNames.observeBingoEventsReq)
       .submit<ObserveBingoEventsRes>(signal);
     zlinkStreamAssert.ensure(observed.subscribed, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(observed.observerNodeRid === observerAuth.actorNodeRid, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(observed.observerNodeRid !== client1MatchRes.roomOwnerNodeRid, 'Sample scenario assertion failed.');
     const observerRewardTask = observer
       .waitFor<BingoRewardAnnouncedNotify>(PacketNames.rewardAnnouncedNotify)
       .where((message) => message.payload.roomId === client1MatchRes.roomId)
@@ -109,8 +102,7 @@ class BingoClientScenario {
     ]);
 
     zlinkStreamAssert.ensure(client2MatchRes.roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client2MatchRes.roomOwnerNodeRid === client1MatchRes.roomOwnerNodeRid, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(client2Auth.actorNodeRid !== client2MatchRes.roomOwnerNodeRid, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(client2MatchRes.roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(stateOf(client2MatchRes).roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(stateOf(client2MatchRes).status === BingoRoomStatus.Running, 'Sample scenario assertion failed.');
 
@@ -220,15 +212,12 @@ class BingoClientScenario {
     zlinkStreamAssert.ensure(reward.payload.itemId === BingoRewardItems.goldenDauberId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(reward.payload.itemName === BingoRewardItems.goldenDauberName, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(reward.payload.rarity === BingoRewardItems.legendaryRarity, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(reward.payload.receivingSpotNodeRid === observed.observerNodeRid, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(reward.payload.receivingSpotNodeRid !== client1MatchRes.roomOwnerNodeRid, 'Sample scenario assertion failed.');
 
     const stopped = await observer
       .request(new StopObservingBingoEventsReq({ roomId: client1MatchRes.roomId }))
       .packetName(PacketNames.stopObservingBingoEventsReq)
       .submit<StopObservingBingoEventsRes>(signal);
     zlinkStreamAssert.ensure(stopped.stopped, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(stopped.observerNodeRid === observed.observerNodeRid, 'Sample scenario assertion failed.');
   }
 }
 

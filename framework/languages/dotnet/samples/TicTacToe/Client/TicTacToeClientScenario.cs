@@ -188,12 +188,10 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             .Async(cancellationToken);
         ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName, "Assertion failed: observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName");
         ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.Wins == 100, "Assertion failed: observerSawMilestone.Payload.Wins == 100");
-        ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid, "Assertion failed: observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid");
         logger.LogInformation(
-            "observer-win-milestone=verified actor={0} wins={1} receivingSpotNodeRid={2}",
+            "observer-win-milestone=verified actor={0} wins={1}",
             observerSawMilestone.Payload.ActorId,
-            observerSawMilestone.Payload.Wins,
-            observerSawMilestone.Payload.ReceivingSpotNodeRid);
+            observerSawMilestone.Payload.Wins);
 
         await client1.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
         await client2.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);

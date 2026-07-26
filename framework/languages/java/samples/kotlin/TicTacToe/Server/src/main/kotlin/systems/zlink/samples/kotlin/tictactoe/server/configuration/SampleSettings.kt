@@ -19,8 +19,6 @@ data class SampleSettings(
     val spotPubSubEndpoints: List<String>,
     val redisEndpoint: String,
     val redisKeyPrefix: String,
-    val playSpotNodeRid: String,
-    val peerPlaySpotNodeRid: String,
     val peerSpotEndpoint: String,
     val peerSpotPubSubEndpoint: String,
     val logDirectory: String,
@@ -35,7 +33,6 @@ data class SampleSettings(
         require(spotPubSubEndpoint.isNotBlank()) { "sample.spotPubSubEndpoint is required" }
         require(redisEndpoint.isNotBlank()) { "sample.redisEndpoint is required" }
         require(redisKeyPrefix.isNotBlank()) { "sample.redisKeyPrefix is required" }
-        require(playSpotNodeRid.isNotBlank()) { "sample.playSpotNodeRid is required" }
         require(logDirectory.isNotBlank()) { "sample.logDirectory is required" }
     }
 

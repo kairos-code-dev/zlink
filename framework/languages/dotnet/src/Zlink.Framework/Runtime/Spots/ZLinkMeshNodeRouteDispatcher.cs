@@ -148,45 +148,7 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                             ZLinkSessionRouteCommitReply>),
                         ZLinkMessageKind.Request,
                         ZLinkSessionRouteCommitProtocol.UnsealPacketName)))
-                .Append(ToRouteDescriptor(
-                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
-                        typeof(ZLinkSpotRelocationReplyRelayHandler),
-                        typeof(IZLinkRouteSendHandler<
-                            ZLinkSpotRelocationReplyRelay>),
-                        ZLinkMessageKind.Command,
-                        ZLinkSpotRelocationReplyRelayProtocol.PacketName)))
-                .Append(ToRouteDescriptor(
-                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
-                        typeof(ZLinkSpotRetireStageHandler),
-                        typeof(IZLinkRouteRequestHandler<
-                            ZLinkSpotRetireStageRequest,
-                            ZLinkSpotRetireReply>),
-                        ZLinkMessageKind.Request,
-                        ZLinkSpotRetireProtocol.Stage)))
-                .Append(ToRouteDescriptor(
-                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
-                        typeof(ZLinkSpotRetirePublishHandler),
-                        typeof(IZLinkRouteRequestHandler<
-                            ZLinkSpotRetirePublishRequest,
-                            ZLinkSpotRetireReply>),
-                        ZLinkMessageKind.Request,
-                        ZLinkSpotRetireProtocol.Publish)))
-                .Append(ToRouteDescriptor(
-                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
-                        typeof(ZLinkSpotRetireAbortHandler),
-                        typeof(IZLinkRouteRequestHandler<
-                            ZLinkSpotRetireAbortRequest,
-                            ZLinkSpotRetireReply>),
-                        ZLinkMessageKind.Request,
-                        ZLinkSpotRetireProtocol.Abort)))
-                .Append(ToRouteDescriptor(
-                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
-                        typeof(ZLinkSpotRetireHeldRelayHandler),
-                        typeof(IZLinkRouteRequestHandler<
-                            ZLinkSpotRetireHeldRelay,
-                            ZLinkSpotRetireReply>),
-                        ZLinkMessageKind.Request,
-                        ZLinkSpotRetireProtocol.HeldRelay)));
+                ;
         var routeDescriptors = descriptors.ToArray();
         var channelEndpoints = BuildChannelEndpoints(registration, spotNode).ToArray();
         if (routeDescriptors.Length == 0 && channelEndpoints.Length == 0)

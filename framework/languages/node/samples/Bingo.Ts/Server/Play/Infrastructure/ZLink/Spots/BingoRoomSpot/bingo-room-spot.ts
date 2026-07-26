@@ -101,10 +101,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     this.roomId = this.context.spotRid;
   }
 
-  nodeRid(): string {
-    return String(this.context.nodeRid);
-  }
-
   async onClosing(): Promise<void> {
     await this.drawTimer?.cancel();
     this.drawTimer = undefined;
@@ -268,7 +264,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     await Promise.all([...this.observerActors.values()].map((observer) =>
       this.notifyActor(
         observer,
-        new BingoRewardAnnouncedNotify({ ...event, receivingSpotNodeRid: String(this.context.nodeRid) })
+        new BingoRewardAnnouncedNotify({ ...event })
       )
     ));
   }
@@ -284,10 +280,6 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     return true;
   }
 
-  ownerNodeRid(): string {
-    return String(this.context.nodeRid);
-  }
-
   private async leaveFinishedActors(): Promise<void> {
     if (this.cleanupStarted || this.snapshot().status !== BingoRoomStatus.Finished) {
       return;
@@ -297,7 +289,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
       const actor = this.playerRefs.get(player.actor.actorId);
       if (actor !== undefined) {
         await this.actorClient
-          .sendToActor(SampleNames.roomSpotNode, actor, new LeaveFinishedBingoRoom({}))
+          .sendToActor(actor.actorId, new LeaveFinishedBingoRoom({}))
           .submit();
       }
     }
@@ -384,7 +376,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
   private async notifyActor(actor: ActorRef, payload: unknown): Promise<void> {
     await this.actorClient
-      .sendToActor(SampleNames.roomSpotNode, actor, payload)
+      .sendToActor(actor.actorId, payload)
       .submit();
   }
 

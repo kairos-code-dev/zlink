@@ -77,23 +77,10 @@ builder.Services.AddZLinkFramework(options =>
 
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
         .Listen(ops.MeshEndpoint)
-        // Discovery clients dial this server through its descriptor row,
-        // which needs a concrete routing id to be advertised.
-        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-report"));
-    mesh.ChannelName(ZoneWorldNames.ReportChannel)
+        .SetRoutingIdPrefix("ops");
+    mesh.Channel(ZoneWorldNames.ReportChannel).Server()
         .AddHandlerGroup(HandlerGroups.Ops);
-    mesh.ChannelName(ZoneWorldNames.ZoneChannel).SetWeight(0);
-    mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
-
-    // A node is addressed by the channel named after it, so the call lands on that node and no
-    // other (§8.4). What is enumerated here is the §2 zone placement — the nodes an operator can
-    // select — not a list of who is out there. The announcement above leaves without consulting
-    // it, and a node outside the placement (§11.1) is unknown here yet still receives it (ZW-D2).
-    foreach (var nodeId in ZoneTopology.ZoneNodes)
-    {
-        var channelName = ZoneWorldNames.OpsChannel(nodeId);
-        mesh.ChannelName(channelName).SetWeight(0);
-    }
+    mesh.Channel(ZoneWorldNames.ZoneChannel).Client();
 });
 
 builder.Services.AddZLinkMonitoring(monitor =>

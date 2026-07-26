@@ -19,29 +19,27 @@ class create_game_handler_t
     using request_type = create_game_req_t;
     using reply_type = create_game_res_t;
     using dependency_types =
-      dependency_list_t<tictactoe_game_creator_t, sample_topology_t, spot_node_manager_t>;
+      dependency_list_t<tictactoe_game_creator_t, spot_manager_t>;
     static constexpr const char *topic_name = "CreateGame";
 
     create_game_handler_t (tictactoe_game_creator_t &creator,
-                           sample_topology_t &topology,
-                           spot_node_manager_t &spots) :
-        _creator (creator), _topology (topology), _spots (spots)
+                           spot_manager_t &spots) :
+        _creator (creator), _spots (spots)
     {
     }
 
-    create_game_res_t handle (const create_game_req_t &request)
+    task_t<create_game_res_t> handle (const create_game_req_t &request,
+                                      const message_context_t &)
     {
         auto response = _creator.create (request.game_name);
-        // dotnet 정본과 동일: room spot rid는 room id 단독 — 위치는 location store가 해결한다.
-        const auto spot_rid = spot_rid_t::from_string (response.room_id);
-        _spots.get_or_create_spot (sample_names_t::match_spot, spot_rid);
-        return response;
+        co_await _spots.get_or_create (response.room_id, sample_names_t::match_spot)
+          .submit ();
+        co_return response;
     }
 
   private:
     tictactoe_game_creator_t &_creator;
-    sample_topology_t &_topology;
-    spot_node_manager_t &_spots;
+    spot_manager_t &_spots;
 };
 
 } // namespace zlink::samples::tictactoe

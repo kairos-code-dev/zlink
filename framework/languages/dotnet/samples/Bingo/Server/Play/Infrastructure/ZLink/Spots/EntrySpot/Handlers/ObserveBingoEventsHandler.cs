@@ -1,8 +1,8 @@
+using Bingo.Server.Configuration;
 using Bingo.Server.Play.Domain.Bingo;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
@@ -15,19 +15,20 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
     public async ValueTask<ObserveBingoEventsRes> HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ObserveBingoEventsReq message,
         CancellationToken cancellationToken)
     {
-        var observerRid = ObserverRoomRid(message.RoomId, entrySpot.Context.NodeRid);
-        var settings = BingoRoomSettings.CreateObserver(message.RoomId, entrySpot.Context.NodeRid.ToString());
-        await spots.GetOrCreateAsync<BingoRoom, BingoRoomSettingsPayload>(
-            observerRid,
-            BingoRoomSettingsPayloadMapper.ToPayload(settings),
-            cancellationToken);
+        var observerSpotId = ObserverSpotId(message.RoomId, actor.ActorId);
+        var settings = BingoRoomSettings.CreateObserver(message.RoomId, actor.ActorId);
+        _ = await spots
+            .GetOrCreate(observerSpotId, SampleNames.RoomSpotType)
+            .InMesh(SampleNames.MeshName)
+            .Request(BingoRoomSettingsPayloadMapper.ToPayload(settings))
+            .Async(cancellationToken);
 
         var joined = await actor.Context.JoinSpot(
-                observerRid,
+                observerSpotId,
                 new BingoRoomJoinReq
                 {
                     RoomId = message.RoomId,
@@ -40,19 +41,17 @@ internal sealed class ObserveBingoEventsHandler(IZLinkSpotManager spots)
         if (joined is not ZLinkActorJoinResult<BingoRoomJoinRes>.Accepted)
             return new ObserveBingoEventsRes
             {
-                Subscribed = false,
-                ObserverNodeRid = entrySpot.Context.NodeRid.ToString()
+                Subscribed = false
             };
 
         return new ObserveBingoEventsRes
         {
-            Subscribed = true,
-            ObserverNodeRid = entrySpot.Context.NodeRid.ToString()
+            Subscribed = true
         };
     }
 
-    private static RoutingId ObserverRoomRid(string roomId, RoutingId localNodeRid)
+    private static string ObserverSpotId(string roomId, string observerActorId)
     {
-        return RoutingId.From($"observe:{roomId}:{localNodeRid}");
+        return $"observe:{roomId}:{observerActorId}";
     }
 }

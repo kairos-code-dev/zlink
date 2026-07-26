@@ -44,9 +44,8 @@ function createTicTacToePlayModule() {
     'playEndpoints',
     'redisEndpoint',
     'redisKeyPrefix',
-    'playSpotNodeRid',
-    'peerPlaySpotNodeRid',
     'peerPlaySpotEndpoint',
+    'instanceName',
     'logDir'
   ]);
 
@@ -60,15 +59,15 @@ function createTicTacToePlayModule() {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${config.logDir}/flow-play-${config.playSpotNodeRid}.log`)
-            .traceLabel(config.playSpotNodeRid);
+            .traceLogFile(`${config.logDir}/flow-${config.instanceName}.log`)
+            .traceLabel(config.instanceName);
           builder.addLocationStore(createTicTacToeLocationStore(config));
           builder.addStreamNode(SampleNames.playStream)
             .bind(config.playStreamEndpoint)
             .registerSession(PlaySessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
             .listen(config.playSpotEndpoint)
-            .routingId(config.playSpotNodeRid)
+            .useAllocatedRoutingId(16, 'tictactoe-play')
             .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
             .actorFactory(SampleNames.playerActorType, PlayActorFactory)
@@ -81,7 +80,7 @@ function createTicTacToePlayModule() {
           for (const endpoint of config.apiEndpoints) {
             mesh.peerConnections().connect(endpoint);
           }
-          mesh.peerConnections().connect(config.peerPlaySpotNodeRid, config.peerPlaySpotEndpoint);
+          mesh.peerConnections().connect(config.peerPlaySpotEndpoint);
           return builder.build();
         }
       })

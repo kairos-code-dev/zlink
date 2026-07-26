@@ -273,10 +273,50 @@ int route_update_preserves_object_generation ()
     return 0;
 }
 
+int actor_context_identity_and_source_fence_are_exact ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    actor_gateway_runtime_t gateway;
+    const actor_ref_t source (
+      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 7);
+    const actor_ref_t same (
+      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 7);
+    const actor_ref_t successor (
+      node_rid_t::from_string ("actor-node-b"), "player", "actor-context", 7);
+    const actor_ref_t new_incarnation (
+      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 8);
+
+    const auto source_context = gateway.actor_context (source);
+    const auto same_context = gateway.actor_context (same);
+    const auto successor_context = gateway.actor_context (successor);
+    const auto new_incarnation_context = gateway.actor_context (new_incarnation);
+
+    if (source_context.actor_id () != "actor-context"
+        || source_context.object_generation () != 7
+        || source_context.actor_ref ().node_rid ().value () != "actor-node-a") {
+        return 1;
+    }
+    if (!gateway.same_context_source_fence (source_context, same_context)) {
+        return 2;
+    }
+    if (gateway.same_context_source_fence (source_context, successor_context)
+        || gateway.same_context_source_fence (
+          source_context, new_incarnation_context)) {
+        return 3;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main ()
 {
+    if (const auto context_fence = actor_context_identity_and_source_fence_are_exact ();
+        context_fence != 0) {
+        return 90 + context_fence;
+    }
     if (const auto stale = stale_session_unbind_preserves_rebind (); stale != 0) {
         return stale;
     }

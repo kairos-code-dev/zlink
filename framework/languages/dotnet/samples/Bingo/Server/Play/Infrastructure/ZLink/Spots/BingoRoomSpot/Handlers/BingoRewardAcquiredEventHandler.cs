@@ -1,5 +1,6 @@
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
@@ -12,6 +13,7 @@ internal sealed class
     public ValueTask HandleAsync(
         BingoRoom spot,
         BingoRewardAcquiredEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         return spot.AnnounceRewardAsync(message, cancellationToken);

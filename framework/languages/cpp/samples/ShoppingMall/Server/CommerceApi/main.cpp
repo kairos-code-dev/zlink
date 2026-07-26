@@ -19,13 +19,10 @@ using namespace zlink::framework;
 class commerce_api_handlers_t
 {
   public:
-    commerce_api_handlers_t (sample_topology_t &topology,
-                             api_instance_topology_t &instance,
-                             route_client_t &routes,
+    commerce_api_handlers_t (route_client_t &routes,
                              redis_state_store_t &store,
                              spot_handle_resolver_t &spot_handles) :
-        _topology (topology), _instance (instance), _routes (routes), _store (store),
-        _spot_handles (spot_handles)
+        _routes (routes), _store (store), _spot_handles (spot_handles)
     {
     }
 
@@ -42,7 +39,6 @@ class commerce_api_handlers_t
                 mappings[request.idempotency_key] = nlohmann::json{
                   {"orderId", "order-" + std::string (4 - std::to_string (next).size (), '0')
                                 + std::to_string (next)},
-                  {"ownerInstanceId", _instance.instance_id},
                   {"started", false}};
             }
             const auto order_id =
@@ -65,9 +61,8 @@ class commerce_api_handlers_t
                                               cart.currency};
         });
 
-        const auto owner = _topology.for_order_id (command.order_id);
         auto state =
-          (co_await request_workflow<start_order_workflow_res_t> (owner.instance_id, command)).state;
+          (co_await request_workflow<start_order_workflow_res_t> (command)).state;
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
         co_return start_order_res_t{state.order_id, state.status};
@@ -85,7 +80,6 @@ class commerce_api_handlers_t
         _store.update ([&] (nlohmann::json &state) {
             state["idempotency"][request.idempotency_key] =
               nlohmann::json{{"orderId", request.order_id},
-                             {"ownerInstanceId", request.owner_instance_id},
                              {"started", false}};
             return true;
         });
@@ -104,7 +98,6 @@ class commerce_api_handlers_t
                 mappings[request.idempotency_key] = nlohmann::json{
                   {"orderId", "order-" + std::string (4 - std::to_string (next).size (), '0')
                                 + std::to_string (next)},
-                  {"ownerInstanceId", _instance.instance_id},
                   {"started", false}};
             }
             const auto id = mappings[request.idempotency_key].value ("orderId", std::string{});
@@ -125,9 +118,7 @@ class commerce_api_handlers_t
 
     task_t<continue_order_workflow_res_t> continue_order (const continue_order_workflow_req_t &request)
     {
-        const auto owner = _topology.for_order_id (request.order_id);
-        co_return co_await request_workflow<continue_order_workflow_res_t> (owner.instance_id,
-                                                                            request);
+        co_return co_await request_workflow<continue_order_workflow_res_t> (request);
     }
 
     ok_res_t delete_projection (const delete_projection_req_t &request)
@@ -142,9 +133,7 @@ class commerce_api_handlers_t
     task_t<rebuild_order_projection_res_t>
     rebuild_projection_req (const rebuild_order_projection_req_t &request)
     {
-        const auto owner = _topology.for_order_id (request.order_id);
-        co_return co_await request_workflow<rebuild_order_projection_res_t> (owner.instance_id,
-                                                                             request);
+        co_return co_await request_workflow<rebuild_order_projection_res_t> (request);
     }
 
     server_assertion_res_t assert_server (const server_assertion_req_t &request)
@@ -170,12 +159,7 @@ class commerce_api_handlers_t
             evidence.push_back (
               "releasedReservations=" + std::to_string (state["releasedReservations"].size ()));
             evidence.push_back ("startedIdempotency=" + std::to_string (state["idempotency"].size ()));
-            const auto owners_differ =
-              _topology.for_order_id (request.successful_order_id).instance_id
-              != _topology.for_order_id (request.scale_out_order_id).instance_id;
-            evidence.push_back (
-              "owners=" + _topology.for_order_id (request.successful_order_id).instance_id + ","
-              + _topology.for_order_id (request.scale_out_order_id).instance_id);
+            evidence.push_back ("routing=global-order-id");
             const auto success = std::vector<std::string>{"OrderStartedEvent",
                                                           "InventoryReservedEvent",
                                                           "PaymentAuthorizedEvent",
@@ -199,7 +183,7 @@ class commerce_api_handlers_t
                                 "OrderFailedEvent"})
               && has_sequence (state, request.scale_out_order_id, success)
               && state["paymentAttempts"].size () >= 1 && state["releasedReservations"].size () >= 1
-              && state["idempotency"].size () == 7 && owners_differ;
+              && state["idempotency"].size () == 7;
             std::cerr << "shoppingmall evidence: ";
             for (const auto &line : evidence) std::cerr << line << "; ";
             std::cerr << "\n";
@@ -227,14 +211,12 @@ class commerce_api_handlers_t
     }
 
     template <typename TReply, typename TRequest>
-    task_t<TReply> request_workflow (const std::string &owner_instance_id, const TRequest &request)
+    task_t<TReply> request_workflow (const TRequest &request)
     {
-        const auto owner = _topology.for_workflow_instance (owner_instance_id);
         auto ensured =
           co_await _routes
-            .request_to_node (order_workflow_channel_for (owner.instance_id),
-                              owner.route_rid,
-                              ensure_order_workflow_spot_req_t{request.order_id})
+            .request_to_channel (sample_names_t::order_workflow_channel,
+                                 ensure_order_workflow_spot_req_t{request.order_id})
             .timeout (std::chrono::milliseconds (5000))
             .template submit<ok_res_t> ();
         if (!ensured.ok) {
@@ -254,8 +236,6 @@ class commerce_api_handlers_t
           .template submit<TReply> ();
     }
 
-    sample_topology_t &_topology;
-    api_instance_topology_t &_instance;
     route_client_t &_routes;
     redis_state_store_t &_store;
     spot_handle_resolver_t &_spot_handles;
@@ -309,8 +289,6 @@ int main (int argc, char **argv)
         options.services ()
           .add_singleton<redis_state_store_t, sample_topology_t> ()
           .add_singleton<commerce_api_handlers_t,
-                         sample_topology_t,
-                         api_instance_topology_t,
                          route_client_t,
                          redis_state_store_t,
                          spot_handle_resolver_t> ();
@@ -321,25 +299,19 @@ int main (int argc, char **argv)
           .trace_label (instance.instance_id);
         /* 공통 sample spec §16: 서버 발견은 registry 프로세스 없이 공유 location store가 맡는다.
          * endpoint를 코드에 박지 않는다. */
-        auto workflow_a = options.add_route_mesh (
-          order_workflow_channel_for ("workflow-a"));
-        workflow_a.listen ("tcp://127.0.0.1:0")
-          .set_routing_id (instance.route_rid)
-          .channel_name (order_workflow_channel_for ("workflow-a"));
-        auto workflow_b = options.add_route_mesh (
-          order_workflow_channel_for ("workflow-b"));
-        workflow_b.listen ("tcp://127.0.0.1:0")
-          .set_routing_id (instance.route_rid)
-          .channel_name (order_workflow_channel_for ("workflow-b"));
+        auto workflow = options.add_route_mesh (sample_names_t::order_workflow_channel);
+        workflow.listen (instance.route_endpoint)
+          .use_allocated_routing_id (16, "shoppingmall-api")
+          .channel_name (sample_names_t::order_workflow_channel);
         auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
         spot_route.listen ("tcp://127.0.0.1:0")
-          .set_routing_id (instance.route_rid)
+          .use_allocated_routing_id (16, "shoppingmall-api-route")
           .channel_name (sample_names_t::order_spot_route);
         options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
           sample_names_t::order_spot_route;
         options.add_route_mesh (std::string (sample_names_t::order_spot_discovery) + "."
                                 + instance.instance_id)
-          .set_routing_id (instance.spot_rid)
+          .use_allocated_routing_id (16, "shoppingmall-api")
           .listen (instance.spot_router_endpoint)
           .channel_name (sample_names_t::order_spot_route);
         options.http ()

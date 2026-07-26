@@ -17,7 +17,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         IZLinkSessionHandlerRegistry handlers,
         Func<ValueTask> closeAsync,
         Func<CancellationToken, ValueTask> closeByProxyAsync,
-        string? actorDispatchMeshName = null,
+        bool actorDispatchEnabled = true,
         ZLinkAsyncSubmitter? sendSubmitter = null)
     {
         Runtime = runtime;
@@ -26,7 +26,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         _closeAsync = closeAsync;
         _closeByProxyAsync = closeByProxyAsync;
         _sendSubmitter = sendSubmitter;
-        ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream, actorDispatchMeshName);
+        ActorCoordinator = new ZLinkSessionActorCoordinator(runtime, stream, actorDispatchEnabled);
         _client = new ZLinkSessionClientContext(this);
         _actorSurface = new ZLinkSessionActorsContext(this, ActorCoordinator);
     }

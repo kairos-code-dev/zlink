@@ -234,7 +234,8 @@ export class ZLinkSessionActorCoordinator {
   async commitActorRoute(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
     await this.lifecycle.run(actorRef.actorId, async () => {
       throwIfAborted(signal);
-      const route = this.routes.requireRoute(actorRef.actorId);
+      const route = this.routes.route(actorRef.actorId);
+      if (route === undefined) return;
       requireSameIncarnation(route.actor.ref, actorRef);
       if (routingIdsEqual(route.actor.ref.nodeRid, actorRef.nodeRid)) {
         route.actor.updateRef(actorRef);

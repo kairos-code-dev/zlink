@@ -56,64 +56,176 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         ZLinkFrameworkTerminationIntent intent,
         TimeSpan deadline,
         CancellationToken deadlineToken)
-    {
-        if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
-            _operations.SealApplicationAdmissions();
-
-        if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
-            return ZLinkDrainForceReason.DrainingStatePublishFailed;
-
-        // The published state excludes placement and channel weight excludes
-        // new select-one load. Retire keeps admissions open for the bounded
-        // propagation interval; Shutdown sealed them before publication.
-        if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
-            return ZLinkDrainForceReason.DrainingStatePublishFailed;
-
-        var propagationDelay = CalculatePropagationDelay(_locationOptions);
-        if (_operations.HasAutoConnect)
-            _logger?.LogInformation(
-                "ZLink drain propagation bound polling={PollingInterval} storeReadTimeout={StoreReadTimeout} schedulerJitterBudget={SchedulerJitterBudget} total={PropagationBound}",
-                _locationOptions.PollingInterval,
-                ZLinkLocationStoreRead.Timeout,
-                SchedulerJitterBudget,
-                propagationDelay);
-        var propagation = !_operations.HasAutoConnect
-            ? Task.CompletedTask
-            : Task.Delay(propagationDelay, deadlineToken);
-        await propagation.ConfigureAwait(false);
-        if (intent == ZLinkFrameworkTerminationIntent.Retire)
-            _operations.SealApplicationAdmissions();
-        await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
+        => await ExecuteAsync(intent, deadline, null, deadlineToken)
             .ConfigureAwait(false);
-        await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
 
-        var actorsDrained = false;
-        while (!actorsDrained)
+    public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+        ZLinkFrameworkTerminationIntent intent,
+        TimeSpan deadline,
+        Action? relocationDetached,
+        CancellationToken deadlineToken)
+        => (await ExecuteWithProgressAsync(
+                intent,
+                deadline,
+                relocationDetached,
+                deadlineToken)
+            .ConfigureAwait(false)).ForceReason;
+
+    public async ValueTask<ZLinkDrainExecutionResult> ExecuteWithProgressAsync(
+        ZLinkFrameworkTerminationIntent intent,
+        TimeSpan deadline,
+        Action? relocationDetached,
+        CancellationToken deadlineToken)
+    {
+        ulong committedUnitCount = 0;
+        try
         {
-            actorsDrained = await _operations.DrainActors(deadlineToken).ConfigureAwait(false);
-            if (!actorsDrained)
-                await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
+            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+                _operations.SealApplicationAdmissions();
+
+            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            {
+                if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
+            }
+
+            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            {
+                await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
+                    .ConfigureAwait(false);
+                await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
+            }
+
+            var actorsDrained = false;
+            while (!actorsDrained)
+            {
+                var actorDrain = await _operations.DrainActors(deadlineToken)
+                    .ConfigureAwait(false);
+                committedUnitCount = checked(
+                    committedUnitCount + actorDrain.CommittedUnitCount);
+                if (actorDrain.TerminalReason is not null)
+                    return intent == ZLinkFrameworkTerminationIntent.Retire
+                           && committedUnitCount == 0
+                        ? await RollBackBlockedRetireAsync(
+                                actorDrain.TerminalReason.Value)
+                            .ConfigureAwait(false)
+                        : Result(ZLinkDrainForceReason.RelocationFailed);
+                actorsDrained = actorDrain.Completed;
+                if (!actorsDrained)
+                    await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
+            }
+
+            var spotsDrained = false;
+            while (!spotsDrained)
+            {
+                try
+                {
+                    var spotDrain = await _operations.DrainSpots(
+                            intent == ZLinkFrameworkTerminationIntent.Retire,
+                            deadlineToken)
+                        .ConfigureAwait(false);
+                    committedUnitCount = checked(
+                        committedUnitCount + spotDrain.CommittedUnitCount);
+                    spotsDrained = spotDrain.Completed;
+                }
+                catch (ZLinkAuthorityGenerationExhaustedException)
+                {
+                    return intent == ZLinkFrameworkTerminationIntent.Retire
+                           && committedUnitCount == 0
+                        ? await RollBackBlockedRetireAsync(
+                                ZLinkFrameworkTerminationReason.RelocationFailed)
+                            .ConfigureAwait(false)
+                        : Result(ZLinkDrainForceReason.RelocationFailed);
+                }
+                if (!spotsDrained)
+                    await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
+            }
+
+            if (intent == ZLinkFrameworkTerminationIntent.Retire)
+            {
+                _operations.SealApplicationAdmissions();
+                relocationDetached?.Invoke();
+                if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
+                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
+                await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
+                await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
+                    .ConfigureAwait(false);
+                await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
+            }
+
+            if (!await _operations.DrainStreamSessions(deadlineToken).ConfigureAwait(false))
+                return Result(ZLinkDrainForceReason.TeardownFailed);
+
+            if (_operations.HasAutoConnect)
+                await _operations.FreezeOwnerWrites(deadlineToken).ConfigureAwait(false);
+            if (!await CleanupOwnerAsync(deadlineToken).ConfigureAwait(false))
+                return Result(ZLinkDrainForceReason.OwnerCleanupFailed);
+            _stopMeshMonitoring();
+            if (_operations.HasAutoConnect)
+                await _operations.StopAutoConnect(deadlineToken).ConfigureAwait(false);
+            await _operations.StopRuntime(deadlineToken).ConfigureAwait(false);
+            if (_operations.HasLocationRuntime)
+                await _operations.StopLocation(deadlineToken).ConfigureAwait(false);
+            return Result(null);
+        }
+        catch (OperationCanceledException) when (
+            deadlineToken.IsCancellationRequested
+            && intent == ZLinkFrameworkTerminationIntent.Retire)
+        {
+            return committedUnitCount == 0
+                ? await RollBackBlockedRetireAsync(
+                        ZLinkFrameworkTerminationReason.DeadlineExceeded)
+                    .ConfigureAwait(false)
+                : Result(ZLinkDrainForceReason.DeadlineExceeded);
         }
 
-        if (!await _operations.DrainStreamSessions(deadlineToken).ConfigureAwait(false))
-            return ZLinkDrainForceReason.TeardownFailed;
+        ZLinkDrainExecutionResult Result(ZLinkDrainForceReason? reason) =>
+            new(reason, committedUnitCount);
+    }
 
-        var spotsDrained = false;
-        while (!spotsDrained)
+    private async ValueTask<ZLinkDrainExecutionResult> RollBackBlockedRetireAsync(
+        ZLinkFrameworkTerminationReason reason)
+    {
+        using var rollbackBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
         {
-            spotsDrained = await _operations.DrainSpots(
-                    intent == ZLinkFrameworkTerminationIntent.Retire,
-                    deadlineToken)
-                .ConfigureAwait(false);
-            if (!spotsDrained)
-                await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
+            if (!await _operations.RestoreServing(rollbackBound.Token)
+                    .ConfigureAwait(false))
+                return new ZLinkDrainExecutionResult(
+                    ZLinkDrainForceReason.TeardownFailed,
+                    0);
+            _operations.ReopenAdmissions();
+            throw new ZLinkDrainBlockedException(reason);
         }
+        catch (ZLinkDrainBlockedException)
+        {
+            throw;
+        }
+        catch
+        {
+            return new ZLinkDrainExecutionResult(
+                ZLinkDrainForceReason.TeardownFailed,
+                0);
+        }
+    }
 
-        if (_operations.HasAutoConnect)
-            await _operations.FreezeOwnerWrites(deadlineToken).ConfigureAwait(false);
-        if (!await CleanupOwnerAsync(deadlineToken).ConfigureAwait(false))
-            return ZLinkDrainForceReason.OwnerCleanupFailed;
-        return null;
+    private async ValueTask WaitForDescriptorPropagationAsync(
+        CancellationToken cancellationToken)
+    {
+        var propagationDelay = CalculatePropagationDelay(_locationOptions);
+        if (!_operations.HasAutoConnect) return;
+        _logger?.LogInformation(
+            "ZLink drain propagation bound polling={PollingInterval} storeReadTimeout={StoreReadTimeout} schedulerJitterBudget={SchedulerJitterBudget} total={PropagationBound}",
+            _locationOptions.PollingInterval,
+            ZLinkLocationStoreRead.Timeout,
+            SchedulerJitterBudget,
+            propagationDelay);
+        await Task.Delay(propagationDelay, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask ForceStopAsync(
@@ -278,15 +390,18 @@ internal sealed record ZLinkDrainExecutionOperations(
     bool HasLocationRuntime,
     Func<CancellationToken, ValueTask<bool>> QuiesceServingChannels,
     Func<CancellationToken, ValueTask<bool>> MarkDraining,
+    Func<CancellationToken, ValueTask<bool>> RestoreServing,
     Action SealApplicationAdmissions,
+    Action ReopenAdmissions,
     Func<Task> WaitForAcceptedOperations,
     Func<CancellationToken, Task> WaitForAcceptedActorHandoffs,
-    Func<CancellationToken, ValueTask<bool>> DrainActors,
-    Func<bool, CancellationToken, ValueTask<bool>> DrainSpots,
+    Func<CancellationToken, ValueTask<ZLinkActorDrainResult>> DrainActors,
+    Func<bool, CancellationToken, ValueTask<ZLinkSpotDrainResult>> DrainSpots,
     Func<CancellationToken, ValueTask<bool>> DrainStreamSessions,
     Func<CancellationToken, ValueTask> FreezeOwnerWrites,
     Func<CancellationToken, ValueTask> CleanupOwner,
     Func<ZLinkDrainRemainderCounts> GetRemainderCounts,
+    Func<CancellationToken, ValueTask> StopRuntime,
     Func<CancellationToken, ValueTask> ForceStopRuntime,
     Func<CancellationToken, ValueTask> StopAutoConnect,
     Func<CancellationToken, ValueTask> StopLocation)
@@ -301,7 +416,11 @@ internal sealed record ZLinkDrainExecutionOperations(
         autoConnect is null
             ? static _ => ValueTask.FromResult(true)
             : autoConnect.MarkDrainingAsync,
+        autoConnect is null
+            ? static _ => ValueTask.FromResult(true)
+            : autoConnect.MarkServingAsync,
         runtime.SealApplicationAdmissionsForDrain,
+        runtime.ReopenRetireAdmissionsAfterRollback,
         runtime.WaitForAcceptedOperationsForDrainAsync,
         runtime.WaitForAcceptedActorHandoffsAsync,
         runtime.DrainActorsAsync,
@@ -314,6 +433,7 @@ internal sealed record ZLinkDrainExecutionOperations(
             ? static _ => ValueTask.CompletedTask
             : locationRuntime.CleanupOwnerForDrainAsync,
         runtime.GetDrainRemainderCounts,
+        runtime.StopAsync,
         runtime.ForceStopAsync,
         autoConnect is null
             ? static _ => ValueTask.CompletedTask

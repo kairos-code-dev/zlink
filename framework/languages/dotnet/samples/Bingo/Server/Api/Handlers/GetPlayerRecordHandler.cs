@@ -12,7 +12,7 @@ internal sealed class GetPlayerRecordHandler(
 {
     public ValueTask<GetPlayerRecordRes> HandleAsync(
         GetPlayerRecordReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

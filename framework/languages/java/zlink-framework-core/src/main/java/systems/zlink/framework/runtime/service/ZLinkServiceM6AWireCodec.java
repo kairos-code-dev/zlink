@@ -355,7 +355,8 @@ public final class ZLinkServiceM6AWireCodec {
         boolean typedFailure =
             terminal == 102 || (terminal >= 104 && terminal <= 107);
         boolean validFailure =
-            (failure >= 0 && failure <= 22) || failure == 35;
+            (failure >= 0 && failure <= 22)
+                || (failure >= 33 && failure <= 35);
         if (correlation <= 0
             || (terminal != 0 && (terminal < 101 || terminal > 113))
             || !validFailure

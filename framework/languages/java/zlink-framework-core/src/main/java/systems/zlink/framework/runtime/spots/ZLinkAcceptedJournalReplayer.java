@@ -40,9 +40,7 @@ final class ZLinkAcceptedJournalReplayer
             ZLinkSpotAcceptedJournal.Record record =
                 ZLinkSpotAcceptedJournal.decode(queued.payload());
             return spotDispatch.dispatch(record).thenCompose(reply ->
-                record.requestSequence().isPresent()
-                    ? replyRelay.relaySpot(record, reply)
-                    : CompletableFuture.completedFuture(null));
+                replyRelay.completeSpot(record, queued.sequence(), reply));
         }
         if (laneId.startsWith("actor:")) {
             ZLinkActorAcceptedJournal.Record record =
@@ -53,9 +51,7 @@ final class ZLinkAcceptedJournalReplayer
                         "accepted Actor journal lane does not match ActorId"));
             }
             return actorDispatch.dispatch(record).thenCompose(reply ->
-                reply.isPresent()
-                    ? replyRelay.relayActor(record, reply.orElseThrow())
-                    : CompletableFuture.completedFuture(null));
+                replyRelay.completeActor(record, queued.sequence(), reply));
         }
         return CompletableFuture.failedFuture(new IllegalArgumentException(
             "unknown accepted journal lane: " + laneId));
@@ -74,12 +70,14 @@ final class ZLinkAcceptedJournalReplayer
     }
 
     interface ReplyRelay {
-        CompletionStage<Void> relaySpot(
+        CompletionStage<Void> completeSpot(
             ZLinkSpotAcceptedJournal.Record request,
+            long acceptedSequence,
             List<byte[]> reply);
 
-        CompletionStage<Void> relayActor(
+        CompletionStage<Void> completeActor(
             ZLinkActorAcceptedJournal.Record request,
-            byte[] reply);
+            long acceptedSequence,
+            Optional<byte[]> reply);
     }
 }

@@ -11,19 +11,19 @@
 namespace zlink::samples::deliverydispatch
 {
 
-/* role별 값. courier actor node만 `nodeRid`를 채운다. */
+/* Courier actor 프로세스만 두 실행 instance 중 하나를 선택한다. */
 struct sample_role_t
 {
     std::string name;
     std::string log_dir;
-    std::string node_rid;
+    std::string instance_name;
 
     static sample_role_t bind (const zlink::framework::configuration_section_t &section)
     {
         sample_role_t role;
         role.name = section.require ("name");
         role.log_dir = section.require ("logDir");
-        role.node_rid = section.get ("nodeRid").value_or ("");
+        role.instance_name = section.get ("instanceName").value_or ("");
         return role;
     }
 };

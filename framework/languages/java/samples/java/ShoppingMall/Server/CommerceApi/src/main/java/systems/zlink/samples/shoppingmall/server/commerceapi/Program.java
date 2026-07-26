@@ -67,9 +67,7 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleFlowLog.path(api.logDirectory(), api.instanceName()))
                 .traceLabel(api.instanceName());
-            options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-a"))
-                .enableClient();
-            options.addClientServerChannel(SampleNames.orderWorkflowChannelFor("workflow-b"))
+            options.addClientServerChannel(SampleNames.OrderWorkflowChannel)
                 .enableClient();
         };
     }

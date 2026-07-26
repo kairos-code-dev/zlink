@@ -462,7 +462,7 @@ public sealed class UserSpotExecutionSchedulerTests
         var terminal = NewSignal();
         var closingRan = NewSignal();
 
-        Assert.True(executor.QueueAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, executor.QueueAccepted(
             new byte[] { 1 },
             async (_, ct) =>
             {

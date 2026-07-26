@@ -170,8 +170,6 @@ try {
         "sample.spotPubSubEndpoints=$commonPubs",
         "sample.redisEndpoint=$redisEndpoint",
         "sample.redisKeyPrefix=$redisKeyPrefix",
-        "sample.playSpotNodeRid=play-node-1",
-        "sample.peerPlaySpotNodeRid=play-node-2",
         "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayBSpotPort",
         "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort",
         "sample.logDirectory=$LogDir"
@@ -192,8 +190,6 @@ try {
         -replace 'sample\.spotEndpoint=.*', "sample.spotEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
         -replace 'sample\.routeEndpoint=.*', "sample.routeEndpoint=tcp://127.0.0.1:$PlayBSpotPort" `
         -replace 'sample\.spotPubSubEndpoint=.*', "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PlayBPubPort" `
-        -replace 'sample\.playSpotNodeRid=.*', "sample.playSpotNodeRid=play-node-2" `
-        -replace 'sample\.peerPlaySpotNodeRid=.*', "sample.peerPlaySpotNodeRid=play-node-1" `
         -replace 'sample\.peerSpotEndpoint=.*', "sample.peerSpotEndpoint=tcp://127.0.0.1:$PlayASpotPort" `
         -replace 'sample\.peerSpotPubSubEndpoint=.*', "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PlayAPubPort" |
         Set-Content -Path $playBConfig -Encoding UTF8
@@ -231,7 +227,7 @@ try {
     if (-not (Select-String -Path $clientLog -Pattern "observer-subscription=verified subscribed=true" -Quiet)) {
         throw "Observer subscription marker was not found."
     }
-    if (-not (Select-String -Path $clientLog -Pattern "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-2" -Quiet)) {
+    if (-not (Select-String -Path $clientLog -Pattern "observer-win-milestone=verified actor=player-x wins=100" -Quiet)) {
         throw "Observer milestone marker was not found."
     }
     if (-not (Select-String -Path $clientLog -Pattern "tictactoe completed" -Quiet)) {

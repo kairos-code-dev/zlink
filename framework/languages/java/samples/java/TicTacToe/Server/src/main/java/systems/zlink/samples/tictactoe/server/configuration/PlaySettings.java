@@ -13,8 +13,6 @@ public record PlaySettings(
     String spotPubSubEndpoint,
     String redisEndpoint,
     String redisKeyPrefix,
-    String playSpotNodeRid,
-    String peerPlaySpotNodeRid,
     String peerSpotEndpoint,
     String peerSpotPubSubEndpoint,
     String logDirectory) implements SampleLogSettings {
@@ -30,8 +28,6 @@ public record PlaySettings(
         require(spotPubSubEndpoint, "spotPubSubEndpoint");
         require(redisEndpoint, "redisEndpoint");
         require(redisKeyPrefix, "redisKeyPrefix");
-        require(playSpotNodeRid, "playSpotNodeRid");
-        require(peerPlaySpotNodeRid, "peerPlaySpotNodeRid");
         require(peerSpotEndpoint, "peerSpotEndpoint");
         require(peerSpotPubSubEndpoint, "peerSpotPubSubEndpoint");
         require(logDirectory, "logDirectory");

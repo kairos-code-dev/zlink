@@ -1,4 +1,4 @@
-// ST-D1: location commit 시점 시나리오를 검증한다.
+// ST-D1: authority commit 시점 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, getRef, waitEvidence, post, unique, delay, require } from '../Support/scenario-support';
 
 export async function runStD1(): Promise<void> {

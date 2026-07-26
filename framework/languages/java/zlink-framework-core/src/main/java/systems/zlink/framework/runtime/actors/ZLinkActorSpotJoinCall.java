@@ -53,6 +53,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     private final String explicitRouterChannelId;
     private final boolean entryTarget;
     private AtomicBoolean deferred = new AtomicBoolean();
+    private final AtomicReference<SpotTransportAddress> forwardingAddress =
+        new AtomicReference<>();
     private final AtomicBoolean acceptedCompletionDeliveredOnTarget =
         new AtomicBoolean();
 
@@ -441,7 +443,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 services.actors().completeRemoteMove(context.actor());
                 if (retainForwardingSource) {
                     services.actors().retainForwardingSource(
-                        context.actor(), sourceActorRef, result.actor());
+                        context.actor(), sourceActorRef, result.actor(),
+                        java.util.Objects.requireNonNull(
+                            forwardingAddress.get(),
+                            "committed forwarding address"));
                 }
             });
         if (retainForwardingSource && services.actors().isActorDispatchActive(context.actor())) {
@@ -491,6 +496,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 0L,
                 systems.zlink.framework.spots.ZLinkSpotKind.ENTRY));
         return resolved.thenCompose(target -> {
+                forwardingAddress.set(target);
                 ZLinkBackendActorRef currentActorRef = context.actorRef();
                 String actorType = actorTypeOrEmpty(currentActorRef.actorId());
                 String transferId = UUID.randomUUID().toString();

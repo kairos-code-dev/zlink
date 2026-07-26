@@ -77,9 +77,7 @@ sample.redisKeyPrefix=${redis_key_prefix}
 sample.logDirectory=${LOG_DIR}
 sample.sessionStreamEndpoint=${session_stream_endpoint}
 sample.sessionSpotRouterEndpoint=${session_router_endpoint}
-sample.sessionSpotNodeRid=supportchat-session-node
 sample.supportSpotRouterEndpoint=${support_router_endpoint}
-sample.supportSpotNodeRid=supportchat-support-node
 EOF
 cat >"$support_config" <<EOF
 sample.redisEndpoint=${redis_endpoint}
@@ -87,9 +85,7 @@ sample.redisKeyPrefix=${redis_key_prefix}
 sample.logDirectory=${LOG_DIR}
 sample.supportChannelEndpoint=${support_channel_endpoint}
 sample.supportSpotRouterEndpoint=${support_router_endpoint}
-sample.supportSpotNodeRid=supportchat-support-node
 sample.sessionSpotRouterEndpoint=${session_router_endpoint}
-sample.sessionSpotNodeRid=supportchat-session-node
 sample.supportHttpEndpoint=${support_http_endpoint}
 EOF
 chmod 0600 "$api_config" "$session_config" "$support_config"

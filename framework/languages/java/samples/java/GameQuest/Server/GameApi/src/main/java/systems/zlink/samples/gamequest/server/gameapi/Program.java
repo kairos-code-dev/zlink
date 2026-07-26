@@ -70,9 +70,7 @@ public class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(api.logDirectory() + "/flow-" + api.instanceName() + ".log")
                 .traceLabel(api.instanceName());
-            options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-a"))
-                .enableClient();
-            options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-b"))
+            options.addClientServerChannel(SampleNames.QuestOwnerChannel)
                 .enableClient();
             options.addClientServerChannel(SampleNames.questNotificationChannelFor(api.instanceName()))
                 .enableServer(api.notificationChannelEndpoint())
@@ -148,7 +146,7 @@ public class Program {
         if ("delete".equals(action)) {
             return ApplicationContextHolder.channels
                 .requestToChannel(
-                    SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId)),
+                    SampleNames.QuestOwnerChannel,
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
                 .submit(Messages.DeleteQuestProjectionRes.class)
                 .thenAccept(deleted -> {
@@ -159,7 +157,7 @@ public class Program {
         if ("rebuild".equals(action)) {
             return ApplicationContextHolder.channels
                 .requestToChannel(
-                    SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId)),
+                    SampleNames.QuestOwnerChannel,
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
                 .submit(Messages.QuestProgress.class)
                 .thenAccept(rebuilt -> {

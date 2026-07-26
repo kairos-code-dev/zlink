@@ -61,17 +61,13 @@ public static class OrderWorkflowServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
-                .SetRoutingId(instance.MeshRid)
+                .SetRoutingIdPrefix("order-workflow")
                 .AddSpotFactory<OrderWorkflowSpot>();
-            foreach (var workflow in new[] { "workflow-a", "workflow-b" })
-            {
-                var channelName = SampleNames.OrderWorkflowChannelFor(workflow);
-                var channel = mesh.ChannelName(channelName)
-                    .SetWeight(string.Equals(workflow, instance.InstanceId, StringComparison.Ordinal) ? 100 : 0);
-                if (string.Equals(workflow, instance.InstanceId, StringComparison.Ordinal))
-                    channel.AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup);
-            }
-            mesh.ChannelName(SampleNames.OrderProjectionChannel);
+            mesh.Channel(SampleNames.OrderWorkflowChannel)
+                .Server()
+                .SetWeight(100)
+                .AddHandlerGroup(SampleNames.OrderWorkflowHandlerGroup);
+            mesh.Channel(SampleNames.OrderProjectionChannel).Server();
         });
 
         var app = builder.Build();

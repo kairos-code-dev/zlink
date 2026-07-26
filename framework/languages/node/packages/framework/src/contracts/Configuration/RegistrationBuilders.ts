@@ -135,6 +135,16 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return this;
   }
 
+  setApplicationVersion(version: bigint): this {
+    this.options.applicationVersion = version;
+    return this;
+  }
+
+  setMaintenanceWave(waveId: string): this {
+    this.options.maintenanceWave = waveId;
+    return this;
+  }
+
   setActorTransferTimeout(timeoutMs: number): this {
     this.options.actorTransferTimeoutMs = validateActorTransferTimeout(timeoutMs);
     return this;
@@ -192,6 +202,8 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
   build(): ZLinkFrameworkRegistrationOptions {
     return {
       codecs: this.options.codecs,
+      applicationVersion: this.options.applicationVersion,
+      maintenanceWave: this.options.maintenanceWave,
       channels: this.options.channels,
       requestTimeoutMs: this.options.requestTimeoutMs,
       streamNodes: this.options.streamNodes,
@@ -1143,6 +1155,8 @@ function rejectDuplicateObjectType(
 }
 
 interface MutableFrameworkRegistrationOptions {
+  applicationVersion?: bigint;
+  maintenanceWave?: string;
   actorTransferAdapters: Map<Type, Type>;
   actorTransferTimeoutMs?: number;
   actorTransferForwardWindowMs?: number;

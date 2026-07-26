@@ -28,6 +28,6 @@ class OfferDeliveryRouteHandler(
             val actorRef = found.orElseThrow {
                 IllegalStateException("Courier actor is not bound: ${message.courierId}")
             }
-            actorClient.sendToActor(actorRef, message).submit()
+            actorClient.sendToActor(actorRef.actorId, message).submit()
         }
 }

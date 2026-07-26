@@ -1,5 +1,4 @@
 using GameQuest.QuestMission.Application;
-using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 using Zlink.Framework.Contracts.Handlers;
@@ -10,8 +9,7 @@ namespace GameQuest.QuestMission.Infrastructure.ZLink;
 
 [ZLinkHandlerGroup(SampleNames.QuestOwnerHandlerGroup)]
 internal sealed class ApplyGameplayEventRouteHandler(
-    PlayerQuestOwnerProvisioner owners,
-    QuestOwnerRouter ownerRouter)
+    PlayerQuestOwnerProvisioner owners)
     : IZLinkSendHandler<GameplayMsg>
 {
     public async ValueTask HandleAsync(
@@ -19,16 +17,13 @@ internal sealed class ApplyGameplayEventRouteHandler(
         ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        if (!ownerRouter.IsLocalOwner(message.PlayerId)) return;
         await owners.ApplyGameplayEventAsync(message, cancellationToken);
     }
 }
 
 [ZLinkHandlerGroup(SampleNames.QuestOwnerHandlerGroup)]
 internal sealed class SyncQuestProgressRouteHandler(
-    PlayerQuestOwnerProvisioner owners,
-    QuestOwnerRouter ownerRouter,
-    QuestStore store)
+    PlayerQuestOwnerProvisioner owners)
     : IZLinkRequestHandler<SyncQuestProgressReq, SyncQuestProgressRes>
 {
     public async ValueTask<SyncQuestProgressRes> HandleAsync(
@@ -36,11 +31,6 @@ internal sealed class SyncQuestProgressRouteHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        if (!ownerRouter.IsLocalOwner(request.PlayerId))
-            return new SyncQuestProgressRes(
-                (await store.ReadProjectionAsync(request.PlayerId, cancellationToken))
-                .Select(QuestContractMapper.ToContract)
-                .ToArray());
         return await owners.SyncAsync(request, cancellationToken);
     }
 }

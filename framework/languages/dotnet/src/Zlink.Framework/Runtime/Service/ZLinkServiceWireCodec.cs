@@ -4,7 +4,7 @@ using Systems.Zlink.Framework.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Service;
 
-internal static class ZLinkServiceWireCodec
+internal static partial class ZLinkServiceWireCodec
 {
     internal enum DecodeError
     {
@@ -2059,6 +2059,7 @@ internal static class ZLinkServiceWireCodec
         }
         internal int Remaining => _bytes.Length - _offset;
         internal bool Truncated { get; private set; }
+        internal void MarkTruncated() => Truncated = true;
         internal bool TryU8(out byte value)
         {
             if (Remaining < 1)

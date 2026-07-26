@@ -144,6 +144,7 @@ for index in (1, 2, 3):
         "meshEndpoint": f"tcp://127.0.0.1:{ports[index - 1]}",
         "faultTickZone": "zone-nw" if index == 1 else None,
         "disableBots": False,
+        "subscriberOnly": index == 3,
     })
 
 # The replacement uses zone-node-2's application identity with different socket endpoints.
@@ -154,6 +155,7 @@ write("zone-node-replacement", "zoneNode", {
     "meshEndpoint": f"tcp://127.0.0.1:{ports[3]}",
     "faultTickZone": None,
     "disableBots": False,
+    "subscriberOnly": False,
 })
 
 write("ops", "ops", {

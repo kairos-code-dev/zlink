@@ -60,7 +60,7 @@ public final class Program {
                 .enableClient();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.SupportActorMesh);
             node.listen(session.routerEndpoint())
-                .setRoutingId(session.routingId());
+                .useAllocatedRoutingId(16, "support-session");
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint())
                 .enableActorDispatch(SampleNames.SupportActorMesh)

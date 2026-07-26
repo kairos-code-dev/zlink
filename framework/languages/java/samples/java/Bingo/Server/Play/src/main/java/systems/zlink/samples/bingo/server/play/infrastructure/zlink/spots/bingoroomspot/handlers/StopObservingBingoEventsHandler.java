@@ -1,6 +1,6 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.handlers;
 
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
@@ -16,7 +16,7 @@ public final class StopObservingBingoEventsHandler
     public java.util.concurrent.CompletionStage<Messages.StopObservingBingoEventsRes> handle(
         BingoRoomSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        ZLinkMessageContext context,
         Messages.StopObservingBingoEventsReq request) {
         return java.util.concurrent.CompletableFuture.completedFuture(spot.stopObserving(actor, request));
     }

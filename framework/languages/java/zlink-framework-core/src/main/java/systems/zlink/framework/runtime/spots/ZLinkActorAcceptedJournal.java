@@ -11,53 +11,55 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 
 final class ZLinkActorAcceptedJournal {
-    private static final int MAGIC = 0x5A414A31;
-
     private ZLinkActorAcceptedJournal() {
     }
 
     static byte[] encode(
         String actorId,
         ZLinkStreamHeader header,
-        Message payload) {
-        try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            DataOutputStream output = new DataOutputStream(buffer);
-            output.writeInt(MAGIC);
-            write(output, actorId.getBytes(StandardCharsets.UTF_8));
-            write(output, ZLinkStreamHeaderCodec.encode(header));
-            write(output, payload.toByteArray());
-            output.flush();
-            return buffer.toByteArray();
-        } catch (IOException error) {
+        Message payload,
+        byte[] canonical) {
+        if (canonical == null || canonical.length == 0) {
             throw new IllegalStateException(
-                "failed to encode accepted Actor journal record",
-                error);
+                "canonical accepted Actor journal record is unavailable");
         }
+        return canonical.clone();
     }
 
     static Record decode(byte[] encoded) {
-        try {
-            DataInputStream input = new DataInputStream(
-                new ByteArrayInputStream(encoded));
-            if (input.readInt() != MAGIC) {
-                throw new IllegalArgumentException(
-                    "invalid accepted Actor journal record");
-            }
-            String actorId = new String(read(input), StandardCharsets.UTF_8);
-            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(
-                read(input));
-            byte[] payload = read(input);
-            if (input.available() != 0) {
-                throw new IllegalArgumentException(
-                    "accepted Actor journal record has trailing bytes");
-            }
-            return new Record(actorId, header, payload);
-        } catch (IOException error) {
-            throw new IllegalArgumentException(
-                "invalid accepted Actor journal record",
-                error);
+        if (systems.zlink.framework.runtime.service
+            .ZLinkServiceFrozenRecordCodec.isCanonical(encoded)) {
+            var decoded = systems.zlink.framework.runtime.service
+                .ZLinkServiceFrozenRecordCodec.decodeActor(encoded);
+            return new Record(
+                decoded.actorId(),
+                new ZLinkStreamHeader(
+                    decoded.replyRouteId().isPresent()
+                        ? systems.zlink.framework.streams
+                            .ZLinkStreamMessageKind.REQUEST
+                        : systems.zlink.framework.streams
+                            .ZLinkStreamMessageKind.SEND,
+                    decoded.contentType().contains("json")
+                        ? systems.zlink.framework.streams.ZLinkStreamCodec.JSON
+                        : systems.zlink.framework.streams.ZLinkStreamCodec.RAW,
+                    java.util.EnumSet.noneOf(
+                        systems.zlink.framework.runtime.streams
+                            .ZLinkStreamHeaderFlag.class),
+                    decoded.replyRouteId(),
+                    decoded.packetName(),
+                    decoded.metadata()),
+                decoded.payload(),
+                decoded.sourceNodeRid(),
+                decoded.sourceNodeGeneration(),
+                decoded.sourceOwnerId(),
+                decoded.sourceOwnerLeaseGeneration(),
+                decoded.operationHigh(),
+                decoded.operationLow(),
+                decoded.replyRouteId(),
+                decoded.objectGeneration());
         }
+        throw new IllegalArgumentException(
+            "accepted Actor journal record is not canonical service-wire-v1");
     }
 
     private static void write(
@@ -84,8 +86,25 @@ final class ZLinkActorAcceptedJournal {
     record Record(
         String actorId,
         ZLinkStreamHeader header,
-        byte[] payload) {
+        byte[] payload,
+        systems.zlink.contracts.core.RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        String sourceOwnerId,
+        long sourceOwnerLeaseGeneration,
+        long operationHigh,
+        long operationLow,
+        java.util.Optional<Long> replyRouteId,
+        long objectGeneration) {
         Record {
+            if (sourceNodeRid == null
+                || sourceOwnerId == null || sourceOwnerId.isBlank()
+                || sourceNodeGeneration <= 0
+                || sourceOwnerLeaseGeneration <= 0
+                || objectGeneration <= 0
+                || operationHigh == 0 && operationLow == 0) {
+                throw new IllegalArgumentException(
+                    "accepted Actor source fence is invalid");
+            }
             payload = payload.clone();
         }
 

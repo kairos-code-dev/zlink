@@ -1,4 +1,4 @@
-// SF-C2: graceful shutdown 대조 (drain 뒤 owner 정리) 시나리오를 검증한다.
+// SF-C2: Shutdown 대조 (owner 정리) 시나리오를 검증한다.
 import type { ZLinkMeshDrainResult } from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

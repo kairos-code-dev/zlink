@@ -6,8 +6,6 @@ namespace TicTacToe.Server.Api.Handlers;
 
 internal static class CreateGameHttpHandler
 {
-    private static int s_nextOwnerIndex = -1;
-
     public static async Task<IResult> HandleAsync(
         CreateGameHttpReq request,
         IZLinkRouteClient client,
@@ -19,17 +17,14 @@ internal static class CreateGameHttpHandler
         var gameName = !string.IsNullOrWhiteSpace(request.GameName)
             ? request.GameName
             : SampleDefaults.GameName;
-        var ownerIndex = SelectOwner(settings.PlayEndpoints.Count);
-        var ownerChannel = SampleChannels.Play(ownerIndex);
         logger.LogInformation("client -> api: create game requested. game={GameName}", gameName);
         logger.LogInformation(
-            "api -> play: requesting CreateGameReq. game={GameName}, ownerIndex={OwnerIndex}",
-            gameName,
-            ownerIndex);
+            "api -> play: requesting CreateGameReq. game={GameName}",
+            gameName);
 
         var reply = await client.RequestToChannel(
                 SampleNodes.Mesh,
-                ownerChannel,
+                SampleChannels.Play,
                 new CreateGameReq(gameName))
             .Async<CreateGameRes>(cancellationToken);
 
@@ -50,12 +45,5 @@ internal static class CreateGameHttpHandler
             reply.PlayNodes,
             reply.GameName,
             reply.RequiredLevel));
-    }
-
-    private static int SelectOwner(int playCount)
-    {
-        if (playCount <= 0) throw new InvalidOperationException("At least one Play endpoint is required.");
-
-        return Math.Abs(Interlocked.Increment(ref s_nextOwnerIndex)) % playCount;
     }
 }

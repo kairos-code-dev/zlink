@@ -135,6 +135,10 @@ final class ZLinkSpotLifecycle {
             spots.keySet().stream().map(ZLinkSpotInfo::new).toList());
     }
 
+    List<String> userSpotIds() {
+        return spots.keySet().stream().sorted().toList();
+    }
+
     CompletionStage<Boolean> close(String spotId) {
         requireSpotId(spotId);
         if (actorOccupancy.hasActorsInSpot(spotId)) {
@@ -228,6 +232,13 @@ final class ZLinkSpotLifecycle {
         return prepared.created().activation().spot();
     }
 
+    CompletionStage<List<byte[]>> replayReserved(
+        PreparedUserSpot prepared,
+        ZLinkSpotAcceptedJournal.Record record) {
+        requireNewPrepared(prepared);
+        return prepared.created().activation().replayAccepted(record);
+    }
+
     void stageReservedTimers(
         PreparedUserSpot prepared,
         byte[] timerEnvelope) {
@@ -277,6 +288,38 @@ final class ZLinkSpotLifecycle {
         ZLinkRuntimeMetrics.increment(
             "zlink.spot.closed", Map.of("kind", "user"));
         return CompletableFuture.completedFuture(true);
+    }
+
+    CompletionStage<Void> completeRelocationSource(
+        String spotId,
+        long objectGeneration,
+        java.time.Instant deadline) {
+        requireSpotId(spotId);
+        java.util.Objects.requireNonNull(deadline, "deadline");
+        SpotActivation current = spots.get(spotId);
+        if (current == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (current.backendSpot.lifecycleGeneration() != objectGeneration) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "User Spot generation changed before relocation cleanup"));
+        }
+        if (actorOccupancy.hasActorsInSpot(spotId)) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "User Spot still has source Actor participants"));
+        }
+        if (!spots.remove(spotId, current)) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "User Spot relocation source changed during cleanup"));
+        }
+        current.close(
+            systems.zlink.framework.spots.ZLinkSpotCloseReason.RELOCATION_OUT,
+            deadline);
+        ZLinkRuntimeMetrics.add(
+            "zlink.spot.count", -1, Map.of("kind", "user"));
+        ZLinkRuntimeMetrics.increment(
+            "zlink.spot.closed", Map.of("kind", "user"));
+        return CompletableFuture.completedFuture(null);
     }
 
     CloseReadiness closeReadiness(

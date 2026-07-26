@@ -341,6 +341,14 @@ internal sealed partial class ZLinkSpotActivation
                     ZLinkFrameworkErrorKind.RuntimeShutdown,
                     "The Instance Spot activation queue stopped before admission."));
             },
+            () =>
+            {
+                received.Dispose();
+                completion.TrySetException(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SpotMoving,
+                    "The Instance Spot activation queue is relocating.",
+                    true));
+            },
             received.Dispose);
         if (!queued)
             return await completion.Task.ConfigureAwait(false);
@@ -558,6 +566,7 @@ internal sealed partial class ZLinkSpotActivation
         ReadOnlyMemory<byte> acceptedJournalRecord,
         bool countAsRequest,
         Action onRejected,
+        Action onMoving,
         Action relocationRelease)
     {
         if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
@@ -576,7 +585,7 @@ internal sealed partial class ZLinkSpotActivation
             relocationRelease();
         }
 
-        var queued = _serial.QueueAccepted(
+        var admission = _serial.QueueAccepted(
             acceptedJournalRecord,
             async (activation, ct) =>
             {
@@ -585,10 +594,14 @@ internal sealed partial class ZLinkSpotActivation
             },
             ReleaseForRelocation,
             out _);
-        if (queued) return true;
+        if (admission == ZLinkAcceptedWorkAdmission.Accepted)
+            return true;
 
         lease.Dispose();
-        onRejected();
+        if (admission == ZLinkAcceptedWorkAdmission.RelocationMoving)
+            onMoving();
+        else
+            onRejected();
         return false;
     }
 
@@ -637,6 +650,14 @@ internal sealed partial class ZLinkSpotActivation
                 ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
                     received,
                     ChannelName);
+            },
+            () =>
+            {
+                _runtime.SpotRelocationReplyRoutes.CompleteLocal(replyRouteId);
+                ZLinkSpotActivationDispatcher
+                    .RejectApplicationRouteForRelocation(
+                        received,
+                        ChannelName);
             },
             received.Dispose);
     }
@@ -1041,10 +1062,25 @@ internal sealed partial class ZLinkSpotActivation
     {
         ArgumentNullException.ThrowIfNull(admit);
         var logicalTimers = _timers.FreezeRelocation();
+        var pendingTimerCount = logicalTimers.Count(static timer =>
+            ZLinkSpotTimerRelocationCodec.Decode(timer).Timer.PendingTick.HasValue);
         if (_serial.TrySealRelocation(
+                pendingTimerCount,
                 captured => admit(captured, logicalTimers),
-                out var queueSeal))
+                out var queueSeal,
+                out var firstPendingSequence))
         {
+            var nextPendingSequence = firstPendingSequence;
+            logicalTimers = logicalTimers.Select(timer =>
+            {
+                var snapshot = ZLinkSpotTimerRelocationCodec.Decode(timer);
+                return snapshot.Timer.PendingTick.HasValue
+                    ? timer with
+                    {
+                        PendingAcceptedSequence = nextPendingSequence++
+                    }
+                    : timer;
+            }).ToArray();
             seal = new ZLinkSpotRelocationSeal(queueSeal, logicalTimers);
             return true;
         }
@@ -1085,36 +1121,93 @@ internal sealed partial class ZLinkSpotActivation
     {
         _timers.RestoreRelocation(
             logicalTimers,
+            Spot.GetType(),
             StopToken,
             DispatchTimerAsync,
             PublishTimerFailureAsync);
     }
 
     internal void BindCommittedRelocationReplyRoutes(
-        IReadOnlyList<ZLinkRelocationQueuedJob> captured,
+        ZLinkRelocationEnvelope envelope,
         IReadOnlyList<ZLinkAcceptedWorkRecord> held,
         RoutingId targetNodeRid,
+        ulong targetNodeGeneration,
+        ZLinkLocationOwnerToken targetOwner,
         ulong targetAuthorityOwnerGeneration)
     {
-        foreach (var payload in captured
-                     .Select(static job => job.Payload)
-                     .Concat(held.Select(static record => record.Payload)))
+        var candidates = envelope.Participants
+            .SelectMany(participant => participant.AcceptedJobs.Select(job =>
+                (Participant: participant, Job: job)))
+            .Where(static candidate => candidate.Job.CanonicalRequest is not null)
+            .ToArray();
+        var spotParticipant = envelope.Participants.Single(
+            static participant => participant.ObjectKind
+                is ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot);
+        var sourceOwner = _runtime.LocationLifecycle?.OwnerToken
+                          ?? throw new ZLinkConfigurationException(
+                              "Location runtime is not registered.");
+        var records = envelope.Participants
+            .SelectMany(static participant => participant.AcceptedJobs)
+            .Select(static job => (job.Payload, job.AcceptedSequence))
+            .Concat(held.Select(static record =>
+                (record.Payload, record.AcceptedSequence)));
+        foreach (var (payload, acceptedSequence) in records)
         {
             var journal = ZLinkSpotAcceptedJournal.Decode(payload.Span);
+            var candidate = candidates.SingleOrDefault(item =>
+                item.Job.CanonicalRequest!.ReplyRouteId == journal.ReplyRouteId
+                && item.Job.CanonicalRequest.OperationHigh
+                   == journal.OperationId.High
+                && item.Job.CanonicalRequest.OperationLow
+                   == journal.OperationId.Low);
+            var participant = candidate.Participant ?? spotParticipant;
+            var participantId = participant.CanonicalParticipantId;
+            if (participantId == 0)
+                throw new ZLinkRelocationDataLostException(
+                    "A committed reply route has no canonical participant identity.");
+            var requestSource = candidate.Job?.CanonicalRequest is { } request
+                ? new ZLinkServiceWireCodec.RequestSourceFence(
+                    request.Source.OwnerId,
+                    request.Source.OwnerLeaseGeneration,
+                    RoutingId.FromHex(request.Source.NodeRid),
+                    request.Source.NodeGeneration)
+                : new ZLinkServiceWireCodec.RequestSourceFence(
+                    sourceOwner.OwnerId,
+                    checked((ulong)sourceOwner.LeaseGeneration),
+                    NodeRid,
+                    SourceNodeLifecycleGeneration);
             _runtime.SpotRelocationReplyRoutes.BindCommitted(
                 journal.ReplyRouteId,
                 targetNodeRid,
-                targetAuthorityOwnerGeneration);
+                targetAuthorityOwnerGeneration,
+                new ZLinkRelocationReplyBinding(
+                    participant.AuthorityKey,
+                    new ZLinkServiceWireCodec.RelocationWireId(
+                        envelope.CanonicalRelocationHigh,
+                        envelope.CanonicalRelocationLow),
+                    targetNodeGeneration,
+                    targetOwner.OwnerId,
+                    checked((ulong)targetOwner.LeaseGeneration),
+                    targetNodeRid,
+                    targetNodeGeneration,
+                    participantId,
+                    acceptedSequence,
+                    requestSource));
         }
     }
 
     internal async ValueTask ReplayAcceptedJobsAsync(
         IReadOnlyList<ZLinkRelocationQueuedJob> jobs,
         string sourceMeshName,
-        ulong targetAuthorityOwnerGeneration,
         ZLinkSpotRelocationSeal admissionSeal,
         int completedCount,
-        Action replayCompleted,
+        Func<
+            ZLinkRelocationQueuedJob,
+            ZLinkSpotAcceptedJournalRecord,
+            byte[][]?,
+            CancellationToken,
+            ValueTask> replayCompleted,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(admissionSeal);
@@ -1126,28 +1219,21 @@ internal sealed partial class ZLinkSpotActivation
         foreach (var job in ordered.Skip(completedCount))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var journal = ZLinkSpotAcceptedJournal.Decode(job.Payload.Span);
+            var journal = DecodeRelocationReplayRecord(job, sourceMeshName);
             var parts = journal.Parts
                 .Select(static part => Message.From(part.Span))
                 .ToArray();
+            byte[][]? capturedReply = null;
             Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null;
             if (journal.ReplyRouteId != 0
                 && journal.SourceNodeRid is { } sourceNodeRid)
             {
                 reply = (replyParts, _) =>
                 {
-                    var relay = new ZLinkSpotRelocationReplyRelay(
-                        journal.ReplyRouteId,
-                        SpotId,
-                        ObjectGeneration,
-                        targetAuthorityOwnerGeneration,
-                        HopCount: 1,
-                        replyParts.Select(static part => part.ToArray())
-                            .ToArray());
-                    return _runtime.TryRelaySpotReplyOnce(
-                        sourceMeshName,
-                        sourceNodeRid,
-                        relay);
+                    capturedReply = replyParts
+                        .Select(static part => part.ToArray())
+                        .ToArray();
+                    return SubmitResult.Ok;
                 };
             }
             var received = new ZLinkBackendRouteReceived(
@@ -1162,7 +1248,8 @@ internal sealed partial class ZLinkSpotActivation
                 authorityOwnerGeneration:
                     journal.AuthorityOwnerGeneration,
                 ownerLeaseGeneration: journal.OwnerLeaseGeneration,
-                forwardingHopCount: journal.ForwardingHopCount);
+                forwardingHopCount: journal.ForwardingHopCount,
+                sourceNodeGeneration: journal.SourceNodeGeneration);
             try
             {
                 await _serial.ExecuteSealedRelocationAsync(
@@ -1173,13 +1260,57 @@ internal sealed partial class ZLinkSpotActivation
                                 ct),
                         cancellationToken)
                     .ConfigureAwait(false);
-                replayCompleted();
+                await replayCompleted(
+                        job,
+                        journal,
+                        capturedReply,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
             finally
             {
                 received.Dispose();
             }
         }
+    }
+
+    private static ZLinkSpotAcceptedJournalRecord DecodeRelocationReplayRecord(
+        ZLinkRelocationQueuedJob job,
+        string channelName)
+    {
+        if (job.CanonicalRequest is not { } request)
+            return ZLinkSpotAcceptedJournal.Decode(job.Payload.Span);
+        var kind = request.ReplyRouteId == 0
+            ? ZLinkMessageKind.Command
+            : ZLinkMessageKind.Request;
+        using var header = ZLinkEnvelopeCodec.EncodeHeader(
+            new ZLinkEnvelopeHeader(
+                kind,
+                channelName,
+                request.ApplicationPayload.PacketName,
+                request.ApplicationPayload.ContentType,
+                request.ReplyRouteId == 0
+                    ? null
+                    : request.ReplyRouteId.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                null,
+                null,
+                null,
+                null,
+                request.SourceSpotId));
+        return new ZLinkSpotAcceptedJournalRecord(
+            RoutingId.FromHex(request.Source.NodeRid),
+            request.Source.NodeGeneration,
+            request.SourceSpotId,
+            null,
+            request.ReplyRouteId,
+            new MeshOperationId(request.OperationHigh, request.OperationLow),
+            request.TargetNodeGeneration,
+            request.TargetAuthorityOwnerGeneration,
+            request.TargetAuthorityOwnerGeneration,
+            0,
+            request.Metadata,
+            [header.ToArray(), request.ApplicationPayload.Payload.ToArray()]);
     }
 
     private async ValueTask<bool> DispatchTimerAsync(
@@ -1377,6 +1508,50 @@ internal sealed partial class ZLinkSpotActivation
             .Select(static actor => actor.Context.ActorId)
             .OrderBy(static actorId => actorId, StringComparer.Ordinal)
             .ToArray();
+
+    internal IReadOnlyList<ZLinkObjectCapability> ResolveRetireCapabilities(
+        bool instanceSpot)
+    {
+        var capabilities = new List<ZLinkObjectCapability>();
+        var spot = ResolveSpotRelocationRegistration();
+        capabilities.Add(CreateRetireCapability(
+            instanceSpot
+                ? ZLinkPlacementObjectKind.InstanceSpot
+                : ZLinkPlacementObjectKind.UserSpot,
+            ResolveStableTypeForRetire(),
+            spot));
+        foreach (var actor in _actors.Snapshot())
+        {
+            var actorType = _runtime.GetOrCreateActorState(
+                    actor.Context.ActorId)
+                .ActorType
+                            ?? throw new ZLinkConfigurationException(
+                                $"Relocation stable type for Actor '{actor.Context.ActorId}' is not registered.");
+            capabilities.Add(CreateRetireCapability(
+                ZLinkPlacementObjectKind.Actor,
+                actorType,
+                ResolveActorRelocationRegistration(actor)));
+        }
+        return capabilities;
+    }
+
+    private static ZLinkObjectCapability CreateRetireCapability(
+        ZLinkPlacementObjectKind kind,
+        string stableType,
+        ZLinkObjectRelocationRegistration registration) =>
+        new(
+            kind,
+            stableType,
+            registration.PolicyKind switch
+            {
+                0 => ZLinkObjectMaintenancePolicyKind.Disabled,
+                1 => ZLinkObjectMaintenancePolicyKind.Recreate,
+                2 => ZLinkObjectMaintenancePolicyKind.Snapshot,
+                _ => throw new ZLinkConfigurationException(
+                    $"Unknown relocation policy kind '{registration.PolicyKind}'.")
+            },
+            registration.AdapterType is not null,
+            0);
 
     internal ZLinkObjectRelocationRegistration
         ResolveActorRelocationRegistrationForRetire(string actorId)

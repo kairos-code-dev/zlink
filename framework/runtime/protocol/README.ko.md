@@ -15,6 +15,11 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
   immutable envelope golden fixture
 - `golden/relocation-envelope-v1.json`: 네 runtime이 non-empty Instance request journal·completion bytes를 읽고
   쓰는 golden fixture
+- `golden/reply-relay-v1.json`: maintenance request의 terminal reply relay command 33과 exact source fence를
+  닫는 ACK command 46을 네 runtime codec이 같은 bytes로 읽고 쓰는 golden fixture
+- `golden/relocation-control-v1.json`: maintenance relocation의 Ready·Data·ACK·Seal·Complete와
+  Prepare·Reserved command 30·31·32·34·35·40·41을 네 runtime codec이 같은 field 순서와 bytes로 읽고
+  쓰는 golden fixture
 - `golden/authority-key-v1.json`: MeshName과 독립적인 global ActorId·SpotId를 canonical Store key로 만드는
   정상 encoding fixture
 - `golden/contract-amendment-v1.json`: object role·capacity descriptor, durable creation intent, generic

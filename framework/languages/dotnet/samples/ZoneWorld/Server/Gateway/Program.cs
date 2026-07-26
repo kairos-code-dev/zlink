@@ -38,7 +38,7 @@ builder.Services.AddZLinkFramework(options =>
     // The browser's end of the world.
     options.AddStreamNode(ZoneWorldNames.GatewayStreamNode)
         .Bind(gateway.StreamEndpoint)
-        .EnableActorDispatch(ZoneWorldNames.MeshName)
+        .EnableActorDispatch()
         .AddSession<PlayerSession>();
 
     // The Gateway joins the spot mesh but hosts nothing in it — no entry spot, no actor
@@ -47,11 +47,9 @@ builder.Services.AddZLinkFramework(options =>
     var mesh = options.AddRouteMesh(ZoneWorldNames.MeshName)
         .SetRoutingIdPrefix("gw0")
         .Listen(gateway.MeshEndpoint);
-    mesh.ChannelName(ZoneWorldNames.ZoneChannel).SetWeight(0);
-    mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
-    mesh.ChannelName(ZoneWorldNames.ReportChannel).SetWeight(0);
-    foreach (var nodeId in ZoneTopology.ZoneNodes)
-        mesh.ChannelName(ZoneWorldNames.OpsChannel(nodeId)).SetWeight(0);
+    mesh.Channel(ZoneWorldNames.ZoneChannel).Client();
+    mesh.Channel(ZoneWorldNames.ReportChannel).Client();
+    mesh.Objects().Client();
 });
 
 await builder.Build().RunAsync();

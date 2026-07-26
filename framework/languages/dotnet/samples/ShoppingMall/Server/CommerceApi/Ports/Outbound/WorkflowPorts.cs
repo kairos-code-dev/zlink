@@ -20,5 +20,3 @@ internal interface IOrderWorkflowRouter
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken);
 }
-
-internal sealed record CommerceApiInstanceOptions(string InstanceId);

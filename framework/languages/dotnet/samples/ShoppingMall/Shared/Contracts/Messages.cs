@@ -68,5 +68,4 @@ public sealed record PrepareInventoryReservedCheckpointReq(StartOrderWorkflowReq
 
 public sealed record OrderProjectionUpdatedEvent(
     string OrderId,
-    string Status,
-    string OwnerInstanceId);
+    string Status);

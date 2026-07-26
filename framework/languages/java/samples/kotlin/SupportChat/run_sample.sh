@@ -112,8 +112,6 @@ sample.logDirectory=${SAMPLE_LOG_DIR}
 sample.sessionSpotEndpoint=${session_spot_endpoint}
 sample.sessionRouterEndpoint=${session_router_endpoint}
 sample.streamEndpoint=${stream_endpoint}
-sample.sessionRouterRid=3101
-sample.sessionPubRid=3102
 EOF
 cat >"${support_config}" <<EOF
 sample.redisEndpoint=${redis_endpoint}
@@ -122,7 +120,6 @@ sample.logDirectory=${SAMPLE_LOG_DIR}
 sample.supportChannelEndpoint=${support_channel_endpoint}
 sample.supportEntrySpotEndpoint=${entry_spot_endpoint}
 sample.supportEntrySpotRouterEndpoint=${entry_router_endpoint}
-sample.supportEntryRid=4201
 EOF
 chmod 0600 "${api_config}" "${session_config}" "${support_config}"
 

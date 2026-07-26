@@ -265,12 +265,12 @@ test('production ClientServer outbound socket selection uses admitted descriptor
     () => sockets.clientDealerForOutbound('orders').id
   );
   assert.deepEqual(selected, [
-    'dealer-0',
-    'dealer-1',
-    'dealer-1',
     'dealer-1',
     'dealer-0',
     'dealer-1',
+    'dealer-1',
+    'dealer-1',
+    'dealer-0',
     'dealer-1',
     'dealer-1'
   ]);

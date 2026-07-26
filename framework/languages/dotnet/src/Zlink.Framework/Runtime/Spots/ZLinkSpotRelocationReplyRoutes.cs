@@ -1,5 +1,24 @@
 namespace Zlink.Framework.Runtime.Spots;
 
+internal enum ZLinkRelocationReplyAckState : byte
+{
+    NotAcknowledged = 0,
+    TerminalReceived = 1,
+    AlreadyTerminal = 2
+}
+
+internal sealed record ZLinkRelocationReplyBinding(
+    ZLinkAuthorityKey AuthorityKey,
+    ZLinkServiceWireCodec.RelocationWireId RelocationId,
+    ulong TargetAttemptGeneration,
+    string CoordinatorOwnerId,
+    ulong CoordinatorLeaseGeneration,
+    RoutingId CoordinatorNodeRid,
+    ulong CoordinatorNodeGeneration,
+    ulong ParticipantId,
+    ulong Sequence,
+    ZLinkServiceWireCodec.RequestSourceFence RequestSource);
+
 /// <summary>
 /// Keeps opaque source reply capabilities in the source process while an
 /// accepted request is relocated. The capability never enters application
@@ -8,6 +27,8 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed class ZLinkSpotRelocationReplyRoutes
 {
     private const int MaxRoutes = 4_096;
+    internal static readonly TimeSpan LateCompletionRetention =
+        TimeSpan.FromHours(24);
     private readonly object _gate = new();
     private readonly Dictionary<ulong, Route> _routes = [];
     private readonly TimeProvider _time;
@@ -48,6 +69,7 @@ internal sealed class ZLinkSpotRelocationReplyRoutes
                 new Route(
                     spotId,
                     objectGeneration,
+                    received.OperationId,
                     _time.GetUtcNow() + _retention,
                     reply));
             return routeId;
@@ -63,36 +85,142 @@ internal sealed class ZLinkSpotRelocationReplyRoutes
     internal void BindCommitted(
         ulong routeId,
         RoutingId targetNodeRid,
+        ulong targetAuthorityOwnerGeneration,
+        ZLinkRelocationReplyBinding binding)
+    {
+        if (routeId == 0) return;
+        lock (_gate)
+        {
+            if (_routes.TryGetValue(routeId, out var route))
+            {
+                route.TargetNodeRid = targetNodeRid;
+                route.TargetAuthorityOwnerGeneration =
+                    targetAuthorityOwnerGeneration;
+                route.RelayBinding = binding;
+            }
+        }
+    }
+
+    internal void BindCommitted(
+        ulong routeId,
+        RoutingId targetNodeRid,
         ulong targetAuthorityOwnerGeneration)
     {
         if (routeId == 0) return;
         lock (_gate)
         {
             if (_routes.TryGetValue(routeId, out var route))
-                _routes[routeId] = route with
-                {
-                    TargetNodeRid = targetNodeRid,
-                    TargetAuthorityOwnerGeneration =
-                        targetAuthorityOwnerGeneration
-                };
+            {
+                route.TargetNodeRid = targetNodeRid;
+                route.TargetAuthorityOwnerGeneration =
+                    targetAuthorityOwnerGeneration;
+            }
+        }
+    }
+
+    internal bool TryGetRelayBinding(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        RoutingId targetNodeRid,
+        out ZLinkRelocationReplyBinding binding)
+    {
+        lock (_gate)
+        {
+            RemoveExpiredUnderLock(_time.GetUtcNow());
+            var route = _routes.GetValueOrDefault(relay.ReplyRouteId);
+            if (route?.RelayBinding is not { } candidate
+                || route.OperationId != relay.OperationId
+                || route.TargetNodeRid != targetNodeRid
+                || candidate.RelocationId != relay.RelocationId
+                || candidate.TargetAttemptGeneration
+                   != relay.TargetAttemptGeneration
+                || candidate.CoordinatorOwnerId
+                   != relay.Coordinator.OwnerId
+                || candidate.CoordinatorLeaseGeneration
+                   != relay.Coordinator.LeaseGeneration
+                || candidate.CoordinatorNodeRid
+                   != relay.Coordinator.NodeRid
+                || candidate.CoordinatorNodeGeneration
+                   != relay.Coordinator.NodeGeneration
+                || candidate.ParticipantId != relay.ParticipantId
+                || candidate.Sequence != relay.Sequence)
+            {
+                binding = null!;
+                return false;
+            }
+            binding = candidate;
+            return true;
         }
     }
 
     internal SubmitResult TryRelay(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags,
+        out bool consumed,
+        out bool alreadyTerminal)
+    {
+        string spotId;
+        ulong objectGeneration;
+        ulong targetAuthorityOwnerGeneration;
+        lock (_gate)
+        {
+            if (!_routes.TryGetValue(relay.ReplyRouteId, out var route))
+            {
+                consumed = false;
+                alreadyTerminal = false;
+                return SubmitResult.NotFound;
+            }
+            spotId = route.SpotId;
+            objectGeneration = route.ObjectGeneration;
+            targetAuthorityOwnerGeneration =
+                route.TargetAuthorityOwnerGeneration;
+        }
+        if (!TryGetRelayBinding(relay, targetNodeRid, out _))
+        {
+            consumed = false;
+            alreadyTerminal = false;
+            return SubmitResult.NotFound;
+        }
+        return TryRelay(
+            relay.ReplyRouteId,
+            relay.OperationId,
+            spotId,
+            objectGeneration,
+            targetNodeRid,
+            targetAuthorityOwnerGeneration,
+            hopCount: 1,
+            parts,
+            flags,
+            out consumed,
+            out alreadyTerminal);
+    }
+
+    internal SubmitResult TryRelay(
         ulong routeId,
+        MeshOperationId operationId,
         string spotId,
         ulong objectGeneration,
         RoutingId targetNodeRid,
         ulong targetAuthorityOwnerGeneration,
         int hopCount,
         IReadOnlyList<Message> parts,
-        SendFlags flags)
+        SendFlags flags,
+        out bool consumed,
+        out bool alreadyTerminal)
     {
+        consumed = false;
+        alreadyTerminal = false;
         Route? route;
         lock (_gate)
         {
             RemoveExpiredUnderLock(_time.GetUtcNow());
-            if (!_routes.TryGetValue(routeId, out route)
+            route = routeId == 0
+                ? _routes.Values.SingleOrDefault(candidate =>
+                    candidate.OperationId == operationId)
+                : _routes.GetValueOrDefault(routeId);
+            if (route is null
+                || route.OperationId != operationId
                 || route.SpotId != spotId
                 || route.ObjectGeneration != objectGeneration
                 || route.TargetNodeRid != targetNodeRid
@@ -100,10 +228,32 @@ internal sealed class ZLinkSpotRelocationReplyRoutes
                    != targetAuthorityOwnerGeneration
                 || hopCount is < 0 or > 8)
                 return SubmitResult.NotFound;
-            _routes.Remove(routeId);
+            if (route.Delivered)
+            {
+                alreadyTerminal = true;
+                return SubmitResult.Ok;
+            }
+            if (route.RelayInProgress)
+                return SubmitResult.Backpressured;
+            route.RelayInProgress = true;
         }
-
-        return route.Reply(parts, flags);
+        SubmitResult result;
+        try
+        {
+            result = route.Reply(parts, flags);
+            consumed = result == SubmitResult.Ok;
+        }
+        catch
+        {
+            lock (_gate) route.RelayInProgress = false;
+            throw;
+        }
+        lock (_gate)
+        {
+            route.RelayInProgress = false;
+            if (result == SubmitResult.Ok) route.Delivered = true;
+        }
+        return result;
     }
 
     internal void Clear()
@@ -132,14 +282,23 @@ internal sealed class ZLinkSpotRelocationReplyRoutes
             _routes.Remove(routeId);
     }
 
-    private sealed record Route(
+    private sealed class Route(
         string SpotId,
         ulong ObjectGeneration,
+        MeshOperationId OperationId,
         DateTimeOffset ExpiresAt,
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult> Reply)
     {
-        public RoutingId? TargetNodeRid { get; init; }
+        public string SpotId { get; } = SpotId;
+        public ulong ObjectGeneration { get; } = ObjectGeneration;
+        public MeshOperationId OperationId { get; } = OperationId;
+        public DateTimeOffset ExpiresAt { get; } = ExpiresAt;
+        public Func<IReadOnlyList<Message>, SendFlags, SubmitResult> Reply { get; } = Reply;
+        public RoutingId? TargetNodeRid { get; set; }
 
-        public ulong TargetAuthorityOwnerGeneration { get; init; }
+        public ulong TargetAuthorityOwnerGeneration { get; set; }
+        public ZLinkRelocationReplyBinding? RelayBinding { get; set; }
+        public bool RelayInProgress { get; set; }
+        public bool Delivered { get; set; }
     }
 }

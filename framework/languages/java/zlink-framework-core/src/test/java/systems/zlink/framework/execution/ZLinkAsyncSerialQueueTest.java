@@ -455,6 +455,29 @@ final class ZLinkAsyncSerialQueueTest {
     }
 
     @Test
+    void relocationIngressFreezeFixesHeldHighWaterBeforeAuthorityPrepare()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue.RelocationSeal seal =
+            queue.trySealRelocation().orElseThrow();
+        CompletableFuture<Void> held = queue.enqueueRelocatable(
+            new byte[] {7},
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture();
+
+        var frozen = queue.freezeRelocationIngress(seal).orElseThrow();
+        assertEquals(1, frozen.size());
+        assertArrayEquals(new byte[] {7}, frozen.getFirst().payload());
+        assertTrue(queue.enqueueRelocatable(
+            new byte[] {8},
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture().isCompletedExceptionally());
+
+        assertTrue(queue.abortRelocation(seal));
+        held.get(3, TimeUnit.SECONDS);
+    }
+
+    @Test
     void relocationSealWaitsForYieldedContinuationToQuiesce()
         throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();

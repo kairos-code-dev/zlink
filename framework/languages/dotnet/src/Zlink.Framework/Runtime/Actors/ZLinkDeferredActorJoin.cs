@@ -189,12 +189,9 @@ internal sealed class ZLinkDeferredActorJoin(
                             deadline.Token)
                         .ConfigureAwait(false)
                     : await runtime.JoinActorEntrySpotAsync(
-                            sourceNodeRid
-                            ?? throw new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                                $"Actor '{actor.Context.ActorId}' does not have a current node identity."),
                             actor,
                             request,
+                            _operationId,
                             deadline.Token)
                         .ConfigureAwait(false);
 

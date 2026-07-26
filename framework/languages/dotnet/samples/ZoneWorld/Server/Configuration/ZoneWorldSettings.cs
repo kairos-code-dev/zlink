@@ -11,7 +11,8 @@ public sealed record ZoneNodeSettings(
     string NodeId,
     string MeshEndpoint,
     string? FaultTickZone = null,
-    bool DisableBots = false);
+    bool DisableBots = false,
+    bool SubscriberOnly = false);
 
 public sealed record GatewaySettings(
     string StreamEndpoint,

@@ -825,6 +825,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   target_link_libraries(test_cpp_framework_m6c_runtime PRIVATE
     zlink_framework_m6c_runtime
+    zlink_framework
     Threads::Threads)
   add_test(NAME test_cpp_framework_m6c_runtime
     COMMAND test_cpp_framework_m6c_runtime)
@@ -835,6 +836,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
   add_executable(test_cpp_framework_termination_facade
     tests/Zlink.Framework.UnitTests/test_cpp_framework_termination_facade.cpp)
   target_compile_features(test_cpp_framework_termination_facade PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_termination_facade PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
   target_link_libraries(test_cpp_framework_termination_facade PRIVATE
     zlink_framework
     Threads::Threads)
@@ -1207,6 +1210,14 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     "framework-integration;framework-regression;framework-zlink;framework-zlink-stream;stream")
   target_link_libraries(test_cpp_framework_stream_framework PRIVATE
     zlink::stream_connector)
+  if(OpenSSL_FOUND AND ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
+    target_compile_definitions(test_cpp_framework_stream_framework PRIVATE
+      ZLINK_FRAMEWORK_STREAM_TEST_WITH_OPENSSL
+      ZLINK_FRAMEWORK_STREAM_TEST_CERT="${ZLINK_HTTP_CLIENT_TEST_CERT}"
+      ZLINK_FRAMEWORK_STREAM_TEST_KEY="${ZLINK_HTTP_CLIENT_TEST_KEY}")
+    target_link_libraries(test_cpp_framework_stream_framework PRIVATE
+      OpenSSL::SSL OpenSSL::Crypto)
+  endif()
   add_zlink_framework_test(
     test_cpp_framework_message_flow
     tests/Zlink.Framework.UnitTests/test_cpp_framework_message_flow.cpp

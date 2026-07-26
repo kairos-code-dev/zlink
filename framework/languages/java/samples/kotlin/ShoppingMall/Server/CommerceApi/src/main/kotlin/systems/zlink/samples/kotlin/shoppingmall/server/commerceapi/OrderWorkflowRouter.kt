@@ -22,7 +22,7 @@ import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderWork
  * `OrderId`. Same `OrderId` always reaches the same workflow instance channel.
  */
 @Component
-class OrderWorkflowRouter(private val channels: ZLinkClient, private val topology: SampleTopology) {
+class OrderWorkflowRouter(private val channels: ZLinkClient) {
     suspend fun startWorkflow(command: StartOrderWorkflowReq): OrderState =
         request(command.orderId, command, StartOrderWorkflowRes::class.java).state
 
@@ -36,11 +36,10 @@ class OrderWorkflowRouter(private val channels: ZLinkClient, private val topolog
         request(orderId, RebuildOrderProjectionReq(orderId), RebuildOrderProjectionRes::class.java).state
 
     private suspend fun <TReply> request(orderId: String, payload: Any, replyType: Class<TReply>): TReply {
-        val channel = SampleNames.workflowChannel(topology.workflowInstanceForOrder(orderId))
         var lastError: RuntimeException? = null
         for (attempt in 1..SampleTimings.MaxChannelAttempts) {
             try {
-                return channels.requestToChannel(channel, payload)
+                return channels.requestToChannel(SampleNames.OrderWorkflowChannel, payload)
                     .timeout(SampleTimings.WorkflowTimeout)
                     .submit(replyType)
                     .await()

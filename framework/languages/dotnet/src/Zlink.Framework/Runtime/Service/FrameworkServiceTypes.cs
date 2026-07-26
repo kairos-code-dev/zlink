@@ -229,6 +229,48 @@ internal interface IUserSpotOperationTarget
         CancellationToken cancellationToken);
 }
 
+internal interface IRelocationReplyRelayTarget
+{
+    ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord?> RelayAsync(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        RoutingId sourceNodeRid,
+        IReadOnlyList<Message> payload,
+        CancellationToken cancellationToken);
+}
+
+internal interface ICanonicalRelocationReservationTarget
+{
+    ValueTask<ZLinkServiceWireCodec.RelocationReadyRecord> OfferAsync(
+        ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+        RoutingId authenticatedSourceNodeRid,
+        CancellationToken cancellationToken);
+
+    ValueTask<ZLinkServiceWireCodec.RelocationReservedRecord> AcceptAsync(
+        ZLinkServiceWireCodec.RelocationReadyRecord acceptance,
+        RoutingId authenticatedSourceNodeRid,
+        CancellationToken cancellationToken);
+
+    ValueTask<ZLinkServiceWireCodec.RelocationAckRecord> StageDataAsync(
+        ZLinkServiceWireCodec.RelocationDataRecord data,
+        RoutingId authenticatedSourceNodeRid,
+        CancellationToken cancellationToken);
+
+    bool TryCreateSealRequest(
+        ZLinkServiceWireCodec.RelocationWireId relocationId,
+        ulong targetAttemptGeneration,
+        out ZLinkServiceWireCodec.RelocationSealRecord seal);
+
+    ValueTask AcceptSealResponseAsync(
+        ZLinkServiceWireCodec.RelocationSealRecord seal,
+        RoutingId authenticatedSourceNodeRid,
+        CancellationToken cancellationToken);
+
+    ValueTask CompleteAsync(
+        ZLinkServiceWireCodec.RelocationCompleteRecord complete,
+        RoutingId authenticatedSourceNodeRid,
+        CancellationToken cancellationToken);
+}
+
 [Flags]
 internal enum MeshMonitorEventMask : ulong
 {
@@ -482,6 +524,32 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void SetActorCreateOperationTarget(IActorCreateOperationTarget target);
     void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target);
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target);
+    void SetRelocationReplyRelayTarget(IRelocationReplyRelayTarget target);
+    void SetCanonicalRelocationReservationTarget(
+        ICanonicalRelocationReservationTarget target);
+    ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord> RelayRelocationReplyAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        ZLinkServiceWireCodec.RequestSourceFence expectedSource,
+        IReadOnlyList<Message> payload,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+    ValueTask<ZLinkServiceWireCodec.RelocationReservedRecord>
+        ReserveCanonicalRelocationAsync(
+            RoutingId targetNodeRid,
+            ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+            TimeSpan timeout,
+            CancellationToken cancellationToken);
+    ValueTask StageCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+        IReadOnlyList<ZLinkServiceWireCodec.RelocationDataRecord> data,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+    ValueTask CompleteCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationCompleteRecord complete,
+        CancellationToken cancellationToken);
     SubmitResult ActivateInstanceSpot(
         InstanceSpotActivationTarget target,
         string sourceSpotId,

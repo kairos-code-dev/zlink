@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
@@ -43,7 +42,7 @@ internal sealed class PlayerEnterWorldHandler(ILogger<PlayerEnterWorldHandler> l
     public async ValueTask<EnterWorldRes> HandleAsync(
         ZoneEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         EnterWorldReq message,
         CancellationToken cancellationToken)
     {
@@ -63,7 +62,7 @@ internal sealed class PlayerJoinWorldHandler(ILogger<PlayerJoinWorldHandler> log
     public async ValueTask<JoinWorldRes> HandleAsync(
         ZoneEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinWorldReq message,
         CancellationToken cancellationToken)
     {
@@ -76,7 +75,6 @@ internal sealed class PlayerJoinWorldHandler(ILogger<PlayerJoinWorldHandler> log
         return new JoinWorldRes(
             message.PlayerId,
             entered.ZoneId,
-            entered.NodeId,
             entered.X,
             entered.Y,
             entered.Error);
@@ -98,8 +96,8 @@ internal static class EnterWorld
         var zoneId = ZoneWorldSpec.ZoneOf(message.X, message.Y);
         var joined = await actor.Context
             .JoinSpot(
-                RoutingId.From(zoneId),
-                new EnterZoneMsg(actor.ActorId, message.X, message.Y, message.IsBot, FromNodeId: null))
+                zoneId,
+                new EnterZoneMsg(actor.ActorId, message.X, message.Y, message.IsBot, InitialEntry: true))
             .Yield(cancellationToken);
 
         var reply = joined switch
@@ -116,6 +114,6 @@ internal static class EnterWorld
             message.IsBot,
             reply.Error ?? "(none)");
 
-        return new EnterWorldRes(reply.ZoneId, reply.NodeId, message.X, message.Y, reply.Error);
+        return new EnterWorldRes(reply.ZoneId, message.X, message.Y, reply.Error);
     }
 }

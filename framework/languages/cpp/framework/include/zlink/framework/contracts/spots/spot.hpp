@@ -55,6 +55,22 @@ requires std::derived_from<TActor, actor_t>
 class actor_factory_t;
 class spot_publisher_client_t;
 class spot_manager_t;
+class instance_spot_context_t;
+
+namespace detail
+{
+enum class actor_join_completion_outcome_t : std::uint8_t
+{
+    accepted,
+    rejected,
+    failed
+};
+
+using actor_join_completion_callback_t = std::function<task_t<void> (
+  void *, actor_join_completion_outcome_t, std::uint64_t, std::uint64_t,
+  const actor_ref_t *, const std::optional<message_t> &,
+  framework_error_kind_t, bool)>;
+} // namespace detail
 
 class spot_t
 {
@@ -585,16 +601,17 @@ inline spot_id_t spot_id_from_target (spot_id_t spot_id)
 class spot_context_t
 {
   public:
-    spot_context_t ();
     ~spot_context_t ();
 
     spot_context_t (spot_context_t &&) noexcept;
-    spot_context_t &operator= (spot_context_t &&) noexcept;
-    spot_context_t (const spot_context_t &) = default;
-    spot_context_t &operator= (const spot_context_t &) = default;
+    spot_context_t &operator= (spot_context_t &&) = delete;
+    spot_context_t (const spot_context_t &) = delete;
+    spot_context_t &operator= (const spot_context_t &) = delete;
 
     node_rid_t node_rid () const;
+    std::string_view mesh_name () const;
     spot_id_t spot_id () const;
+    std::uint64_t object_generation () const noexcept;
     std::string spot_name () const;
     spot_handler_registry_t handlers ();
     spot_manager_t manager () const;
@@ -794,9 +811,11 @@ class spot_context_t
   protected:
     friend class spot_node_builder_t;
     friend class entry_spot_context_t;
+    friend class instance_spot_context_t;
     friend class detail::spot_node_runtime_t;
     friend class detail::timer_runtime_t;
 
+    spot_context_t ();
     class erased_request_call_t
     {
       public:
@@ -858,6 +877,7 @@ class spot_context_t
     };
 
     explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
+    bool has_same_source_fence (const spot_context_t &other) const noexcept;
 
     send_call_t
     publish_erased (std::string topic, std::string packet_name, zlink::message_t payload);
@@ -897,15 +917,12 @@ class spot_context_t
 class entry_spot_context_t : public spot_context_t
 {
   public:
-    entry_spot_context_t ();
     ~entry_spot_context_t ();
 
     entry_spot_context_t (entry_spot_context_t &&) noexcept;
-    entry_spot_context_t &operator= (entry_spot_context_t &&) noexcept;
-    entry_spot_context_t (const entry_spot_context_t &) = default;
-    entry_spot_context_t &operator= (const entry_spot_context_t &) = default;
-
-    explicit entry_spot_context_t (const spot_context_t &context);
+    entry_spot_context_t &operator= (entry_spot_context_t &&) = delete;
+    entry_spot_context_t (const entry_spot_context_t &) = delete;
+    entry_spot_context_t &operator= (const entry_spot_context_t &) = delete;
 
     /* Resolves the actor's identity from the live instance registered on
      * this node, so a stale instance (already destroyed or superseded by a
@@ -918,10 +935,30 @@ class entry_spot_context_t : public spot_context_t
 
   private:
     friend class detail::spot_node_runtime_t;
+    entry_spot_context_t ();
+    explicit entry_spot_context_t (const spot_context_t &context);
     explicit entry_spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
 
     task_t<void> destroy_actor_instance_erased (const void *instance);
     task_t<void> destroy_actor_erased (const actor_ref_t &actor_ref);
+};
+
+class instance_spot_context_t : public spot_context_t
+{
+  public:
+    ~instance_spot_context_t ();
+
+    instance_spot_context_t (instance_spot_context_t &&) noexcept;
+    instance_spot_context_t &operator= (instance_spot_context_t &&) = delete;
+    instance_spot_context_t (const instance_spot_context_t &) = delete;
+    instance_spot_context_t &operator= (const instance_spot_context_t &) = delete;
+
+  private:
+    friend class detail::spot_node_runtime_t;
+    instance_spot_context_t ();
+    explicit instance_spot_context_t (const spot_context_t &context);
+    explicit instance_spot_context_t (
+      std::shared_ptr<detail::spot_context_state_t> state);
 };
 
 struct spot_create_result_t
@@ -1436,6 +1473,9 @@ namespace detail
 struct spot_lifecycle_callbacks_t
 {
     std::function<std::shared_ptr<void> ()> create_instance;
+    std::function<std::shared_ptr<void> (spot_context_t)> create_spot_context_instance;
+    std::function<std::shared_ptr<void> (entry_spot_context_t)> create_entry_context_instance;
+    std::function<std::shared_ptr<void> (instance_spot_context_t)> create_instance_context_instance;
     std::function<void (void *, spot_context_t &)> configure;
     std::function<void (void *, entry_spot_context_t &)> configure_entry;
     std::function<task_t<spot_create_response_t> (
@@ -1570,6 +1610,45 @@ class spot_node_builder_t
         return builder;
     }
 
+    template <typename TEntrySpot>
+    spot_node_builder_t &add_entry_spot (
+      std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
+    {
+        static_assert (std::is_base_of_v<entry_spot_t, TEntrySpot>,
+                       "Entry SPOT type must derive from zlink::framework::entry_spot_t");
+        if (!factory) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "Entry SPOT factory must not be empty");
+        }
+        auto &builder =
+          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
+                            user_spot_execution_mode_t::spot_wide);
+        register_context_lifecycle<TEntrySpot> ("entry", std::move (factory));
+        return builder;
+    }
+
+    template <typename TSpot>
+    spot_node_builder_t &add_spot (
+      std::string spot_name,
+      std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,
+      user_spot_execution_mode_t execution_mode =
+        user_spot_execution_mode_t::spot_wide)
+    {
+        static_assert (std::is_base_of_v<spot_t, TSpot>);
+        static_assert (!std::is_base_of_v<entry_spot_t, TSpot>);
+        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>);
+        if (!factory) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "SPOT factory must not be empty");
+        }
+        const auto registered_name = spot_name;
+        auto &builder = add_spot_factory (
+          std::move (spot_name), std::type_index (typeid (TSpot)), false,
+          execution_mode);
+        register_context_lifecycle<TSpot> (registered_name, std::move (factory));
+        return builder;
+    }
+
     template <typename TSpot>
     requires std::derived_from<TSpot, instance_spot_t>
     spot_node_builder_t &
@@ -1585,6 +1664,24 @@ class spot_node_builder_t
           std::move (stable_type), std::type_index (typeid (TSpot)), false,
           user_spot_execution_mode_t::spot_wide, true);
         register_lifecycle<TSpot> (registered_type, std::move (factory));
+        return builder;
+    }
+
+    template <typename TSpot>
+    requires std::derived_from<TSpot, instance_spot_t>
+    spot_node_builder_t &add_instance_spot_factory (
+      std::string stable_type,
+      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory)
+    {
+        if (!factory) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "Instance Spot factory must not be empty");
+        }
+        const auto registered_type = stable_type;
+        auto &builder = add_spot_factory (
+          std::move (stable_type), std::type_index (typeid (TSpot)), false,
+          user_spot_execution_mode_t::spot_wide, true);
+        register_context_lifecycle<TSpot> (registered_type, std::move (factory));
         return builder;
     }
 
@@ -1778,9 +1875,7 @@ class spot_node_builder_t
         deserialize_instance,
       std::function<std::shared_ptr<void> (actor_context_t &)>
         create_context_instance = {},
-      std::function<task_t<void> (
-        void *, std::uint64_t, std::uint64_t, const actor_ref_t &,
-        const std::optional<message_t> &)> on_join_completed = {});
+      detail::actor_join_completion_callback_t on_join_completed = {});
     spot_node_builder_t &add_actor_transfer_erased (
       std::string actor_type,
       std::type_index actor_instance_type,
@@ -1836,6 +1931,51 @@ class spot_node_builder_t
                     static_cast<TSpot *> (spot)->on_closing ();
                 };
             }
+        }
+        register_lifecycle_erased (std::move (spot_name), std::move (callbacks));
+    }
+
+    template <typename TSpot, typename TContext>
+    void register_context_lifecycle (
+      std::string spot_name,
+      std::function<std::shared_ptr<TSpot> (TContext)> factory)
+    {
+        static_assert (requires (TSpot &spot) {
+            { spot.context () };
+            spot.configure ();
+        }, "Context factory Spot must expose context() and configure()");
+        detail::spot_lifecycle_callbacks_t callbacks;
+        auto create = [factory = std::move (factory)] (TContext context) {
+            const auto expected_state = context._state;
+            auto instance = factory (std::move (context));
+            if (!instance) {
+                return std::shared_ptr<void>{};
+            }
+            if (!instance->context ().has_same_source_fence (
+                  spot_context_t (expected_state))) {
+                throw framework_exception_t (
+                  framework_error_kind_t::invalid_configuration,
+                  "Spot factory must return a Spot that exposes the provided Context");
+            }
+            instance->configure ();
+            return std::static_pointer_cast<void> (std::move (instance));
+        };
+        if constexpr (std::is_same_v<TContext, entry_spot_context_t>) {
+            callbacks.create_entry_context_instance = std::move (create);
+        } else if constexpr (std::is_same_v<TContext, instance_spot_context_t>) {
+            callbacks.create_instance_context_instance = std::move (create);
+        } else {
+            callbacks.create_spot_context_instance = std::move (create);
+        }
+        if constexpr (detail::has_initialize_callback<TSpot>) {
+            callbacks.on_initialize = [] (void *spot) {
+                static_cast<TSpot *> (spot)->on_initialize ();
+            };
+        }
+        if constexpr (detail::has_closing_callback<TSpot>) {
+            callbacks.on_closing = [] (void *spot) {
+                static_cast<TSpot *> (spot)->on_closing ();
+            };
         }
         register_lifecycle_erased (std::move (spot_name), std::move (callbacks));
     }

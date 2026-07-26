@@ -583,8 +583,8 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                         true);
 
                 case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
-                    throw new InvalidOperationException(
-                        $"Actor '{actorId}' authority generation space was exhausted.");
+                    throw new ZLinkAuthorityGenerationExhaustedException(
+                        $"committing Actor '{actorId}' handoff authority");
 
                 default:
                     throw new InvalidOperationException(

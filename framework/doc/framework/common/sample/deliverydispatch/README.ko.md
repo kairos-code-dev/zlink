@@ -236,22 +236,19 @@ actor 실행 위치가 섞이지 않게 나눈다.
 같은 mesh 안에 있고, courier id가 어느 MeshNode의 actor에 들어갈지는 framework 배치가 정한다.
 courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가 기억한다.
 
-`DispatchWorker module`은 두 단계로 offer를 보낸다. 먼저 **샘플의 배치 정책**이 courier id에서
-그 배송원을 담당하는 CourierMeshNode를 정한다(샘플이 소유한 결정이며 framework 표면이 아니다).
-그 다음 **spot handle resolver**로 그 노드의 `CourierEntrySpot` handle을 얻어 offer를 그 handle로
-보낸다. 즉 전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 MeshNode routed path에
-node rid를 찍어 보내는 표면은 이 샘플에서 쓰지 않는다
+`DispatchWorker module`은 courier id를 전역 `ActorId`로 사용해 actor를 찾거나 생성하고 offer를
+보낸다. 어느 CourierMeshNode에서 actor를 materialize할지는 framework의 capacity와 node weight,
+Location Store가 결정한다. application request와 설정에는 owner NodeRid가 없으며, 전송할 때도
+physical node를 먼저 선택하지 않는다
 ([10 §5](../../spec/10-channel-topology.ko.md), [24 §3](../../spec/24-spot-address-messaging.ko.md)).
-`CourierEntrySpot`은 MeshNode마다 하나인 actor 진입점이며, entry spot의 route handler가 그 노드
-안에서 대상 actor를 찾는다.
+`CourierEntrySpot`은 actor 생성과 session bind를 framework 경로에 연결하지만, 호출자에게 owner
+node 선택 책임을 노출하지 않는다.
 
 stream client가 다시 연결될 때 두 역할의 경로가 다르다.
 
-- **courier**는 다른 노드에 있을 수 있으므로 배치 정책으로 담당 CourierMeshNode를 정하고, 그
-  노드의 entry spot `SpotHandle`로 "이 배송원 actor가 있는가"를 먼저 묻는다. 있으면 새 session만
-  다시 bind하고, 없을 때만 entry spot을 통해 actor를 만든다(claim-then-activate).
-- **customer**는 CustomerGateway가 자기 노드에서 직접 소유하므로 local `actor manager`의
-  get-or-create 하나로 끝난다. 별도 위치 조회가 없다.
+- **courier**는 전역 `ActorId`로 actor를 찾거나 생성한다. framework가 반환한 exact `ActorRef`는
+  새 session bind에 그대로 사용할 수 있지만, 이 값은 placement 입력이 아니다.
+- **customer**도 전역 `ActorId`와 Location Store를 사용하는 get-or-create 경로를 따른다.
 
 이렇게 해야 재연결해도 사용자가 보던 actor 상태가 유지되고, session route만 최신 연결로 바뀐다.
 
@@ -676,8 +673,9 @@ Server/CustomerGateway/
 - client가 stream endpoint에 연결한 뒤 `SubscribeDeliveryReq`를 보내고
   `SubscribeDeliveryRes`의 `DeliveryId`를 확인한다.
 - `delivery-success` 생성 응답이 같은 `DeliveryId`를 반환하는지 확인한다.
-- `courier-a` actor는 node-1에, `courier-b` actor는 node-2에 bind됐고 두 actor가
-  `CourierSession server`의 session route로 client에 offer를 push하는지 확인한다.
+- `courier-a`와 `courier-b` actor가 전역 `ActorId`로 생성되고 두 actor가 `CourierSession server`의
+  session route로 client에 offer를 push하는지 확인한다. 어느 physical node가 owner인지는 성공
+  조건으로 사용하지 않는다.
 - `delivery-success`에 대해 `Assigned`, `Accepted`, `PickedUp`, `Delivered`가 순서대로
   도착하는지 확인한다.
 - `delivery-reassign` 생성 응답이 같은 `DeliveryId`를 반환하는지 확인한다.

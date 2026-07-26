@@ -9,8 +9,6 @@ namespace zlink::samples::bingo
 struct bingo_match_reservation_t
 {
     std::string room_id;
-    std::string owner_play_node_rid;
-    bool created_local_room = false;
 };
 
 class bingo_match_queue_t
@@ -20,7 +18,6 @@ class bingo_match_queue_t
 
     virtual bingo_match_reservation_t reserve (const std::string &mode,
                                                const std::string &actor_id,
-                                               const std::string &preferred_owner_node_rid,
                                                const std::string &new_room_id,
                                                int required_players) = 0;
 };

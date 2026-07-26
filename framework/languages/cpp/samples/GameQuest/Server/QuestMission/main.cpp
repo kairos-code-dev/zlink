@@ -412,7 +412,7 @@ int main (int argc, char **argv)
           std::make_unique<sample_topology_t> (topology));
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
-        options.add_client_server_channel (quest_owner_channel_for (topology.mission_name))
+        options.add_client_server_channel (sample_names_t::quest_owner_channel)
           .enable_server (topology.selected_mission_route_endpoint ())
           .set_routing_id (topology.selected_mission_rid ())
           .use_handler_group ("quest-owner");
@@ -420,7 +420,7 @@ int main (int argc, char **argv)
          * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
         quest_spot_route.listen (topology.selected_mission_spot_route_endpoint ())
-          .set_routing_id (topology.selected_mission_rid ())
+          .use_allocated_routing_id (16, "gamequest-mission-route")
           .channel_name (sample_names_t::quest_spot_route);
         options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-a")] =
           sample_names_t::quest_spot_route;
@@ -430,7 +430,7 @@ int main (int argc, char **argv)
         auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
         quest_spot.channel_name (sample_names_t::quest_spot_route);
         quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
-          .set_routing_id (topology.selected_mission_rid ())
+          .use_allocated_routing_id (16, "gamequest-mission-owner")
           .add_spot<player_quest_spot_t> (
             sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] {
                 return std::make_shared<player_quest_spot_t> (*quest_store_ptr, spot_services);

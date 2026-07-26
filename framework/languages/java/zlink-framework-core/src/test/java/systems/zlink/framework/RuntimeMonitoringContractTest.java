@@ -18,15 +18,19 @@ import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
+import systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshDrainSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshDrainResult;
 import systems.zlink.framework.monitoring.ZLinkMeshDrained;
 import systems.zlink.framework.monitoring.ZLinkMeshForceStopped;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.locations.ZLinkCapacityUsage;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 
 final class RuntimeMonitoringContractTest {
     @Test
@@ -82,6 +86,9 @@ final class RuntimeMonitoringContractTest {
         ArrayList<String> sources = new ArrayList<>(List.of("manual"));
         ArrayList<ZLinkMeshChannelSnapshot> channels = new ArrayList<>(
             List.of(new ZLinkMeshChannelSnapshot("channel", 100, 1, true)));
+        ArrayList<ZLinkInstanceSpotTypeSnapshot> instanceSpots = new ArrayList<>(
+            List.of(new ZLinkInstanceSpotTypeSnapshot(
+                "room", 2, 1, 0, 3, 64, Optional.of("activated"))));
         ZLinkMeshNodeSnapshot snapshot = new ZLinkMeshNodeSnapshot(
             "mesh",
             RoutingId.from("node"),
@@ -94,17 +101,30 @@ final class RuntimeMonitoringContractTest {
             sources,
             List.of(),
             channels,
+            instanceSpots,
             new ZLinkMeshClaimSnapshot(true, 0, true, 0),
             new ZLinkLocationRuntimeSnapshot(
                 "ready", Optional.empty(), Optional.empty()),
-            new ZLinkMeshDrainSnapshot(
-                ZLinkMeshNodeState.SERVING, Optional.empty(), false, 0, 0, 0));
+            ZLinkMeshNodeObjectRole.SERVER,
+            100,
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(2, 1, 0),
+                new ZLinkCapacityUsage(3, 1, 8),
+                List.of()),
+            new ZLinkActivationConcurrency(1, 4),
+            List.of(),
+            0,
+            Optional.empty());
 
         sources.clear();
         channels.clear();
+        instanceSpots.clear();
 
         assertEquals(List.of("manual"), snapshot.descriptorSources());
         assertEquals(1, snapshot.channels().size());
+        assertEquals(1, snapshot.instanceSpots().size());
+        assertEquals(0, snapshot.objectCapacity().actors().limit());
+        assertEquals(new ZLinkActivationConcurrency(1, 4), snapshot.activationConcurrency());
         assertThrows(
             UnsupportedOperationException.class,
             () -> snapshot.descriptorSources().add("redis"));

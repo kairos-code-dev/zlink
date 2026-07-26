@@ -145,9 +145,7 @@ try {
         "sample.logDirectory=$SampleLogDir",
         "sample.sessionSpotEndpoint=$SessionSpotEndpoint",
         "sample.sessionRouterEndpoint=$SessionRouterEndpoint",
-        "sample.streamEndpoint=$StreamEndpoint",
-        "sample.sessionRouterRid=3101",
-        "sample.sessionPubRid=3102"
+        "sample.streamEndpoint=$StreamEndpoint"
     ) | Set-Content -Path $SessionConfig -Encoding UTF8
     @(
         "sample.redisEndpoint=$RedisEndpoint",
@@ -155,8 +153,7 @@ try {
         "sample.logDirectory=$SampleLogDir",
         "sample.supportChannelEndpoint=$SupportChannelEndpoint",
         "sample.supportEntrySpotEndpoint=$EntrySpotEndpoint",
-        "sample.supportEntrySpotRouterEndpoint=$EntryRouterEndpoint",
-        "sample.supportEntryRid=4201"
+        "sample.supportEntrySpotRouterEndpoint=$EntryRouterEndpoint"
     ) | Set-Content -Path $SupportConfig -Encoding UTF8
 
     & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon --no-parallel --max-workers=1 `

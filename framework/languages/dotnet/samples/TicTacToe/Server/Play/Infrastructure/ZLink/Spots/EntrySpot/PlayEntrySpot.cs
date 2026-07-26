@@ -91,9 +91,8 @@ internal sealed class PlayEntrySpot(
     {
         _milestoneObservers.Subscribe(actor);
         logger.LogInformation(
-            "entry spot: milestone observer subscribed. actor={ActorId}, nodeRid={NodeRid}",
-            actor.ActorId,
-            Context.NodeRid);
+            "entry spot: milestone observer subscribed. actor={ActorId}",
+            actor.ActorId);
         return ValueTask.CompletedTask;
     }
 
@@ -103,7 +102,6 @@ internal sealed class PlayEntrySpot(
     {
         await _milestoneObservers.NotifyAsync(
             milestone,
-            Context.NodeRid.ToString(),
             cancellationToken);
     }
 
@@ -123,15 +121,13 @@ internal sealed class PlayEntrySpot(
 
         public async ValueTask NotifyAsync(
             PlayerWinMilestoneEvent milestone,
-            string receivingSpotNodeRid,
             CancellationToken cancellationToken)
         {
             var notify = new WinMilestoneNotify(
                 milestone.RoomId,
                 milestone.ActorId,
                 milestone.DisplayName,
-                milestone.Wins,
-                receivingSpotNodeRid);
+                milestone.Wins);
 
             var observers = _observers.Values.ToArray();
             foreach (var observer in observers)

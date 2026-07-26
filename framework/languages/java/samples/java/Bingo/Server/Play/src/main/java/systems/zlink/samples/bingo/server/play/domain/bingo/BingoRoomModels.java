@@ -75,13 +75,13 @@ public final class BingoRoomModels {
 
         public static BingoRoomSettings createObserver(
             String observedRoomId,
-            String localNodeRid,
+            String observerActorId,
             long drawPeriodMillis) {
             if (observedRoomId == null || observedRoomId.isBlank()) {
                 throw new IllegalStateException("Observed room id is required.");
             }
             return new BingoRoomSettings(
-                "Bingo Observer " + localNodeRid,
+                "Bingo Observer " + observerActorId,
                 "two-player",
                 0,
                 15,

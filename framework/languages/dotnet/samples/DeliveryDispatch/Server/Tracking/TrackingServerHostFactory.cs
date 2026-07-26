@@ -38,7 +38,7 @@ public static class TrackingServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingId(RoutingId.From("delivery-tracking-server"));
+                .SetRoutingIdPrefix("delivery-tracking");
             mesh.ChannelName(SampleNames.TrackingRouteChannel)
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
             mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);

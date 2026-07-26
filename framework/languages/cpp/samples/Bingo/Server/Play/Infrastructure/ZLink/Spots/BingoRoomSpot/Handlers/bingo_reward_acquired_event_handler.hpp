@@ -15,8 +15,7 @@ bingo_room_spot_t::on_reward_acquired (const bingo_reward_acquired_event_t &even
     for (auto &[_, actor] : observers) {
         const auto notify = bingo_reward_announced_notify_t{
           event.room_id, event.actor_id, event.draw_seq, event.item_id,
-          event.item_name, event.rarity,
-          std::string (_context.node_rid ().value ())};
+          event.item_name, event.rarity};
         actor->push (notify);
     }
     co_return;

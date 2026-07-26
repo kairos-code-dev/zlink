@@ -14,12 +14,10 @@ public final class BingoMessages {
 
     public static Messages.AuthenticateRes authenticateRes(
         String actorId,
-        String displayName,
-        String actorNodeRid) {
+        String displayName) {
         return Messages.AuthenticateRes.newBuilder()
             .setActorId(actorId)
             .setDisplayName(displayName)
-            .setActorNodeRid(actorNodeRid)
             .build();
     }
 
@@ -69,31 +67,19 @@ public final class BingoMessages {
 
     public static Messages.EnsurePlayerActorReq ensurePlayerActorReq(
         String actorId,
-        String displayName,
-        String preferredActorNodeRid) {
+        String displayName) {
         return Messages.EnsurePlayerActorReq.newBuilder()
             .setActorId(actorId)
             .setDisplayName(displayName)
-            .setPreferredActorNodeRid(preferredActorNodeRid)
-            .build();
-    }
-
-    public static Messages.ActorRefWire actorRefWire(String nodeRid, String actorId, long generation) {
-        return Messages.ActorRefWire.newBuilder()
-            .setNodeRid(nodeRid)
-            .setActorId(actorId)
-            .setGeneration(generation)
             .build();
     }
 
     public static Messages.EnsurePlayerActorRes ensurePlayerActorRes(
         String actorId,
-        String actorType,
-        Messages.ActorRefWire actor) {
+        String actorType) {
         return Messages.EnsurePlayerActorRes.newBuilder()
             .setActorId(actorId)
             .setActorType(actorType)
-            .setActor(actor)
             .build();
     }
 
@@ -105,50 +91,42 @@ public final class BingoMessages {
 
     public static Messages.MatchBingoRes matchBingoRes(
         String roomId,
-        Messages.BingoRoomState state,
-        String roomOwnerNodeRid) {
+        Messages.BingoRoomState state) {
         return Messages.MatchBingoRes.newBuilder()
             .setRoomId(roomId)
             .setState(state)
-            .setRoomOwnerNodeRid(roomOwnerNodeRid)
             .build();
     }
 
     public static Messages.MatchBingoApiReq matchBingoApiReq(
         String actorId,
         String displayName,
-        String mode,
-        String actorNodeRid) {
+        String mode) {
         return Messages.MatchBingoApiReq.newBuilder()
             .setActorId(actorId)
             .setDisplayName(displayName)
             .setMode(mode)
-            .setActorNodeRid(actorNodeRid)
             .build();
     }
 
-    public static Messages.MatchBingoApiRes matchBingoApiRes(String roomId, String roomOwnerNodeRid) {
+    public static Messages.MatchBingoApiRes matchBingoApiRes(String roomId) {
         return Messages.MatchBingoApiRes.newBuilder()
             .setRoomId(roomId)
-            .setRoomOwnerNodeRid(roomOwnerNodeRid)
             .build();
     }
 
     public static Messages.AllocateBingoRoomReq allocateBingoRoomReq(
         String mode,
-        String actorId,
-        String preferredOwnerNodeRid) {
+        String actorId) {
         return Messages.AllocateBingoRoomReq.newBuilder()
             .setMode(mode)
             .setActorId(actorId)
-            .setPreferredOwnerNodeRid(preferredOwnerNodeRid)
             .build();
     }
 
-    public static Messages.AllocateBingoRoomRes allocateBingoRoomRes(String roomId, String roomOwnerNodeRid) {
+    public static Messages.AllocateBingoRoomRes allocateBingoRoomRes(String roomId) {
         return Messages.AllocateBingoRoomRes.newBuilder()
             .setRoomId(roomId)
-            .setRoomOwnerNodeRid(roomOwnerNodeRid)
             .build();
     }
 
@@ -190,10 +168,9 @@ public final class BingoMessages {
             .build();
     }
 
-    public static Messages.ObserveBingoEventsRes observeBingoEventsRes(boolean subscribed, String observerNodeRid) {
+    public static Messages.ObserveBingoEventsRes observeBingoEventsRes(boolean subscribed) {
         return Messages.ObserveBingoEventsRes.newBuilder()
             .setSubscribed(subscribed)
-            .setObserverNodeRid(observerNodeRid)
             .build();
     }
 
@@ -204,11 +181,9 @@ public final class BingoMessages {
     }
 
     public static Messages.StopObservingBingoEventsRes stopObservingBingoEventsRes(
-        boolean stopped,
-        String observerNodeRid) {
+        boolean stopped) {
         return Messages.StopObservingBingoEventsRes.newBuilder()
             .setStopped(stopped)
-            .setObserverNodeRid(observerNodeRid)
             .build();
     }
 
@@ -266,8 +241,7 @@ public final class BingoMessages {
         int drawSeq,
         String itemId,
         String itemName,
-        String rarity,
-        String receivingSpotNodeRid) {
+        String rarity) {
         return Messages.BingoRewardAnnouncedNotify.newBuilder()
             .setRoomId(roomId)
             .setActorId(actorId)
@@ -275,7 +249,6 @@ public final class BingoMessages {
             .setItemId(itemId)
             .setItemName(itemName)
             .setRarity(rarity)
-            .setReceivingSpotNodeRid(receivingSpotNodeRid)
             .build();
     }
 

@@ -4,20 +4,9 @@ import type { BingoMode, BingoRoomStatus } from './messages';
 
 type MessageValues<T> = { [K in keyof T as T[K] extends Function ? never : K]: T[K] };
 
-export class ActorRefWire {
-  nodeRid!: string;
-  actorId!: string;
-  generation!: string;
-
-  constructor(values: MessageValues<ActorRefWire>) {
-    Object.assign(this, values);
-  }
-}
-
 export class AllocateBingoRoomReq {
   mode!: BingoMode;
   actorId!: string;
-  preferredOwnerNodeRid!: string;
 
   constructor(values: MessageValues<AllocateBingoRoomReq>) {
     Object.assign(this, values);
@@ -26,7 +15,6 @@ export class AllocateBingoRoomReq {
 
 export class AllocateBingoRoomRes {
   roomId!: string;
-  roomOwnerNodeRid!: string;
 
   constructor(values: MessageValues<AllocateBingoRoomRes>) {
     Object.assign(this, values);
@@ -63,7 +51,6 @@ export class AuthenticateReq {
 export class AuthenticateRes {
   actorId!: string;
   displayName!: string;
-  actorNodeRid!: string;
 
   constructor(values: MessageValues<AuthenticateRes>) {
     Object.assign(this, values);
@@ -142,7 +129,6 @@ export class BingoRewardAnnouncedNotify {
   itemId!: string;
   itemName!: string;
   rarity!: string;
-  receivingSpotNodeRid!: string;
 
   constructor(values: MessageValues<BingoRewardAnnouncedNotify>) {
     Object.assign(this, values);
@@ -207,7 +193,6 @@ export class DestroyBingoActor {
 export class EnsurePlayerActorReq {
   actorId!: string;
   displayName!: string;
-  preferredActorNodeRid!: string;
 
   constructor(values: MessageValues<EnsurePlayerActorReq>) {
     Object.assign(this, values);
@@ -217,7 +202,6 @@ export class EnsurePlayerActorReq {
 export class EnsurePlayerActorRes {
   actorId!: string;
   actorType!: string;
-  actor!: ActorRefWire;
 
   constructor(values: MessageValues<EnsurePlayerActorRes>) {
     Object.assign(this, values);
@@ -253,7 +237,6 @@ export class MatchBingoApiReq {
   actorId!: string;
   displayName!: string;
   mode!: BingoMode;
-  actorNodeRid!: string;
 
   constructor(values: MessageValues<MatchBingoApiReq>) {
     Object.assign(this, values);
@@ -262,7 +245,6 @@ export class MatchBingoApiReq {
 
 export class MatchBingoApiRes {
   roomId!: string;
-  roomOwnerNodeRid!: string;
 
   constructor(values: MessageValues<MatchBingoApiRes>) {
     Object.assign(this, values);
@@ -280,7 +262,6 @@ export class MatchBingoReq {
 export class MatchBingoRes {
   roomId!: string;
   state!: BingoRoomState;
-  roomOwnerNodeRid!: string;
 
   constructor(values: MessageValues<MatchBingoRes>) {
     Object.assign(this, values);
@@ -297,7 +278,6 @@ export class ObserveBingoEventsReq {
 
 export class ObserveBingoEventsRes {
   subscribed!: boolean;
-  observerNodeRid!: string;
 
   constructor(values: MessageValues<ObserveBingoEventsRes>) {
     Object.assign(this, values);
@@ -358,7 +338,6 @@ export class StopObservingBingoEventsReq {
 
 export class StopObservingBingoEventsRes {
   stopped!: boolean;
-  observerNodeRid!: string;
 
   constructor(values: MessageValues<StopObservingBingoEventsRes>) {
     Object.assign(this, values);
@@ -383,7 +362,6 @@ export class SubmitBingoCardRes {
 }
 
 export const BingoGeneratedMessageConstructors = {
-  ActorRefWire,
   AllocateBingoRoomReq,
   AllocateBingoRoomRes,
   AuthenticatePlayerReq,
@@ -432,29 +410,6 @@ type BingoFieldDescriptor = {
 };
 
 const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescriptor[]>>> = {
-  "ActorRefWire": [
-    {
-      "number": 1,
-      "name": "nodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "actorId",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 3,
-      "name": "generation",
-      "kind": "uint64",
-      "repeated": false,
-      "optional": false
-    }
-  ],
   "AllocateBingoRoomReq": [
     {
       "number": 1,
@@ -469,26 +424,12 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "kind": "string",
       "repeated": false,
       "optional": false
-    },
-    {
-      "number": 3,
-      "name": "preferredOwnerNodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
     }
   ],
   "AllocateBingoRoomRes": [
     {
       "number": 1,
       "name": "roomId",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "roomOwnerNodeRid",
       "kind": "string",
       "repeated": false,
       "optional": false
@@ -553,13 +494,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
     {
       "number": 2,
       "name": "displayName",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 3,
-      "name": "actorNodeRid",
       "kind": "string",
       "repeated": false,
       "optional": false
@@ -780,13 +714,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "kind": "string",
       "repeated": false,
       "optional": false
-    },
-    {
-      "number": 7,
-      "name": "receivingSpotNodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
     }
   ],
   "BingoRoomJoinReq": [
@@ -952,13 +879,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "kind": "string",
       "repeated": false,
       "optional": false
-    },
-    {
-      "number": 3,
-      "name": "preferredActorNodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
     }
   ],
   "EnsurePlayerActorRes": [
@@ -973,13 +893,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "number": 2,
       "name": "actorType",
       "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 3,
-      "name": "actor",
-      "kind": "message:ActorRefWire",
       "repeated": false,
       "optional": false
     }
@@ -1038,26 +951,12 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "kind": "string",
       "repeated": false,
       "optional": false
-    },
-    {
-      "number": 4,
-      "name": "actorNodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
     }
   ],
   "MatchBingoApiRes": [
     {
       "number": 1,
       "name": "roomId",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "roomOwnerNodeRid",
       "kind": "string",
       "repeated": false,
       "optional": false
@@ -1086,13 +985,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "kind": "message:BingoRoomState",
       "repeated": false,
       "optional": false
-    },
-    {
-      "number": 3,
-      "name": "roomOwnerNodeRid",
-      "kind": "string",
-      "repeated": false,
-      "optional": false
     }
   ],
   "ObserveBingoEventsReq": [
@@ -1109,13 +1001,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "number": 1,
       "name": "subscribed",
       "kind": "bool",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "observerNodeRid",
-      "kind": "string",
       "repeated": false,
       "optional": false
     }
@@ -1254,13 +1139,6 @@ const bingoDescriptors: Readonly<Partial<Record<string, readonly BingoFieldDescr
       "number": 1,
       "name": "stopped",
       "kind": "bool",
-      "repeated": false,
-      "optional": false
-    },
-    {
-      "number": 2,
-      "name": "observerNodeRid",
-      "kind": "string",
       "repeated": false,
       "optional": false
     }

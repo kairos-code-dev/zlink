@@ -43,6 +43,7 @@ class mesh_node_host_service_t final : public hosted_service_t
     void seal_application_dispatch () noexcept;
     bool wait_for_accepted_callbacks_until (
       std::chrono::steady_clock::time_point deadline) noexcept;
+    bool publish_descriptor_state (framework_runtime_state_t state) noexcept;
 
   private:
     task_t<spot_create_result_t> create_user_spot (

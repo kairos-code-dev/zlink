@@ -11,6 +11,7 @@
 
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -82,6 +83,54 @@ class monitoring_mesh_store_t final :
           zlink::framework::result_t<decltype (page)>::success (
             std::move (page)));
     }
+};
+
+class faulting_mesh_location_store_t final :
+    public zlink::framework::runtime::in_memory_location_store_t
+{
+  public:
+    void fail_next_retiring_write (std::size_t ordinal)
+    {
+        std::lock_guard lock (_fault_gate);
+        _retiring_write = 0;
+        _fail_retiring_write = ordinal;
+    }
+
+    std::vector<zlink::framework::framework_runtime_state_t> state_history () const
+    {
+        std::lock_guard lock (_fault_gate);
+        return _state_history;
+    }
+
+    zlink::framework::task_t<zlink::framework::location_write_result_t>
+    update_mesh_node (
+      zlink::framework::mesh_node_descriptor_t descriptor,
+      zlink::framework::location_write_intent_t intent) override
+    {
+        {
+            std::lock_guard lock (_fault_gate);
+            _state_history.push_back (descriptor.state);
+            if (descriptor.state
+                  == zlink::framework::framework_runtime_state_t::retiring
+                && ++_retiring_write == _fail_retiring_write) {
+                _fail_retiring_write = 0;
+                return zlink::framework::task_t<
+                  zlink::framework::location_write_result_t> (
+                  zlink::framework::result_t<
+                    zlink::framework::location_write_result_t>::success (
+                    {zlink::framework::location_write_status_t::rejected_conflict,
+                     0, {}}));
+            }
+        }
+        return in_memory_location_store_t::update_mesh_node (
+          std::move (descriptor), intent);
+    }
+
+  private:
+    mutable std::mutex _fault_gate;
+    std::size_t _retiring_write = 0;
+    std::size_t _fail_retiring_write = 0;
+    std::vector<zlink::framework::framework_runtime_state_t> _state_history;
 };
 
 static_assert (
@@ -306,6 +355,83 @@ make_named_node (std::string mesh_name, std::string routing_id)
     // The host admits object creation only for declared stable types.
     state->spot_state->snapshot.actor_types.emplace_back ("vertical.actor");
     return state;
+}
+
+zlink::framework::framework_runtime_state_t
+read_mesh_state (faulting_mesh_location_store_t &store,
+                 const std::string &mesh_name,
+                 const zlink::routing_id_t &rid)
+{
+    const auto page = store.list_mesh_nodes (mesh_name).result ().value ();
+    const auto found = std::find_if (
+      page.items.begin (), page.items.end (),
+      [&rid] (const zlink::framework::mesh_node_descriptor_t &descriptor) {
+          return descriptor.rid.to_hex () == rid.to_hex ();
+      });
+    assert (found != page.items.end ());
+    return found->state;
+}
+
+void verify_descriptor_retire_order_and_pre_seal_rollback ()
+{
+    using zlink::framework::framework_runtime_state_t;
+
+    auto first = make_named_node ("vertical-order", "order-a");
+    auto second = make_named_node ("vertical-order", "order-b");
+    zlink::framework::serializer_registry_t serializers;
+    zlink::framework::service_collection_t services;
+    auto owned_store = std::make_unique<faulting_mesh_location_store_t> ();
+    auto &store = *owned_store;
+    services.add_singleton<zlink::framework::location_store_t> (
+      std::unique_ptr<zlink::framework::location_store_t> (owned_store.release ()));
+    services.add_singleton<zlink::framework::runtime::location_runtime_t> (
+      std::make_unique<zlink::framework::runtime::location_runtime_t> (store));
+    auto provider = services.build_provider ();
+    provider.get_required<zlink::framework::runtime::location_runtime_t> ().start (
+      *first->routing_id);
+    zlink::framework::runtime::mesh_node_host_service_t service (
+      {first, second}, serializers);
+    service.start (provider);
+
+    assert (read_mesh_state (store, "vertical-order", *first->routing_id)
+            == framework_runtime_state_t::serving);
+    assert (read_mesh_state (store, "vertical-order", *second->routing_id)
+            == framework_runtime_state_t::serving);
+
+    // A partial Retiring publication is a pre-seal failure. The caller can
+    // republish Serving before it closes admission, leaving both descriptors
+    // selectable and the local runtime unchanged.
+    store.fail_next_retiring_write (2);
+    assert (!service.publish_descriptor_state (
+      framework_runtime_state_t::retiring));
+    assert (service.publish_descriptor_state (
+      framework_runtime_state_t::serving));
+    assert (read_mesh_state (store, "vertical-order", *first->routing_id)
+            == framework_runtime_state_t::serving);
+    assert (read_mesh_state (store, "vertical-order", *second->routing_id)
+            == framework_runtime_state_t::serving);
+
+    // Once preflight succeeds, the externally visible order is Retiring
+    // before the dispatch seal and Draining only after relocation succeeds.
+    assert (service.publish_descriptor_state (
+      framework_runtime_state_t::retiring));
+    service.seal_application_dispatch ();
+    assert (read_mesh_state (store, "vertical-order", *first->routing_id)
+            == framework_runtime_state_t::retiring);
+    assert (service.publish_descriptor_state (
+      framework_runtime_state_t::draining));
+    assert (read_mesh_state (store, "vertical-order", *first->routing_id)
+            == framework_runtime_state_t::draining);
+
+    const auto history = store.state_history ();
+    const auto first_retiring = std::find (
+      history.begin (), history.end (), framework_runtime_state_t::retiring);
+    const auto first_draining = std::find (
+      first_retiring, history.end (), framework_runtime_state_t::draining);
+    assert (first_retiring != history.end ());
+    assert (first_draining != history.end ());
+    assert (first_retiring < first_draining);
+    service.stop ();
 }
 
 struct local_route_probe_message_t
@@ -1011,6 +1137,7 @@ int main ()
     verify_public_runtime_surface ();
     verify_fixed_drain_callback_barrier ();
     verify_multi_mesh_drain_fails_before_global_callback ();
+    verify_descriptor_retire_order_and_pre_seal_rollback ();
     verify_local_node_submit_bridge ();
 #if defined(__unix__)
     return run_cross_process_delivery ();

@@ -1,4 +1,5 @@
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Channels;
 using ZoneWorld.Server.Configuration;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -60,6 +61,7 @@ internal sealed class ZoneBorderSubscriptionHandler : IZLinkSpotSubscriptionHand
     public ValueTask HandleAsync(
         ZoneSpot spot,
         ZoneBorderEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         if (string.Equals(message.ToZoneId, spot.ZoneId, StringComparison.Ordinal))
@@ -80,7 +82,7 @@ internal sealed class RejoinWorldHandler :
     public ValueTask<JoinWorldRes> HandleAsync(
         ZoneSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinWorldReq message,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(spot.Rejoin(actor));

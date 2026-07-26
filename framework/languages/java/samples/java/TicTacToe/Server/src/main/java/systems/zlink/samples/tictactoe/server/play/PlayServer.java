@@ -1,6 +1,5 @@
 package systems.zlink.samples.tictactoe.server.play;
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -27,12 +26,12 @@ public final class PlayServer {
             SampleLogging.configure(settings, "play");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.DIAGNOSTIC)
-                .traceLogFile(SampleLogging.flowLogPath(settings, settings.playSpotNodeRid()))
-                .traceLabel(settings.playSpotNodeRid());
+                .traceLogFile(SampleLogging.flowLogPath(settings, "play-" + settings.playIndex()))
+                .traceLabel("play-" + settings.playIndex());
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint());
             ClientServerChannelBuilder playChannel = options
-                .addClientServerChannel(SampleNames.playChannel(settings.playIndex()))
+                .addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint());
             playChannel.addRequestHandler(
                 CreateGameHandler.class,
@@ -43,11 +42,9 @@ public final class PlayServer {
                 ? settings.spotEndpoint()
                 : settings.routeEndpoint();
             node.listen(routeEndpoint)
-                .setRoutingId(RoutingId.from(settings.playSpotNodeRid()));
+                .setRoutingIdPrefix("tictactoe-play");
             node.channelName(SampleNames.PlayNode);
-            node.peerConnections().connect(
-                RoutingId.from(settings.peerPlaySpotNodeRid()),
-                settings.peerSpotEndpoint());
+            node.peerConnections().connect(settings.peerSpotEndpoint());
             node.addEntrySpot(PlayEntrySpot.class);
             node.addSpotFactory(TicTacToeGame.class);
             node.addActorFactory(SampleNames.PlayActor, PlayActorFactory.class);

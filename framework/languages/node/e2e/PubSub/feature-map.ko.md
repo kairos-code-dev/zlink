@@ -27,7 +27,7 @@
 | `PS-E1` | 구현 | 현재 manual runner를 store 없는 별도 회귀로 유지 |
 | `PS-E2` | 미구현 | automatic subscriber store 누락, automatic/manual mode 혼합, 고정 Publisher RID와 자동 할당 둘 다 누락, fixed/allocated RID 동시 설정의 typed startup 오류와 store 없는 manual 조합 성공 |
 
-Pub/Sub fanout의 수신자는 client stream session이 아니라 subscriber 역할 server다. 공통 E2E README는
+Classic fanout의 수신자는 client stream session이 아니라 subscriber 역할 server다. 공통 E2E README는
 이 경우 subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로 사용할 수 있다고
 정리한다. 따라서 이 feature map은 별도 client stream connector observer를 요구하지 않는다.
 

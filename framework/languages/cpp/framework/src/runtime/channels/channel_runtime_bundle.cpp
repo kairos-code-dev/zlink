@@ -15,6 +15,7 @@ bool channel_runtime_bundle_t::try_add_manual_connection (std::string endpoint)
     std::lock_guard lock (_mutex);
     const bool inserted = _manual_connections.insert (std::move (endpoint)).second;
     if (inserted) {
+        _selection_current.clear ();
         ++_connection_version;
     }
     return inserted;
@@ -29,9 +30,7 @@ void channel_runtime_bundle_t::remove_manual_connection (const std::string &endp
     if (_next_manual_connection >= _manual_connections.size ()) {
         _next_manual_connection = 0;
     }
-    if (_next_connection >= _manual_connections.size () + _auto_connections.size ()) {
-        _next_connection = 0;
-    }
+    _selection_current.clear ();
 }
 
 bool channel_runtime_bundle_t::contains_manual_connection (const std::string &endpoint) const
@@ -58,6 +57,7 @@ bool channel_runtime_bundle_t::try_add_auto_connection (std::string endpoint, in
     }
     auto [it, inserted] = _auto_connections.insert ({std::move (endpoint), weight});
     if (inserted) {
+        _selection_current.clear ();
         ++_connection_version;
         return true;
     }
@@ -65,6 +65,7 @@ bool channel_runtime_bundle_t::try_add_auto_connection (std::string endpoint, in
         return false;
     }
     it->second = weight;
+    _selection_current.clear ();
     ++_connection_version;
     return true;
 }
@@ -75,9 +76,7 @@ void channel_runtime_bundle_t::remove_auto_connection (const std::string &endpoi
     if (_auto_connections.erase (endpoint) != 0) {
         ++_connection_version;
     }
-    if (_next_connection >= _manual_connections.size () + _auto_connections.size ()) {
-        _next_connection = 0;
-    }
+    _selection_current.clear ();
 }
 
 bool channel_runtime_bundle_t::contains_auto_connection (const std::string &endpoint) const
@@ -149,23 +148,23 @@ std::vector<std::string> channel_runtime_bundle_t::connections_from_next ()
     for (const auto &[_, weight] : weighted_connections)
         total_weight += static_cast<std::uint64_t> (weight);
     if (total_weight == 0) {
-        _next_connection = 0;
+        _selection_current.clear ();
         return {};
     }
-    const auto selected_slot =
-      _next_connection++ % total_weight;
     std::size_t selected_index = 0;
-    auto remaining = selected_slot;
     for (std::size_t index = 0;
          index < weighted_connections.size (); ++index) {
-        const auto weight = static_cast<std::uint64_t> (
-          weighted_connections[index].second);
-        if (remaining < weight) {
+        const auto &[endpoint, weight] = weighted_connections[index];
+        auto &current = _selection_current[endpoint];
+        current += weight;
+        if (index == 0
+            || current
+                 > _selection_current[weighted_connections[selected_index].first]) {
             selected_index = index;
-            break;
         }
-        remaining -= weight;
     }
+    _selection_current[weighted_connections[selected_index].first] -=
+      static_cast<std::int64_t> (total_weight);
     std::vector<std::string> ordered;
     ordered.reserve (weighted_connections.size ());
     for (std::size_t offset = 0;

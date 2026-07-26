@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed record ZLinkSpotAcceptedJournalRecord(
     RoutingId? SourceNodeRid,
+    ulong SourceNodeGeneration,
     string? SpotId,
     ulong? RequestSequence,
     ulong ReplyRouteId,
@@ -20,7 +21,7 @@ internal sealed record ZLinkSpotAcceptedJournalRecord(
 internal static class ZLinkSpotAcceptedJournal
 {
     private const uint Magic = 0x5a4a5231; // ZJR1
-    private const ushort Version = 4;
+    private const ushort Version = 5;
     private const int MaxRecordBytes = 64 * 1024 * 1024;
     private const int MaxParts = 65_536;
 
@@ -40,6 +41,7 @@ internal static class ZLinkSpotAcceptedJournal
         writer.Write(Magic);
         writer.Write(Version);
         WriteRoutingId(writer, received.SourceNodeRid);
+        writer.Write(received.SourceNodeGeneration);
         WriteSpotId(writer, received.SpotId);
         writer.Write(received.RequestSeq.HasValue);
         if (received.RequestSeq is { } requestSequence)
@@ -72,10 +74,15 @@ internal static class ZLinkSpotAcceptedJournal
                 "The accepted Spot journal record size is invalid.");
         using var stream = new MemoryStream(encoded.ToArray(), writable: false);
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-        if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version)
+        if (reader.ReadUInt32() != Magic)
+            throw new InvalidDataException(
+                "The accepted Spot journal record header is invalid.");
+        var version = reader.ReadUInt16();
+        if (version is not (4 or Version))
             throw new InvalidDataException(
                 "The accepted Spot journal record header is invalid.");
         var sourceNodeRid = ReadRoutingId(reader);
+        var sourceNodeGeneration = version >= 5 ? reader.ReadUInt64() : 0;
         var spotId = ReadSpotId(reader);
         var requestSequence = reader.ReadBoolean()
             ? reader.ReadUInt64()
@@ -111,6 +118,7 @@ internal static class ZLinkSpotAcceptedJournal
                 "The accepted Spot journal record contains trailing bytes.");
         return new ZLinkSpotAcceptedJournalRecord(
             sourceNodeRid,
+            sourceNodeGeneration,
             spotId,
             requestSequence,
             replyRouteId,

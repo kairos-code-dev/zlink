@@ -94,10 +94,6 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddScoped<ZLinkRemoteSessionPushRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorFrameRelayHandler>();
         services.TryAddScoped<ZLinkRemoteActorReplyRelayHandler>();
-        services.TryAddScoped<ZLinkSpotRetireStageHandler>();
-        services.TryAddScoped<ZLinkSpotRetirePublishHandler>();
-        services.TryAddScoped<ZLinkSpotRetireAbortHandler>();
-        services.TryAddScoped<ZLinkSpotRetireHeldRelayHandler>();
 
         // Install the shared, runtime-mutable message-flow mode cell (seeded from the
         // configured mode) so SetMessageFlowMode can flip tracing on/off live and
@@ -153,8 +149,11 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkFrameworkMaintenanceRuntime(
                 provider.GetRequiredService<ZLinkDrainCoordinator>(),
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PreflightRetireAsync,
+                provider.GetRequiredService<ZLinkFrameworkRuntime>().PublishRetiringAsync,
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().GetDrainRemainderCounts));
         services.TryAddSingleton<IZLinkFrameworkRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
+        services.TryAddSingleton<IZLinkRuntimeTerminalFailureSink>(static provider =>
             provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkFrameworkHostedService(

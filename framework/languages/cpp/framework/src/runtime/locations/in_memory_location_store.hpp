@@ -15,7 +15,7 @@
 namespace zlink::framework::runtime
 {
 
-class in_memory_location_store_t final : public location_store_t,
+class in_memory_location_store_t : public location_store_t,
                                          public client_server_location_store_t,
                                          public fanout_location_store_t,
                                          public location_change_stamp_store_t

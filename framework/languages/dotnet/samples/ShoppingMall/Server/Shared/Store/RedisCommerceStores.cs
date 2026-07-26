@@ -81,7 +81,6 @@ public sealed class RedisCommerceStores :
 
     public async ValueTask<IdempotencyMapping> ReserveIdempotencyAsync(
         string idempotencyKey,
-        string ownerInstanceId,
         CancellationToken cancellationToken)
     {
         return await WithStateAsync(state =>
@@ -89,7 +88,7 @@ public sealed class RedisCommerceStores :
             if (state.Idempotency.TryGetValue(idempotencyKey, out var existing)) return existing;
 
             var orderId = $"order-{++state.NextOrderSequence:0000}";
-            var created = new IdempotencyMapping(idempotencyKey, orderId, ownerInstanceId, false);
+            var created = new IdempotencyMapping(idempotencyKey, orderId, false);
             state.Idempotency[idempotencyKey] = created;
             return created;
         }, cancellationToken).ConfigureAwait(false);
@@ -109,7 +108,6 @@ public sealed class RedisCommerceStores :
     public async ValueTask CreatePendingMappingAsync(
         string idempotencyKey,
         string orderId,
-        string ownerInstanceId,
         CancellationToken cancellationToken)
     {
         await WithStateAsync(state =>
@@ -117,7 +115,6 @@ public sealed class RedisCommerceStores :
             state.Idempotency[idempotencyKey] = new IdempotencyMapping(
                 idempotencyKey,
                 orderId,
-                ownerInstanceId,
                 false);
         }, cancellationToken).ConfigureAwait(false);
     }

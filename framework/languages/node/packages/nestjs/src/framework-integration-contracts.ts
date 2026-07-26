@@ -120,6 +120,8 @@ export interface ZLinkCodecRegistryOptions {
 
 export interface ZLinkFrameworkRegistrationOptions {
   readonly codecs?: ZLinkCodecRegistryOptions;
+  readonly applicationVersion?: bigint;
+  readonly maintenanceWave?: string;
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;

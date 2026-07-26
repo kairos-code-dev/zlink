@@ -135,6 +135,10 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   }
 
   isDisconnected(target: ZLinkAutoConnectTarget): boolean {
+    // A connect intent still owns transport state even when its peer has not
+    // reached the admitted table yet. Shutdown must remove that intent before
+    // it can treat the automatic route as disconnected.
+    if (this.connectionIntents.has(connectionKey(target))) return false;
     return !this.node.peers().some((peer) =>
       peer.routingId !== null &&
       peer.endpoint === target.endpoint &&

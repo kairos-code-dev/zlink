@@ -2,7 +2,6 @@ using Bingo.Server.Configuration;
 using Bingo.Server.Play.Infrastructure.ZLink.Actors;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
@@ -16,7 +15,7 @@ internal sealed class MatchBingoActorHandler(
     public async ValueTask<MatchBingoRes> HandleAsync(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         MatchBingoReq message,
         CancellationToken cancellationToken)
     {
@@ -25,7 +24,6 @@ internal sealed class MatchBingoActorHandler(
         {
             ActorId = actor.ActorId,
             DisplayName = actor.DisplayName,
-            ActorNodeRid = entrySpot.Context.NodeRid.ToString(),
             Mode = message.Mode
         };
         var matched = await entrySpot.Context.Outbound
@@ -34,9 +32,8 @@ internal sealed class MatchBingoActorHandler(
             .Async<MatchBingoApiRes>(cancellationToken);
         logger.LogInformation("match: room allocated. actor={ActorId}, room={RoomId}", actor.ActorId, matched.RoomId);
 
-        var roomRid = RoutingId.From(matched.RoomId);
         var joined = await actor.Context.JoinSpot(
-                roomRid,
+                matched.RoomId,
                 new BingoRoomJoinReq
                 {
                     RoomId = matched.RoomId,
@@ -59,8 +56,7 @@ internal sealed class MatchBingoActorHandler(
         return new MatchBingoRes
         {
             RoomId = matched.RoomId,
-            State = joinedState,
-            RoomOwnerNodeRid = matched.RoomOwnerNodeRid
+            State = joinedState
         };
     }
 }

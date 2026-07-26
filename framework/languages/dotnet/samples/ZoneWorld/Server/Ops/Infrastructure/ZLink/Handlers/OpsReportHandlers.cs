@@ -14,11 +14,11 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Handlers;
 internal sealed class ReportSpotEventHandler(
     OpsConsoleRegistry consoles,
     ILogger<ReportSpotEventHandler> logger)
-    : IZLinkSendHandler<ReportSpotEventMsg>
+    : IZLinkRouteSendHandler<ReportSpotEventMsg>
 {
     public async ValueTask HandleAsync(
         ReportSpotEventMsg message,
-        ZLinkSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -42,13 +42,13 @@ internal sealed class ReportSpotEventHandler(
 /// events tell Ops that a node exists, not what it is holding (§8.1).</summary>
 [ZLinkHandlerGroup(HandlerGroups.Ops)]
 internal sealed class ReportNodeStatusHandler(NodeRegistry nodes)
-    : IZLinkSendHandler<ReportNodeStatusMsg>
+    : IZLinkRouteSendHandler<ReportNodeStatusMsg>
 {
     public async ValueTask HandleAsync(
         ReportNodeStatusMsg message,
-        ZLinkSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
-        await nodes.ApplyReportAsync(message, cancellationToken);
+        await nodes.ApplyReportAsync(message, context.SourceNodeRid, cancellationToken);
     }
 }

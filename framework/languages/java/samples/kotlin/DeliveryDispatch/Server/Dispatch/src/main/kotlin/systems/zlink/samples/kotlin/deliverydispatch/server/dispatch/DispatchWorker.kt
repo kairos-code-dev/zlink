@@ -1,15 +1,11 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.dispatch
 
 import java.time.Instant
-import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.kotlin.await
-import systems.zlink.framework.spots.SpotHandle
-import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
-import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.AssignDeliveryMsg
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatus
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.DeliveryStatusChangedReq
@@ -25,8 +21,7 @@ import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.ServerAsse
  */
 class DispatchWorker(
     private val channels: ZLinkClient,
-    private val routes: ZLinkRouteClient,
-    private val spots: SpotHandleResolver,
+    private val actors: ZLinkActorClient,
     private val offers: DeliveryOfferStore,
 ) {
     /** Who gets offered a delivery, and in what order. The worker's policy, not the node's. */
@@ -88,10 +83,9 @@ class DispatchWorker(
 
     /** The offer is a one-way send: the turn that sends it ends right there. */
     private suspend fun offer(request: AssignDeliveryMsg, courierId: String, attempt: Int) {
-        val address = courierAddress(courierId)
-        routes
-            .sendToSpot(
-                address,
+        actors
+            .sendToActor(
+                courierId,
                 OfferDeliveryMsg(
                     courierId = courierId,
                     deliveryId = request.deliveryId,
@@ -102,12 +96,6 @@ class DispatchWorker(
             )
             .submit()
             .await()
-    }
-
-    private suspend fun courierAddress(courierId: String): SpotHandle {
-        val nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId))
-        return spots.resolveSpotHandle(nodeRid).await()
-            .orElseThrow { IllegalStateException("spot not found: $nodeRid") }
     }
 
     private suspend fun publishStatus(

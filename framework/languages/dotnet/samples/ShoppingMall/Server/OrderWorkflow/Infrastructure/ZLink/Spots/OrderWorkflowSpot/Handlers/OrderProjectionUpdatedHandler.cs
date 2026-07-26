@@ -17,11 +17,10 @@ internal sealed class OrderProjectionUpdatedHandler(
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "shoppingmall projection fanout: received. subscriber={SubscriberSpotRid}, order={OrderId}, status={Status}, owner={OwnerInstanceId}",
+            "shoppingmall projection fanout: received. subscriber={SubscriberSpotRid}, order={OrderId}, status={Status}",
             spot.Context.SpotRid.ToString(),
             message.OrderId,
-            message.Status,
-            message.OwnerInstanceId);
+            message.Status);
         return ValueTask.CompletedTask;
     }
 }

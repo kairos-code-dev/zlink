@@ -421,9 +421,10 @@ inventory digest를 권한 원본으로 저장한다. Relocation Store manifest�
 두 Store 사이 2PC를 수행하지 않는다.
 
 `PrepareAggregate`는 모든 participant expectation을 확인하고 durable `Reserved` record를 만든다. Relocation
-mode에서는 target owner lease fence를 확인하고 `NewOwner` participant의 non-zero typed capacity bundle만 같은
-transaction에서 예약한다. Completion·steady-normalization mode에서는 all-Preserve, exact zero capacity와 empty
-membership mutation을 확인하고 capacity를 예약하지 않는다.
+mode에서는 target owner lease fence를 확인하고 모든 `NewOwner` participant의 allocation delta와 정확히 같은
+non-zero typed capacity bundle을 같은 transaction에서 한 번 예약한다. Standalone relocation capacity fence는
+aggregate request에 사용하지 않는다. Completion·steady-normalization mode에서는 all-Preserve, exact zero
+capacity와 empty membership mutation을 확인하고 capacity를 예약하지 않는다.
 `CommitAggregate`는 record의 exact generation, canonical participant set과 inventory digest, source Active
 allocation match와 target descriptor lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease가
 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면 participant·capacity·

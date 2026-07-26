@@ -39,7 +39,7 @@ public final class CustomerGatewayApplication {
                 .traceLabel("customer-gateway");
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
             node.listen(topology.customerSpotRouterEndpoint())
-                .setRoutingId(RoutingId.from(topology.customerSpotNodeRid()));
+                .useAllocatedRoutingId(16, "delivery-customer");
             node.addEntrySpot(CustomerEntrySpot.class);
             node.addActorFactory(SampleNames.CustomerActorType, CustomerActorFactory.class);
             options.addStreamNode(SampleNames.CustomerStreamNode)

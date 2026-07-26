@@ -21,6 +21,7 @@ namespace
 
 constexpr std::string_view default_security_identity = "default";
 constexpr auto pump_interval = std::chrono::milliseconds (2);
+constexpr auto maximum_ready_wait = std::chrono::seconds (5);
 constexpr std::uint32_t default_effective_max_message_bytes =
   static_cast<std::uint32_t> (
     std::numeric_limits<std::int32_t>::max ());
@@ -516,13 +517,19 @@ result_t<void> client_server_location_runtime_t::send (
       timeout > std::chrono::milliseconds::zero ()
         ? timeout
         : std::chrono::seconds (1);
-    auto client = select_ready (
-      channel_name, std::chrono::steady_clock::now () + effective);
-    if (!client)
+    const auto wait = std::min (
+      effective,
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        maximum_ready_wait));
+    auto selected = select_ready (
+      channel_name, std::chrono::steady_clock::now () + wait);
+    if (!selected)
         return result_t<void>::failure (
-          framework_error_kind_t::route_not_connected,
-          "ClientServer has no admitted ready server");
-    const auto sent = client->send (
+          selected.error_kind (),
+          selected.error () != nullptr
+            ? selected.error ()->what ()
+            : "ClientServer has no admitted ready server");
+    const auto sent = selected.value ()->send (
       protocol::application_payload_t{
         std::move (packet_name),
         std::move (content_type),
@@ -546,17 +553,24 @@ client_server_location_runtime_t::request (
       timeout > std::chrono::milliseconds::zero ()
         ? timeout
         : std::chrono::seconds (30);
+    const auto wait = std::min (
+      effective,
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        maximum_ready_wait));
     const auto deadline =
       std::chrono::steady_clock::now () + effective;
-    auto client = select_ready (channel_name, deadline);
-    if (!client)
+    auto selected = select_ready (
+      channel_name, std::chrono::steady_clock::now () + wait);
+    if (!selected)
         return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::route_not_connected,
-          "ClientServer has no admitted ready server");
+          selected.error_kind (),
+          selected.error () != nullptr
+            ? selected.error ()->what ()
+            : "ClientServer has no admitted ready server");
     auto promise = std::make_shared<
       std::promise<result_t<zlink::message_t>>> ();
     auto future = promise->get_future ();
-    const auto submitted = client->request (
+    const auto submitted = selected.value ()->request (
       protocol::application_payload_t{
         std::move (packet_name),
         std::move (content_type),
@@ -597,7 +611,7 @@ client_server_location_runtime_t::request (
     return future.get ();
 }
 
-std::shared_ptr<raw_client_server_client_t>
+result_t<std::shared_ptr<raw_client_server_client_t>>
 client_server_location_runtime_t::select_ready (
   const std::string &channel_name,
   std::chrono::steady_clock::time_point deadline)
@@ -617,8 +631,34 @@ client_server_location_runtime_t::select_ready (
                      && entry.second.descriptor.weight > 0;
           });
     };
-    if (!_ready.wait_until (lock, deadline, available))
-        return {};
+    if (!_ready.wait_until (lock, deadline, available)) {
+        if (_stop.load (std::memory_order_acquire)) {
+            return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+              framework_error_kind_t::runtime_shutdown,
+              "ClientServer runtime is stopping");
+        }
+        const auto found = _clients.find (channel_name);
+        if (found == _clients.end ()) {
+            return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+              framework_error_kind_t::request_target_not_found,
+              "ClientServer channel is not registered");
+        }
+        const bool has_selectable_snapshot = std::any_of (
+          found->second->connections.begin (),
+          found->second->connections.end (),
+          [] (const auto &entry) {
+              return entry.second.descriptor.state
+                       == framework_runtime_state_t::serving
+                     && entry.second.descriptor.weight > 0;
+          });
+        return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+          has_selectable_snapshot
+            ? framework_error_kind_t::route_not_connected
+            : framework_error_kind_t::request_target_not_found,
+          has_selectable_snapshot
+            ? "ClientServer target pipe did not become ready"
+            : "ClientServer has no selectable target snapshot");
+    }
     auto &channel = *_clients.at (channel_name);
     std::vector<client_connection_t *> ready;
     std::uint64_t total = 0;
@@ -632,17 +672,22 @@ client_server_location_runtime_t::select_ready (
         total += static_cast<std::uint64_t> (
           connection.descriptor.weight);
     }
-    if (ready.empty () || total == 0)
-        return {};
+    if (ready.empty () || total == 0) {
+        return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+          framework_error_kind_t::request_target_not_found,
+          "ClientServer has no selectable target snapshot");
+    }
     auto slot = channel.weighted_cursor++ % total;
     for (auto *connection : ready) {
         const auto weight = static_cast<std::uint64_t> (
           connection->descriptor.weight);
         if (slot < weight)
-            return connection->owner;
+            return result_t<std::shared_ptr<raw_client_server_client_t>>::success (
+              connection->owner);
         slot -= weight;
     }
-    return ready.back ()->owner;
+    return result_t<std::shared_ptr<raw_client_server_client_t>>::success (
+      ready.back ()->owner);
 }
 
 void client_server_location_runtime_t::stop () noexcept

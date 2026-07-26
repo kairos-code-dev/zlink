@@ -39,7 +39,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         BingoRoomSettingsInitializer settingsInitializer) {
         this.context = context;
         this.settingsInitializer = settingsInitializer;
-        this.game = BingoGame.room(context.spotRid().toString(), settings);
+        this.game = BingoGame.room(context.spotId(), settings);
     }
 
     @Override
@@ -165,7 +165,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         if (!actorId.equals(request.getActorId())) {
             throw new IllegalStateException("Join request actor id does not match bound actor.");
         }
-        if (!request.getObserveOnly() && !request.getRoomId().equals(context.spotRid().toString())) {
+        if (!request.getObserveOnly() && !request.getRoomId().equals(context.spotId())) {
             throw new IllegalStateException("Join request room id does not match bingo room.");
         }
         if (request.getObserveOnly()) {
@@ -182,7 +182,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     public Messages.SubmitBingoCardRes submitCard(
         PlayerActor actor,
         Messages.SubmitBingoCardReq request) {
-        if (!request.getRoomId().equals(context.spotRid().toString())) {
+        if (!request.getRoomId().equals(context.spotId())) {
             throw new IllegalStateException("Submit request room id does not match bingo room.");
         }
         if (game == null) {
@@ -216,8 +216,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
                     event.getDrawSeq(),
                     event.getItemId(),
                     event.getItemName(),
-                    event.getRarity(),
-                    context.nodeRid().toString()));
+                    event.getRarity()));
         }
     }
 
@@ -227,11 +226,11 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         if (!settings.observerMode()
             || !request.getRoomId().equals(settings.observedRoomId())
             || !observers.containsKey(actor.actorId())) {
-            return BingoMessages.stopObservingBingoEventsRes(false, context.nodeRid().toString());
+            return BingoMessages.stopObservingBingoEventsRes(false);
         }
         observers.remove(actor.actorId());
         context.leaveActor(actor).exceptionally(error -> null);
-        return BingoMessages.stopObservingBingoEventsRes(true, context.nodeRid().toString());
+        return BingoMessages.stopObservingBingoEventsRes(true);
     }
 
     public void applySettings(BingoRoomModels.BingoRoomSettings settings) {
@@ -245,7 +244,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             throw new IllegalStateException("Bingo room draw period must be positive.");
         }
         this.settings = settings;
-        this.game = settings.observerMode() ? null : BingoGame.room(context.spotRid().toString(), settings);
+        this.game = settings.observerMode() ? null : BingoGame.room(context.spotId(), settings);
         this.cleanupStarted = false;
     }
 

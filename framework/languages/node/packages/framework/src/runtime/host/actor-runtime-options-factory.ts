@@ -117,9 +117,8 @@ export class ZLinkActorRuntimeOptionsFactory {
         postCommitErrorReporter: this.options.reportPostCommitError,
         sourceTransfer: this.options.actorTransferRuntime,
         actorLocationResolver: this.options.createActorLocationResolver,
-        remoteActorBinder: (actorRef, signal, force) => force === true
-          ? this.options.streamBindingRuntime.refreshActor(actorRef, signal)
-          : this.options.streamBindingRuntime.rebindActor(actorRef, signal),
+        remoteActorBinder: (actorRef, signal) =>
+          this.options.streamBindingRuntime.commitActorRoute(actorRef, signal),
         routedTransport: this.options.routeTransport,
         messageSerializers: this.options.registration.messageSerializers,
         actorTransferTimeoutMs: this.options.registration.actorTransferTimeoutMs,

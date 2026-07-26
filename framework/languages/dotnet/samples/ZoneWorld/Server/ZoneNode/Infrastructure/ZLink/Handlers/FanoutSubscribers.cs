@@ -1,7 +1,5 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
@@ -21,7 +19,6 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 [ZLinkHandlerGroup(HandlerGroups.ZoneBroadcast)]
 internal sealed class WorldAnnounceSubscriber(
     IZLinkSpotClient routes,
-    IZLinkSpotHandleResolver spotHandles,
     NodeMaintenancePolicy maintenance,
     ILogger<WorldAnnounceSubscriber> logger)
     : IZLinkFanoutHandler<WorldAnnounceEvent>
@@ -30,7 +27,7 @@ internal sealed class WorldAnnounceSubscriber(
         WorldAnnounceEvent message,
         CancellationToken cancellationToken)
     {
-        var zones = ZoneTopology.ZonesOf(maintenance.OwnNodeId);
+        var zones = ZoneTopology.Zones;
         logger.LogInformation(
             "fanout subscriber received announcement. node={NodeId}, announcement={AnnouncementId}, zones={ZoneCount}",
             maintenance.OwnNodeId,
@@ -44,22 +41,11 @@ internal sealed class WorldAnnounceSubscriber(
             // looks exactly like one that reached all of it.
             try
             {
-                var handle = await spotHandles.ResolveSpotHandleAsync(
-                    ZoneWorldNames.MeshName,
-                    RoutingId.From(zoneId),
-                    cancellationToken);
-                if (handle is null)
-                {
-                    logger.LogError(
-                        "announcement dropped: the node's own zone spot did not resolve. zone={ZoneId}",
-                        zoneId);
-                    continue;
-                }
-
                 // Async waits only for transport admission, not handler execution. Awaiting
                 // it keeps an admission failure visible without extending the remote handler turn.
                 await routes
-                    .SendToSpot(handle, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
+                    .SendToSpot(zoneId, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
+                    .InMesh(ZoneWorldNames.MeshName)
                     .Async(cancellationToken);
             }
             catch (Exception error)

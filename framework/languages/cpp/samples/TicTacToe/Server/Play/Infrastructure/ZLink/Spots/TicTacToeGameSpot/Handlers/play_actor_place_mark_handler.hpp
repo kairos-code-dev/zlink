@@ -8,7 +8,7 @@ namespace zlink::samples::tictactoe
 
 inline place_mark_res_t
 tictactoe_game_spot_t::place_mark (const player_actor_t &actor,
-                                   const spot_actor_request_context_t &context,
+                                   const message_context_t &context,
                                    const place_mark_req_t &request)
 {
     if (context.packet_name.empty ()) {

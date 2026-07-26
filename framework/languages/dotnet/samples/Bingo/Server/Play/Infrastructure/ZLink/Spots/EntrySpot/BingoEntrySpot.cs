@@ -61,8 +61,7 @@ internal sealed class BingoEntrySpot(
                 .Send(new BingoActorEntrySpotNotify
                 {
                     ActorId = actor.ActorId,
-                    RoomId = actor.RoomId,
-                    TargetNodeRid = Context.NodeRid.ToString()
+                    RoomId = actor.RoomId
                 })
                 .Async(cancellationToken);
     }

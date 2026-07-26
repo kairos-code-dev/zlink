@@ -24,18 +24,6 @@ public sealed class NodeMaintenancePolicy(string ownNodeId)
 
     public void Apply(string nodeId, bool enabled) => _byNode[nodeId] = enabled;
 
-    /// <summary>
-    /// Whether entering <paramref name="zoneId"/> is currently blocked. A move inside this
-    /// node is never blocked, even while the node is under maintenance: maintenance only
-    /// stops arrivals (§2.3).
-    /// </summary>
-    public bool ZoneIsUnreachable(string zoneId)
-    {
-        var targetNodeId = ZoneTopology.NodeOf(zoneId);
-        if (targetNodeId == OwnNodeId) return false;
-        return _byNode.TryGetValue(targetNodeId, out var enabled) && enabled;
-    }
-
     public IReadOnlyDictionary<string, bool> Snapshot() =>
         _byNode.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
 }

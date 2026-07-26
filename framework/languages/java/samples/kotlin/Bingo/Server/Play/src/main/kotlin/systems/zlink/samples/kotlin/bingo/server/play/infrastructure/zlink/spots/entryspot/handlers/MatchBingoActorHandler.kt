@@ -1,6 +1,5 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers
 
-import systems.zlink.contracts.core.RoutingId
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.awaitJoin
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
@@ -34,14 +33,13 @@ class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
                 actor.actorId(),
                 actor.displayName,
                 request.mode,
-                entrySpot.context().nodeRid().toString(),
             ),
         )
             .timeout(SampleTimings.RequestTimeout)
             .submit(MatchBingoApiRes::class.java)
             .await()
         val joined = actor.context().joinSpot(
-            RoutingId.from(matched.roomId),
+            matched.roomId,
             BingoRoomJoinReq(
                 matched.roomId,
                 actor.actorId(),
@@ -51,6 +49,6 @@ class MatchBingoActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler<
         )
             .timeout(SampleTimings.RequestTimeout)
             .awaitJoin(BingoRoomJoinRes::class.java)
-        return MatchBingoRes(matched.roomId, joined.reply().state, matched.roomOwnerNodeRid)
+        return MatchBingoRes(matched.roomId, joined.reply().state)
     }
 }

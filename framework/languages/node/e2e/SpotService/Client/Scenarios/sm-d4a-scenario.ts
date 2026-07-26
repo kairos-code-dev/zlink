@@ -1,4 +1,4 @@
-// SM-D4A: Session A의 stale binding과 late disconnect가 Session B rebind를 건드리지 않는지 검증한다.
+// SM-D4A: rebind와 stale binding 격리 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import {

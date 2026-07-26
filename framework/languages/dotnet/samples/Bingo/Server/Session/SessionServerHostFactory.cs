@@ -45,19 +45,16 @@ public static class SessionServerHostFactory
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .SetRoutingIdPrefix("session")
                 .Listen(session.MeshEndpoint);
-            mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.PlayChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.RoomChannel).SetWeight(0);
+            mesh.Channel(SampleNames.ApiChannel).Client();
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
-                .EnableActorDispatch(SampleNames.MeshName)
+                .EnableActorDispatch()
                 .AddSession<BingoSession>();
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "session",
             SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
-
         return builder.Build();
     }
 }

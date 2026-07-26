@@ -346,7 +346,11 @@ test('raw runtime admits peers and completes node/channel requests once', async 
       payload: Buffer.from('reply')
     });
     assert.equal(right.mailbox.release(request), true);
-    const result = await pending.promise;
+    const result = await awaitWithin(
+      pending.promise,
+      2_000,
+      'Timed out waiting for the raw request reply.'
+    );
     assert.equal(result.terminalResult, 0);
     assert.equal(Buffer.from(result.payload!.payload).toString(), 'reply');
   } finally {
@@ -386,4 +390,22 @@ async function pollUntil(condition: () => boolean): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, 1));
   }
   throw new Error('Timed out waiting for deterministic runtime progress.');
+}
+
+async function awaitWithin<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }

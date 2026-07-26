@@ -35,7 +35,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
       return;
     }
     const submitted = await this.actors
-      .sendToActor(SampleNames.roomSpotNode, actor.actor, new DestroyBingoActor({}))
+      .sendToActor(actor.actor.actorId, new DestroyBingoActor({}))
       .submit();
     if (submitted.status !== 'submitted') {
       throw new Error(`Bingo actor '${actor.actor.actorId}' destroy was not submitted: ${submitted.status}.`);
@@ -53,7 +53,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     const request = createRequest.decode<GeneratedEnsurePlayerActorReq>();
     if (typeof request.displayName === 'string') {
       await this.actors
-        .sendToActor(SampleNames.roomSpotNode, actor.actor, request)
+        .sendToActor(actor.actor.actorId, request)
         .submit();
     }
   }

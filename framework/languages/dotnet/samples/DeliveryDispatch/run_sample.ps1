@@ -59,7 +59,7 @@ try {
     # over in a file rather than through the environment
     # (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md 2.2, 7).
     function Write-RoleConfig {
-        param([string]$Role, [string]$NodeRid = "")
+        param([string]$Role)
 
         $meshEndpoint = switch ($Role) {
             "dispatch" { $DispatchMesh }
@@ -74,7 +74,6 @@ try {
         python3 (Join-Path $ScriptDir "write_role_config.py") `
             --output (Join-Path $ConfigDir "$Role.json") `
             --role $Role `
-            --node-rid $NodeRid `
             --log-dir $SampleLogDir `
             --work-dir $WorkDir `
             --redis-endpoint $RedisEndpoint `
@@ -90,8 +89,8 @@ try {
     Write-RoleConfig "customer-gateway"
     Write-RoleConfig "courier-session"
     Write-RoleConfig "dispatch"
-    Write-RoleConfig "courier-actor-node1" "delivery-courier-node-1"
-    Write-RoleConfig "courier-actor-node2" "delivery-courier-node-2"
+    Write-RoleConfig "courier-actor-node1"
+    Write-RoleConfig "courier-actor-node2"
     Write-RoleConfig "client"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "DeliveryDispatch.sln")

@@ -68,8 +68,7 @@ internal sealed class ShoppingMallClientScenario
             .Body(new
             {
                 pendingReq.IdempotencyKey,
-                OrderId = "order-pending-0001",
-                OwnerInstanceId = "api-a"
+                OrderId = "order-pending-0001"
             })
             .AsyncRaw(cancellationToken);
         ZlinkStreamAssert.Ensure(pendingHook.Status is >= 200 and < 300, "Assertion failed: pendingHook.Status is >= 200 and < 300");

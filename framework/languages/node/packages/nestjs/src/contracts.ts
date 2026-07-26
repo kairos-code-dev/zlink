@@ -198,6 +198,8 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   addLocationStore(store: ZLinkLocationStore): this;
   addRelocationStore(store: ZLinkRelocationStore): this;
+  setApplicationVersion(version: bigint): this;
+  setMaintenanceWave(waveId: string): this;
   setActorTransferTimeout(timeoutMs: number): this;
   setActorTransferForwardWindow(timeoutMs: number): this;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;

@@ -18,8 +18,68 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
+    @Test
+    void command44ReceivesCommand45ThroughInfrastructureDispatcher()
+        throws Exception {
+        String endpoint = "inproc://jvm-m6c-session-route-" + System.nanoTime();
+        RoutingId sourceRid = RoutingId.from("jvm-m6c-target-owner");
+        RoutingId sessionOwnerRid = RoutingId.from("jvm-m6c-session-owner");
+        RoutingId sessionRid = RoutingId.from("jvm-m6c-session");
+        var codec = new ZLinkServiceM6BWireCodec();
+        var command = new ZLinkServiceM6BWireCodec.SessionRelocationRoute(
+            new ZLinkServiceM6BWireCodec.RelocationIdentity(1, 2),
+            new ZLinkServiceM6BWireCodec.RelocationCoordinatorFence(
+                "coordinator", 3, sourceRid, 4, "store-v5"),
+            ZLinkServiceM6BWireCodec.RelocationRole.TARGET,
+            new ZLinkServiceM6BWireCodec.ActorIdentity("actor", 6),
+            new ZLinkServiceM6BWireCodec.SessionOwnerFence(
+                sessionOwnerRid, 7, "session-owner", 8, sessionRid, 9),
+            ZLinkServiceM6BWireCodec.SessionRelocationRouteAction.COMMIT,
+            10, 11, sourceRid, 12, 17);
+        try (var context = Zlink.createContext();
+             var source = new ZLinkJavaRawMeshNode(context, "mesh");
+             var sessionOwner = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            source.setRoutingId(sourceRid);
+            source.setBind("inproc://jvm-m6c-target-owner-" + System.nanoTime());
+            sessionOwner.setRoutingId(sessionOwnerRid);
+            sessionOwner.setBind(endpoint);
+            AtomicInteger applicationDispatches = new AtomicInteger();
+            sessionOwner.startDispatch(record -> {
+                applicationDispatches.incrementAndGet();
+                record.close();
+            });
+            sessionOwner.setSessionRelocationRouteHandler((actualSource, encoded) -> {
+                assertEquals(sourceRid, actualSource);
+                assertEquals(command, codec.decodeSessionRelocationRoute(encoded));
+                return CompletableFuture.completedFuture(
+                    codec.encodeSessionRelocationRouted(
+                        new ZLinkServiceM6BWireCodec.SessionRelocationRouted(
+                            command.relocation(), command.coordinator(),
+                            command.actor(), command.session(), command.action(),
+                            command.currentAuthorityOwnerGeneration(),
+                            command.lastAcceptedSessionSequence())));
+            });
+            source.start();
+            sessionOwner.start();
+            source.connectPeer(endpoint, sessionOwnerRid);
+            awaitAdmitted(source);
+
+            var ack = codec.decodeSessionRelocationRouted(
+                source.requestSessionRelocationRoute(
+                        sessionOwnerRid,
+                        codec.encodeSessionRelocationRoute(command),
+                        Duration.ofSeconds(2))
+                    .toCompletableFuture().get(2, TimeUnit.SECONDS));
+
+            assertEquals(command.relocation(), ack.relocation());
+            assertEquals(17, ack.lastAcceptedSessionSequence());
+            assertEquals(0, applicationDispatches.get());
+        }
+    }
+
     @Test
     void relocationControlUsesAdmittedPeerAndBypassesApplicationMailbox()
         throws Exception {

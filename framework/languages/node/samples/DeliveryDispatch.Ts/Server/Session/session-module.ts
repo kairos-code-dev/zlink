@@ -19,7 +19,6 @@ function createSessionModule() {
   CustomerActorFactory.useDirectory(directory);
   const configuration = createDeliveryDispatchConfigurationModule([
     'sessionSpotRouterEndpoint',
-    'sessionSpotNodeRid',
     'sessionStreamEndpoint',
     'redisEndpoint',
     'redisKeyPrefix',
@@ -41,7 +40,7 @@ function createSessionModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(config.sessionSpotRouterEndpoint).routingId(config.sessionSpotNodeRid)
+              .listen(config.sessionSpotRouterEndpoint).useAllocatedRoutingId(16, 'delivery-customer')
               .addEntrySpot(CustomerEntrySpot)
               .actorFactory(SampleNames.customerActorType, CustomerActorFactory);
           mesh.channelName(SampleNames.routeMesh);

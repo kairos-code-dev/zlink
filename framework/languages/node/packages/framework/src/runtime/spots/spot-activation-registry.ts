@@ -167,6 +167,22 @@ export class ZLinkSpotActivationRegistry {
     this.staged.delete(spotActivationKey(meshName, spotId));
   }
 
+  detachRelocated(meshName: string, spotId: RoutingId): ZLinkSpotActivation | undefined {
+    const key = spotActivationKey(meshName, spotId);
+    if (this.pending.has(key) || this.closing.has(key)) {
+      throw new Error(`Spot '${String(spotId)}' cannot detach while lifecycle work is pending.`);
+    }
+    const activation = this.activations.get(key);
+    if (activation === undefined) return undefined;
+    this.activations.delete(key);
+    this.staged.delete(key);
+    this.failedClose.delete(key);
+    this.lifecycleMetrics.closed('user');
+    this.resolveEmptyWaiters();
+    this.resolveMeshEmptyWaiters(meshName);
+    return activation;
+  }
+
   abandonStage(meshName: string, spotId: RoutingId): void {
     const key = spotActivationKey(meshName, spotId);
     // A materialized Spot must remain hidden until close cleanup removes it.

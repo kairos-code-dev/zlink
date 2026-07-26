@@ -43,13 +43,13 @@ public static class SessionServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(session.MeshEndpoint)
-                .SetRoutingId(session.RoutingId);
+                .SetRoutingIdPrefix("support-session");
             mesh.ChannelName(SampleNames.ApiChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
-                .EnableActorDispatch(SampleNames.MeshName)
+                .EnableActorDispatch()
                 .AddSession<SupportChatSession>();
         });
 

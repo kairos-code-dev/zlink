@@ -26,6 +26,7 @@ export interface ZLinkRuntimeStopParts {
   readonly spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   readonly channelRuntime?: ZLinkChannelRuntimeManager;
   readonly allocatedRoutingIdRuntime?: ZLinkAllocatedRoutingIdRuntime;
+  readonly serviceRelocation?: { dispose(): Promise<void> };
 }
 
 export async function rollbackRuntimeStart(parts: ZLinkRuntimeStartRollbackParts): Promise<void> {
@@ -49,6 +50,7 @@ export async function stopRuntimeParts(parts: ZLinkRuntimeStopParts): Promise<vo
   await runShutdownStep(errors, () => parts.spotNodeRuntime?.dispose());
   await runShutdownStep(errors, () => parts.channelRuntime?.dispose());
   await runShutdownStep(errors, () => parts.allocatedRoutingIdRuntime?.stop());
+  await runShutdownStep(errors, () => parts.serviceRelocation?.dispose());
   await runShutdownStep(errors, () => parts.locationSnapshot.lifecycle?.dispose());
   await runShutdownStep(errors, () => parts.locationSnapshot.runtime?.stop());
   await Promise.allSettled(state.listenerTasks);

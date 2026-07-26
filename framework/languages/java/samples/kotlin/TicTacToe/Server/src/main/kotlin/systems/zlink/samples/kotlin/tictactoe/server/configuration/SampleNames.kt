@@ -4,7 +4,7 @@ import java.time.Duration
 
 object SampleNames {
     const val ApiChannel: String = "tictactoe-api"
-    private const val PlayChannelPrefix: String = "tictactoe-play-"
+    const val PlayChannel: String = "tictactoe-play"
     const val PlayHandlerGroup: String = "play"
     const val SpotMesh: String = "tictactoe"
     const val PlayNode: String = "play"
@@ -14,5 +14,4 @@ object SampleNames {
     const val RequiredLevel: Int = 3
     val RequestTimeout: Duration = Duration.ofSeconds(5)
 
-    fun playChannel(index: Int): String = "$PlayChannelPrefix$index"
 }

@@ -43,7 +43,7 @@ class OrderWorkflowApplication {
                 traceLabel(role.instanceId)
             }
             configurer.addHandlersFromPackageOf(OrderWorkflowApplication::class.java)
-            configurer.addClientServerChannel(SampleNames.workflowChannel(role.instanceId))
+            configurer.addClientServerChannel(SampleNames.OrderWorkflowChannel)
                 .enableServer(role.channelEndpoint)
                 .addHandlerGroup("workflow")
         }

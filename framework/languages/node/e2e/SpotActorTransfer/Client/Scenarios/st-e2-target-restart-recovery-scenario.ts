@@ -1,4 +1,4 @@
-// ST-E2: 실패한 transfer는 bound session route를 바꾸지 않음 시나리오를 검증한다.
+// ST-E2: 실패한 relocation은 bound session route를 바꾸지 않음 시나리오를 검증한다.
 import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, assertBoundPush, assertHttpBoundPush, createSpot, createActor, joinActor, getEvidence, has, unique, uniqueShort, require } from '../Support/scenario-support';
 
 export async function runStE2(): Promise<void> {

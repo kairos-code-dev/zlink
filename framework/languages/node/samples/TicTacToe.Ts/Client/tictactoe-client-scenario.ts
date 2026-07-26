@@ -45,12 +45,10 @@ class TicTacToeClientScenario {
     connector.zlinkStreamAssert.ensure(new Set(game.playEndpoints).size === game.playEndpoints.length, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playEndpoints.includes(game.ownerPlayEndpoint), 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playNodes.length === game.playEndpoints.length, 'Sample scenario assertion failed.');
-    connector.zlinkStreamAssert.ensure(new Set(game.playNodes.map((node) => node.spotNodeRid)).size === game.playNodes.length, 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.playNodes.every((node) => game.playEndpoints.includes(node.streamEndpoint)), 'Sample scenario assertion failed.');
     connector.zlinkStreamAssert.ensure(game.requiredLevel === 3, 'Sample scenario assertion failed.');
     const ownerPlayNode = game.playNodes.find((node) => node.streamEndpoint === game.ownerPlayEndpoint);
     connector.zlinkStreamAssert.ensure(ownerPlayNode !== undefined, 'Sample scenario assertion failed.');
-    connector.zlinkStreamAssert.ensure(ownerPlayNode.spotNodeRid.length !== 0, 'Sample scenario assertion failed.');
 
     const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== game.ownerPlayEndpoint);
     connector.zlinkStreamAssert.ensure(guestPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
@@ -187,10 +185,9 @@ class TicTacToeClientScenario {
       connector.zlinkStreamAssert.ensure(milestone.payload.actorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(milestone.payload.displayName === client1Auth.player.displayName, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(milestone.payload.wins === 100, 'Sample scenario assertion failed.');
-      connector.zlinkStreamAssert.ensure(milestone.payload.receivingSpotNodeRid === observerPlayNode.spotNodeRid, 'Sample scenario assertion failed.');
       console.log(
         `observer-win-milestone=verified actor=${milestone.payload.actorId} ` +
-        `wins=${milestone.payload.wins} receivingSpotNodeRid=${milestone.payload.receivingSpotNodeRid}`
+        `wins=${milestone.payload.wins}`
       );
 
       await Promise.all([

@@ -638,6 +638,12 @@ void channel_runtime_t::mark_auto_connect_active ()
     _state->auto_connect_active = true;
 }
 
+bool channel_runtime_t::auto_connect_active () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->auto_connect_active;
+}
+
 void channel_runtime_t::drain () noexcept
 {
     std::lock_guard lock (_state->mutex);

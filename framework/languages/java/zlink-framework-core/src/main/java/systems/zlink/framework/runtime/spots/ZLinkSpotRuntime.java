@@ -169,6 +169,8 @@ public final class ZLinkSpotRuntime
             new systems.zlink.framework.runtime.service
                 .ZLinkServiceM6AWireCodec();
     private final Set<String> suppressedActorLifecycleCallbacks = ConcurrentHashMap.newKeySet();
+    private final ZLinkSpotRelocationReplyRoutes relocationReplyRoutes =
+        new ZLinkSpotRelocationReplyRoutes();
     private final ZLinkSpotOutboundScope outboundScope = new ZLinkSpotOutboundScope();
     private volatile boolean closing;
     private volatile boolean draining;
@@ -1417,6 +1419,116 @@ public final class ZLinkSpotRuntime
         return spotLifecycle.userSpotCount();
     }
 
+    public List<String> activeUserSpotIds() {
+        return spotLifecycle.userSpotIds();
+    }
+
+    ZLinkSpotRelocationReplyRoutes.Registration registerRelocationReply(
+        byte[] acceptedRecord,
+        ZLinkBackendReceived received,
+        String spotId,
+        long objectGeneration) {
+        return relocationReplyRoutes.register(
+            acceptedRecord, received, spotId, objectGeneration);
+    }
+
+    void bindCommittedRelocationReplies(
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> journal,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        long targetAuthorityOwnerGeneration) {
+        bindCommittedRelocationReplies(
+            journal,
+            targetNodeRid,
+            targetNodeGeneration,
+            Map.of("spot", targetAuthorityOwnerGeneration));
+    }
+
+    void bindCommittedRelocationReplies(
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> journal,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        Map<String, Long> targetAuthorityOwnerGenerations) {
+        List<byte[]> records = journal.getOrDefault("spot", List.of())
+            .stream()
+            .map(ZLinkAsyncSerialQueue.QueuedRecord::payload)
+            .toList();
+        relocationReplyRoutes.bindCommitted(
+            records,
+            targetNodeRid,
+            targetNodeGeneration,
+            targetAuthorityOwnerGenerations.getOrDefault("spot", 0L));
+        journal.forEach((lane, queued) -> {
+            if (!lane.startsWith("actor:")) {
+                return;
+            }
+            String actorId = lane.substring("actor:".length());
+            long generation = targetAuthorityOwnerGenerations.getOrDefault(
+                actorId, 0L);
+            relocationReplyRoutes.bindActorCommitted(
+                queued.stream()
+                    .map(ZLinkAsyncSerialQueue.QueuedRecord::payload)
+                    .toList(),
+                targetNodeRid,
+                targetNodeGeneration,
+                generation);
+        });
+    }
+
+    void bindCanonicalRelocationReplies(
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> journal,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        Map<String, ZLinkSpotRelocationReplyRoutes.CommittedFence> fences) {
+        relocationReplyRoutes.bindCommitted(
+            journal.getOrDefault("spot", List.of()).stream()
+                .map(ZLinkAsyncSerialQueue.QueuedRecord::payload)
+                .toList(),
+            targetNodeRid,
+            targetNodeGeneration,
+            java.util.Objects.requireNonNull(fences.get("spot"),
+                "Spot canonical reply fence"));
+        journal.forEach((lane, queued) -> {
+            if (!lane.startsWith("actor:")) {
+                return;
+            }
+            String actorId = lane.substring("actor:".length());
+            relocationReplyRoutes.bindActorCommitted(
+                queued.stream()
+                    .map(ZLinkAsyncSerialQueue.QueuedRecord::payload)
+                    .toList(),
+                targetNodeRid,
+                targetNodeGeneration,
+                java.util.Objects.requireNonNull(fences.get(actorId),
+                    "Actor canonical reply fence"));
+        });
+    }
+
+    CompletionStage<ZLinkSpotRelocationReplyRoutes.Ack> relayRelocationReply(
+        ZLinkSpotRelocationReplyRoutes.Relay relay,
+        RoutingId transportSource) {
+        return relocationReplyRoutes.relay(relay, transportSource);
+    }
+
+    ZLinkSpotRelocationReplyRoutes.CanonicalRoute
+        canonicalRelocationReplyRoute(
+            systems.zlink.framework.runtime.service
+                .ZLinkServiceRelocationWireCodec.ReplyRelay relay,
+            RoutingId transportSource) {
+        return relocationReplyRoutes.lookupCanonical(relay, transportSource);
+    }
+
+    CompletionStage<ZLinkSpotRelocationReplyRoutes.Ack>
+        deliverCanonicalRelocationReply(
+            ZLinkSpotRelocationReplyRoutes.CanonicalRoute route,
+            List<byte[]> parts) {
+        return relocationReplyRoutes.deliverCanonical(route, parts);
+    }
+
+    public String userSpotMeshName(String spotId) {
+        return meshNameForSpot(spotId);
+    }
+
     public boolean drainComplete() {
         boolean complete = spotLifecycle.userSpotsDrained();
         if (complete) {
@@ -1629,6 +1741,49 @@ public final class ZLinkSpotRuntime
                 local));
     }
 
+    CompletionStage<Optional<byte[]>> replayPreparedActor(
+        ZLinkSpotLifecycle.PreparedUserSpot preparedSpot,
+        ZLinkActorRuntime.PreparedTransferredActor preparedActor,
+        ZLinkActorAcceptedJournal.Record record) {
+        ZLinkActor actor = preparedActor.actor();
+        Object spotSurface = spotLifecycle.preparedSpot(preparedSpot);
+        boolean request = record.header().requestSequence().isPresent();
+        SpotActorPacketHandlerRegistration handler = resolveActorPacketHandler(
+            record.header().packetName(),
+            spotSurface,
+            request
+                ? ZLinkScannedHandlerKind.ACTOR_REQUEST
+                : ZLinkScannedHandlerKind.ACTOR_SEND);
+        if (handler == null
+            || request != (handler.kind()
+                == ZLinkScannedHandlerKind.ACTOR_REQUEST)
+            || !handler.actorType().isInstance(actor)) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "staged Actor handler is unavailable or mismatched: "
+                        + record.header().packetName()));
+        }
+        Message payload = Message.from(record.payload());
+        CompletionStage<Optional<Message>> dispatched;
+        try {
+            dispatched = dispatchLocalSessionActorPacket(
+                handler,
+                spotSurface,
+                actor,
+                payload,
+                record.header().metadata());
+        } catch (RuntimeException failure) {
+            payload.close();
+            return CompletableFuture.failedFuture(failure);
+        }
+        return dispatched.thenApply(reply -> reply.map(value -> {
+                try (value) {
+                    return value.toByteArray();
+                }
+            }))
+            .whenComplete((ignored, failure) -> payload.close());
+    }
+
     Optional<Message> replyTransferredRequestDirect(
         ZLinkBackendActorRef targetActorRef,
         ZLinkStreamHeader requestHeader,
@@ -1777,6 +1932,25 @@ public final class ZLinkSpotRuntime
         String replyFailureMessage) {
         var actorFlow = systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.current();
         boolean noBindRequest = isNoBindActorRequest(packetHeader, headerPart);
+        byte[] acceptedRecord = headerPart.acceptedJournalRecord();
+        ZLinkSpotRelocationReplyRoutes.Registration relocationReply =
+            acceptedRecord.length == 0
+                ? null
+                : relocationReplyRoutes.registerActor(
+                    acceptedRecord,
+                    actor.context().actorId(),
+                    headerPart.actor().generation(),
+                    parts -> deliverRelocatedActorReply(
+                        actor.context().actorId(),
+                        packetHeader,
+                        headerPart.actor(),
+                        headerPart.sourceNodeRid(),
+                        headerPart.sourceSessionRid(),
+                        headerPart.requestId(),
+                        headerPart.flags(),
+                        noBindRequest,
+                        parts),
+                    () -> { });
         traceActorSession("dispatch-actor-packet"
             + " actor=" + actor.context().actorId()
             + " packet=" + packetHeader.packetName()
@@ -1815,7 +1989,10 @@ public final class ZLinkSpotRuntime
                         handler, spotSurface, actor, payload, packetHeader.metadata())
                     : invokeActorSendHandler(
                         handler, spotSurface, actor, payload, packetHeader.metadata())
-                        .thenApply(ignored -> Optional.empty())));
+                        .thenApply(ignored -> Optional.empty()),
+                relocationReply == null
+                    ? () -> { }
+                    : relocationReply::releaseForRelocation));
         return stage.handle((reply, error) -> {
                 if (error != null) {
                     reportDispatchError(DispatchFailureReport.of(
@@ -1872,6 +2049,9 @@ public final class ZLinkSpotRuntime
                     replyFailureMessage);
             })
             .whenComplete((ignored, error) -> {
+                if (relocationReply != null) {
+                    relocationReply.completeLocal();
+                }
                 systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.run(actorFlow, () -> {
                     payload.close();
                     headerPart.close();
@@ -1893,6 +2073,47 @@ public final class ZLinkSpotRuntime
                     }
                 });
             });
+    }
+
+    private CompletionStage<Void> deliverRelocatedActorReply(
+        String actorId,
+        ActorPacketFrames.Header packetHeader,
+        ZLinkBackendActorRef actorRef,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        long requestId,
+        int flags,
+        boolean noBindRequest,
+        List<byte[]> parts) {
+        if (parts.size() != 1) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "relocated Actor reply requires one payload part"));
+        }
+        byte[] frameBytes;
+        try (Message payload = Message.from(parts.getFirst());
+             Message frame = ActorPacketFrames.encodeReply(
+                 packetHeader, payload)) {
+            frameBytes = frame.toByteArray();
+        }
+        if (noBindRequest) {
+            try (Message frame = Message.from(frameBytes)) {
+                primaryNode.replyActorNoBind(
+                    actorRef,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    requestId,
+                    flags,
+                    List.of(frame));
+            }
+            return CompletableFuture.completedFuture(null);
+        }
+        return sendActorBoundSessionWithRetry(
+            primaryNode,
+            actorRef,
+            actorId,
+            frameBytes,
+            "relocated Actor bound Session reply failed");
     }
 
     private CompletionStage<Void> invokeActorSendHandler(
@@ -2699,7 +2920,8 @@ public final class ZLinkSpotRuntime
             received.requestId(),
             received.flags(),
             Message.from(received.message()),
-            received.hasMore());
+            received.hasMore(),
+            received.acceptedJournalRecord());
     }
 
     static boolean isNoBindActorRequest(

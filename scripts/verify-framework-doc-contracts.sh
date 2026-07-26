@@ -120,7 +120,7 @@ const expectedTerminationResultContract = {
     { name: 'Stopped', wire_value: 0, reasons: ['None'] },
     { name: 'Blocked', wire_value: 1, reasons: [
       'TargetUnavailable', 'StoreUnavailable', 'RelocationDisabled', 'StateIncompatible',
-      'DeadlineExceeded', 'RuntimeNotReady',
+      'DeadlineExceeded', 'RuntimeNotReady', 'ManualTopologyUnsupported',
     ] },
     { name: 'ForceStopped', wire_value: 2, reasons: [
       'DeadlineExceeded', 'RelocationFailed', 'TeardownFailed',
@@ -136,6 +136,7 @@ const expectedTerminationResultContract = {
     { name: 'RelocationFailed', wire_value: 6 },
     { name: 'TeardownFailed', wire_value: 7 },
     { name: 'RuntimeNotReady', wire_value: 8 },
+    { name: 'ManualTopologyUnsupported', wire_value: 9 },
   ],
   checkpoint_ceiling_pair: 'Blocked/StateIncompatible',
   forbidden_fragments: ['CheckpointTooLarge', '| `Completed` |', '| `Failed` |'],
@@ -215,6 +216,7 @@ if (!fs.existsSync(terminationE2ePath)) {
 
 const terminationNegativeFixtures = [
   ['Blocked deadline omitted', 'formal', source => source.replace(', `DeadlineExceeded`, `RuntimeNotReady`', ', `RuntimeNotReady`')],
+  ['manual topology reason omitted', 'formal', source => source.replace(', `ManualTopologyUnsupported` |', ' |')],
   ['checkpoint reason widened', 'formal', source => source.replace('`StateIncompatible`', '`CheckpointTooLarge`')],
   ['teardown outcome widened', 'formal', source => source.replace('| 2 | `ForceStopped` |', '| 2 | `Failed` |')],
 ];

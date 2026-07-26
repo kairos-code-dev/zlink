@@ -96,24 +96,20 @@ try {
         }
     }
     function New-TicTacToePlaySettings {
-        param(
-            [string]$InstanceName,
-            [int]$PlayIndex,
-            [string]$MeshEndpoint,
+    param(
+        [string]$InstanceName,
+        [string]$MeshEndpoint,
             [string[]]$PeerMeshEndpoints,
-            [string]$PlayEndpoint,
-            [string]$PlayMeshNodeRid
+            [string]$PlayEndpoint
         )
 
         @{
             Sample = @{
                 InstanceName = $InstanceName
-                PlayIndex = $PlayIndex
                 MeshEndpoint = $MeshEndpoint
                 PeerMeshEndpoints = $PeerMeshEndpoints
                 PlayEndpoint = $PlayEndpoint
                 PlayEndpoints = @($playAEndpoint, $playBEndpoint)
-                PlayMeshNodeRid = $PlayMeshNodeRid
                 RedisEndpoint = $redisEndpoint
                 RedisKeyPrefix = $TICTACTOE_REDIS_KEY_PREFIX
                 LogDirectory = $SampleLogDir
@@ -122,8 +118,8 @@ try {
     }
     New-TicTacToeApiSettings -InstanceName "api-a" -ApiBindUrl $apiABindUrl -MeshEndpoint $apiAMeshEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiAConfigFile
     New-TicTacToeApiSettings -InstanceName "api-b" -ApiBindUrl $apiBBindUrl -MeshEndpoint $apiBMeshEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $apiBConfigFile
-    New-TicTacToePlaySettings -InstanceName "play-a" -PlayIndex 0 -MeshEndpoint $playAMeshEndpoint -PeerMeshEndpoints @() -PlayEndpoint $playAEndpoint -PlayMeshNodeRid "play-node-1" | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playAConfigFile
-    New-TicTacToePlaySettings -InstanceName "play-b" -PlayIndex 1 -MeshEndpoint $playBMeshEndpoint -PeerMeshEndpoints @($playAMeshEndpoint) -PlayEndpoint $playBEndpoint -PlayMeshNodeRid "play-node-2" | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playBConfigFile
+    New-TicTacToePlaySettings -InstanceName "play-a" -MeshEndpoint $playAMeshEndpoint -PeerMeshEndpoints @() -PlayEndpoint $playAEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playAConfigFile
+    New-TicTacToePlaySettings -InstanceName "play-b" -MeshEndpoint $playBMeshEndpoint -PeerMeshEndpoints @($playAMeshEndpoint) -PlayEndpoint $playBEndpoint | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $playBConfigFile
     @{ Sample = @{ ApiPublicUrls = @($apiAPublicUrl); LogDirectory = $LogDir } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $clientConfigFile
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "TicTacToe.sln")

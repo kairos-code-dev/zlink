@@ -85,7 +85,6 @@ struct player_info_t
 struct play_node_info_t
 {
     std::string stream_endpoint;
-    std::string spot_node_rid;
 };
 
 struct authenticate_res_t
@@ -236,7 +235,6 @@ struct win_milestone_notify_t
     std::string actor_id;
     std::string display_name;
     int wins = 0;
-    std::string receiving_spot_node_rid;
 };
 
 struct game_state_notify_t
@@ -275,13 +273,12 @@ inline void from_json (const nlohmann::json &json, player_info_t &value)
 
 inline void to_json (nlohmann::json &json, const play_node_info_t &value)
 {
-    json = {{"streamEndpoint", value.stream_endpoint}, {"spotNodeRid", value.spot_node_rid}};
+    json = {{"streamEndpoint", value.stream_endpoint}};
 }
 
 inline void from_json (const nlohmann::json &json, play_node_info_t &value)
 {
     value.stream_endpoint = json.value ("streamEndpoint", "");
-    value.spot_node_rid = json.value ("spotNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const authenticate_player_req_t &value)
@@ -531,8 +528,7 @@ inline void to_json (nlohmann::json &json, const win_milestone_notify_t &value)
     json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
             {"displayName", value.display_name},
-            {"wins", value.wins},
-            {"receivingSpotNodeRid", value.receiving_spot_node_rid}};
+            {"wins", value.wins}};
 }
 
 inline void from_json (const nlohmann::json &json, win_milestone_notify_t &value)
@@ -541,7 +537,6 @@ inline void from_json (const nlohmann::json &json, win_milestone_notify_t &value
     value.actor_id = json.value ("actorId", "");
     value.display_name = json.value ("displayName", "");
     value.wins = json.value ("wins", 0);
-    value.receiving_spot_node_rid = json.value ("receivingSpotNodeRid", "");
 }
 
 inline void to_json (nlohmann::json &json, const game_state_notify_t &value)

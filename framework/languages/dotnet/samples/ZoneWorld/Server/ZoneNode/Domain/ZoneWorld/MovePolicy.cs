@@ -25,8 +25,7 @@ public static class MovePolicy
     public static MoveDecision Validate(
         PlayerPosition from,
         int toX,
-        int toY,
-        Func<string, bool> zoneIsUnreachable)
+        int toY)
     {
         if (!World.InRange(toX, toY))
             return new MoveDecision.Rejected(MoveRejectReasons.OutOfRange);
@@ -42,9 +41,6 @@ public static class MovePolicy
             return new MoveDecision.Rejected(MoveRejectReasons.DiagonalCrossing);
 
         var zoneChanged = from.ZoneId != to.ZoneId;
-        if (zoneChanged && zoneIsUnreachable(to.ZoneId))
-            return new MoveDecision.Rejected(MoveRejectReasons.ZoneMaintenance);
-
         return new MoveDecision.Accepted(to, zoneChanged);
     }
 }

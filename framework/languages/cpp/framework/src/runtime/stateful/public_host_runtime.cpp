@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/public_host_runtime.hpp"
+#include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/sha256.hpp"
 
@@ -508,7 +509,7 @@ zlink::submit_result_t spot_handle_t::request_to_spot (
           host->complete_operation (
             operation, operation_kind_t::none, terminal,
             std::move (payload));
-      }));
+      }, protocol::wire_operation_id_t{operation.high, operation.low}));
 }
 
 zlink::submit_result_t spot_handle_t::publish (
@@ -628,6 +629,9 @@ public_host_runtime_t::public_host_runtime_t (host_options_t options) :
     _options (std::move (options)),
     _transport (
       std::make_shared<mesh::raw_mesh_node_owner_t> (_options.mesh)),
+    _relocation_wire (
+      std::make_unique<stateful::raw_relocation_replay_coordinator_t> (
+        *_transport)),
     _sessions ([this] (const std::string &actor_id) {
         std::lock_guard lock (_mutex);
         const auto found = _actors.find (actor_id);
@@ -808,6 +812,12 @@ stateful::stream_session_registry_t &
 public_host_runtime_t::sessions () noexcept
 {
     return _sessions;
+}
+
+stateful::raw_relocation_replay_coordinator_t &
+public_host_runtime_t::relocation_wire () noexcept
+{
+    return *_relocation_wire;
 }
 
 void public_host_runtime_t::configure_user_spot_operations (
@@ -1492,7 +1502,7 @@ zlink::submit_result_t public_host_runtime_t::request_to_actor (
           host->complete_operation (
             operation, operation_kind_t::none, terminal,
             std::move (payload));
-      }));
+      }, protocol::wire_operation_id_t{operation.high, operation.low}));
 }
 
 zlink::submit_result_t public_host_runtime_t::send_to_node (
@@ -1577,6 +1587,13 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                 const auto wire =
                   protocol::decode_header (
                     mailbox_record.parts.front ());
+                if (wire.kind == protocol::command::relocationData
+                    || wire.kind == protocol::command::relocationAck
+                    || wire.kind == protocol::command::replyRelay
+                    || wire.kind == protocol::command::replyRelayAck) {
+                    (void) _relocation_wire->process (mailbox_record);
+                    continue;
+                }
                 if (wire.kind
                       != protocol::command::sessionRelocationSeal
                     && wire.kind
@@ -2955,6 +2972,9 @@ std::size_t public_host_runtime_t::dispatch_ready (
           "framework public host dispatch callback is required");
     }
     const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+    (void) _relocation_wire->retry_source_replays (now);
+    (void) _relocation_wire->retry_terminal_relays (now);
+    (void) _relocation_wire->reap_terminal_tombstones (now);
     (void) _transport->drain_monitor_events (now);
     std::size_t count = 0;
     for (; count < 64; ++count) {
@@ -3010,7 +3030,11 @@ std::size_t public_host_runtime_t::dispatch_ready (
                 record.source_node_rid =
                   zlink::routing_id_t::from (
                     mailbox_record.source_routing_id);
-                if (mailbox_record.correlation) {
+                if (mailbox_record.operation) {
+                    record.operation_id = {
+                      mailbox_record.operation->first,
+                      mailbox_record.operation->second};
+                } else if (mailbox_record.correlation) {
                     record.operation_id = {
                       status ().lifecycle_generation (),
                       *mailbox_record.correlation};

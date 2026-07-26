@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -32,21 +31,23 @@ internal sealed class ZoneNodeBootstrap(
     {
         await RestoreMaintenanceAsync(cancellationToken);
 
-        var zones = ZoneTopology.ZonesOf(maintenance.OwnNodeId);
-        foreach (var zoneId in zones)
+        foreach (var zoneId in ZoneTopology.Zones)
         {
-            await spots.GetOrCreateAsync<ZoneSpot>(RoutingId.From(zoneId), cancellationToken);
-            logger.LogInformation("zone hosted. node={NodeId}, zone={ZoneId}", maintenance.OwnNodeId, zoneId);
+            await spots.GetOrCreate(zoneId, ZoneWorldNames.ZoneSpotType)
+                .InMesh(ZoneWorldNames.MeshName)
+                .Request(ZLinkMessage.Empty)
+                .Async(cancellationToken);
+            logger.LogInformation("zone ensured. zone={ZoneId}", zoneId);
         }
 
         if (!settings.DisableBots)
-            foreach (var route in zones.SelectMany(BotPatrolPolicy.RoutesOf))
+            foreach (var route in ZoneTopology.Zones.SelectMany(BotPatrolPolicy.RoutesOf))
                 await SpawnBotAsync(route, cancellationToken);
 
         logger.LogInformation(
             "topology=ready node={NodeId} zones={Zones}",
             maintenance.OwnNodeId,
-            string.Join(',', zones));
+            string.Join(',', ZoneTopology.Zones));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -88,20 +89,20 @@ internal sealed class ZoneNodeBootstrap(
         // returns the winner; and if the actor genuinely cannot be placed — the location store
         // is unreachable, say — it throws. That distinction matters: swallowing the failure here
         // would let the node log topology=ready over a world with no bots in it (§2.7).
-        var actorRef = await directory
+        var result = await directory
             .GetOrCreate(route.PlayerId, ZoneWorldNames.PlayerActorType)
+            .InMesh(ZoneWorldNames.MeshName)
             .Request(ZLinkMessage.Empty)
-            .Async(cancellationToken) switch
-        {
-            ZLinkActorCreateResult.Existing value => value.Actor,
-            ZLinkActorCreateResult.Created value => value.Actor,
-            _ => throw new InvalidOperationException("Bot Actor creation was rejected.")
-        };
+            .Async(cancellationToken);
+
+        if (result is ZLinkActorCreateResult.Existing)
+            return;
+        if (result is not ZLinkActorCreateResult.Created created)
+            throw new InvalidOperationException("Bot Actor creation was rejected.");
 
         var entered = await actors
             .RequestToActor(
-                ZoneWorldNames.MeshName,
-                actorRef,
+                created.Actor.ActorId,
                 new EnterWorldReq(route.X, route.Y, IsBot: true, route.DirX, route.DirY))
             .Async<EnterWorldRes>(cancellationToken);
 

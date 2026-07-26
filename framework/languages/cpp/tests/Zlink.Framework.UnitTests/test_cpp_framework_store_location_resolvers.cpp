@@ -896,8 +896,118 @@ class auto_connect_request_client_t final : public zlink::framework::hosted_serv
     zlink::framework::app_t *_app;
 };
 
+class missing_auto_connect_request_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit missing_auto_connect_request_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (zlink::framework::service_provider_t &) override
+    {
+        auto reply = _app->advanced ().zlink ().request_client ("orders")
+                       .request (auto_connect_request_t{17})
+                       .timeout (std::chrono::milliseconds (50))
+                       .submit<auto_connect_reply_t> ()
+                       .result ();
+        if (!reply) {
+            observed_error = reply.error_kind ();
+        }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    std::optional<zlink::framework::framework_error_kind_t> observed_error;
+
+  private:
+    zlink::framework::app_t *_app;
+};
+
 class local_user_spot_t final : public zlink::framework::spot_t
 {
+};
+
+class context_owned_user_spot_t final : public zlink::framework::spot_t
+{
+  public:
+    explicit context_owned_user_spot_t (
+      zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept { return _context; }
+    void configure () {}
+
+  private:
+    zlink::framework::spot_context_t _context;
+};
+
+class mismatched_context_user_spot_t final : public zlink::framework::spot_t
+{
+  public:
+    mismatched_context_user_spot_t () :
+        _context (empty_context_t{})
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    const zlink::framework::spot_context_t &context () const noexcept { return _context; }
+    void configure () {}
+
+  private:
+    class empty_context_t final : public zlink::framework::spot_context_t
+    {
+      public:
+        empty_context_t () = default;
+    };
+
+    zlink::framework::spot_context_t _context;
+};
+
+class context_factory_rejection_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit context_factory_rejection_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (zlink::framework::service_provider_t &services) override
+    {
+        auto &manager =
+          services.get_required<zlink::framework::spot_manager_t> ();
+        const auto created = manager
+                               .get_or_create (
+                                 zlink::framework::spot_id_t ("context-mismatch"),
+                                 "mismatch")
+                               .timeout (std::chrono::seconds (2))
+                               .submit ()
+                               .result ();
+        observed = !created
+                   && created.error_kind ()
+                        == zlink::framework::framework_error_kind_t::spot_create_failed;
+        if (!observed) {
+            last_error = created.error () ? created.error ()->what ()
+                                          : "mismatched Context was accepted";
+        }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    bool observed = false;
+    std::string last_error;
+
+  private:
+    zlink::framework::app_t *_app;
 };
 
 class occupied_user_spot_t final : public zlink::framework::spot_t
@@ -2061,6 +2171,31 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
+      ClientServerWithoutSelectableSnapshotReturnsTargetNotFound)
+{
+    auto store = std::make_shared<in_memory_location_store_t> ();
+    auto app = zlink::framework::app_t::create ();
+    missing_auto_connect_request_client_t *client = nullptr;
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        options.add_location_store (store);
+        options.add_client_server_channel ("orders").client ();
+    });
+    auto service =
+      std::make_unique<missing_auto_connect_request_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    ASSERT_TRUE (client->observed_error.has_value ());
+    EXPECT_EQ (
+      zlink::framework::framework_error_kind_t::request_target_not_found,
+      *client->observed_error);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
       SameProcessClientServerUsesLocalReadyServerWithoutExternalStoreOrManualEndpoint)
 {
     auto app = zlink::framework::app_t::create ();
@@ -2111,6 +2246,83 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     });
     auto service =
       std::make_unique<user_spot_manager_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      ContextOnlySpotFactoryReceivesExactFrameworkIdentity)
+{
+    auto app = zlink::framework::app_t::create ();
+    user_spot_manager_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29705));
+    std::string observed_mesh;
+    std::string observed_node;
+    std::string observed_spot;
+    std::uint64_t observed_generation = 0;
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        auto node = options.add_route_mesh ("context-mesh");
+        node.channel_name ("context-route");
+        node.set_routing_id (
+              zlink::routing_id_t::from ("context-node"))
+          .listen (endpoint)
+          .add_spot<context_owned_user_spot_t> (
+            "room",
+            [&] (zlink::framework::spot_context_t context) {
+                observed_mesh = context.mesh_name ();
+                observed_node = std::string (context.node_rid ().value ());
+                observed_spot = context.spot_id ();
+                observed_generation = context.object_generation ();
+                return std::make_shared<context_owned_user_spot_t> (
+                  std::move (context));
+            });
+    });
+    auto service =
+      std::make_unique<user_spot_manager_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
+    EXPECT_EQ ("context-mesh", observed_mesh);
+    EXPECT_EQ ("context-node", observed_node);
+    EXPECT_EQ ("local-user-spot", observed_spot);
+    EXPECT_EQ (1u, observed_generation);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      ContextOnlySpotFactoryRejectsMismatchedReturnedContext)
+{
+    auto app = zlink::framework::app_t::create ();
+    context_factory_rejection_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29706));
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        auto node = options.add_route_mesh ("context-rejection-mesh");
+        node.channel_name ("context-rejection-route");
+        node.set_routing_id (
+              zlink::routing_id_t::from ("context-rejection-node"))
+          .listen (endpoint)
+          .add_spot<mismatched_context_user_spot_t> (
+            "mismatch",
+            [] (zlink::framework::spot_context_t) {
+                return std::make_shared<mismatched_context_user_spot_t> ();
+            });
+    });
+    auto service =
+      std::make_unique<context_factory_rejection_client_t> (app);
     client = service.get ();
     app.add_hosted_service (std::move (service));
 

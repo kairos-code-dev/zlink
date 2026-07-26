@@ -172,7 +172,6 @@ wait_port redis "tcp://${REDIS_ENDPOINT}"
 # (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md 2.2, 7).
 write_role_config() {
   local role="$1"
-  local node_rid="${2:-}"
   local mesh_endpoint=""
   case "${role}" in
     dispatch) mesh_endpoint="${DISPATCH_MESH}" ;;
@@ -186,7 +185,6 @@ write_role_config() {
   python3 "${SCRIPT_DIR}/write_role_config.py" \
     --output "${CONFIG_DIR}/${role}.json" \
     --role "${role}" \
-    --node-rid "${node_rid}" \
     --log-dir "${FLOW_LOG_DIR}" \
     --work-dir "${WORK_DIR}" \
     --redis-endpoint "${REDIS_ENDPOINT}" \
@@ -201,8 +199,8 @@ write_role_config tracking
 write_role_config customer-gateway
 write_role_config courier-session
 write_role_config dispatch
-write_role_config courier-actor-node1 delivery-courier-node-1
-write_role_config courier-actor-node2 delivery-courier-node-2
+write_role_config courier-actor-node1
+write_role_config courier-actor-node2
 write_role_config client
 
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1

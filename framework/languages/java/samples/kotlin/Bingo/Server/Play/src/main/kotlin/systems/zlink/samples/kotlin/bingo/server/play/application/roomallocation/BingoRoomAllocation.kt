@@ -4,6 +4,5 @@ import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSett
 
 data class BingoRoomAllocation(
     val roomId: String,
-    val ownerPlayNodeRid: String,
     val settings: BingoRoomSettings,
 )

@@ -45,7 +45,7 @@ class SessionApplication {
                 .enableClient()
             val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
             node.listen(session.routerEndpoint)
-                .setRoutingId(session.routingId)
+                .useAllocatedRoutingId(16, "support-session")
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint)
                 .enableActorDispatch(SampleNames.SupportSpotDiscovery)

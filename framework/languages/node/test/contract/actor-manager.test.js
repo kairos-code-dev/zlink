@@ -368,7 +368,12 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
 
   const actor = await manager.getOrCreateActor('alice', 'player');
   assert.equal(await manager.getOrCreateActor('alice', 'player'), actor);
-  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 1n });
+  assert.deepEqual(await manager.find('alice'), {
+    nodeRid: 'node-a',
+    actorId: 'alice',
+    generation: 1n
+  });
+  assert.equal('actorRef' in actor.context, false);
 
   assert.deepEqual(events, [
     'create:alice',
@@ -487,15 +492,13 @@ test('remote actor takeover preserves moving source state until the commit reply
   const source = await locationLifecycleNode(store, 'owner-source', 'node-source');
   const target = await locationLifecycleNode(store, 'owner-target', 'node-target');
   class PlayerActor {
-    constructor(actorId, context) {
-      this.actorId = actorId;
+    constructor(context) {
       this.context = context;
     }
   }
   class PlayerFactory {
     create(context) {
-      const { actorId } = context;
-      return new PlayerActor(actorId, context);
+      return new PlayerActor(context);
     }
   }
   let destroyedCleanup = 0;
@@ -583,7 +586,12 @@ test('ZLinkActorManager resolves native actor node lazily at actor creation', as
 
   const actor = await manager.getOrCreateActor('lazy', 'player');
 
-  assert.deepEqual(actor.context.actorRef, { nodeRid: 'node-lazy', actorId: 'lazy', generation: 3n });
+  assert.deepEqual(await manager.find('lazy'), {
+    nodeRid: 'node-lazy',
+    actorId: 'lazy',
+    generation: 3n
+  });
+  assert.equal('actorRef' in actor.context, false);
 });
 
 test('ZLinkActorManager clears failed create state when Entry Spot create callback fails', async () => {

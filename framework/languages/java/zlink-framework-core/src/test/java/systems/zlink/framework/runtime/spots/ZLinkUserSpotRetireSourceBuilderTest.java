@@ -104,18 +104,27 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
             assertEquals(1, permits.snapshot().outboundUnits());
             assertSame(LiveSpot.last.get(), runtime.spotFor(SPOT_ID));
             var root = coordinator.readRoot(
-                    prepared.prepared().stored().reference(),
-                    prepared.prepared().stored().checksumCrc32c(),
+                    prepared.stagedRoot().stored().reference(),
+                    prepared.stagedRoot().stored().checksumCrc32c(),
                     NEVER)
                 .toCompletableFuture().get();
-            var envelope = ZLinkUserSpotRelocationEnvelope.decode(
+            var envelope = ZLinkCanonicalUserSpotRelocationEnvelope.decode(
                 root.payload(),
                 TARGET_RID,
-                ignored -> LiveSpot.class);
+                ignored -> LiveSpot.class,
+                prepared.stageRequest());
             assertEquals(SPOT_ID, envelope.spotId());
             assertArrayEquals(new byte[] {7, 4, 1}, envelope.spotState());
             assertTrue(envelope.restoreSpotSnapshot());
             assertTrue(envelope.actors().isEmpty());
+
+            var finalPrepared = prepared.freezeAndPrepareFinal(NEVER)
+                .toCompletableFuture().get();
+            assertEquals(
+                prepared.stageRequest().fence().aggregateId(),
+                finalPrepared.fence().aggregateId());
+            assertSame(LiveSpot.last.get(), runtime.spotFor(SPOT_ID),
+                "authority prepare must not publish target-local Ready");
 
             prepared.abortPrecommit().toCompletableFuture().get();
             assertEquals(0, permits.snapshot().outboundUnits());

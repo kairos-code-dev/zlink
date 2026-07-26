@@ -85,6 +85,30 @@ internal sealed class ZLinkFanoutDiscovery : IAsyncDisposable
         return published;
     }
 
+    internal ValueTask<bool> MarkRetiringAsync(CancellationToken cancellationToken) =>
+        PublishStateAsync(static identity => identity.MarkRetiring(), cancellationToken);
+
+    internal ValueTask<bool> MarkServingAsync(CancellationToken cancellationToken) =>
+        PublishStateAsync(static identity => identity.MarkServing(), cancellationToken);
+
+    private async ValueTask<bool> PublishStateAsync(
+        Action<ZLinkFanoutPublisherIdentity> transition,
+        CancellationToken cancellationToken)
+    {
+        var published = true;
+        foreach (var publisher in _publishers)
+        {
+            transition(publisher.Identity);
+            var result = await PublishAsync(
+                    publisher,
+                    ZLinkLocationWriteIntent.Renew,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            published &= result.Status == ZLinkLocationWriteStatus.Stored;
+        }
+        return published;
+    }
+
     public async ValueTask DisposeAsync()
     {
         var failures = new List<Exception>();

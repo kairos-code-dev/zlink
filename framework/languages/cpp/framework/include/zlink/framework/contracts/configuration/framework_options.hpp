@@ -952,13 +952,16 @@ class stream_node_options_builder_t
         return *this;
     }
 
-    stream_node_options_builder_t &set_tls_server (std::string certificate_file,
-                                                   std::string private_key_file)
+    stream_node_options_builder_t &set_tls_server (
+      std::string certificate_file,
+      std::string private_key_file,
+      bool require_client_certificate = false)
     {
         detail::require_non_blank (certificate_file, "STREAM TLS certificate file is required");
         detail::require_non_blank (private_key_file, "STREAM TLS private key file is required");
         _tls_certificate_file = std::move (certificate_file);
         _tls_private_key_file = std::move (private_key_file);
+        _tls_require_client_certificate = require_client_certificate;
         apply ();
         return *this;
     }
@@ -1014,15 +1017,18 @@ class stream_node_options_builder_t
         const auto session_name = _session_name;
         const auto tls_certificate_file = _tls_certificate_file;
         const auto tls_private_key_file = _tls_private_key_file;
+        const auto tls_require_client_certificate = _tls_require_client_certificate;
         _options->set_zlink_action (
           "stream_node:" + stream_name, [stream_name, endpoint, session_name, tls_certificate_file,
-                                         tls_private_key_file] (zlink_builder_t &zlink) {
+                                         tls_private_key_file,
+                                         tls_require_client_certificate] (zlink_builder_t &zlink) {
               auto stream = zlink.stream (stream_name);
               if (!endpoint.empty ()) {
                   stream.bind (endpoint);
               }
               if (!tls_certificate_file.empty () || !tls_private_key_file.empty ()) {
-                  stream.set_tls_server (tls_certificate_file, tls_private_key_file);
+                  stream.configure_tls_server (tls_certificate_file, tls_private_key_file,
+                                               tls_require_client_certificate);
               }
               if (!session_name.empty ()) {
                   stream.register_session (session_name);
@@ -1037,6 +1043,7 @@ class stream_node_options_builder_t
     std::string _session_name;
     std::string _tls_certificate_file;
     std::string _tls_private_key_file;
+    bool _tls_require_client_certificate = false;
     bool _session_configured = false;
 };
 

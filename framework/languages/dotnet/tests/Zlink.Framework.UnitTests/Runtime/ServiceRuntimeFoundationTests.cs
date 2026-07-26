@@ -339,6 +339,21 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public async Task EntrySpotUsesItsMeshNodeLifecycleAsTheDescriptorFence()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        node.SetRoutingId(RoutingId.From("orders-entry-owner"));
+
+        var entry = Assert.IsType<ZLinkManagedSpot>(node.EntrySpot());
+        var lifecycle = node.Status().LifecycleGeneration;
+
+        Assert.NotEqual<ulong>(0, lifecycle);
+        Assert.Equal(lifecycle, entry.LifecycleGeneration);
+        Assert.Equal(lifecycle, entry.AuthorityOwnerGeneration);
+    }
+
+    [Fact]
     public async Task ManagedNode_LocalAndTransportOperationsShareOneIdNamespace()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();

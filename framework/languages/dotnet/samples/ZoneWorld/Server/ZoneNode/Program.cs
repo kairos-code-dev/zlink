@@ -26,8 +26,7 @@ var nodeId = node.NodeId;
 // A node with no zones is the probe of §11.1: it hosts nothing, serves nothing, and is known
 // to no other role. All it does is subscribe to the broadcast channel, which is what makes it
 // evidence for ZW-D2 — Ops publishes to a node it was never told about.
-var zones = ZoneTopology.ZonesOf(nodeId);
-var hostsZones = zones.Count > 0;
+var hostsZones = !node.SubscriberOnly;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Configuration.Sources.Clear();
@@ -99,30 +98,11 @@ builder.Services.AddZLinkFramework(options =>
             ZoneWorldNames.ZoneSpotType,
             null,
             ZLinkRelocationPolicy<ZoneSpot>.Disabled);
-    mesh.ChannelName(ZoneWorldNames.ZoneChannel);
+    mesh.Channel(ZoneWorldNames.ZoneChannel).Server();
 
-    // The node's own channel. Ops calls the channel named after the node, so a call
-    // reaches this node and no other (§8.4).
-    var opsChannelName = ZoneWorldNames.OpsChannel(nodeId);
-    foreach (var configuredNodeId in ZoneTopology.ZoneNodes)
-    {
-        var configuredChannel = ZoneWorldNames.OpsChannel(configuredNodeId);
-        var membership = mesh.ChannelName(configuredChannel);
-        if (string.Equals(configuredChannel, opsChannelName, StringComparison.Ordinal))
-            membership.AddHandlerGroup(HandlerGroups.ZoneOps);
-        else
-            membership.SetWeight(0);
-    }
-
-    // Only the node hosting the spawn zone serves this: it is the authority for the
-    // maintenance admission check on a new entry (§2.3).
-    if (ZoneTopology.SpawnNode == nodeId)
-    {
-        mesh.ChannelName(ZoneWorldNames.ActorsChannel)
-            .AddHandlerGroup(HandlerGroups.ZoneActors);
-    }
-    else
-        mesh.ChannelName(ZoneWorldNames.ActorsChannel).SetWeight(0);
+    // Node operations use node-direct messaging to a runtime-discovered NodeRid.
+    mesh.AddRouteRequestHandler<ApplyNodeMaintenanceHandler>();
+    mesh.AddRouteRequestHandler<GetNodeDiagnosticsHandler>();
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
         .ConnectSubscriber(shared.BroadcastEndpoint)
@@ -131,7 +111,7 @@ builder.Services.AddZLinkFramework(options =>
 
     // The report channel carries this node's identity: Ops reads the socket events on its
     // server side and needs to know *which node* connected or went away (§8.1).
-    mesh.ChannelName(ZoneWorldNames.ReportChannel).SetWeight(0);
+    mesh.Channel(ZoneWorldNames.ReportChannel).Client();
 });
 
 if (hostsZones)

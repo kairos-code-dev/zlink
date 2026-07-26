@@ -36,13 +36,13 @@ internal sealed record BingoRoomSettings(
             null);
     }
 
-    public static BingoRoomSettings CreateObserver(string observedRoomId, string localNodeRid)
+    public static BingoRoomSettings CreateObserver(string observedRoomId, string observerActorId)
     {
         if (string.IsNullOrWhiteSpace(observedRoomId))
             throw new InvalidOperationException("Observed room id is required.");
 
         return new BingoRoomSettings(
-            $"Bingo Observer {localNodeRid}",
+            $"Bingo Observer {observerActorId}",
             BingoSampleModes.TwoPlayer,
             0,
             0,

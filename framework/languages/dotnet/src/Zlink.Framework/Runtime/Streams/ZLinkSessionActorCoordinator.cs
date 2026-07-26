@@ -6,17 +6,13 @@ using Zlink.Framework.Runtime.Actors;
 internal sealed class ZLinkSessionActorCoordinator(
     ZLinkFrameworkRuntime runtime,
     IZLinkStream stream,
-    string? actorDispatchMeshName)
+    bool actorDispatchEnabled)
 {
     private readonly ZLinkSessionActorBindingRegistry _bindings =
         new(runtime);
     private readonly object _actorOperationGatesLock = new();
     private readonly Dictionary<string, ActorOperationGate> _actorOperationGates =
         new(StringComparer.Ordinal);
-
-    private string ActorDispatchMeshName => actorDispatchMeshName
-        ?? throw new ZLinkConfigurationException(
-            "STREAM Actor dispatch requires EnableActorDispatch(meshName).");
 
     public IReadOnlyCollection<IZLinkSessionActor> BoundActors => _bindings.BoundActors;
 
@@ -50,6 +46,9 @@ internal sealed class ZLinkSessionActorCoordinator(
         bool allowExisting,
         CancellationToken cancellationToken)
     {
+        if (!actorDispatchEnabled)
+            throw new ZLinkConfigurationException(
+                "STREAM Actor dispatch requires EnableActorDispatch().");
         ActorOperationGate operation;
         lock (_actorOperationGatesLock)
         {
@@ -149,7 +148,11 @@ internal sealed class ZLinkSessionActorCoordinator(
             }
             catch (Exception replacementFailure)
             {
-                if (!IsLocalActorRef(existing.Ref)) throw;
+                // A started runtime never created a native session binding for
+                // the previous Actor. BindAsync has not replaced the table
+                // entry yet, so the existing framework route is already the
+                // complete rollback state.
+                if (runtime.IsStarted || !IsLocalActorRef(existing.Ref)) throw;
                 try
                 {
                     await BindNativeActorAsync(
@@ -185,11 +188,10 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             EnsureConcreteActorRef(actor);
             var actorRef = actor.ToBackend();
-            // The native session binding requires a node-local actor; a remote
-            // actor binds through the framework route instead (the remote node
-            // acknowledges via ConfirmRemoteBindingAsync and session frames
-            // travel on the actor-frame relay plane).
-            var nativeBound = IsLocalActorRef(actor);
+            // A started runtime always confirms through the ActorRef MeshName so
+            // local and remote owners use one global authority route. Direct
+            // pre-start test contexts retain the native binding boundary.
+            var nativeBound = !runtime.IsStarted;
             if (nativeBound)
                 await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
             try

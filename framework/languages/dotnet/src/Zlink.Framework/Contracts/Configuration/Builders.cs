@@ -17,11 +17,6 @@ public interface IZLinkStreamNodeBuilder
 {
     IZLinkStreamNodeBuilder Bind(string endpoint);
 
-    // Pins the single MeshName this STREAM node uses for session Actor dispatch
-    // (spec 05-route-mesh §2, 31-session-actor-dispatch §2). The value is not
-    // inferred from the endpoint, the first MeshNode, or an ActorRef. Calling it
-    // twice on the same builder, or naming a MeshName with no local MeshNode, is a
-    // startup configuration error. STREAM nodes that do not dispatch actors omit it.
     IZLinkStreamNodeBuilder Bind(int port = 0);
 
     IZLinkStreamNodeBuilder SetBindHost(string bindHost);

@@ -16,15 +16,20 @@ class EnsureAgentConversationHandler implements ZLinkRequestHandler<EnsureAgentC
 
   async handle(request: EnsureAgentConversationReq): Promise<EnsureAgentConversationRes> {
     const actorId = `${request.rosterActorId}::${request.conversationId}`;
-    const actorRef = await this.actorManager.getOrCreate(SampleNames.conversationSpotMesh, actorId, 'support.user', {
-      actorId,
-      displayName: request.displayName,
-      role: SupportChatRoles.Agent,
-      participantId: request.rosterActorId
-    });
+    const result = await this.actorManager
+      .getOrCreate(actorId, 'support.user')
+      .inMesh(SampleNames.conversationSpotMesh)
+      .request({
+        actorId,
+        displayName: request.displayName,
+        role: SupportChatRoles.Agent,
+        participantId: request.rosterActorId
+      })
+      .submit();
+    if (result.status === 'rejected') throw new Error('Support Actor creation was rejected.');
+    const actorRef = result.actor;
     const joined = await this.actors.requestToActor(
-      SampleNames.conversationSpotMesh,
-      actorRef,
+      actorRef.actorId,
       new JoinSupportConversation(
         request.conversationId,
         request.rosterActorId,

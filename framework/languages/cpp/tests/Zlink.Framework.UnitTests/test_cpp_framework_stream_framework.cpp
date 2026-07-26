@@ -7,6 +7,7 @@
 #include "runtime/streams/stream_host_service.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <condition_variable>
 #include <deque>
@@ -20,6 +21,12 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+
+#ifdef ZLINK_FRAMEWORK_STREAM_TEST_WITH_OPENSSL
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl.hpp>
+#endif
 
 namespace
 {
@@ -821,6 +828,54 @@ int main ()
         return 14;
     }
 
+#ifdef ZLINK_FRAMEWORK_STREAM_TEST_WITH_OPENSSL
+    const auto mutual_tls_port = reserve_loopback_port ();
+    zlink::framework::service_collection_t mutual_tls_services;
+    zlink::framework::handler_registry_t mutual_tls_handlers;
+    zlink::framework::serializer_registry_t mutual_tls_serializers;
+    zlink::framework::zlink_builder_t mutual_tls_zlink;
+    zlink::framework::monitoring_builder_t mutual_tls_monitoring;
+    zlink::framework::zlink_framework_options_t mutual_tls_options (
+      mutual_tls_services, mutual_tls_handlers, mutual_tls_serializers,
+      mutual_tls_zlink, mutual_tls_monitoring);
+    mutual_tls_options.add_stream_node ("mutual-tls-listener")
+      .bind ("tls://127.0.0.1:" + std::to_string (mutual_tls_port))
+      .set_tls_server (ZLINK_FRAMEWORK_STREAM_TEST_CERT,
+                       ZLINK_FRAMEWORK_STREAM_TEST_KEY, true)
+      .register_session ("mutual-tls-listener-session");
+    mutual_tls_options.apply ();
+    auto mutual_tls_provider = mutual_tls_services.build_provider ();
+    sample_session_t mutual_tls_session;
+    zlink::framework::runtime::stream_host_service_t mutual_tls_host (
+      zlink::framework::detail::stream_runtime_t::from (mutual_tls_zlink),
+      zlink::framework::detail::stream_runtime_t::from (mutual_tls_zlink).snapshots (),
+      {{"mutual-tls-listener-session",
+        [&mutual_tls_session] (zlink::framework::service_provider_t &)
+          -> zlink::framework::packet_stream_session_t & { return mutual_tls_session; }}});
+    mutual_tls_host.start (mutual_tls_provider);
+    boost::asio::io_context mutual_tls_io;
+    boost::asio::ssl::context mutual_tls_client_context (
+      boost::asio::ssl::context::tls_client);
+    mutual_tls_client_context.set_verify_mode (boost::asio::ssl::verify_none);
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> mutual_tls_client (
+      mutual_tls_io, mutual_tls_client_context);
+    boost::system::error_code mutual_tls_error;
+    mutual_tls_client.next_layer ().connect (
+      {boost::asio::ip::make_address ("127.0.0.1"), mutual_tls_port}, mutual_tls_error);
+    if (mutual_tls_error) {
+        mutual_tls_host.stop ();
+        return 26;
+    }
+    mutual_tls_client.handshake (
+      boost::asio::ssl::stream_base::client, mutual_tls_error);
+    mutual_tls_host.stop ();
+    // TLS 1.3 clients may observe the server's certificate-required alert only
+    // on their next I/O; the server-side contract is that no Session exists.
+    if (!mutual_tls_session.events.empty ()) {
+        return 26;
+    }
+#endif
+
     auto custom_codec =
       std::make_shared<prefix_stream_compression_codec_t> ("custom-stream:");
     zlink::framework::service_collection_t custom_services;
@@ -834,8 +889,21 @@ int main ()
     custom_options.add_stream_node ("custom-stream")
       .bind ("tcp://0.0.0.0:9201")
       .register_session ("custom-session");
+    custom_options.add_stream_node ("configured-mutual-tls")
+      .bind ("tls://127.0.0.1:9204")
+      .set_tls_server ("server.crt", "server.key", true)
+      .register_session ("configured-mutual-tls-session");
     custom_options.apply ();
     auto custom_runtime = zlink::framework::detail::stream_runtime_t::from (custom_zlink);
+    const auto configured_tls = custom_runtime.snapshots ();
+    const auto configured_tls_snapshot = std::find_if (
+      configured_tls.begin (), configured_tls.end (), [] (const auto &candidate) {
+          return candidate.name == "configured-mutual-tls";
+      });
+    if (configured_tls_snapshot == configured_tls.end ()
+        || !configured_tls_snapshot->tls_require_client_certificate) {
+        return 26;
+    }
     auto custom_stream = custom_runtime.open_session ("custom-stream");
     custom_stream.write_packet (zlink::message_t::from (std::string ("custom-outbound")))
       .compress ()

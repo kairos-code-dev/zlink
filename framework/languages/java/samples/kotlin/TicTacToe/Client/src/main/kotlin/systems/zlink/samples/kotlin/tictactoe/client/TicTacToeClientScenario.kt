@@ -56,7 +56,6 @@ class TicTacToeClientScenario {
             ensure(game.ownerPlayEndpoint in game.playEndpoints)
             ensure(game.playNodes.size == game.playEndpoints.size)
             ensure(game.playNodes.map { it.streamEndpoint }.toSet() == game.playEndpoints.toSet())
-            ensure(game.playNodes.all { it.spotNodeRid.isNotBlank() })
 
             val xAuthentication = hostStream.request(AuthenticateReq(options.xActorId)).awaitReply<AuthenticateRes>()
             ensure(xAuthentication.player.actorId == options.xActorId)
@@ -195,15 +194,13 @@ class TicTacToeClientScenario {
             ensure(hostWinNotify.state.winner == options.xActorId)
 
             val milestone = observerSawMilestone.await().payload()
-            val expectedRid = game.playNodes.first { it.streamEndpoint == observerEndpoint }.spotNodeRid
             ensure(milestone.actorId == xAuthentication.player.actorId)
             ensure(milestone.displayName == xAuthentication.player.displayName)
             ensure(milestone.wins == 100)
             ensure(milestone.roomId == game.roomId)
-            ensure(milestone.receivingSpotNodeRid == expectedRid)
             println(
                 "observer-win-milestone=verified actor=${milestone.actorId} " +
-                    "wins=${milestone.wins} receivingSpotNodeRid=${milestone.receivingSpotNodeRid}",
+                    "wins=${milestone.wins}",
             )
 
             hostStream.send(LeaveGameReq(game.roomId)).await()

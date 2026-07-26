@@ -46,8 +46,10 @@ import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDirectory {
     @FunctionalInterface
@@ -229,6 +231,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return actorRegistry.entries().stream()
             .map(ActorEntry::actorType)
             .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    public java.util.List<String> activeActorIds() {
+        synchronized (this) {
+            return actorRegistry.entries().stream()
+                .map(entry -> entry.actor().context().actorId())
+                .sorted()
+                .toList();
+        }
     }
 
     public CompletionStage<Integer> handoffActorsToEntrySpot(
@@ -1160,6 +1171,24 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         handoff.retain(
             actor.context().actorId(), sourceActorRef, targetActorRef, actorTransferForwardWindow,
             this::retireForwardingSource);
+        traceRetainedForwardingSource(actor, sourceActorRef);
+    }
+
+    void retainForwardingSource(
+        ZLinkActor actor,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef,
+        SpotTransportAddress targetAddress) {
+        handoff.retain(
+            actor.context().actorId(), sourceActorRef, targetActorRef,
+            targetAddress, actorTransferForwardWindow,
+            this::retireForwardingSource);
+        traceRetainedForwardingSource(actor, sourceActorRef);
+    }
+
+    private void traceRetainedForwardingSource(
+        ZLinkActor actor,
+        ZLinkBackendActorRef sourceActorRef) {
         // Keep the actor context as a forwarding proxy while the old native actor
         // reference can still receive packets. EntrySpot dispatch uses its rebound
         // target reference to relay those packets to the new owner.
@@ -1618,6 +1647,31 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return bindingToken;
     }
 
+    public byte[] encodeLocalSessionActorAccepted(
+        ZLinkActor actor,
+        ZLinkStreamHeader header,
+        Message payload) {
+        DefaultActorContext context = actorRegistry.context(actor);
+        if (context == null) {
+            return new byte[0];
+        }
+        ZLinkActorContextState.BoundSessionSource source =
+            context.nextBoundSessionSource();
+        if (source == null) {
+            return new byte[0];
+        }
+        return spotNode.encodeLocalSessionActorAccepted(
+            context.actorRef(),
+            source.sourceNodeRid(),
+            source.sourceSessionRid(),
+            source.bindingGeneration(),
+            source.sessionSequence(),
+            header.requestSequence().orElse(0L),
+            header.packetName(),
+            header.metadata(),
+            payload.toByteArray());
+    }
+
     public boolean clearSessionBinding(ZLinkActor actor, long bindingToken) {
         DefaultActorContext context = actorRegistry.context(actor);
         if (context == null) {
@@ -1698,6 +1752,41 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return context.hasBoundSession();
     }
 
+    public Optional<BoundSessionRouteSnapshot> boundSessionRoute(
+        ZLinkActor actor) {
+        DefaultActorContext context = actorRegistry.context(actor);
+        if (context == null) {
+            throw new ZLinkConfigurationException(
+                "actor is not managed by this runtime: "
+                    + actor.context().actorId());
+        }
+        ZLinkActorContextState.BoundSessionSource source =
+            context.boundSessionSourceSnapshot();
+        return source == null ? Optional.empty() : Optional.of(
+            new BoundSessionRouteSnapshot(
+                source.sourceNodeRid(),
+                source.sourceSessionRid(),
+                source.bindingGeneration(),
+                source.sessionSequence()));
+    }
+
+    public record BoundSessionRouteSnapshot(
+        RoutingId sessionOwnerNodeRid,
+        RoutingId sessionRid,
+        long bindingGeneration,
+        long lastAcceptedSessionSequence) {
+        public BoundSessionRouteSnapshot {
+            java.util.Objects.requireNonNull(
+                sessionOwnerNodeRid, "sessionOwnerNodeRid");
+            java.util.Objects.requireNonNull(sessionRid, "sessionRid");
+            if (bindingGeneration <= 0
+                || lastAcceptedSessionSequence < 0) {
+                throw new IllegalArgumentException(
+                    "bound Session route generations are invalid");
+            }
+        }
+    }
+
     public boolean hasBoundSession(
         ZLinkActor actor,
         RoutingId sourceNodeRid,
@@ -1755,11 +1844,34 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor Spot is not routable: " + spotId));
         }
+        ZLinkActorTransferHandoff.ForwardingSource forwarding =
+            handoff.forwardingSource(actorRef.actorId()).orElse(null);
+        if (forwarding != null) {
+            if (forwarding.targetAddress() == null) {
+                return CompletableFuture.failedFuture(
+                    new ZLinkConfigurationException(
+                        "committed forwarding route has no target address"));
+            }
+            return handoff.forward(
+                actorRef.actorId(), actorRef.generation(), payload.size(),
+                () -> dispatchRemoteJoinedActor(
+                    actorRef, header, payload, forwarding.targetAddress()));
+        }
         return resolveHandle(spotId)
             .thenCompose(remoteAddressResolver::resolve)
-            .thenCompose(address -> {
-                var target = address.orElseThrow(() ->
-                    new ZLinkConfigurationException("SPOT transport address was not found: " + spotId));
+            .thenCompose(address -> dispatchRemoteJoinedActor(
+                actorRef,
+                header,
+                payload,
+                address.orElseThrow(() -> new ZLinkConfigurationException(
+                    "SPOT transport address was not found: " + spotId))));
+    }
+
+    private CompletionStage<Optional<Message>> dispatchRemoteJoinedActor(
+        ZLinkBackendActorRef actorRef,
+        systems.zlink.framework.runtime.streams.ZLinkStreamHeader header,
+        Message payload,
+        SpotTransportAddress target) {
                 List<Message> parts =
                     ZLinkActorSpotRoutePackets.createActorPacketParts(
                         actorRef, header, payload, null);
@@ -1797,7 +1909,6 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                     wireParts.forEach(Message::close);
                     parts.forEach(Message::close);
                 }
-            });
     }
 
     public boolean hasActorsInSpot(String spotId) {
@@ -1866,6 +1977,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         String actorId,
         byte[] acceptedJournalRecord,
         Supplier<CompletionStage<Void>> operation) {
+        return submitActorDispatch(
+            actorId, acceptedJournalRecord, operation, () -> { });
+    }
+
+    public CompletionStage<Void> submitActorDispatch(
+        String actorId,
+        byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
         if (dispatches.isCurrent(actorId)) {
             try {
                 return operation.get();
@@ -1881,7 +2001,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             }
             turn = dispatches.prepare(actorId);
         }
-        return dispatches.enqueue(turn, acceptedJournalRecord, operation);
+        return dispatches.enqueue(
+            turn, acceptedJournalRecord, operation, relocationRelease);
     }
 
     public Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySealActorRelocation(
@@ -1899,6 +2020,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         String actorId,
         ZLinkAsyncSerialQueue.RelocationSeal seal) {
         return dispatches.commit(actorId, seal);
+    }
+
+    public Optional<List<ZLinkAsyncSerialQueue.QueuedRecord>>
+        freezeActorRelocationIngress(
+            String actorId,
+            ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        return dispatches.freezeIngress(actorId, seal);
     }
 
     public <T> CompletionStage<T> runActorDispatchTurn(
@@ -2305,6 +2433,30 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return CompletableFuture.completedFuture(null);
     }
 
+    /** Removes a committed relocation source without releasing its published
+     * authority, which already belongs to the target owner. */
+    public CompletionStage<Void> completeRelocationSource(String actorId) {
+        java.util.Objects.requireNonNull(actorId, "actorId");
+        synchronized (this) {
+            ZLinkActor actor = actorRegistry.actor(actorId);
+            if (actor == null) {
+                return CompletableFuture.completedFuture(null);
+            }
+            DefaultActorContext context = actorRegistry.context(actor);
+            if (context == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "relocation source Actor context is unavailable: "
+                            + actorId));
+            }
+            removeActorSessionRouteForContext(context);
+            context.clearAfterDestroy();
+            actorRegistry.remove(actorId, actor);
+            dispatches.remove(actorId);
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
     private CompletionStage<Void> closeActorEntry(ActorEntry entry) {
         ZLinkActor actor = entry.actor();
         DefaultActorContext context = entry.context();
@@ -2685,6 +2837,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
         RoutingId boundSessionSourceSessionRid(long bindingToken) {
             return state.boundSessionSourceSessionRid(bindingToken);
+        }
+
+        ZLinkActorContextState.BoundSessionSource nextBoundSessionSource() {
+            return state.nextBoundSessionSource();
+        }
+
+        ZLinkActorContextState.BoundSessionSource
+            boundSessionSourceSnapshot() {
+            return state.boundSessionSourceSnapshot();
         }
 
         boolean clearBoundSession(long bindingToken) {

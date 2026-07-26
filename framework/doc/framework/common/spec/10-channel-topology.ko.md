@@ -506,6 +506,14 @@ Peer endpoint를 얻는 방법은 automatic과 manual 두 가지다.
 Expected RID를 지정하면 실제 remote RID가 다를 때 연결에 실패한다. Expected RID를
 생략하면 handshake 결과로 remote identity를 확정한다.
 
+Manual mode는 일반 messaging과 `Shutdown`에 사용할 수 있지만 host `Retire`의 무중단
+handoff에는 사용할 수 없다. Framework가 replacement endpoint를 모든 참여 host와 client에
+배포하고 실제 연결 준비를 확인할 수 없기 때문이다. Host가 사용하는 service topology에
+manual connection이 하나라도 있으면 `Retire`는 state와 admission을 바꾸기 전에
+`Blocked/ManualTopologyUnsupported`로 끝난다. Automatic rolling replacement의 연결 순서는
+[Host Retire, Shutdown과 handoff](54-graceful-drain-handoff.ko.md#31-rolling-replacement-topology-순서)가
+정의한다.
+
 Manual peer 연결과 Spot·Actor 위치 조회는 다른 기능이다. 분산 [Spot](01-glossary.ko.md#spot)·Actor 주소나
 Actor relocation을 사용한다면 peer endpoint를 manual로 등록했더라도 Redis Location
 Store가 필요하다.

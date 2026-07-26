@@ -57,7 +57,7 @@ class SupportApplication {
                 .enableClient()
             val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
             node.listen(support.entryRouterEndpoint)
-                .setRoutingId(support.entryRoutingId)
+                .useAllocatedRoutingId(16, "support-owner")
             node.addEntrySpot(SupportEntrySpot::class.java)
             node.addActorFactory(SampleNames.SupportActorType, SupportUserActorFactory::class.java)
             node.addActorTransferAdapter(

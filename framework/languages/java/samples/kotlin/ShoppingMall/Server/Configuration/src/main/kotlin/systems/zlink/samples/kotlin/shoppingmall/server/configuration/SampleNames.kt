@@ -9,7 +9,5 @@ object SampleNames {
     const val WorkflowInstanceA = "workflow-a"
     const val WorkflowInstanceB = "workflow-b"
 
-    fun workflowChannel(instanceId: String): String = "$OrderWorkflowChannel.$instanceId"
-
     fun commerceApiChannel(instanceId: String): String = "$CommerceApiChannel.$instanceId"
 }

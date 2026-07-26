@@ -38,7 +38,7 @@ public final class TrackingServerApplication {
             options.addHandlersFromPackageOf(TrackingServerApplication.class);
             ZLinkMeshNodeBuilder trackingSpot = options.addRouteMesh(SampleNames.CustomerSpotDiscovery);
             trackingSpot.listen(topology.trackingSpotEndpoint())
-                .setRoutingId(RoutingId.from(SampleNames.TrackingSpotNode));
+                .useAllocatedRoutingId(16, "delivery-tracking");
             options.addClientServerChannel(SampleNames.TrackingChannel)
                 .enableServer(topology.trackingChannelEndpoint())
                 .setRoutingId(RoutingId.from("delivery-tracking-server"))

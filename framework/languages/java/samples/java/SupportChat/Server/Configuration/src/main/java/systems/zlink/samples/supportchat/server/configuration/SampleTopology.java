@@ -1,7 +1,6 @@
 package systems.zlink.samples.supportchat.server.configuration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import systems.zlink.contracts.core.RoutingId;
 
 @ConfigurationProperties("sample")
 public record SampleTopology(
@@ -14,8 +13,6 @@ public record SampleTopology(
     String sessionStreamEndpoint,
     String sessionSpotRouterEndpoint,
     String supportSpotRouterEndpoint,
-    String sessionSpotNodeRid,
-    String supportSpotNodeRid,
     String supportHttpEndpoint) {
 
     public Location location() {
@@ -35,19 +32,13 @@ public record SampleTopology(
     public Session session() {
         return new Session(
             required(sessionStreamEndpoint, "sessionStreamEndpoint"),
-            required(sessionSpotRouterEndpoint, "sessionSpotRouterEndpoint"),
-            RoutingId.from(required(sessionSpotNodeRid, "sessionSpotNodeRid")),
-            required(supportSpotRouterEndpoint, "supportSpotRouterEndpoint"),
-            RoutingId.from(required(supportSpotNodeRid, "supportSpotNodeRid")));
+            required(sessionSpotRouterEndpoint, "sessionSpotRouterEndpoint"));
     }
 
     public Support support() {
         return new Support(
             required(supportChannelEndpoint, "supportChannelEndpoint"),
             required(supportSpotRouterEndpoint, "supportSpotRouterEndpoint"),
-            RoutingId.from(required(supportSpotNodeRid, "supportSpotNodeRid")),
-            required(sessionSpotRouterEndpoint, "sessionSpotRouterEndpoint"),
-            RoutingId.from(required(sessionSpotNodeRid, "sessionSpotNodeRid")),
             required(supportHttpEndpoint, "supportHttpEndpoint"));
     }
 
@@ -73,18 +64,12 @@ public record SampleTopology(
 
     public record Session(
         String streamEndpoint,
-        String routerEndpoint,
-        RoutingId routingId,
-        String peerRouterEndpoint,
-        RoutingId peerRoutingId) {
+        String routerEndpoint) {
     }
 
     public record Support(
         String channelEndpoint,
         String routerEndpoint,
-        RoutingId routingId,
-        String peerRouterEndpoint,
-        RoutingId peerRoutingId,
         String httpEndpoint) {
     }
 }

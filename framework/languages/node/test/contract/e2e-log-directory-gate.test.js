@@ -14,7 +14,23 @@ test('every Node e2e runner writes execution logs under log', () => {
     .filter((entry) => entry.isDirectory())
     .filter((entry) => fs.existsSync(path.join(e2eRoot, entry.name, 'run_e2e.sh')));
 
-  assert.equal(configs.length, 11);
+  assert.deepEqual(
+    configs.map((config) => config.name).sort(),
+    [
+      'AutomaticTurnDispatch',
+      'DiscoveryRegistryHa',
+      'ObservabilityOps',
+      'PubSub',
+      'RegistrationCodec',
+      'RegistryMessaging',
+      'ResilienceLifecycle',
+      'RuntimeMonitoring',
+      'SpotActorTransfer',
+      'SpotService',
+      'SubmitAdmission',
+      'ToActorMessaging'
+    ].sort()
+  );
   for (const config of configs) {
     const configRoot = path.join(e2eRoot, config.name);
     const runner = fs.readFileSync(path.join(configRoot, 'run_e2e.sh'), 'utf8');

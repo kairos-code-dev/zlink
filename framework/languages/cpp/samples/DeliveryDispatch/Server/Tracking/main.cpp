@@ -30,7 +30,7 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_route_node))
           .use_handler_group ("tracking");
         options.add_route_mesh (sample_names_t::customer_actor_discovery)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_spot_node))
+          .use_allocated_routing_id (16, "delivery-tracking")
           .listen (topology.tracking_spot_router_endpoint)
           .channel_name (sample_names_t::customer_actor_discovery);
         options.handlers ().group ("tracking").add<delivery_status_changed_handler_t> ();

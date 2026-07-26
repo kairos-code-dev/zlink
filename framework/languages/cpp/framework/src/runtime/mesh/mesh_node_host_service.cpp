@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -1305,11 +1306,13 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               }
               detail::spot_node_runtime_t spots (
                 registration->spot_state);
-              detail::local_spot_create_result_t created;
+              std::optional<detail::local_spot_create_result_t> created;
               try {
-                  created = spots.get_or_create_spot (
+                  created.emplace (spots.get_or_create_spot (
                     stable_type, std::move (spot_id),
-                    zlink::message_t::from (request_bytes));
+                    zlink::message_t::from (request_bytes),
+                    object.object_generation,
+                    object.mesh_name));
               }
               catch (...) {
                   std::lock_guard<std::recursive_mutex> lock (
@@ -1327,19 +1330,19 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               }
               std::optional<protocol::application_payload_t>
                 application_reply;
-              if (created.reply) {
+              if (created->reply) {
                   application_reply =
                     protocol::application_payload_t{
                       {},
                       "application/octet-stream",
                       detail::message_to_raw (
-                        *created.reply, *_serializers)
+                        *created->reply, *_serializers)
                         .to_bytes ()};
               }
               return host::user_spot_materialize_result_t{
-                created.state
+                created->state
                   == spot_create_state_t::created
-                  || created.state
+                  || created->state
                        == spot_create_state_t::existing,
                 std::move (application_reply)};
           });
@@ -1718,6 +1721,73 @@ bool mesh_node_host_service_t::wait_for_accepted_callbacks_until (
                    && node->active_application_callbacks () == 0;
         });
     });
+}
+
+bool mesh_node_host_service_t::publish_descriptor_state (
+  framework_runtime_state_t state) noexcept
+{
+    std::lock_guard lock (_descriptor_publish_mutex);
+    if (!_location_store || !_location_owner)
+        return _published_mesh_descriptors.empty ();
+    try {
+        for (std::size_t index = 0;
+             index < _published_mesh_descriptors.size ();
+             ++index) {
+            auto current = _published_mesh_descriptors[index];
+            location_page_request_t page;
+            bool found = false;
+            do {
+                auto listed = _location_store
+                                ->list_mesh_nodes (current.mesh_name, page)
+                                .result ()
+                                .value ();
+                const auto stored = std::find_if (
+                  listed.items.begin (), listed.items.end (),
+                  [&] (const mesh_node_descriptor_t &candidate) {
+                      return candidate.rid.to_hex ()
+                               == current.rid.to_hex ()
+                             && candidate.lifecycle_generation
+                                  == current.lifecycle_generation
+                             && candidate.owner_id
+                                  == _location_owner->owner_id
+                             && candidate.lease_generation
+                                  == _location_owner->lease_generation;
+                  });
+                if (stored != listed.items.end ()) {
+                    current = *stored;
+                    found = true;
+                    break;
+                }
+                page.continuation_token =
+                  std::move (listed.continuation_token);
+            } while (page.continuation_token);
+            if (!found)
+                return false;
+            if (current.state == state) {
+                _published_mesh_descriptors[index] = std::move (current);
+                continue;
+            }
+            if (current.descriptor_revision
+                == std::numeric_limits<std::uint64_t>::max ()) {
+                return false;
+            }
+            current.state = state;
+            ++current.descriptor_revision;
+            const auto written = _location_store
+                                   ->update_mesh_node (
+                                     current,
+                                     location_write_intent_t::renew)
+                                   .result ()
+                                   .value ();
+            if (written.status != location_write_status_t::stored)
+                return false;
+            _published_mesh_descriptors[index] = std::move (current);
+        }
+        return true;
+    }
+    catch (...) {
+        return false;
+    }
 }
 
 void mesh_node_host_service_t::stop () noexcept

@@ -41,6 +41,13 @@ import {
 import type { ZLinkLocationLifecycle } from '../locations';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { DefaultZLinkSpotManager } from '../spots';
+import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
+import type {
+  ZLinkActorHandoffPacket,
+  ZLinkActorHandoffResult,
+  ZLinkActorHandoffTerminalAcceptance,
+  ZLinkActorHandoffTerminalAck
+} from '../actors/actor-handoff';
 import type { ZLinkNativeActorJoinSnapshot } from '../spots/spot-runtime-ports';
 
 export interface ZLinkActorTransferRuntimeActorManager {
@@ -343,6 +350,115 @@ export class ZLinkActorTransferRuntime {
     }
   }
 
+  async prepareMaintenanceSession(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    signal?: AbortSignal,
+    manageMembership = true
+  ): Promise<{
+    readonly target?: ZLinkRemoteBoundSessionTarget;
+    readonly handoffBacklog: readonly import('../actors').ZLinkActorHandoffPacket[];
+    setReplayResults(results: readonly import('../actors').ZLinkActorHandoffResult[]): void;
+    commit(target: ZLinkSpotRouteTarget, targetActorRef: ActorRef): Promise<void>;
+    rollback(): Promise<void>;
+  }> {
+    if (manageMembership) {
+      await this.beginSourceActorMove(actor, state);
+    } else {
+      state.beginMove();
+      this.options.actorHandoff.begin(
+        actor.context.actorId,
+        state.nativeActorRef?.generation ?? 0n
+      );
+    }
+    let acceptedRoot: ZLinkBoundSessionAcceptedJournalRoot | undefined;
+    let sealId: string | undefined;
+    try {
+      if (state.remoteBoundSessionTarget !== undefined) {
+        sealId = randomUUID();
+        state.setRemoteBoundSessionTarget(
+          await this.sealBoundSessionRoute(actor, state, sealId, signal)
+        );
+      }
+      const handoffBacklog = this.options.actorHandoff.snapshot(actor.context.actorId);
+      if (sealId !== undefined) {
+        acceptedRoot = await this.prepareBoundSessionAcceptedJournal(
+          actor,
+          state,
+          sealId,
+          handoffBacklog,
+          signal
+        );
+        state.setRemoteBoundSessionTarget({
+          ...state.remoteBoundSessionTarget!,
+          relocationSealId: sealId,
+          acceptedJournalReference: acceptedRoot.reference.value,
+          acceptedJournalChecksumCrc32c: acceptedRoot.checksumCrc32c
+        });
+      }
+      let terminal: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
+      let replayResults: readonly import('../actors').ZLinkActorHandoffResult[] = [];
+      return {
+        target: state.remoteBoundSessionTarget,
+        handoffBacklog,
+        setReplayResults: results => {
+          if (terminal === 'prepared') replayResults = [...results];
+        },
+        commit: async (target, targetActorRef) => {
+          if (terminal === 'rolledBack') return;
+          if (terminal === 'prepared') {
+            this.options.actorHandoff.complete(
+              actor.context.actorId,
+              target,
+              targetActorRef,
+              replayResults
+            );
+            if (manageMembership && state.spotId !== undefined) {
+              await this.options.spotManager()
+                ?.commitActorLeaveAfterTransfer(state.spotId, actor.context.actorId);
+            }
+            state.endMove();
+            terminal = 'committed';
+          }
+          if (acceptedRoot !== undefined) {
+            await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
+            acceptedRoot = undefined;
+          }
+        },
+        rollback: async () => {
+          if (terminal !== 'prepared') return;
+          terminal = 'rolledBack';
+          if (sealId !== undefined) {
+            await this.abortBoundSessionRouteSeal(actor, state, sealId);
+          }
+          if (acceptedRoot !== undefined) {
+            await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
+          }
+          if (manageMembership) {
+            await this.cancelSourceActorMove(actor, state);
+          } else {
+            this.options.actorHandoff.cancel(actor.context.actorId);
+            state.endMove();
+          }
+        }
+      };
+    } catch (error) {
+      if (sealId !== undefined) {
+        await this.abortBoundSessionRouteSeal(actor, state, sealId).catch(() => undefined);
+      }
+      if (acceptedRoot !== undefined) {
+        await this.boundSessionAcceptedJournal()?.delete(acceptedRoot).catch(() => undefined);
+      }
+      if (manageMembership) {
+        await this.cancelSourceActorMove(actor, state).catch(() => undefined);
+      } else {
+        this.options.actorHandoff.cancel(actor.context.actorId);
+        state.endMove();
+      }
+      throw error;
+    }
+  }
+
   async notifyCoreSourceLeave(actor: ZLinkActor, callback: () => Promise<void>): Promise<void> {
     const pending = this.coreSourceLeaves.get(actor.context.actorId);
     try {
@@ -354,6 +470,39 @@ export class ZLinkActorTransferRuntime {
     } finally {
       this.coreSourceLeaves.delete(actor.context.actorId);
     }
+  }
+
+  relayMaintenanceTerminal(
+    actorId: string,
+    packet: ZLinkActorHandoffPacket,
+    result: ZLinkActorHandoffResult,
+    sourceNodeRid: string,
+    targetAuthorityOwnerGeneration?: bigint
+  ): ZLinkActorHandoffTerminalAck {
+    return this.options.actorHandoff.acceptRelocatedTerminal(
+      actorId,
+      packet,
+      result,
+      sourceNodeRid,
+      targetAuthorityOwnerGeneration
+    );
+  }
+
+  relayCanonicalMaintenanceTerminal(
+    operationId: string,
+    replyRouteId: string,
+    result: ZLinkActorHandoffResult,
+    sourceNodeRid: string,
+    targetAuthorityOwnerGeneration?: bigint
+  ): ZLinkActorHandoffTerminalAcceptance {
+    return this.options.actorHandoff.acceptRelocatedTerminalRelay(
+      operationId,
+      replyRouteId,
+      undefined,
+      result,
+      sourceNodeRid,
+      targetAuthorityOwnerGeneration
+    );
   }
 
   private async sealBoundSessionRoute(

@@ -1,6 +1,7 @@
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using ZoneWorld.Server.Ops.Ports;
+using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Server.Ops.Infrastructure.ZLink;
@@ -8,6 +9,7 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink;
 internal sealed class WorldOperationsAdapter(
     IZLinkFanoutClient fanout,
     IZLinkRouteClient channels,
+    NodeRegistry nodes,
     ILogger<WorldOperationsAdapter> logger) : IWorldOperationsPort
 {
     public async ValueTask PublishAnnouncementAsync(
@@ -52,8 +54,8 @@ internal sealed class WorldOperationsAdapter(
             cancellationToken);
 
     /// <summary>
-    /// Owns the transport policy shared by owner-targeted operations: channel naming, timeout
-    /// and the conversion from framework failures to the port's unavailable result.
+    /// Owns the transport policy shared by node operations. The NodeRid is read from the
+    /// current runtime observation and is not retained in an application request DTO.
     /// </summary>
     private async ValueTask<TResponse?> TryRequestNodeAsync<TResponse>(
         string nodeId,
@@ -64,9 +66,11 @@ internal sealed class WorldOperationsAdapter(
     {
         try
         {
+            var targetNodeRid = nodes.RoutingIdOf(nodeId);
+            if (targetNodeRid is null)
+                return null;
             return await channels
-                .RequestToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.OpsChannel(nodeId),
-                    request)
+                .RequestToNode(ZoneWorldNames.MeshName, targetNodeRid.Value, request)
                 .Timeout(TimeSpan.FromSeconds(3))
                 .Async<TResponse>(cancellationToken);
         }

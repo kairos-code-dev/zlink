@@ -14,7 +14,6 @@ type DeliveryDispatchServerConfig = {
   trackingSpotEndpoint: string;
   sessionStreamEndpoint: string;
   sessionSpotRouterEndpoint: string;
-  sessionSpotNodeRid: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
   logDir: string;

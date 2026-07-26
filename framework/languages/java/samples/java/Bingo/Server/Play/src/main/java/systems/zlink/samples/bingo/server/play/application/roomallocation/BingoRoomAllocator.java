@@ -12,7 +12,7 @@ public final class BingoRoomAllocator {
         this.drawPeriodMillis = drawPeriodMillis;
     }
 
-    public BingoRoomAllocation allocate(String actorId, String mode, String preferredOwnerNodeRid) {
+    public BingoRoomAllocation allocate(String actorId, String mode) {
         if (actorId == null || actorId.isBlank()) {
             throw new IllegalStateException("actorId is required");
         }
@@ -26,10 +26,9 @@ public final class BingoRoomAllocator {
         BingoMatchReservation reservation = matchQueue.reserve(
             mode,
             actorId,
-            preferredOwnerNodeRid,
             settings.mode() + "-room-" + roomSeq,
             settings.requiredPlayers());
-        return new BingoRoomAllocation(reservation.roomId(), reservation.ownerPlayNodeRid(), settings);
+        return new BingoRoomAllocation(reservation.roomId(), settings);
     }
 
     private synchronized int nextRoomSeq() {

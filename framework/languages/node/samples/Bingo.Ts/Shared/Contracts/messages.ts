@@ -1,5 +1,4 @@
 import {
-  ActorRefWire,
   AllocateBingoRoomReq,
   AllocateBingoRoomRes,
   AuthenticatePlayerReq,
@@ -89,7 +88,6 @@ function deterministicCard(actorId: string): number[] {
 }
 
 export {
-  ActorRefWire,
   AllocateBingoRoomReq,
   AllocateBingoRoomRes,
   AuthenticatePlayerReq,

@@ -33,7 +33,9 @@
 #include <csignal>
 #include <chrono>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -340,6 +342,8 @@ class app_state_t
     zlink_builder_t zlink;
     serializer_registry_t serializers;
     std::vector<std::unique_ptr<hosted_service_t>> hosted_services;
+    std::vector<std::shared_ptr<mesh_node_runtime_t>> route_mesh_nodes;
+    std::function<bool ()> has_manual_service_topology;
     std::atomic_bool stop_requested = false;
     int exit_code = 0;
     // Shared, runtime-mutable message-flow mode (set_message_flow_mode). Created
@@ -745,6 +749,29 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     channel_runtime_manager.initialize_route_channels (_state->zlink);
     auto mesh_node_registrations =
       detail::mesh_node_runtime_t::registrations (_state->zlink);
+    _state->has_manual_service_topology =
+      [options, mesh_node_registrations,
+       channel_runtime_manager] () mutable {
+          if (!options.client_endpoint_connections ().empty ()
+              || !options.subscriber_endpoint_connections ().empty ()) {
+              return true;
+          }
+          for (const auto &registration : mesh_node_registrations) {
+              std::lock_guard lock (registration->mutex);
+              if (!registration->peer_connections.empty ())
+                  return true;
+          }
+          for (const auto &route_id :
+               channel_runtime_manager.route_channel_ids ()) {
+              if (!channel_runtime_manager
+                     .get_route_channel (route_id)
+                     .manual_connections ()
+                     .empty ()) {
+                  return true;
+              }
+          }
+          return false;
+      };
     auto monitoring_state = detail::monitoring_runtime_t::from (_state->monitoring).state ();
     const auto application_mesh_registration =
       std::find_if (mesh_node_registrations.begin (),
@@ -847,6 +874,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           options.dispatch_options ());
         mesh_node_service = mesh_service.get ();
         mesh_nodes = mesh_service->nodes ();
+        _state->route_mesh_nodes = mesh_nodes;
         auto provider = _state->services.build_provider ();
         auto &location_runtime =
           provider.get_required<runtime::location_runtime_t> ();
@@ -1709,6 +1737,160 @@ to_drain_task (task_t<termination_result_t> termination)
     return output;
 }
 
+bool capacity_available_for_retire (const capacity_usage_t &usage)
+{
+    return usage.limit == 0
+           || usage.active + usage.reserved
+                < static_cast<std::uint64_t> (usage.limit);
+}
+
+bool supports_retiring_source (const mesh_node_descriptor_t &source,
+                               const mesh_node_descriptor_t &candidate)
+{
+    if (candidate.state != framework_runtime_state_t::serving
+        || candidate.object_role != object_role_t::server
+        || candidate.placement_weight <= 0
+        || candidate.application_version < source.application_version
+        || (source.maintenance_wave
+            && candidate.maintenance_wave == source.maintenance_wave)) {
+        return false;
+    }
+    for (const auto &required : source.object_capabilities) {
+        const auto supported = std::find_if (
+          candidate.object_capabilities.begin (),
+          candidate.object_capabilities.end (),
+          [&] (const object_capability_t &value) {
+              return value.object_kind == required.object_kind
+                     && value.stable_type == required.stable_type
+                     && (required.policy != maintenance_policy_kind_t::snapshot
+                         || (value.policy == maintenance_policy_kind_t::snapshot
+                             && value.has_snapshot_adapter));
+          });
+        if (supported == candidate.object_capabilities.end ())
+            return false;
+        if (required.object_kind == placement_object_kind_t::actor) {
+            if (!capacity_available_for_retire (candidate.capacity.actors))
+                return false;
+        } else {
+            if (!capacity_available_for_retire (candidate.capacity.spots))
+                return false;
+            const auto typed = std::find_if (
+              candidate.capacity.spot_types.begin (),
+              candidate.capacity.spot_types.end (),
+              [&] (const spot_type_capacity_t &value) {
+                  return value.object_kind == required.object_kind
+                         && value.stable_type == required.stable_type;
+              });
+            if (typed != candidate.capacity.spot_types.end ()
+                && !capacity_available_for_retire (typed->usage)) {
+                return false;
+            }
+        }
+    }
+    return candidate.activation_concurrency.limit <= 0
+           || candidate.activation_concurrency.active
+                < static_cast<std::uint32_t> (
+                    candidate.activation_concurrency.limit);
+}
+
+std::optional<termination_reason_t>
+retire_topology_blocker (detail::app_state_t &state)
+{
+    if (state.has_manual_service_topology
+        && state.has_manual_service_topology ())
+        return termination_reason_t::manual_topology_unsupported;
+    if (state.route_mesh_nodes.empty ())
+        return std::nullopt;
+
+    try {
+        auto provider = state.services.build_provider ();
+        auto &store = provider.get_required<location_store_t> ();
+        auto *mesh_store = dynamic_cast<mesh_node_location_store_t *> (&store);
+        if (mesh_store == nullptr)
+            return termination_reason_t::store_unavailable;
+        auto &live = provider.get_required<runtime::live_location_reader_t> ();
+
+        std::set<std::string> local_rids;
+        for (const auto &node : state.route_mesh_nodes) {
+            if (node) {
+                if (const auto rid = node->routing_id ())
+                    local_rids.insert (rid->to_hex ());
+            }
+        }
+
+        for (const auto &node : state.route_mesh_nodes) {
+            if (!node)
+                continue;
+            const auto local_rid = node->routing_id ();
+            const auto status = node->status ();
+            if (!local_rid || status.lifecycle_generation () == 0)
+                return termination_reason_t::runtime_not_ready;
+
+            std::vector<mesh_node_descriptor_t> descriptors;
+            location_page_request_t page;
+            do {
+                auto listed = mesh_store
+                                ->list_mesh_nodes (node->mesh_name (), page)
+                                .result ()
+                                .value ();
+                descriptors.insert (
+                  descriptors.end (),
+                  std::make_move_iterator (listed.items.begin ()),
+                  std::make_move_iterator (listed.items.end ()));
+                page.continuation_token =
+                  std::move (listed.continuation_token);
+            } while (page.continuation_token);
+
+            const auto source = std::find_if (
+              descriptors.begin (), descriptors.end (),
+              [&] (const mesh_node_descriptor_t &descriptor) {
+                  return descriptor.rid.to_hex () == local_rid->to_hex ()
+                         && descriptor.lifecycle_generation
+                              == status.lifecycle_generation ();
+              });
+            if (source == descriptors.end ()
+                || !live.owner_admission_lifetime (source->owner_id)) {
+                return termination_reason_t::store_unavailable;
+            }
+
+            const auto replacement = std::any_of (
+              descriptors.begin (), descriptors.end (),
+              [&] (const mesh_node_descriptor_t &candidate) {
+                  return !local_rids.contains (candidate.rid.to_hex ())
+                         && candidate.lifecycle_generation != 0
+                         && live.owner_admission_lifetime (
+                              candidate.owner_id)
+                         && supports_retiring_source (*source, candidate)
+                         && node->has_admitted_peer (
+                              candidate.rid,
+                              candidate.lifecycle_generation);
+              });
+            if (!replacement)
+                return termination_reason_t::target_unavailable;
+        }
+        return std::nullopt;
+    }
+    catch (...) {
+        return termination_reason_t::store_unavailable;
+    }
+}
+
+bool publish_mesh_descriptor_state (
+  detail::app_state_t &state,
+  framework_runtime_state_t desired) noexcept
+{
+    bool published = true;
+    for (const auto &service : state.hosted_services) {
+        if (auto *mesh =
+              dynamic_cast<runtime::mesh_node_host_service_t *> (
+                service.get ());
+            mesh && !mesh->publish_descriptor_state (desired)) {
+            published = false;
+        }
+    }
+    return published;
+}
+
 } // namespace
 
 bool app_t::is_ready () const noexcept
@@ -1765,6 +1947,11 @@ task_t<termination_result_t> app_t::terminate (
     if (intent == termination_intent_t::retire) {
         if (runtime_state () != framework_runtime_state_t::serving) {
             blocker = termination_reason_t::runtime_not_ready;
+        } else if (_state->has_manual_service_topology
+                   && _state->has_manual_service_topology ()) {
+            blocker = termination_reason_t::manual_topology_unsupported;
+        } else if (const auto topology = retire_topology_blocker (*_state)) {
+            blocker = topology;
         } else if (
           !_state->services.contains (
             std::type_index (typeid (relocation_store_t)))
@@ -1773,8 +1960,6 @@ task_t<termination_result_t> app_t::terminate (
           || !_state->services.contains (
             std::type_index (typeid (object_creation_store_t)))) {
             blocker = termination_reason_t::store_unavailable;
-        } else {
-            blocker = termination_reason_t::target_unavailable;
         }
     }
     auto &operation = _state->termination_operation;
@@ -1795,6 +1980,17 @@ task_t<termination_result_t> app_t::terminate (
                     {termination_intent_t::retire,
                      termination_outcome_t::blocked,
                      *blocker}));
+            }
+            if (intent == termination_intent_t::retire
+                && !publish_mesh_descriptor_state (
+                  *_state, framework_runtime_state_t::retiring)) {
+                (void) publish_mesh_descriptor_state (
+                  *_state, framework_runtime_state_t::serving);
+                return task_t<termination_result_t> (
+                  result_t<termination_result_t>::success (
+                    {termination_intent_t::retire,
+                     termination_outcome_t::blocked,
+                     termination_reason_t::store_unavailable}));
             }
             operation.started = true;
             operation.effective_intent = intent;
@@ -1863,28 +2059,31 @@ void app_t::run_shared_termination (
         }
     }
 
-    bool marker_published = false;
-    try {
-        auto provider = state.services.build_provider ();
-        if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
-            location_runtime->get ().set_draining (true);
-            marker_published = location_runtime->get ().republish_peer_rows_draining ();
-        } else {
-            marker_published = true; // no location runtime: nothing to publish
+    auto publish_draining_markers = [&] (bool wait_for_propagation) {
+        bool marker_published = false;
+        try {
+            auto provider = state.services.build_provider ();
+            if (auto location_runtime =
+                  provider.get<runtime::location_runtime_t> ()) {
+                location_runtime->get ().set_draining (true);
+                marker_published =
+                  location_runtime->get ().republish_peer_rows_draining ();
+            } else {
+                marker_published = true;
+            }
         }
-    }
-    catch (...) {
-        marker_published = false;
-    }
-
-    if (!marker_published) {
-        while (std::chrono::steady_clock::now () < deadline_at && !marker_published) {
+        catch (...) {
+            marker_published = false;
+        }
+        while (std::chrono::steady_clock::now () < deadline_at
+               && !marker_published) {
             std::this_thread::sleep_until (
               std::min (deadline_at, std::chrono::steady_clock::now ()
                                        + std::chrono::milliseconds (100)));
             try {
                 auto provider = state.services.build_provider ();
-                if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
+                if (auto location_runtime =
+                      provider.get<runtime::location_runtime_t> ()) {
                     marker_published =
                       location_runtime->get ().republish_peer_rows_draining ();
                 }
@@ -1892,46 +2091,48 @@ void app_t::run_shared_termination (
             catch (...) {
             }
         }
-        if (!marker_published)
+        if (!marker_published) {
             force (drain_force_reason_t::teardown_failed);
-    }
+            return;
+        }
 
-    /* Keep the typed marker and owner lease observable until every polling
-     * consumer has had one bounded opportunity to exclude this node from new
-     * assignments. Existing auto-connect sockets remain established. */
-    if (effective_intent == termination_intent_t::retire
-        && std::holds_alternative<drained_t> (result)) {
+        if (!wait_for_propagation)
+            return;
         const bool has_auto_connect =
-          std::any_of (state.hosted_services.begin (), state.hosted_services.end (),
+          std::any_of (state.hosted_services.begin (),
+                       state.hosted_services.end (),
                        [] (const auto &service) {
-                           return dynamic_cast<runtime::location_auto_connect_host_service_t *> (
+                           return dynamic_cast<
+                                    runtime::location_auto_connect_host_service_t *> (
                                     service.get ())
                                   != nullptr;
                        });
-        if (has_auto_connect) {
-            try {
-                auto provider = state.services.build_provider ();
-                auto &location_runtime =
-                  provider.get_required<runtime::location_runtime_t> ();
-                const auto propagation_bound =
-                  location_runtime.options ().polling_interval + std::chrono::seconds (5)
-                  + std::chrono::milliseconds (100);
-                std::cerr << "zlink drain propagation bound polling_ms="
-                          << location_runtime.options ().polling_interval.count ()
-                          << " store_read_timeout_ms=5000 scheduler_jitter_ms=100 total_ms="
-                          << propagation_bound.count () << std::endl;
-                if (std::chrono::steady_clock::now () + propagation_bound > deadline_at) {
-                    std::this_thread::sleep_until (deadline_at);
-                    force (drain_force_reason_t::deadline_exceeded);
-                } else {
-                    std::this_thread::sleep_for (propagation_bound);
-                }
-            }
-            catch (...) {
-                force (drain_force_reason_t::teardown_failed);
+        if (!has_auto_connect)
+            return;
+        try {
+            auto provider = state.services.build_provider ();
+            auto &location_runtime =
+              provider.get_required<runtime::location_runtime_t> ();
+            const auto propagation_bound =
+              location_runtime.options ().polling_interval
+              + std::chrono::seconds (5)
+              + std::chrono::milliseconds (100);
+            std::cerr << "zlink drain propagation bound polling_ms="
+                      << location_runtime.options ().polling_interval.count ()
+                      << " store_read_timeout_ms=5000 scheduler_jitter_ms=100 total_ms="
+                      << propagation_bound.count () << std::endl;
+            if (std::chrono::steady_clock::now () + propagation_bound
+                > deadline_at) {
+                std::this_thread::sleep_until (deadline_at);
+                force (drain_force_reason_t::deadline_exceeded);
+            } else {
+                std::this_thread::sleep_for (propagation_bound);
             }
         }
-    }
+        catch (...) {
+            force (drain_force_reason_t::teardown_failed);
+        }
+    };
 
     /* Admission is sealed before this barrier. Each callback accepted before
      * the seal owns a pending/active count until its terminal reply or send
@@ -2047,6 +2248,28 @@ void app_t::run_shared_termination (
             force (std::chrono::steady_clock::now () >= deadline_at
                      ? drain_force_reason_t::deadline_exceeded
                      : drain_force_reason_t::relocation_failed);
+    }
+
+    if (effective_intent == termination_intent_t::retire
+        && std::holds_alternative<drained_t> (result)
+        && !publish_mesh_descriptor_state (
+          state, framework_runtime_state_t::draining)) {
+        force (drain_force_reason_t::teardown_failed);
+    }
+    if (std::holds_alternative<drained_t> (result)) {
+        state.runtime_state.store (
+          framework_runtime_state_t::draining,
+          std::memory_order_release);
+        publish_draining_markers (
+          effective_intent == termination_intent_t::retire);
+    }
+    if (std::holds_alternative<drained_t> (result)) {
+        for (auto *mesh : mesh_services) {
+            if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
+                force (drain_force_reason_t::deadline_exceeded);
+                break;
+            }
+        }
     }
 
     if (std::holds_alternative<drained_t> (result)) {

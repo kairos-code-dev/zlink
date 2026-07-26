@@ -13,17 +13,12 @@ public record SampleTopology(
     String dispatchChannelEndpoint,
     String customerSpotEndpoint,
     String customerSpotRouterEndpoint,
-    String customerSpotNodeRid,
-    String courierNodeRid,
-    String courierActorNode1Rid,
-    String courierActorNode2Rid,
     String courierActorNode1SpotEndpoint,
     String courierActorNode2SpotEndpoint,
     String courierActorNode1RouterEndpoint,
     String courierActorNode2RouterEndpoint,
     String courierSessionSpotRouterEndpoint,
     String courierSessionSpotEndpoint,
-    String courierSessionSpotNodeRid,
     String redisEndpoint,
     String redisKeyPrefix,
     String courierNode,
@@ -39,25 +34,16 @@ public record SampleTopology(
         dispatchChannelEndpoint = value(dispatchChannelEndpoint, "tcp://127.0.0.1:48121");
         customerSpotEndpoint = value(customerSpotEndpoint, "tcp://127.0.0.1:48109");
         customerSpotRouterEndpoint = value(customerSpotRouterEndpoint, "tcp://127.0.0.1:48110");
-        customerSpotNodeRid = value(customerSpotNodeRid, "customer-node-1");
-        courierNodeRid = value(courierNodeRid, "courier-node-1");
-        courierActorNode1Rid = value(courierActorNode1Rid, "courier-node-1");
-        courierActorNode2Rid = value(courierActorNode2Rid, "courier-node-2");
         courierActorNode1SpotEndpoint = value(courierActorNode1SpotEndpoint, "tcp://127.0.0.1:48113");
         courierActorNode2SpotEndpoint = value(courierActorNode2SpotEndpoint, "tcp://127.0.0.1:48114");
         courierActorNode1RouterEndpoint = value(courierActorNode1RouterEndpoint, "tcp://127.0.0.1:48115");
         courierActorNode2RouterEndpoint = value(courierActorNode2RouterEndpoint, "tcp://127.0.0.1:48116");
         courierSessionSpotRouterEndpoint = value(courierSessionSpotRouterEndpoint, "tcp://127.0.0.1:48117");
         courierSessionSpotEndpoint = value(courierSessionSpotEndpoint, "tcp://127.0.0.1:48119");
-        courierSessionSpotNodeRid = value(courierSessionSpotNodeRid, "courier-session-node");
         redisEndpoint = required(redisEndpoint, "redisEndpoint");
         redisKeyPrefix = value(redisKeyPrefix, "deliverydispatch:java:");
         courierNode = value(courierNode, "node1");
         logDirectory = required(logDirectory, "logDirectory");
-    }
-
-    public String courierPlacement(String courierId) {
-        return "courier-b".equals(courierId) ? courierActorNode2Rid : courierActorNode1Rid;
     }
 
     public static String configPath(String[] args) {

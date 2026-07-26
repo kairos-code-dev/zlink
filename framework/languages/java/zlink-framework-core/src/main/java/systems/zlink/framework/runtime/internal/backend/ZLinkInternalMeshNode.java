@@ -12,6 +12,7 @@ import systems.zlink.contracts.service.spot.MeshNodeMonitor;
 import systems.zlink.contracts.service.spot.PeerChannels;
 import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
 
 public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     void setBind(String endpoint);
@@ -112,6 +113,19 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     }
 
     /**
+     * Installs the durable source-owner resolver used before a remote Spot or
+     * Actor operation enters an application queue.
+     */
+    default void setPeerAuthorityResolver(
+        PeerAuthorityResolver resolver) {
+        // Alternate backends may not accept stateful service operations.
+    }
+
+    default CompletionStage<Void> refreshLocalAuthorityFence() {
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
+    }
+
+    /**
      * Installs the infrastructure-only relocation command endpoint. Commands
      * use the admitted RouteMesh peer and never enter an application mailbox.
      */
@@ -132,6 +146,44 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         return java.util.concurrent.CompletableFuture.failedFuture(
             new UnsupportedOperationException(
                 "Remote relocation control is unavailable"));
+    }
+
+    default void setRelocationReplyRelayHandler(
+        RelocationReplyRelayHandler handler) {
+        // Alternate backends may not support command 33/46 dispatch.
+    }
+
+    /**
+     * Sends one canonical command 33 record plus its application payload and
+     * returns the exact command 46 closed acknowledgement.
+     */
+    default CompletionStage<byte[]> requestRelocationReplyRelay(
+        RoutingId sourceNodeRid,
+        ZLinkServiceRelocationWireCodec.RequestSourceFence expectedSource,
+        byte[] command33,
+        List<byte[]> payload,
+        Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Relocation reply relay is unavailable"));
+    }
+
+    default void setSessionRelocationRouteHandler(
+        SessionRelocationRouteHandler handler) {
+        // Alternate backends may not support command 44/45 dispatch.
+    }
+
+    /**
+     * Submits one exact command 44 record and returns its command 45 ACK.
+     * The same operation is never re-resolved or submitted to another owner.
+     */
+    default CompletionStage<byte[]> requestSessionRelocationRoute(
+        RoutingId sessionOwnerNodeRid,
+        byte[] command44,
+        Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Session relocation routing is unavailable"));
     }
 
     default CompletionStage<ActorCreateResponse> requestActorCreate(
@@ -198,10 +250,53 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     }
 
     @FunctionalInterface
+    interface PeerAuthorityResolver {
+        CompletionStage<Optional<PeerAuthorityFence>> resolve(
+            String meshName,
+            RoutingId sourceNodeRid,
+            long sourceNodeGeneration);
+    }
+
+    record PeerAuthorityFence(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        String ownerId,
+        long ownerLeaseGeneration) {
+        public PeerAuthorityFence {
+            java.util.Objects.requireNonNull(
+                sourceNodeRid, "sourceNodeRid");
+            if (sourceNodeGeneration <= 0
+                || ownerLeaseGeneration <= 0) {
+                throw new IllegalArgumentException(
+                    "source node and owner lease generations must be positive");
+            }
+            if (ownerId == null || ownerId.isBlank()) {
+                throw new IllegalArgumentException(
+                    "ownerId must be non-blank");
+            }
+        }
+    }
+
+    @FunctionalInterface
     interface RelocationControlHandler {
         CompletionStage<byte[]> handle(
             RoutingId sourceNodeRid,
             byte[] command);
+    }
+
+    @FunctionalInterface
+    interface RelocationReplyRelayHandler {
+        CompletionStage<byte[]> handle(
+            RoutingId targetNodeRid,
+            byte[] command33,
+            List<byte[]> payload);
+    }
+
+    @FunctionalInterface
+    interface SessionRelocationRouteHandler {
+        CompletionStage<byte[]> handle(
+            RoutingId sourceNodeRid,
+            byte[] command44);
     }
 
     record UserSpotCreateIntent(

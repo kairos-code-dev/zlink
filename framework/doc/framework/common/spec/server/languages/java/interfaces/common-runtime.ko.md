@@ -32,7 +32,8 @@ public enum ZLinkTerminationReason {
     NONE(0), TARGET_UNAVAILABLE(1), STORE_UNAVAILABLE(2),
     RELOCATION_DISABLED(3), STATE_INCOMPATIBLE(4),
     DEADLINE_EXCEEDED(5), RELOCATION_FAILED(6),
-    TEARDOWN_FAILED(7), RUNTIME_NOT_READY(8);
+    TEARDOWN_FAILED(7), RUNTIME_NOT_READY(8),
+    MANUAL_TOPOLOGY_UNSUPPORTED(9);
     private final int wireValue;
     ZLinkTerminationReason(int wireValue) { this.wireValue = wireValue; }
     public int wireValue() { return wireValue; }
@@ -88,6 +89,9 @@ member Actor 전체를 하나의 bounded aggregate로 옮긴다. Aggregate parti
 `Blocked/RelocationDisabled`, target·capacity·reservation을 확보할 수 없으면 `Blocked/TargetUnavailable`,
 application version·type·Snapshot adapter capability가 맞지 않으면 `Blocked/StateIncompatible`로 끝난다. 이
 preflight failure는 admission을 변경하지 않는다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)이 존재한다는 사실만으로 Retire를 차단하지 않는다.
+Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
+하나라도 있으면 `Blocked/ManualTopologyUnsupported`로 끝난다. Automatic RouteMesh는 source의 Core peer table에서
+descriptor와 같은 RID·lifecycle generation이 admitted·ready가 된 뒤에만 `RETIRING`으로 전환한다.
 `shutdown()`은 새 relocation을 시작하지 않는다. 두 operation 모두
 숨은 remote `GetOrCreate`를 수행하지 않으며, waiter cancellation은 이미 시작한 shared operation을
 취소하지 않는다. 각 호출은 shared operation 결과를 따르는 전용 `CompletableFuture` view를 반환한다.
@@ -143,6 +147,7 @@ public final class systems.zlink.framework.runtime.host.ZLinkTerminationReason e
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RELOCATION_FAILED;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TEARDOWN_FAILED;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RUNTIME_NOT_READY;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason MANUAL_TOPOLOGY_UNSUPPORTED;
   public int wireValue();
 }
 public final class systems.zlink.framework.runtime.host.ZLinkTerminationResult extends java.lang.Record {

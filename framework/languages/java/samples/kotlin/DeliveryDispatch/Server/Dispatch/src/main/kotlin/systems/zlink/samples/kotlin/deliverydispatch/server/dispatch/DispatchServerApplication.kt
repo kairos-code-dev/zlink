@@ -9,8 +9,6 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -52,15 +50,7 @@ class DispatchServerApplication {
             val courierRoutes = options.addRouteMesh(SampleNames.CourierSpotMesh)
             courierRoutes
                 .listen("inproc://deliverydispatch-dispatch-courier-client")
-                .setRoutingId(RoutingId.from("deliverydispatch-dispatch-courier-client"))
-            courierRoutes.peerConnections().connect(
-                RoutingId.from(SampleTopology.CourierActorNode1Rid),
-                SampleTopology.CourierActorNode1RouterEndpoint,
-            )
-            courierRoutes.peerConnections().connect(
-                RoutingId.from(SampleTopology.CourierActorNode2Rid),
-                SampleTopology.CourierActorNode2RouterEndpoint,
-            )
+                .useAllocatedRoutingId(16, "delivery-dispatch")
         }
 
     @Bean
@@ -75,10 +65,9 @@ class DispatchServerApplication {
     @Bean
     fun dispatchWorker(
         channels: ZLinkClient,
-        routes: ZLinkRouteClient,
-        spots: SpotHandleResolver,
+        actors: systems.zlink.framework.actors.ZLinkActorClient,
         offers: DeliveryOfferStore,
-    ): DispatchWorker = DispatchWorker(channels, routes, spots, offers)
+    ): DispatchWorker = DispatchWorker(channels, actors, offers)
 
     @Bean(destroyMethod = "close")
     fun offerDeadlineSweeper(

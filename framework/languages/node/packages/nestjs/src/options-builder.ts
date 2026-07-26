@@ -147,6 +147,22 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return this;
   }
 
+  setApplicationVersion(version: bigint): this {
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      applicationVersion: version
+    };
+    return this;
+  }
+
+  setMaintenanceWave(waveId: string): this {
+    this.state.additionalOptions = {
+      ...this.state.additionalOptions,
+      maintenanceWave: waveId
+    };
+    return this;
+  }
+
   protected registerActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: Type<TActor>,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>

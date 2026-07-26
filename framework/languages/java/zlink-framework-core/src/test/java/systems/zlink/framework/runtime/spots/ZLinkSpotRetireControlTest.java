@@ -1,10 +1,12 @@
 package systems.zlink.framework.runtime.spots;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -25,7 +27,10 @@ final class ZLinkSpotRetireControlTest {
             handler = new AtomicReference<>();
         ZLinkInternalMeshNode node = loopbackNode(source, handler);
         AtomicInteger stages = new AtomicInteger();
+        AtomicReference<ZLinkSpotRetireControl.StageRequest> decoded =
+            new AtomicReference<>();
         AtomicInteger publishes = new AtomicInteger();
+        AtomicInteger finalizes = new AtomicInteger();
         AtomicInteger aborts = new AtomicInteger();
         ZLinkSpotRetireControl.install(
             node,
@@ -33,6 +38,7 @@ final class ZLinkSpotRetireControlTest {
                 @Override public java.util.concurrent.CompletionStage<Void>
                     stage(ZLinkSpotRetireControl.StageRequest request) {
                     stages.incrementAndGet();
+                    decoded.set(request);
                     return CompletableFuture.completedFuture(null);
                 }
 
@@ -47,6 +53,13 @@ final class ZLinkSpotRetireControlTest {
                     aborts.incrementAndGet();
                     return CompletableFuture.completedFuture(null);
                 }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    finalizeAfterCompletion(
+                        ZLinkSpotRetireControl.StageRequest request) {
+                    finalizes.incrementAndGet();
+                    return CompletableFuture.completedFuture(null);
+                }
             });
         var client = ZLinkSpotRetireControl.client(node);
         var request = request(source, target);
@@ -57,11 +70,19 @@ final class ZLinkSpotRetireControlTest {
             .toCompletableFuture().get(1, TimeUnit.SECONDS);
         client.publish(target, request.fence(), Duration.ofSeconds(1))
             .toCompletableFuture().get(1, TimeUnit.SECONDS);
+        client.finalizeAfterCompletion(
+                target, request.fence(), Duration.ofSeconds(1))
+            .toCompletableFuture().get(1, TimeUnit.SECONDS);
+        client.finalizeAfterCompletion(
+                target, request.fence(), Duration.ofSeconds(1))
+            .toCompletableFuture().get(1, TimeUnit.SECONDS);
         client.publish(target, request.fence(), Duration.ofSeconds(1))
             .toCompletableFuture().get(1, TimeUnit.SECONDS);
 
         assertEquals(1, stages.get());
+        assertEquals(request, decoded.get());
         assertEquals(1, publishes.get());
+        assertEquals(1, finalizes.get());
         assertEquals(0, aborts.get());
         assertThrows(
             CompletionException.class,
@@ -98,6 +119,12 @@ final class ZLinkSpotRetireControlTest {
 
                 @Override public java.util.concurrent.CompletionStage<Void>
                     abort(ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    finalizeAfterCompletion(
+                        ZLinkSpotRetireControl.StageRequest request) {
                     return CompletableFuture.completedFuture(null);
                 }
             });
@@ -140,6 +167,12 @@ final class ZLinkSpotRetireControlTest {
                     aborts.incrementAndGet();
                     return CompletableFuture.completedFuture(null);
                 }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    finalizeAfterCompletion(
+                        ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
             });
         var request = request(source, target);
         var client = ZLinkSpotRetireControl.client(node);
@@ -155,6 +188,81 @@ final class ZLinkSpotRetireControlTest {
             CompletionException.class,
             () -> client.stage(target, request, Duration.ofSeconds(1))
                 .toCompletableFuture().join());
+    }
+
+    @Test
+    void replyRelayRoundTripsClosedAckAndExactTransportSource() {
+        RoutingId source = RoutingId.from("relay-source");
+        RoutingId target = RoutingId.from("relay-target");
+        AtomicReference<ZLinkInternalMeshNode.RelocationControlHandler>
+            handler = new AtomicReference<>();
+        ZLinkInternalMeshNode node = loopbackNode(target, handler);
+        AtomicReference<RoutingId> transportSource = new AtomicReference<>();
+        AtomicReference<ZLinkSpotRelocationReplyRoutes.Relay> decoded =
+            new AtomicReference<>();
+        ZLinkSpotRetireControl.install(
+            node,
+            new ZLinkSpotRetireControl.TargetEndpoint() {
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    stage(ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    publish(ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    abort(ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override public java.util.concurrent.CompletionStage<Void>
+                    finalizeAfterCompletion(
+                        ZLinkSpotRetireControl.StageRequest request) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                public java.util.concurrent.CompletionStage<
+                    ZLinkSpotRelocationReplyRoutes.Ack> relayReply(
+                        RoutingId actualSource,
+                        ZLinkSpotRelocationReplyRoutes.Relay relay) {
+                    transportSource.set(actualSource);
+                    decoded.set(relay);
+                    return CompletableFuture.completedFuture(
+                        ZLinkSpotRelocationReplyRoutes.Ack.ALREADY_TERMINAL);
+                }
+            });
+        var fence = new ZLinkSpotRetireControl.Fence(UUID.randomUUID(), 3);
+        var relay = new ZLinkSpotRelocationReplyRoutes.Relay(
+            new ZLinkSpotRelocationReplyRoutes.OperationId(11, 12),
+            13,
+            "spot-1",
+            14,
+            "source-owner",
+            15,
+            source,
+            16,
+            17,
+            18,
+            1,
+            List.of(new byte[] {19, 20}));
+
+        var ack = ZLinkSpotRetireControl.client(node)
+            .relayReply(source, fence, relay, Duration.ofSeconds(1))
+            .toCompletableFuture().join();
+
+        assertEquals(ZLinkSpotRelocationReplyRoutes.Ack.ALREADY_TERMINAL, ack);
+        assertEquals(target, transportSource.get());
+        assertEquals(relay.operation(), decoded.get().operation());
+        assertEquals(relay.replyRouteId(), decoded.get().replyRouteId());
+        assertEquals(relay.spotId(), decoded.get().spotId());
+        assertEquals(relay.sourceOwnerId(), decoded.get().sourceOwnerId());
+        assertEquals(relay.targetNodeGeneration(),
+            decoded.get().targetNodeGeneration());
+        assertArrayEquals(relay.parts().get(0), decoded.get().parts().get(0));
     }
 
     private static ZLinkSpotRetireControl.StageRequest request(
@@ -174,8 +282,38 @@ final class ZLinkSpotRetireControlTest {
             "spot-1",
             "room",
             false,
+            false,
             "sha256:root",
-            0x01020304L);
+            0x01020304L,
+            List.of(
+                new ZLinkSpotRetireControl.ParticipantFence(
+                    "zla1:a:actor-1",
+                    1,
+                    "actor-1",
+                    "player",
+                    false,
+                    7,
+                    9),
+                new ZLinkSpotRetireControl.ParticipantFence(
+                    "zla1:s:spot-1",
+                    2,
+                    "spot-1",
+                    "room",
+                    false,
+                    3,
+                    5)),
+            List.of(new ZLinkSpotRetireControl.SessionRouteFence(
+                "actor-1",
+                7,
+                9,
+                "store-v4",
+                RoutingId.from("session-owner"),
+                13,
+                "session-owner-id",
+                14,
+                RoutingId.from("session-1"),
+                15,
+                16)));
     }
 
     private static ZLinkInternalMeshNode loopbackNode(

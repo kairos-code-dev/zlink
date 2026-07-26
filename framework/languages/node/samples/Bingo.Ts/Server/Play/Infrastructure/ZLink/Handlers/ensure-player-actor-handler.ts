@@ -7,7 +7,6 @@ import {
 import { SampleNames } from '../../../../Configuration/sample-names';
 import { PacketNames } from '../../../../../Shared/Contracts/messages';
 import {
-  ActorRefWire,
   EnsurePlayerActorReq as GeneratedEnsurePlayerActorReq,
   EnsurePlayerActorRes
 } from '../../../../../Shared/Contracts/bingo-messages.generated';
@@ -33,23 +32,20 @@ class EnsurePlayerActorHandler implements
       throw new Error('Draining Play node does not accept new actors.');
     }
     console.log(`play-ensure-actor request actor=${request.actorId}`);
-    const actorRef = await this.actorManager.getOrCreate(
-      SampleNames.roomSpotNode,
-      request.actorId,
-      SampleNames.playerActorType,
-      new GeneratedEnsurePlayerActorReq({
+    const result = await this.actorManager
+      .getOrCreate(request.actorId, SampleNames.playerActorType)
+      .inMesh(SampleNames.roomSpotNode)
+      .request(new GeneratedEnsurePlayerActorReq({
         actorId: request.actorId,
-        displayName: request.displayName,
-        preferredActorNodeRid: request.preferredActorNodeRid
-      })
-    );
-    console.log(`play-ensure-actor ready actor=${actorRef.actorId} node=${String(actorRef.nodeRid)}`);
-    const actor = new ActorRefWire({
-      nodeRid: String(actorRef.nodeRid),
-      actorId: actorRef.actorId,
-      generation: actorRef.generation.toString()
+        displayName: request.displayName
+      }))
+      .submit();
+    if (result.status === 'rejected') throw new Error('Player Actor creation was rejected.');
+    console.log(`play-ensure-actor ready actor=${result.actor.actorId}`);
+    return new EnsurePlayerActorRes({
+      actorId: result.actor.actorId,
+      actorType: SampleNames.playerActorType
     });
-    return new EnsurePlayerActorRes({ actorId: actor.actorId, actorType: SampleNames.playerActorType, actor });
   }
 }
 

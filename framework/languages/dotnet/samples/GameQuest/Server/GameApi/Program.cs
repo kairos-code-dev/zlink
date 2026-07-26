@@ -62,21 +62,16 @@ internal static class Program
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.GameApiMeshEndpoint(apiName))
-                .SetRoutingId(topology.MeshRidForApi(apiName))
-                .SetEntrySpotRoutingId(topology.MeshRidForApi(apiName))
+                .SetRoutingIdPrefix("game-api")
                 .AddEntrySpot<GameQuestEntrySpot>()
                 .AddActorFactory<PlayerSessionActorFactory>(SampleNames.SessionActorType);
             mesh.ChannelName(SampleNames.GameApiChannel)
                 .AddHandlerGroup(SampleNames.GameApiHandlerGroup);
-            foreach (var mission in new[] { "mission-a", "mission-b" })
-            {
-                var channelName = SampleNames.QuestOwnerChannelFor(mission);
-                mesh.ChannelName(channelName).SetWeight(0);
-            }
+            mesh.ChannelName(SampleNames.QuestOwnerChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.MeshName);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
-                .EnableActorDispatch(SampleNames.MeshName)
+                .EnableActorDispatch()
                 .AddSession<GameQuestSession>();
         });
 

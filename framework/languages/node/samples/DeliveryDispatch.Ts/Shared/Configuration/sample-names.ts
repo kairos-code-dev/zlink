@@ -15,18 +15,7 @@ const SampleTimings = {
   clientTimeout: 30000
 } as const;
 
-function courierActorNodeRid(courierId: string): string {
-  if (courierId === 'courier-a') {
-    return 'courier-node-1';
-  }
-  if (courierId === 'courier-b') {
-    return 'courier-node-2';
-  }
-  throw new Error(`Unknown courier '${courierId}'.`);
-}
-
 export {
   SampleNames,
-  SampleTimings,
-  courierActorNodeRid
+  SampleTimings
 };

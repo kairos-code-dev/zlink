@@ -34,16 +34,14 @@ class SubmitBingoCardAtSpotHandler
 class VerifyStopObservingAtSpotHandler
   implements ZLinkSpotRequestHandler<BingoRoomSpot, VerifyStopObservingAtSpotReq, {
     readonly stopped: boolean;
-    readonly observerNodeRid: string;
   }> {
   async handle(
     spot: BingoRoomSpot,
     message: VerifyStopObservingAtSpotReq,
     _context: ZLinkHandlerContext
-  ): Promise<{ readonly stopped: boolean; readonly observerNodeRid: string }> {
+  ): Promise<{ readonly stopped: boolean }> {
     return {
-      stopped: spot.verifyStopObserving(message.actorId, { roomId: message.roomId }),
-      observerNodeRid: spot.ownerNodeRid()
+      stopped: spot.verifyStopObserving(message.actorId, { roomId: message.roomId })
     };
   }
 }

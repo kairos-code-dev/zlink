@@ -38,11 +38,7 @@ class CourierSpotNodeApplication {
                 .traceLabel("courier-$node")
             val spotNode = options.addRouteMesh(SampleNames.CourierSpotMesh)
             spotNode.listen(selected.routerEndpoint)
-                .setRoutingId(RoutingId.from(selected.nodeRid))
-            spotNode.peerConnections().connect(
-                RoutingId.from(SampleTopology.CourierSessionSpotNodeRid),
-                SampleTopology.CourierSessionSpotRouterEndpoint,
-            )
+                .useAllocatedRoutingId(16, "delivery-courier")
             spotNode.addEntrySpot(CourierEntrySpot::class.java)
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory::class.java)
             // The courier's decision goes back to dispatch as its own one-way message, so this
@@ -69,22 +65,16 @@ class CourierSpotNodeApplication {
     }
 
     private data class NodeOptions(
-        val nodeRid: String,
-        val spotEndpoint: String,
         val routerEndpoint: String,
     ) {
         companion object {
             fun resolve(node: String): NodeOptions =
                 if (node == "node2") {
                     NodeOptions(
-                        SampleTopology.CourierActorNode2Rid,
-                        SampleTopology.CourierActorNode2SpotEndpoint,
                         SampleTopology.CourierActorNode2RouterEndpoint,
                     )
                 } else {
                     NodeOptions(
-                        SampleTopology.CourierActorNode1Rid,
-                        SampleTopology.CourierActorNode1SpotEndpoint,
                         SampleTopology.CourierActorNode1RouterEndpoint,
                     )
                 }

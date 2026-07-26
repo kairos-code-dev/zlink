@@ -53,8 +53,11 @@ internal static class ZLinkSpotTimerRelocationCodec
     }
 
     internal static ZLinkSpotLogicalTimerSnapshot Decode(
-        ZLinkRelocationLogicalTimer relocation)
+        ZLinkRelocationLogicalTimer relocation,
+        Type? canonicalSpotType = null)
     {
+        if (relocation.CanonicalTimer is { } canonical)
+            return DecodeCanonical(relocation, canonical, canonicalSpotType);
         if (relocation.Payload.Length is <= 0 or > MaxPayloadBytes)
             throw new InvalidDataException(
                 "The logical timer relocation payload size is invalid.");
@@ -108,6 +111,60 @@ internal static class ZLinkSpotTimerRelocationCodec
                 startedAt,
                 deliveryIndex,
                 lastScheduledIndex,
+                next,
+                pending));
+    }
+
+    private static ZLinkSpotLogicalTimerSnapshot DecodeCanonical(
+        ZLinkRelocationLogicalTimer relocation,
+        ZLinkCanonicalLogicalTimer canonical,
+        Type? spotType)
+    {
+        if (spotType is null)
+            throw new InvalidDataException(
+                "The canonical logical timer requires its restored SPOT type.");
+        var handlerType = ResolveType(canonical.HandlerType);
+        var policy = (ZLinkTimerOverrunPolicy)canonical.OverrunPolicy;
+        if (!Enum.IsDefined(policy)
+            || canonical.MaxCatchUpTicks is 0 or > int.MaxValue)
+            throw new InvalidDataException(
+                "The canonical logical timer options are invalid.");
+        var period = TimeSpan.FromMilliseconds(relocation.PeriodMilliseconds);
+        var next = DateTimeOffset.FromUnixTimeMilliseconds(
+            canonical.NextScheduledAtUnixMilliseconds);
+        var startedAt = next - period;
+        ZLinkTimerTick? pending = null;
+        if (canonical.PendingTick is { } tick)
+        {
+            var scheduledAt = DateTimeOffset.FromUnixTimeMilliseconds(
+                tick.ScheduledAtUnixMilliseconds);
+            pending = new ZLinkTimerTick(
+                relocation.TimerId,
+                tick.DeliveryIndex,
+                tick.ScheduledIndex,
+                period,
+                scheduledAt,
+                scheduledAt,
+                TimeSpan.Zero,
+                TimeSpan.Zero,
+                TimeSpan.Zero,
+                tick.SkippedTicks);
+        }
+        return new ZLinkSpotLogicalTimerSnapshot(
+            handlerType,
+            spotType,
+            new ZLinkTimerLogicalSnapshot(
+                relocation.TimerId,
+                period,
+                new ZLinkTimerOptions
+                {
+                    OverrunPolicy = policy,
+                    MaxCatchUpTicks = checked((int)canonical.MaxCatchUpTicks),
+                    StopOnUnhandledException = canonical.StopOnUnhandledException
+                },
+                startedAt,
+                canonical.LastCompletedDeliveryIndex,
+                canonical.LastCompletedScheduledIndex,
                 next,
                 pending));
     }

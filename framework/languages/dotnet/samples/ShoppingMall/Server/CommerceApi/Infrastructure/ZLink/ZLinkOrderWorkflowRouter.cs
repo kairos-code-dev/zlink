@@ -6,14 +6,13 @@ using Zlink.Framework.Contracts.Channels;
 namespace ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkOrderWorkflowRouter(
-    IZLinkRouteClient channels,
-    SampleTopology topology) : IOrderWorkflowRouter
+    IZLinkRouteClient channels) : IOrderWorkflowRouter
 {
     public async ValueTask<OrderState> StartAsync(
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var response = await RequestToOwner(command.OrderId, command)
+        var response = await Request(command)
             .Async<StartOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -22,7 +21,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
         ContinueOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var response = await RequestToOwner(command.OrderId, command)
+        var response = await Request(command)
             .Async<ContinueOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
@@ -31,7 +30,7 @@ internal sealed class ZLinkOrderWorkflowRouter(
         RebuildOrderProjectionReq command,
         CancellationToken cancellationToken)
     {
-        var response = await RequestToOwner(command.OrderId, command)
+        var response = await Request(command)
             .Async<RebuildOrderProjectionRes>(cancellationToken);
         return response.State;
     }
@@ -40,17 +39,14 @@ internal sealed class ZLinkOrderWorkflowRouter(
         StartOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        var response = await RequestToOwner(
-                command.OrderId,
+        var response = await Request(
                 new PrepareInventoryReservedCheckpointReq(command))
             .Async<StartOrderWorkflowRes>(cancellationToken);
         return response.State;
     }
 
-    private IZLinkRequestCall RequestToOwner<TMessage>(string orderId, TMessage command)
-    {
-        var owner = topology.ForOrderId(orderId);
-        return channels.RequestToChannel(SampleNames.MeshName, SampleNames.OrderWorkflowChannelFor(owner.InstanceId),
+    private IZLinkRequestCall Request<TMessage>(TMessage command) =>
+        channels.RequestToChannel(
+            SampleNames.OrderWorkflowChannel,
             command);
-    }
 }

@@ -35,6 +35,17 @@ final class ZLinkUserSpotAggregateStagingOwner {
             Objects.requireNonNull(adapters, "adapters"));
     }
 
+    ZLinkUserSpotAggregateStagingOwner(
+        ZLinkSpotRuntime spots,
+        ZLinkRelocationAdapterRegistry adapters) {
+        Objects.requireNonNull(spots, "spots");
+        backend = new ProductionBackend(
+            spots.spotLifecycle(),
+            spots.actorSessions().runtime(),
+            Objects.requireNonNull(adapters, "adapters"),
+            spots);
+    }
+
     ZLinkUserSpotAggregateStagingOwner(StagingBackend backend) {
         this.backend = Objects.requireNonNull(backend, "backend");
     }
@@ -95,18 +106,36 @@ final class ZLinkUserSpotAggregateStagingOwner {
     CompletionStage<Void> publishAndReplay(
         Staged staged,
         JournalReplayer replayer) {
+        return publishAndReplay(staged, staged.request, replayer);
+    }
+
+    CompletionStage<Void> publishAndReplayHidden(
+        Staged staged,
+        JournalReplayer replayer) {
+        return publishAndReplayHidden(staged, staged.request, replayer);
+    }
+
+    CompletionStage<Void> publishAndReplay(
+        Staged staged,
+        Request finalRequest,
+        JournalReplayer replayer) {
+        return publishAndReplayHidden(staged, finalRequest, replayer)
+            .thenRun(() -> openAdmission(staged));
+    }
+
+    CompletionStage<Void> publishAndReplayHidden(
+        Staged staged,
+        Request finalRequest,
+        JournalReplayer replayer) {
         requireActive(staged);
+        requireStagingPrefix(staged.request, finalRequest);
         Objects.requireNonNull(replayer, "replayer");
-        // The caller invokes this only after Location aggregate commit. The
-        // host structural barrier prevents create/membership races here.
-        backend.publishSpot(staged.spot);
-        for (var actor : staged.actors) {
-            backend.publishActor(actor);
-        }
-        staged.published = true;
+        // Replay the final authority-selected journal while the prepared
+        // objects remain hidden. Local Ready/admission opens only after every
+        // captured and held suffix record completes.
         CompletionStage<Void> replay = CompletableFuture.completedFuture(null);
         for (Map.Entry<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> lane
-            : staged.request.acceptedJournal().entrySet()) {
+            : finalRequest.acceptedJournal().entrySet()) {
             for (ZLinkAsyncSerialQueue.QueuedRecord record : lane.getValue()) {
                 replay = replay.thenCompose(ignored -> replayer.replay(
                     lane.getKey(),
@@ -115,11 +144,119 @@ final class ZLinkUserSpotAggregateStagingOwner {
         }
         return replay.thenRun(() -> {
             for (var actor : staged.actors) {
-                backend.completeActor(actor);
+                backend.publishActor(actor);
             }
-            backend.publishTimers(staged.spot);
-            staged.terminal = true;
+            backend.publishSpot(staged.spot);
+            staged.published = true;
         });
+    }
+
+    void openAdmission(Staged staged) {
+        requireActive(staged);
+        if (!staged.published) {
+            throw new IllegalStateException(
+                "aggregate staging is not published");
+        }
+        for (var actor : staged.actors) {
+            backend.completeActor(actor);
+        }
+        backend.publishTimers(staged.spot);
+        staged.terminal = true;
+    }
+
+    CompletionStage<List<byte[]>> replaySpot(
+        Staged staged,
+        ZLinkSpotAcceptedJournal.Record record) {
+        requireActive(staged);
+        return backend.replaySpot(staged.spot, record);
+    }
+
+    CompletionStage<java.util.Optional<byte[]>> replayActor(
+        Staged staged,
+        ZLinkActorAcceptedJournal.Record record) {
+        requireActive(staged);
+        for (int index = 0; index < staged.request.actors().size(); index++) {
+            if (staged.request.actors().get(index).actorId()
+                .equals(record.actorId())) {
+                return backend.replayActor(
+                    staged.spot, staged.actors.get(index), record);
+            }
+        }
+        return CompletableFuture.failedFuture(new IllegalArgumentException(
+            "accepted journal references an Actor outside the aggregate"));
+    }
+
+    private static void requireStagingPrefix(
+        Request initial,
+        Request finalRequest) {
+        Objects.requireNonNull(finalRequest, "finalRequest");
+        if (initial.spotType() != finalRequest.spotType()
+            || !initial.spotStableType().equals(
+                finalRequest.spotStableType())
+            || !initial.spotId().equals(finalRequest.spotId())
+            || initial.objectGeneration() != finalRequest.objectGeneration()
+            || initial.restoreSpotSnapshot()
+                != finalRequest.restoreSpotSnapshot()
+            || !java.util.Arrays.equals(
+                initial.spotState(), finalRequest.spotState())
+            || !java.util.Arrays.equals(
+                initial.timerEnvelope(), finalRequest.timerEnvelope())
+            || !sameActors(initial.actors(), finalRequest.actors())
+            || !journalIsPrefix(
+                initial.acceptedJournal(),
+                finalRequest.acceptedJournal())) {
+            throw new IllegalArgumentException(
+                "final relocation root does not extend its staging root");
+        }
+    }
+
+    private static boolean sameActors(
+        List<ActorParticipant> initial,
+        List<ActorParticipant> finalActors) {
+        if (initial.size() != finalActors.size()) {
+            return false;
+        }
+        for (int index = 0; index < initial.size(); index++) {
+            ActorParticipant left = initial.get(index);
+            ActorParticipant right = finalActors.get(index);
+            if (!left.actorId().equals(right.actorId())
+                || !left.actorType().equals(right.actorType())
+                || left.restoreSnapshot() != right.restoreSnapshot()
+                || !Objects.equals(
+                    left.preparedActorRef(), right.preparedActorRef())
+                || !java.util.Arrays.equals(left.state(), right.state())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean journalIsPrefix(
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> initial,
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> finalJournal) {
+        for (var lane : initial.entrySet()) {
+            List<ZLinkAsyncSerialQueue.QueuedRecord> completed =
+                finalJournal.get(lane.getKey());
+            if (completed == null
+                || completed.size() < lane.getValue().size()) {
+                return false;
+            }
+            for (int index = 0; index < lane.getValue().size(); index++) {
+                if (!sameRecord(
+                    lane.getValue().get(index),
+                    completed.get(index))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameRecord(
+        ZLinkAsyncSerialQueue.QueuedRecord left,
+        ZLinkAsyncSerialQueue.QueuedRecord right) {
+        return left.sequence() == right.sequence()
+            && java.util.Arrays.equals(left.payload(), right.payload());
     }
 
     CompletionStage<Void> discard(Staged staged) {
@@ -193,6 +330,21 @@ final class ZLinkUserSpotAggregateStagingOwner {
         void completeActor(Object preparedActor);
 
         void publishTimers(Object preparedSpot);
+
+        default CompletionStage<List<byte[]>> replaySpot(
+            Object preparedSpot,
+            ZLinkSpotAcceptedJournal.Record record) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "staged Spot replay is unavailable"));
+        }
+
+        default CompletionStage<java.util.Optional<byte[]>> replayActor(
+            Object preparedSpot,
+            Object preparedActor,
+            ZLinkActorAcceptedJournal.Record record) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "staged Actor replay is unavailable"));
+        }
 
         CompletionStage<Void> discardActor(Object preparedActor);
 
@@ -279,14 +431,24 @@ final class ZLinkUserSpotAggregateStagingOwner {
         private final ZLinkSpotLifecycle spots;
         private final ZLinkActorRuntime actors;
         private final ZLinkRelocationAdapterRegistry adapters;
+        private final ZLinkSpotRuntime runtime;
 
         private ProductionBackend(
             ZLinkSpotLifecycle spots,
             ZLinkActorRuntime actors,
             ZLinkRelocationAdapterRegistry adapters) {
+            this(spots, actors, adapters, null);
+        }
+
+        private ProductionBackend(
+            ZLinkSpotLifecycle spots,
+            ZLinkActorRuntime actors,
+            ZLinkRelocationAdapterRegistry adapters,
+            ZLinkSpotRuntime runtime) {
             this.spots = spots;
             this.actors = actors;
             this.adapters = adapters;
+            this.runtime = runtime;
         }
 
         @Override
@@ -351,6 +513,31 @@ final class ZLinkUserSpotAggregateStagingOwner {
         @Override public void publishTimers(Object value) {
             spots.publishReservedTimers(
                 (ZLinkSpotLifecycle.PreparedUserSpot) value);
+        }
+
+        @Override
+        public CompletionStage<List<byte[]>> replaySpot(
+            Object value,
+            ZLinkSpotAcceptedJournal.Record record) {
+            return spots.replayReserved(
+                (ZLinkSpotLifecycle.PreparedUserSpot) value,
+                record);
+        }
+
+        @Override
+        public CompletionStage<java.util.Optional<byte[]>> replayActor(
+            Object preparedSpot,
+            Object preparedActor,
+            ZLinkActorAcceptedJournal.Record record) {
+            if (runtime == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "staged Actor replay runtime is unavailable"));
+            }
+            return runtime.replayPreparedActor(
+                (ZLinkSpotLifecycle.PreparedUserSpot) preparedSpot,
+                (ZLinkActorRuntime.PreparedTransferredActor) preparedActor,
+                record);
         }
 
         @Override public CompletionStage<Void> discardActor(Object value) {

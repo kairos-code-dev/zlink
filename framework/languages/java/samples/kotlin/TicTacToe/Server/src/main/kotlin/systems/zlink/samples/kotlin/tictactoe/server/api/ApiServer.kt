@@ -31,8 +31,8 @@ object ApiServer {
                 AuthenticatePlayerReq::class.java,
                 AuthenticatePlayerRes::class.java,
             )
-            settings.playChannelEndpoints.forEachIndexed { index, endpoint ->
-                options.addClientServerChannel(SampleNames.playChannel(index))
+            settings.playChannelEndpoints.forEach { endpoint ->
+                options.addClientServerChannel(SampleNames.PlayChannel)
                     .enableClient(endpoint)
             }
         }

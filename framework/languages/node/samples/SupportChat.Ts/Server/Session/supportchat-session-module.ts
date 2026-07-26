@@ -39,7 +39,7 @@ function createSupportChatSessionModule() {
           builder.addLocationStore(locationStore);
           supportChatLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
-            .listen(config.sessionSpotEndpoint).routingId('session-node');
+            .listen(config.sessionSpotEndpoint).useAllocatedRoutingId(16, 'support-session');
           mesh.channelName(SampleNames.apiChannel).setWeight(0);
           mesh.channelName(SampleNames.supportChannel).setWeight(0);
           mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);

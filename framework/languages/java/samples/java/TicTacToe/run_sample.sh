@@ -123,9 +123,6 @@ wait_endpoint redis "${redis_endpoint}"
 
 common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
-play_a_node_rid="tic-play-alpha"
-play_b_node_rid="tic-play-beta"
-
 api_a_config="${run_dir}/api-a.properties"
 api_b_config="${run_dir}/api-b.properties"
 play_a_config="${run_dir}/play-a.properties"
@@ -154,8 +151,6 @@ sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
-sample.playSpotNodeRid=${play_a_node_rid}
-sample.peerPlaySpotNodeRid=${play_b_node_rid}
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
 sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
@@ -170,8 +165,6 @@ sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
-sample.playSpotNodeRid=${play_b_node_rid}
-sample.peerPlaySpotNodeRid=${play_a_node_rid}
 sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
 sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
 sample.logDirectory=${log_dir}
@@ -207,7 +200,7 @@ wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
 grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
-grep -Eq "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=${play_b_node_rid}" "${log_dir}/client.log"
+grep -Eq "observer-win-milestone=verified actor=player-x wins=100" "${log_dir}/client.log"
 for role in host guest observer; do
   grep -Eq "stream-inbound sample=TicTacToe role=${role} .*kind=(RESPONSE|SEND) .*name=.* seq=.* bytes=[0-9]+" "${log_dir}/client.log"
 done

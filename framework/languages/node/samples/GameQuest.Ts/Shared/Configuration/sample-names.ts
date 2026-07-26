@@ -7,44 +7,21 @@ const SampleNames = {
   clientTimeout: 20000
 } as const;
 
-function questMissionRouteRid(playerId: string): string {
-  return questMissionInstanceRid(questMissionOwnerInstanceId(playerId));
+function questMissionRouteChannel(_playerId: string): string {
+  return SampleNames.questMissionRouteChannel;
 }
 
-function questMissionRouteChannel(playerId: string): string {
-  return questMissionInstanceChannel(questMissionOwnerInstanceId(playerId));
-}
-
-function questMissionInstanceChannel(instanceId: 'mission-a' | 'mission-b'): string {
-  return `${SampleNames.questMissionRouteChannel}.${instanceId}`;
-}
-
-function questMissionInstanceRid(instanceId: 'mission-a' | 'mission-b'): string {
-  return instanceId === 'mission-a' ? 'gamequest-mission-a' : 'gamequest-mission-b';
-}
-
-function questMissionOwnerInstanceId(playerId: string): 'mission-a' | 'mission-b' {
-  return ownerIndex(playerId) === 0 ? 'mission-a' : 'mission-b';
+function questMissionInstanceChannel(_instanceId: 'mission-a' | 'mission-b'): string {
+  return SampleNames.questMissionRouteChannel;
 }
 
 function questMissionSpotRid(playerId: string): string {
   return `player-quest-${playerId}`;
 }
 
-function ownerIndex(playerId: string): number {
-  let sum = 0;
-  for (const byte of new TextEncoder().encode(playerId)) {
-    sum += byte;
-  }
-  return sum % 2;
-}
-
 export {
   SampleNames,
   questMissionRouteChannel,
   questMissionInstanceChannel,
-  questMissionRouteRid,
-  questMissionInstanceRid,
-  questMissionOwnerInstanceId,
   questMissionSpotRid
 };

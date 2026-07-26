@@ -26,5 +26,5 @@ test('PubSub keeps classic fanout independent from RouteMesh location discovery'
   assert.doesNotMatch(runner, /start_redis_container/);
   assert.doesNotMatch(runner, /--redis-endpoint "\$REDIS_ENDPOINT"/);
   assert.doesNotMatch(runner, /--redis-key-prefix "\$REDIS_KEY_PREFIX"/);
-  assert.match(featureMap, /classic fanout/);
+  assert.match(featureMap, /classic fanout/i);
 });

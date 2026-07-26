@@ -110,8 +110,7 @@ async function spawnBots(app: { get<T>(token: unknown, options?: { strict: boole
       ZoneWorldNames.playerActorType
     );
     const entered = await client.requestToActor(
-      ZoneWorldNames.zoneMesh,
-      actor,
+      actor.actorId,
       new EnterWorldReq(route.x, route.y, true, route.dirX, route.dirY)
     ).timeout(10_000).submit<{ error: string | null }>();
     if (entered.error !== null) throw new Error(`Bot '${route.playerId}' could not enter the world: ${entered.error}.`);

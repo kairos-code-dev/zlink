@@ -34,9 +34,7 @@ public static class ApiServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                // Discovery clients dial this server through its descriptor
-                // row, which needs a concrete routing id to be advertised.
-                .SetRoutingId(topology.MeshRoutingId);
+                .SetRoutingIdPrefix("support-api");
             mesh.ChannelName(SampleNames.ApiChannel)
                 .AddHandlerGroup("api");
             mesh.ChannelName(SampleNames.SupportChannel).SetWeight(0);

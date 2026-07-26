@@ -45,7 +45,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Action<string> removeSession,
         string transport,
         TimeProvider timeProvider,
-        string? actorDispatchMeshName = null,
+        bool actorDispatchEnabled = true,
         ZLinkAsyncSubmitter? sendSubmitter = null)
     {
         AsyncServiceScope scope = default;
@@ -62,7 +62,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 removeSession,
                 transport,
                 timeProvider,
-                actorDispatchMeshName,
+                actorDispatchEnabled,
                 sendSubmitter);
             session.Initialize(headerSessionType);
             return session;
@@ -86,7 +86,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         Action<string> removeSession,
         string transport,
         TimeProvider timeProvider,
-        string? actorDispatchMeshName,
+        bool actorDispatchEnabled,
         ZLinkAsyncSubmitter? sendSubmitter)
     {
         _scope = scope;
@@ -108,7 +108,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
             handlers,
             CloseAsync,
             CloseByProxyAsync,
-            actorDispatchMeshName,
+            actorDispatchEnabled,
             sendSubmitter);
         Handlers = handlers;
         _serial = new ZLinkStreamSessionSerialExecutor(_runtime.ExecutionOwner, _runtime.ErrorSink);

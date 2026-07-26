@@ -15,8 +15,6 @@ type TicTacToeSampleConfig = {
   playStreamEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;
-  playSpotNodeRid: string;
-  peerPlaySpotNodeRid: string;
   peerPlaySpotEndpoint: string;
   logDir: string;
 };

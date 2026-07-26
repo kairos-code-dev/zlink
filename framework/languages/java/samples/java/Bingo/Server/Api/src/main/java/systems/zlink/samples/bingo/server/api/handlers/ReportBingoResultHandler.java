@@ -2,7 +2,7 @@ package systems.zlink.samples.bingo.server.api.handlers;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.samples.bingo.server.api.BingoPlayerRecordStore;
@@ -21,7 +21,7 @@ public final class ReportBingoResultHandler
 
     @Override
     public CompletionStage<Messages.ReportBingoResultRes> handle(
-        Messages.ReportBingoResultReq request, ZLinkRequestContext context) {
+        Messages.ReportBingoResultReq request, ZLinkMessageContext context) {
         var record = records.report(request.getActorId(), request.getWon());
         return CompletableFuture.completedFuture(BingoMessages.reportBingoResultRes(
             record.actorId(), record.wins(), record.losses()));

@@ -15,25 +15,22 @@ class RedisBingoMatchQueue(private val topology: SampleTopology) : BingoMatchQue
     override fun reserve(
         mode: String,
         actorId: String,
-        preferredOwnerNodeRid: String,
         newRoomId: String,
         requiredPlayers: Int,
     ): BingoMatchReservation {
-        @Suppress("UNCHECKED_CAST")
-        val values = connection.sync().eval<List<String>>(
+        val roomId = connection.sync().eval<String>(
             Script,
-            ScriptOutputType.MULTI,
+            ScriptOutputType.VALUE,
             arrayOf(matchKey(mode)),
             actorId,
-            preferredOwnerNodeRid,
             newRoomId,
             requiredPlayers.toString(),
             Instant.now().toEpochMilli().toString(),
         )
-        check(values != null && values.size == 2) {
+        check(!roomId.isNullOrBlank()) {
             "Redis match queue returned an invalid reservation."
         }
-        return BingoMatchReservation(values[0], values[1])
+        return BingoMatchReservation(roomId)
     }
 
     override fun close() {
@@ -51,27 +48,24 @@ class RedisBingoMatchQueue(private val topology: SampleTopology) : BingoMatchQue
         private const val Script: String = """
 local key = KEYS[1]
 local actorId = ARGV[1]
-local ownerRid = ARGV[2]
-local newRoomId = ARGV[3]
-local requiredPlayers = tonumber(ARGV[4])
-local nowMs = ARGV[5]
+local newRoomId = ARGV[2]
+local requiredPlayers = tonumber(ARGV[3])
+local nowMs = ARGV[4]
 
 local roomId = redis.call('HGET', key, 'RoomId')
 if not roomId then
   redis.call('HMSET', key,
     'RoomId', newRoomId,
-    'OwnerPlayNodeRid', ownerRid,
     'ReservedActorIds', actorId,
     'RequiredPlayers', requiredPlayers,
     'CreatedAtUnixMs', nowMs)
-  return { newRoomId, ownerRid }
+  return newRoomId
 end
 
-local existingOwnerRid = redis.call('HGET', key, 'OwnerPlayNodeRid')
 local actors = redis.call('HGET', key, 'ReservedActorIds') or ''
 local needle = '|' .. actorId .. '|'
 if string.find('|' .. actors .. '|', needle, 1, true) then
-  return { roomId, existingOwnerRid }
+  return roomId
 end
 
 local count = 0
@@ -82,11 +76,10 @@ end
 if count >= requiredPlayers then
   redis.call('HMSET', key,
     'RoomId', newRoomId,
-    'OwnerPlayNodeRid', ownerRid,
     'ReservedActorIds', actorId,
     'RequiredPlayers', requiredPlayers,
     'CreatedAtUnixMs', nowMs)
-  return { newRoomId, ownerRid }
+  return newRoomId
 end
 
 if actors == '' then
@@ -98,7 +91,7 @@ redis.call('HSET', key, 'ReservedActorIds', actors)
 if count + 1 >= requiredPlayers then
   redis.call('DEL', key)
 end
-return { roomId, existingOwnerRid }
+return roomId
 """
     }
 }

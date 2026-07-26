@@ -25,9 +25,4 @@ struct sample_names_t
     static constexpr const char *reward_announced_packet = "BingoRewardAnnouncedNotify";
 };
 
-inline std::string play_channel_for (const std::string &node_rid)
-{
-    return std::string (sample_names_t::play_channel) + "." + node_rid;
-}
-
 } // namespace zlink::samples::bingo

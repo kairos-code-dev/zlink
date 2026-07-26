@@ -1,4 +1,4 @@
-// OBS-C5: 무중단 롤아웃과 zero-target 종료 시나리오를 검증한다.
+// OBS-C5: Retire eligible target 부재 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

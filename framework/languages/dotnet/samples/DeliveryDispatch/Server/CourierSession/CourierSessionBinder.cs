@@ -1,19 +1,14 @@
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Locations;
-using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace DeliveryDispatch.Server.CourierSession;
 
 internal sealed class CourierSessionBinder(
-    SampleTopology topology,
-    IZLinkSpotClient routes,
-    IZLinkSpotHandleResolver spots,
+    IZLinkActorManager actors,
     ILogger<CourierSessionBinder> logger)
 {
     public async ValueTask<BindCourierSessionRes> BindAsync(
@@ -47,24 +42,20 @@ internal sealed class CourierSessionBinder(
         string courierId,
         CancellationToken cancellationToken)
     {
-        var placement = topology.CourierPlacement(courierId);
-        var address = await spots.ResolveSpotHandleAsync(
-                          SampleNames.MeshName,
-                          placement.NodeRid,
-                          cancellationToken)
-                      ?? throw new InvalidOperationException(
-                          $"Courier placement spot '{placement.NodeRid}' was not found.");
-        var found = await routes.RequestToSpot(address,
-                new FindCourierActorReq(courierId))
-            .Async<FindCourierActorRes>(cancellationToken);
-        if (found.Actor is { } existing)
+        var result = await actors
+            .GetOrCreate(courierId, SampleNames.CourierActorType)
+            .InMesh(SampleNames.MeshName)
+            .Request(new EnsureCourierActorReq(courierId))
+            .Async(cancellationToken);
+        var actor = result switch
         {
-            return existing;
-        }
-
-        var ensured = await routes.RequestToSpot(address,
-                new EnsureCourierActorReq(courierId))
-            .Async<EnsureCourierActorRes>(cancellationToken);
-        return ensured.Actor;
+            ZLinkActorCreateResult.Existing existing => existing.Actor,
+            ZLinkActorCreateResult.Created created => created.Actor,
+            ZLinkActorCreateResult.Rejected => throw new InvalidOperationException(
+                $"Courier actor '{courierId}' creation was rejected."),
+            _ => throw new InvalidOperationException(
+                $"Courier actor '{courierId}' returned an unknown creation result.")
+        };
+        return ActorRefSnapshot.From(actor);
     }
 }

@@ -300,7 +300,7 @@ options.ConfigureDispatch()
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkStreamNodeBuilder` | stream node(`Bind(port)`, `SetBindHost`, `SetAdvertiseHost`, `SetTlsServer`, `AddSession<TSession>`, `EnableActorDispatch(mesh)`) |
+| `IZLinkStreamNodeBuilder` | stream node(`Bind(port)`, `SetBindHost`, `SetAdvertiseHost`, `SetTlsServer`, `AddSession<TSession>`, `EnableActorDispatch()`) |
 | `IZLinkMeshNodeBuilder` | MeshNode 등록 표면(`Listen(port)`·`SetBindHost`·`SetAdvertiseHost`·`Channel`·routing id·`PeerConnections`·entry/spot/actor factory) |
 | `IZLinkMeshChannelRoleBuilder` | `Client()`와 `Server()` 중 ChannelName 역할 하나를 선택하는 표면 |
 | `IZLinkMeshChannelServerBuilder` | server membership의 `SetWeight`와 send/request handler 등록 표면 |

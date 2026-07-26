@@ -6,6 +6,27 @@ namespace Zlink.Framework.UnitTests;
 public sealed class SerialExecutorTests
 {
     [Fact]
+    public async Task RelocationTimerReservationsShareAcceptedSequenceDomain()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+
+        Assert.True(queue.TrySealRelocation(
+            reservedAcceptedSequences: 2,
+            static _ => true,
+            out var seal,
+            out var firstTimerSequence));
+        Assert.Equal<ulong>(1, firstTimerSequence);
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
+            new byte[] { 3 },
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+
+        Assert.True(queue.TryCommitRelocation(seal, out var held));
+        Assert.Equal<ulong>(3, Assert.Single(held).AcceptedSequence);
+    }
+
+    [Fact]
     public async Task SerialExecutionQueue_RelocationSeal_CapturesPendingAndHoldsNewAcceptedWork()
     {
         await using var queue = CreateQueue(CancellationToken.None);
@@ -16,7 +37,7 @@ public sealed class SerialExecutorTests
         var executionOrder = new ConcurrentQueue<int>();
         var relocated = new ConcurrentQueue<int>();
 
-        Assert.True(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
             new byte[] { 1 },
             async _ =>
             {
@@ -28,7 +49,7 @@ public sealed class SerialExecutorTests
             out _));
         await activeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.True(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
             new byte[] { 2 },
             _ =>
             {
@@ -50,7 +71,7 @@ public sealed class SerialExecutorTests
                 Assert.Equal(new byte[] { 2 }, record.Payload.ToArray());
             });
 
-        Assert.True(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
             new byte[] { 3 },
             _ =>
             {
@@ -75,7 +96,7 @@ public sealed class SerialExecutorTests
         var seal = await queue.SealRelocationAsync(CancellationToken.None);
         var released = new ConcurrentQueue<int>();
 
-        Assert.True(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
             new byte[] { 7 },
             static _ => throw new InvalidOperationException("held work must not execute"),
             () => released.Enqueue(7),
@@ -91,7 +112,7 @@ public sealed class SerialExecutorTests
                 Assert.Equal(new byte[] { 7 }, record.Payload.ToArray());
             });
         Assert.Equal(new[] { 7 }, released);
-        Assert.False(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.RelocationMoving, queue.TryPostAccepted(
             new byte[] { 8 },
             static _ => ValueTask.CompletedTask,
             static () => { },
@@ -99,27 +120,44 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
-    public async Task RelocationIngressFreezeStopsNewAcknowledgementUntilDurableCommit()
+    public async Task RelocationIngressHoldRemainsOpenUntilCommitAndIsBounded()
     {
         await using var queue = CreateQueue(CancellationToken.None);
         var seal = await queue.SealRelocationAsync(CancellationToken.None);
-        Assert.True(queue.TryPostAccepted(
-            new byte[] { 7 },
-            static _ => ValueTask.CompletedTask,
-            static () => { },
-            out _));
-
-        Assert.True(queue.TryFreezeRelocationIngress(
-            seal,
-            out var held));
-        Assert.Single(held);
-        Assert.False(queue.TryPostAccepted(
+        for (var index = 0; index < 1_024; index++)
+            Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
+                new byte[] { 7 },
+                static _ => ValueTask.CompletedTask,
+                static () => { },
+                out _));
+        Assert.Equal(ZLinkAcceptedWorkAdmission.RelocationMoving, queue.TryPostAccepted(
             new byte[] { 8 },
             static _ => ValueTask.CompletedTask,
             static () => { },
             out _));
 
-        Assert.True(queue.TryAbortRelocation(seal));
+        Assert.True(queue.TryCommitRelocation(seal, out var held));
+        Assert.Equal(1_024, held.Count);
+    }
+
+    [Fact]
+    public async Task RelocationIngressHoldRejectsPayloadPastByteBound()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var seal = await queue.SealRelocationAsync(CancellationToken.None);
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
+            new byte[16 * 1024 * 1024 - sizeof(ulong) - sizeof(int)],
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+        Assert.Equal(ZLinkAcceptedWorkAdmission.RelocationMoving, queue.TryPostAccepted(
+            new byte[] { 1 },
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+
+        Assert.True(queue.TryCommitRelocation(seal, out var held));
+        Assert.Single(held);
     }
 
     [Fact]
@@ -129,7 +167,7 @@ public sealed class SerialExecutorTests
         var seal = await queue.SealRelocationAsync(CancellationToken.None);
         var executed = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        Assert.True(queue.TryPostAccepted(
+        Assert.Equal(ZLinkAcceptedWorkAdmission.Accepted, queue.TryPostAccepted(
             new byte[] { 9 },
             _ =>
             {

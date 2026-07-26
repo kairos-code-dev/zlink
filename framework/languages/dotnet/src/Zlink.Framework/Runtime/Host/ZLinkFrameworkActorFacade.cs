@@ -9,6 +9,8 @@ internal sealed class ZLinkFrameworkActorFacade(
     Func<ZLinkFrameworkComponentState> getState,
     Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
+    private long _nextEntrySpotSelection;
+
     private readonly ZLinkActorEntrySpotJoinCoordinator _entrySpotJoin = new(
         registration,
         spots,
@@ -99,6 +101,71 @@ internal sealed class ZLinkFrameworkActorFacade(
         return joinResult.Accepted
             ? new ZLinkActorJoinResult.Accepted(ToActorRef(actorState), reply)
             : new ZLinkActorJoinResult.Rejected(reply);
+    }
+
+    public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+        IZLinkActor actor,
+        ZLinkMessage request,
+        ZLinkActorJoinOperationId? operationId,
+        CancellationToken cancellationToken)
+    {
+        var actorState = actorSessionManager.GetOrCreateState(actor.Context.ActorId);
+        if (actorState.LiveActivation is null)
+            return new ZLinkActorJoinResult.Accepted(
+                ToActorRef(actorState),
+                ZLinkMessage.Empty);
+
+        var actorType = actorState.ActorType ?? actor.GetType().Name;
+        var meshName = actorState.Context?.MeshName
+                       ?? ZLinkActorDrainCoordinator.ResolveMeshName(registration, actorType)
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.MeshNotFound,
+                           $"Actor '{actor.Context.ActorId}' does not have an owner Mesh.");
+        var store = registration.Locations.ResolveStore()
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        "Actor Entry Spot Join requires a Location Store.");
+        var descriptors = await store.ListAllMeshNodesAsync(meshName, cancellationToken)
+            .ConfigureAwait(false);
+        var eligible = descriptors
+            .Where(candidate => ZLinkActorManagerService.IsEligibleCandidate(
+                candidate,
+                actorType))
+            .OrderBy(static candidate => candidate.Rid.ToHex(), StringComparer.Ordinal)
+            .ToArray();
+        var target = ZLinkWeightedSelector.Select(
+                         eligible,
+                         static candidate => candidate.PlacementWeight,
+                         ref _nextEntrySpotSelection)
+                     ?? throw new ZLinkFrameworkException(
+                         ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                         $"No Ready Entry Spot target is available for '{actorType}'.",
+                         true);
+
+        var sourceNodeRid = actorState.NativeActorRef?.NodeRid
+                            ?? throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                $"Actor '{actor.Context.ActorId}' does not have a current node identity.");
+        if (target.Rid == sourceNodeRid)
+            return await _entrySpotJoin.JoinAsync(
+                    target.Rid,
+                    actor,
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        var actorRef = actorState.NativeActorRef
+                       ?? throw new ZLinkFrameworkException(
+                           ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                           $"Actor '{actor.Context.ActorId}' does not have a current native reference.");
+        return await _remoteJoiner.JoinEntrySpotAsync(
+                target,
+                actor,
+                actorRef,
+                request,
+                operationId,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(

@@ -17,7 +17,6 @@ public final class SampleNames {
     public static final String CourierSpotDiscovery = "delivery-couriers";
     public static final String CustomerStreamNode = "deliverydispatch.customer.stream";
     public static final String CourierStreamNode = "deliverydispatch.courier.stream";
-    public static final String TrackingSpotNode = "delivery-tracking-spot-node";
     public static final String CustomerActorType = "deliverydispatch.customer.actor";
     public static final String CourierActorType = "deliverydispatch.courier.actor";
 

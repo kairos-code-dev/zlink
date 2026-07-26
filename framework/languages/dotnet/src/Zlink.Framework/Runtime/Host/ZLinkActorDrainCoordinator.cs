@@ -6,15 +6,16 @@ namespace Zlink.Framework.Runtime.Host;
 /// Coordinates actor target discovery and managed handoff during runtime drain.
 /// </summary>
 internal sealed class ZLinkActorDrainCoordinator(
-    ZLinkFrameworkActorFacade actors,
+    ZLinkStandaloneActorRelocationRuntime relocation,
     ZLinkActorSessionManager actorSessions,
     IServiceProvider services,
     ZLinkFrameworkRegistration registration)
 {
     public async ValueTask<ZLinkFrameworkTerminationReason?> PreflightAsync(
+        ZLinkRetirePreflightPlan plan,
         CancellationToken cancellationToken)
     {
-        var states = actorSessions.SnapshotStates();
+        var states = StandaloneActors(actorSessions.SnapshotStates());
         if (states.Length == 0)
             return null;
 
@@ -25,14 +26,23 @@ internal sealed class ZLinkActorDrainCoordinator(
                          .Where(static actorType => !string.IsNullOrWhiteSpace(actorType))
                          .Distinct(StringComparer.Ordinal))
             {
-                var targets = await ResolveTargetsAsync(actorType!, cancellationToken)
+                var sourceNode = registration.SpotNodes.Values.Single(node =>
+                    node.ActorFactories.ContainsKey(actorType!));
+                if (sourceNode.ActorRelocations[actorType!].PolicyKind == 0)
+                    return ZLinkFrameworkTerminationReason.RelocationDisabled;
+                var targets = await ResolveTargetCandidatesAsync(
+                        actorType!,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 foreach (var state in states.Where(state =>
                              string.Equals(state.ActorType, actorType, StringComparison.Ordinal)))
                 {
                     if (state.Actor is null || state.NativeActorRef is not { } actorRef)
                         continue;
-                    if (!targets.Any(target => target.NodeRid != actorRef.NodeRid))
+                    var capacity = new ZLinkCapacityVector(1, 0, null);
+                    if (!targets.Any(target =>
+                            target.Target.NodeRid != actorRef.NodeRid
+                            && plan.TryReserve(target.Descriptor, capacity)))
                         return ZLinkFrameworkTerminationReason.TargetUnavailable;
                 }
             }
@@ -44,28 +54,40 @@ internal sealed class ZLinkActorDrainCoordinator(
         return null;
     }
 
-    public async ValueTask<bool> DrainAsync(CancellationToken cancellationToken)
+    public async ValueTask<ZLinkActorDrainResult> DrainAsync(
+        CancellationToken cancellationToken)
     {
-        var states = actorSessions.SnapshotStates();
-        if (states.Length == 0) return true;
+        var states = StandaloneActors(actorSessions.SnapshotStates());
+        if (states.Length == 0) return new ZLinkActorDrainResult(true, null, 0);
 
         var targetsByActorType =
-            new Dictionary<string, ZLinkActorDrainTarget[]>(StringComparer.Ordinal);
+            new Dictionary<string, ZLinkActorDrainCandidate[]>(StringComparer.Ordinal);
         foreach (var actorType in states
                      .Select(static state => state.ActorType)
                      .Where(static actorType => !string.IsNullOrWhiteSpace(actorType))
                      .Distinct(StringComparer.Ordinal))
         {
-            targetsByActorType[actorType!] = await ResolveTargetsAsync(actorType!, cancellationToken)
-                .ConfigureAwait(false);
+            targetsByActorType[actorType!] = (await ResolveTargetCandidatesAsync(
+                    actorType!,
+                    cancellationToken)
+                .ConfigureAwait(false));
         }
 
         var nextTarget = -1;
         var moves = states.Select(state => MoveActorAsync(state).AsTask()).ToArray();
         var results = await Task.WhenAll(moves).ConfigureAwait(false);
-        return results.All(static moved => moved);
+        var terminal = results.FirstOrDefault(
+            static result => result.TerminalReason is not null);
+        return terminal.TerminalReason is not null
+            ? terminal
+            : new ZLinkActorDrainResult(
+                results.All(static result => result.Completed),
+                null,
+                checked((ulong)results.Sum(static result =>
+                    checked((long)result.CommittedUnitCount))));
 
-        async ValueTask<bool> MoveActorAsync(ZLinkActorRuntimeState actorState)
+        async ValueTask<ZLinkActorDrainResult> MoveActorAsync(
+            ZLinkActorRuntimeState actorState)
         {
             if (actorState.Handoff.IsSourceMigrationInProgress)
             {
@@ -74,42 +96,42 @@ internal sealed class ZLinkActorDrainCoordinator(
                 if (actorState.Actor is null)
                 {
                     ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
-                    return true;
+                    return new ZLinkActorDrainResult(true, null, 1);
                 }
             }
 
             var actor = actorState.Actor;
             var sourceNode = actorState.NativeActorRef?.NodeRid;
             var actorType = actorState.ActorType;
-            if (actor is null || sourceNode is null || string.IsNullOrWhiteSpace(actorType)) return true;
-            if (!targetsByActorType.TryGetValue(actorType, out var targets)) return false;
-            var eligible = targets.Where(target => target.NodeRid != sourceNode.Value).ToArray();
-            if (eligible.Length == 0) return false;
+            if (actor is null || sourceNode is null || string.IsNullOrWhiteSpace(actorType))
+                return new ZLinkActorDrainResult(true, null, 0);
+            if (!targetsByActorType.TryGetValue(actorType, out var targets))
+                return new ZLinkActorDrainResult(false, null, 0);
+            var eligible = targets.Where(target =>
+                target.Target.NodeRid != sourceNode.Value).ToArray();
+            if (eligible.Length == 0)
+                return new ZLinkActorDrainResult(false, null, 0);
 
             var start = (Interlocked.Increment(ref nextTarget) & int.MaxValue) % eligible.Length;
             for (var attempt = 0; attempt < eligible.Length; attempt++)
             {
-                var target = eligible[(start + attempt) % eligible.Length];
+                var candidate = eligible[(start + attempt) % eligible.Length];
+                var target = candidate.Target;
                 try
                 {
-                    // Entry Spot itself is not relocated. Its stable Spot ID
-                    // selects the target admission transaction that restores
-                    // this Actor and preserves ObjectGeneration.
-                    var result = await actors.JoinActorAsync(
-                            target.EntrySpotId,
-                            actor,
-                            ZLinkMessage.Empty,
-                            operationId: null,
+                    var completed = await relocation.RelocateSourceAsync(
+                            actorState,
+                            candidate.Descriptor,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    if (result is not ZLinkActorJoinResult.Accepted)
+                    if (!completed)
                     {
                         ZLinkFrameworkDebugLog.SpotDiscovery(
                             $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} result=rejected");
                         continue;
                     }
                     ZLinkRuntimeMetrics.RecordDrainActorHandedOff();
-                    return true;
+                    return new ZLinkActorDrainResult(true, null, 1);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -119,9 +141,11 @@ internal sealed class ZLinkActorDrainCoordinator(
                 {
                     ZLinkFrameworkDebugLog.SpotDiscovery(
                         $"drain handoff rejected actor={actorState.ActorId} target={target.NodeRid} kind={error.Kind} message={error.Message}");
-                    // A peer can leave or reject admission after the location
-                    // snapshot. Try the remaining compatible entries before
-                    // the next bounded drain pass refreshes the store view.
+                    if (!IsTargetLocalRetriable(error))
+                        return new ZLinkActorDrainResult(
+                            false,
+                            ZLinkFrameworkTerminationReason.RelocationFailed,
+                            0);
                 }
                 catch (ZlinkSubmitException error)
                 {
@@ -145,10 +169,33 @@ internal sealed class ZLinkActorDrainCoordinator(
                     // A completed rollback leaves the source actor eligible
                     // for the next bounded target refresh.
                 }
+                catch (Exception error)
+                {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"drain handoff terminal actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
+                    return new ZLinkActorDrainResult(
+                        false,
+                        ZLinkFrameworkTerminationReason.RelocationFailed,
+                        0);
+                }
             }
-            return false;
+            return new ZLinkActorDrainResult(false, null, 0);
         }
     }
+
+    internal static bool IsTargetLocalRetriable(ZLinkFrameworkException error) =>
+        error.IsRetriable
+        && error.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
+            or ZLinkFrameworkErrorKind.ActorLocationStale
+            or ZLinkFrameworkErrorKind.ActorMoving
+            or ZLinkFrameworkErrorKind.DeadlineExceeded
+            or ZLinkFrameworkErrorKind.PlacementCapacityExhausted
+            or ZLinkFrameworkErrorKind.SpotMoving
+            or ZLinkFrameworkErrorKind.RelocationTargetUnavailable;
+
+    internal static ZLinkActorRuntimeState[] StandaloneActors(
+        IEnumerable<ZLinkActorRuntimeState> states) =>
+        states.Where(static state => state.LiveActivation is null).ToArray();
 
     internal static string? ResolveMeshName(
         ZLinkFrameworkRegistration registration,
@@ -161,7 +208,7 @@ internal sealed class ZLinkActorDrainCoordinator(
             : actorNode.SpotMeshChannelName ?? actorNode.SpotNodeName;
     }
 
-    private async ValueTask<ZLinkActorDrainTarget[]> ResolveTargetsAsync(
+    private async ValueTask<ZLinkActorDrainCandidate[]> ResolveTargetCandidatesAsync(
         string actorType,
         CancellationToken cancellationToken)
     {
@@ -170,19 +217,57 @@ internal sealed class ZLinkActorDrainCoordinator(
 
         var meshName = ResolveMeshName(registration, actorType);
         if (meshName is null) return [];
-        // Descriptors carry no actor-type capability set: a non-draining
-        // mesh member is a candidate and the target's join admission
-        // rejects actor types it has no factory for.
+        var sourceNode = registration.SpotNodes.Values.Single(node =>
+            node.ActorFactories.ContainsKey(actorType));
+        var sourcePolicy = sourceNode.ActorRelocations[actorType];
+        var requiredPolicy = sourcePolicy.PolicyKind switch
+        {
+            0 => ZLinkObjectMaintenancePolicyKind.Disabled,
+            1 => ZLinkObjectMaintenancePolicyKind.Recreate,
+            2 => ZLinkObjectMaintenancePolicyKind.Snapshot,
+            _ => throw new ZLinkConfigurationException(
+                $"Unknown relocation policy kind '{sourcePolicy.PolicyKind}'.")
+        };
+        if (requiredPolicy == ZLinkObjectMaintenancePolicyKind.Disabled)
+            return [];
         var descriptors = await peers.ListLiveMeshNodesAsync(meshName, cancellationToken)
             .ConfigureAwait(false);
-        var targets = new Dictionary<string, ZLinkActorDrainTarget>(StringComparer.Ordinal);
+        var localNodeRids = registration.SpotNodes.Values
+            .Select(static node => node.RoutingId)
+            .ToHashSet();
+        var targets = new Dictionary<string, ZLinkActorDrainCandidate>(StringComparer.Ordinal);
         foreach (var descriptor in descriptors)
-            if (descriptor.State != ZLinkFrameworkRuntimeState.Draining
+            if (!localNodeRids.Contains(descriptor.Rid)
+                && descriptor.State == ZLinkFrameworkRuntimeState.Serving
+                && descriptor.ObjectRole == ZLinkMeshNodeObjectRole.Server
+                && descriptor.PlacementWeight > 0
+                && descriptor.LeaseGeneration > 0
                 && descriptor.Rid is { Size: > 0 }
-                && !string.IsNullOrWhiteSpace(descriptor.EntrySpotId))
-                targets[descriptor.Rid.ToHex()] = new ZLinkActorDrainTarget(
-                    descriptor.Rid,
-                    descriptor.EntrySpotId);
+                && !string.IsNullOrWhiteSpace(descriptor.EntrySpotId)
+                && descriptor.ApplicationVersion >= registration.ApplicationVersion
+                && (registration.MaintenanceWave is null
+                    || !StringComparer.Ordinal.Equals(
+                        registration.MaintenanceWave,
+                        descriptor.MaintenanceWave))
+                && ZLinkSpotRetireTargetRuntime.HasHeadroom(
+                    descriptor.Capacity.Actors,
+                    1)
+                && descriptor.ActivationConcurrency.Limit
+                   - descriptor.ActivationConcurrency.Active >= 1
+                && descriptor.ObjectCapabilities.Any(capability =>
+                    capability.ObjectKind == ZLinkPlacementObjectKind.Actor
+                    && StringComparer.Ordinal.Equals(
+                        capability.StableType,
+                        actorType)
+                    && capability.Policy == requiredPolicy
+                    && (requiredPolicy
+                        != ZLinkObjectMaintenancePolicyKind.Snapshot
+                        || capability.HasSnapshotAdapter)))
+                targets[descriptor.Rid.ToHex()] = new ZLinkActorDrainCandidate(
+                    descriptor,
+                    new ZLinkActorDrainTarget(
+                        descriptor.Rid,
+                        descriptor.EntrySpotId));
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"drain targets actorType={actorType} mesh={meshName} peers={descriptors.Count} accepting={targets.Count}");
         return targets.Values.ToArray();
@@ -192,3 +277,15 @@ internal sealed class ZLinkActorDrainCoordinator(
 internal readonly record struct ZLinkActorDrainTarget(
     RoutingId NodeRid,
     string EntrySpotId);
+
+internal readonly record struct ZLinkActorDrainCandidate(
+    ZLinkMeshNodeDescriptor Descriptor,
+    ZLinkActorDrainTarget Target);
+
+internal readonly record struct ZLinkActorDrainResult(
+    bool Completed,
+    ZLinkFrameworkTerminationReason? TerminalReason,
+    ulong CommittedUnitCount)
+{
+    internal bool HasCommitted => CommittedUnitCount != 0;
+}

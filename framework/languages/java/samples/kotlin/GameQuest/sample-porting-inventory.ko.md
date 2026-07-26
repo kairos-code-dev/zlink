@@ -29,7 +29,7 @@
 | `.NET: Server/QuestMission/GameQuest.QuestMission.csproj` | `Server/QuestMission/build.gradle.kts` | build | done | QuestMission role project. |
 | `.NET: Server/QuestMission/Program.cs` | `Server/QuestMission/src/main/kotlin/.../questmission/Program.kt` | server-entry | done | quest owner channel server와 self-check HTTP endpoint를 실행한다. |
 | `.NET: Server/QuestMission/Application/QuestEventProcessor.cs` | `QuestStore.apply()` | application | done | event idempotency, progress update, reward grant, notification 생성 책임을 갖는다. |
-| `.NET: Server/QuestMission/Application/QuestOwnerRouter.cs` | `SampleTopology.ownerChannel(playerId)` | routing | done | player id 기준 owner channel 선택을 설정 helper로 표현한다. |
+| `common: shared quest owner channel` | `SampleNames.QuestOwnerChannel` | routing | done | 호출자는 shared owner channel로 요청하며 physical owner instance를 선택하지 않는다. |
 | `.NET: Server/QuestMission/Domain/QuestDomain.cs` | `QuestDomain` in `Program.kt` | domain | done | quest 조건 평가와 progress/reward event 생성을 맡는다. |
 
 ## 공통 요구 대응
@@ -38,7 +38,7 @@
 |------|-------------|------|------|------|
 | common: GameApi 2개, QuestMission 2개 실행 | `run_sample.sh` | runner | done | 실제 process 경계로 role을 실행하고 공통 Redis location store로 서로를 찾는다. |
 | common: client는 stream session으로 gameplay action과 push를 처리 | `Client/Program.kt`, `GameQuestSession` | validation | done | `JoinSessionReq`, gameplay action request, progress/completion notify를 같은 stream에서 검증한다. |
-| common: player별 owner로 quest event 직렬 처리 | `SampleTopology.ownerChannel(playerId)`, `QuestMission` handlers | runtime-flow | done | player id 기준 owner channel로 request를 보내고 QuestMission role이 처리한다. |
+| common: player별 owner에서 quest event 직렬 처리 | `SampleNames.QuestOwnerChannel`, `QuestMission` handlers | runtime-flow | done | shared owner channel로 request를 보내고 framework가 선택한 QuestMission role이 처리한다. |
 | common: quest event store replay와 projection rebuild | `QuestStore`, `RedisSampleStore`, rebuild self-check endpoint | validation | done | projection 삭제 뒤 rebuild request로 `HerbGathering` reward projection을 복구한다. |
 | common: gameplay fact 기반 reset/reconcile | `SyncQuestProgressReq`, `/self-check/gameplay/kill-without-publish/*` | validation | done | owner messaging 없이 누락된 gameplay fact를 기록한 뒤 sync/reconcile로 projection을 보정한다. |
 | common: reward idempotency | duplicate `KillMonsterReq` check | validation | done | 같은 idempotency key가 같은 event id를 반환하는지 client가 확인한다. |

@@ -9,8 +9,7 @@ internal sealed class StartOrderUseCase(
     OrderStartPreparation preparation,
     ICommerceStateStore commerce,
     IOrderReadModelStore readModels,
-    IOrderWorkflowRouter workflows,
-    CommerceApiInstanceOptions options)
+    IOrderWorkflowRouter workflows)
 {
     public async ValueTask<StartOrderRes> ExecuteAsync(
         StartOrderReq request,
@@ -29,7 +28,6 @@ internal sealed class StartOrderUseCase(
 
         var mapping = existing ?? await commerce.ReserveIdempotencyAsync(
             request.IdempotencyKey,
-            options.InstanceId,
             cancellationToken);
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
         var state = existing is null
@@ -88,8 +86,7 @@ internal sealed class OrderStartPreparation(ICommerceStateStore commerce)
 internal sealed class PrepareInventoryReservedOrderUseCase(
     OrderStartPreparation preparation,
     ICommerceStateStore commerce,
-    IOrderWorkflowRouter workflows,
-    CommerceApiInstanceOptions options)
+    IOrderWorkflowRouter workflows)
 {
     public async ValueTask<StartOrderRes> ExecuteAsync(
         StartOrderReq request,
@@ -98,7 +95,6 @@ internal sealed class PrepareInventoryReservedOrderUseCase(
         var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
         var mapping = await commerce.ReserveIdempotencyAsync(
             request.IdempotencyKey,
-            options.InstanceId,
             cancellationToken);
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
         var state = await workflows.PrepareInventoryReservedCheckpointAsync(command, cancellationToken);

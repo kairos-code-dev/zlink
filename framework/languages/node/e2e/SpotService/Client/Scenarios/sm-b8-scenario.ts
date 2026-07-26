@@ -1,4 +1,4 @@
-// SM-B8: actor 명시 파괴 (`DestroyActorAsync`) 시나리오를 검증한다.
+// SM-B8: ActorRef를 사용하는 exact actor destroy 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

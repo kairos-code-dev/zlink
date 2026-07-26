@@ -58,7 +58,8 @@ enum class termination_reason_t : std::uint8_t
     deadline_exceeded = 5,
     relocation_failed = 6,
     teardown_failed = 7,
-    runtime_not_ready = 8
+    runtime_not_ready = 8,
+    manual_topology_unsupported = 9
 };
 
 struct termination_result_t

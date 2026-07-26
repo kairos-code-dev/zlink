@@ -24,8 +24,8 @@ class DeliveryDispatchClientScenario {
     let courierB = createCourierB();
     try {
       await this.connect(customer, courierA, courierB, signal);
-      const firstActorA = await this.bindCourier(courierA, 'courier-a', 'courier-node-1', signal);
-      const firstActorB = await this.bindCourier(courierB, 'courier-b', 'courier-node-2', signal);
+      const firstActorA = await this.bindCourier(courierA, 'courier-a', signal);
+      const firstActorB = await this.bindCourier(courierB, 'courier-b', signal);
       await this.runSuccessfulDelivery(http, customer, courierA, signal);
 
       await Promise.all([customer.close(), courierA.close(), courierB.close()]);
@@ -33,8 +33,8 @@ class DeliveryDispatchClientScenario {
       courierA = createCourierA();
       courierB = createCourierB();
       await this.connect(customer, courierA, courierB, signal);
-      const reboundA = await this.bindCourier(courierA, 'courier-a', 'courier-node-1', signal);
-      const reboundB = await this.bindCourier(courierB, 'courier-b', 'courier-node-2', signal);
+      const reboundA = await this.bindCourier(courierA, 'courier-a', signal);
+      const reboundB = await this.bindCourier(courierB, 'courier-b', signal);
       zlinkStreamAssert.ensure(reboundA.actor.generation === firstActorA.actor.generation, 'Sample scenario assertion failed.');
       zlinkStreamAssert.ensure(reboundB.actor.generation === firstActorB.actor.generation, 'Sample scenario assertion failed.');
       zlinkStreamAssert.ensure(reboundA.sessionRoute !== firstActorA.sessionRoute, 'Sample scenario assertion failed.');
@@ -59,7 +59,6 @@ class DeliveryDispatchClientScenario {
   private async bindCourier(
     courier: ZlinkStreamConnector,
     courierId: string,
-    expectedNodeRid: string,
     signal?: AbortSignal
   ): Promise<BindCourierSessionRes> {
     const bound = await courier.request(bindCourierSession(courierId), Object)
@@ -67,7 +66,6 @@ class DeliveryDispatchClientScenario {
       .submit<BindCourierSessionRes>(signal);
     zlinkStreamAssert.ensure(bound.courierId === courierId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(bound.actor.actorId === courierId, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(bound.actor.nodeRid === expectedNodeRid, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(bound.sessionRoute.length > 0, 'Sample scenario assertion failed.');
     return bound;
   }

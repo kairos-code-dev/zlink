@@ -233,7 +233,7 @@ try {
 
     Wait-Grep "observer-connected endpoint=tcp://127.0.0.1:" $clientLog
     Wait-Grep "observer-subscription=verified subscribed=true" $clientLog
-    Wait-Grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-" $clientLog
+    Wait-Grep "observer-win-milestone=verified actor=player-x wins=100" $clientLog
     Wait-Grep "tictactoe completed" $clientLog
     Wait-Grep "tictactoe=completed" $clientLog
     Wait-Grep "actor: LeaveGameReq completed. actor=player-x" (Join-Path $LogDir "play-*.log")

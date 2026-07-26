@@ -42,16 +42,15 @@ public static class ApiServerHostFactory
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .SetRoutingIdPrefix("api")
                 .Listen(node.MeshEndpoint);
-            mesh.ChannelName(SampleNames.ApiChannel)
+            mesh.Channel(SampleNames.ApiChannel).Server()
                 .AddHandlerGroup("api");
-            mesh.ChannelName(SampleNames.PlayChannel).SetWeight(0);
-            mesh.ChannelName(SampleNames.RoomChannel).SetWeight(0);
+            mesh.Channel(SampleNames.PlayChannel).Client();
+            mesh.Channel(SampleNames.RoomChannel).Client();
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "api",
             SampleNames.MeshName));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
-
         return builder.Build();
     }
 }

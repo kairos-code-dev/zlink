@@ -23,13 +23,10 @@ class TicTacToeGameCreator {
   async create(gameName: string): Promise<CreateGameRes> {
     const roomId = `room-${randomUUID().replaceAll('-', '')}`;
     await this.rooms.provision(roomId);
-    const playNodes = this.config.playEndpoints.map((endpoint, index) => ({
-      streamEndpoint: endpoint,
-      spotNodeRid: `play-node-${index + 1}`
-    }));
+    const playNodes = this.config.playEndpoints.map((streamEndpoint) => ({ streamEndpoint }));
     const ownerPlayEndpoint = this.config.playStreamEndpoint;
     console.log(
-      `game-created roomId=${roomId} ownerPlayEndpoint=${ownerPlayEndpoint} nodeRid=${this.config.playSpotNodeRid}`
+      `game-created roomId=${roomId} ownerPlayEndpoint=${ownerPlayEndpoint}`
     );
     return createGameRes(
       roomId,

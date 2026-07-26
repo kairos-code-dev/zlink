@@ -272,6 +272,19 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         List<Message> parts,
         SendFlags flags);
 
+    default byte[] encodeLocalSessionActorAccepted(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence,
+        long requestSequence,
+        String packetName,
+        java.util.Map<String, String> metadata,
+        byte[] payload) {
+        return new byte[0];
+    }
+
     void bindRemoteActorBoundSession(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,

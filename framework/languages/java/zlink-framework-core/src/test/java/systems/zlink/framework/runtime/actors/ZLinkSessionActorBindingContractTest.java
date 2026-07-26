@@ -178,6 +178,46 @@ final class ZLinkSessionActorBindingContractTest {
             "a repeated command with the stale source route must not ACK");
     }
 
+    @Test
+    void command44ChangesOnlyTheExactBindingAndProducesCommand45Ack() {
+        FakeStream stream = new FakeStream();
+        ZLinkSessionActorsRuntime runtime = runtime(stream);
+        ZLinkSessionActor actor = runtime.bind(
+            new ActorRef("actor-1", 7, MESH, NODE_A))
+            .toCompletableFuture().join();
+        var relocation = new systems.zlink.framework.runtime.service
+            .ZLinkServiceM6BWireCodec.RelocationIdentity(8, 9);
+        var coordinator = new systems.zlink.framework.runtime.service
+            .ZLinkServiceM6BWireCodec.RelocationCoordinatorFence(
+                "coordinator", 2, NODE_A, 3, "store-v4");
+        var session = new systems.zlink.framework.runtime.service
+            .ZLinkServiceM6BWireCodec.SessionOwnerFence(
+                NODE_A, 3, "session-owner", 4, SESSION, 1);
+        var command = new systems.zlink.framework.runtime.service
+            .ZLinkServiceM6BWireCodec.SessionRelocationRoute(
+                relocation,
+                coordinator,
+                systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec
+                    .RelocationRole.TARGET,
+                new systems.zlink.framework.runtime.service
+                    .ZLinkServiceM6BWireCodec.ActorIdentity("actor-1", 7),
+                session,
+                systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec
+                    .SessionRelocationRouteAction.COMMIT,
+                9, 10, NODE_B, 4, 17);
+
+        var ack = runtime.applyRelocationRouteCommand(command)
+            .toCompletableFuture().join();
+
+        assertEquals(NODE_B, actor.ref().nodeRid());
+        assertEquals(7, actor.ref().objectGeneration());
+        assertEquals(10, ack.currentAuthorityOwnerGeneration());
+        assertEquals(17, ack.lastAcceptedSessionSequence());
+        assertThrows(CompletionException.class,
+            () -> runtime.applyRelocationRouteCommand(command)
+                .toCompletableFuture().join());
+    }
+
     private static ZLinkSessionActorsRuntime runtime(FakeStream stream) {
         return new ZLinkSessionActorsRuntime(
             stream,

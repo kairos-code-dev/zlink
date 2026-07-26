@@ -486,8 +486,55 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     );
   }
 
+  restoreSpotAuthority(
+    spotId: string,
+    objectKind: 'user_spot' | 'instance_spot',
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpot {
+    return new RawServiceSpot(
+      this,
+      this.requireStateful().restoreSpotAuthority(
+        spotId,
+        objectKind,
+        stableType,
+        generation,
+        authorityOwnerGeneration
+      )
+    );
+  }
+
   createActor(actorId: string): ZLinkBackendActorRef {
     return this.requireStateful().createActor(actorId).ref;
+  }
+
+  restoreActorAuthority(
+    actorId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint,
+    spotId: string,
+    spotGeneration: bigint,
+    membershipEpoch: bigint
+  ): ZLinkBackendActorRef {
+    return this.requireStateful().restoreActorAuthority(
+      actorId,
+      stableType,
+      generation,
+      authorityOwnerGeneration,
+      spotId,
+      spotGeneration,
+      membershipEpoch
+    ).ref;
+  }
+
+  discardRelocatedActor(actor: ZLinkBackendActorRef): void {
+    this.requireStateful().discardRelocatedActor({
+      nodeRid: String(actor.nodeRid),
+      actorId: actor.actorId,
+      generation: actor.generation
+    });
   }
 
   restoreActorSessionBinding(

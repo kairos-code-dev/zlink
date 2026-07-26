@@ -66,7 +66,7 @@ public final class EnsureAgentConversationHandler
     }
 
     private CompletionStage<Messages.JoinConversationRes> refresh(ActorRef actorRef) {
-        return actorClient.requestToActor(actorRef, new Messages.JoinConversationReq())
+        return actorClient.requestToActor(actorRef.actorId(), new Messages.JoinConversationReq())
             .timeout(SampleTimings.RequestTimeout)
             .submit(Messages.JoinConversationRes.class);
     }

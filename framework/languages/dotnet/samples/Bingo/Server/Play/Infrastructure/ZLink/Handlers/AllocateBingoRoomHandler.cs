@@ -1,49 +1,48 @@
+using Bingo.Server.Configuration;
 using Bingo.Server.Play.Application.RoomAllocation;
 using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
-using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
+[ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(
     BingoRoomAllocator allocator,
     IZLinkSpotManager spots,
     ILogger<AllocateBingoRoomHandler> logger)
-    : IZLinkSpotRequestHandler<BingoEntrySpot, AllocateBingoRoomReq, AllocateBingoRoomRes>
+    : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
     public async ValueTask<AllocateBingoRoomRes> HandleAsync(
-        BingoEntrySpot entrySpot,
         AllocateBingoRoomReq request,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "play allocate: request. actor={ActorId}, mode={Mode}, preferredOwner={PreferredOwnerNodeRid}",
+            "play allocate: request. actor={ActorId}, mode={Mode}",
             request.ActorId,
-            request.Mode,
-            request.PreferredOwnerNodeRid);
+            request.Mode);
         var reservation = await allocator.AllocateAsync(
             request.Mode,
             request.ActorId,
-            request.PreferredOwnerNodeRid,
             cancellationToken);
         logger.LogInformation(
-            "play allocate: allocated. actor={ActorId}, room={RoomId}, owner={OwnerNodeRid}",
+            "play allocate: allocated. actor={ActorId}, room={RoomId}",
             request.ActorId,
-            reservation.RoomId,
-            reservation.OwnerPlayNodeRid);
+            reservation.RoomId);
         if (reservation.NewRoomSettings is not null)
-            await spots.GetOrCreateAsync<BingoRoom, BingoRoomSettingsPayload>(
-                RoutingId.From(reservation.RoomId),
-                BingoRoomSettingsPayloadMapper.ToPayload(reservation.NewRoomSettings),
-                cancellationToken);
+            _ = await spots
+                .GetOrCreate(reservation.RoomId, SampleNames.RoomSpotType)
+                .InMesh(SampleNames.MeshName)
+                .Request(BingoRoomSettingsPayloadMapper.ToPayload(
+                    reservation.NewRoomSettings))
+                .Async(cancellationToken);
 
         return new AllocateBingoRoomRes
         {
-            RoomId = reservation.RoomId,
-            RoomOwnerNodeRid = reservation.OwnerPlayNodeRid
+            RoomId = reservation.RoomId
         };
     }
 }

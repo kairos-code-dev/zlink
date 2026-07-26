@@ -9,9 +9,8 @@ import {
   QuestEventStore,
   QuestReadModelStore
 } from '../Shared/Store/quest-progress-store';
-import { questMissionInstanceChannel, questMissionInstanceRid, SampleNames } from '../../Shared/Configuration/sample-names';
+import { questMissionInstanceChannel, SampleNames } from '../../Shared/Configuration/sample-names';
 import { QuestEventProcessor } from './Application/quest-event-processor';
-import { QuestOwnerRouter } from './Application/quest-owner-router';
 import { GameplayEventRouteHandler } from './Infrastructure/ZLink/gameplay-event-route-handler';
 import { PlayerQuestNotifier } from './Infrastructure/ZLink/player-quest-notifier';
 import { PlayerQuestSpotProvisioner } from './Infrastructure/ZLink/player-quest-spot-provisioner';
@@ -36,7 +35,6 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
   const spotRouterEndpointKey = instanceId === 'mission-a'
     ? 'missionASpotRouterEndpoint'
     : 'missionBSpotRouterEndpoint';
-  const missionRid = questMissionInstanceRid(instanceId);
   const configuration = createGameQuestConfigurationModule([
     spotRouterEndpointKey,
     instanceId === 'mission-a' ? 'missionAHttpUrl' : 'missionBHttpUrl',
@@ -62,7 +60,7 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
           gameQuestLocationOptions(builder.configureLocations());
           const spotMesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[spotRouterEndpointKey])
-            .routingId(missionRid)
+            .useAllocatedRoutingId(16, 'gamequest-mission')
             .addSpotFactory(PlayerQuestSpot);
           spotMesh.channelName(questMissionInstanceChannel(instanceId)).addHandlerGroup('quest-owner');
           spotMesh.channelName(SampleNames.playerQuestSpotMesh);
@@ -92,7 +90,6 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
         inject: [GAMEQUEST_SAMPLE_CONFIG],
         useFactory: (config: GameQuestServerConfig) => createGameQuestLocationStore(config)
       },
-      { provide: QuestOwnerRouter, useFactory: () => new QuestOwnerRouter(missionRid) },
       QuestEventProcessor,
       PlayerQuestNotifier,
       PlayerQuestSpotProvisioner,

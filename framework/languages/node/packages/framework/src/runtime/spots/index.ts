@@ -302,6 +302,67 @@ export class DefaultZLinkSpotManager {
     });
   }
 
+  relocationActivations(meshName: string): readonly ZLinkSpotActivation[] {
+    return this.activations.activeActivations().filter(activation =>
+      activation.meshName === meshName
+      && this.activations.resolve(meshName, activation.spotId) === activation);
+  }
+
+  resolveRelocationActivation(
+    meshName: string,
+    spotId: RoutingId
+  ): ZLinkSpotActivation | undefined {
+    return this.activations.resolve(meshName, spotId);
+  }
+
+  async prepareRelocationSpot(
+    meshName: string,
+    objectKind: 'user_spot' | 'instance_spot',
+    stableType: string,
+    implementation: Type<ZLinkSpot | ZLinkInstanceSpot>,
+    spotId: RoutingId,
+    objectGeneration: bigint,
+    authorityOwnerGeneration: bigint,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotActivation> {
+    this.activations.stage(meshName, spotId);
+    try {
+      return await this.activationLifecycle.materializeRelocation(
+        meshName,
+        objectKind,
+        stableType,
+        implementation,
+        spotId,
+        objectGeneration,
+        authorityOwnerGeneration,
+        signal
+      );
+    } catch (error) {
+      this.activations.abandonStage(meshName, spotId);
+      throw error;
+    }
+  }
+
+  async publishRelocationSpot(
+    activation: ZLinkSpotActivation
+  ): Promise<void> {
+    await activation.serial.execute(() => activation.spot.onInitialize?.());
+    this.activations.publish(activation.meshName, activation.spotId);
+  }
+
+  async abortRelocationSpot(activation: ZLinkSpotActivation): Promise<void> {
+    this.activations.detachRelocated(activation.meshName, activation.spotId);
+    await activation.timers.dispose();
+    await activation.nativeSpot?.dispose();
+  }
+
+  async completeRelocationSource(
+    activation: ZLinkSpotActivation
+  ): Promise<void> {
+    this.activations.detachRelocated(activation.meshName, activation.spotId);
+    await activation.nativeSpot?.dispose();
+  }
+
   materializeInstance(
     meshName: string,
     instanceType: string,

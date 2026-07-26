@@ -32,7 +32,6 @@ data class CreateGameRes(
 
 data class PlayNodeInfo(
     val streamEndpoint: String,
-    val spotNodeRid: String,
 )
 
 data class PlayerInfo(
@@ -95,5 +94,4 @@ data class WinMilestoneNotify(
     val actorId: String,
     val displayName: String,
     val wins: Int,
-    val receivingSpotNodeRid: String,
 )

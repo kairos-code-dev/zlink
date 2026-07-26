@@ -22,16 +22,9 @@ namespace zlink::samples::supportchat
 {
 using namespace zlink::framework;
 
-inline constexpr const char *supportchat_support_node = "supportchat-support";
+inline constexpr const char *supportchat_support_channel_rid = "supportchat-support";
 inline constexpr const char *support_user_actor_type = "support-user";
 inline constexpr const char *support_conversation_spot = "supportchat.conversation";
-
-actor_ref_snapshot_t snapshot_of (const zlink::framework::actor_ref_t &actor_ref)
-{
-    auto snapshot = actor_ref_snapshot_t::from (actor_ref);
-    snapshot.node_rid = node_rid_t::from_string (supportchat_support_node);
-    return snapshot;
-}
 
 class support_user_actor_t
 {
@@ -719,11 +712,10 @@ class ensure_agent_conversation_handler_t
         auto entry_joined =
           co_await actor.value ()
             .context ()
-            .join_entry_spot (node_rid_t::from_string (supportchat_support_node),
-                              ensure_support_user_actor_req_t{conversation_actor_id,
-                                                              request.display_name,
-                                                              role_t::agent,
-                                                              request.roster_actor_id})
+            .join_entry_spot (ensure_support_user_actor_req_t{conversation_actor_id,
+                                                               request.display_name,
+                                                               role_t::agent,
+                                                               request.roster_actor_id})
             .async ();
         if (!std::holds_alternative<framework::actor_join_accepted_t<framework::message_t>> (
               entry_joined)) {
@@ -911,7 +903,7 @@ int main (int argc, char **argv)
         options.services ().add_singleton<supportchat_server_story_t> ();
         options.add_client_server_channel ("supportchat.support")
           .enable_server (topology.support_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (supportchat_support_node))
+          .set_routing_id (zlink::routing_id_t::from (supportchat_support_channel_rid))
           .use_handler_group ("supportchat-support");
         options.add_client_server_channel ("supportchat.api").enable_client ();
         options.handlers ()
@@ -925,11 +917,11 @@ int main (int argc, char **argv)
           .map_post<supportchat_assert_handler_t> ("/self-check/assert");
         auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
         actor_route.listen (topology.support_actor_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from ("supportchat-support"))
+          .use_allocated_routing_id (16, "support-owner-route")
           .channel_name ("supportchat.session.actor.route");
         auto support_spot = options.add_route_mesh ("supportchat.support.spot");
         support_spot.channel_name ("supportchat.session.actor.route");
-        support_spot.set_routing_id (zlink::routing_id_t::from (supportchat_support_node))
+        support_spot.use_allocated_routing_id (16, "support-owner")
           .listen (topology.support_spot_router_endpoint)
           .add_entry_spot<support_entry_spot_t> (
             [runtime_ptr] { return std::make_shared<support_entry_spot_t> (*runtime_ptr); })

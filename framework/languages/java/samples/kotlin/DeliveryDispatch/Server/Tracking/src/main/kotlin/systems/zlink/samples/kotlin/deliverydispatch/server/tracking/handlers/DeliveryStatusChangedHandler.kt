@@ -27,7 +27,7 @@ class DeliveryStatusChangedHandler(
                 IllegalStateException("customer actor not found: ${request.customerId}")
             }
         actors.sendToActor(
-            actorRef,
+            actorRef.actorId,
             DeliveryStatusUpdatedMsg(
                 deliveryId = request.deliveryId,
                 customerId = request.customerId,

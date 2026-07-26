@@ -209,7 +209,6 @@ EOF
 sample.customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")
 sample.customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")
 sample.customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")
-sample.customerSpotNodeRid=customer-node-1
 EOF
       ;;
     courier-session)
@@ -217,9 +216,6 @@ EOF
 sample.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
 sample.courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
 sample.courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
-sample.courierSessionSpotNodeRid=courier-session-node
-sample.courierActorNode1Rid=courier-node-1
-sample.courierActorNode2Rid=courier-node-2
 EOF
       ;;
     courier-node)
@@ -228,13 +224,11 @@ sample.courierNode=${courier_node}
 EOF
       if [[ "${courier_node}" == "node2" ]]; then
         cat >>"$path" <<EOF
-sample.courierActorNode2Rid=courier-node-2
 sample.courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")
 sample.courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
 EOF
       else
         cat >>"$path" <<EOF
-sample.courierActorNode1Rid=courier-node-1
 sample.courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")
 sample.courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")
 EOF
@@ -244,8 +238,6 @@ EOF
       cat >>"$path" <<EOF
 sample.dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
 sample.dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
-sample.courierActorNode1Rid=courier-node-1
-sample.courierActorNode2Rid=courier-node-2
 EOF
       ;;
   esac

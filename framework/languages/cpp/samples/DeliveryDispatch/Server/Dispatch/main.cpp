@@ -114,8 +114,8 @@ class courier_selection_policy_t
 class courier_offer_port_t
 {
   public:
-    courier_offer_port_t (route_client_t &routes, spot_handle_resolver_t &spot_handles) :
-        _routes (routes), _spot_handles (spot_handles)
+    courier_offer_port_t (actor_directory_t &directory, actor_client_t &actors) :
+        _directory (directory), _actors (actors)
     {
     }
 
@@ -123,24 +123,21 @@ class courier_offer_port_t
                         const std::string &courier_id,
                         int attempt)
     {
-        const auto node = sample_names_t::courier_actor_node (courier_id);
-        auto entry_spot =
-          co_await _spot_handles.resolve_spot_handle (spot_rid_t::from_string (node));
-        if (!entry_spot) {
-            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
-                                         "courier entry spot has no live location row: " + node);
+        auto actor = co_await _directory.find (courier_id);
+        if (!actor) {
+            throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
+                                         "courier actor route was not found: " + courier_id);
         }
-        _routes
-          .send_to_spot (*entry_spot,
-                         offer_delivery_msg_t{courier_id, delivery.delivery_id, attempt,
-                                              delivery.pickup_address, delivery.dropoff_address})
+        co_await _actors
+          .send_to_actor (*actor,
+                          offer_delivery_msg_t{courier_id, delivery.delivery_id, attempt,
+                                               delivery.pickup_address, delivery.dropoff_address})
           .submit ();
-        co_return;
     }
 
   private:
-    route_client_t &_routes;
-    spot_handle_resolver_t &_spot_handles;
+    actor_directory_t &_directory;
+    actor_client_t &_actors;
 };
 
 class delivery_status_publisher_t
@@ -234,11 +231,11 @@ class dispatch_worker_t
 
 inline dispatch_worker_t make_worker (dispatch_state_t &state,
                                       courier_selection_policy_t &couriers,
-                                      route_client_t &routes,
-                                      spot_handle_resolver_t &spot_handles,
+                                      actor_directory_t &directory,
+                                      actor_client_t &actors,
                                       channel_client_t &channels)
 {
-    return dispatch_worker_t (state, couriers, courier_offer_port_t (routes, spot_handles),
+    return dispatch_worker_t (state, couriers, courier_offer_port_t (directory, actors),
                               delivery_status_publisher_t (channels));
 }
 
@@ -249,32 +246,32 @@ class assign_delivery_handler_t
     using message_type = assign_delivery_msg_t;
     using dependency_types = dependency_list_t<dispatch_state_t,
                                                courier_selection_policy_t,
-                                               route_client_t,
-                                               spot_handle_resolver_t,
+                                               actor_directory_t,
+                                               actor_client_t,
                                                channel_client_t>;
     static constexpr const char *topic_name = "AssignDeliveryMsg";
 
     assign_delivery_handler_t (dispatch_state_t &state,
                                courier_selection_policy_t &couriers,
-                               route_client_t &routes,
-                               spot_handle_resolver_t &spot_handles,
+                               actor_directory_t &directory,
+                               actor_client_t &actors,
                                channel_client_t &channels) :
-        _state (state), _couriers (couriers), _routes (routes), _spot_handles (spot_handles),
+        _state (state), _couriers (couriers), _directory (directory), _actors (actors),
         _channels (channels)
     {
     }
 
     task_t<void> handle (const assign_delivery_msg_t &request)
     {
-        auto worker = make_worker (_state, _couriers, _routes, _spot_handles, _channels);
+        auto worker = make_worker (_state, _couriers, _directory, _actors, _channels);
         co_await worker.start (request);
     }
 
   private:
     dispatch_state_t &_state;
     courier_selection_policy_t &_couriers;
-    route_client_t &_routes;
-    spot_handle_resolver_t &_spot_handles;
+    actor_directory_t &_directory;
+    actor_client_t &_actors;
     channel_client_t &_channels;
 };
 
@@ -285,17 +282,17 @@ class offer_delivery_result_handler_t
     using message_type = offer_delivery_result_msg_t;
     using dependency_types = dependency_list_t<dispatch_state_t,
                                                courier_selection_policy_t,
-                                               route_client_t,
-                                               spot_handle_resolver_t,
+                                               actor_directory_t,
+                                               actor_client_t,
                                                channel_client_t>;
     static constexpr const char *topic_name = "OfferDeliveryResultMsg";
 
     offer_delivery_result_handler_t (dispatch_state_t &state,
                                      courier_selection_policy_t &couriers,
-                                     route_client_t &routes,
-                                     spot_handle_resolver_t &spot_handles,
+                                     actor_directory_t &directory,
+                                     actor_client_t &actors,
                                      channel_client_t &channels) :
-        _state (state), _couriers (couriers), _routes (routes), _spot_handles (spot_handles),
+        _state (state), _couriers (couriers), _directory (directory), _actors (actors),
         _channels (channels)
     {
     }
@@ -308,15 +305,15 @@ class offer_delivery_result_handler_t
                       << result.delivery_id << " attempt=" << result.attempt << "\n";
             co_return;
         }
-        auto worker = make_worker (_state, _couriers, _routes, _spot_handles, _channels);
+        auto worker = make_worker (_state, _couriers, _directory, _actors, _channels);
         co_await worker.settle (*offer, result.accepted, result.reason);
     }
 
   private:
     dispatch_state_t &_state;
     courier_selection_policy_t &_couriers;
-    route_client_t &_routes;
-    spot_handle_resolver_t &_spot_handles;
+    actor_directory_t &_directory;
+    actor_client_t &_actors;
     channel_client_t &_channels;
 };
 
@@ -347,8 +344,8 @@ class offer_deadline_sweeper_t final : public hosted_service_t
         auto scope = _services->create_scope ();
         auto worker = make_worker (scope.get_required<dispatch_state_t> (),
                                    scope.get_required<courier_selection_policy_t> (),
-                                   scope.get_required<route_client_t> (),
-                                   scope.get_required<spot_handle_resolver_t> (),
+                                   scope.get_required<actor_directory_t> (),
+                                   scope.get_required<actor_client_t> (),
                                    scope.get_required<channel_client_t> ());
         auto &state = scope.get_required<dispatch_state_t> ();
         while (_running.load ()) {
@@ -483,7 +480,7 @@ int main (int argc, char **argv)
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
           .enable_client ();
         options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::dispatch_spot_node))
+          .use_allocated_routing_id (16, "delivery-dispatch")
           .listen (topology.dispatch_spot_router_endpoint)
           .channel_name (sample_names_t::courier_actor_discovery);
         options.handlers ()

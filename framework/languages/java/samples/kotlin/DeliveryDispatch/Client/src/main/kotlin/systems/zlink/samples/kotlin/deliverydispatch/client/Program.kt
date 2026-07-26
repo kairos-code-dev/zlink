@@ -74,10 +74,6 @@ class DeliveryDispatchClientScenario {
                 courierBBound.courierId == "courier-b",
                 "courier-b binding id mismatch",
             )
-            ZLinkKotlinStreamAssert.ensure(
-                courierABound.actor.nodeRid != courierBBound.actor.nodeRid,
-                "courier bindings must use different actor nodes",
-            )
             println("deliverydispatch-bind=courier-b")
 
             runSuccessfulDelivery(customer, courierA, courierB)

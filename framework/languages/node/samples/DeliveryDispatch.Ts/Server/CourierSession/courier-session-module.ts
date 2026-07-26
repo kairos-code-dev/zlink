@@ -35,7 +35,7 @@ function createCourierSessionModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-            .listen(config.courierSessionSpotEndpoint).routingId('courier-session');
+            .listen(config.courierSessionSpotEndpoint).useAllocatedRoutingId(16, 'delivery-session');
           mesh.channelName(SampleNames.routeMesh).setWeight(0);
           return builder.addStreamNode(SampleNames.courierStreamNode)
               .bind(config.courierStreamEndpoint)

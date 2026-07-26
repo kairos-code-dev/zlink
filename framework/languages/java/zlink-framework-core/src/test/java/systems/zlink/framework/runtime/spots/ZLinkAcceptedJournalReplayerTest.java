@@ -24,10 +24,18 @@ final class ZLinkAcceptedJournalReplayerTest {
         List<String> order = new ArrayList<>();
         byte[] encoded;
         try (var received = new ZLinkBackendReceived(
+            systems.zlink.framework.runtime.backend
+                .ZLinkBackendRequestResult.OK,
             Optional.of(RoutingId.from("source")),
             Optional.of("room-a"),
             Optional.of(17L),
-            List.of(Message.from(new byte[] {1})))) {
+            new byte[0],
+            ZLinkAcceptedJournalTestRecords.spot(
+                "room-a", "room-b", 17, "probe", Map.of(),
+                new byte[] {1}),
+            List.of(Message.from(new byte[] {1})),
+            null,
+            () -> { })) {
             encoded = ZLinkSpotAcceptedJournal.encode(received);
         }
         var replayer = new ZLinkAcceptedJournalReplayer(
@@ -39,17 +47,20 @@ final class ZLinkAcceptedJournalReplayerTest {
             request -> CompletableFuture.completedFuture(Optional.empty()),
             new ZLinkAcceptedJournalReplayer.ReplyRelay() {
                 @Override public java.util.concurrent.CompletionStage<Void>
-                    relaySpot(
+                    completeSpot(
                         ZLinkSpotAcceptedJournal.Record request,
+                        long acceptedSequence,
                         List<byte[]> reply) {
                     order.add("reply:" + request.requestSequence().orElseThrow());
+                    assertEquals(1, acceptedSequence);
                     assertArrayEquals(new byte[] {9}, reply.get(0));
                     return CompletableFuture.completedFuture(null);
                 }
                 @Override public java.util.concurrent.CompletionStage<Void>
-                    relayActor(
+                    completeActor(
                         ZLinkActorAcceptedJournal.Record request,
-                        byte[] reply) {
+                        long acceptedSequence,
+                        Optional<byte[]> reply) {
                     return CompletableFuture.failedFuture(
                         new AssertionError("unexpected Actor reply"));
                 }
@@ -73,7 +84,15 @@ final class ZLinkAcceptedJournalReplayerTest {
         byte[] encoded;
         try (Message payload = Message.from(new byte[] {3})) {
             encoded = ZLinkActorAcceptedJournal.encode(
-                "actor-a", header, payload);
+                "actor-a",
+                header,
+                payload,
+                ZLinkAcceptedJournalTestRecords.actor(
+                    "actor-a",
+                    41,
+                    "probe",
+                    Map.of(),
+                    new byte[] {3}));
         }
         var replayer = new ZLinkAcceptedJournalReplayer(
             request -> CompletableFuture.completedFuture(List.of()),
@@ -87,17 +106,20 @@ final class ZLinkAcceptedJournalReplayerTest {
             },
             new ZLinkAcceptedJournalReplayer.ReplyRelay() {
                 @Override public java.util.concurrent.CompletionStage<Void>
-                    relaySpot(
+                    completeSpot(
                         ZLinkSpotAcceptedJournal.Record request,
+                        long acceptedSequence,
                         List<byte[]> reply) {
                     return CompletableFuture.failedFuture(
                         new AssertionError("unexpected Spot reply"));
                 }
                 @Override public java.util.concurrent.CompletionStage<Void>
-                    relayActor(
+                    completeActor(
                         ZLinkActorAcceptedJournal.Record request,
-                        byte[] reply) {
-                    assertArrayEquals(new byte[] {7}, reply);
+                        long acceptedSequence,
+                        Optional<byte[]> reply) {
+                    assertEquals(1, acceptedSequence);
+                    assertArrayEquals(new byte[] {7}, reply.orElseThrow());
                     return CompletableFuture.completedFuture(null);
                 }
             });

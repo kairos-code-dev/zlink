@@ -192,8 +192,6 @@ sample.playASpotEndpoint=tcp://$($playASpot.Host):$($playASpot.Port)
 sample.playBSpotEndpoint=tcp://$($playBSpot.Host):$($playBSpot.Port)
 sample.playASpotRouterEndpoint=tcp://$($playARouter.Host):$($playARouter.Port)
 sample.playBSpotRouterEndpoint=tcp://$($playBRouter.Host):$($playBRouter.Port)
-sample.playANodeRid=2201
-sample.playBNodeRid=2202
 "@ }
             "sessionNode" { @"
 sample.sessionASpotEndpoint=tcp://$($sessionASpot.Host):$($sessionASpot.Port)
@@ -204,8 +202,6 @@ sample.sessionAStreamEndpoint=tcp://$($sessionAStream.Host):$($sessionAStream.Po
 sample.sessionBStreamEndpoint=tcp://$($sessionBStream.Host):$($sessionBStream.Port)
 sample.sessionARouterRid=1101
 sample.sessionBRouterRid=1102
-sample.playANodeRid=2201
-sample.playBNodeRid=2202
 "@ }
             default { throw "Unknown Bingo role config: $RoleName" }
         }

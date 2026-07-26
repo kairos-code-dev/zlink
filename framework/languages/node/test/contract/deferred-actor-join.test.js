@@ -58,23 +58,22 @@ async function waitForEvents(events, count) {
   assert.ok(events.length >= count, `expected at least ${count} events, received ${events.length}`);
 }
 
-test('deferred Actor Join starts only after a normal handler terminal and reports completion', async () => {
+test('deferred Actor Join starts after the handler continuation and preserves its result', async () => {
   const events = [];
   const { context } = actorHarness(events);
 
-  await runActorHandlerWithDeferredJoins(async () => {
+  const result = await runActorHandlerWithDeferredJoins(async () => {
     events.push('handler:start');
     context.joinSpot('room-a', 'hello').timeout(25).defer();
     events.push('handler:end');
+    return 'handled';
   });
-  events.push('handler:terminal');
-
-  assert.deepEqual(events, ['handler:start', 'handler:end', 'handler:terminal']);
-  await waitForEvents(events, 5);
-  const timeoutMs = Number(events[3].split(':').at(-1));
-  assert.match(events[3], /^join:alice:alice:room-a:"hello":\d+$/);
+  assert.equal(result, 'handled');
+  assert.equal(events.length, 4);
+  const timeoutMs = Number(events[2].split(':').at(-1));
+  assert.match(events[2], /^join:alice:alice:room-a:"hello":\d+$/);
   assert.ok(timeoutMs > 0 && timeoutMs <= 25);
-  assert.equal(events[4], 'completion:accepted:7');
+  assert.equal(events[3], 'completion:accepted:7');
   assert.equal(context.objectGeneration, 1n);
 });
 
@@ -112,4 +111,45 @@ test('Actor Join defer rejects detached use, duplicate terminal, and a second pe
   const remainingTimeout = Number(join.split(':').at(-1));
   assert.ok(remainingTimeout > 0 && remainingTimeout <= 5_000);
   assert.equal(completion, 'completion:accepted:7');
+});
+
+test('deferred Actor Join reports an application failure as non-retriable RequestFailed', async () => {
+  const events = [];
+  const failure = new Error('application admission failed');
+  const coordinator = {
+    async joinSpot() {
+      throw failure;
+    },
+    async joinEntrySpot() {
+      throw new Error('unexpected Entry Spot join');
+    }
+  };
+  const state = new ZLinkActorRuntimeState('bob');
+  const failingContext = new DefaultZLinkActorContext(
+    state,
+    coordinator,
+    undefined,
+    undefined,
+    () => 'game',
+    undefined
+  );
+  const failingActor = {
+    actorId: 'bob',
+    context: failingContext,
+    async onJoinCompleted(completion) {
+      events.push(completion);
+    }
+  };
+  state.bindActor(failingActor, failingContext);
+
+  await runActorHandlerWithDeferredJoins(async () => {
+    failingContext.joinSpot('room-a').defer();
+  });
+  await waitForEvents(events, 1);
+
+  assert.equal(events[0].status, 'failed');
+  assert.equal(events[0].kind, 'requestFailed');
+  assert.equal(events[0].isRetriable, false);
+  assert.equal(typeof events[0].operationId.high, 'bigint');
+  assert.equal(typeof events[0].operationId.low, 'bigint');
 });

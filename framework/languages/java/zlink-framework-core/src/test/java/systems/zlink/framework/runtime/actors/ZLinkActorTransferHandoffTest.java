@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.util.List;
@@ -9,6 +10,8 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
@@ -143,6 +146,56 @@ final class ZLinkActorTransferHandoffTest {
         assertEquals("handoff", packet.header().metadata().get("trace"));
         assertEquals(route, packet.replyRoute());
         packet.close();
+    }
+
+    @Test
+    void committedForwardingMappingBoundsMessagesAndBytes() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        handoff.retain(
+            "actor", ref("source", 7), ref("target", 7),
+            Duration.ofMinutes(1), ignored -> { });
+        List<CompletableFuture<Void>> pending = new java.util.ArrayList<>();
+        for (int index = 0;
+             index < ZLinkActorTransferHandoff.MAX_FORWARDING_MESSAGES;
+             index++) {
+            CompletableFuture<Void> operation = new CompletableFuture<>();
+            pending.add(operation);
+            handoff.forward("actor", 7, 1, () -> operation);
+        }
+
+        assertThrows(CompletionException.class, () ->
+            handoff.forward(
+                    "actor", 7, 1,
+                    () -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture().join());
+        pending.forEach(value -> value.complete(null));
+
+        CompletableFuture<Void> bytes = new CompletableFuture<>();
+        handoff.forward(
+            "actor", 7, ZLinkActorTransferHandoff.MAX_FORWARDING_BYTES,
+            () -> bytes);
+        assertThrows(CompletionException.class, () ->
+            handoff.forward(
+                    "actor", 7, 1,
+                    () -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture().join());
+        bytes.complete(null);
+        handoff.close();
+    }
+
+    @Test
+    void forwardingRejectsDifferentObjectGeneration() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        handoff.retain(
+            "actor", ref("source", 7), ref("target", 7),
+            Duration.ofMinutes(1), ignored -> { });
+
+        assertThrows(CompletionException.class, () ->
+            handoff.forward(
+                    "actor", 8, 1,
+                    () -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture().join());
+        handoff.close();
     }
 
     private static void capture(

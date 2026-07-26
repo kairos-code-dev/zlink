@@ -3,6 +3,10 @@ namespace Zlink.Framework.Runtime.Execution;
 internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 {
     private const int DefaultCapacity = 4096;
+    private const int RelocationHoldMessageLimit = 1_024;
+    private const long RelocationHoldByteLimit = 16L * 1024 * 1024;
+    private const int RelocationJournalRecordHeaderBytes =
+        sizeof(ulong) + sizeof(int);
     private readonly int _capacity;
     private readonly object _admissionGate = new();
     private readonly object _disposeGate = new();
@@ -132,7 +136,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         }
     }
 
-    public bool TryPostAccepted(
+    public ZLinkAcceptedWorkAdmission TryPostAccepted(
         ReadOnlyMemory<byte> payload,
         Func<CancellationToken, ValueTask> callback,
         Action relocationRelease,
@@ -143,13 +147,27 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
         lock (_admissionGate)
         {
-            if (Volatile.Read(ref _completed) != 0
-                || _relocated
-                || _relocation?.IngressFrozen == true
-                || !TryReserveSlot())
+            if (Volatile.Read(ref _completed) != 0)
             {
                 item = null!;
-                return false;
+                return ZLinkAcceptedWorkAdmission.Closed;
+            }
+            if (_relocated
+                || _relocation?.IngressFrozen == true
+                || (_relocation is { } relocation
+                    && (relocation.Held.Count
+                            >= RelocationHoldMessageLimit
+                        || EncodedRelocationRecordBytes(payload.Length)
+                            > RelocationHoldByteLimit
+                              - relocation.HeldBytes)))
+            {
+                item = null!;
+                return ZLinkAcceptedWorkAdmission.RelocationMoving;
+            }
+            if (!TryReserveSlot())
+            {
+                item = null!;
+                return ZLinkAcceptedWorkAdmission.QueueFull;
             }
             if (_nextAcceptedSequence == ulong.MaxValue)
             {
@@ -177,10 +195,16 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             else
             {
                 _relocation.Held.Enqueue(item);
+                _relocation.HeldBytes = checked(
+                    _relocation.HeldBytes
+                    + EncodedRelocationRecordBytes(payload.Length));
             }
-            return true;
+            return ZLinkAcceptedWorkAdmission.Accepted;
         }
     }
+
+    private static long EncodedRelocationRecordBytes(int payloadLength) =>
+        checked(RelocationJournalRecordHeaderBytes + (long)payloadLength);
 
     public bool TryPostFinal(
         Func<CancellationToken, ValueTask> callback,
@@ -228,8 +252,17 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
     internal bool TrySealRelocation(
         Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
         out ZLinkSerialRelocationSeal seal)
+        => TrySealRelocation(0, admit, out seal, out _);
+
+    internal bool TrySealRelocation(
+        int reservedAcceptedSequences,
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        out ZLinkSerialRelocationSeal seal,
+        out ulong firstReservedSequence)
     {
         ArgumentNullException.ThrowIfNull(admit);
+        if (reservedAcceptedSequences < 0)
+            throw new ArgumentOutOfRangeException(nameof(reservedAcceptedSequences));
         lock (_admissionGate)
         {
             if (_relocated
@@ -240,6 +273,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                 || Volatile.Read(ref _completed) != 0)
             {
                 seal = null!;
+                firstReservedSequence = 0;
                 return false;
             }
             var captured = _queue
@@ -249,8 +283,18 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
             if (!admit(captured))
             {
                 seal = null!;
+                firstReservedSequence = 0;
                 return false;
             }
+            if (reservedAcceptedSequences != 0
+                && (_nextAcceptedSequence == ulong.MaxValue
+                    || checked((ulong)reservedAcceptedSequences)
+                       > ulong.MaxValue - _nextAcceptedSequence))
+                throw new InvalidOperationException(
+                    "ZLink accepted-work sequence is exhausted.");
+            firstReservedSequence = _nextAcceptedSequence;
+            _nextAcceptedSequence = checked(
+                _nextAcceptedSequence + (ulong)reservedAcceptedSequences);
             seal = SealUnderLock();
             return true;
         }
@@ -661,6 +705,8 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
         public Queue<ZLinkSerialWorkItem> Held { get; } = new();
 
+        public long HeldBytes { get; set; }
+
         public bool IngressFrozen { get; set; }
     }
 }
@@ -668,3 +714,11 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 internal sealed record ZLinkSerialRelocationSeal(
     ulong Serial,
     IReadOnlyList<ZLinkAcceptedWorkRecord> Captured);
+
+internal enum ZLinkAcceptedWorkAdmission
+{
+    Accepted = 0,
+    Closed = 1,
+    QueueFull = 2,
+    RelocationMoving = 3
+}

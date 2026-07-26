@@ -16,6 +16,7 @@ internal sealed class ZLinkClientServerServerIdentity(
     private ulong _revision = 1;
     private ulong _nextProbeId = 1;
     private int _weight = weight;
+    private int _servingWeight = weight;
     private ZLinkFrameworkRuntimeState _state =
         ZLinkFrameworkRuntimeState.Serving;
     private string _advertisedEndpoint = advertisedEndpoint;
@@ -77,6 +78,33 @@ internal sealed class ZLinkClientServerServerIdentity(
         return snapshot;
     }
 
+    internal Snapshot MarkRetiring() => SetLifecycleState(
+        ZLinkFrameworkRuntimeState.Retiring);
+
+    internal Snapshot MarkServing() => SetLifecycleState(
+        ZLinkFrameworkRuntimeState.Serving);
+
+    private Snapshot SetLifecycleState(ZLinkFrameworkRuntimeState state)
+    {
+        Snapshot snapshot;
+        lock (_gate)
+        {
+            _revision++;
+            _state = state;
+            _weight = state == ZLinkFrameworkRuntimeState.Serving
+                ? _servingWeight
+                : 0;
+            snapshot = new Snapshot(
+                _revision,
+                _weight,
+                _state,
+                _advertisedEndpoint);
+        }
+        PushUpdate(snapshot);
+        SnapshotChanged?.Invoke(snapshot);
+        return snapshot;
+    }
+
     internal Snapshot SetWeight(int weight)
     {
         ZLinkSocketConfig.ValidatePeerWeight(weight);
@@ -88,6 +116,7 @@ internal sealed class ZLinkClientServerServerIdentity(
                     $"ClientServer Server '{ChannelName}' is not serving.");
             _revision = checked(_revision + 1);
             _weight = weight;
+            _servingWeight = weight;
             snapshot = new Snapshot(
                 _revision,
                 _weight,

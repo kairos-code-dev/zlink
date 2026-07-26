@@ -81,11 +81,11 @@ try {
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/ShoppingMall.Client.csproj") -Arguments @("--config", $configFiles["client"])
 
     Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "shoppingmall=completed"
-    if (-not (Select-String -Path (Join-Path $LogDir "workflow-a.out.log") -SimpleMatch "shoppingmall order: started" -Quiet)) {
-        throw "workflow-a did not record a shoppingmall order start."
-    }
-    if (-not (Select-String -Path (Join-Path $LogDir "workflow-b.out.log") -SimpleMatch "shoppingmall order: started" -Quiet)) {
-        throw "workflow-b did not record a shoppingmall order start."
+    $workflowStarted =
+        (Select-String -Path (Join-Path $LogDir "workflow-a.out.log") -SimpleMatch "shoppingmall order: started" -Quiet) -or
+        (Select-String -Path (Join-Path $LogDir "workflow-b.out.log") -SimpleMatch "shoppingmall order: started" -Quiet)
+    if (-not $workflowStarted) {
+        throw "No workflow instance recorded a shoppingmall order start."
     }
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "shoppingmall evidence:"
     Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"

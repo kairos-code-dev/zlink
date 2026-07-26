@@ -1,5 +1,3 @@
-using Systems.Zlink;
-
 namespace DeliveryDispatch.Server.Configuration;
 
 /// <summary>
@@ -22,8 +20,8 @@ public sealed class SampleTopologyOptions
     public string CourierStreamEndpoint { get; set; } = string.Empty;
 
     /// <summary>Turns the file's values into the typed topology, failing on the first one that is
-    /// missing. Routing ids are names the sample owns, so they are not configuration.</summary>
-    public SampleTopology ToTopology(string role, string? nodeRid)
+    /// missing. MeshNode routing ids are allocated by the framework at runtime.</summary>
+    public SampleTopology ToTopology(string role)
     {
         var dispatch = role == "dispatch";
         var tracking = role == "tracking";
@@ -33,20 +31,14 @@ public sealed class SampleTopologyOptions
         var courierNode2 = role == "courier-actor-node2";
         if (!dispatch && !tracking && !customer && !courierSession && !courierNode1 && !courierNode2)
             throw new InvalidOperationException($"Unknown DeliveryDispatch server role '{role}'.");
-        if ((courierNode1 || courierNode2) && string.IsNullOrWhiteSpace(nodeRid))
-            throw new InvalidOperationException("sample.role.nodeRid is required for a courier actor node.");
-
         return new SampleTopology(
             Required(RedisEndpoint, nameof(RedisEndpoint)),
             Required(RedisKeyPrefix, nameof(RedisKeyPrefix)),
             Select(dispatch, DispatchHttpUrl, nameof(DispatchHttpUrl)),
             Required(MeshEndpoint, nameof(MeshEndpoint)),
             Select(customer, CustomerStreamEndpoint, nameof(CustomerStreamEndpoint)),
-            RoutingId.From(SampleNames.CustomerSpotNode),
             Select(courierSession, CourierStreamEndpoint, nameof(CourierStreamEndpoint)),
-            RoutingId.From(SampleNames.CourierSessionSpotNode),
-            RoutingId.From(SampleNames.CourierActorNode1),
-            RoutingId.From(SampleNames.CourierActorNode2));
+            courierNode1 || courierNode2);
     }
 
     private static string Select(bool required, string value, string name) =>
@@ -67,22 +59,5 @@ public sealed record SampleTopology(
     string DispatchHttpUrl,
     string MeshEndpoint,
     string CustomerStreamEndpoint,
-    RoutingId CustomerSpotNodeRid,
     string CourierStreamEndpoint,
-    RoutingId CourierSessionSpotNodeRid,
-    RoutingId CourierActorNode1Rid,
-    RoutingId CourierActorNode2Rid)
-{
-    public CourierActorNodePlacement CourierPlacement(string courierId)
-    {
-        return courierId switch
-        {
-            "courier-a" => new CourierActorNodePlacement(CourierActorNode1Rid),
-            "courier-b" => new CourierActorNodePlacement(CourierActorNode2Rid),
-            _ => throw new InvalidOperationException($"Unknown courier '{courierId}'.")
-        };
-    }
-}
-
-public sealed record CourierActorNodePlacement(
-    RoutingId NodeRid);
+    bool CourierActorNode);

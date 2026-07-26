@@ -93,7 +93,6 @@ struct authenticate_res_t
     static constexpr const char *packet_name = "AuthenticateRes";
     std::string actor_id;
     std::string display_name;
-    std::string actor_node_rid;
 };
 
 struct authenticate_player_req_t
@@ -147,7 +146,6 @@ struct ensure_player_actor_req_t
     static constexpr const char *packet_name = "EnsurePlayerActorReq";
     std::string actor_id;
     std::string display_name;
-    std::string preferred_actor_node_rid;
 };
 
 struct ensure_player_actor_res_t
@@ -170,14 +168,12 @@ struct match_bingo_api_req_t
     std::string actor_id;
     std::string display_name;
     std::string mode;
-    std::string actor_node_rid;
 };
 
 struct match_bingo_api_res_t
 {
     static constexpr const char *packet_name = "MatchBingoApiRes";
     std::string room_id;
-    std::string room_owner_node_rid;
 };
 
 struct allocate_bingo_room_req_t
@@ -185,14 +181,12 @@ struct allocate_bingo_room_req_t
     static constexpr const char *packet_name = "AllocateBingoRoomReq";
     std::string mode;
     std::string actor_id;
-    std::string preferred_owner_node_rid;
 };
 
 struct allocate_bingo_room_res_t
 {
     static constexpr const char *packet_name = "AllocateBingoRoomRes";
     std::string room_id;
-    std::string room_owner_node_rid;
 };
 
 struct bingo_room_settings_payload_t
@@ -237,7 +231,6 @@ struct match_bingo_res_t
     static constexpr const char *packet_name = "MatchBingoRes";
     std::string room_id;
     bingo_room_state_t state;
-    std::string room_owner_node_rid;
 };
 
 struct bingo_room_join_req_t
@@ -278,7 +271,6 @@ struct observe_bingo_events_res_t
 {
     static constexpr const char *packet_name = "ObserveBingoEventsRes";
     bool subscribed = false;
-    std::string observer_node_rid;
 };
 
 struct stop_observing_bingo_events_req_t
@@ -291,7 +283,6 @@ struct stop_observing_bingo_events_res_t
 {
     static constexpr const char *packet_name = "StopObservingBingoEventsRes";
     bool stopped = false;
-    std::string observer_node_rid;
 };
 
 struct player_joined_notify_t
@@ -335,7 +326,6 @@ struct bingo_reward_announced_notify_t
     std::string item_id;
     std::string item_name;
     std::string rarity;
-    std::string receiving_spot_node_rid;
 };
 
 struct bingo_reward_acquired_event_t
@@ -438,16 +428,13 @@ inline void from_json (const nlohmann::json &json, report_bingo_result_res_t &va
 inline void to_json (nlohmann::json &json, const ensure_player_actor_req_t &value)
 {
     json = {{"actorId", value.actor_id},
-            {"displayName", value.display_name},
-            {"preferredActorNodeRid", value.preferred_actor_node_rid}};
+            {"displayName", value.display_name}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &value)
 {
     value.actor_id = json_string (json, "actorId", "actor_id");
     value.display_name = json_string (json, "displayName", "display_name");
-    value.preferred_actor_node_rid =
-      json_string (json, "preferredActorNodeRid", "preferred_actor_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const ensure_player_actor_res_t &value)
@@ -476,8 +463,7 @@ inline void to_json (nlohmann::json &json, const match_bingo_api_req_t &value)
 {
     json = {{"actorId", value.actor_id},
             {"displayName", value.display_name},
-            {"mode", value.mode},
-            {"actorNodeRid", value.actor_node_rid}};
+            {"mode", value.mode}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_api_req_t &value)
@@ -485,44 +471,38 @@ inline void from_json (const nlohmann::json &json, match_bingo_api_req_t &value)
     value.actor_id = json_string (json, "actorId", "actor_id");
     value.display_name = json_string (json, "displayName", "display_name");
     value.mode = json.value ("mode", "");
-    value.actor_node_rid = json_string (json, "actorNodeRid", "actor_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_api_res_t &value)
 {
-    json = {{"roomId", value.room_id}, {"roomOwnerNodeRid", value.room_owner_node_rid}};
+    json = {{"roomId", value.room_id}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_api_res_t &value)
 {
     value.room_id = json_string (json, "roomId", "room_id");
-    value.room_owner_node_rid = json_string (json, "roomOwnerNodeRid", "room_owner_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_req_t &value)
 {
     json = {{"mode", value.mode},
-            {"actorId", value.actor_id},
-            {"preferredOwnerNodeRid", value.preferred_owner_node_rid}};
+            {"actorId", value.actor_id}};
 }
 
 inline void from_json (const nlohmann::json &json, allocate_bingo_room_req_t &value)
 {
     value.mode = json.value ("mode", "");
     value.actor_id = json_string (json, "actorId", "actor_id");
-    value.preferred_owner_node_rid =
-      json_string (json, "preferredOwnerNodeRid", "preferred_owner_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const allocate_bingo_room_res_t &value)
 {
-    json = {{"roomId", value.room_id}, {"roomOwnerNodeRid", value.room_owner_node_rid}};
+    json = {{"roomId", value.room_id}};
 }
 
 inline void from_json (const nlohmann::json &json, allocate_bingo_room_res_t &value)
 {
     value.room_id = json_string (json, "roomId", "room_id");
-    value.room_owner_node_rid = json_string (json, "roomOwnerNodeRid", "room_owner_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_settings_payload_t &value)
@@ -630,8 +610,7 @@ inline void from_json (const nlohmann::json &json, bingo_room_state_t &value)
 inline void to_json (nlohmann::json &json, const authenticate_res_t &value)
 {
     json = {{"actorId", value.actor_id},
-            {"displayName", value.display_name},
-            {"actorNodeRid", value.actor_node_rid}};
+            {"displayName", value.display_name}};
 }
 
 inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
@@ -639,21 +618,18 @@ inline void from_json (const nlohmann::json &json, authenticate_res_t &value)
     value.actor_id = json_string (json, "actorId", "actor_id", json.value ("ActorId", ""));
     value.display_name =
       json_string (json, "displayName", "display_name", json.value ("DisplayName", ""));
-    value.actor_node_rid = json_string (json, "actorNodeRid", "actor_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const match_bingo_res_t &value)
 {
     json = {{"roomId", value.room_id},
-            {"state", value.state},
-            {"roomOwnerNodeRid", value.room_owner_node_rid}};
+            {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, match_bingo_res_t &value)
 {
     value.room_id = json_string (json, "roomId", "room_id");
     value.state = json.value ("state", bingo_room_state_t{});
-    value.room_owner_node_rid = json_string (json, "roomOwnerNodeRid", "room_owner_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_room_join_res_t &value)
@@ -688,13 +664,12 @@ inline void from_json (const nlohmann::json &json, observe_bingo_events_req_t &v
 
 inline void to_json (nlohmann::json &json, const observe_bingo_events_res_t &value)
 {
-    json = {{"subscribed", value.subscribed}, {"observerNodeRid", value.observer_node_rid}};
+    json = {{"subscribed", value.subscribed}};
 }
 
 inline void from_json (const nlohmann::json &json, observe_bingo_events_res_t &value)
 {
     value.subscribed = json.value ("subscribed", false);
-    value.observer_node_rid = json_string (json, "observerNodeRid", "observer_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const stop_observing_bingo_events_req_t &value)
@@ -709,13 +684,12 @@ inline void from_json (const nlohmann::json &json, stop_observing_bingo_events_r
 
 inline void to_json (nlohmann::json &json, const stop_observing_bingo_events_res_t &value)
 {
-    json = {{"stopped", value.stopped}, {"observerNodeRid", value.observer_node_rid}};
+    json = {{"stopped", value.stopped}};
 }
 
 inline void from_json (const nlohmann::json &json, stop_observing_bingo_events_res_t &value)
 {
     value.stopped = json.value ("stopped", false);
-    value.observer_node_rid = json_string (json, "observerNodeRid", "observer_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const player_joined_notify_t &value)
@@ -778,8 +752,7 @@ inline void to_json (nlohmann::json &json, const bingo_reward_announced_notify_t
             {"drawSeq", value.draw_seq},
             {"itemId", value.item_id},
             {"itemName", value.item_name},
-            {"rarity", value.rarity},
-            {"receivingSpotNodeRid", value.receiving_spot_node_rid}};
+            {"rarity", value.rarity}};
 }
 
 inline void from_json (const nlohmann::json &json, bingo_reward_announced_notify_t &value)
@@ -790,8 +763,6 @@ inline void from_json (const nlohmann::json &json, bingo_reward_announced_notify
     value.item_id = json_string (json, "itemId", "item_id");
     value.item_name = json_string (json, "itemName", "item_name");
     value.rarity = json.value ("rarity", "");
-    value.receiving_spot_node_rid =
-      json_string (json, "receivingSpotNodeRid", "receiving_spot_node_rid");
 }
 
 inline void to_json (nlohmann::json &json, const bingo_reward_acquired_event_t &value)

@@ -2,6 +2,7 @@
 
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <zlink/framework/contracts/spots/spot.hpp>
@@ -444,6 +445,226 @@ int main ()
         });
         if (!events.empty ()) {
             return 32;
+        }
+
+        const auto rejected =
+          zlink::framework::detail::actor_join_completion_from_erased (
+            zlink::framework::detail::actor_join_completion_outcome_t::rejected,
+            17, 19, nullptr,
+            std::make_optional (zlink::framework::message_t::from (
+              std::string ("no"))),
+            zlink::framework::framework_error_kind_t::request_failed,
+            true);
+        const auto *rejected_result =
+          std::get_if<zlink::framework::actor_join_rejected_t> (
+            &rejected);
+        if (rejected_result == nullptr
+            || rejected_result->operation_id_high != 17
+            || rejected_result->operation_id_low != 19
+            || !rejected_result->reply
+            || rejected_result->reply->decode<std::string> () != "no") {
+            return 33;
+        }
+
+        const auto failed =
+          zlink::framework::detail::actor_join_completion_from_erased (
+            zlink::framework::detail::actor_join_completion_outcome_t::failed,
+            23, 29, nullptr, std::nullopt,
+            zlink::framework::framework_error_kind_t::request_failed,
+            false);
+        const auto *failed_result =
+          std::get_if<zlink::framework::actor_join_failed_t> (&failed);
+        if (failed_result == nullptr
+            || failed_result->operation_id_high != 23
+            || failed_result->operation_id_low != 29
+            || failed_result->error_kind
+                 != zlink::framework::framework_error_kind_t::request_failed
+            || failed_result->retryable) {
+            return 34;
+        }
+
+        zlink::framework::runtime::offload_executor_t target_executor (1);
+        zlink::framework::runtime::serial_execution_queue_t target_queue (
+          target_executor, 16);
+        std::mutex barrier_events_mutex;
+        std::vector<std::string> barrier_events;
+        auto record_barrier_event = [&] (std::string event) {
+            std::lock_guard lock (barrier_events_mutex);
+            barrier_events.push_back (std::move (event));
+        };
+
+        deferred_queue.run ("cross-actor-barrier", [&] {
+            auto reserved = target_queue.reserve_barrier_next (
+              "reserved-join");
+            if (!reserved)
+                throw std::runtime_error ("target barrier was not reserved");
+            const auto barrier = reserved.value ();
+            const auto deferred =
+              zlink::framework::detail::defer_current_serial_turn (
+                [&, barrier] {
+                    const auto activated = barrier->activate (
+                      [&] { record_barrier_event ("join"); });
+                    if (!activated)
+                        throw std::runtime_error (
+                          "target barrier was not activated");
+                },
+                [barrier] { barrier->cancel (); });
+            if (!deferred)
+                throw std::runtime_error ("Join activation was not deferred");
+            if (!target_queue.try_post (
+                  "queued-actor-turn",
+                  [&] { record_barrier_event ("queued"); })) {
+                throw std::runtime_error (
+                  "target Actor turn was not queued");
+            }
+            record_barrier_event ("handler");
+        });
+        target_queue.drain ();
+        {
+            std::lock_guard lock (barrier_events_mutex);
+            if (barrier_events
+                != std::vector<std::string>{"handler", "join", "queued"}) {
+                return 35;
+            }
+            barrier_events.clear ();
+        }
+
+        deferred_queue.run ("failed-cross-actor-barrier", [&] {
+            auto reserved = target_queue.reserve_barrier_next (
+              "cancelled-join");
+            if (!reserved)
+                throw std::runtime_error ("cancelled barrier was not reserved");
+            const auto barrier = reserved.value ();
+            const auto deferred =
+              zlink::framework::detail::defer_current_serial_turn (
+                [&, barrier] {
+                    const auto activated = barrier->activate ([&] {
+                        record_barrier_event ("must-not-run");
+                    });
+                    if (!activated)
+                        throw std::runtime_error (
+                          "cancelled barrier unexpectedly failed activation");
+                },
+                [barrier] { barrier->cancel (); });
+            if (!deferred)
+                throw std::runtime_error (
+                  "cancelled Join activation was not deferred");
+            if (!target_queue.try_post (
+                  "turn-after-cancelled-join",
+                  [&] { record_barrier_event ("after-cancel"); })) {
+                throw std::runtime_error (
+                  "target Actor turn after cancelled Join was not queued");
+            }
+            throw std::runtime_error ("handler failed after Join defer");
+        });
+        target_queue.drain ();
+        {
+            std::lock_guard lock (barrier_events_mutex);
+            if (barrier_events
+                != std::vector<std::string>{"after-cancel"}) {
+                return 36;
+            }
+            barrier_events.clear ();
+        }
+
+        zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
+        const zlink::framework::actor_ref_t barrier_actor (
+          zlink::framework::node_rid_t::from_string ("barrier-node"),
+          "player", "barrier-actor", 1);
+        actor_gateway.on_join_spot (
+          [&] (const auto &actor, auto, const auto &, auto) {
+              record_barrier_event ("production-join");
+              return zlink::framework::result_t<
+                zlink::framework::detail::actor_join_reply_t>::success (
+                  {1, actor, zlink::message_t{}});
+          });
+        actor_gateway.on_join_barrier (
+          [&] (const auto &) {
+              return target_queue.reserve_barrier_next (
+                "production-join-barrier");
+          });
+        auto actor_context = actor_gateway.actor_context (barrier_actor);
+        deferred_queue.run ("production-cross-actor-barrier", [&] {
+            actor_context.join_spot ("target-spot").defer ();
+            if (!target_queue.try_post (
+                  "production-queued-turn",
+                  [&] { record_barrier_event ("production-queued"); })) {
+                throw std::runtime_error (
+                  "production target Actor turn was not queued");
+            }
+            record_barrier_event ("production-handler");
+        });
+        target_queue.drain ();
+        {
+            std::lock_guard lock (barrier_events_mutex);
+            if (barrier_events
+                != std::vector<std::string>{"production-handler",
+                                            "production-join",
+                                            "production-queued"}) {
+                return 37;
+            }
+            barrier_events.clear ();
+        }
+
+        deferred_queue.run ("failed-production-cross-actor-barrier", [&] {
+            actor_context.join_spot ("target-spot").defer ();
+            if (!target_queue.try_post (
+                  "production-turn-after-cancel",
+                  [&] { record_barrier_event ("production-after-cancel"); })) {
+                throw std::runtime_error (
+                  "production post-cancel turn was not queued");
+            }
+            throw std::runtime_error (
+              "production handler failed after Join defer");
+        });
+        target_queue.drain ();
+        {
+            std::lock_guard lock (barrier_events_mutex);
+            if (barrier_events
+                != std::vector<std::string>{"production-after-cancel"}) {
+                return 38;
+            }
+            barrier_events.clear ();
+        }
+
+        zlink::framework::runtime::serial_execution_queue_t closing_source_queue (
+          deferred_executor, 16);
+        closing_source_queue.run ("closing-source-cross-actor-barrier", [&] {
+            auto reserved = target_queue.reserve_barrier_next (
+              "source-close-cancelled-join");
+            if (!reserved)
+                throw std::runtime_error (
+                  "source-close barrier was not reserved");
+            const auto barrier = reserved.value ();
+            const auto deferred =
+              zlink::framework::detail::defer_current_serial_turn (
+                [&, barrier] {
+                    const auto activated = barrier->activate ([&] {
+                        record_barrier_event ("source-close-must-not-run");
+                    });
+                    if (!activated)
+                        throw std::runtime_error (
+                          "source-close barrier activation failed");
+                },
+                [barrier] { barrier->cancel (); });
+            if (!deferred)
+                throw std::runtime_error (
+                  "source-close Join activation was not deferred");
+            if (!target_queue.try_post (
+                  "turn-after-source-close",
+                  [&] { record_barrier_event ("after-source-close"); })) {
+                throw std::runtime_error (
+                  "target turn after source close was not queued");
+            }
+            closing_source_queue.close ();
+        });
+        target_queue.drain ();
+        {
+            std::lock_guard lock (barrier_events_mutex);
+            if (barrier_events
+                != std::vector<std::string>{"after-source-close"}) {
+                return 39;
+            }
         }
     }
 

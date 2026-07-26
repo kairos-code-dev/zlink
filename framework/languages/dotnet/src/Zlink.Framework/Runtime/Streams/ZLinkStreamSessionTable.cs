@@ -9,7 +9,7 @@ internal sealed class ZLinkStreamSessionTable(
     ZLinkDrainAdmissionGate drainAdmission,
     string transport,
     TimeProvider timeProvider,
-    string? actorDispatchMeshName,
+    bool actorDispatchEnabled,
     ZLinkAsyncSubmitter sendSubmitter)
 {
     private readonly object _gate = new();
@@ -89,7 +89,7 @@ internal sealed class ZLinkStreamSessionTable(
                 Remove,
                 transport,
                 timeProvider,
-                actorDispatchMeshName,
+                actorDispatchEnabled,
                 sendSubmitter)
             .ConfigureAwait(false);
         ZLinkStreamSessionRuntime? duplicate = null;

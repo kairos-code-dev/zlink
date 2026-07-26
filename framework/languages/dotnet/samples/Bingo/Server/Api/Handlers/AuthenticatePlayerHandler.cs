@@ -9,7 +9,7 @@ internal sealed class AuthenticatePlayerHandler
 {
     public ValueTask<AuthenticatePlayerRes> HandleAsync(
         AuthenticatePlayerReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         if (!request.AccessToken.StartsWith("player-", StringComparison.Ordinal)

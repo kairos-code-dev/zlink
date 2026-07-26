@@ -105,12 +105,11 @@ client-facing stream endpoint를 열지 않는다. Session 서버는 인증과 s
 소유하지만, 게임 규칙을 해석하지 않는다. 게임 packet은 현재 session에 bind된 actor로
 전달되고, actor와 room Spot이 domain state를 처리한다.
 
-다이어그램은 room owner가 `Play A`인 경우의 예시다. 실제 실행에서는 어떤 프로세스가
-`Play A` 역할을 맡는지 달라질 수 있지만, 첫 player actor가 있는 Play MeshNode가 room
-owner가 되어야 한다. client self-check는 특정 서버 이름이 아니라 응답에 담긴 actor node
-rid와 room owner node rid를 비교해 cross-node join과 Logical Multicast 수신을 검증한다.
-각 Session은 자기 할당 slot `N`을 읽고 `playN`을 actor 생성 preferred node로 선택한다. 어느
-경우에도 process 이름이나 endpoint를 직접 선택하지 않고 location store 위의 node rid를 선택한다.
+다이어그램은 room owner가 `Play A`인 경우의 예시다. Actor와 room Spot의 실제 owner는
+framework가 stable type, Serving 상태, capacity와 node-wide weight를 기준으로 선택한다.
+샘플의 설정·업무 메시지·match queue는 NodeRid를 배치 입력이나 검증값으로 사용하지 않는다.
+client는 전역 `ActorId`와 `RoomId`로 요청하고, framework가 Location Store에서 현재 owner를
+확인한다. 특정 두 node를 반드시 거치는 검증은 공통 E2E가 담당한다.
 
 ## 3. 자동 연결 방식
 
@@ -156,7 +155,6 @@ Redis key는 mode 기준으로 잡는다.
 ```text
 bingo:match:{Mode} {
   RoomId: string
-  OwnerPlayNodeRid: string
   ReservedActorIds: string[]
   RequiredPlayers: int
   CreatedAtUnixMs: int64
@@ -164,12 +162,11 @@ bingo:match:{Mode} {
 ```
 
 첫 player가 matching을 요청하면 allocator는 Redis에 waiting room이 있는지 확인한다.
-없으면 요청 actor가 있는 Play MeshNode를 preferred owner로 사용해 그 Play 서버에 room
-Spot을 만들고 Redis에 waiting room record를 atomic하게 저장한다. 두 번째 player가 matching을
-요청하면 allocator는 같은 record에 actor id를 reserve하고 같은 `RoomId`와
-`OwnerPlayNodeRid`를 반환한다. actor가 어느 Play 서버에 있든 room join은 `RoomId`에서 만든
-Spot routing id로 수행하며, owner가 다른 Play 서버이면 location store 기반 resolver가
-remote room Spot 위치를 찾아 준다.
+없으면 allocator가 새 `RoomId`와 첫 actor reservation을 atomic하게 저장한다. Play handler는
+그 `RoomId`로 room Spot의 `GetOrCreate`를 요청하며, framework가 eligible Play node를 선택한다.
+두 번째 player가 matching을 요청하면 allocator는 같은 record에 actor id를 reserve하고 같은
+`RoomId`를 반환한다. actor가 어느 Play 서버에 있든 `JoinSpot(RoomId, ...)`가 Location Store에서
+현재 room owner를 확인한다.
 
 동시 matching 때문에 같은 mode의 waiting room이 둘 생기면 scale-out 검증이 깨진다.
 언어별 구현은 Redis transaction, Lua script, 또는 같은 수준의 atomic operation으로
@@ -253,44 +250,27 @@ sessionMesh.Channel(SampleNames.ApiChannel)
     .Client(); // 인증 request를 API로 직접 보낸다.
 ```
 
-API, Play와 Session 구성에서는 `SetRoutingId(...)`를 사용하지 않으며 Play에서도
-`SetEntrySpotRoutingId(...)`를 사용하지 않는다. `SampleApiNode`, `SamplePlayNode`와
-`SampleSessionNode`는 고정 RID field를 두지 않고 endpoint만 유지한다. Session의 preferred Play RID는
-자기 할당 slot에서 계산한다. Topology와 runner configuration은 역할별 할당 RID만 사용한다.
+API, Play와 Session 구성에서는 `SetRoutingId(...)`와 `SetEntrySpotRoutingId(...)`를 사용하지
+않는다. `SampleApiNode`, `SamplePlayNode`와 `SampleSessionNode`는 고정 RID field를 두지 않고
+endpoint만 유지한다. 각 runtime은 역할을 나타내는 prefix로 NodeRid를 자동 발급받는다.
 
 location store와 match queue가 같은 Redis instance를 사용하더라도 책임은 합치지 않는다. 공식
-Redis location store가 slot lease와 generation을 원자적으로 관리하고, `RedisBingoMatchQueue`는
-계속 `RoomId`, 실제 `OwnerPlayNodeRid`와 actor reservation만 저장한다. match queue가 빈 slot을
-고르거나 lease를 갱신하지 않는다.
+Redis location store가 owner lease와 generation을 원자적으로 관리하고, `RedisBingoMatchQueue`는
+`RoomId`와 actor reservation만 저장한다. match queue는 node를 선택하거나 lease를 갱신하지 않는다.
 
 API, Play와 Session은 heartbeat 10초, owner lease TTL 30초, fencing margin 5초와 renew timeout
 3초의 framework 기본값을 함께 사용한다. 역할별 override는 두지 않는다.
 
-#### Session의 preferred Play 선택
+#### Actor와 room의 배치
 
-Session은 특정 process 이름인 `PlayA`나 `PlayB`를 선택하지 않는다. 자기 `bingo.session` 할당 결과가
-`sessionN`이면 같은 번호로 `playN`을 만들어 actor 생성 대상으로 사용한다.
+Session 인증 handler는 전역 `ActorId`와 stable actor type으로 `GetOrCreate`를 요청한다. Actor 생성
+request에는 display name만 담으며 NodeRid를 전달하지 않는다. API의 matching handler도 Play
+channel로 room 할당 업무를 요청할 뿐 특정 Play node를 선택하지 않는다. Play handler가 받은
+`RoomId`로 Spot `GetOrCreate`를 요청하면 framework가 배치와 현재 owner route를 처리한다.
 
-```text
-preferredPlayRid = "play" + decimal(sessionAllocation.slot)
-```
-
-예를 들어 `session1` owner는 `play1`, `session2` owner는 `play2`를 선택한다. 이 규칙은 Play
-process에 slot을 예약하지 않는다. 현재 lease를 가진 어느 Play runtime이든 `play1` 또는 `play2`의
-owner가 될 수 있다. Session은 기존 Spot resolver로 해당 entry spot을 찾고 현재 owner에게
-`EnsurePlayerActorReq`를 보낸다.
-
-`SampleSessionNode`에서 `PreferredPlayNodeRid`를 제거한다. Session 인증 handler는 framework가 ready
-상태에 도달한 뒤 provider가 반환한 자기 slot으로 preferred Play RID를 한 번 계산한다. 두 Play
-slot과 두 Session slot이 모두 ready가 되기 전에는 client self-check를 시작하지 않는다.
-
-각 runtime은 framework가 ready 상태에 도달한 뒤 할당 결과 provider에서 자기 role group 결과를
-읽어 trace label과 운영 로그에 실제 slot과 RID를 기록한다. application이 slot을 선택·반환하거나
-Redis slot row를 직접 읽지 않는다.
-
-첫 player의 실제 `ActorNodeRid`가 room owner 선호 RID가 되고, Redis match queue의
-`OwnerPlayNodeRid`에도 그 값을 저장한다. 따라서 room allocation, remote Spot join, observer용 room
-RID와 reward 수신 검증은 고정 `2201`, `2202`가 아니라 실행 중 할당된 `play1`, `play2`를 사용한다.
+runner는 여러 Play runtime이 Ready인지 확인하지만 각 Actor와 room이 어느 runtime에 배치되는지는
+성공 조건으로 고정하지 않는다. cross-node object routing은 별도 E2E에서 target 배치를 통제해
+검증한다.
 
 #### 시작과 교체
 
@@ -385,7 +365,6 @@ Bingo/
             PlayerActorFactory
           Handlers/
             AllocateBingoRoomHandler
-            EnsurePlayerActorHandler
           Spots/
             EntrySpot/
               BingoEntrySpot
@@ -531,7 +510,6 @@ Server/Play/
         PlayerActorFactory
       Handlers/
         AllocateBingoRoomHandler
-        EnsurePlayerActorHandler
       Spots/
         EntrySpot/
           BingoEntrySpot
@@ -672,18 +650,14 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
 1. `player-1`, `player-2`, `observer`로 stream 인증을 요청하고, 각
    `AuthenticateRes.ActorId`가 요청한 actor id와 같은지 확인한다. `player-1`은
    `SessionA`에 연결하고, `player-2`와 `observer`는 `SessionB`에 연결한다.
-   self-check는 `player-1.ActorNodeRid`와 `player-2.ActorNodeRid`가 서로 다른지 확인한다.
 2. `player-1`이 먼저 `MatchBingoReq`를 보내고 `WaitingForPlayers` 상태와 room id를
    확인한다. 이 시점에 `player-1`이 자기 join notify를 받지 않았는지도 확인한다.
-   `MatchBingoRes.RoomOwnerNodeRid`는 `player-1.ActorNodeRid`와 같아야 한다.
 3. `observer`가 `ObserveBingoEventsReq(RoomId)`를 보내고
-   `ObserveBingoEventsRes.Subscribed = true`를 확인한다. 이 요청은 owner가 아닌 Play 서버에
-   observer용 local `BingoRoom` 인스턴스를 만들거나 찾은 뒤, observer actor를
+   `ObserveBingoEventsRes.Subscribed = true`를 확인한다. 이 요청은 관찰 전용 `BingoRoom`
+   인스턴스를 만들거나 찾은 뒤, observer actor를
    `BingoRoomJoinReq.ObserveOnly = true` payload로 그 `BingoRoom`에 join시킨다. 이 응답을
    받은 뒤에 `player-2` matching과 card 제출을 진행해야 reward event를 놓치지 않는다.
 4. `player-2`가 `MatchBingoReq`를 보내면 같은 room id와 `Running` 상태를 확인한다.
-   self-check는 `player-2.ActorNodeRid != MatchBingoRes.RoomOwnerNodeRid`를 확인해
-   `player-2` actor가 다른 Play 서버의 room Spot에 remote join했음을 검증한다.
 5. `player-1`은 connector wait API로 `PlayerJoinedNotify`를 기다리고,
    payload의 `ActorId`가 `player-2`인지 확인한다. `player-2`는 자기 join notify를
    받지 않아야 한다. 같은 push의 `State.Players`에서 두 player의 `Wins`/`Losses`가 채워져
@@ -698,10 +672,7 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
 9. 두 player client는 `BingoGameEndedNotify`를 기다리고, final state의 `Finished`, drawn
    number sequence, winners, player list, center free-cell mark를 확인한다.
 10. observer client는 connector wait API로 `BingoRewardAnnouncedNotify`를 기다리고,
-   `RoomId`, `ActorId`, `DrawSeq`, `ItemId`, `ItemName`, `Rarity`,
-   `ReceivingMeshNodeRid`를 확인한다.
-   `ReceivingMeshNodeRid`는 `ObserveBingoEventsRes.ObserverNodeRid`와 같고,
-   `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
+   `RoomId`, `ActorId`, `DrawSeq`, `ItemId`, `ItemName`, `Rarity`를 확인한다.
 11. observer client는 `StopObservingBingoEventsReq(RoomId)`를 보내 observer actor가
    observer용 local `BingoRoom`에서 나와 Entry Spot으로 돌아왔는지 확인한다. 이 흐름은
    reward event 수신을 위한 세 번째 actor가 game room cleanup과 섞이지 않게 한다.
@@ -713,21 +684,17 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
 이 검증은 성공 시나리오를 눈으로 읽기 위한 로그가 아니라 sample release gate다. 언어별
 client가 위 값을 확인하지 않으면 공통 sample 기준을 만족하지 못한다.
 
-### 10.1 자동 routing id 검증
+### 10.1 배치 독립성 검증
 
-다음 검증은 모든 언어의 Bingo runner가 충족해야 한다. 자동 RID 문자열을 로그에 출력하는 것만으로
-통과한 것으로 표시하지 않는다.
+다음 검증은 모든 언어의 Bingo runner가 충족해야 한다.
 
 | ID | 검증 | 성공 기준 |
 |----|------|-----------|
-| `BINGO-RID-1` | 역할별 group과 번호 공유 | API는 `apiN`, Session은 `sessionN`을 사용하고, 각 Play runtime의 Play channel과 room MeshNode는 같은 `playN`을 사용한다 |
-| `BINGO-RID-2` | 역할별 자동 RID 사용 | topology와 설정이 할당된 `apiN`·`playN`·`sessionN`만 사용하고 builder가 고정 RID 설정을 호출하지 않는다 |
-| `BINGO-RID-3` | 시작 순서 독립 | 각 역할의 process 시작 순서를 바꿔도 `sessionN`의 actor는 `playN`에 생성되고 두 actor의 node RID가 다르며 기존 remote join 검증이 통과한다 |
-| `BINGO-RID-4` | match queue 정합성 | `OwnerPlayNodeRid`, room owner 응답과 실제 room MeshNode RID가 동일한 할당 RID다 |
-| `BINGO-RID-5` | slot handoff | replacement는 기존 owner 종료 전 `WaitingForSlot`이고, release 또는 lease 만료 뒤 빈 slot과 증가한 generation을 받는다 |
-
-기존 client 검증의 `ActorNodeRid`, `RoomOwnerNodeRid`, `ObserverNodeRid` 비교는 그대로 유지한다. 단순히
-`play1`, `play2` 문자열이 출력됐다는 로그만으로 remote join과 Logical Multicast 검증을 대체하지 않는다.
+| `BINGO-PLACEMENT-1` | 자동 NodeRid | topology, 설정, message와 match queue에 고정 또는 preferred NodeRid가 없다 |
+| `BINGO-PLACEMENT-2` | Actor 생성 | Session은 전역 `ActorId`와 stable actor type으로 `GetOrCreate`를 호출하고 framework가 반환한 `ActorRef`를 그대로 bind한다 |
+| `BINGO-PLACEMENT-3` | room 생성 | allocator는 `RoomId`만 결정하고 Spot owner 선택은 framework에 맡긴다 |
+| `BINGO-PLACEMENT-4` | 시작 순서 독립 | Play process 시작 순서를 바꿔도 같은 client 시나리오와 상태 검증이 통과한다 |
+| `BINGO-PLACEMENT-5` | 전역 route | Actor와 room 요청은 NodeRid가 아니라 `ActorId`와 `RoomId`로 현재 owner를 찾는다 |
 
 ## 11. 메시지 계약
 
@@ -744,7 +711,6 @@ AuthenticateReq {
 AuthenticateRes {
   ActorId: string
   DisplayName: string
-  ActorNodeRid: string
 }
 ```
 
@@ -765,21 +731,6 @@ AuthenticatePlayerRes {
 EnsurePlayerActorReq {
   ActorId: string
   DisplayName: string
-  PreferredActorNodeRid: string
-}
-
-// protobuf 경계 전용 wire 메시지 — framework의 ActorRefSnapshot과의 변환은
-// generated message 경계 한 곳에서만 수행한다.
-ActorRefWire {
-  NodeRid: string
-  ActorId: string
-  Generation: uint64
-}
-
-EnsurePlayerActorRes {
-  ActorId: string
-  ActorType: string
-  Actor: ActorRefWire
 }
 ```
 
@@ -793,30 +744,25 @@ MatchBingoReq {
 MatchBingoRes {
   RoomId: string
   State: BingoRoomState
-  RoomOwnerNodeRid: string
 }
 
 MatchBingoApiReq {
   ActorId: string
   DisplayName: string
-  ActorNodeRid: string
   Mode: string
 }
 
 MatchBingoApiRes {
   RoomId: string
-  RoomOwnerNodeRid: string
 }
 
 AllocateBingoRoomReq {
   Mode: string
   ActorId: string
-  PreferredOwnerNodeRid: string
 }
 
 AllocateBingoRoomRes {
   RoomId: string
-  RoomOwnerNodeRid: string
 }
 
 BingoRoomSettingsPayload {
@@ -854,7 +800,6 @@ ObserveBingoEventsReq {
 
 ObserveBingoEventsRes {
   Subscribed: bool
-  ObserverNodeRid: string
 }
 
 StopObservingBingoEventsReq {
@@ -863,7 +808,6 @@ StopObservingBingoEventsReq {
 
 StopObservingBingoEventsRes {
   Stopped: bool
-  ObserverNodeRid: string
 }
 
 ```
@@ -934,7 +878,6 @@ BingoRewardAnnouncedNotify {
   ItemId: string
   ItemName: string
   Rarity: string
-  ReceivingMeshNodeRid: string
 }
 ```
 
@@ -998,8 +941,8 @@ sequenceDiagram
     C->>S: Stream AuthenticateReq
     S->>API: Channel Api/AuthenticatePlayerReq
     API-->>S: AuthenticatePlayerRes(actorId, displayName)
-    S->>P: EnsurePlayerActorReq(preferredActorNodeRid)
-    P-->>S: EnsurePlayerActorRes(actorRef)
+    S->>P: Actor GetOrCreate(actorId, stableType, createRequest)
+    P-->>S: framework ActorRef
     S->>S: Bind current stream session to actorRef
     S-->>C: Stream AuthenticateRes
 ```
@@ -1007,18 +950,10 @@ sequenceDiagram
 Session 서버는 인증 성공 후 actor reference를 얻고 현재 stream session을 그 actor에
 bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하지 않고 bound actor로
 relay한다.
-Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `EnsurePlayerActorReq`에 담는다.
-자기 Session slot과 같은 번호의 `playN` lease owner를 선택하며 process 이름과 slot 번호의 결합을
-가정하지 않는다.
-
-**이 preferred node rid는 샘플이 정의한 application payload 필드이지 framework 표면이 아니다.**
-framework에는 remote node를 직접 지정하는 actor 생성 API가 없다
-([22 §6](../../spec/22-actor-model.ko.md), [31 §10](../../spec/31-session-actor-dispatch.ko.md)) —
-배치 결정은 framework runtime이 owner lease·capability·`Draining` 마커로 수행한다. 샘플은 그 위에서
-**application 수준 요청 라우팅**으로 선호 노드를 표현한다: 요청을 그 노드로 보내고, 그 노드가
-자기 local actor runtime에 actor를 만든다. 샘플을 통과시키려고 framework에 노드 지정 생성
-표면을 새로 추가하지 않는다 — 샘플은 새 public contract의 근거가 아니다
-([00 §3](../../spec/00-public-contract-governance.ko.md)).
+Session 서버는 전역 `ActorId`와 stable actor type으로 `GetOrCreate`를 호출한다. create request에는
+display name만 담는다. framework는 owner lease·capability·`Draining` 상태와 capacity를 기준으로
+Actor owner를 선택하고 정확한 `ActorRef`를 반환한다. Session은 그 값을 다시 구성하지 않고 현재
+stream session에 bind한다.
 
 ## 13. Matching과 카드 제출 흐름
 
@@ -1043,12 +978,12 @@ sequenceDiagram
 
     C1->>S1: MatchBingoReq
     S1->>A1: Relay to bound actor
-    A1->>API: MatchBingoApiReq(actorNodeRid)
-    API->>PA: AllocateBingoRoomReq(preferredOwnerNodeRid)
+    A1->>API: MatchBingoApiReq(actorId, mode)
+    API->>PA: Play channel/AllocateBingoRoomReq
     PA->>REDIS: Reserve or create waiting room
-    PA-->>API: AllocateBingoRoomRes(roomId, ownerNodeRid)
-    A1->>E1: Join room request
-    E1->>R: Join local room actor
+    PA->>R: Spot GetOrCreate(roomId, stableType)
+    PA-->>API: AllocateBingoRoomRes(roomId)
+    A1->>R: JoinSpot(roomId)
     R->>API: GetPlayerRecordReq (OnJoinedActor, yield — room turn 반납)
     API-->>R: GetPlayerRecordRes(wins, losses)
     R-->>A1: BingoRoomJoinRes(waiting)
@@ -1064,12 +999,11 @@ sequenceDiagram
     S2-->>O: ObserveBingoEventsRes
     C2->>S2: MatchBingoReq
     S2->>A2: Relay to bound actor
-    A2->>API: MatchBingoApiReq(actorNodeRid)
-    API->>PB: AllocateBingoRoomReq(preferredOwnerNodeRid)
+    A2->>API: MatchBingoApiReq(actorId, mode)
+    API->>PB: Play channel/AllocateBingoRoomReq
     PB->>REDIS: Reserve same waiting room
-    PB-->>API: AllocateBingoRoomRes(same roomId, ownerNodeRid)
-    A2->>E2: Join room request
-    E2->>R: Remote JoinSpot to owner room
+    PB-->>API: AllocateBingoRoomRes(same roomId)
+    A2->>R: JoinSpot(same roomId)
     R->>API: GetPlayerRecordReq (OnJoinedActor, yield — room turn 반납)
     API-->>R: GetPlayerRecordRes(wins, losses)
     R-->>A1: PlayerJoinedNotify(client2 joined, wins/losses)
@@ -1117,10 +1051,9 @@ handler는 mutable actor instance를 보관하거나 join 완료 뒤 다시 사�
 실행 위치가 달라질 수 있기 때문이다. 이 분리는 runner의 endpoint 준비 상태 확인과 별개의 책임 경계이며,
 각 언어 샘플도 같은 구조를 따라야 한다.
 
-observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아니다. routing id는
-관찰 대상 `RoomId`와 현재 Play MeshNode rid에서 만든 local observer room id를 사용한다.
-예를 들어 `observe:{RoomId}:{LocalNodeRid}`처럼 owner game room의 routing id와 충돌하지
-않아야 한다. 이 Spot은 `BingoRoomJoinReq.ObserveOnly = true`로 join한 observer actor만 보관하고,
+observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아니다. SpotId는 관찰 대상
+`RoomId`와 observer의 전역 `ActorId`로 `observe:{RoomId}:{ActorId}` 형식으로 만든다. 이 Spot은
+`BingoRoomJoinReq.ObserveOnly = true`로 join한 observer actor만 보관하고,
 `PlayerJoinedNotify`, card 제출, draw timer, winner 판정에는 참여하지 않는다. 따라서
 3번째 actor가 들어와도 2인 게임 규칙과 `RequiredPlayers = 2` 조건을 바꾸지 않는다.
 `BingoRoomSettingsPayload.Purpose`는 game room이면 `"Game"`, observer용 local room이면
@@ -1278,15 +1211,14 @@ evidence를 남겨야 한다.
 - match queue Redis는 matching state 공유에만 사용하고, Spot owner lookup과 Logical Multicast peer
   discovery를 대신하지 않는다.
 - 두 player client와 observer client가 서로 다른 actor로 인증된다.
-- player-1 actor와 player-2 actor는 서로 다른 Play MeshNode에 생성된다.
+- Actor와 room Spot은 NodeRid를 application 입력으로 받지 않고 framework 배치 결과를 사용한다.
 - Session 서버가 인증된 stream session을 Play 서버 actor에 bind한다.
 - 첫 `MatchBingoReq`는 room을 만들고 waiting state를 반환한다.
-- observer client는 `ObserveBingoEventsReq(RoomId)`를 보내 owner가 아닌 Play 서버의
-  observer용 local `BingoRoom`에 join하고 `ObserveBingoEventsRes.Subscribed = true`를 확인한다.
-- observer용 local `BingoRoom`은 observer actor를 보관하고 reward topic을 구독하지만,
+- observer client는 `ObserveBingoEventsReq(RoomId)`를 보내 observer용 `BingoRoom`에 join하고
+  `ObserveBingoEventsRes.Subscribed = true`를 확인한다.
+- observer용 `BingoRoom`은 observer actor를 보관하고 reward topic을 구독하지만,
   player membership, card 제출, draw timer, winner 판정에는 참여하지 않는다.
-- 두 번째 `MatchBingoReq`는 같은 room에 remote Spot join하고 room을 자동 시작시킨다.
-- `player-2.ActorNodeRid != MatchBingoRes.RoomOwnerNodeRid`를 확인해 remote join을 검증한다.
+- 두 번째 `MatchBingoReq`는 같은 `RoomId`의 Spot에 join하고 room을 자동 시작시킨다.
 - 두 player client는 game start를 확인한 뒤 `SubmitBingoCardReq`로 card를 제출한다.
 - 두 card가 모두 제출되면 room Spot timer가 번호를 뽑고 각 player card mark를
   서버에서 갱신한다.
@@ -1295,13 +1227,11 @@ evidence를 남겨야 한다.
   client에 전달된다.
 - owner `BingoRoom`은 승자에게 지급된 희귀 보상 정보를 담은 `BingoRewardAcquiredEvent`를
   Logical Multicast topic으로 publish한다.
-- owner가 아닌 Play 서버의 `BingoRoom`은 `BingoRewardAcquiredEvent`를 수신하고 observer client에
+- topic을 구독한 observer용 `BingoRoom`은 `BingoRewardAcquiredEvent`를 수신하고 observer client에
   `BingoRewardAnnouncedNotify`를 push한다.
 - reward event 수신을 위해 `BingoNotificationSpot` 같은 별도 Spot 타입을 만들지 않는다.
 - `BingoRewardAnnouncedNotify.ItemId`, `ItemName`, `Rarity`는 owner가 publish한 보상 정보와
   같아야 한다.
-- `BingoRewardAnnouncedNotify.ReceivingMeshNodeRid`는
-  `ObserveBingoEventsRes.ObserverNodeRid`와 같고 `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
 - observer client는 `StopObservingBingoEventsReq`를 보내 observer actor가 observer용
   local `BingoRoom`에서 leave되고 Entry Spot으로 돌아온 것을 확인한다.
 - client inbound observer 로그에 request 응답과 server push 수신을 나타내는

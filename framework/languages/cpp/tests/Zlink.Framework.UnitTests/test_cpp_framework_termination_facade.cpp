@@ -5,9 +5,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <stop_token>
+#include <string_view>
 #include <thread>
 
 namespace
@@ -63,10 +65,91 @@ class blocking_stop_service_t final :
     bool _release = false;
 };
 
+bool verify_retire_blocker (
+  std::string_view label,
+  std::function<void (zlink::framework::zlink_framework_options_t &)> configure,
+  zlink::framework::termination_reason_t expected)
+{
+    auto app = zlink::framework::app_t::create ();
+    app.add_zlink_framework (std::move (configure));
+    auto service = std::make_unique<blocking_stop_service_t> ();
+    auto *service_view = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    char program[] = "termination-topology-preflight";
+    char *arguments[] = {program, nullptr};
+    int exit_code = -1;
+    std::thread run_thread ([&] { exit_code = app.run (1, arguments); });
+    service_view->wait_started ();
+    const auto serving_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (2);
+    while (!app.is_ready ()
+           && std::chrono::steady_clock::now () < serving_deadline)
+        std::this_thread::yield ();
+
+    const auto result =
+      app.retire (std::chrono::seconds (1)).result ().value ();
+    const bool matched =
+      result == zlink::framework::termination_result_t{
+                  zlink::framework::termination_intent_t::retire,
+                  zlink::framework::termination_outcome_t::blocked,
+                  expected}
+      && app.is_ready ();
+    if (!matched)
+        std::cerr << label << " must block Retire without changing Serving\n";
+
+    auto shutdown = app.shutdown (std::chrono::seconds (2));
+    service_view->wait_stop_entered ();
+    service_view->release ();
+    const auto stopped = shutdown.result ().value ();
+    run_thread.join ();
+    return matched
+           && stopped.outcome
+                == zlink::framework::termination_outcome_t::stopped
+           && exit_code == 0;
+}
+
 } // namespace
 
 int main ()
 {
+    if (!verify_retire_blocker (
+          "manual ClientServer topology",
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              options.add_client_server_channel ("manual-orders")
+                .client ()
+                .connect ("tcp://127.0.0.1:29999");
+          },
+          zlink::framework::termination_reason_t::manual_topology_unsupported)) {
+        return EXIT_FAILURE;
+    }
+    if (!verify_retire_blocker (
+          "manual RouteMesh topology",
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              auto node = options.add_route_mesh ("retire-manual-mesh");
+              node.channel_name ("retire-manual-channel");
+              node.set_routing_id (
+                    zlink::routing_id_t::from ("retire-manual-node"))
+                .listen ("inproc://cpp-retire-manual-node");
+              node.peer_connections ().connect (
+                "tcp://127.0.0.1:29998");
+          },
+          zlink::framework::termination_reason_t::manual_topology_unsupported)) {
+        return EXIT_FAILURE;
+    }
+    if (!verify_retire_blocker (
+          "automatic RouteMesh without a replacement",
+          [] (zlink::framework::zlink_framework_options_t &options) {
+              auto node = options.add_route_mesh ("retire-single-mesh");
+              node.channel_name ("retire-single-channel");
+              node.set_routing_id (
+                    zlink::routing_id_t::from ("retire-single-node"))
+                .listen ("inproc://cpp-retire-single-node");
+          },
+          zlink::framework::termination_reason_t::target_unavailable)) {
+        return EXIT_FAILURE;
+    }
+
     auto app = zlink::framework::app_t::create ();
     if (app.runtime_state ()
         != zlink::framework::framework_runtime_state_t::preparing) {

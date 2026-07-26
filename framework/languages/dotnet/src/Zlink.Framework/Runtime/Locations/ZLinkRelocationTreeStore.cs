@@ -312,18 +312,10 @@ internal static class ZLinkRelocationTreeStore
         string rootReference,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<ChunkEntry> chunks = [];
-        var root = await store.GetRelocationAsync(
-                rootReference,
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (root is ZLinkRelocationReadResult.Found found)
-            chunks = DecodeManifest(found.Payload.Span).Chunks;
-        foreach (var entry in chunks)
-            _ = await store.DeleteRelocationAsync(
-                    entry.Reference,
-                    cancellationToken)
-                .ConfigureAwait(false);
+        // Chunks are content-addressed and can be shared by another immutable
+        // root. Without a Store-level reference count, eagerly deleting them
+        // can corrupt a published successor. Removing the manifest makes this
+        // tree unreachable; component TTL performs bounded orphan cleanup.
         _ = await store.DeleteRelocationAsync(
                 rootReference,
                 cancellationToken)

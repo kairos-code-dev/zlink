@@ -116,6 +116,7 @@ set(known_labels
   # themselves with these finer-grained categories alongside the framework-unit/-contract tier.
   framework-foundation
   framework-m6-runtime
+  instance-activation
   liveness
   mailbox
   maintenance

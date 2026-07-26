@@ -50,20 +50,18 @@ class bingo_client_scenario_t
             trace ("connect observer");
             co_await observer.connect ().async ();
 
-            /* 공통 sample spec §10-1: 세 client(player-1/player-2/observer)를 먼저 인증하고
-             * player-1과 player-2의 actor node rid가 서로 다른지 확인한 뒤 matching으로 넘어간다. */
+            /* 세 client를 인증한 뒤 global ActorId로 matching을 진행한다. Object owner는
+             * Location Store가 결정하므로 application scenario가 NodeRid를 비교하지 않는다. */
             trace ("authenticate client1");
             const auto client1_auth_request = authenticate_req_t{bingo_sample_players_t::player1};
             auto client1_auth = co_await authenticate (client1, client1_auth_request);
             ensure (client1_auth.actor_id == bingo_sample_players_t::player1);
-            ensure (!client1_auth.actor_node_rid.empty ());
 
             trace ("authenticate client2");
             const auto client2_auth_request = authenticate_req_t{bingo_sample_players_t::player2};
             auto client2_auth = co_await authenticate (client2, client2_auth_request);
             ensure (client2_auth.actor_id == bingo_sample_players_t::player2);
             ensure (client2_auth.actor_id != client1_auth.actor_id);
-            ensure (client2_auth.actor_node_rid != client1_auth.actor_node_rid);
 
             trace ("authenticate observer");
             const auto observer_auth_request = authenticate_req_t{bingo_sample_players_t::observer};
@@ -77,20 +75,16 @@ class bingo_client_scenario_t
                 .async<match_bingo_res_t> ();
             ensure (client1_match.state.status == bingo_room_status_t::waiting);
             ensure (client1_match.state.host_actor_id == client1_auth.actor_id);
-            ensure (client1_match.room_owner_node_rid == client1_auth.actor_node_rid);
             co_await client1.expect_none<player_joined_notify_t> ()
               .within (std::chrono::milliseconds (25))
               .async ();
 
-            ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
             trace ("observe reward events");
             const auto observe_request = observe_bingo_events_req_t{client1_match.room_id};
             auto observed = co_await observer.request (observe_request)
                               .async<observe_bingo_events_res_t> ();
             ensure (observed.subscribed);
-            ensure (observed.observer_node_rid == observer_auth.actor_node_rid);
-            ensure (observed.observer_node_rid != client1_match.room_owner_node_rid);
 
             trace ("match client2");
             auto client1_joined_task =
@@ -104,8 +98,6 @@ class bingo_client_scenario_t
               co_await client2.request (match_request).async<match_bingo_res_t> ();
             ensure (client2_match.room_id == client1_match.room_id);
             ensure (client2_match.state.status == bingo_room_status_t::running);
-            ensure (client2_match.room_owner_node_rid == client1_match.room_owner_node_rid);
-            ensure (client2_auth.actor_node_rid != client2_match.room_owner_node_rid);
             auto client1_joined = co_await client1_joined_task;
             auto client1_started = co_await client1_started_task;
             auto client2_started = co_await client2_started_task;
@@ -262,7 +254,6 @@ class bingo_client_scenario_t
             ensure (reward.item_id == bingo_reward_items_t::golden_dauber_id);
             ensure (reward.item_name == bingo_reward_items_t::golden_dauber_name);
             ensure (reward.rarity == bingo_reward_items_t::legendary_rarity);
-            ensure (reward.receiving_spot_node_rid == observed.observer_node_rid);
 
             trace ("stop observing");
             const auto stop_observing_request = stop_observing_bingo_events_req_t{room_id};
@@ -271,7 +262,6 @@ class bingo_client_scenario_t
                 .async<stop_observing_bingo_events_res_t> ();
             trace ("stop observing completed");
             ensure (stopped.stopped);
-            ensure (stopped.observer_node_rid == observed.observer_node_rid);
 
             co_await client1.close ().async ();
             co_await client2.close ().async ();

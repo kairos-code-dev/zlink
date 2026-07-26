@@ -145,10 +145,27 @@ export interface ZLinkBackendMeshNode {
     generation: bigint,
     authorityOwnerGeneration: bigint
   ): ServiceSpot;
+  restoreSpotAuthority?(
+    spotId: string,
+    objectKind: 'user_spot' | 'instance_spot',
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint
+  ): ServiceSpot;
   createActor(
     actorId: string,
     parts?: MessageLike | readonly MessageLike[]
   ): ZLinkBackendActorRef;
+  restoreActorAuthority?(
+    actorId: string,
+    stableType: string,
+    generation: bigint,
+    authorityOwnerGeneration: bigint,
+    spotId: string,
+    spotGeneration: bigint,
+    membershipEpoch: bigint
+  ): ZLinkBackendActorRef;
+  discardRelocatedActor?(actor: ZLinkBackendActorRef): void;
   restoreActorSessionBinding?(
     actor: ZLinkBackendActorRef,
     sessionNodeRid: unknown,

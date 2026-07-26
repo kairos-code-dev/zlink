@@ -6,12 +6,80 @@ namespace Zlink.Framework.Runtime.Locations;
 
 internal sealed record ZLinkRelocationQueuedJob(
     ulong AcceptedSequence,
-    ReadOnlyMemory<byte> Payload);
+    ReadOnlyMemory<byte> Payload)
+{
+    internal ZLinkCanonicalRequestSourceFence? RequestSource { get; init; }
+    internal ZLinkCanonicalAcceptedRequest? CanonicalRequest { get; init; }
+}
+
+internal sealed record ZLinkCanonicalRequestSourceFence(
+    string OwnerId,
+    ulong OwnerLeaseGeneration,
+    string NodeRid,
+    ulong NodeGeneration);
+
+internal sealed record ZLinkCanonicalAcceptedRequest(
+    ZLinkCanonicalRequestSourceFence Source,
+    string? SourceSpotId,
+    ulong OperationHigh,
+    ulong OperationLow,
+    ulong ReplyRouteId,
+    string TargetSpotId,
+    ulong TargetSpotGeneration,
+    string TargetNodeRid,
+    ulong TargetNodeGeneration,
+    ulong TargetAuthorityOwnerGeneration,
+    ulong TargetOwnerLeaseGeneration,
+    ZLinkMessageMetadata Metadata,
+    ZLinkCanonicalApplicationPayload ApplicationPayload);
 
 internal sealed record ZLinkRelocationLogicalTimer(
     string TimerId,
     long DueUnixTimeMilliseconds,
     long PeriodMilliseconds,
+    ReadOnlyMemory<byte> Payload)
+{
+    internal ulong PendingAcceptedSequence { get; init; }
+    internal ZLinkCanonicalLogicalTimer? CanonicalTimer { get; init; }
+}
+
+internal sealed record ZLinkCanonicalLogicalTimer(
+    string HandlerType,
+    byte OverrunPolicy,
+    ulong MaxCatchUpTicks,
+    bool StopOnUnhandledException,
+    ulong LastCompletedDeliveryIndex,
+    ulong LastCompletedScheduledIndex,
+    long NextScheduledAtUnixMilliseconds,
+    ZLinkCanonicalPendingTimerTick? PendingTick);
+
+internal sealed record ZLinkCanonicalPendingTimerTick(
+    ulong AcceptedSequence,
+    ulong DeliveryIndex,
+    ulong ScheduledIndex,
+    long ScheduledAtUnixMilliseconds,
+    ulong SkippedTicks);
+
+internal sealed record ZLinkCanonicalTerminalCompletion(
+    ulong OperationHigh,
+    ulong OperationLow,
+    string SourceOwnerId,
+    ulong SourceOwnerLeaseGeneration,
+    string SourceNodeRid,
+    ulong SourceNodeGeneration,
+    ulong ParticipantId,
+    ulong AcceptedSequence,
+    uint TerminalResult,
+    uint ErrorCode,
+    byte DeliveryState,
+    ReadOnlyMemory<byte> RawRecord)
+{
+    internal ZLinkCanonicalApplicationPayload? Payload { get; init; }
+}
+
+internal sealed record ZLinkCanonicalApplicationPayload(
+    string PacketName,
+    string ContentType,
     ReadOnlyMemory<byte> Payload);
 
 internal sealed record ZLinkRelocationParticipantEnvelope(
@@ -23,7 +91,16 @@ internal sealed record ZLinkRelocationParticipantEnvelope(
     IReadOnlyList<ZLinkRelocationQueuedJob> AcceptedJobs,
     IReadOnlyList<ZLinkRelocationLogicalTimer> LogicalTimers,
     ReadOnlyMemory<byte> RecoveryPayload = default,
-    ReadOnlyMemory<byte> CompletionPayload = default);
+    ReadOnlyMemory<byte> CompletionPayload = default)
+{
+    internal ulong CanonicalParticipantId { get; init; }
+    internal ulong AcceptedBoundary { get; init; }
+    internal ulong ReplayCursor { get; init; }
+    internal IReadOnlyList<ZLinkCanonicalTerminalCompletion>
+        TerminalCompletions { get; init; } = [];
+    internal int PendingRelayCount => TerminalCompletions.Count(
+        static completion => completion.DeliveryState == 0);
+}
 
 internal sealed record ZLinkRelocationEnvelope(
     Guid AggregateId,
@@ -35,7 +112,24 @@ internal sealed record ZLinkRelocationEnvelope(
     // current runtime projection does not expose every frozen-record field yet,
     // so re-encoding the projection would silently discard durable information.
     internal ReadOnlyMemory<byte> CanonicalLogicalStream { get; init; }
+    internal ZLinkCanonicalRelocationLayout? CanonicalLayout { get; init; }
+    internal ulong CanonicalRelocationHigh { get; init; }
+    internal ulong CanonicalRelocationLow { get; init; }
+    internal long CanonicalApplicationVersion { get; init; }
 }
+
+internal sealed record ZLinkCanonicalJournalEntry(
+    ulong ParticipantId,
+    ulong AcceptedSequence,
+    ReadOnlyMemory<byte> RawEntry);
+
+internal sealed record ZLinkCanonicalRelocationLayout(
+    IReadOnlyDictionary<ulong, int> ReplayCursorOffsets,
+    int JournalStart,
+    int JournalEnd,
+    IReadOnlyList<ZLinkCanonicalJournalEntry> JournalEntries,
+    int CompletionStart,
+    int CompletionEnd);
 
 internal static class ZLinkRelocationEnvelopeCodec
 {
@@ -53,6 +147,31 @@ internal static class ZLinkRelocationEnvelopeCodec
         return stream.ToArray();
     }
 
+    internal static bool TryValidateCanonicalFrozenRecord(ReadOnlySpan<byte> encoded)
+        => TryValidateCanonicalFrozenRecord(encoded, out _);
+
+    internal static bool TryValidateCanonicalFrozenRecord(
+        ReadOnlySpan<byte> encoded, out bool truncated)
+    {
+        truncated = false;
+        try
+        {
+            var reader = new CanonicalReader(encoded);
+            ReadCanonicalFrozenRecord(ref reader);
+            reader.RequireEnd("relocation frozen record");
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+        catch (EndOfStreamException)
+        {
+            truncated = true;
+            return false;
+        }
+    }
+
     internal static long MeasureEncodedLength(ZLinkRelocationEnvelope envelope)
     {
         using var stream = new CountingStream();
@@ -67,6 +186,258 @@ internal static class ZLinkRelocationEnvelopeCodec
         EncodeTo(stream, envelope);
         return hash.GetHashAndReset();
     }
+
+    internal static ZLinkRelocationEnvelope AdvanceCanonicalReplayCursor(
+        ZLinkRelocationEnvelope envelope,
+        ulong participantId,
+        ulong replayCursor)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        var layout = envelope.CanonicalLayout
+                     ?? throw new InvalidOperationException(
+                         "Replay progress can only edit a canonical relocation root.");
+        var participant = envelope.Participants.SingleOrDefault(
+            candidate => candidate.CanonicalParticipantId == participantId)
+            ?? throw new ArgumentOutOfRangeException(nameof(participantId));
+        if (replayCursor < participant.ReplayCursor
+            || replayCursor > participant.AcceptedBoundary)
+            throw new ArgumentOutOfRangeException(nameof(replayCursor));
+        var retained = layout.JournalEntries.Where(entry =>
+                entry.ParticipantId != participantId
+                || entry.AcceptedSequence > replayCursor)
+            .ToArray();
+        using var stream = new MemoryStream();
+        var original = envelope.CanonicalLogicalStream.Span;
+        var prefix = original[..layout.JournalStart].ToArray();
+        BinaryPrimitives.WriteUInt64BigEndian(
+            prefix.AsSpan(layout.ReplayCursorOffsets[participantId]),
+            replayCursor);
+        stream.Write(prefix);
+        Span<byte> count = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(count, checked((uint)retained.Length));
+        stream.Write(count);
+        foreach (var entry in retained)
+            stream.Write(entry.RawEntry.Span);
+        stream.Write(original[layout.JournalEnd..]);
+        stream.Position = 0;
+        return Decode(stream, envelope.InventoryDigest);
+    }
+
+    internal static ZLinkRelocationEnvelope AppendCanonicalTerminalCompletion(
+        ZLinkRelocationEnvelope envelope,
+        ZLinkCanonicalTerminalCompletion completion)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        ArgumentNullException.ThrowIfNull(completion);
+        var layout = envelope.CanonicalLayout
+                     ?? throw new InvalidOperationException(
+                         "Terminal completion can only edit a canonical relocation root.");
+        if (completion.RawRecord.IsEmpty)
+            throw new ArgumentException(
+                "The canonical completion record is empty.", nameof(completion));
+        var existing = envelope.Participants
+            .SelectMany(static participant => participant.TerminalCompletions)
+            .ToArray();
+        if (existing.Length >= MaxItemsPerParticipant)
+            throw new ArgumentOutOfRangeException(nameof(completion));
+        using var stream = new MemoryStream();
+        var original = envelope.CanonicalLogicalStream.Span;
+        stream.Write(original[..layout.CompletionStart]);
+        Span<byte> count = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(
+            count,
+            checked((uint)(existing.Length + 1)));
+        stream.Write(count);
+        foreach (var item in existing)
+            stream.Write(item.RawRecord.Span);
+        stream.Write(completion.RawRecord.Span);
+        stream.Write(original[layout.CompletionEnd..]);
+        stream.Position = 0;
+        return Decode(stream, envelope.InventoryDigest);
+    }
+
+    internal static ZLinkRelocationEnvelope AcknowledgeCanonicalTerminalCompletion(
+        ZLinkRelocationEnvelope envelope,
+        ulong operationHigh,
+        ulong operationLow,
+        string sourceOwnerId,
+        ulong sourceOwnerLeaseGeneration,
+        string sourceNodeRid,
+        ulong sourceNodeGeneration)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        return CompleteCanonicalTerminalDelivery(
+            envelope,
+            operationHigh,
+            operationLow,
+            sourceOwnerId,
+            sourceOwnerLeaseGeneration,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            1);
+    }
+
+    internal static ZLinkRelocationEnvelope ExpireCanonicalTerminalSourceLease(
+        ZLinkRelocationEnvelope envelope,
+        ulong operationHigh,
+        ulong operationLow,
+        string sourceOwnerId,
+        ulong sourceOwnerLeaseGeneration,
+        string sourceNodeRid,
+        ulong sourceNodeGeneration) =>
+        CompleteCanonicalTerminalDelivery(
+            envelope,
+            operationHigh,
+            operationLow,
+            sourceOwnerId,
+            sourceOwnerLeaseGeneration,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            3);
+
+    internal static ZLinkRelocationEnvelope CompleteCanonicalTerminalDelivery(
+        ZLinkRelocationEnvelope envelope,
+        ulong operationHigh,
+        ulong operationLow,
+        string sourceOwnerId,
+        ulong sourceOwnerLeaseGeneration,
+        string sourceNodeRid,
+        ulong sourceNodeGeneration,
+        byte deliveryState)
+    {
+        if (deliveryState is < 1 or > 3)
+            throw new ArgumentOutOfRangeException(nameof(deliveryState));
+        var layout = envelope.CanonicalLayout
+                     ?? throw new InvalidOperationException(
+                         "Terminal delivery can only edit a canonical relocation root.");
+        var completions = envelope.Participants
+            .SelectMany(static participant => participant.TerminalCompletions)
+            .ToArray();
+        var match = completions.SingleOrDefault(completion =>
+            completion.OperationHigh == operationHigh
+            && completion.OperationLow == operationLow
+            && completion.SourceOwnerId == sourceOwnerId
+            && completion.SourceOwnerLeaseGeneration == sourceOwnerLeaseGeneration
+            && completion.SourceNodeRid == sourceNodeRid
+            && completion.SourceNodeGeneration == sourceNodeGeneration)
+                    ?? throw new ArgumentOutOfRangeException(nameof(operationLow));
+        if (match.DeliveryState != 0)
+            return envelope;
+
+        using var stream = new MemoryStream();
+        var original = envelope.CanonicalLogicalStream.Span;
+        stream.Write(original[..layout.CompletionStart]);
+        Span<byte> count = stackalloc byte[sizeof(uint)];
+        BinaryPrimitives.WriteUInt32BigEndian(count, checked((uint)completions.Length));
+        stream.Write(count);
+        foreach (var completion in completions)
+        {
+            if (!ReferenceEquals(completion, match))
+            {
+                stream.Write(completion.RawRecord.Span);
+                continue;
+            }
+            var acknowledged = completion.RawRecord.ToArray();
+            acknowledged[CanonicalCompletionDeliveryStateOffset(completion)] =
+                deliveryState;
+            stream.Write(acknowledged);
+        }
+        stream.Write(original[layout.CompletionEnd..]);
+        stream.Position = 0;
+        return Decode(stream, envelope.InventoryDigest);
+    }
+
+    internal static ZLinkCanonicalTerminalCompletion CreateCanonicalTerminalCompletion(
+        ulong operationHigh,
+        ulong operationLow,
+        string sourceOwnerId,
+        ulong sourceOwnerLeaseGeneration,
+        string sourceNodeRid,
+        ulong sourceNodeGeneration,
+        ulong participantId,
+        ulong acceptedSequence,
+        uint terminalResult,
+        uint errorCode,
+        byte deliveryState,
+        ZLinkCanonicalApplicationPayload? payload)
+    {
+        using var stream = new MemoryStream();
+        WriteU64(stream, operationHigh);
+        WriteU64(stream, operationLow);
+        WriteText8(stream, sourceOwnerId);
+        WriteU64(stream, sourceOwnerLeaseGeneration);
+        WriteText8(stream, sourceNodeRid);
+        WriteU64(stream, sourceNodeGeneration);
+        WriteU64(stream, participantId);
+        WriteU64(stream, acceptedSequence);
+        WriteU32(stream, terminalResult);
+        WriteU32(stream, errorCode);
+        stream.WriteByte(deliveryState);
+        stream.WriteByte(payload is null ? (byte)0 : (byte)1);
+        if (payload is not null)
+        {
+            using var body = new MemoryStream();
+            WriteText8(body, payload.PacketName);
+            WriteText8(body, payload.ContentType);
+            WriteU32(body, checked((uint)payload.Payload.Length));
+            body.Write(payload.Payload.Span);
+            stream.WriteByte(1);
+            WriteU32(stream, checked((uint)body.Length));
+            body.Position = 0;
+            body.CopyTo(stream);
+        }
+        return new ZLinkCanonicalTerminalCompletion(
+            operationHigh,
+            operationLow,
+            sourceOwnerId,
+            sourceOwnerLeaseGeneration,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            participantId,
+            acceptedSequence,
+            terminalResult,
+            errorCode,
+            deliveryState,
+            stream.ToArray())
+        {
+            Payload = payload
+        };
+
+        static void WriteText8(Stream target, string value)
+        {
+            var encoded = StrictUtf8.GetBytes(value);
+            if (encoded.Length is < 1 or > byte.MaxValue
+                || encoded.AsSpan().Contains((byte)0))
+                throw new ArgumentOutOfRangeException(nameof(value));
+            target.WriteByte(checked((byte)encoded.Length));
+            target.Write(encoded);
+        }
+
+        static void WriteU32(Stream target, uint value)
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(uint)];
+            BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
+            target.Write(bytes);
+        }
+
+        static void WriteU64(Stream target, ulong value)
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            target.Write(bytes);
+        }
+    }
+
+    private static int CanonicalCompletionDeliveryStateOffset(
+        ZLinkCanonicalTerminalCompletion completion) =>
+        checked(
+            2 * sizeof(ulong)
+            + 1 + StrictUtf8.GetByteCount(completion.SourceOwnerId)
+            + sizeof(ulong)
+            + 1 + StrictUtf8.GetByteCount(completion.SourceNodeRid)
+            + sizeof(ulong)
+            + 2 * sizeof(ulong)
+            + 2 * sizeof(uint));
 
     internal static void EncodeTo(
         Stream stream,
@@ -253,7 +624,9 @@ internal static class ZLinkRelocationEnvelopeCodec
         if (applicationVersion < 0)
             throw new InvalidDataException("The application version is invalid.");
 
-        var states = new Dictionary<ulong, ReadOnlyMemory<byte>>();
+        var states = new Dictionary<ulong, (
+            ReadOnlyMemory<byte> Application,
+            ReadOnlyMemory<byte> Recovery)>();
         var stateCount = reader.ReadUInt32();
         if (stateCount is 0 or > MaxParticipants)
             throw new InvalidDataException(
@@ -266,15 +639,21 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException(
                     "Relocation participant ids must be strictly increasing.");
             previousParticipantId = participantId;
-            var hasState = reader.ReadByte();
-            if (hasState > 1)
+            var stateEncoding = reader.ReadByte();
+            if (stateEncoding > 2)
                 throw new InvalidDataException("The relocation state discriminator is invalid.");
             var body = new CanonicalReader(reader.ReadBytes(reader.ReadUInt64AsInt()));
             ReadOnlyMemory<byte> state = default;
-            if (hasState == 1)
+            ReadOnlyMemory<byte> recovery = default;
+            if (stateEncoding is 1 or 2)
                 state = body.ReadBytes(body.ReadUInt64AsInt()).ToArray();
+            if (stateEncoding == 2)
+            {
+                recovery = body.ReadBytes(body.ReadUInt64AsInt()).ToArray();
+                _ = ZLinkCanonicalParticipantRecoveryCodec.Decode(recovery.Span);
+            }
             body.RequireEnd("relocation application state");
-            states.Add(participantId, state);
+            states.Add(participantId, (state, recovery));
         }
 
         var progressCount = reader.ReadUInt32();
@@ -283,10 +662,12 @@ internal static class ZLinkRelocationEnvelopeCodec
                 "Relocation progress must cover the application-state participants.");
         previousParticipantId = 0;
         var progress = new Dictionary<ulong, (ulong AcceptedBoundary, ulong ReplayCursor)>();
+        var replayCursorOffsets = new Dictionary<ulong, int>();
         for (var index = 0; index < progressCount; index++)
         {
             var participantId = reader.ReadUInt64();
             var acceptedBoundary = reader.ReadUInt64();
+            replayCursorOffsets.Add(participantId, reader.Position);
             var replayCursor = reader.ReadUInt64();
             if (participantId == 0 || participantId <= previousParticipantId
                 || replayCursor > acceptedBoundary || !states.ContainsKey(participantId))
@@ -295,10 +676,14 @@ internal static class ZLinkRelocationEnvelopeCodec
             progress.Add(participantId, (acceptedBoundary, replayCursor));
         }
 
-        var jobs = ReadCanonicalJournal(ref reader, progress);
+        var journalStart = reader.Position;
+        var jobs = ReadCanonicalJournal(ref reader, progress, out var journalEntries);
+        var journalEnd = reader.Position;
         var timers = ReadCanonicalTimers(ref reader, states.Keys);
         ReadCanonicalPendingTimerTicks(ref reader, states.Keys, timers);
+        var completionStart = reader.Position;
         var completions = ReadCanonicalCompletions(ref reader, states.Keys);
+        var completionEnd = reader.Position;
         reader.RequireEnd("relocation root");
 
         var participants = states.Select((entry, index) =>
@@ -309,12 +694,23 @@ internal static class ZLinkRelocationEnvelopeCodec
                 (ZLinkPlacementObjectKind)objectKindValue,
                 objectGeneration,
                 ownerGeneration,
-                entry.Value,
+                entry.Value.Application,
                 jobs.GetValueOrDefault(entry.Key, []),
                 timers.GetValueOrDefault(entry.Key, [])
                     .Select(static timer => timer.ToRelocationTimer())
                     .ToArray(),
-                CompletionPayload: completions.GetValueOrDefault(entry.Key)))
+                entry.Value.Recovery,
+                CompletionPayload: JoinCanonicalRecords(
+                    completions.GetValueOrDefault(entry.Key, [])
+                        .Select(static completion => completion.RawRecord)
+                        .Select(static record => record.ToArray())
+                        .ToList()))
+            {
+                CanonicalParticipantId = entry.Key,
+                AcceptedBoundary = progress[entry.Key].AcceptedBoundary,
+                ReplayCursor = progress[entry.Key].ReplayCursor,
+                TerminalCompletions = completions.GetValueOrDefault(entry.Key, [])
+            })
             .ToArray();
         var digest = inventoryDigest.IsEmpty
             ? new byte[32]
@@ -323,12 +719,22 @@ internal static class ZLinkRelocationEnvelopeCodec
             throw new InvalidDataException(
                 "The relocation inventory digest must contain 32 bytes.");
         var result = new ZLinkRelocationEnvelope(
-            new Guid(relocationId),
+            new Guid(relocationId, bigEndian: true),
             applicationVersion == 0 ? 1UL : checked((ulong)applicationVersion),
             digest,
             participants)
         {
-            CanonicalLogicalStream = encoded.ToArray()
+            CanonicalLogicalStream = encoded.ToArray(),
+            CanonicalRelocationHigh = BinaryPrimitives.ReadUInt64BigEndian(relocationId),
+            CanonicalRelocationLow = BinaryPrimitives.ReadUInt64BigEndian(relocationId[8..]),
+            CanonicalApplicationVersion = applicationVersion,
+            CanonicalLayout = new ZLinkCanonicalRelocationLayout(
+                replayCursorOffsets,
+                journalStart,
+                journalEnd,
+                journalEntries,
+                completionStart,
+                completionEnd)
         };
         ValidateEnvelope(result);
         return result;
@@ -337,13 +743,16 @@ internal static class ZLinkRelocationEnvelopeCodec
     private static Dictionary<ulong, IReadOnlyList<ZLinkRelocationQueuedJob>>
         ReadCanonicalJournal(
             ref CanonicalReader reader,
-            IReadOnlyDictionary<ulong, (ulong AcceptedBoundary, ulong ReplayCursor)> progress)
+            IReadOnlyDictionary<ulong, (ulong AcceptedBoundary, ulong ReplayCursor)> progress,
+            out IReadOnlyList<ZLinkCanonicalJournalEntry> entries)
     {
+        var rawEntries = new List<ZLinkCanonicalJournalEntry>();
         var jobs = progress.Keys.ToDictionary(
             static id => id,
             static _ => (IReadOnlyList<ZLinkRelocationQueuedJob>)
                 new List<ZLinkRelocationQueuedJob>());
         var count = reader.ReadBoundedCount(MaxItemsPerParticipant, "journal");
+        var operations = new HashSet<CanonicalJournalOperation>();
         ulong previousParticipantId = 0;
         ulong previousSequence = 0;
         for (var index = 0; index < count; index++)
@@ -360,13 +769,28 @@ internal static class ZLinkRelocationEnvelopeCodec
             previousSequence = participantId == previousParticipantId ? sequence : 0;
             previousParticipantId = participantId;
             previousSequence = sequence;
+            var entryStart = reader.Position - 2 * sizeof(ulong);
             var recordStart = reader.Position;
-            ReadCanonicalFrozenRecord(ref reader);
+            var projection = ReadCanonicalFrozenRecordProjection(ref reader,
+                out var operation);
+            if (operation is { } exactOperation
+                && !operations.Add(exactOperation))
+                throw new InvalidDataException(
+                    "The relocation journal contains a duplicate operation identity.");
             ((List<ZLinkRelocationQueuedJob>)participantJobs).Add(
                 new ZLinkRelocationQueuedJob(
                     sequence,
-                    reader.CopyRange(recordStart)));
+                    reader.CopyRange(recordStart))
+                {
+                    RequestSource = projection?.Source,
+                    CanonicalRequest = projection
+                });
+            rawEntries.Add(new ZLinkCanonicalJournalEntry(
+                participantId,
+                sequence,
+                reader.CopyRange(entryStart)));
         }
+        entries = rawEntries;
         return jobs;
     }
 
@@ -387,13 +811,13 @@ internal static class ZLinkRelocationEnvelopeCodec
             var start = reader.Position;
             var participantId = reader.ReadUInt64();
             var name = reader.ReadText8();
-            _ = reader.ReadText8(); // Handler type is retained in the opaque projection.
+            var handlerType = reader.ReadText8();
             var period = reader.ReadUInt64();
             var policy = reader.ReadByte();
             var maxCatchUpTicks = reader.ReadUInt64();
             var stopOnUnhandledException = reader.ReadByte();
-            _ = reader.ReadUInt64();
-            _ = reader.ReadUInt64();
+            var lastCompletedDeliveryIndex = reader.ReadUInt64();
+            var lastCompletedScheduledIndex = reader.ReadUInt64();
             var nextScheduledAt = reader.ReadUInt64();
             if (!timers.TryGetValue(participantId, out var participantTimers)
                 || participantId < previousParticipantId
@@ -413,6 +837,12 @@ internal static class ZLinkRelocationEnvelopeCodec
                     name,
                     checked((long)nextScheduledAt),
                     checked((long)period),
+                    handlerType,
+                    policy,
+                    maxCatchUpTicks,
+                    stopOnUnhandledException == 1,
+                    lastCompletedDeliveryIndex,
+                    lastCompletedScheduledIndex,
                     reader.CopyRange(start)));
         }
         return timers;
@@ -434,8 +864,8 @@ internal static class ZLinkRelocationEnvelopeCodec
             var timerName = reader.ReadText8();
             var deliveryIndex = reader.ReadUInt64();
             var scheduledIndex = reader.ReadUInt64();
-            _ = reader.ReadUInt64();
-            _ = reader.ReadUInt64();
+            var scheduledAt = reader.ReadUInt64();
+            var skippedTicks = reader.ReadUInt64();
             if (!participantIds.Contains(participantId)
                 || participantId < previousParticipantId
                 || participantId == previousParticipantId && sequence <= previousSequence
@@ -448,17 +878,27 @@ internal static class ZLinkRelocationEnvelopeCodec
             previousSequence = sequence;
             var timer = timers[participantId].Single(candidate =>
                 string.Equals(candidate.TimerId, timerName, StringComparison.Ordinal));
-            timer.AppendPendingTick(reader.CopyRange(start));
+            if (scheduledAt > long.MaxValue)
+                throw new InvalidDataException(
+                    "The pending relocation timer timestamp is invalid.");
+            timer.AppendPendingTick(
+                reader.CopyRange(start),
+                new ZLinkCanonicalPendingTimerTick(
+                    sequence,
+                    deliveryIndex,
+                    scheduledIndex,
+                    checked((long)scheduledAt),
+                    skippedTicks));
         }
     }
 
-    private static Dictionary<ulong, ReadOnlyMemory<byte>> ReadCanonicalCompletions(
+    private static Dictionary<ulong, IReadOnlyList<ZLinkCanonicalTerminalCompletion>> ReadCanonicalCompletions(
         ref CanonicalReader reader,
         ICollection<ulong> participantIds)
     {
         var records = participantIds.ToDictionary(
             static id => id,
-            static _ => new List<byte[]>());
+            static _ => new List<ZLinkCanonicalTerminalCompletion>());
         var count = reader.ReadBoundedCount(MaxItemsPerParticipant, "terminal completion");
         var operations = new HashSet<(string OwnerId, ulong OwnerLease, string NodeRid,
             ulong NodeGeneration, ulong OperationHigh, ulong OperationLow)>();
@@ -480,7 +920,7 @@ internal static class ZLinkRelocationEnvelopeCodec
             var participantId = reader.ReadUInt64();
             var sequence = reader.ReadUInt64();
             var terminalResult = reader.ReadUInt32();
-            _ = reader.ReadUInt32();
+            var errorCode = reader.ReadUInt32();
             var deliveryState = reader.ReadByte();
             var hasPayload = reader.ReadByte();
             if (!records.ContainsKey(participantId)
@@ -501,13 +941,29 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException("The relocation terminal completion is invalid.");
             previousParticipantId = participantId;
             previousSequence = sequence;
-            if (hasPayload == 1)
-                ReadCanonicalApplicationPayload(ref reader);
-            records[participantId].Add(reader.CopyRange(start));
+            var payload = hasPayload == 1
+                ? ReadCanonicalApplicationPayloadProjection(ref reader)
+                : null;
+            records[participantId].Add(new ZLinkCanonicalTerminalCompletion(
+                operationHigh,
+                operationLow,
+                sourceOwnerId,
+                sourceOwnerLease,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                participantId,
+                sequence,
+                terminalResult,
+                errorCode,
+                deliveryState,
+                reader.CopyRange(start))
+            {
+                Payload = payload
+            });
         }
         return records.ToDictionary(
             static pair => pair.Key,
-            static pair => (ReadOnlyMemory<byte>)JoinCanonicalRecords(pair.Value));
+            static pair => (IReadOnlyList<ZLinkCanonicalTerminalCompletion>)pair.Value);
     }
 
     private static void ReadCanonicalFrozenRecord(ref CanonicalReader reader)
@@ -518,6 +974,9 @@ internal static class ZLinkRelocationEnvelopeCodec
         var sourceKind = reader.ReadByte();
         if (sourceKind is < 1 or > 4)
             throw new InvalidDataException("The relocation journal source kind is invalid.");
+        if (recordKind is 8 or 11 or 12 or 13 && sourceKind != 1)
+            throw new InvalidDataException(
+                "Infrastructure relocation records require a node source.");
         var source = new CanonicalReader(reader.ReadBytes(reader.ReadUInt16()));
         _ = source.ReadText8();
         if (source.ReadUInt64() == 0)
@@ -543,13 +1002,18 @@ internal static class ZLinkRelocationEnvelopeCodec
         var hasMetadata = reader.ReadByte();
         if (hasMetadata > 1)
             throw new InvalidDataException("The relocation journal metadata flag is invalid.");
+        if (hasMetadata == 1 && recordKind is not (1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or 10 or 14))
+            throw new InvalidDataException("The relocation journal metadata is forbidden for this record kind.");
         if (hasMetadata == 1)
             ReadCanonicalMetadata(ref reader);
-        _ = reader.ReadUInt64();
-        _ = reader.ReadUInt64();
+        var operationHigh = reader.ReadUInt64();
+        var operationLow = reader.ReadUInt64();
         var operationKind = reader.ReadUInt32();
-        if (operationKind > 12)
+        if (operationKind > 15)
             throw new InvalidDataException("The relocation journal operation kind is invalid.");
+        var operationNonzero = operationHigh != 0 || operationLow != 0;
+        if (!IsCanonicalFrozenOperation(recordKind, operationKind, operationNonzero))
+            throw new InvalidDataException("The relocation journal operation identity is invalid.");
         var replyRoute = new CanonicalReader(reader.ReadBytes(reader.ReadUInt16()));
         if (operationKind is 1 or 2 or 3 or 4 or 12)
         {
@@ -557,12 +1021,115 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException("The relocation reply route is invalid.");
         }
         replyRoute.RequireEnd("relocation reply route");
-        ReadCanonicalFrozenRecordBody(ref reader, recordKind);
+        ReadCanonicalFrozenRecordBody(ref reader, recordKind, operationKind,
+            operationNonzero);
     }
+
+    private static ZLinkCanonicalAcceptedRequest?
+        ReadCanonicalFrozenRecordProjection(
+            ref CanonicalReader reader,
+            out CanonicalJournalOperation? operation)
+    {
+        var recordKind = reader.ReadByte();
+        if (recordKind is < 1 or > 14)
+            throw new InvalidDataException("The relocation journal record kind is invalid.");
+        var sourceKind = reader.ReadByte();
+        if (sourceKind is < 1 or > 4)
+            throw new InvalidDataException("The relocation journal source kind is invalid.");
+        var source = new CanonicalReader(reader.ReadBytes(reader.ReadUInt16()));
+        var sourceNodeRid = source.ReadText8();
+        var sourceNodeGeneration = source.ReadUInt64();
+        var sourceOwnerId = source.ReadText8();
+        var sourceOwnerLease = source.ReadUInt64();
+        string? sourceSpotId = null;
+        if (sourceKind == 2)
+            sourceSpotId = source.ReadText8();
+        else if (sourceKind is 3 or 4)
+        {
+            _ = source.ReadText8();
+            if (source.ReadUInt64() == 0)
+                throw new InvalidDataException("The relocation journal Actor generation is invalid.");
+            if (sourceKind == 4)
+            {
+                _ = source.ReadText8();
+                if (source.ReadUInt64() == 0 || source.ReadUInt64() == 0)
+                    throw new InvalidDataException("The relocation journal binding is invalid.");
+            }
+        }
+        source.RequireEnd("relocation journal source");
+        if (sourceNodeGeneration == 0 || sourceOwnerLease == 0)
+            throw new InvalidDataException("The relocation journal source fence is invalid.");
+        var hasMetadata = reader.ReadByte();
+        if (hasMetadata > 1)
+            throw new InvalidDataException("The relocation journal metadata flag is invalid.");
+        var metadata = hasMetadata == 1
+            ? ReadCanonicalMetadataProjection(ref reader)
+            : ZLinkMessageMetadata.Empty;
+        var operationHigh = reader.ReadUInt64();
+        var operationLow = reader.ReadUInt64();
+        operation = operationHigh == 0 && operationLow == 0
+            ? null
+            : new CanonicalJournalOperation(
+                sourceOwnerId,
+                sourceOwnerLease,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                operationHigh,
+                operationLow);
+        var operationKind = reader.ReadUInt32();
+        if (operationKind > 15)
+            throw new InvalidDataException("The relocation journal operation kind is invalid.");
+        var replyRoute = new CanonicalReader(reader.ReadBytes(reader.ReadUInt16()));
+        var replyRouteId = operationKind is 1 or 2 or 3 or 4 or 12
+            ? replyRoute.ReadUInt64()
+            : 0;
+        replyRoute.RequireEnd("relocation reply route");
+        if (recordKind is not (5 or 6))
+        {
+            ReadCanonicalFrozenRecordBody(ref reader, recordKind, operationKind,
+                operationHigh != 0 || operationLow != 0);
+            return null;
+        }
+        var targetSpotId = reader.ReadText8();
+        var targetSpotGeneration = reader.ReadUInt64();
+        var targetNodeRid = reader.ReadText8();
+        var targetNodeGeneration = reader.ReadUInt64();
+        var targetAuthorityOwnerGeneration = reader.ReadUInt64();
+        var targetOwnerLeaseGeneration = reader.ReadUInt64();
+        var payload = ReadCanonicalApplicationPayloadProjection(ref reader);
+        return new ZLinkCanonicalAcceptedRequest(
+            new ZLinkCanonicalRequestSourceFence(
+                sourceOwnerId,
+                sourceOwnerLease,
+                sourceNodeRid,
+                sourceNodeGeneration),
+            sourceSpotId,
+            operationHigh,
+            operationLow,
+            replyRouteId,
+            targetSpotId,
+            targetSpotGeneration,
+            targetNodeRid,
+            targetNodeGeneration,
+            targetAuthorityOwnerGeneration,
+            targetOwnerLeaseGeneration,
+            metadata,
+            payload);
+    }
+
+    private readonly record struct CanonicalJournalOperation(
+        string SourceOwnerId,
+        ulong SourceOwnerLeaseGeneration,
+        string SourceNodeRid,
+        ulong SourceNodeGeneration,
+        ulong OperationHigh,
+        ulong OperationLow);
 
     private static void ReadCanonicalFrozenRecordBody(
         ref CanonicalReader reader,
-        byte recordKind)
+        byte recordKind,
+        uint operationKind,
+        bool operationNonzero)
     {
         switch (recordKind)
         {
@@ -607,7 +1174,11 @@ internal static class ZLinkRelocationEnvelopeCodec
                 return;
             case 14:
                 ReadCanonicalInstanceRoute(ref reader);
-                if (reader.ReadUInt64() == 0 || reader.ReadByte() is < 1 or > 2)
+                var sourceGeneration = reader.ReadUInt64();
+                var instanceOperation = reader.ReadByte();
+                if (sourceGeneration == 0 || instanceOperation is < 1 or > 2
+                    || instanceOperation == 1 && (operationKind != 0 || operationNonzero)
+                    || instanceOperation == 2 && (operationKind != 12 || !operationNonzero))
                     throw new InvalidDataException("The Instance activation record is invalid.");
                 ReadCanonicalApplicationPayload(ref reader);
                 return;
@@ -615,6 +1186,24 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException("The relocation journal record kind is invalid.");
         }
     }
+
+    private static bool IsCanonicalFrozenOperation(
+        byte recordKind, uint operationKind, bool operationNonzero) => recordKind switch
+    {
+        1 or 3 or 7 or 12 or 13 => operationKind == 0 && !operationNonzero,
+        2 => operationKind == 1 && operationNonzero,
+        4 => operationKind == 2 && operationNonzero,
+        5 or 9 => operationKind == 0 && operationNonzero,
+        6 => operationKind == 3 && operationNonzero,
+        8 => operationKind == 0
+            ? !operationNonzero
+            : operationKind is 6 or 7 or 8 && operationNonzero,
+        10 => operationKind == 4 && operationNonzero,
+        11 => operationKind is >= 1 and <= 15 && operationNonzero,
+        14 => operationKind is 0 or 12
+              && operationNonzero == (operationKind == 12),
+        _ => false
+    };
 
     private static void ReadCanonicalActorControl(ref CanonicalReader reader)
     {
@@ -753,26 +1342,40 @@ internal static class ZLinkRelocationEnvelopeCodec
         if (reader.ReadUInt64() == 0)
             throw new InvalidDataException("The relocation Spot generation is invalid.");
         _ = reader.ReadText8();
-        if (reader.ReadUInt64() == 0 || reader.ReadUInt64() == 0)
+        if (reader.ReadUInt64() == 0
+            || reader.ReadUInt64() == 0
+            || reader.ReadUInt64() == 0)
             throw new InvalidDataException("The relocation Spot authority fence is invalid.");
     }
 
     private static void ReadCanonicalInstanceRoute(ref CanonicalReader reader)
     {
-        if (reader.ReadByte() != 1)
+        var kind = reader.ReadByte();
+        if (kind is < 1 or > 2)
             throw new InvalidDataException("The Instance relocation route version is invalid.");
         var route = new CanonicalReader(reader.ReadBytes(reader.ReadUInt16()));
         _ = route.ReadText8();
         if (route.ReadUInt64() == 0)
             throw new InvalidDataException("The Instance relocation node generation is invalid.");
         _ = route.ReadText8();
-        if (route.ReadUInt64() == 0)
-            throw new InvalidDataException("The Instance relocation object generation is invalid.");
-        _ = route.ReadText8();
-        if (route.ReadUInt64() == 0 || route.ReadUInt64() == 0)
-            throw new InvalidDataException("The Instance relocation authority fence is invalid.");
-        _ = route.ReadText16();
-        _ = route.ReadText8();
+        if (kind == 1)
+        {
+            if (route.ReadUInt64() == 0)
+                throw new InvalidDataException("The Instance relocation object generation is invalid.");
+            _ = route.ReadText8();
+            if (route.ReadUInt64() == 0 || route.ReadUInt64() == 0)
+                throw new InvalidDataException("The Instance relocation authority fence is invalid.");
+            _ = route.ReadText16();
+        }
+        else
+        {
+            _ = route.ReadText8();
+            _ = route.ReadText8();
+            _ = route.ReadText8();
+            if (route.ReadUInt64() == 0)
+                throw new InvalidDataException(
+                    "The Instance relocation deadline is invalid.");
+        }
         route.RequireEnd("Instance relocation route");
     }
 
@@ -787,6 +1390,19 @@ internal static class ZLinkRelocationEnvelopeCodec
         body.RequireEnd("relocation application payload");
     }
 
+    private static ZLinkCanonicalApplicationPayload
+        ReadCanonicalApplicationPayloadProjection(ref CanonicalReader reader)
+    {
+        if (reader.ReadByte() != 1)
+            throw new InvalidDataException("The relocation application payload version is invalid.");
+        var body = new CanonicalReader(reader.ReadBytes(checked((int)reader.ReadUInt32())));
+        var packetName = body.ReadText8();
+        var contentType = body.ReadText8();
+        var payload = body.ReadBytes(checked((int)body.ReadUInt32())).ToArray();
+        body.RequireEnd("relocation application payload");
+        return new ZLinkCanonicalApplicationPayload(packetName, contentType, payload);
+    }
+
     private static void ReadCanonicalMetadata(ref CanonicalReader reader)
     {
         if (reader.ReadByte() != 1)
@@ -799,6 +1415,20 @@ internal static class ZLinkRelocationEnvelopeCodec
                 throw new InvalidDataException("The relocation metadata contains a duplicate key.");
             _ = reader.ReadText16();
         }
+    }
+
+    private static ZLinkMessageMetadata ReadCanonicalMetadataProjection(
+        ref CanonicalReader reader)
+    {
+        if (reader.ReadByte() != 1)
+            throw new InvalidDataException("The relocation metadata version is invalid.");
+        var count = reader.ReadByte();
+        var values = new Dictionary<string, string>(count, StringComparer.Ordinal);
+        for (var index = 0; index < count; index++)
+            if (!values.TryAdd(reader.ReadText8(), reader.ReadText16()))
+                throw new InvalidDataException(
+                    "The relocation metadata contains a duplicate key.");
+        return new ZLinkMessageMetadata(values);
     }
 
     private static bool IsCanonicalTerminalResult(uint value) =>
@@ -823,20 +1453,45 @@ internal static class ZLinkRelocationEnvelopeCodec
         string timerId,
         long dueUnixTimeMilliseconds,
         long periodMilliseconds,
+        string handlerType,
+        byte overrunPolicy,
+        ulong maxCatchUpTicks,
+        bool stopOnUnhandledException,
+        ulong lastCompletedDeliveryIndex,
+        ulong lastCompletedScheduledIndex,
         byte[] registration)
     {
         private readonly List<byte[]> _records = [registration];
+        private ZLinkCanonicalPendingTimerTick? _pendingTick;
 
         internal string TimerId { get; } = timerId;
 
-        internal void AppendPendingTick(byte[] tick) => _records.Add(tick);
+        internal void AppendPendingTick(
+            byte[] tick,
+            ZLinkCanonicalPendingTimerTick pendingTick)
+        {
+            _records.Add(tick);
+            _pendingTick = pendingTick;
+        }
 
         internal ZLinkRelocationLogicalTimer ToRelocationTimer() =>
             new(
                 TimerId,
                 dueUnixTimeMilliseconds,
                 periodMilliseconds,
-                JoinCanonicalRecords(_records));
+                JoinCanonicalRecords(_records))
+            {
+                PendingAcceptedSequence = _pendingTick?.AcceptedSequence ?? 0,
+                CanonicalTimer = new ZLinkCanonicalLogicalTimer(
+                    handlerType,
+                    overrunPolicy,
+                    maxCatchUpTicks,
+                    stopOnUnhandledException,
+                    lastCompletedDeliveryIndex,
+                    lastCompletedScheduledIndex,
+                    dueUnixTimeMilliseconds,
+                    _pendingTick)
+            };
     }
 
     private ref struct CanonicalReader(ReadOnlySpan<byte> source)

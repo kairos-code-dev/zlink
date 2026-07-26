@@ -499,8 +499,10 @@ Target descriptor lifecycle·owner lease·capability·reserved capacity는 같�
 
 Standalone Actor의 `NewOwner` Put은 exact relocation capacity fence를 반드시 포함한다. Provider는 authority CAS와
 같은 transaction에서 source active capacity를 줄이고 target reserved을 active로 바꾼 뒤 fence를 committed로
-닫는다. User Spot aggregate의 각 participant도 같은 fence를 사용하며 aggregate commit이 모든 capacity·owner·
-membership mutation을 함께 적용한다. Commit 전 abort는 target reserved만 exact fence로 해제한다. 이미 committed
+닫는다. User Spot aggregate는 standalone relocation capacity fence를 사용하지 않는다. 모든 `NewOwner`
+participant의 allocation delta를 합한 단일 typed capacity bundle을 aggregate prepare가 같은 transaction에서
+예약하고, aggregate commit이 모든 capacity·owner·membership mutation을 함께 적용한다. Commit 전 abort는
+aggregate fence가 소유한 target reserved만 해제한다. 이미 committed
 fence의 abort는 closed `AlreadyCommitted`이고 다른 fence는 `Stale`다. Crash 뒤 recovery coordinator는 authority
 StoreVersion·current owner token·Active allocation을 exact read해 unpublished reservation을 resume 또는 abort하며 elapsed time이나
 TTL만으로 capacity를 해제하지 않는다.
@@ -515,30 +517,31 @@ fence state의 mutation은 0이다.
 Aggregate prepare는 participant의 `OwnerTransition`에 따라 두 mode 가운데 하나로 닫힌다.
 
 - `NewOwner` participant가 하나라도 있으면 relocation mode다. `Preserve`와 `NewOwner`를 섞을 수 있지만
-  relocation capacity fence 집합과 non-zero typed capacity bundle은 `NewOwner` participant의 durable allocation
-  delta만 정확히 합산하고 각 `NewOwner`와 일대일 대응해야 한다. `Preserve` participant의 allocation은 bundle에
-  더하지 않고 그대로 유지한다.
+  non-zero typed capacity bundle은 모든 `NewOwner` participant의 durable allocation delta를 정확히 합산해야
+  한다. `Preserve` participant의 allocation은 bundle에 더하지 않고 그대로 유지한다. Standalone relocation
+  capacity fence는 request에 포함하지 않는다.
 - 모든 participant가 `Preserve`이면 completion·steady-normalization mode다. Capacity는 exact zero이고 모든
   `MembershipMutation`도 empty여야 한다. Capacity reservation이나 mutation 없이 exact participant set의 authority
   payload만 atomic CAS하며 owner, `ObjectGeneration`, `AuthorityOwnerGeneration`과 durable Active allocation을
   그대로 유지한다.
 
-Provider는 relocation mode에서 자신이 발급한 opaque fence의 reservation record가 participant authority key·
-expected StoreVersion, current authority의 source owner와 aggregate target owner에 일치하는지 확인하고 source·
-target descriptor lifecycle과 placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는
+Provider는 relocation mode에서 모든 `NewOwner` participant authority key·expected StoreVersion, current
+authority의 source owner와 aggregate target owner가 일치하는지 확인하고 source·target descriptor lifecycle과
+placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는
 요구하지 않고 target descriptor lifecycle과 owner lease만 live/exact로 확인한다. Zero capacity에 `NewOwner`가
-있거나 non-zero capacity인데 모든 participant가 `Preserve`이면 conflict다. Fence 누락·중복·추가, all-Preserve의
-non-empty membership mutation 또는 다른 값 불일치도 conflict이며 participant, capacity, fence와 aggregate record의
+있거나 non-zero capacity인데 모든 participant가 `Preserve`이면 conflict다. All-Preserve의 non-empty membership
+mutation 또는 다른 값 불일치도 conflict이며 participant, capacity와 aggregate record의
 mutation은 0이다.
 
-Relocation mode의 prepare 성공은 모든 `Reserved` fence를 같은 transaction에서 `(AggregateId,
-AggregateGeneration)`에 bind하고 `Prepared`로 전이한다. Completion·steady-normalization mode는 fence나 capacity
-reservation 없이 exact request를 `Prepared`로 기록한다. Bind된 fence의 direct abort는 `Stale`이며 다른 aggregate
-prepare도 conflict와 mutation 0으로 끝난다. 같은 aggregate generation의 exact duplicate prepare만
-`AlreadyPrepared`다. `CommitAggregate`는 relocation mode에서 source Active allocation exact match와 target
-descriptor lifecycle·owner lease를 다시 확인하고 유효한 fence만 committed로 전이해 capacity를
+Relocation mode의 prepare 성공은 exact typed capacity bundle을 예약하고 `(AggregateId,
+AggregateGeneration)`의 aggregate record를 `Prepared`로 전이한다. Completion·steady-normalization mode는 capacity
+reservation 없이 exact request를 `Prepared`로 기록한다. Prepared aggregate의 capacity는 `AbortAggregate`만
+해제할 수 있으며 standalone `AbortRelocationCapacity`의 대상이 아니다. 다른 aggregate prepare는 conflict와
+mutation 0으로 끝나고 같은 aggregate generation의 exact duplicate prepare만 `AlreadyPrepared`다.
+`CommitAggregate`는 relocation mode에서 source Active allocation exact match와 target descriptor lifecycle·
+owner lease를 다시 확인하고 유효한 aggregate fence만 committed로 전이해 capacity를
 pending-to-active로 바꾼다. Completion·steady-normalization mode에서는 exact participant expectation을 다시
-확인한 뒤 payload만 atomic하게 바꾼다. `AbortAggregate`는 relocation mode에서만 bind된 fence의 target reserved을
+확인한 뒤 payload만 atomic하게 바꾼다. `AbortAggregate`는 relocation mode에서만 aggregate의 target reserved을
 해제하며 두 mode 모두 aggregate를 aborted로 닫는다.
 
 ### 7.2 Phase별 closed owner rule
@@ -623,6 +626,25 @@ Preparing CAS 뒤 deterministic relocation stream을 immutable chunks와 root ma
 logical timer를 자동 복원하고 source ingress hold를 target으로 relay한다. Precommit abort는 hold를 source queue에
 arrival order로 되돌린다.
 
+Reservation handshake의 inventory 경계는 다음과 같이 고정한다. Source의 `relocationPrepare`는 sealed participant
+전체와 필요한 message·byte 수를 전달한다. Target의 첫 `relocationReady`는 수용 가능한 message·byte 용량만
+offer하며 participant vector는 비워 둔다. Source의 다음 `relocationReady`가 prepare와 같은 participant 전체를
+accept하고 각 allowance가 offer 안에 있는지 검증한다. Target은 이 accept를 예약한 뒤 같은 participant vector와
+reservation generation을 `relocationReserved`로 반환한다. Target offer에 participant를 미리 넣거나 prepare에서
+받은 inventory를 target이 임의로 줄여 accept하지 않는다.
+
+Target은 User Spot aggregate accept에서 participant 전체의 typed capacity bundle으로 `PrepareAggregate`를 실행한다.
+이 operation이 반환한 aggregate fence를 factory·Restore staging이 끝날 때까지 보관하고, 성공하면 같은 fence를
+`CommitAggregate`에 전달한다. Standalone Actor와 Instance Spot accept만 `ReserveRelocationCapacity`로 별도 capacity
+fence를 만든다. Aggregate에 standalone fence를 함께 만들거나 factory·Restore 뒤 capacity를 다시 예약하지 않는다.
+
+`relocationPrepare`는 기존 object의 stable type과 authority payload를 중복 전송하지 않는다. Target은 command의
+object identity와 expected authority owner generation으로 Location Store의 current authority와 Active placement
+allocation을 exact하게 읽고 object kind·stable type·membership과 capacity 정보를 얻는다. 이 read가 없거나 fence가
+다르면 factory 또는 staging을 시작하지 않는다. Accepted journal의 frozen record에 필요한 source·target owner lease는
+ingress admission 시 Location Store와 admitted peer descriptor로 확인해 canonical record에 보존해야 하며, Node RID나
+lifecycle generation에서 OwnerId·LeaseGeneration을 추정하지 않는다.
+
 Accepted journal의 crash replay 보장은 complete root가 Captured CAS로 authority에 연결된 이후에만 성립한다.
 Preparing 또는 Relocation Store Put 중 source process가 종료되면 recovery는 relocation을 fenced abort하고 연결되지 않은
 Put을 orphan cleanup 대상으로 둘다. 이 구간의 original request는 일반 connection failure, timeout 또는 cancellation
@@ -637,6 +659,12 @@ precommit abort이고 root를 authority에 연결하지 않는다.
 
 Application state는 adapter가 반환한 opaque bytes다. Framework는 JSON parsing, property·enum validation과
 application-specific version 비교를 수행하지 않고 byte count와 relocation checksum만 검증한다.
+Participant state record는 이 application bytes와 Framework recovery payload를 서로 다른 length field로
+저장한다. Recovery payload에는 target이 authority mutation을 구성하는 데 필요한 sealed Session binding route와
+Framework metadata가 들어가며 adapter에는 전달하지 않는다. Target은 root Spot authority와 Actor authority scan으로
+participant key·stable type·current StoreVersion을 얻고, root의 object·owner generation 및 recovery payload가 current
+authority와 정확히 맞을 때만 aggregate prepare를 실행한다. Command 40이나 private stage request에 같은 authority
+payload를 다시 싣지 않는다.
 
 ### 7.4 Activation, route barrier와 Ready
 

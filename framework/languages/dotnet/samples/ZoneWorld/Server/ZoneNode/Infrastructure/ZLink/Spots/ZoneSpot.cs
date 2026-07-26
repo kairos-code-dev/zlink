@@ -1,4 +1,3 @@
-using System.Text;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Messaging;
@@ -30,7 +29,7 @@ public sealed class ZoneSpot(
     IZLinkActorManager directory,
     ILogger<ZoneSpot> logger) : IZLinkSpot<PlayerActor>
 {
-    private readonly ZoneState _state = new(DecodeZoneId(context.SpotRid));
+    private readonly ZoneState _state = new(context.SpotId);
     private readonly Dictionary<string, PlayerActor> _residents = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ActorRef> _botRefs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EnterZoneMsg> _pendingJoins = new(StringComparer.Ordinal);
@@ -49,7 +48,7 @@ public sealed class ZoneSpot(
         // Startup validation has no concrete SpotRid. Registering one representative topic
         // lets it validate the handler type; each real spot then registers only its own
         // incoming edge topics.
-        if (Context.SpotRid.IsEmpty)
+        if (string.IsNullOrEmpty(Context.SpotId))
         {
             Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
                 ZoneWorldNames.ZoneChannel,
@@ -105,9 +104,7 @@ public sealed class ZoneSpot(
         CancellationToken cancellationToken)
     {
         var enter = request.Decode<EnterZoneMsg>();
-        var arriving = enter.FromNodeId != NodeId;
-
-        if (arriving && maintenance.IsOwnNodeUnderMaintenance)
+        if (maintenance.IsOwnNodeUnderMaintenance)
         {
             logger.LogInformation(
                 "zone spot: join rejected, node under maintenance. zone={ZoneId}, player={PlayerId}",
@@ -115,12 +112,12 @@ public sealed class ZoneSpot(
                 enter.PlayerId);
             return ValueTask.FromResult<ZLinkSpotActorJoinResult>(
                 ZLinkSpotActorJoinResult.Reject(
-                    new EnterZoneRes(ZoneId, NodeId, MoveRejectReasons.ZoneMaintenance)));
+                    new EnterZoneRes(ZoneId, MoveRejectReasons.ZoneMaintenance)));
         }
 
         _pendingJoins[actorId] = enter;
         return ValueTask.FromResult<ZLinkSpotActorJoinResult>(
-            ZLinkSpotActorJoinResult.Accept(new EnterZoneRes(ZoneId, NodeId)));
+            ZLinkSpotActorJoinResult.Accept(new EnterZoneRes(ZoneId)));
     }
 
     public async ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
@@ -136,21 +133,19 @@ public sealed class ZoneSpot(
         // is announced here. For a remote transfer the framework invokes this callback only
         // after the handoff commits, making the notification a safe boundary for the client's
         // next command.
-        if (!enter.IsBot && enter.FromNodeId is not null)
+        if (!enter.IsBot && !enter.InitialEntry)
             await actor.Context.BoundSession
                 .Send(new ZoneChangedNotify(
                     enter.PlayerId,
-                    ZoneId,
-                    NodeId,
-                    Transferred: enter.FromNodeId != NodeId))
+                    ZoneId))
                 .Async(cancellationToken);
 
         logger.LogInformation(
-            "zone spot: player entered. zone={ZoneId}, player={PlayerId}, bot={IsBot}, from={FromNodeId}",
+            "zone spot: player entered. zone={ZoneId}, player={PlayerId}, bot={IsBot}, initial={InitialEntry}",
             ZoneId,
             enter.PlayerId,
             enter.IsBot,
-            enter.FromNodeId ?? "(new)");
+            enter.InitialEntry);
     }
 
     public ValueTask OnLeaveActorAsync(PlayerActor actor, CancellationToken cancellationToken)
@@ -201,7 +196,6 @@ public sealed class ZoneSpot(
         return new JoinWorldRes(
             actor.ActorId,
             ZoneId,
-            NodeId,
             position.X,
             position.Y,
             null);
@@ -249,7 +243,7 @@ public sealed class ZoneSpot(
             var actorRef = await ResolveBotAsync(playerId, cancellationToken);
             if (actorRef is null) continue;
             _ = await actors
-                .RequestToActor(ZoneWorldNames.MeshName, actorRef.Value, new BotTickReq())
+                .RequestToActor(actorRef.Value.ActorId, new BotTickReq())
                 .Yield<BotTickRes>(cancellationToken);
         }
     }
@@ -323,6 +317,4 @@ public sealed class ZoneSpot(
         return resolved;
     }
 
-    private static string DecodeZoneId(RoutingId spotRid) =>
-        Encoding.UTF8.GetString(spotRid.ToBytes());
 }

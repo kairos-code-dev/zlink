@@ -1,6 +1,5 @@
 import { Inject } from '@nestjs/common';
 import {
-  ZLINK_ACTOR_MANAGER,
   ZLINK_CHANNEL_CLIENT,
   zlinkEntrySpotActorRequestHandler
 } from '@zlink-systems/nestjs';
@@ -14,7 +13,6 @@ import {
 } from '../../../../../../../Shared/Contracts/bingo-messages.generated';
 import { SampleNames, SampleTimings } from '../../../../../../Configuration/sample-names';
 import type {
-  ZLinkActorManager,
   ZLinkChannelClient,
   ZLinkEntrySpotActorRequestHandler,
   ZLinkSpotActorRequestContext
@@ -34,7 +32,6 @@ import type {
 class MatchBingoActorHandler
   implements ZLinkEntrySpotActorRequestHandler<PlayerActorType, MatchBingoReq, MatchBingoRes> {
   constructor(
-    @Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager,
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
   ) {}
 
@@ -44,10 +41,6 @@ class MatchBingoActorHandler
     request: MatchBingoReq
   ): Promise<MatchBingoRes> {
     console.error(`bingo-match request actor=${actor.actorId}`);
-    const actorRef = await this.actors.find(SampleNames.roomSpotNode, actor.actorId);
-    if (actorRef === undefined) {
-      throw new Error(`Bingo actor '${actor.actorId}' is not registered.`);
-    }
     const matched = await this.channels
       .requestToChannel(
         SampleNames.roomSpotNode,
@@ -55,7 +48,6 @@ class MatchBingoActorHandler
         new MatchBingoApiReq({
           actorId: actor.actorId,
           displayName: actor.displayName,
-          actorNodeRid: String(actorRef.nodeRid),
           mode: request.mode
         })
       )
@@ -75,8 +67,7 @@ class MatchBingoActorHandler
     }
     const response = new MatchBingoRes({
       roomId: matched.roomId,
-      state: joined.reply.state,
-      roomOwnerNodeRid: matched.roomOwnerNodeRid
+      state: joined.reply.state
     });
     console.error(`bingo-match reply actor=${actor.actorId} room=${response.roomId}`);
     void context;

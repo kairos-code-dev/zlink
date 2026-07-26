@@ -29,7 +29,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         ZLinkRuntimeTaskRunner taskRunner,
         string transport,
         TimeProvider? timeProvider = null,
-        string? actorDispatchMeshName = null)
+        bool actorDispatchEnabled = false)
     {
         NodeName = nodeName;
         Socket = socket;
@@ -51,7 +51,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             runtime.DrainAdmission,
             transport,
             _timeProvider,
-            actorDispatchMeshName,
+            actorDispatchEnabled,
             _sendSubmitter);
     }
 

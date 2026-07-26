@@ -115,7 +115,8 @@ public final class ZLinkAsyncSerialQueue {
         byte[] record,
         Supplier<CompletionStage<Void>> operation) {
         java.util.Objects.requireNonNull(record, "record");
-        if (relocated || outstanding > pendingCapacity) {
+        if (relocated || relocation != null && relocation.frozen
+            || outstanding > pendingCapacity) {
             return false;
         }
         enqueueAccepted(record.clone(), operation);
@@ -137,6 +138,11 @@ public final class ZLinkAsyncSerialQueue {
         Supplier<CompletionStage<Void>> operation,
         Runnable relocationRelease) {
         java.util.Objects.requireNonNull(operation, "operation");
+        if (relocation != null && relocation.frozen) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "queue relocation ingress is frozen"));
+        }
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
@@ -253,6 +259,19 @@ public final class ZLinkAsyncSerialQueue {
         relocation = null;
         startNext();
         return true;
+    }
+
+    /** Freezes the bounded ingress high-water before authority prepare. */
+    public synchronized Optional<List<QueuedRecord>>
+        freezeRelocationIngress(RelocationSeal seal) {
+        if (!matches(seal) || relocation.frozen) {
+            return Optional.empty();
+        }
+        relocation.frozen = true;
+        return Optional.of(relocation.held.stream()
+            .filter(entry -> entry.record != null)
+            .map(Entry::queuedRecord)
+            .toList());
     }
 
     public synchronized Optional<List<QueuedRecord>> commitRelocation(
@@ -682,6 +701,7 @@ public final class ZLinkAsyncSerialQueue {
         private final RelocationSeal seal;
         private final ArrayDeque<Entry> captured;
         private final ArrayDeque<Entry> held = new ArrayDeque<>();
+        private boolean frozen;
 
         private RelocationState(
             long serial,

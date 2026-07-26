@@ -1,4 +1,4 @@
-// TA-B2: stale actor ref 시나리오를 검증한다.
+// TA-B2: resolve 뒤 generation 교체 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
 import {

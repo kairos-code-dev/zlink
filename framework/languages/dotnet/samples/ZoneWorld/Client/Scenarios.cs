@@ -61,7 +61,6 @@ public static class Scenarios
         var join = await player.JoinWorldAsync(ct);
 
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthWest, join.ZoneId), "a new player spawns in zone-nw");
-        ZlinkStreamAssert.Ensure(object.Equals(NodeIds.West, join.NodeId), "zone-nw is hosted by zone-node-1");
         ZlinkStreamAssert.Ensure(object.Equals(ZoneWorldSpec.SpawnX, join.X), "the spawn coordinate is fixed");
         ZlinkStreamAssert.Ensure(object.Equals(ZoneWorldSpec.SpawnY, join.Y), "the spawn coordinate is fixed");
 
@@ -330,8 +329,6 @@ public static class Scenarios
             player.Position = (52, 25);
 
             ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, changed.ZoneId), "the X boundary leads into zone-ne");
-            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, changed.NodeId), "zone-ne is hosted by zone-node-2");
-            ZlinkStreamAssert.Ensure(changed.Transferred, "a zone on another node means the actor transferred");
 
             // The same connection keeps working: the bound session followed the actor.
             var stateWait = player.Connector.WaitFor<ZoneStateNotify>()
@@ -389,8 +386,6 @@ public static class Scenarios
         player.Position = (25, 52);
 
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.SouthWest, changed.ZoneId), "the Y boundary leads into zone-sw");
-        ZlinkStreamAssert.Ensure(object.Equals(NodeIds.West, changed.NodeId), "zone-sw is on the same node as zone-nw");
-        ZlinkStreamAssert.Ensure(!changed.Transferred, "a zone on the same node means no transfer");
     }
 
     // --- Track C: observing the nodes ----------------------------------------
@@ -398,17 +393,18 @@ public static class Scenarios
     private static async ValueTask C1WatchNodes(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-
-        var west = (await ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.West && message.Payload.Registered)
+        var firstReady = (await ops.Connector.WaitFor<NodeStatusNotify>()
+            .Where(message => message.Payload.Registered)
             .Timeout(TimeSpan.FromSeconds(40))
             .Async(ct)).Payload;
-        ZlinkStreamAssert.Ensure(west.Zones.Contains(ZoneIds.NorthWest), "zone-node-1 reports the zones it hosts");
+        ZlinkStreamAssert.Ensure(firstReady.Registered, "a runtime-observed node is registered");
 
         // Registration and connection are two different observations — the location runtime
         // reports one, the socket events the other — and the console has to show both (§8.1).
         var nodes = await ops.WatchNodesAsync(ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        ZlinkStreamAssert.Ensure(nodes.Nodes.Count(node => node.Registered && node.Connected) >= 2,
+            "the console observes at least two ready ZoneNodes");
+        foreach (var nodeId in nodes.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var node = nodes.Nodes.FirstOrDefault(n => n.NodeId == nodeId);
             ZlinkStreamAssert.Ensure(node is not null, $"the console knows about {nodeId}");
@@ -439,7 +435,9 @@ public static class Scenarios
         // zone), so the alert has to name that node. An alert from anywhere else would mean the
         // report carries no identity, which is the whole point of routing it through the node.
         ZlinkStreamAssert.Ensure(object.Equals(NodeAlertKinds.TimerHandlerFailed, alert.Kind), "the node reports its own spot event");
-        ZlinkStreamAssert.Ensure(object.Equals(NodeIds.West, alert.NodeId), "the alert names the node the fault was injected into");
+        var observed = await ops.WatchNodesAsync(ct);
+        ZlinkStreamAssert.Ensure(observed.Nodes.Any(node => node.NodeId == alert.NodeId),
+            "the alert names a node from the current runtime snapshot");
     }
 
     // --- Track D: announcing to every node -----------------------------------
@@ -495,7 +493,9 @@ public static class Scenarios
     private static async ValueTask E1TargetedMaintenance(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthEast)).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -520,16 +520,16 @@ public static class Scenarios
         }
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var applied = await ops.SetMaintenanceAsync(NodeIds.East, enabled: true, ct);
+        var applied = await ops.SetMaintenanceAsync(targetNodeId, enabled: true, ct);
         if (applied.Error is null) await enabledObserved;
         try
         {
-            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, applied.NodeId), "maintenance applies to the named node");
-            ZlinkStreamAssert.Ensure(applied.Zones.Contains(ZoneIds.NorthEast) && applied.Zones.Contains(ZoneIds.SouthEast),
-                "maintenance covers every zone of that node");
+            ZlinkStreamAssert.Ensure(object.Equals(targetNodeId, applied.NodeId), "maintenance applies to the observed owner");
+            ZlinkStreamAssert.Ensure(applied.Zones.Contains(ZoneIds.NorthEast),
+                "maintenance response reports the target zone's current owner");
 
             // Entering zone-ne is refused; the coordinate does not move.
             var rejectedWait = player.Connector.WaitFor<MoveRejectedNotify>()
@@ -540,8 +540,7 @@ public static class Scenarios
             ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, rejected.Reason), "the maintained node refuses arrivals");
             ZlinkStreamAssert.Ensure(object.Equals(48, rejected.X), "a refused move leaves the coordinate untouched");
 
-            // And so is entering zone-se. Maintenance names a *node*, so both of its zones have
-            // to refuse — testing one would not tell the two apart (§11 ZW-E1).
+            // If the same current owner also hosts zone-se, its admission must be rejected too.
             foreach (var step in player.PlanWalkWithinZone(48, 48))
             {
                 var arrived = player.Connector.WaitFor<ZoneStateNotify>()
@@ -571,14 +570,17 @@ public static class Scenarios
                 await arrived;
                 player.Position = step;
             }
-            var refusedSouthWait = player.Connector.WaitFor<MoveRejectedNotify>()
-                .Timeout(TimeSpan.FromSeconds(15))
-                .Async(ct);
-            await player.MoveAsync(52, 55);
-            var refusedSouth = (await refusedSouthWait).Payload;
-            ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, refusedSouth.Reason),
-                "the maintained node's other zone refuses arrivals too");
-            ZlinkStreamAssert.Ensure(object.Equals(48, refusedSouth.X), "a refused move leaves the coordinate untouched");
+            if (applied.Zones.Contains(ZoneIds.SouthEast))
+            {
+                var refusedSouthWait = player.Connector.WaitFor<MoveRejectedNotify>()
+                    .Timeout(TimeSpan.FromSeconds(15))
+                    .Async(ct);
+                await player.MoveAsync(52, 55);
+                var refusedSouth = (await refusedSouthWait).Payload;
+                ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, refusedSouth.Reason),
+                    "another zone on the observed owner refuses arrivals too");
+                ZlinkStreamAssert.Ensure(object.Equals(48, refusedSouth.X), "a refused move leaves the coordinate untouched");
+            }
 
             // zone-node-1 is untouched: a move inside it still works.
             var westMove = player.Connector.WaitFor<ZoneStateNotify>()
@@ -593,10 +595,10 @@ public static class Scenarios
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.East, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -605,7 +607,9 @@ public static class Scenarios
     private static async ValueTask E2MaintainedNodeKeepsMoving(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthWest)).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -619,10 +623,10 @@ public static class Scenarios
         await player.JoinWorldAsync(ct);
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.West && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var enabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: true, ct);
+        var enabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: true, ct);
         if (enabled.Error is null) await enabledObserved;
         try
         {
@@ -654,16 +658,15 @@ public static class Scenarios
             await player.MoveAsync(30, 52);
             var changed = (await changedWait).Payload;
             player.Position = (30, 52);
-            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.SouthWest, changed.ZoneId), "an intra-node zone change is allowed under maintenance");
-            ZlinkStreamAssert.Ensure(!changed.Transferred, "no node was crossed");
+            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.SouthWest, changed.ZoneId), "the logical zone change completed");
         }
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.West && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -672,7 +675,9 @@ public static class Scenarios
     private static async ValueTask E3LeavingMaintainedNode(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var sourceNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthWest)).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -697,10 +702,10 @@ public static class Scenarios
         }
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.West && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == sourceNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var enabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: true, ct);
+        var enabled = await ops.SetMaintenanceAsync(sourceNodeId, enabled: true, ct);
         if (enabled.Error is null) await enabledObserved;
         try
         {
@@ -710,16 +715,15 @@ public static class Scenarios
             await player.MoveAsync(52, 25);
             var changed = (await changedWait).Payload;
             player.Position = (52, 25);
-            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, changed.NodeId), "leaving a maintained node for a healthy one is allowed");
-            ZlinkStreamAssert.Ensure(changed.Transferred, "the actor still transferred");
+            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, changed.ZoneId), "the logical zone change completed");
         }
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.West && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == sourceNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(sourceNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -727,23 +731,21 @@ public static class Scenarios
     private static async ValueTask E4NodeDiagnostics(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes.First(node => node.Registered).NodeId;
+        var diagnostics = await ops.DiagnoseAsync(targetNodeId, ct);
 
-        var diagnostics = await ops.DiagnoseAsync(NodeIds.West, ct);
-
-        ZlinkStreamAssert.Ensure(object.Equals(NodeIds.West, diagnostics.NodeId), "diagnostics come back from the node that was named");
-        // The canonical answer is exactly these two zones — an extra one would mean the node is
-        // hosting something it should not (§11 ZW-E4).
-        ZlinkStreamAssert.Ensure((
-            new[] { ZoneIds.NorthWest, ZoneIds.SouthWest }).SequenceEqual(
-            diagnostics.Zones.OrderBy(zone => zone, StringComparer.Ordinal)),
-            "zone-node-1 hosts zone-nw and zone-sw, and nothing else");
+        ZlinkStreamAssert.Ensure(object.Equals(targetNodeId, diagnostics.NodeId),
+            "diagnostics come back from the runtime-observed node");
         ZlinkStreamAssert.Ensure(diagnostics.PlayerCount >= 0, "the node reports how many players it holds");
     }
 
     private static async ValueTask G2ReverseStartedNodeOperations(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes.First(node => node.Registered && node.Connected).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -755,35 +757,29 @@ public static class Scenarios
         }
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var applied = await ops.SetMaintenanceAsync(NodeIds.East, enabled: true, ct);
+        var applied = await ops.SetMaintenanceAsync(targetNodeId, enabled: true, ct);
         if (applied.Error is null) await enabledObserved;
         try
         {
             ZlinkStreamAssert.Ensure(applied.Error is null, "reverse-started zone-node-2 accepted maintenance");
-            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, applied.NodeId),
-                "reverse-started node keeps the zone-node-2 application identity");
-            ZlinkStreamAssert.Ensure(new[] { ZoneIds.NorthEast, ZoneIds.SouthEast }.SequenceEqual(
-                    applied.Zones.OrderBy(zone => zone, StringComparer.Ordinal)),
-                "zone-node-2 still owns the east and southeast zones");
+            ZlinkStreamAssert.Ensure(object.Equals(targetNodeId, applied.NodeId),
+                "reverse-started node keeps the runtime-observed application identity");
 
-            var diagnostics = await ops.DiagnoseAsync(NodeIds.East, ct);
+            var diagnostics = await ops.DiagnoseAsync(targetNodeId, ct);
             ZlinkStreamAssert.Ensure(diagnostics.Error is null, "reverse-started node answered diagnostics");
-            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, diagnostics.NodeId),
+            ZlinkStreamAssert.Ensure(object.Equals(targetNodeId, diagnostics.NodeId),
                 "diagnostics preserve the application NodeId instead of the allocated routing id");
-            ZlinkStreamAssert.Ensure(new[] { ZoneIds.NorthEast, ZoneIds.SouthEast }.SequenceEqual(
-                    diagnostics.Zones.OrderBy(zone => zone, StringComparer.Ordinal)),
-                "diagnostics report both zones assigned to zone-node-2");
         }
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.East, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -792,7 +788,9 @@ public static class Scenarios
     private static async ValueTask E6MaintenanceBlocksEntry(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var spawnOwnerNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthWest)).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -803,10 +801,10 @@ public static class Scenarios
             ZlinkStreamAssert.Ensure(!reset.Enabled, $"{nodeId} starts outside maintenance");
         }
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.West && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == spawnOwnerNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var enabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: true, ct);
+        var enabled = await ops.SetMaintenanceAsync(spawnOwnerNodeId, enabled: true, ct);
         if (enabled.Error is null) await enabledObserved;
         try
         {
@@ -817,10 +815,10 @@ public static class Scenarios
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.West && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == spawnOwnerNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.West, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(spawnOwnerNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -834,15 +832,19 @@ public static class Scenarios
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
         var nodes = await ops.WatchNodesAsync(ct);
+        var targetNodeId = nodes.Nodes
+            .Where(node => node.Registered)
+            .OrderBy(node => node.NodeId, StringComparer.Ordinal)
+            .Last().NodeId;
 
         // The node has to be registered before its going away means anything. "Not registered"
         // is also the state of a node the console has never heard of, and waiting for that
         // would pass before the runner had done anything.
         ZlinkStreamAssert.Ensure(
-            nodes.Nodes.Any(n => n.NodeId == NodeIds.East && n.Registered),
-            "zone-node-2 is registered before the runner stops it");
+            nodes.Nodes.Any(n => n.NodeId == targetNodeId && n.Registered),
+            "the runtime-selected node is registered before the runner stops it");
         var goneWait = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Registered)
+            .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Registered)
             .Timeout(TimeSpan.FromSeconds(40))
             .Async(ct);
         Console.WriteLine("scenario ZW-C2 armed");
@@ -861,14 +863,18 @@ public static class Scenarios
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
         var nodes = await ops.WatchNodesAsync(ct);
+        var targetNodeId = nodes.Nodes
+            .Where(node => node.Connected)
+            .OrderBy(node => node.NodeId, StringComparer.Ordinal)
+            .Last().NodeId;
 
         // As in ZW-C2: a link that was never up cannot drop, so the connected state has to be
         // established before the drop is observed — otherwise the default state passes the test.
         ZlinkStreamAssert.Ensure(
-            nodes.Nodes.Any(n => n.NodeId == NodeIds.East && n.Connected),
-            "zone-node-2's link is up before the runner stops it");
+            nodes.Nodes.Any(n => n.NodeId == targetNodeId && n.Connected),
+            "the runtime-selected node's link is up before the runner stops it");
         var droppedWait = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Connected)
+            .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Connected)
             .Timeout(TimeSpan.FromSeconds(40))
             .Async(ct);
         Console.WriteLine("scenario ZW-C3 armed");
@@ -976,19 +982,24 @@ public static class Scenarios
     private static async ValueTask E5Arm(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes
+            .Where(node => node.Registered && node.Connected)
+            .OrderBy(node => node.NodeId, StringComparer.Ordinal)
+            .Last().NodeId;
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var applied = await ops.SetMaintenanceAsync(NodeIds.East, enabled: true, ct);
+        var applied = await ops.SetMaintenanceAsync(targetNodeId, enabled: true, ct);
         if (applied.Error is null) await enabledObserved;
         // The desired state is committed before Ops tries the owner-consistent channel. A
         // restarted node can be between transport connections here; NodeUnavailable is still
         // a successful setup for this scenario because the restart below must read the stored
         // value. E5 then proves that it did.
         ZlinkStreamAssert.Ensure(
-            applied.NodeId == NodeIds.East,
-            "maintenance targets the eastern node");
+            applied.NodeId == targetNodeId,
+            "maintenance targets the runtime-selected node");
         ZlinkStreamAssert.Ensure(applied.Enabled, "maintenance desired state is enabled before the restart");
         ZlinkStreamAssert.Ensure(
             applied.Error is null or ZoneWorldErrors.NodeUnavailable,
@@ -1003,18 +1014,23 @@ public static class Scenarios
     private static async ValueTask E5MaintenanceRestored(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes
+            .Where(node => node.Registered)
+            .OrderBy(node => node.NodeId, StringComparer.Ordinal)
+            .Last().NodeId;
         try
         {
-            var diagnostics = await ops.DiagnoseAsync(NodeIds.East, ct);
+            var diagnostics = await ops.DiagnoseAsync(targetNodeId, ct);
             ZlinkStreamAssert.Ensure(diagnostics.Maintenance, "the restarted node came up still under maintenance");
         }
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.East, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }
@@ -1096,7 +1112,9 @@ public static class Scenarios
     private static async ValueTask F4BotReversesOnRejection(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
-        foreach (var nodeId in new[] { NodeIds.West, NodeIds.East })
+        var observed = await ops.WatchNodesAsync(ct);
+        var targetNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthEast)).NodeId;
+        foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
                 .Where(message => message.Payload.NodeId == nodeId && !message.Payload.Maintenance)
@@ -1110,10 +1128,10 @@ public static class Scenarios
         await player.JoinWorldAsync(ct);
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-            .Where(message => message.Payload.NodeId == NodeIds.East && message.Payload.Maintenance)
+            .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async(ct);
-        var enabled = await ops.SetMaintenanceAsync(NodeIds.East, enabled: true, ct);
+        var enabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: true, ct);
         if (enabled.Error is null) await enabledObserved;
         try
         {
@@ -1147,10 +1165,10 @@ public static class Scenarios
         finally
         {
             var disabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
-                .Where(message => message.Payload.NodeId == NodeIds.East && !message.Payload.Maintenance)
+                .Where(message => message.Payload.NodeId == targetNodeId && !message.Payload.Maintenance)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async(ct);
-            var disabled = await ops.SetMaintenanceAsync(NodeIds.East, enabled: false, ct);
+            var disabled = await ops.SetMaintenanceAsync(targetNodeId, enabled: false, ct);
             if (disabled.Error is null) await disabledObserved;
         }
     }

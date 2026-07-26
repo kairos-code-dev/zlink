@@ -920,16 +920,17 @@ builder.Services.AddZLinkFramework(options =>
         .SetRoutingId(RoutingId.From("stage-gateway"));
     mesh.Channel("game.stage").Client();                   // topic publish용 송신 경로
 
-    // STREAM session의 actor dispatch가 사용할 MeshName을 명시한다.
+    // STREAM session에서 global Actor location을 사용한 dispatch를 활성화한다.
     options.AddStreamNode("client-stream")
         .Bind(7101)
-        .EnableActorDispatch("game.stage")
+        .EnableActorDispatch()
         .AddSession<StageSession>();
 });
 ```
 
-STREAM node는 `EnableActorDispatch("game.stage")`로 session이 사용할 MeshName context를
-고정한다. 자세한 actor/session 흐름은
+STREAM node는 `EnableActorDispatch()`로 Actor dispatch capability를 활성화한다. Framework는
+global Actor location에서 현재 owner의 MeshName과 NodeRid를 확인하므로 application이 특정 MeshName이나
+node를 고정하지 않는다. 자세한 actor/session 흐름은
 [07-actor-spot](07-actor-spot.ko.md)·[08-actor-session](08-actor-session.ko.md)에서 다룬다.
 
 ## 6. Stage wrapper (playhouse Stage 류)

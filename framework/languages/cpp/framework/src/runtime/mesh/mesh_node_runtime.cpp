@@ -506,6 +506,21 @@ std::size_t mesh_node_runtime_t::admitted_peer_count () const
     return _node->transport ().topology ().peers ().size ();
 }
 
+bool mesh_node_runtime_t::has_admitted_peer (
+  const zlink::routing_id_t &peer_rid,
+  std::uint64_t lifecycle_generation) const
+{
+    if (!_node || lifecycle_generation == 0)
+        return false;
+    const auto peer = _node->transport ().topology ().peer (
+      peer_rid.to_bytes ());
+    return peer
+           && peer->descriptor.lifecycle_generation
+                == lifecycle_generation
+           && peer->descriptor.state
+                == runtime::mesh::service_node_state_t::serving;
+}
+
 host::public_host_runtime_t &mesh_node_runtime_t::native_node ()
 {
     if (!_node) {

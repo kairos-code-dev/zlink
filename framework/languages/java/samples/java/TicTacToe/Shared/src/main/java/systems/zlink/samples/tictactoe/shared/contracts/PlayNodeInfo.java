@@ -1,6 +1,4 @@
 package systems.zlink.samples.tictactoe.shared.contracts;
 
-public record PlayNodeInfo(
-    String streamEndpoint,
-    String spotNodeRid) {
+public record PlayNodeInfo(String streamEndpoint) {
 }

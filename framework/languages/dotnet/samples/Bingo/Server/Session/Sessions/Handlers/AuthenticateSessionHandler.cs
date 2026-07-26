@@ -1,19 +1,15 @@
 using Bingo.Server.Configuration;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
-using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Locations;
-using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
 
 namespace Bingo.Server.Session.Sessions.Handlers;
 
 internal sealed class AuthenticateBingoSessionHandler(
+    IZLinkActorManager actors,
     IZLinkRouteClient channels,
-    IZLinkSpotClient spotsClient,
-    IZLinkSpotHandleResolver spots,
-    IZLinkRouteMeshRuntime routeMesh,
     ILogger<AuthenticateBingoSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
@@ -23,7 +19,7 @@ internal sealed class AuthenticateBingoSessionHandler(
         AuthenticateReq request,
         CancellationToken cancellationToken)
     {
-        var authenticated = await channels.RequestToChannel(SampleNames.MeshName, SampleNames.ApiChannel,
+        var authenticated = await channels.RequestToChannel(SampleNames.ApiChannel,
                 new AuthenticatePlayerReq { AccessToken = request.AccessToken })
             .Async<AuthenticatePlayerRes>(cancellationToken);
 
@@ -32,57 +28,34 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
-        var preferredPlayNodeRid = routeMesh
-            .Snapshot(SampleNames.MeshName)
-            .Peers
-            .Where(static peer => peer.Ready)
-            .Where(peer => peer.ChannelNames.Contains(
-                SampleNames.PlayChannel,
-                StringComparer.Ordinal))
-            .OrderBy(static peer => peer.Rid.ToString(), StringComparer.Ordinal)
-            .Select(static peer => peer.Rid)
-            .FirstOrDefault();
-        if (preferredPlayNodeRid.Size == 0)
-            throw new InvalidOperationException(
-                "No Ready play MeshNode is available.");
-        var playEntrySpot = await spots.ResolveSpotHandleAsync(
-                                SampleNames.MeshName,
-                                preferredPlayNodeRid,
-                                cancellationToken)
-                            ?? throw new InvalidOperationException(
-                                $"Play entry spot '{preferredPlayNodeRid}' was not found.");
-        var ensured = await spotsClient.RequestToSpot(playEntrySpot,
-                new EnsurePlayerActorReq
+        var actor = (await actors
+                .GetOrCreate(authenticated.ActorId, SampleNames.PlayerActorType)
+                .InMesh(SampleNames.MeshName)
+                .Request(new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,
-                    DisplayName = authenticated.DisplayName,
-                    PreferredActorNodeRid = preferredPlayNodeRid.ToString()
+                    DisplayName = authenticated.DisplayName
                 })
-            .Async<EnsurePlayerActorRes>(cancellationToken);
+                .Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
+        };
 
         var boundActor = await context.Actors.BindOrGetAsync(
-            ToActorRef(ensured.Actor),
+            actor,
             cancellationToken);
         logger.LogInformation(
-            "bingo session: bound player={ActorId} node={NodeRid} session={SessionId}",
+            "bingo session: bound player={ActorId} session={SessionId}",
             boundActor.ActorId,
-            ensured.Actor.NodeRid,
             context.SessionId);
 
         await context.Client.Reply(new AuthenticateRes
             {
-                ActorId = ensured.ActorId,
-                DisplayName = authenticated.DisplayName,
-                ActorNodeRid = ensured.Actor.NodeRid
+                ActorId = authenticated.ActorId,
+                DisplayName = authenticated.DisplayName
             })
             .Async(cancellationToken);
-    }
-
-    private static ActorRef ToActorRef(ActorRefWire snapshot)
-    {
-        return new ActorRef(
-            RoutingId.From(snapshot.NodeRid),
-            snapshot.ActorId,
-            snapshot.Generation);
     }
 }

@@ -6,14 +6,13 @@ using Zlink.Framework.Contracts.Channels;
 namespace GameQuest.GameApi.Infrastructure.ZLink;
 
 internal sealed class ZLinkQuestProgressSynchronizer(
-    GameQuestTopology topology,
     IZLinkRouteClient channels) : IQuestProgressSynchronizer
 {
     public async ValueTask<SyncQuestProgressRes> SyncAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
-        return await channels.RequestToChannel(SampleNames.MeshName, topology.QuestOwnerChannel(playerId),
+        return await channels.RequestToChannel(SampleNames.MeshName, SampleNames.QuestOwnerChannel,
                 new SyncQuestProgressReq(playerId))
             .Async<SyncQuestProgressRes>(cancellationToken);
     }

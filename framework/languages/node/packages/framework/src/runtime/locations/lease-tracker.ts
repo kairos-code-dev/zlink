@@ -82,7 +82,9 @@ export class ZLinkOwnerLeaseTracker {
     signal?: AbortSignal
   ): Promise<OwnerLeaseTrackerSnapshot> {
     const current = this.snapshots.get(ownerId);
-    if (current !== undefined && this.monotonicNowMs() - current.fetchedAtMs < this.options.pollingIntervalMs) {
+    if (current !== undefined
+      && this.monotonicNowMs() - current.fetchedAtMs < this.options.pollingIntervalMs
+      && this.isLive(current)) {
       return current;
     }
 

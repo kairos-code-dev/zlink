@@ -108,9 +108,6 @@ public:
     stream_builder_t &bind(std::uint16_t port = 0);
     stream_builder_t &set_bind_host(std::string host);
     stream_builder_t &set_advertise_host(std::string host);
-    stream_builder_t &set_tls_server(
-      std::string certificate_file,
-      std::string private_key_file);
     stream_builder_t &register_session(std::string session_name);
     stream_snapshot_t snapshot() const;
 };
@@ -121,6 +118,7 @@ struct stream_snapshot_t {
     std::string packet_session_name;
     std::string tls_certificate_file;
     std::string tls_private_key_file;
+    bool tls_require_client_certificate;
 };
 
 class stream_compression_options_builder_t {
@@ -140,11 +138,8 @@ public:
     stream_node_options_builder_t &set_advertise_host(std::string host);
     stream_node_options_builder_t &set_tls_server(
       std::string certificate_file,
-      std::string private_key_file);
-    stream_node_options_builder_t &set_tls_server(
-      std::string certificate_file,
       std::string private_key_file,
-      bool require_client_certificate);
+      bool require_client_certificate = false);
     stream_node_options_builder_t &enable_actor_dispatch();
     stream_node_options_builder_t &register_session(std::string session_name);
 

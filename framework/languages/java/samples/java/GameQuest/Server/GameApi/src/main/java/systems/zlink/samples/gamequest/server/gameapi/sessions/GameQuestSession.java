@@ -81,7 +81,7 @@ public final class GameQuestSession implements ZLinkSession {
         store.bind(request.playerId(), topology.gameApi().instanceName());
         return channels
             .requestToChannel(
-                ownerChannel(request.playerId()),
+                SampleNames.QuestOwnerChannel,
                 new Messages.GetQuestProgressReq(request.playerId()))
             .submit(Messages.GetQuestProgressRes.class)
             .thenAccept(ownerProjection -> {
@@ -93,7 +93,7 @@ public final class GameQuestSession implements ZLinkSession {
     private java.util.concurrent.CompletionStage<Void> handleGetProgress(Messages.GetQuestProgressReq request) {
         return channels
             .requestToChannel(
-                ownerChannel(request.playerId()),
+                SampleNames.QuestOwnerChannel,
                 request)
             .submit(Messages.GetQuestProgressRes.class)
             .thenAccept(ownerProjection -> {
@@ -105,7 +105,7 @@ public final class GameQuestSession implements ZLinkSession {
     private java.util.concurrent.CompletionStage<Void> handleSync(Messages.SyncQuestProgressReq request) {
         return channels
             .requestToChannel(
-                ownerChannel(request.playerId()),
+                SampleNames.QuestOwnerChannel,
                 request)
             .submit(Messages.SyncQuestProgressRes.class)
             .thenAccept(response -> {
@@ -181,7 +181,7 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> process(
         Messages.GameplayMsg event) {
-        channels.sendToChannel(ownerChannel(event.playerId()), event).submit();
+        channels.sendToChannel(SampleNames.QuestOwnerChannel, event).submit();
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
@@ -195,10 +195,6 @@ public final class GameQuestSession implements ZLinkSession {
         message.completedNotifications().forEach(notification ->
             context.client().send(notification).submit());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
-    }
-
-    private String ownerChannel(String playerId) {
-        return SampleNames.questOwnerChannelFor(topology.ownerMissionName(playerId));
     }
 
     private Messages.GameplayMsg event(

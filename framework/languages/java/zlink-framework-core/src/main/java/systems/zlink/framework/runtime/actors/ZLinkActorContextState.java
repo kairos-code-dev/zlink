@@ -17,6 +17,7 @@ final class ZLinkActorContextState {
     private ZLinkBackendActorRef actorRef;
     private ZLinkBoundSession boundSession;
     private long sessionBindingToken;
+    private long sessionSourceSequence;
     private RoutingId boundSessionSourceNodeRid;
     private RoutingId boundSessionSourceSessionRid;
     private RoutingId entrySpotNodeRid;
@@ -205,8 +206,39 @@ final class ZLinkActorContextState {
         boundSessionSourceNodeRid = sourceNodeRid;
         boundSessionSourceSessionRid = sourceSessionRid;
         sessionBindingToken++;
+        sessionSourceSequence = 0;
         this.boundSession = boundSession;
         return sessionBindingToken;
+    }
+
+    BoundSessionSource nextBoundSessionSource() {
+        if (boundSession == null
+            || boundSessionSourceNodeRid == null
+            || boundSessionSourceSessionRid == null
+            || sessionBindingToken <= 0
+            || sessionSourceSequence == Long.MAX_VALUE) {
+            return null;
+        }
+        sessionSourceSequence++;
+        return new BoundSessionSource(
+            boundSessionSourceNodeRid,
+            boundSessionSourceSessionRid,
+            sessionBindingToken,
+            sessionSourceSequence);
+    }
+
+    BoundSessionSource boundSessionSourceSnapshot() {
+        if (boundSession == null
+            || boundSessionSourceNodeRid == null
+            || boundSessionSourceSessionRid == null
+            || sessionBindingToken <= 0) {
+            return null;
+        }
+        return new BoundSessionSource(
+            boundSessionSourceNodeRid,
+            boundSessionSourceSessionRid,
+            sessionBindingToken,
+            sessionSourceSequence);
     }
 
     boolean clearBoundSession(long bindingToken) {
@@ -214,9 +246,17 @@ final class ZLinkActorContextState {
             boundSession = null;
             boundSessionSourceNodeRid = null;
             boundSessionSourceSessionRid = null;
+            sessionSourceSequence = 0;
             return true;
         }
         return false;
+    }
+
+    record BoundSessionSource(
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        long bindingGeneration,
+        long sessionSequence) {
     }
 
     CompletionStage<Void> rebindNativeActor(

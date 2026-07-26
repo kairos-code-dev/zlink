@@ -16,7 +16,6 @@ public static class NodeHostFactory
     public static IHost Build(SampleConfiguration configuration)
     {
         var topology = configuration.Topology;
-        var node = ResolveNode(configuration);
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection();
@@ -39,8 +38,7 @@ public static class NodeHostFactory
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingId(node.Rid)
-                .SetEntrySpotRoutingId(node.Rid)
+                .SetRoutingIdPrefix("courier-actor")
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
             mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
@@ -53,34 +51,4 @@ public static class NodeHostFactory
         return builder.Build();
     }
 
-    /// <summary>
-    /// Which of the two courier nodes this process is. It comes from the role's configuration file,
-    /// not from a switch on the command line: the executable has one role, and the file says which
-    /// instance of it this is
-    /// (framework/doc/framework/common/sample-e2e-configuration-policy.ko.md §2.1).
-    /// </summary>
-    private static NodeOptions ResolveNode(SampleConfiguration configuration)
-    {
-        var topology = configuration.Topology;
-        var nodeRid = configuration.Role.NodeRid
-                      ?? throw new InvalidOperationException(
-                          "sample.role.nodeRid is required for a courier actor node.");
-
-        if (nodeRid == topology.CourierActorNode1Rid.ToString())
-        {
-            return new NodeOptions(
-                topology.CourierActorNode1Rid);
-        }
-
-        if (nodeRid == topology.CourierActorNode2Rid.ToString())
-        {
-            return new NodeOptions(
-                topology.CourierActorNode2Rid);
-        }
-
-        throw new InvalidOperationException($"Unknown courier actor node '{nodeRid}'.");
-    }
-
-    private sealed record NodeOptions(
-        Systems.Zlink.RoutingId Rid);
 }

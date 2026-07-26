@@ -5,6 +5,35 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 
+test('deployment identity builder publishes validated host-wide version and maintenance wave', () => {
+  const registration = framework.createFrameworkRegistrationWithBuilder((options) => {
+    options.setApplicationVersion(42n).setMaintenanceWave('blue');
+  });
+  assert.equal(registration.applicationVersion, 42n);
+  assert.equal(registration.maintenanceWave, 'blue');
+  assert.equal(framework.createFrameworkRegistration().applicationVersion, 0n);
+  assert.throws(
+    () => framework.createFrameworkRegistration({ applicationVersion: -1n }),
+    /signed 64-bit non-negative range/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({ applicationVersion: 1n << 63n }),
+    /signed 64-bit non-negative range/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({ maintenanceWave: '' }),
+    /1\.\.255 byte UTF-8/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({ maintenanceWave: 'x'.repeat(256) }),
+    /1\.\.255 byte UTF-8/
+  );
+  assert.throws(
+    () => framework.createFrameworkRegistration({ maintenanceWave: 'blue\0wave' }),
+    /without NUL/
+  );
+});
+
 test('fixed drain seals admission, publishes draining, waits accepted work, then drains resources', async () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   const order = [];
@@ -162,6 +191,8 @@ test('multi-mesh drain fails before global owner cleanup can mutate another mesh
     meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
     meshNode: () => node,
     admission: gate,
+    publishRetiring: async () => {},
+    rollbackRetiring: async () => {},
     publishDraining: async () => { published += 1; },
     publishHostDraining: async () => {},
     drainResources: async () => { cleaned += 1; },
@@ -192,6 +223,8 @@ test('host drain seals every mesh, drains each resource set, and cleans the shar
     meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
     meshNode: () => node,
     admission: gate,
+    publishRetiring: async (meshName) => { order.push(`retiring:${meshName}`); },
+    rollbackRetiring: async (meshName) => { order.push(`rollback:${meshName}`); },
     publishDraining: async (meshName) => { order.push(`publish:${meshName}`); },
     publishHostDraining: async () => { order.push('publish:host'); },
     drainResources: async (meshName) => { order.push(`drain:${meshName}`); },
@@ -215,6 +248,149 @@ test('host drain seals every mesh, drains each resource set, and cleans the shar
     new Set(order.filter((entry) => entry.startsWith('drain:'))),
     new Set(['drain:game-a', 'drain:game-b'])
   );
+  assert.ok(order.indexOf('retiring:game-a') < order.indexOf('drain:game-a'));
+  assert.ok(order.indexOf('drain:game-a') < order.indexOf('publish:game-a'));
+  assert.ok(order.indexOf('publish:host') < order.indexOf('cleanup'));
+});
+
+test('Retire descriptor publication rolls back before host drain state changes', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const order = [];
+  const node = fakeMeshNode();
+  const runtime = new framework.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game-a', 'game-b'],
+    meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
+    meshNode: () => node,
+    admission: gate,
+    publishRetiring: async (meshName) => {
+      order.push(`retiring:${meshName}`);
+      if (meshName === 'game-b') throw new Error('store unavailable');
+    },
+    rollbackRetiring: async (meshName) => { order.push(`serving:${meshName}`); },
+    publishDraining: async () => {},
+    publishHostDraining: async () => {},
+    drainResources: async () => {},
+    cleanupHostResources: async () => {},
+    forceStopResources: async () => {}
+  });
+  runtime.markServing();
+
+  assert.equal(await runtime.prepareHostRetire(1000), 'store_unavailable');
+  assert.deepEqual(order, [
+    'retiring:game-a',
+    'retiring:game-b',
+    'serving:game-b',
+    'serving:game-a'
+  ]);
+  assert.equal(runtime.isReady('game-a'), true);
+  assert.equal(runtime.isReady('game-b'), true);
+  assert.equal(gate.accepts('game-a'), true);
+  assert.equal(gate.accepts('game-b'), true);
+});
+
+test('Retire descriptor publication does not report a reversible block when rollback is unconfirmed', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const runtime = createRuntime(gate, {
+    publishRetiring: async () => { throw new Error('ambiguous store response'); },
+    rollbackRetiring: async () => { throw new Error('store unavailable'); }
+  });
+
+  await assert.rejects(
+    () => runtime.prepareHostRetire(1000),
+    (error) => error.name === 'ZLinkRetiringRollbackError'
+  );
+  assert.equal(runtime.isReady('game'), false);
+  assert.equal(gate.accepts('game'), true);
+});
+
+test('Retire rollback reconciles a committed descriptor when only the Store response was lost', async () => {
+  const manager = Object.create(framework.ZLinkSpotNodeRuntimeManager.prototype);
+  const committed = {
+    rid: 'node-old',
+    lifecycleGeneration: 3n,
+    descriptorRevision: 8n,
+    ownerId: 'owner-old',
+    leaseGeneration: 5n
+  };
+  manager.locationAutoConnect = {
+    runtime: {
+      currentOwnerToken: { ownerId: 'owner-old', leaseGeneration: 5n },
+      async listLiveMeshNodes() { return [committed]; }
+    }
+  };
+  manager.meshNodes = new Map([['game', {
+    status() { return { routingId: 'node-old', lifecycleGeneration: 3n }; }
+  }]]);
+  manager.publishedMeshNodeDescriptors = new Map([['game', {
+    ...committed,
+    descriptorRevision: 7n
+  }]]);
+  let republished;
+  manager.publishMeshNodeState = async (state, _signal, meshName) => {
+    republished = {
+      state,
+      meshName,
+      revision: manager.publishedMeshNodeDescriptors.get(meshName).descriptorRevision
+    };
+  };
+
+  await manager.reconcileAndPublishMeshNodeState(
+    framework.ZLinkFrameworkRuntimeState.Serving,
+    'game'
+  );
+
+  assert.deepEqual(republished, {
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    meshName: 'game',
+    revision: 8n
+  });
+});
+
+test('Retire readiness requires exact RID and lifecycle generation in the admitted Core peer table', () => {
+  const local = {
+    routingId: 'node-old',
+    lifecycleGeneration: 1n,
+    applicationVersion: 1n
+  };
+  const descriptors = [
+    meshDescriptor('node-old', 1n, framework.ZLinkFrameworkRuntimeState.Serving),
+    meshDescriptor('node-green', 7n, framework.ZLinkFrameworkRuntimeState.Serving)
+  ];
+
+  assert.equal(framework.hasExactPeerReadiness(descriptors, local, [
+    { routingId: 'node-green', lifecycleGeneration: 6n, state: 3 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness(descriptors, local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 2 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness(descriptors, local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), true);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    { ...descriptors[1], applicationVersion: 2n }
+  ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), true);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    { ...descriptors[1], applicationVersion: 0n }
+  ], local, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), false);
+  assert.equal(framework.hasExactPeerReadiness([
+    descriptors[0],
+    { ...descriptors[1], maintenanceWave: 'wave-a' }
+  ], { ...local, maintenanceWave: 'wave-a' }, [
+    { routingId: 'node-green', lifecycleGeneration: 7n, state: 3 }
+  ]), false);
+
+  const draining = [
+    descriptors[0],
+    meshDescriptor('node-green', 7n, framework.ZLinkFrameworkRuntimeState.Draining)
+  ];
+  assert.equal(framework.hasExactPeerReadiness(draining, local, []), false);
+  assert.equal(framework.hasExactPeerReadiness([descriptors[0]], local, []), false);
 });
 
 function createRuntime(gate, overrides = {}) {
@@ -225,6 +401,8 @@ function createRuntime(gate, overrides = {}) {
     meshNode: (meshName) => meshName === 'game' ? node : undefined,
     meshNodeDescriptor: overrides.meshNodeDescriptor,
     admission: gate,
+    publishRetiring: overrides.publishRetiring ?? (async () => {}),
+    rollbackRetiring: overrides.rollbackRetiring ?? (async () => {}),
     publishDraining: overrides.publishDraining ?? (async () => {}),
     publishHostDraining: overrides.publishHostDraining ?? (async () => {}),
     drainResources: overrides.drainResources ?? (async () => {}),
@@ -246,6 +424,10 @@ function fakeMeshNode() {
     peers() { return []; },
     peerChannels() { return { names: [], weights: [] }; }
   };
+}
+
+function meshDescriptor(rid, lifecycleGeneration, state) {
+  return { rid, lifecycleGeneration, state, applicationVersion: 1n };
 }
 
 function deferred() {

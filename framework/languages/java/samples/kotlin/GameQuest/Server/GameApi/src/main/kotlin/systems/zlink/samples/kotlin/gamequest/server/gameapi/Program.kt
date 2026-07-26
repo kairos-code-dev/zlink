@@ -93,9 +93,8 @@ class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("${api.logDirectory}/flow-${api.instanceName}.log")
                 .traceLabel(api.instanceName)
-            listOf(api.missionAChannelEndpoint, api.missionBChannelEndpoint).forEachIndexed { index, endpoint ->
-                val channel = SampleNames.questOwnerChannelFor(if (index == 0) "mission-a" else "mission-b")
-                options.addClientServerChannel(channel)
+            listOf(api.missionAChannelEndpoint, api.missionBChannelEndpoint).forEach { endpoint ->
+                options.addClientServerChannel(SampleNames.QuestOwnerChannel)
                     .enableClient(endpoint)
             }
             options.addStreamNode(SampleNames.StreamNode)
@@ -170,7 +169,7 @@ class GameQuestSession(
         playerId = request.playerId
         store.bind(request.playerId, topology.gameApi().instanceName)
         val ownerProjection = routes
-            .requestToChannel(topology.ownerChannel(request.playerId), GetQuestProgressReq(request.playerId))
+            .requestToChannel(SampleNames.QuestOwnerChannel, GetQuestProgressReq(request.playerId))
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -179,7 +178,7 @@ class GameQuestSession(
 
     private suspend fun handleGetProgress(request: GetQuestProgressReq) {
         val ownerProjection = routes
-            .requestToChannel(topology.ownerChannel(request.playerId), request)
+            .requestToChannel(SampleNames.QuestOwnerChannel, request)
             .submit(GetQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, ownerProjection.activeQuests)
@@ -188,7 +187,7 @@ class GameQuestSession(
 
     private suspend fun handleSync(request: SyncQuestProgressReq) {
         val response = routes
-            .requestToChannel(topology.ownerChannel(request.playerId), request)
+            .requestToChannel(SampleNames.QuestOwnerChannel, request)
             .submit(SyncQuestProgressRes::class.java)
             .await()
         store.mergeProjection(request.playerId, response.updatedQuests)
@@ -223,7 +222,7 @@ class GameQuestSession(
     private suspend fun process(event: GameplayMsg): QuestProcessingRes {
         store.recordGameplay(event)
         val processed = routes
-            .requestToChannel(topology.ownerChannel(event.playerId), event)
+            .requestToChannel(SampleNames.QuestOwnerChannel, event)
             .submit(QuestProcessingRes::class.java)
             .await()
         store.mergeProjection(event.playerId, processed.projection)
@@ -279,7 +278,7 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
             val deleted = kotlinx.coroutines.runBlocking {
                 Program.routes
                     .requestToChannel(
-                        topology.ownerChannel(playerId),
+                        SampleNames.QuestOwnerChannel,
                         DeleteQuestProjectionReq(playerId, questId),
                     )
                     .submit(DeleteQuestProjectionRes::class.java)
@@ -292,7 +291,7 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
             val rebuilt = kotlinx.coroutines.runBlocking {
                 Program.routes
                     .requestToChannel(
-                        topology.ownerChannel(playerId),
+                        SampleNames.QuestOwnerChannel,
                         RebuildQuestProjectionReq(playerId, questId, 0),
                     )
                     .submit(QuestProgress::class.java)

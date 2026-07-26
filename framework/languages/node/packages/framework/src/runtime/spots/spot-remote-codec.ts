@@ -160,7 +160,20 @@ export function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoff
     ) {
       throw new Error('Remote actor handoff backlog is not a contiguous packet sequence.');
     }
-    return entry as ZLinkActorHandoffPacket;
+    const packet = entry as ZLinkActorHandoffPacket;
+    const source = packet.source;
+    if (typeof packet.operationId !== 'string' || packet.operationId.length === 0
+      || !Number.isSafeInteger(packet.forwardingHopCount)
+      || packet.forwardingHopCount < 0 || packet.forwardingHopCount > 8
+      || (packet.returnResponse && (
+        source === undefined || source.ownerId.length === 0
+        || BigInt(source.ownerLeaseGeneration) <= 0n || source.nodeRid.length === 0
+        || BigInt(source.nodeGeneration) <= 0n || BigInt(source.replyRouteId) <= 0n
+      ))
+      || (!packet.returnResponse && source !== undefined)) {
+      throw new Error('Remote actor handoff request source fence is invalid.');
+    }
+    return packet;
   });
 }
 

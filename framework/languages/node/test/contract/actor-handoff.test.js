@@ -18,7 +18,8 @@ function target(name = 'target') {
     routerChannelId: 'mesh',
     targetNodeRid: zlink.RoutingId.from(`${name}-node`),
     spotId: zlink.RoutingId.from(`${name}-spot`),
-    spotKind: framework.ZLinkSpotKind.User
+    spotKind: framework.ZLinkSpotKind.User,
+    authorityOwnerGeneration: 2n
   };
 }
 
@@ -45,6 +46,12 @@ function harness(forwardWindowMs = 30) {
     forwardWindowMs,
     isStaleActorRef: (_actorId, ref) => ref.generation !== currentGeneration,
     isCurrentHandoffTarget: (_actorId, spotId) => spotId === 'target-spot',
+    requestSource: () => ({
+      ownerId: 'source-owner',
+      ownerLeaseGeneration: 1n,
+      nodeRid: 'source-node',
+      nodeGeneration: 1n
+    }),
     onMarker: (marker, actorId, index) => markers.push({ marker, actorId, index })
   });
   return {
@@ -291,11 +298,16 @@ test('in-flight request preserves framing, reply correlation, and the caller tim
   assert.notEqual(replayHeader.flags & streamProtocol.ZLinkStreamHeaderFlags.HasRequestSeq, 0);
   assert.notEqual(replayHeader.flags & streamProtocol.ZLinkStreamHeaderFlags.HasMetadata, 0);
 
-  coordinator.complete('actor-1', target(), targetActorRef(), [{
+  const terminal = {
     index: backlog[0].index,
     ok: true,
     response: { marker: 'R1', requestSeq: '731' }
-  }]);
+  };
+  coordinator.complete('actor-1', target(), targetActorRef(), [terminal]);
+  assert.equal(
+    coordinator.acceptRelocatedTerminal('actor-1', backlog[0], terminal, 'target-node', 2n),
+    'terminalReceived'
+  );
   assert.deepEqual(await pendingReply, { marker: 'R1', requestSeq: '731' });
 
   coordinator.begin('actor-1', 2n);
@@ -311,10 +323,17 @@ test('in-flight request preserves framing, reply correlation, and the caller tim
     new Promise((_resolve, reject) => setTimeout(() => reject(new Error('normal request timeout')), 5))
   ]);
   await assert.rejects(caller, /normal request timeout/);
-  coordinator.complete('actor-1', target('late'), targetActorRef('late', 3n), [{
+  const lateTerminal = {
     index: lateBacklog[0].index,
     ok: true,
     response: { marker: 'late' }
-  }]);
+  };
+  coordinator.complete('actor-1', target('late'), targetActorRef('late', 3n), [lateTerminal]);
+  assert.equal(
+    coordinator.acceptRelocatedTerminal(
+      'actor-1', lateBacklog[0], lateTerminal, 'late-node', 2n
+    ),
+    'terminalReceived'
+  );
   assert.deepEqual(await lateReply, { marker: 'late' });
 });

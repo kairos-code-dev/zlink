@@ -29,11 +29,10 @@ internal sealed class ApiServer(SampleSettings settings)
                 .TraceLabel(settings.InstanceName);
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
                 .Listen(settings.MeshEndpoint)
-                .SetRoutingId(RoutingId.From($"{settings.InstanceName}-mesh"));
+                .SetRoutingIdPrefix("tictactoe-api");
             mesh.ChannelName(SampleChannels.Api)
                 .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
-            mesh.ChannelName(SampleChannels.Play(0)).SetWeight(0);
-            mesh.ChannelName(SampleChannels.Play(1)).SetWeight(0);
+            mesh.ChannelName(SampleChannels.Play).SetWeight(0);
             mesh.ChannelName(SampleTopics.PlayerMilestoneChannel).SetWeight(0);
             foreach (var endpoint in settings.PeerMeshEndpoints)
                 mesh.PeerConnections.Connect(endpoint);

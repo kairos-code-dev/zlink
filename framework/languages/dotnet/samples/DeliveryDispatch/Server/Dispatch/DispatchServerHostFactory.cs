@@ -48,7 +48,7 @@ public static class DispatchServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"));
+                .SetRoutingIdPrefix("delivery-dispatch");
             mesh.ChannelName(SampleNames.DispatchChannel)
                 .AddHandlerGroup(SampleNames.DispatchChannel);
             mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
@@ -60,18 +60,13 @@ public static class DispatchServerHostFactory
             IZLinkLocationReadiness readiness,
             CancellationToken cancellationToken) =>
         {
-            var courierNode1Ready = await readiness.IsPeerReadyAsync(
+            var courierOwnerReady = await readiness.IsPeerReadyAsync(
                 SampleNames.MeshName,
                 ZLinkLocationRole.Spot,
-                topology.CourierActorNode1Rid,
-                cancellationToken);
-            var courierNode2Ready = await readiness.IsPeerReadyAsync(
-                SampleNames.MeshName,
-                ZLinkLocationRole.Spot,
-                topology.CourierActorNode2Rid,
+                nodeRid: null,
                 cancellationToken);
 
-            return courierNode1Ready && courierNode2Ready
+            return courierOwnerReady
                 ? Results.Ok(new { ready = true, role = "dispatch" })
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });

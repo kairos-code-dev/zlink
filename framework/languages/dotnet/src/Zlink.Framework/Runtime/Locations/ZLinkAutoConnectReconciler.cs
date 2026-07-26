@@ -38,6 +38,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
     private volatile HashSet<string>? _meshMemberRids;
+    private volatile ZLinkRouteMeshPeerIdentity[]? _meshPeers;
     private volatile HashSet<string> _retainedMemberRids = new(StringComparer.Ordinal);
     private readonly bool _retainRemovedMembers;
     private ulong _localGeneration;
@@ -98,6 +99,12 @@ internal sealed class ZLinkAutoConnectReconciler
         if (_meshMemberRids is not { } members) return null;
 
         return members.Contains(nodeRid.ToHex());
+    }
+
+    internal IReadOnlyList<ZLinkRouteMeshPeerIdentity>? CompleteMeshPeers()
+    {
+        if (_storeFailed) return null;
+        return _meshPeers;
     }
 
     internal bool HasRetainedPeer(RoutingId nodeRid) =>
@@ -180,6 +187,12 @@ internal sealed class ZLinkAutoConnectReconciler
         CancellationToken cancellationToken = default)
         => await PublishLocalMutationAsync(
             row => row with { State = ZLinkFrameworkRuntimeState.Draining },
+            cancellationToken).ConfigureAwait(false);
+
+    internal async ValueTask<bool> MarkRetiringAsync(
+        CancellationToken cancellationToken = default)
+        => await PublishLocalMutationAsync(
+            row => row with { State = ZLinkFrameworkRuntimeState.Retiring },
             cancellationToken).ConfigureAwait(false);
 
     internal async ValueTask<bool> MarkServingAsync(
@@ -378,6 +391,16 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         _meshMemberRids = members;
+        _meshPeers = rows
+            .Where(row => row.Rid is { Size: > 0 } rowRid
+                          && (_local.NodeRid is not { } localRid
+                              || rowRid != localRid))
+            .Select(static row => new ZLinkRouteMeshPeerIdentity(
+                row.Rid!,
+                row.LifecycleGeneration,
+                row.State is ZLinkFrameworkRuntimeState.Retiring
+                    or ZLinkFrameworkRuntimeState.Draining))
+            .ToArray();
         if (_retainRemovedMembers)
         {
             var retained = new HashSet<string>(_retainedMemberRids, StringComparer.Ordinal);

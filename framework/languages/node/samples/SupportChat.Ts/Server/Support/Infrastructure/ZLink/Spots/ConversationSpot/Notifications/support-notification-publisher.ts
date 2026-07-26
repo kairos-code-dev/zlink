@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_ACTOR_CLIENT } from '@zlink-systems/nestjs';
-import { SampleNames } from '../../../../../../Configuration/sample-names';
 import { DeliverSupportNotification } from '../../../Actors/support-user-actor';
 import { ConversationEventMapper } from './conversation-event-mapper';
 import type { ConversationEvent } from '../../../../../Domain/SupportChat/conversation-events';
@@ -17,8 +16,7 @@ class SupportNotificationPublisher {
     for (const actor of recipients) {
       await this.actors
         .sendToActor(
-          SampleNames.conversationSpotMesh,
-          actor,
+          actor.actorId,
           new DeliverSupportNotification(message, event.state.conversationId)
         )
         .submit();

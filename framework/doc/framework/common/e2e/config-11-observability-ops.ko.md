@@ -351,13 +351,39 @@ continuity를 이전한 뒤 source를 종료할 수 있는가.
   기다리는 동안 relocation을 시작하지 않고 기존 handler cancellation signal을 cleanup에 재사용하지 않는다.
 - 세부 동작: deadline 기반 cooperative cleanup과 bounded forced teardown.
 
+#### OBS-C9 automatic convergence와 manual topology blocker
+
+우선순위: `P0`
+
+**검증 질문:** `Retire`가 automatic RouteMesh의 실제 peer readiness를 확인한 뒤에만 시작되고, Framework가
+replacement 연결을 증명할 수 없는 manual topology는 source를 변경하지 않은 채 차단되는가.
+
+- 절차:
+  1. Automatic source와 green target을 시작하되 green descriptor publication 뒤 RouteMesh handshake admission을
+     bounded gate에서 막는다. Source에 `Retire`를 호출하고 descriptor, connect intent와 source Core peer table을
+     함께 기록한다.
+  2. Gate를 해제해 exact green RID·lifecycle generation이 source Core peer table에서 admitted·ready가 되게 한다.
+     Stateful object 하나를 이전하고 source의 descriptor release와 peer disconnect까지 관찰한다.
+  3. 별도 process 반복에서 local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint,
+     Location Store에 descriptor를 게시하지 않는 manual fanout publisher를 각각 하나씩 구성한다. 각 host에
+     `Retire`를 호출한 뒤 같은 host에 `Shutdown`을 호출한다.
+- 검증: descriptor와 connect intent만 존재하는 동안 source state는 `Serving`, readiness와 application admission은
+  그대로이고 relocation root와 reservation은 0건이다. Exact peer가 `Ready`가 된 뒤에만 old `Retiring`,
+  relocation, old `Draining`과 accepted barrier, descriptor·owner lease release, disconnect 순서로 진행하고
+  `Stopped/None`으로 끝난다. 네 manual 반복의 `Retire`는 모두
+  `Blocked/ManualTopologyUnsupported`이며 state, readiness, manual connection과 handler admission을 바꾸지 않는다.
+  이어서 호출한 `Shutdown`은 manual topology를 blocker로 사용하지 않고 `Stopped` 또는 `ForceStopped`로 유한
+  완료된다.
+- 세부 동작: descriptor와 physical readiness의 구분, automatic replacement ordering과 manual topology의
+  precommit 차단.
+
 ## 5. 완료 기준
 
-- OBS-A1~A4, OBS-B1~B4, OBS-C1~C8을 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
+- OBS-A1~A4, OBS-B1~B4, OBS-C1~C9를 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
   줄이지 않는다.
 - flow 로그는 노드 경계를 관통하고 error 라인에도 `flow=`가 있다.
 - 메트릭 계기는 실제 사건과 일치하고 고카디널리티 라벨이 없다.
-- `Retire`는 모든 eligible target을 준비한 뒤 배치를 제외하고 accepted turn·Actor·Spot·STREAM
-  continuity 뒤 source를 종료한다. `Shutdown`은 새 relocation 없이 Spot closing callback과 bounded
-  cleanup을 수행한다.
+- `Retire`는 automatic peer의 exact readiness와 모든 eligible target을 준비한 뒤 배치를 제외하고 accepted
+  turn·Actor·Spot·STREAM continuity 뒤 source를 종료한다. Manual topology는 precommit blocker이며 `Shutdown`은
+  새 relocation 없이 Spot closing callback과 bounded cleanup을 수행한다.
 - 공개 표면만 직접 사용하고 `ensure`로 단언한다.

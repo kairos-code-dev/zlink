@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include "runtime/protocol/service_wire_codec.hpp"
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
@@ -255,6 +256,21 @@ struct eligible_relocation_unit_t
       relocation_capacity_fences;
     std::size_t encoded_upper_bound = 0;
     inventory_digest_t inventory_digest{};
+    struct canonical_wire_context_t
+    {
+        protocol::relocation_id_t relocation;
+        std::uint64_t target_attempt_generation = 0;
+        protocol::relocation_coordinator_fence_t coordinator;
+        std::vector<std::uint8_t> target_node_routing_id;
+        std::uint64_t target_node_generation = 0;
+        std::vector<std::uint64_t> participant_ids;
+        std::function<bool (
+          const std::vector<frozen_object_state_t> &,
+          const std::vector<protocol::relocation_data_t> &)> prepare_target;
+        std::function<void (std::uint64_t, std::uint64_t)> acknowledged;
+        std::function<void ()> abort_target;
+    };
+    std::optional<canonical_wire_context_t> canonical_wire;
 };
 
 enum class target_preflight_status_t
@@ -340,6 +356,7 @@ struct relocation_result_t
     relocation_terminal_t terminal = relocation_terminal_t::blocked;
     relocation_reason_t reason = relocation_reason_t::none;
     std::optional<authority_relocation_reference_t> authority;
+    std::vector<protocol::relocation_data_t> replay_records;
 };
 
 struct aggregate_relocation_result_t
@@ -347,7 +364,10 @@ struct aggregate_relocation_result_t
     relocation_terminal_t terminal = relocation_terminal_t::blocked;
     relocation_reason_t reason = relocation_reason_t::none;
     std::vector<authority_relocation_reference_t> authority;
+    std::vector<protocol::relocation_data_t> replay_records;
 };
+
+class raw_relocation_replay_coordinator_t;
 
 class maintenance_runtime_t
 {
@@ -372,7 +392,9 @@ class maintenance_runtime_t
       location_owner_token_t target_owner,
       relocation_capacity_fence_t relocation_capacity_fence,
       std::size_t encoded_upper_bound,
-      inventory_digest_t inventory_digest);
+      inventory_digest_t inventory_digest,
+      const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
+        &canonical_wire = std::nullopt);
     relocation_result_t recover (
       object_kind_t kind,
       const std::string &key,
@@ -387,7 +409,12 @@ class maintenance_runtime_t
       std::vector<relocation_capacity_fence_t>
         relocation_capacity_fences,
       std::size_t encoded_upper_bound,
-      inventory_digest_t inventory_digest);
+      inventory_digest_t inventory_digest,
+      const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
+        &canonical_wire = std::nullopt);
+
+    void attach_relocation_wire (
+      raw_relocation_replay_coordinator_t &wire) noexcept;
 
     relocation_gate_snapshot_t gate_snapshot () const;
 
@@ -428,6 +455,22 @@ class maintenance_runtime_t
     void release (std::size_t payload) noexcept;
     relocation_result_t finish (relocation_result_t result);
 
+    std::optional<std::vector<protocol::relocation_data_t>>
+    build_replay_records (
+      const std::vector<frozen_object_state_t> &participants,
+      const eligible_relocation_unit_t::canonical_wire_context_t &context)
+      const;
+    bool prepare_replay_source (
+      const eligible_relocation_unit_t::canonical_wire_context_t &context,
+      const std::vector<frozen_object_state_t> &participants,
+      const std::vector<protocol::relocation_data_t> &records);
+    bool arm_replay_source (
+      const eligible_relocation_unit_t::canonical_wire_context_t &context,
+      const std::vector<protocol::relocation_data_t> &records);
+    void abort_replay_source (
+      const eligible_relocation_unit_t::canonical_wire_context_t &context,
+      const std::vector<protocol::relocation_data_t> &records) noexcept;
+
     stateful_object_runtime_t &_objects;
     std::shared_ptr<authority_relocation_port_t> _authority;
     std::shared_ptr<aggregate_authority_port_t> _aggregate_authority;
@@ -436,6 +479,7 @@ class maintenance_runtime_t
     observer_t _observer;
     mutable std::mutex _gate_mutex;
     relocation_gate_snapshot_t _gate;
+    raw_relocation_replay_coordinator_t *_relocation_wire = nullptr;
 };
 
 enum class host_runtime_state_t

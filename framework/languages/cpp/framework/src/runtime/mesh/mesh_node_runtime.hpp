@@ -240,6 +240,8 @@ class mesh_node_runtime_t
     /* Admitted RouteMesh membership size. Vertical and E2E checks wait on this
      * instead of reaching into the transport topology. */
     std::size_t admitted_peer_count () const;
+    bool has_admitted_peer (const zlink::routing_id_t &peer_rid,
+                            std::uint64_t lifecycle_generation) const;
     std::string mesh_name () const;
     std::optional<zlink::routing_id_t> routing_id () const;
     std::string listen_endpoint () const;

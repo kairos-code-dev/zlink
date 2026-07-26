@@ -19,7 +19,7 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `.NET: Server/Configuration/SampleNames.cs` | `Client/Configuration/sample_names.hpp`; `Server/Configuration/sample_names.hpp` | configuration | done | channel, Spot, topic, actor 이름이 대응한다. |
 | `.NET: Server/Configuration/SampleSettings.cs` | `Client/Configuration/sample_configuration.hpp`; `Server/Configuration/sample_configuration.hpp`; `Server/Configuration/sample_topology.hpp` | configuration | done | endpoint, Redis, role 설정을 C++ CLI/env 설정으로 받는다. |
 | `.NET: Server/Configuration/SampleFlowLog.cs` | `Server/sample_log_dir.hpp`; role `main.cpp` trace option | evidence | done | role별 message-flow log 파일 경로를 제공한다. |
-| `.NET: Server/Configuration/RedisRoomRouteStore.cs` | `Server/Configuration/redis_room_route_store.hpp` | external-adapter | done | Redis room route record와 public remote Spot resolver 의미를 adapter 안에 둔다. |
+| `.NET: Redis Location Store` | `Server/Configuration/location_store.hpp` | external-adapter | done | framework Redis Location Store가 전역 `RoomId`의 current route를 관리한다. sample-local owner route record는 사용하지 않는다. |
 | `.NET: Server/Api/ApiServer.cs` | `Server/Api/api_server_host_factory.hpp`; `Server/Api/main.cpp` | server-role | done | HTTP endpoint, API channel server, Play channel client를 구성한다. |
 | `.NET: Server/Api/Handlers/AuthenticatePlayerHandler.cs` | `Server/Api/Handlers/authenticate_player_handler.hpp` | handler | done | Play session 인증 요청을 처리하고 user 정보를 반환한다. |
 | `.NET: Server/Api/Handlers/CreateGameHttpHandler.cs` | `Server/Api/Handlers/create_game_http_handler.hpp` | handler | done | HTTP room 생성 요청을 Play channel room 생성으로 연결한다. |
@@ -40,7 +40,7 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorLeaveGameHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play_actor_leave_game_handler.hpp` | spot-handler | done | `LeaveGameReq`는 reply 없는 actor send command로 등록하고 Entry Spot 복귀 흐름을 실행한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorPlaceMarkHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play_actor_place_mark_handler.hpp` | spot-handler | done | mark request를 domain state 변경으로 연결한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/TicTacToeGameTimerHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe_game_spot_created_handler.hpp` | timer-handler | done | game Spot 생성 뒤 timer 등록과 timeout 흐름이 대응한다. |
-| `.NET: Server/Play/Infrastructure/ZLink/TicTacToeGameRoomProvisioner.cs` | `Server/Play/Application/GameCreation/tictactoe_game_creator.hpp`; `Server/Configuration/redis_room_route_store.hpp` | infrastructure | done | room Spot 생성과 Redis route record 저장 책임이 대응한다. |
+| `.NET: Server/Play/Infrastructure/ZLink/TicTacToeGameRoomProvisioner.cs` | `Server/Play/Application/GameCreation/tictactoe_game_creator.hpp`; `Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp`; `Server/Configuration/location_store.hpp` | infrastructure | done | public Spot manager가 전역 `RoomId`를 get-or-create하고 Location Store가 current route를 관리한다. |
 
 ## 공통 요구 매핑
 
@@ -49,10 +49,10 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `common: 2 API, 2 Play 수동 endpoint scale-out` | `run_sample.sh`; `run_sample.ps1`; `Server/Api`; `Server/Play` | validation | done | runner가 api-a, api-b, play-a, play-b를 별도 process로 띄운다. |
 | `common: client는 API 응답의 Play stream endpoint를 사용` | `Client/tictactoe_client_scenario.hpp`; `Server/Api/Handlers/create_game_http_handler.hpp` | client-flow | done | client는 API HTTP endpoint만 입력으로 받고 Play stream endpoint는 `CreateGameHttpRes`에서 읽는다. |
 | `common: JSON payload` | `Shared/Contracts/messages.hpp`; `Server/Play/Infrastructure/ZLink/Sessions/play_session.hpp` | codec | done | stream, channel, actor, Spot payload는 typed JSON message 경로를 사용한다. |
-| `common: Redis room route store` | `Server/Configuration/redis_room_route_store.hpp`; `run_sample.sh`; `run_sample.ps1` | external-adapter | done | Redis는 room owner SpotNode route 저장과 public resolver 의미에만 사용된다. |
+| `common: Redis Location Store` | `Server/Configuration/location_store.hpp`; `run_sample.sh`; `run_sample.ps1` | external-adapter | done | Redis Location Store는 전역 `RoomId`의 현재 route를 저장한다. sample은 physical owner NodeRid를 따로 계산하거나 저장하지 않는다. |
 | `common: runner가 Docker Redis 준비` | `run_sample.sh`; `run_sample.ps1` | runner | done | 전용 Redis container를 만들고 cleanup에서 제거한다. 외부 Redis endpoint를 받아 로컬 Redis나 공유 Redis를 건드리지 않는다. |
 | `common: Redis key prefix 격리` | `run_sample.sh`; `run_sample.ps1`; `Server/Configuration/sample_topology.hpp` | runner | done | 실행마다 고유한 `TICTACTOE_CPP_REDIS_KEY_PREFIX` 기본값을 전달한다. |
-| `common: remote Spot join은 public resolver 사용` | `Server/Configuration/redis_room_route_store.hpp`; `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp` | message-flow | done | room owner가 다른 Play node일 때 Redis-backed resolver와 public actor/Spot join 경로를 사용한다. |
+| `common: remote Spot join은 public resolver 사용` | `Server/Configuration/location_store.hpp`; `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp` | message-flow | done | 전역 `RoomId`를 public actor/Spot join 경로에 넘기며 Location Store가 현재 owner route를 해석한다. |
 | `common: Spot pub/sub milestone fan-out` | `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp`; `Client/tictactoe_client_scenario.hpp` | message-flow | done | room Spot publish와 Entry Spot subscribe handler로 observer milestone push를 검증한다. |
 | `common: public connector wait interface로 push 대기` | `Client/tictactoe_client_scenario.hpp` | validation | done | wait filter와 future를 직접 사용하고 sample-local polling으로 push 대기를 숨기지 않는다. |
 | `common: tictactoe=completed marker` | `Client/main.cpp`; `run_sample.sh`; `run_sample.ps1` | validation | done | runner가 client log marker를 검사한다. |

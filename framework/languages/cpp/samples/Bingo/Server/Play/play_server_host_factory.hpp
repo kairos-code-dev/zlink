@@ -54,18 +54,16 @@ class play_server_host_factory_t
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
             auto services = options.services ().build_provider ();
-            options.add_client_server_channel (play_channel_for (topology.selected_play_node_rid ()))
+            options.add_client_server_channel (sample_names_t::room_spot_discovery)
               .enable_server (topology.selected_play_route_endpoint ())
-              .set_routing_id (zlink::routing_id_t::from (topology.selected_play_node_rid ()))
               .enable_client ()
               .use_handler_group ("play");
             options.add_client_server_channel (sample_names_t::api_channel).enable_client ();
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
             room_mesh.channel_name (sample_names_t::room_spot_mesh);
             room_mesh.peer_connections ().connect (
-              routing_id_t::from (topology.peer_play_node_rid ()),
               topology.peer_play_spot_router_endpoint ());
-            room_mesh.set_routing_id (routing_id_t::from (topology.selected_play_node_rid ()))
+            room_mesh.use_allocated_routing_id (16, "bingo-play")
               .listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> (
                 [topology, services] {

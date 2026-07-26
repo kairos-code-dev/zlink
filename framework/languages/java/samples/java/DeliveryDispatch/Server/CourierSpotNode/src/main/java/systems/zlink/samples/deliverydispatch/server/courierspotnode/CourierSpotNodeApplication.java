@@ -3,7 +3,6 @@ package systems.zlink.samples.deliverydispatch.server.courierspotnode;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -40,14 +39,15 @@ public final class CourierSpotNodeApplication {
                 .traceLabel("courier-" + node);
             ZLinkMeshNodeBuilder spotNode = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             spotNode.listen(selected.routerEndpoint())
-                .setRoutingId(RoutingId.from(selected.nodeRid()));
+                .useAllocatedRoutingId(16, "delivery-courier");
             spotNode.addEntrySpot(CourierEntrySpot.class);
             spotNode.addActorFactory(SampleNames.CourierActorType, CourierActorFactory.class);
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)
                 .enableClient()
-                .setRoutingId(RoutingId.from("delivery-courier-" + node + "-dispatch"));
+                .setRoutingId(systems.zlink.contracts.core.RoutingId.from(
+                    "delivery-courier-" + node + "-dispatch"));
         };
     }
 
@@ -61,17 +61,11 @@ public final class CourierSpotNodeApplication {
         return SampleLocationStore.create(topology);
     }
 
-    private record NodeOptions(String nodeRid, String spotEndpoint, String routerEndpoint) {
+    private record NodeOptions(String routerEndpoint) {
         static NodeOptions resolve(String node, SampleTopology topology) {
             return switch (node) {
-                case "node2" -> new NodeOptions(
-                    topology.courierActorNode2Rid(),
-                    topology.courierActorNode2SpotEndpoint(),
-                    topology.courierActorNode2RouterEndpoint());
-                default -> new NodeOptions(
-                    topology.courierActorNode1Rid(),
-                    topology.courierActorNode1SpotEndpoint(),
-                    topology.courierActorNode1RouterEndpoint());
+                case "node2" -> new NodeOptions(topology.courierActorNode2RouterEndpoint());
+                default -> new NodeOptions(topology.courierActorNode1RouterEndpoint());
             };
         }
     }

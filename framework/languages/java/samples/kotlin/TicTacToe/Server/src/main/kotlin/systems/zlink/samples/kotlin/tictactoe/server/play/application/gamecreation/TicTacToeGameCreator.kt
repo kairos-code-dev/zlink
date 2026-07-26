@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play.application.gamecreation
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.UUID
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.tictactoe.server.configuration.SampleSettings
 import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayNodeInfo
@@ -8,21 +8,15 @@ import systems.zlink.samples.kotlin.tictactoe.shared.contracts.PlayNodeInfo
 class TicTacToeGameCreator(
     private val settings: SampleSettings,
 ) {
-    private val sequence = AtomicInteger()
-
     fun nextRoom(gameName: String?): GameRoom {
         val normalized = gameName?.takeIf { it.isNotBlank() } ?: "tic-tac-toe"
-        val index = Math.floorMod(sequence.getAndIncrement(), settings.playEndpoints.size)
-        val roomId = "ttt-room-%03d".format(sequence.get())
-        val ownerPlayEndpoint = settings.playEndpoints[index]
+        val roomId = "ttt-room-${UUID.randomUUID()}"
         return GameRoom(
             roomId = roomId,
             gameName = normalized,
-            ownerPlayEndpoint = ownerPlayEndpoint,
+            ownerPlayEndpoint = settings.playEndpoint,
             playEndpoints = settings.playEndpoints,
-            playNodes = settings.playEndpoints.mapIndexed { playIndex, endpoint ->
-                PlayNodeInfo(endpoint, "play-node-${playIndex + 1}")
-            },
+            playNodes = settings.playEndpoints.map(::PlayNodeInfo),
             requiredLevel = SampleNames.RequiredLevel,
         )
     }

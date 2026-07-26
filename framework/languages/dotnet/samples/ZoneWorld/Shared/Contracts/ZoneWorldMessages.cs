@@ -4,12 +4,6 @@ namespace ZoneWorld.Shared.Contracts;
 // TypeScript; the field names and their meaning are the contract, so a rename here
 // is a wire break for every language server and the client.
 
-/// <summary>
-/// ActorRef is a runtime type in every language, so it travels as a neutral DTO.
-/// The receiver rebuilds its own ActorRef from these three values (§7.4).
-/// </summary>
-public sealed record ActorRefWire(string NodeRid, string ActorId, ulong Generation);
-
 public sealed record PlayerView(string PlayerId, int X, int Y, string ZoneId, bool IsBot);
 
 public sealed record NodeView(
@@ -29,7 +23,6 @@ public sealed record JoinWorldReq(string PlayerId);
 public sealed record JoinWorldRes(
     string PlayerId,
     string ZoneId,
-    string NodeId,
     int X,
     int Y,
     string? Error = null);
@@ -38,7 +31,7 @@ public sealed record MoveMsg(int X, int Y);
 
 public sealed record ZoneStateNotify(string ZoneId, long Tick, IReadOnlyList<PlayerView> Players);
 
-public sealed record ZoneChangedNotify(string PlayerId, string ZoneId, string NodeId, bool Transferred);
+public sealed record ZoneChangedNotify(string PlayerId, string ZoneId);
 
 public sealed record WorldAnnounceNotify(string AnnouncementId, string Text);
 
@@ -105,16 +98,6 @@ public sealed record BotTickReq();
 public sealed record BotTickRes();
 
 /// <summary>
-/// Gateway -> the ZoneNode that owns the spawn zone (channel `zoneworld.actors`).
-/// Ensures the player actor exists and returns its ActorRef so the Gateway can bind
-/// the session to it. The owning node is the authority for the maintenance
-/// admission check (§2.3).
-/// </summary>
-public sealed record EnsurePlayerActorReq(string PlayerId);
-
-public sealed record EnsurePlayerActorRes(string PlayerId, ActorRefWire Actor);
-
-/// <summary>
 /// Ensure handler -> the freshly created player actor, while it still sits in the entry
 /// spot. The actor answers by joining its zone spot, which is the only way to enter a
 /// zone (§2.6), and reports back where it landed. The caller has to wait for that join
@@ -122,9 +105,9 @@ public sealed record EnsurePlayerActorRes(string PlayerId, ActorRefWire Actor);
 /// </summary>
 public sealed record EnterWorldReq(int X, int Y, bool IsBot, int DirX = 0, int DirY = 0);
 
-public sealed record EnterWorldRes(string ZoneId, string NodeId, int X, int Y, string? Error = null);
+public sealed record EnterWorldRes(string ZoneId, int X, int Y, string? Error = null);
 
-/// <summary>Ops -> one ZoneNode (owner-consistent channel `zoneworld.ops.&lt;NodeId&gt;`).</summary>
+/// <summary>Ops -> one runtime-discovered ZoneNode.</summary>
 public sealed record ApplyNodeMaintenanceReq(string NodeId, bool Enabled);
 
 public sealed record ApplyNodeMaintenanceRes(string NodeId, bool Enabled, IReadOnlyList<string> Zones);
@@ -143,7 +126,6 @@ public sealed record ReportSpotEventMsg(string NodeId, string Kind, string Detai
 /// <summary>ZoneNode -> Ops (channel `zoneworld.report`). Sent every second (§8.1).</summary>
 public sealed record ReportNodeStatusMsg(
     string NodeId,
-    string NodeRid,
     IReadOnlyList<string> Zones,
     int PlayerCount,
     bool Maintenance);
@@ -166,19 +148,11 @@ public sealed record ZoneBorderEvent(
 /// here: this payload is built on the source node, so an ActorRef carried in it
 /// would be stale the moment the transfer lands (§8.3).
 /// </summary>
-/// <param name="FromNodeId">
-/// The node the player is leaving, or null for a brand-new entry into the world. The
-/// target spot is the authority on maintenance (§2.3) and it needs this to tell the two
-/// cases apart: maintenance blocks arrivals from another node and blocks new entries,
-/// but it does not block a player already on the node from moving between its zones.
-/// The framework does not expose the source node to the admission callback, so the
-/// payload carries it.
-/// </param>
 public sealed record EnterZoneMsg(
     string PlayerId,
     int X,
     int Y,
     bool IsBot,
-    string? FromNodeId);
+    bool InitialEntry);
 
-public sealed record EnterZoneRes(string ZoneId, string NodeId, string? Error = null);
+public sealed record EnterZoneRes(string ZoneId, string? Error = null);

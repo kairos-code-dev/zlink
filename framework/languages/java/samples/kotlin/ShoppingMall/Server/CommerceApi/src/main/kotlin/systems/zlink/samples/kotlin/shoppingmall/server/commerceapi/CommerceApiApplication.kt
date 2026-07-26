@@ -52,9 +52,7 @@ class CommerceApiApplication {
             configurer.addClientServerChannel(SampleNames.commerceApiChannel(peer))
                 .enableClient()
 
-            configurer.addClientServerChannel(SampleNames.workflowChannel(SampleNames.WorkflowInstanceA))
-                .enableClient()
-            configurer.addClientServerChannel(SampleNames.workflowChannel(SampleNames.WorkflowInstanceB))
+            configurer.addClientServerChannel(SampleNames.OrderWorkflowChannel)
                 .enableClient()
         }
     }

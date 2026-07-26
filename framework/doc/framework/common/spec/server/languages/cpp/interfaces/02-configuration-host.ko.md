@@ -32,7 +32,8 @@ enum class termination_reason_t {
     deadline_exceeded = 5,
     relocation_failed = 6,
     teardown_failed = 7,
-    runtime_not_ready = 8
+    runtime_not_ready = 8,
+    manual_topology_unsupported = 9
 };
 
 struct termination_result_t {
@@ -47,6 +48,11 @@ struct termination_result_t {
 `wait_cancellation`은 waiter만 중단하며 이미 시작한 shared operation을 취소하지 않는다. `retire()`는
 continuity preflight가 실패하면 admission과 state를 바꾸지 않고 `blocked`를 반환한다. `shutdown()`은
 `blocked`를 반환하지 않는다.
+
+Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
+하나라도 있으면 `retire()`는 `blocked/manual_topology_unsupported`를 반환한다. Automatic RouteMesh는 source의
+Core peer table에서 descriptor와 같은 RID·lifecycle generation이 admitted·ready가 된 뒤에만 `retiring`으로
+전환한다. 이 제한은 `shutdown()`에 적용하지 않는다.
 
 `blocked/deadline_exceeded`는 모든 target의 `Prepared` 완료와 host `Draining` descriptor publication 전에
 deadline이 끝난 결과다. Connection-bound work와 bound-session request가 pre-`Captured` [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal

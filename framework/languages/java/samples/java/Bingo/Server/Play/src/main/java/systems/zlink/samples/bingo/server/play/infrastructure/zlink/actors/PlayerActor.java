@@ -17,7 +17,6 @@ public final class PlayerActor implements ZLinkActor {
         this.displayName = actorId;
     }
 
-    @Override
     public String actorId() {
         return actorId;
     }

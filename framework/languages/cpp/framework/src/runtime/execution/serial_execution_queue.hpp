@@ -37,6 +37,8 @@ class serial_execution_queue_t
     bool try_post_async (std::string name, async_work_t work);
     bool try_post_async_front (std::string name, async_work_t work);
     bool try_post_deferred (std::string name, std::function<void ()> work);
+    result_t<std::shared_ptr<detail::deferred_barrier_t>>
+    reserve_barrier_next (std::string name);
     void post (std::string name, std::function<void ()> work);
     void post_async (std::string name, async_work_t work);
     void run (std::string name, std::function<void ()> work);

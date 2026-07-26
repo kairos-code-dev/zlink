@@ -1,6 +1,4 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 using ZoneWorld.Shared.Contracts;
@@ -72,12 +70,11 @@ public sealed class PlayerSession(
 }
 
 /// <summary>
-/// Finds or creates the player's actor on the node that owns the spawn zone, and binds this
-/// session to it. The Gateway hosts no actors of its own (§4) — it takes part in the spot
-/// mesh only so it can bind to one living on a zone node and relay to it.
+/// Finds the player by its global ActorId and lets the framework select an eligible owner.
+/// The returned ActorRef is used directly; application code never reconstructs an owner route.
 /// </summary>
 public sealed class PlayerSessionBinder(
-    IZLinkRouteClient channels,
+    IZLinkActorManager actors,
     ILogger<PlayerSessionBinder> logger)
 {
     public async ValueTask BindAsync(
@@ -85,14 +82,16 @@ public sealed class PlayerSessionBinder(
         string playerId,
         CancellationToken cancellationToken)
     {
-        var ensured = await channels
-            .RequestToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ActorsChannel, new EnsurePlayerActorReq(playerId))
-            .Async<EnsurePlayerActorRes>(cancellationToken);
-
-        var actorRef = new ActorRef(
-            RoutingId.From(ensured.Actor.NodeRid),
-            ensured.Actor.ActorId,
-            ensured.Actor.Generation);
+        var actorRef = await actors
+            .GetOrCreate(playerId, ZoneWorldNames.PlayerActorType)
+            .InMesh(ZoneWorldNames.MeshName)
+            .Request(ZLinkMessage.Empty)
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
+        };
 
         await context.Actors.BindOrGetAsync(actorRef, cancellationToken);
         logger.LogInformation("session bound to player actor. player={PlayerId}", playerId);

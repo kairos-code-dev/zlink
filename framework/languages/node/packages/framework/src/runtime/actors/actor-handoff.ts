@@ -20,6 +20,7 @@ export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 30_000;
 const MAX_FORWARDING_HOPS = 8;
 const MAX_FORWARDING_MESSAGES = 1024;
 const MAX_FORWARDING_BYTES = 16 * 1024 * 1024;
+const RELOCATION_REPLY_RETENTION_MS = 24 * 60 * 60 * 1_000;
 
 export interface ZLinkActorHandoffTarget {
   readonly routerChannelId: string;
@@ -35,6 +36,7 @@ export interface ZLinkActorHandoffPacket {
   readonly returnResponse: boolean;
   readonly operationId: string;
   readonly forwardingHopCount: number;
+  readonly source?: ZLinkActorHandoffRequestSource;
   readonly remoteBoundSessionTarget?: {
     readonly routerChannelId: string;
     readonly targetNodeRid: string;
@@ -54,6 +56,24 @@ export interface ZLinkActorHandoffPacket {
   };
 }
 
+export interface ZLinkActorHandoffRequestSource {
+  readonly ownerId: string;
+  readonly ownerLeaseGeneration: string;
+  readonly nodeRid: string;
+  readonly nodeGeneration: string;
+  readonly replyRouteId: string;
+}
+
+export type ZLinkActorHandoffTerminalAck =
+  | 'terminalReceived'
+  | 'alreadyTerminal'
+  | 'notAcknowledged';
+
+export interface ZLinkActorHandoffTerminalAcceptance {
+  readonly status: ZLinkActorHandoffTerminalAck;
+  readonly source?: ZLinkActorHandoffRequestSource;
+}
+
 export interface ZLinkActorHandoffResult {
   readonly index: number;
   readonly ok: boolean;
@@ -65,6 +85,18 @@ interface PendingPacket {
   readonly packet: ZLinkActorHandoffPacket;
   readonly resolve?: (value: unknown) => void;
   readonly reject?: (reason: unknown) => void;
+}
+
+interface ReplyRoute {
+  readonly actorId: string;
+  readonly operationId: string;
+  readonly source: ZLinkActorHandoffRequestSource;
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (reason: unknown) => void;
+  deadline?: ReturnType<typeof setTimeout>;
+  targetNodeRid?: string;
+  targetAuthorityOwnerGeneration?: bigint;
+  delivered: boolean;
 }
 
 interface ActiveHandoff {
@@ -99,6 +131,12 @@ export interface ZLinkActorHandoffCoordinatorOptions {
   ) => void;
   readonly isStaleActorRef?: (actorId: string, actorRef?: ActorRef) => boolean;
   readonly isCurrentHandoffTarget?: (actorId: string, spotId: string) => boolean;
+  readonly requestSource?: () => {
+    readonly ownerId: string;
+    readonly ownerLeaseGeneration: bigint;
+    readonly nodeRid: string;
+    readonly nodeGeneration: bigint;
+  } | undefined;
 }
 
 /** Owns the packet-order boundary from moving start through forwarding cutoff. */
@@ -108,6 +146,8 @@ export class ZLinkActorHandoffCoordinator {
   private readonly staleGenerations = new Map<string, Set<bigint>>();
   private readonly forwardWindowMs: number;
   private nextOperationId = 0n;
+  private nextReplyRouteId = 0n;
+  private readonly replyRoutes = new Map<string, ReplyRoute>();
 
   constructor(private readonly options: ZLinkActorHandoffCoordinatorOptions) {
     this.forwardWindowMs = options.forwardWindowMs ?? DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS;
@@ -131,7 +171,12 @@ export class ZLinkActorHandoffCoordinator {
     if (handoff === undefined) return;
     this.active.delete(actorId);
     const error = new Error(`Actor '${actorId}' transfer was canceled.`);
-    for (const pending of handoff.pending) pending.reject?.(error);
+    for (const pending of handoff.pending) {
+      if (pending.packet.source !== undefined) {
+        this.removeReplyRoute(pending.packet.source.replyRouteId);
+      }
+      pending.reject?.(error);
+    }
   }
 
   capture(
@@ -150,7 +195,7 @@ export class ZLinkActorHandoffCoordinator {
         returnResponse,
         remoteBoundSessionTarget,
         fallbackActorRef,
-        this.allocateOperationId(actorId),
+        this.allocateOperationId(),
         forwardedHopCount(fallbackActorRef)
       );
       this.admitBounded(handoff.pending.length, handoff.pendingBytes, packet);
@@ -164,7 +209,24 @@ export class ZLinkActorHandoffCoordinator {
         return Promise.resolve(undefined);
       }
       return new Promise((resolve, reject) => {
-        handoff.pending.push({ packet, resolve, reject });
+        const source = this.captureRequestSource();
+        const requestPacket = { ...packet, source };
+        const route: ReplyRoute = {
+          actorId,
+          operationId: requestPacket.operationId,
+          source,
+          resolve,
+          reject,
+          delivered: false
+        };
+        route.deadline = setTimeout(() => {
+          if (this.replyRoutes.get(source.replyRouteId) !== route) return;
+          this.replyRoutes.delete(source.replyRouteId);
+          if (!route.delivered) route.reject(new Error('Relocation reply route retention expired.'));
+        }, RELOCATION_REPLY_RETENTION_MS);
+        route.deadline.unref();
+        this.replyRoutes.set(source.replyRouteId, route);
+        handoff.pending.push({ packet: requestPacket, resolve, reject });
       });
     }
 
@@ -208,7 +270,7 @@ export class ZLinkActorHandoffCoordinator {
       returnResponse,
       remoteBoundSessionTarget,
       fallbackActorRef,
-      forwardedOperationId(fallbackActorRef) ?? this.allocateOperationId(actorId),
+      forwardedOperationId(fallbackActorRef) ?? this.allocateOperationId(),
       forwardedHopCount(fallbackActorRef)
     );
     this.options.onMarker?.('straggler_forward', actorId);
@@ -245,6 +307,7 @@ export class ZLinkActorHandoffCoordinator {
     const byIndex = new Map(results.map((result) => [result.index, result]));
     for (let i = 0; i <= handoff.snapshotIndex; i++) {
       const pending = handoff.pending[i];
+      if (pending.packet.source !== undefined) continue;
       const result = byIndex.get(pending.packet.index);
       if (result?.ok === false) {
         pending.reject?.(new Error(result.error ?? 'Actor handoff replay failed.'));
@@ -256,8 +319,20 @@ export class ZLinkActorHandoffCoordinator {
     }
 
     const forwarding = this.installForwarding(actorId, handoff.oldGeneration, target, targetActorRef);
+    for (const pending of handoff.pending) {
+      const source = pending.packet.source;
+      if (source === undefined) continue;
+      const route = this.replyRoutes.get(source.replyRouteId);
+      if (route !== undefined) {
+        route.targetNodeRid = String(target.targetNodeRid);
+        route.targetAuthorityOwnerGeneration = target.authorityOwnerGeneration;
+      }
+    }
     for (let i = handoff.snapshotIndex + 1; i < handoff.pending.length; i++) {
       const pending = handoff.pending[i];
+      if (pending.packet.source !== undefined) {
+        this.removeReplyRoute(pending.packet.source.replyRouteId);
+      }
       void this.enqueueForward(forwarding, actorId, pending.packet).then(pending.resolve, pending.reject);
     }
   }
@@ -277,6 +352,83 @@ export class ZLinkActorHandoffCoordinator {
 
   recordStaleFailure(actorId: string): void {
     this.options.onMarker?.('stale_fail_fast', actorId);
+  }
+
+  acceptRelocatedTerminal(
+    actorId: string,
+    packet: ZLinkActorHandoffPacket,
+    result: ZLinkActorHandoffResult,
+    sourceNodeRid: string,
+    targetAuthorityOwnerGeneration: bigint | undefined
+  ): ZLinkActorHandoffTerminalAck {
+    const source = packet.source;
+    if (source === undefined || BigInt(source.replyRouteId) <= 0n) return 'notAcknowledged';
+    return this.acceptRelocatedTerminalRelay(
+      packet.operationId,
+      source.replyRouteId,
+      source,
+      result,
+      sourceNodeRid,
+      targetAuthorityOwnerGeneration,
+      actorId
+    ).status;
+  }
+
+  acceptRelocatedTerminalRelay(
+    operationId: string,
+    replyRouteId: string,
+    source: ZLinkActorHandoffRequestSource | undefined,
+    result: ZLinkActorHandoffResult,
+    sourceNodeRid: string,
+    targetAuthorityOwnerGeneration: bigint | undefined,
+    actorId?: string
+  ): ZLinkActorHandoffTerminalAcceptance {
+    if (BigInt(replyRouteId) <= 0n) return { status: 'notAcknowledged' };
+    const currentSource = this.options.requestSource?.();
+    const route = this.replyRoutes.get(replyRouteId);
+    const exactSource = source ?? route?.source;
+    if (currentSource === undefined || route === undefined || exactSource === undefined
+      || currentSource.ownerId !== exactSource.ownerId
+      || currentSource.ownerLeaseGeneration !== BigInt(exactSource.ownerLeaseGeneration)
+      || currentSource.nodeRid !== exactSource.nodeRid
+      || currentSource.nodeGeneration !== BigInt(exactSource.nodeGeneration)
+      || (actorId !== undefined && route.actorId !== actorId)
+      || route.operationId !== operationId
+      || route.targetNodeRid !== sourceNodeRid
+      || (targetAuthorityOwnerGeneration !== undefined
+        && route.targetAuthorityOwnerGeneration !== targetAuthorityOwnerGeneration)) {
+      return { status: 'notAcknowledged' };
+    }
+    if (route.delivered) return { status: 'alreadyTerminal', source: route.source };
+    route.delivered = true;
+    if (result.ok) route.resolve(result.response);
+    else route.reject(new Error(result.error ?? 'Actor handoff replay failed.'));
+    return { status: 'terminalReceived', source: route.source };
+  }
+
+  private captureRequestSource(): ZLinkActorHandoffRequestSource {
+    const source = this.options.requestSource?.();
+    if (source === undefined || source.ownerId.length === 0
+      || source.ownerLeaseGeneration <= 0n || source.nodeRid.length === 0
+      || source.nodeGeneration <= 0n) {
+      throw new Error('Actor handoff request requires an exact source owner fence.');
+    }
+    this.nextReplyRouteId += 1n;
+    if (this.nextReplyRouteId <= 0n) throw new Error('Actor handoff ReplyRouteId is exhausted.');
+    return {
+      ownerId: source.ownerId,
+      ownerLeaseGeneration: source.ownerLeaseGeneration.toString(),
+      nodeRid: source.nodeRid,
+      nodeGeneration: source.nodeGeneration.toString(),
+      replyRouteId: this.nextReplyRouteId.toString()
+    };
+  }
+
+  private removeReplyRoute(replyRouteId: string): void {
+    const route = this.replyRoutes.get(replyRouteId);
+    if (route === undefined) return;
+    if (route.deadline !== undefined) clearTimeout(route.deadline);
+    this.replyRoutes.delete(replyRouteId);
   }
 
   private reportRequestFrame(actorId: string, packet: ZLinkActorHandoffPacket): void {
@@ -364,8 +516,8 @@ export class ZLinkActorHandoffCoordinator {
     return result;
   }
 
-  private allocateOperationId(actorId: string): string {
-    return `${actorId}:${++this.nextOperationId}`;
+  private allocateOperationId(): string {
+    return `0:${++this.nextOperationId}`;
   }
 
   private admitBounded(messageCount: number, byteCount: number, packet: ZLinkActorHandoffPacket): void {

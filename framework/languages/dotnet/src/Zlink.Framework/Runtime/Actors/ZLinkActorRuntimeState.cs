@@ -757,6 +757,22 @@ internal sealed class ZLinkActorRuntimeState(
         }
     }
 
+    public async ValueTask<T> ExecuteLockedAsync<T>(
+        Func<CancellationToken, ValueTask<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await operation(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async ValueTask<T> ExecuteHandoffTransitionAsync<T>(
         Func<T> transition,
         CancellationToken cancellationToken)

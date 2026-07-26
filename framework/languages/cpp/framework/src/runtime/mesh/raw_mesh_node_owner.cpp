@@ -11,6 +11,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace zlink::framework::runtime::mesh
@@ -507,6 +508,48 @@ bool raw_mesh_node_owner_t::send_session_relocation_routed (
       protocol::encode_session_relocation_routed (routed));
 }
 
+bool raw_mesh_node_owner_t::send_reply_relay (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::reply_relay_t &relay,
+  std::optional<protocol::application_payload_t> application_reply)
+{
+    if (relay.terminal_result != 0 && application_reply) {
+        throw std::invalid_argument (
+          "failed reply relay cannot carry an application payload");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    if (!port) {
+        return false;
+    }
+    std::vector<std::vector<std::uint8_t>> parts;
+    parts.emplace_back (protocol::encode_reply_relay (relay));
+    if (application_reply) {
+        parts.emplace_back (
+          protocol::encode_application_payload (*application_reply));
+    }
+    return port->send (target_routing_id, std::move (parts));
+}
+
+bool raw_mesh_node_owner_t::send_reply_relay_ack (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::reply_relay_ack_t &ack)
+{
+    return send_header_only (
+      target_routing_id, protocol::encode_reply_relay_ack (ack));
+}
+
+bool raw_mesh_node_owner_t::send_relocation_control (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::relocation_control_t &control)
+{
+    return send_header_only (
+      target_routing_id, protocol::encode_relocation_control (control));
+}
+
 bool raw_mesh_node_owner_t::reply (
   const service_mailbox_record_t &request,
   const protocol::application_payload_t &application_payload)
@@ -599,10 +642,13 @@ bool raw_mesh_node_owner_t::send_to_spot (
   const protocol::spot_route_fence_t &target,
   const protocol::application_payload_t &application_payload)
 {
+    const auto sequence = next_operation_sequence ();
+    const auto local = _topology.local_descriptor ();
     return send_with_header (
       target_routing_id,
       protocol::encode_spot_message_header (
-        protocol::command::spotSend, source_spot_id, target),
+        protocol::command::spotSend, source_spot_id, target,
+        {local.lifecycle_generation, sequence}),
       application_payload);
 }
 
@@ -612,14 +658,19 @@ bool raw_mesh_node_owner_t::request_to_spot (
   const protocol::spot_route_fence_t &target,
   const protocol::application_payload_t &application_payload,
   std::chrono::milliseconds timeout,
-  foundation::operation_registry_t::callback_t callback)
+  foundation::operation_registry_t::callback_t callback,
+  std::optional<protocol::wire_operation_id_t> operation)
 {
+    const auto local = _topology.local_descriptor ();
     return request_with_header (
       target_routing_id,
-      [source_spot_id, target] (std::uint64_t correlation) {
+      [source_spot_id, target, local, operation] (std::uint64_t correlation) {
+          const auto exact = operation.value_or (
+            protocol::wire_operation_id_t{
+              local.lifecycle_generation, correlation});
           return protocol::encode_spot_message_header (
             protocol::command::spotRequest, source_spot_id,
-            target, correlation);
+            target, exact, correlation);
       },
       application_payload, timeout, std::move (callback));
 }
@@ -630,10 +681,13 @@ bool raw_mesh_node_owner_t::send_to_actor (
   const protocol::actor_route_fence_t &target,
   const protocol::application_payload_t &application_payload)
 {
+    const auto sequence = next_operation_sequence ();
+    const auto local = _topology.local_descriptor ();
     return send_with_header (
       target_routing_id,
       protocol::encode_actor_message_header (
-        protocol::command::actorSend, source_actor, target),
+        protocol::command::actorSend, source_actor, target,
+        {local.lifecycle_generation, sequence}),
       application_payload);
 }
 
@@ -643,14 +697,19 @@ bool raw_mesh_node_owner_t::request_to_actor (
   const protocol::actor_route_fence_t &target,
   const protocol::application_payload_t &application_payload,
   std::chrono::milliseconds timeout,
-  foundation::operation_registry_t::callback_t callback)
+  foundation::operation_registry_t::callback_t callback,
+  std::optional<protocol::wire_operation_id_t> operation)
 {
+    const auto local = _topology.local_descriptor ();
     return request_with_header (
       target_routing_id,
-      [source_actor, target] (std::uint64_t correlation) {
+      [source_actor, target, local, operation] (std::uint64_t correlation) {
+          const auto exact = operation.value_or (
+            protocol::wire_operation_id_t{
+              local.lifecycle_generation, correlation});
           return protocol::encode_actor_message_header (
             protocol::command::actorRequest, source_actor, target,
-            correlation);
+            exact, correlation);
       },
       application_payload, timeout, std::move (callback));
 }
@@ -1332,6 +1391,135 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             }
             return raw_mesh_pump_result_t::infrastructure;
         }
+        if (header.kind == protocol::command::relocationPrepare
+            || header.kind == protocol::command::relocationReady
+            || header.kind == protocol::command::relocationReserved
+            || header.kind == protocol::command::relocationData
+            || header.kind == protocol::command::relocationAck
+            || header.kind == protocol::command::relocationSeal
+            || header.kind == protocol::command::relocationComplete) {
+            if (received->parts.size () != 1
+                || received->request_sequence) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto control = protocol::decode_relocation_control (
+              received->parts.front ());
+            const auto source_fence = std::visit ([] (const auto &value)
+              -> std::optional<std::pair<std::vector<std::uint8_t>,
+                                         std::uint64_t>> {
+                using record_t = std::decay_t<decltype (value)>;
+                if constexpr (std::is_same_v<record_t,
+                                             protocol::relocation_prepare_t>) {
+                    if (value.initiator_role
+                        == protocol::relocation_role_t::source)
+                        return std::pair{value.source_node_routing_id,
+                                         value.source_node_generation};
+                    if (value.initiator_role
+                        == protocol::relocation_role_t::target)
+                        return std::pair{value.candidate.node_routing_id,
+                                         value.candidate.node_generation};
+                    return std::pair{value.coordinator.node_routing_id,
+                                     value.coordinator.node_generation};
+                }
+                else if constexpr (std::is_same_v<record_t,
+                                                  protocol::relocation_ready_t>
+                                   || std::is_same_v<record_t,
+                                                  protocol::relocation_reserved_t>) {
+                    return std::pair{value.candidate.node_routing_id,
+                                     value.candidate.node_generation};
+                }
+                else if constexpr (std::is_same_v<record_t,
+                                                  protocol::relocation_data_t>
+                                   || std::is_same_v<record_t,
+                                                  protocol::relocation_complete_t>) {
+                    if constexpr (std::is_same_v<record_t,
+                                                 protocol::relocation_data_t>) {
+                        if (value.sender_role
+                            == protocol::relocation_role_t::coordinator)
+                            return std::pair{
+                              value.coordinator.node_routing_id,
+                              value.coordinator.node_generation};
+                    }
+                    return std::pair{value.source.node_routing_id,
+                                     value.source.node_generation};
+                }
+                else {
+                    if (value.sender_role
+                        == protocol::relocation_role_t::coordinator)
+                        return std::pair{value.coordinator.node_routing_id,
+                                         value.coordinator.node_generation};
+                    return std::nullopt;
+                }
+              }, control);
+            if (source_fence
+                && (source_fence->first != received->source_routing_id
+                    || source_fence->first
+                         != admitted->descriptor.node_routing_id
+                    || source_fence->second
+                         != admitted->descriptor.lifecycle_generation)) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto local = _topology.local_descriptor ();
+            if (!_mailbox.try_enqueue (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    std::nullopt, std::nullopt,
+                    admitted->descriptor.lifecycle_generation})) {
+                return raw_mesh_pump_result_t::backpressured;
+            }
+            return raw_mesh_pump_result_t::infrastructure;
+        }
+        if (header.kind == protocol::command::replyRelay
+            || header.kind == protocol::command::replyRelayAck) {
+            if (header.flags != 0 || received->request_sequence) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto local = _topology.local_descriptor ();
+            if (header.kind == protocol::command::replyRelay) {
+                if (received->parts.empty ()
+                    || received->parts.size () > 2) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                const auto relay = protocol::decode_reply_relay (
+                  received->parts.front ());
+                if (relay.terminal_result != 0
+                    && received->parts.size () == 2) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                if (received->parts.size () == 2) {
+                    (void) protocol::decode_application_payload (
+                      received->parts.back ());
+                }
+            } else {
+                if (received->parts.size () != 1) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                const auto ack = protocol::decode_reply_relay_ack (
+                  received->parts.front ());
+                if (ack.request_source.node_routing_id
+                      != received->source_routing_id
+                    || ack.request_source.node_routing_id
+                         != admitted->descriptor.node_routing_id
+                    || ack.request_source.node_generation
+                         != admitted->descriptor.lifecycle_generation) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+            }
+            if (!_mailbox.try_enqueue (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    std::nullopt, std::nullopt,
+                    admitted->descriptor.lifecycle_generation})) {
+                return raw_mesh_pump_result_t::backpressured;
+            }
+            return raw_mesh_pump_result_t::infrastructure;
+        }
         if (header.kind
               == protocol::command::sessionRelocationSeal
             || header.kind
@@ -1479,6 +1667,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         const auto local = _topology.local_descriptor ();
         std::string mailbox_owner;
         std::optional<std::uint64_t> correlation;
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> operation;
         if (header.kind == protocol::command::nodeSend
             || header.kind == protocol::command::nodeRequest) {
             if (header.kind == protocol::command::nodeSend
@@ -1534,6 +1723,8 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 return raw_mesh_pump_result_t::protocol_error;
             }
             correlation = spot.correlation;
+            operation = std::pair{
+              spot.operation.high, spot.operation.low};
             mailbox_owner = spot.target.spot_id;
             mailbox_owner.insert (0, "spot:");
         } else {
@@ -1550,6 +1741,8 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 return raw_mesh_pump_result_t::protocol_error;
             }
             correlation = actor.correlation;
+            operation = std::pair{
+              actor.operation.high, actor.operation.low};
             mailbox_owner = "actor:" + actor.target.actor_id;
         }
         if (!_mailbox.try_enqueue (
@@ -1559,7 +1752,9 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 std::move (received->parts),
                 std::move (received->source_routing_id),
                 received->request_sequence,
-                correlation})) {
+                correlation,
+                admitted->descriptor.lifecycle_generation,
+                operation})) {
             return raw_mesh_pump_result_t::backpressured;
         }
         return raw_mesh_pump_result_t::application;
@@ -1567,6 +1762,19 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
     catch (const protocol::service_wire_error_t &) {
         return raw_mesh_pump_result_t::protocol_error;
     }
+}
+
+std::uint64_t raw_mesh_node_owner_t::next_operation_sequence ()
+{
+    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+    if (!_port)
+        throw std::logic_error ("raw mesh node is not started");
+    const auto sequence = _next_correlation++;
+    if (sequence == 0 || _next_correlation == 0) {
+        _next_correlation = 1;
+        throw std::overflow_error ("raw mesh operation sequence is exhausted");
+    }
+    return sequence;
 }
 
 std::size_t raw_mesh_node_owner_t::drain_monitor_events (

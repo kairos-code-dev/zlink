@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Systems.Zlink;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Shared.Contracts;
 
@@ -54,12 +55,17 @@ public sealed class NodeRegistry
     public string? NodeIdOf(string routingId) =>
         _nodeByRoutingId.TryGetValue(routingId, out var nodeId) ? nodeId : null;
 
+    public RoutingId? RoutingIdOf(string nodeId) =>
+        _routingIdByNode.TryGetValue(nodeId, out var routingId)
+            ? RoutingId.From(routingId)
+            : null;
+
     public async ValueTask ApplyLiveRoutingIdsAsync(
         IReadOnlySet<string> liveRoutingIds,
         CancellationToken cancellationToken)
     {
         _liveRoutingIds = liveRoutingIds;
-        foreach (var nodeId in ZoneTopology.ZoneNodes)
+        foreach (var nodeId in _nodes.Keys)
         {
             _routingIdByNode.TryGetValue(nodeId, out var routingId);
             await ApplyRegistrationAsync(
@@ -71,23 +77,25 @@ public sealed class NodeRegistry
 
     public async ValueTask ApplyReportAsync(
         ReportNodeStatusMsg report,
+        RoutingId sourceNodeRid,
         CancellationToken cancellationToken)
     {
-        if (_nodeByRoutingId.TryGetValue(report.NodeRid, out var previousNodeId)
+        var routingId = sourceNodeRid.ToString();
+        if (_nodeByRoutingId.TryGetValue(routingId, out var previousNodeId)
             && previousNodeId != report.NodeId)
             _routingIdByNode.TryRemove(previousNodeId, out _);
         if (_routingIdByNode.TryGetValue(report.NodeId, out var previousRoutingId)
-            && previousRoutingId != report.NodeRid)
+            && previousRoutingId != routingId)
             _nodeByRoutingId.TryRemove(previousRoutingId, out _);
-        _routingIdByNode[report.NodeId] = report.NodeRid;
-        _nodeByRoutingId[report.NodeRid] = report.NodeId;
+        _routingIdByNode[report.NodeId] = routingId;
+        _nodeByRoutingId[routingId] = report.NodeId;
         await UpdateAsync(report.NodeId, state => state with
         {
             TransportConnected = true,
             View = state.View with
             {
-                Registered = _liveRoutingIds.Contains(report.NodeRid),
-                Connected = _liveRoutingIds.Contains(report.NodeRid),
+                Registered = _liveRoutingIds.Contains(routingId),
+                Connected = _liveRoutingIds.Contains(routingId),
                 Zones = report.Zones,
                 PlayerCount = report.PlayerCount,
                 Maintenance = report.Maintenance

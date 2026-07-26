@@ -5,7 +5,6 @@ import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.kotlin.useCoroutineHandlers
@@ -38,15 +37,7 @@ class CourierSessionApplication {
                 .enableClient()
             val node = options.addRouteMesh(SampleNames.CourierSpotMesh)
             node.listen(SampleTopology.CourierSessionSpotRouterEndpoint)
-                .setRoutingId(RoutingId.from(SampleTopology.CourierSessionSpotNodeRid))
-            node.peerConnections().connect(
-                RoutingId.from(SampleTopology.CourierActorNode1Rid),
-                SampleTopology.CourierActorNode1RouterEndpoint,
-            )
-            node.peerConnections().connect(
-                RoutingId.from(SampleTopology.CourierActorNode2Rid),
-                SampleTopology.CourierActorNode2RouterEndpoint,
-            )
+                .useAllocatedRoutingId(16, "delivery-session")
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(SampleTopology.CourierStreamEndpoint)
                 .enableActorDispatch(SampleNames.CourierSpotMesh)

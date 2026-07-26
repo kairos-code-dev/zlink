@@ -20,7 +20,23 @@ test('every Node e2e runner declares the common local wait policy', () => {
     .map((entry) => path.join(e2eRoot, entry.name, 'run_e2e.sh'))
     .filter((file) => fs.existsSync(file));
 
-  assert.equal(runners.length, 11);
+  assert.deepEqual(
+    runners.map((runner) => path.basename(path.dirname(runner))).sort(),
+    [
+      'AutomaticTurnDispatch',
+      'ObservabilityOps',
+      'PubSub',
+      'RegistrationCodec',
+      'RegistryMessaging',
+      'ResilienceLifecycle',
+      'RuntimeMonitoring',
+      'SpotActorTransfer',
+      'SpotService',
+      'SubmitAdmission',
+      'ToActorMessaging',
+      'DiscoveryRegistryHa'
+    ].sort()
+  );
   for (const runner of runners) {
     const source = fs.readFileSync(runner, 'utf8');
     for (const [name, value] of required) {

@@ -43,16 +43,17 @@ client는 .NET과 Node.js server가 공유하므로 `shared_sample`에 둔다. �
 
 ZoneWorld는 **zone 분할 MMORPG**와 그것을 **운영·관제하는 콘솔**을 한 샘플에 담는다.
 [01-overview](../../../dotnet/guide/01-overview.ko.md) §2가 게임 서버 4갈래 중 ①로
-소개하는 **zoning**(월드를 지리 구역으로 나눠 구역마다 노드가 담당하고, 경계를 넘으면
-인접 노드로 이동)을 보여 주는 첫 샘플이다.
+소개하는 **zoning**(월드를 지리 구역으로 나누고 각 구역을 전역 `SpotId`로 식별하는 방식)을
+보여 주는 첫 샘플이다. 어느 물리 노드가 구역을 담당하는지는 Location Store와 framework가
+결정하며 application 설정에 고정하지 않는다.
 
 ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공지와 특정 노드 점검을 각각 어떤
 공개 표면으로 표현하는지 함께 보여 준다.
 
 이 샘플이 보여 주는 것:
 
-- 플레이어가 **경계를 넘으면 actor가 인접 zone 노드로 relocation** 된다. client 연결은
-  유지된다.
+- 플레이어가 경계를 넘으면 actor가 인접 zone Spot에 join한다. owner가 다르면 framework가
+  relocation하며 client 연결은 유지된다.
 - 경계 근처 상태를 **인접 zone에 Logical Multicast으로 동기화**한다.
 - 관제 콘솔이 **runtime event로 노드 등록·연결 상태를 관찰**한다.
 - 관제 콘솔이 **channel fanout으로 전 노드에 공지**한다. 발행자는 노드 목록을 갖지 않는다.
@@ -89,7 +90,7 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 | `zone-ne` | `X >= 50`, `Y < 50` |
 | `zone-sw` | `X < 50`, `Y >= 50` |
 | `zone-se` | `X >= 50`, `Y >= 50` |
-| 노드 배치 | `zone-node-1` = `zone-nw` + `zone-sw` (서) / `zone-node-2` = `zone-ne` + `zone-se` (동) |
+| zone 배치 | 네 `ZoneId`를 global `SpotId`로 사용한다. owner node는 framework가 선택한다 |
 | 인접 | **변을 공유하는 zone만 인접**이다. 대각선(`zone-nw`↔`zone-se`)은 인접이 아니다 |
 | 경계 밴드 | 경계에서 **10 이내**. 이 안의 플레이어는 그 경계를 공유하는 인접 zone에도 보인다 |
 | tick | **100ms**. zone spot 생성 시 `Tick = 0`이고 tick마다 1씩 증가한다 |
@@ -130,26 +131,24 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 2. `TooFar` — 각 축 이동 거리가 5 초과
 3. `DiagonalCrossing` — **X 경계와 Y 경계를 한 번에 통과**한다(예: `(49,49) → (50,50)`).
    비인접 zone으로 직행하게 되므로 거부한다. 인접 zone으로만 이동할 수 있다.
-4. `ZoneMaintenance` — **다른 노드로 진입**하는 이동인데 그 노드가 점검 모드다(§2.3)
+4. `ZoneMaintenance` — target zone의 현재 owner가 join admission을 거부한다(§2.3)
 
 거부되면 좌표를 바꾸지 않고 `MoveRejectedNotify`로 현재 좌표를 반환한다.
 
 ### 2.3 점검 모드가 이동에 적용되는 범위
 
-점검 모드는 **그 노드로 새로 들어오는 것만** 막는다. 이미 그 노드에 있는 플레이어의
-이동은 막지 않는다.
+점검 모드는 operator가 runtime에서 관측한 현재 NodeRid에 node-direct 요청을 보낼 때 적용한다.
+Application은 zone과 node의 대응 관계를 저장하지 않는다. Target zone의 owner가 점검 중이면
+그 Spot의 join admission이 이동을 거부한다.
 
 | 이동 | 점검 모드인 노드로 | 판정 |
 |---|---|---|
 | 같은 zone 안 이동 | (같은 노드) | **허용** |
-| 노드 내부 zone 이동 | (같은 노드) | **허용** |
-| 다른 노드로 진입 | 목표 노드가 점검 중 | **거부** (`ZoneMaintenance`) |
-| 점검 중인 노드에서 다른 노드로 이탈 | 목표 노드가 정상 | **허용** |
-| `JoinWorldReq` 신규 입장 | 입장 zone의 노드가 점검 중 | **거부** |
+| 다른 zone으로 join | target owner가 점검 중 | **거부** (`ZoneMaintenance`) |
+| `JoinWorldReq` 신규 입장 | target owner가 점검 중 | **거부** |
 
-**다른 노드의 점검 상태를 어떻게 아는가.** 이동을 판정하는 것은 **출발 노드**이므로, 그
-노드가 목표 노드의 점검 상태를 알아야 한다. 매 이동마다 store를 조회하면 비용이 크므로
-**각 `ZoneNode`가 전 노드의 점검 상태를 캐시로 보관**한다.
+Source는 target의 NodeRid를 추론하거나 다른 노드의 점검 상태를 미리 판정하지 않는다.
+Location Store가 global `SpotId`의 현재 owner를 찾고 target Spot이 자기 상태로 admission을 판정한다.
 
 | 시점 | 경로 |
 |---|---|
@@ -192,16 +191,15 @@ zone spot 생성 시 `Tick = 0`이다. timer callback은 다음 순서로 동작
 3. 인접 zone별 `ZoneBorderEvent`를 publish한다(§4.1의 경계 밴드 조건).
 4. 만료된 인접 zone snapshot을 제거한다(§2.4).
 
-### 2.6 두 종류의 zone 이동
+### 2.6 zone 이동과 relocation
 
-노드 배치가 두 경우를 만든다.
+| 이동 | Actor relocation |
+|------|------------------|
+| target Spot의 owner가 현재 owner와 같음 | 없음 — 같은 node에서 membership만 바뀐다 |
+| target Spot의 owner가 현재 owner와 다름 | 있음 — target owner에서 actor가 materialize된다 |
 
-| 이동 | 예 | Actor relocation |
-|------|-----|----------------|
-| **노드 내부** | `zone-nw` → `zone-sw` (Y 경계) | **없음** — 같은 노드에서 spot만 바뀐다 |
-| **노드 간** | `zone-nw` → `zone-ne` (X 경계) | **있음** — actor가 `zone-node-2`에서 materialize된다 |
-
-이 대비가 Actor relocation의 필요성을 보인다. 둘 다 client 연결은 유지된다.
+Application은 어느 경우인지 선택하거나 `NodeRid`로 판정하지 않는다. 두 경우 모두 같은 `JoinSpot(ZoneId)`
+호출을 사용하고 client 연결은 유지된다.
 
 Player Actor factory에는 `Snapshot<PlayerActorRelocationAdapter>()` policy를 등록한다. Player Actor는
 좌표·zone의 권위이므로(§2.1) `Recreate`로 application state를 생략하면 relocation 뒤 좌표를 유지할 수 없다.
@@ -265,20 +263,22 @@ ZoneWorld의 Channel 역할과 물리 연결은 [공통 topology 기준](../READ
 | 서버 | 수 | 책임 |
 |------|:--:|------|
 | `Gateway` | 1 | 브라우저 STREAM(WS) 종단, 인증, session actor bind, actor relay, client push |
-| `ZoneNode` | 2 | **entry spot**, zone spot 호스팅(노드당 2개), player actor 호스팅, 경계 동기화, 노드 점검 정책 |
+| `ZoneNode` | 2 | **entry spot**, zone spot·player actor의 eligible owner, 경계 동기화, 노드 점검 정책 |
 | `Ops` | 1 | 관제 콘솔 STREAM(WS) 종단, runtime event 수집, 공지 fanout 발행, 노드 지정 호출 |
 | location store | 1 | 공유 dependency(Redis). peer 자동 연결 |
 | maintenance store | 1 | 공유 dependency(같은 Redis). 점검 모드 **desired state** 보관(§8.4) |
 
-`ZoneNode`는 같은 실행 파일을 `NodeId`와 담당 zone 목록만 바꿔 2개 실행한다.
+`ZoneNode`는 같은 실행 파일과 같은 object type 등록으로 2개 실행한다. 두 process가 네 global
+`ZoneId`에 `GetOrCreate`를 호출해도 Location Store claim에서 한 owner만 확정된다.
 
-| 인스턴스 | `NodeId` | 담당 zone | Node direct target |
-|---|---|---|---|
-| 1 | `zone-node-1` | `zone-nw`, `zone-sw` | status report에서 관측한 현재 `NodeRid` |
-| 2 | `zone-node-2` | `zone-ne`, `zone-se` | status report에서 관측한 현재 `NodeRid` |
+| 인스턴스 | object capability | Node direct target |
+|---|---|---|
+| ZoneNode A | 네 zone type과 player actor type | runtime에서 관측한 현재 `NodeRid` |
+| ZoneNode B | 네 zone type과 player actor type | runtime에서 관측한 현재 `NodeRid` |
 
-**`NodeId`와 `ZoneId`는 다른 식별자다.** `NodeId`는 프로세스 식별자이고 `ZoneId`는 zone
-spot의 `spotRid`다. 노드 점검 정책은 그 노드의 **모든 zone**에 적용되므로 `NodeId` 단위다.
+**`NodeId`와 `ZoneId`는 다른 식별자다.** `NodeId`는 관제 화면이 현재 process를 구분하는
+application label이고 `ZoneId`는 Location Store 전체에서 유일한 global `SpotId`다. `NodeId`로
+zone owner를 계산하지 않는다.
 
 ### 3.1 entry spot은 `ZoneNode`가 소유한다
 
@@ -298,8 +298,8 @@ graph TD
     GW["Gateway<br/>STREAM(WS) · session actor bind · relay"]
     OPS["Ops<br/>STREAM(WS) · runtime event<br/>fanout publisher · Node direct client"]
     subgraph ZN["zone nodes"]
-      Z1["zone-node-1<br/>entry spot · zone-nw spot · zone-sw spot"]
-      Z2["zone-node-2<br/>entry spot · zone-ne spot · zone-se spot"]
+      Z1["ZoneNode A<br/>object server"]
+      Z2["ZoneNode B<br/>object server"]
     end
     LS[("location store + maintenance store (Redis)")]
 
@@ -308,7 +308,7 @@ graph TD
     GW -->|"actor relay"| Z1
     GW -->|"actor relay"| Z2
     Z1 <-->|"border sync · Logical Multicast"| Z2
-    Z1 -->|"actor relocation (X boundary)"| Z2
+    Z1 <-->|"framework relocation when owners differ"| Z2
     OPS -->|"announce · channel fanout"| ZN
     OPS -->|"Node direct: observed RID for node 1"| Z1
     OPS -->|"Node direct: observed RID for node 2"| Z2
@@ -347,26 +347,23 @@ Gateway도 같은 MeshNode에 고정 RID를 설정하지 않는다. 별도 `zone
 
 ```csharp
 var gatewayMesh = options.AddRouteMesh(ZoneWorldNames.Mesh)
-    // Gateway transport identity도 설정 파일이 아니라 location store에서 받는다.
-    .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
-    .SetRoutingIdAllocationGroup("zoneworld.gateway")
-    .Listen(); // automatic discovery가 실제 bound port를 descriptor에 기록한다.
+    .SetRoutingIdPrefix("gw0") // transport identity는 runtime마다 새로 발급한다.
+    .Listen();
 
-gatewayMesh.Channel(ZoneWorldNames.ActorsChannel)
-    .Client(); // actor 생성을 담당할 ZoneNode를 호출하고 membership은 게시하지 않는다.
+gatewayMesh.Objects().Client(); // global ActorId·SpotId operation을 사용한다.
 ```
 
 필수 구성은 다음과 같다. 언어별 API 표현은 달라도 같은 allocation group과 member 구성을 사용한다.
 
 ```csharp
-const string zoneNodeAllocationGroup = "zoneworld.zone-node";
-
 var mesh = options.AddRouteMesh(ZoneWorldNames.Mesh)
-    // 두 ZoneNode 중 하나의 slot을 받고 Entry Spot도 같은 RID를 사용한다.
-    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
-    .SetRoutingIdAllocationGroup(zoneNodeAllocationGroup)
-    .Listen() // runner나 orchestrator가 RouteMesh port를 미리 할당하지 않는다.
-    .AddEntrySpot<ZoneEntrySpot>();
+    .SetRoutingIdPrefix("zn") // 특정 NodeId나 ZoneId를 prefix와 연결하지 않는다.
+    .Listen();
+
+mesh.Objects().Server()
+    .AddEntrySpot<ZoneEntrySpot>()
+    .AddSpotFactory<ZoneSpot>(ZoneWorldNames.ZoneSpotType, null,
+        ZLinkRelocationPolicy<ZoneSpot>.Disabled);
 
 mesh.Channel(ZoneWorldNames.ZoneChannel)
     .Server(); // zone Logical Multicast의 처리 대상 membership이다.
@@ -382,15 +379,13 @@ ZoneNode는 세 member에서 `SetRoutingId(node.NodeRid)`를 호출하지 않고
 margin 5초와 renew timeout 3초의 기본값을 사용한다. crash 검증 timeout도 TTL 30초와 location
 reconcile 시간을 포함하도록 조정하고, 고정된 짧은 대기로 통과시키지 않는다.
 
-#### `NodeId`, 담당 zone과 자동 slot의 관계
+#### `NodeId`, global ZoneId와 자동 transport identity의 관계
 
-`NodeId`와 자동 slot은 같은 값이 아니다. `NodeId`는 점검 정책과 담당 zone을 정하고 관제 화면이
-사용하는 application topology 식별자다. 자동 slot은 location runtime이 socket과 MeshNode에 적용하는
-transport identity다.
+`NodeId`와 transport identity는 같은 값이 아니다. `NodeId`는 관제 화면이 process를 구분하는
+application label이다. Zone owner는 global `ZoneId`와 Location Store authority가 정한다.
 
-따라서 `slot 1`을 항상 `zone-node-1`이나 서쪽 zone으로 해석하지 않는다. 두 process의 시작 순서가
-바뀌면 `zone-node-2`가 `zn1`을 받을 수 있다. 특정 NodeId가 특정 slot을 받도록 예약하는 affinity는
-사용하지 않는다. 담당 zone은 기존 `ZoneTopology`가 결정하고 자동 slot은 그 결정을 바꾸지 않는다.
+따라서 어떤 RID prefix나 allocation slot도 특정 `ZoneId`의 owner로 해석하지 않는다. 특정 NodeId가
+특정 slot이나 zone을 받도록 예약하는 affinity도 사용하지 않는다.
 
 framework가 ready 상태에 도달한 뒤 `ZoneNodeBootstrap`과 상태 보고기는 할당 결과 provider에서
 `zoneworld.zone-node` 결과를 읽는다. provider는 slot과 member별 RID를 반환하며 선택·반환·갱신 API를
@@ -410,9 +405,9 @@ logger.LogInformation(
     nodeRid);
 ```
 
-`ReportNodeStatusMsg`는 실제 `NodeRid`를 포함한다. Ops는 status report의
-`NodeId ↔ NodeRid` 관계를 현재 연결 정보와 함께 보관한다. `ZoneTopology.RidOf(...)`와
-`NodeOfRid(...)`처럼 시작 순서를 고정한 정적 RID 변환에는 의존하지 않는다.
+`ReportNodeStatusMsg`는 `NodeRid`를 application DTO에 싣지 않는다. Ops의 route handler가 framework
+context의 `SourceNodeRid`를 현재 `NodeId` report와 연결한다. 이 값은 즉시 node-direct 운영 요청에만
+사용하며 object owner나 다음 process의 identity로 저장하지 않는다.
 
 #### 배포와 교체
 
@@ -458,7 +453,6 @@ member 구성이 다른 probe를 같은 group에 넣으면 configuration mismatc
 | `zoneworld.report` | ChannelName | `ZoneNode` → ready `Ops` member. local Spot 이벤트 보고 |
 | `WorldAnnounceEvent` | fanout packet (`zoneworld.broadcast`) | 공지 발행 |
 | `NodeMaintenanceChangedEvent` | fanout packet (`zoneworld.broadcast`) | 점검 상태 전파(§2.3) |
-| `zoneworld.actors` | ChannelName | `Gateway` → 입장 zone을 호스팅하는 ready member. player actor를 보장하고 `ActorRefWire`를 받는다. |
 | `zone.border.<from>.<to>` | Logical Multicast topic (`zoneworld.zones`) | zone spot이 **인접 zone별로 따로** publish |
 
 ### 4.1 경계 동기화 topic
@@ -551,7 +545,6 @@ Server/ZoneNode/
         PlayerActorRelocationAdapter   Capture and restore coordinates and zone state
         ZoneNodeBootstrap            Restore maintenance and create zones and bots
       Handlers/
-        EnsurePlayerActorHandler
         WorldAnnounceSubscriber
         BroadcastProbeSubscriber     Probe for nodes without hosted zones
         NodeMaintenanceChangedSubscriber
@@ -618,10 +611,10 @@ Server/Ops/
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
 | `JoinWorldReq` | Client -> Gateway stream | `PlayerId` | 월드 입장을 요청한다. |
-| `JoinWorldRes` | Gateway stream -> Client | `PlayerId`, `ZoneId`, `NodeId`, `X`, `Y` | 입장한 zone, 그 zone을 호스팅하는 노드, 시작 좌표를 반환한다. |
+| `JoinWorldRes` | Gateway stream -> Client | `PlayerId`, `ZoneId`, `X`, `Y` | 입장한 zone과 시작 좌표를 반환한다. 물리 owner는 application 응답에 노출하지 않는다. |
 | `MoveMsg` | Client -> Gateway stream -> player actor | `X`, `Y` | 목표 좌표로 이동을 요청한다(응답 없는 one-way send). |
 | `ZoneStateNotify` | zone spot -> actor -> bound session -> Client | `ZoneId`, `Tick`, `Players` | tick마다 현재 zone과 경계 밴드의 인접 zone 플레이어를 push한다. `Players`는 `PlayerId`, `X`, `Y`, `ZoneId`, `IsBot`을 가지며 §2.4 규칙으로 병합·정렬한다. 봇도 목록에 포함된다(§2.7). **bound session이 없는 actor(봇)에게는 push하지 않는다.** |
-| `ZoneChangedNotify` | player actor -> bound session -> Client | `PlayerId`, `ZoneId`, `NodeId`, `Relocated` | zone이 바뀌었음을 push한다. `Relocated`가 `true`면 actor가 다른 노드로 이동했다. |
+| `ZoneChangedNotify` | player actor -> bound session -> Client | `PlayerId`, `ZoneId` | 논리 zone이 바뀌었음을 push한다. 물리 relocation 여부는 framework 내부 동작이다. |
 | `WorldAnnounceNotify` | zone spot -> actor -> bound session -> Client | `AnnouncementId`, `Text` | 관제 공지를 push한다. client는 `AnnouncementId`로 중복을 제거한다(§8.2). |
 | `MoveRejectedNotify` | player actor -> bound session -> Client | `Reason`, `X`, `Y` | 이동 거부와 현재 좌표를 push한다. `Reason`은 `OutOfRange`, `TooFar`, `DiagonalCrossing`, `ZoneMaintenance` 중 하나다(§2.2). |
 
@@ -645,13 +638,11 @@ Server/Ops/
 | Message | 방향 | 필드 | 의미 |
 |---------|------|------|------|
 | `WorldAnnounceEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`) | `AnnouncementId`, `Text` | 노드 목록이나 transport topic 없이 typed event를 전 노드에 발행한다. |
-| `NodeMaintenanceChangedEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`) | `NodeId`, `Enabled` | 점검 상태 변경을 전 노드에 전파한다. 각 노드가 packet name으로 handler를 선택하고 캐시를 갱신해 cross-node 이동을 판정한다(§2.3). |
+| `NodeMaintenanceChangedEvent` | `Ops` -> 전 `ZoneNode` (**fanout** `zoneworld.broadcast`) | `NodeId`, `Enabled` | 점검 상태 변경을 전 node의 운영 cache에 반영한다. Object owner를 계산하는 입력으로 사용하지 않는다. |
 | `DeliverAnnounceMsg` | fanout subscriber -> **자기 node-local** zone Spot | `AnnouncementId`, `Text` | 공지를 받은 node가 local Spot handle로 자기가 호스팅하는 `ZoneId`들에만 send한다(§8.2). |
 | `BotTickMsg` | zone spot -> 봇 actor (actor send) | (없음) | 봇을 구동한다. 봇 actor가 순찰 규칙(§2.7)으로 다음 좌표를 계산해 이동 경로(§2.1)를 탄다. |
-| `EnsurePlayerActorReq` | `Gateway` -> 입장 zone 호스팅 노드 (channel `zoneworld.actors`) | `PlayerId` | player actor를 보장한다. 받는 노드가 자기 점검 상태를 **권위로** 판정한다(§2.3). |
-| `EnsurePlayerActorRes` | 그 `ZoneNode` -> `Gateway` | `PlayerId`, `Actor` | `ActorRefWire`를 반환한다. `Gateway`는 이 `ActorRef`로 session을 bind하고, 입장 좌표·zone은 relay된 `JoinWorldReq`의 응답(`JoinWorldRes`)으로 client에 간다. |
-| `EnterWorldReq` | ensure handler -> 갓 만들어진 player actor (actor request) | `X`, `Y`, `IsBot`, `DirX`, `DirY` | actor가 자기 zone spot에 join해 월드에 들어간다. **join이 유일한 zone 진입 경로**이므로(§2.6) 이것은 send가 아니라 request다 — 부르는 쪽이 join 완료를 기다려야 session을 bind할 수 있다. |
-| `EnterWorldRes` | player actor -> ensure handler | `ZoneId`, `NodeId`, `X`, `Y`, `Error` | 어디에 들어갔는지 반환한다. 점검 중이면 `Error`가 채워진다. |
+| `EnterWorldReq` | player actor의 Entry Spot handler | `X`, `Y`, `IsBot`, `DirX`, `DirY` | actor가 global `ZoneId`의 Spot에 join해 월드에 들어간다. Gateway는 global `PlayerId`로 `GetOrCreate`하고 framework가 반환한 `ActorRef`를 그대로 session에 bind한다. |
+| `EnterWorldRes` | player actor -> caller | `ZoneId`, `X`, `Y`, `Error` | 입장한 논리 zone을 반환한다. 물리 owner는 반환하지 않는다. |
 | `ApplyNodeMaintenanceReq` | `Ops` -> 특정 `ZoneNode` (**Node direct**, `zoneworld.mesh` + 관측한 target RID) | `NodeId`, `Enabled` | 노드 전체의 점검 모드를 전환한다. |
 | `ApplyNodeMaintenanceRes` | 특정 `ZoneNode` -> `Ops` | `NodeId`, `Enabled`, `Zones` | 전환 결과와 그 노드의 zone 목록을 반환한다. |
 | `GetNodeDiagnosticsReq` | `Ops` -> 특정 `ZoneNode` (**Node direct**) | `NodeId` | 노드 진단 정보를 요청한다. |
@@ -659,16 +650,11 @@ Server/Ops/
 | `ReportSpotEventMsg` | `ZoneNode` -> `Ops` (channel `zoneworld.report`) | `NodeId`, `Kind`, `Detail`, `OccurredAt` | **local** spot runtime event를 보고한다(§8.1). 이벤트 발생 시에만 보낸다. |
 | `ReportNodeStatusMsg` | `ZoneNode` -> `Ops` (channel `zoneworld.report`) | `NodeId`, `Zones`, `PlayerCount`, `Maintenance` | 노드 상태를 **1초마다** 보고한다. `Ops`는 이 값으로 `PlayerCount`를 채운다(§8.1). `PlayerCount`는 그 노드의 모든 zone spot이 보관 중인 플레이어 수의 합이다. |
 | `ZoneBorderEvent` | zone spot -> 인접 zone spot (**Logical Multicast**, topic `zone.border.<from>.<to>`) | `FromZoneId`, `ToZoneId`, `Tick`, `Players` | 그 경계의 밴드 안 플레이어 목록을 publish한다. 유실을 허용하며 수신측은 §2.4의 교체·만료 규칙을 따른다. |
-| `EnterZoneMsg` | player actor -> zone spot (**`JoinSpot` admission payload**) | `PlayerId`, `X`, `Y`, `IsBot`, `FromNodeId` | zone spot에 입장한다. zone 이동은 **반드시 join**이다 — join이 relocation을 일으키는 유일한 메커니즘이므로(§2.6) 이동을 평범한 send로 만들 수 없다. `ActorRef`는 싣지 않는다(§8.3). |
-| `EnterZoneRes` | zone spot -> player actor | `ZoneId`, `NodeId`, `Error` | admission 결과. 목표 노드가 점검 중이면 거부하고 `Error`를 채운다(§2.3). |
+| `EnterZoneMsg` | player actor -> zone spot (**`JoinSpot` admission payload**) | `PlayerId`, `X`, `Y`, `IsBot`, `InitialEntry` | global `ZoneId`의 Spot에 입장한다. source·target NodeRid와 `ActorRef`는 싣지 않는다. |
+| `EnterZoneRes` | zone spot -> player actor | `ZoneId`, `Error` | admission 결과. target owner가 점검 중이면 거부하고 `Error`를 채운다(§2.3). |
 | `UpdatePositionMsg` | player actor -> 현재 zone spot (**Spot direct**) | `PlayerId`, `X`, `Y`, `IsBot` | zone이 바뀌지 않은 이동에서 Spot 소유 좌표 사본을 갱신한다. actor와 Spot의 mutable 상태를 같은 handler에 노출하지 않는다. |
 | `DeliverZoneStateMsg` | zone spot -> player actor (**Actor direct**) | `ZoneId`, `Tick`, `Players` | actor가 자기 bound session으로 `ZoneStateNotify`를 push하도록 요청한다. |
 | `DeliverWorldAnnounceMsg` | zone spot -> player actor (**Actor direct**) | `AnnouncementId`, `Text` | actor가 자기 bound session으로 `WorldAnnounceNotify`를 push하도록 요청한다. |
-
-**`FromNodeId`를 왜 싣는가.** §2.3의 "노드 내부 이동은 허용, 진입만 차단"을 판정하는 것은 목표
-spot의 admission 콜백인데, framework는 **source node를 admission 콜백에 넘기지 않는다**
-([spot-actor spec §3](../../spec/23-spot-actor.ko.md)). 그래서 payload가 그것을 나른다. 새 입장이면
-`null`이다.
 
 **lifecycle callback으로 처리하는 동작.** zone 퇴장은 별도 application message를 정의하지 않는다.
 
@@ -676,24 +662,12 @@ spot의 admission 콜백인데, framework는 **source node를 admission 콜백�
 |---|---|
 | `LeaveZoneMsg` | zone 이동이 `JoinSpot`이므로 이전 spot의 퇴장은 framework의 `OnLeaveActor`가 알려 준다. 앱이 다시 알릴 필요가 없다. |
 
-### 7.4 `ActorRefWire`
+### 7.4 Actor identity와 session bind
 
-`ActorRef`는 언어마다 런타임 객체 표현이 다르므로(C++의 `actor_ref_t`는 내부 상태를 가진
-런타임 타입이다) **wire에는 언어 중립 DTO로 싣는다.** 기존 샘플(Bingo)이 `ActorRefWire`를 쓰는 방식과 같다.
-
-| 필드 | 의미 |
-|---|---|
-| `NodeRid` | actor를 호스팅하는 노드의 routing id를 **문자열로 인코딩한 것** |
-| `ActorId` | actor 식별자 |
-| `Generation` | actor generation |
-
-**`NodeRid`는 `RoutingId.ToString()`으로 싣고 `RoutingId.From(string)`으로 되돌린다** — Bingo와 같은
-방식이다. 이 샘플의 노드 rid는 인쇄 가능한 문자열(`zn1`·`zn2`)이라 이 왕복이 성립한다. `ToHex()`가
-아니다. 노드 RID를 직접 문자열로 지정하면 이 샘플의 자동 할당 계약과 어긋나기 때문이다.
-
-수신측(`Gateway`)은 이 세 값으로 자기 언어의 public `ActorRef`를 복원하고, 원격 player actor에
-session을 bind한다(§7.1 `JoinWorldRes` 흐름). zone spot은 wire DTO를 소비하지 않고 lifecycle callback이
-전달한 immutable membership snapshot의 `ActorRef`를 보관한다(§8.3).
+Gateway는 `PlayerId`를 global `ActorId`로 사용해 `GetOrCreate`를 호출한다. Framework가 같은 operation에서
+반환한 exact `ActorRef`를 session bind에 바로 사용한다. `ActorRef`나 `NodeRid`를 application DTO로
+직렬화하거나 다음 요청을 위해 저장하지 않는다. 이후 Actor·Spot 메시징은 global `ActorId`·`SpotId`로
+Location Store의 current owner를 찾는다.
 
 ## 8. 관제
 
@@ -783,7 +757,7 @@ sequenceDiagram
     O->>N2: Node direct ApplyNodeMaintenanceReq (observed target RID)
     Note over N1: zone-node-1 is not affected
     N2->>N2: node policy = maintenance
-    N2-->>O: ApplyNodeMaintenanceRes(zone-node-2, true, [zone-ne, zone-se])
+    N2-->>O: ApplyNodeMaintenanceRes(observed-node, true, current-local-zones)
     O-->>C: SetMaintenanceRes
 ```
 
@@ -959,8 +933,7 @@ client/src/
 | 인접 zone 플레이어 | 같은 zone 플레이어와 **다른 표시**로 구분한다 | 경계 동기화(`ZW-B1`) |
 | **봇** | `IsBot=true`인 플레이어를 사람과 **다른 표시**로 구분한다. 8마리가 상시 이동한다 | 봇 actor(`ZW-F1`) |
 | 이동 | 방향키로 `MoveMsg`를 보낸다. **좌표를 client가 먼저 바꾸지 않는다** | 단방향 흐름(§9.1) |
-| zone·node 표시 | 현재 `ZoneId`와 `NodeId`를 항상 표시하고 `ZoneChangedNotify`로 갱신한다 | — |
-| relocation 표시 | `Relocated=true`면 노드 이동을 시각적으로 알린다 | actor relocation(`ZW-B2`) |
+| zone 표시 | 현재 `ZoneId`를 항상 표시하고 `ZoneChangedNotify`로 갱신한다 | — |
 | 연결 상태 | WebSocket 연결 상태를 표시한다. **zone 이동 중에도 끊기지 않음**을 확인할 수 있어야 한다 | actor relocation(`ZW-B2`) |
 | 공지 | `WorldAnnounceNotify`를 표시한다. **같은 `AnnouncementId`는 무시한다** | fanout(`ZW-D1`) |
 | 거부 | `MoveRejectedNotify`의 `Reason`을 표시한다 | 점검 모드(`ZW-E1`) |
@@ -972,15 +945,15 @@ client/src/
 | ZoneWorld Ops Console                                        |
 +--------------------------------------------------------------+
 | node          reg  conn  maint  zones                players |
-| zone-node-1    o    o     -     zone-nw, zone-sw         3   |
+| node-a         o    o     -     zone-ne                   3   |
 |                                 [maint on] [diagnostics]     |
-| zone-node-2    o    o     ON    zone-ne, zone-se         1   |
+| node-b         o    o     ON    zone-nw,zone-sw,zone-se   1   |
 |                                 [maint off] [diagnostics]    |
 +--------------------------------------------------------------+
 | announce: [__________________________]  [publish to all]     |
 +--------------------------------------------------------------+
 | alerts                                                       |
-| 09:31  zone-node-1  TimerHandlerFailed  zone-nw tick handler |
+| 09:31  node-a       TimerHandlerFailed  zone-ne tick handler |
 +--------------------------------------------------------------+
 ```
 
@@ -1001,31 +974,31 @@ client/src/
 
 | ID | 시나리오 | 성공 기준 |
 |----|----------|-----------|
-| `ZW-A1` | 입장·이동 | `JoinWorldRes(zone-nw, zone-node-1, 25, 25)` 수신 → `MoveMsg` → `ZoneStateNotify`로 좌표 갱신 |
+| `ZW-A1` | 입장·이동 | `JoinWorldRes(zone-nw, 25, 25)` 수신 → `MoveMsg` → `ZoneStateNotify`로 좌표 갱신 |
 | `ZW-A2` | 이동 검증 순서 | 범위 밖 + 5칸 초과를 동시에 위반 → `Reason=OutOfRange`(§2.2 순서) |
 | `ZW-A3` | 같은 zone 플레이어 | 두 client가 같은 zone에 있으면 서로의 `PlayerId`가 `Players`에 있다. 정렬은 `PlayerId` UTF-8 byte 오름차순 |
 | `ZW-A4` | **대각선 경계 거부** | `(49,49) → (50,50)` → `Reason=DiagonalCrossing`, 좌표 불변 |
 | `ZW-A5` | **같은 zone 좌표 갱신** | zone이 바뀌지 않는 이동 → zone spot의 좌표 사본이 갱신되고 다음 `ZoneStateNotify`에 반영된다 |
 | `ZW-B1` | **경계 동기화** | 경계 밴드의 플레이어가 **그 경계를 공유하는 인접 zone**에만 나타난다. **대각선 zone에는 나타나지 않는다** |
 | `ZW-B4` | **경계 snapshot 만료** | 인접 zone의 노드를 종료 → 3 tick 뒤 그 zone 플레이어가 `Players`에서 제거된다(§2.4) |
-| `ZW-B2` | **노드 간 relocation** | X 경계 통과 → `ZoneChangedNotify(Relocated=true, NodeId=zone-node-2)` + **WebSocket 연결 유지** + 이후 이동 동작 |
-| `ZW-B3` | **노드 내부 zone 이동** | Y 경계 통과 → `ZoneChangedNotify(Relocated=false, NodeId 불변)` |
+| `ZW-B2` | **X 경계 zone 이동** | X 경계 통과 → `ZoneChangedNotify(ZoneId=zone-ne)` + **WebSocket 연결 유지** + 이후 이동 동작. 특정 owner NodeRid는 성공 조건이 아니다 |
+| `ZW-B3` | **Y 경계 zone 이동** | Y 경계 통과 → `ZoneChangedNotify(ZoneId=zone-sw)`. 특정 owner NodeRid는 성공 조건이 아니다 |
 | `ZW-C1` | 노드 관찰 | 관제 콘솔이 두 노드를 `Registered=true`, `Connected=true`로 표시. **두 플래그를 모두 확인한다** — 각각 location event와 socket event라는 다른 출처에서 오므로, 하나만 보면 다른 하나의 배선이 동작하지 않아도 통과한다 |
-| `ZW-C2` | **노드 종료** | `zone-node-2` 종료 → `NodeStatusNotify(Registered=false)`(location event). **먼저 `Registered=true`를 확인한 뒤** 전이를 본다 — `false`는 콘솔이 그 노드를 모를 때의 값이기도 해서, 그냥 기다리면 아무 일도 하지 않고 통과한다 |
+| `ZW-C2` | **노드 종료** | 현재 snapshot에서 `Registered=true`인 node를 선택하고 runner가 그 process를 종료 → 같은 `NodeId`의 `Registered=false` 전이를 확인한다 |
 | `ZW-C3` | **연결 단절** | `Ops`↔노드 연결 단절 → `NodeStatusNotify(Connected=false)`(socket event). `ZW-C2`와 같은 이유로 **먼저 `Connected=true`를 확인한 뒤** 전이를 본다 |
 | `ZW-C4` | **spot 이벤트 보고** | zone spot tick handler에 예외 주입 → `NodeAlertNotify(TimerHandlerFailed)` |
 | `ZW-D1` | **전 노드 공지** | 공지 발행 → **두 노드의 fanout subscriber가 모두 수신**하고, 각 zone spot이 `DeliverAnnounceMsg`를 받는다. client가 받은 `AnnouncementId`에 **중복이 없다**. **`Ops`의 발행 경로가 노드를 열거하지 않음**을 확인한다(§8.2). 전달은 best-effort이므로(§8.2) 개별 플레이어의 수신 누락은 실패로 보지 않는다 |
-| `ZW-D2` | **노드 추가 시 공지** | 세 번째 `ZoneNode`를 추가 실행(§11.1) → `Ops` 코드·설정 변경 없이 **그 노드의 fanout subscriber handler가 공지를 수신**한다(로그 evidence). 이 노드는 zone 배치 밖이므로 **`Ops`의 코드·설정 어디에도 존재하지 않는다** — 그것이 이 시나리오의 전부다 |
-| `ZW-E1` | **노드 지정 점검** | `zone-node-2`만 점검 모드로 → 그 노드의 **두 zone 모두** 신규 입장 거부, **`zone-node-1`은 정상** |
-| `ZW-E2` | 점검 중 기존 플레이어 | 점검 모드인 노드의 플레이어가 **같은 zone 이동**과 **노드 내부 zone 이동**을 계속 수행한다(§2.3) |
-| `ZW-E3` | 점검 중 이탈 | 점검 모드인 노드에서 정상 노드로 나가는 이동은 허용된다 |
+| `ZW-D2` | **노드 추가 시 공지** | subscriber-only `ZoneNode`를 추가 실행 → `Ops` 코드·설정 변경 없이 fanout subscriber가 공지를 수신한다. 추가 노드의 NodeRid를 발행 경로에 등록하지 않는다 |
+| `ZW-E1` | **노드 지정 점검** | Ops가 현재 runtime snapshot에서 선택한 node만 점검 모드로 바뀌고 다른 node 상태는 변하지 않는다 |
+| `ZW-E2` | 점검 중 기존 플레이어 | 이미 처리 중인 같은 zone 이동은 계속 수행하고, 점검 node가 owner인 다른 zone의 새 join은 target admission에서 거부한다 |
+| `ZW-E3` | 점검 중 이동 | 이동 결과를 미리 정한 zone→node 매핑으로 판정하지 않는다. Target admission 결과와 논리 `ZoneId`만 검증한다 |
 | `ZW-E6` | 점검 중 신규 입장 | 점검 모드인 노드의 zone으로 `JoinWorldReq` → 거부된다(§2.3) |
 | `ZW-F1` | **봇 존재** | client 접속 직후 `Players`에 `IsBot=true`인 봇이 있고 좌표가 tick마다 변한다. **월드 전체의 봇 8마리는 서버 로그로 확인한다** — client는 자기 zone과 인접 zone 밴드만 보므로 8마리를 한 번에 볼 수 없다(§2.7, §4.1) |
-| `ZW-F2` | **봇 노드 간 relocation** | **client를 하나도 연결하지 않은 상태**에서 X 순찰 봇이 X 경계를 넘어 actor relocation이 발생한다(서버 로그). bound session 없이도 relocation이 동작한다 |
+| `ZW-F2` | **봇 zone 이동** | **client를 하나도 연결하지 않은 상태**에서 X 순찰 봇이 X 경계를 넘어 global target Spot에 join한다. owner가 다르면 framework relocation이 동작한다 |
 | `ZW-F3` | **봇에 push하지 않음** | 봇에게 `ZoneStateNotify`·`MoveRejectedNotify`를 보내지 않는다(session 미bind actor 대상 push 시도가 없다). **부재이므로 서버 로그로 판정한다** — client는 다른 actor에게 push가 가지 않았음을 관측할 수 없다 |
 | `ZW-F4` | **봇 방향 반전** | 점검 모드인 노드로 향하던 봇의 이동이 거부되면 다음 이동부터 반대 방향을 사용한다(§2.7) |
-| `ZW-E4` | **노드 진단** | `NodeDiagnosticsReq(zone-node-1)` → `Zones=[zone-nw, zone-sw]`, `PlayerCount` 반환 |
-| `ZW-E5` | **재시작 복원** | 점검 모드 전환 후 `zone-node-2` 재시작 → 시작 시 maintenance store에서 복원(§8.4) |
+| `ZW-E4` | **노드 진단** | runtime에서 관측한 node를 선택해 `NodeDiagnosticsReq` → 그 시점에 local인 `Zones`와 `PlayerCount` 반환 |
+| `ZW-E5` | **재시작 복원** | 현재 snapshot에서 선택한 node를 점검 모드로 전환한 뒤 같은 deployment label의 process를 재시작 → maintenance store에서 복원(§8.4) |
 
 ### 11.1 세 번째 노드 (`ZW-D2` 전용)
 
@@ -1095,7 +1068,7 @@ client/src/
 
 **Track A — 입장과 이동**
 
-- **`ZW-A1`** — `Connect`+`JoinWorld` → 응답이 `(zone-nw, zone-node-1, 25, 25)`인지 확인. `Move(28,27)`
+- **`ZW-A1`** — `Connect`+`JoinWorld` → 응답이 `(zone-nw, 25, 25)`인지 확인. `Move(28,27)`
   후 `WaitForPosition(28,27)` → 그 `ZoneStateNotify.ZoneId`가 `zone-nw`.
 - **`ZW-A2`** — `JoinWorld` 후 `Move(-40, y)`(범위 밖이면서 5칸 초과). `WaitFor<MoveRejectedNotify>` →
   `Reason=OutOfRange`(§2.2 순서), 좌표는 입장 좌표 그대로.
@@ -1114,11 +1087,11 @@ client/src/
   `zone-ne` 상태에 west가 보이는지 기다리고, 그 `PlayerView`의 `ZoneId`가 `zone-nw`(자기 zone으로
   표기)이며 `X>=40`인지 확인. **음성 대조**: `diagonal` 관점에서 `zone-se` 상태를 **만료의 2배 tick**
   동안 반복 관측하며 west가 **한 번도** 나타나지 않는지 확인(대각선 zone은 경계를 공유하지 않음).
-- **`ZW-B2`** — `JoinWorld` 후 `WalkTo(48,25)`. `Move(52,25)` → `WaitFor<ZoneChangedNotify>` →
-  `(zone-ne, zone-node-2, Relocated=true)`. 이어서 `Move(55,25)`+`WaitForPosition(55,25)`이
-  **같은 연결로** 동작 → bound session이 actor를 따라갔다.
-- **`ZW-B3`** — `JoinWorld` 후 `WalkTo(25,48)`. `Move(25,52)` → `WaitFor<ZoneChangedNotify>` →
-  `(zone-sw, zone-node-1, Relocated=false)`(같은 노드라 relocation 없음).
+- **`ZW-B2`** — `JoinWorld` 후 `WalkTo(48,25)`. `Move(52,25)` → `WaitFor<ZoneChangedNotify>`에서
+  `ZoneId=zone-ne`를 확인한다. 이어서 `Move(55,25)`+`WaitForPosition(55,25)`이 **같은 연결로**
+  동작해야 한다. Owner NodeRid나 relocation 여부를 application assertion으로 사용하지 않는다.
+- **`ZW-B3`** — `JoinWorld` 후 `WalkTo(25,48)`. `Move(25,52)` → `WaitFor<ZoneChangedNotify>`에서
+  `ZoneId=zone-sw`를 확인한다. 특정 node에 남았다는 가정은 하지 않는다.
 - **`ZW-B4` ◆** — client 둘(west·east). `east.WalkTo(52,25)`(zone-ne), `west.WalkTo(45,25)`.
   **east가 `zone-ne` 소속으로** west에 보일 때까지 기다린다(단순히 "보이면"이 아니다 — relocation
   직후 잠깐 출발 zone 사본에 남는 창을 피한다). **[러너가 `zone-node-2`를 없앤다]**. 그 뒤 west의
@@ -1134,8 +1107,8 @@ client/src/
 - **`ZW-C4`** — `Connect`. `WatchNodes`를 **부르기 전에** `WaitFor<NodeAlertNotify>(TimerHandlerFailed)`
   대기를 걸어 둔다(경고가 이미 났을 수 있고 `WatchNodesReq` 응답이 그것을 재생한다). `WatchNodes`
   호출 후 그 경고를 받아 `NodeId`가 결함을 주입한 노드(`zone-node-1`)인지 확인.
-- **`ZW-C2` ◆** — `Connect`. `WatchNodes`로 `zone-node-2`가 **`Registered=true`인지 먼저 확인**.
-  **[러너가 `zone-node-2`를 없앤다]**. `NodeStatusNotify(zone-node-2, Registered=false)`를 기다린다.
+- **`ZW-C2` ◆** — `Connect`. `WatchNodes`에서 현재 `Registered=true`인 target을 선택한다.
+  **[러너가 선택된 process를 종료한다]**. 같은 `NodeId`의 `Registered=false`를 기다린다.
 - **`ZW-C3` ◆** — `ZW-C2`와 같되 플래그가 `Connected`다. **먼저 `Connected=true`를 확인**한 뒤
   **[러너가 노드를 없애면]** `Connected=false` 전이를 기다린다.
 
@@ -1148,17 +1121,15 @@ client/src/
 
 **Track E — 점검과 진단**(관제 client, 필요 시 게임 client)
 
-- **`ZW-E1`** — `ResetMaintenance`. 게임 client `JoinWorld`+`WalkTo(48,25)`. `SetMaintenance(east,true)`
-  → 응답의 `NodeId`·`Zones`(두 zone 모두) 확인. `Move(52,25)`→`ZoneMaintenance`, 좌표 불변.
-  `WalkTo(48,55)`+`Move(52,55)`→`ZoneMaintenance`(그 노드의 **다른 zone도** 거부). `Move(45,55)`는
-  node-1 안이라 동작. **finally**: `SetMaintenance(east,false)`.
-- **`ZW-E2`** — `ResetMaintenance`. `JoinWorld`. `SetMaintenance(west,true)`. `Move(30,30)`+
-  `WaitForPosition` 동작(같은 zone 이동). `WalkTo(30,48)`+`Move(30,52)`→`ZoneChangedNotify(zone-sw,
-  Relocated=false)`(노드 내부 zone 이동 허용). **finally**: 해제.
-- **`ZW-E3`** — `ResetMaintenance`. `JoinWorld`+`WalkTo(48,25)`. `SetMaintenance(west,true)`.
-  `Move(52,25)`→`ZoneChangedNotify(zone-node-2, Relocated=true)`(점검 노드에서 정상 노드로 이탈
-  허용). **finally**: 해제.
-- **`ZW-E4`** — `Diagnose(zone-node-1)` → `Zones`가 정렬 시 정확히 `[zone-nw, zone-sw]`, `PlayerCount>=0`.
+- **`ZW-E1`** — `ResetMaintenance` 후 관제 화면의 current node 하나를 선택해
+  `SetMaintenance(node,true)`를 호출한다. 선택한 node만 상태가 바뀌고 다른 node의 상태는 그대로인지
+  확인한다. **finally**에서 같은 observed node를 해제한다.
+- **`ZW-E2`** — 점검 중에도 이미 admission된 player의 같은 zone 이동이 계속되는지 확인한다.
+  다른 zone join은 target owner의 현재 점검 상태에 따라 판정하며 source가 결과를 미리 계산하지 않는다.
+- **`ZW-E3`** — zone 경계 이동은 논리 `ZoneId`와 target admission 결과로 판정한다. 특정 source·target
+  node 조합이나 `Relocated` 값을 성공 조건으로 만들지 않는다.
+- **`ZW-E4`** — 현재 runtime에서 관측한 node를 `Diagnose`하고 응답의 local `Zones`와
+  `PlayerCount>=0`을 확인한다. 미리 정한 zone 목록은 요구하지 않는다.
 - **`ZW-E6`** — `ResetMaintenance` 후 `SetMaintenance(west,true)`. 새 게임 client `Connect`+`JoinWorld`
   → `JoinWorldRes.Error == ZoneMaintenance`(입장 자체 거부). **finally**: 해제.
 - **`ZW-E5-arm` ◆** — `SetMaintenance(east,true)` → 응답에 `Error` 없음. **[러너가 `zone-node-2`를
@@ -1186,7 +1157,7 @@ client/src/
 | ID | 검증 | 성공 기준 |
 |----|------|-----------|
 | `ZW-G1` | MeshNode allocation | 한 ZoneNode의 MeshNode가 `znN` 하나를 받고 모든 ChannelName·Spot·Actor가 그 RID를 사용한다. |
-| `ZW-G2` | 시작 순서 독립 | `zone-node-2`를 먼저 시작해 `zn1`을 받아도 NodeId, 담당 zone, 점검과 진단 호출이 올바르게 동작한다 |
+| `ZW-G2` | 시작 순서 독립 | process 시작 순서를 바꿔 transport RID 발급 순서가 달라져도 global ZoneId routing과 관측한 node의 점검·진단 호출이 올바르게 동작한다 |
 | `ZW-G3` | bounded pool handoff | 두 slot이 사용 중일 때 replacement를 먼저 시작하면 socket을 bind하지 않고 `WaitingForSlot`에 머문다. 이전 runtime 종료 뒤 빈 slot과 증가한 generation을 받는다 |
 | `ZW-G4` | crash 뒤 재할당 | ZoneNode를 강제 종료하면 lease 만료 전에는 해당 slot을 다른 runtime이 받지 않고, 만료 뒤 새 endpoint로 같은 빈 slot을 할당받는다 |
 | `ZW-G5` | 고정 RID 설정 제거 | ZoneNode 설정과 topology에 `zn1`·`zn2` 고정값이 없고 `SetRoutingId(...)`·`SetEntrySpotRoutingId(...)`를 호출하지 않는다 |

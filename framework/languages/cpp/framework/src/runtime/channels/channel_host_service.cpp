@@ -510,9 +510,12 @@ void channel_host_service_t::start (service_provider_t &services)
 {
     _services = &services;
     auto manager = detail::channel_runtime_manager_t::from (_bus);
+    const bool auto_connect_active =
+      detail::channel_runtime_t::from (_bus).auto_connect_active ();
     _stop.store (false, std::memory_order_release);
     for (const auto &channel : _channels) {
-        if (!channel.server.enabled || channel.server.discovery
+        if (!channel.server.enabled
+            || (channel.server.discovery && auto_connect_active)
             || channel.server.bind_endpoints.empty ()) {
             continue;
         }

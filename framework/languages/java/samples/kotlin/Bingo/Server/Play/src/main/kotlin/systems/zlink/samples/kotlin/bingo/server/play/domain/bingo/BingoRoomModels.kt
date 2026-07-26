@@ -73,12 +73,12 @@ data class BingoRoomSettings(
 
         fun createObserver(
             observedRoomId: String,
-            ownerNodeRid: String,
+            observerActorId: String,
             drawPeriodMillis: Long,
         ): BingoRoomSettings {
             check(observedRoomId.isNotBlank()) { "observedRoomId is required" }
             return BingoRoomSettings(
-                roomName = "Bingo Reward Observer $ownerNodeRid",
+                roomName = "Bingo Reward Observer $observerActorId",
                 mode = "observer",
                 requiredPlayers = 0,
                 maxDrawNumber = 15,

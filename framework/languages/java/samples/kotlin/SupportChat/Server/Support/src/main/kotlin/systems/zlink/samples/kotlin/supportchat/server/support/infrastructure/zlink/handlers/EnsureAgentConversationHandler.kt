@@ -62,13 +62,13 @@ class EnsureAgentConversationHandler(
                 ?.actor()
                 ?: throw IllegalStateException("Agent conversation join was rejected.")
             actorClient
-                .requestToActor(target, JoinConversationReq())
+                .requestToActor(target.actorId, JoinConversationReq())
                 .timeout(SampleTimings.RequestTimeout)
                 .submit(JoinConversationRes::class.java)
                 .await()
         } else {
             actorClient
-                .requestToActor(actorRef, JoinConversationReq())
+                .requestToActor(actorRef.actorId, JoinConversationReq())
                 .timeout(SampleTimings.RequestTimeout)
                 .submit(JoinConversationRes::class.java)
                 .await()

@@ -90,17 +90,17 @@ class bingo_room_spot_t : public spot_t
 
     observe_bingo_events_res_t observe_events (
       const player_actor_t &actor,
-      const spot_actor_request_context_t &context,
+      const message_context_t &context,
       const observe_bingo_events_req_t &request);
 
     task_t<stop_observing_bingo_events_res_t> stop_observing_events (
       const player_actor_t &actor,
-      const spot_actor_request_context_t &context,
+      const message_context_t &context,
       const stop_observing_bingo_events_req_t &request);
 
     task_t<submit_bingo_card_res_t> submit_card (
       const player_actor_t &actor,
-      const spot_actor_request_context_t &context,
+      const message_context_t &context,
       const submit_bingo_card_req_t &request);
 
     task_t<void> on_actor_joined (const player_actor_t &actor)

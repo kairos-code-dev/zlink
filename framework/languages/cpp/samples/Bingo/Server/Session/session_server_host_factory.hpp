@@ -44,19 +44,10 @@ class session_server_host_factory_t
             add_sample_location_store (options, topology);
             options.add_client_server_channel (sample_names_t::api_channel)
               .enable_client ();
-            options.add_client_server_channel (play_channel_for (topology.play_a_node_rid))
-              .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
-              .enable_client ();
-            options.add_client_server_channel (play_channel_for (topology.play_b_node_rid))
-              .set_routing_id (zlink::routing_id_t::from (topology.selected_session_route_rid ()))
-              .enable_client ();
             auto room_mesh = options.add_route_mesh (sample_names_t::room_spot_mesh);
             room_mesh.channel_name (sample_names_t::room_spot_mesh);
-            room_mesh.peer_connections ().connect (
-              routing_id_t::from (topology.preferred_play_node_rid ()),
-              topology.preferred_play_spot_router_endpoint ());
             room_mesh
-              .set_routing_id (zlink::routing_id_t::from (topology.selected_session_router_rid ()))
+              .use_allocated_routing_id (16, "bingo-session")
               .listen (topology.session_router_endpoint);
             options.add_stream_node (sample_names_t::stream_node)
               .bind (topology.selected_stream_endpoint ())

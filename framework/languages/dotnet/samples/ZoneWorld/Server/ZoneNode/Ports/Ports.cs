@@ -24,7 +24,6 @@ public interface IOpsReportPort
         CancellationToken cancellationToken);
 
     ValueTask ReportNodeStatusAsync(
-        string nodeRid,
         IReadOnlyList<string> zones,
         int playerCount,
         bool maintenance,

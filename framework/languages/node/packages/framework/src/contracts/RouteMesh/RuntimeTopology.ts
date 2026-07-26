@@ -21,7 +21,8 @@ export enum ZLinkTerminationReason {
   DeadlineExceeded = 5,
   RelocationFailed = 6,
   TeardownFailed = 7,
-  RuntimeNotReady = 8
+  RuntimeNotReady = 8,
+  ManualTopologyUnsupported = 9
 }
 
 export interface ZLinkTerminationResult {

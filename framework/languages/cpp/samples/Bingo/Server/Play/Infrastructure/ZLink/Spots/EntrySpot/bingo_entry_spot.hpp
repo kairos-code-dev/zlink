@@ -33,14 +33,13 @@ class bingo_entry_spot_t : public entry_spot_t
     void configure (entry_spot_context_t &context)
     {
         _context = context;
-        context.handlers ().add_handler<&bingo_entry_spot_t::ensure_player_actor> ();
         context.handlers ().add_actor_request<&bingo_entry_spot_t::match_bingo> ();
         context.handlers ().add_actor_request<&bingo_entry_spot_t::observe_bingo_events> ();
     }
 
     task_t<observe_bingo_events_res_t>
     observe_bingo_events (const player_actor_t &actor,
-                          spot_actor_request_context_t &context,
+                          message_context_t &context,
                           const observe_bingo_events_req_t &request);
 
     void configure (spot_context_t &context)
@@ -50,11 +49,8 @@ class bingo_entry_spot_t : public entry_spot_t
     }
 
     task_t<match_bingo_res_t> match_bingo (const player_actor_t &actor,
-                                           spot_actor_request_context_t &context,
+                                           message_context_t &context,
                                            const match_bingo_req_t &request);
-
-    task_t<ensure_player_actor_res_t>
-    ensure_player_actor (const ensure_player_actor_req_t &request);
 
     void on_create_actor (player_actor_t &actor, const message_t &create_request)
     {
@@ -94,10 +90,10 @@ class bingo_entry_spot_t : public entry_spot_t
     std::vector<std::string> joined_actor_ids;
 
   private:
-    static spot_rid_t observer_room_rid (const std::string &room_id, node_rid_t node_rid)
+    static spot_id_t observer_room_id (const std::string &room_id,
+                                       const std::string &actor_id)
     {
-        return spot_rid_t::from_string ("observe:" + room_id + ":"
-                                        + std::string (node_rid.value ()));
+        return "observe:" + room_id + ":" + actor_id;
     }
 
     static actor_ref_t actor_ref_for (const player_actor_t &actor)
@@ -114,6 +110,5 @@ class bingo_entry_spot_t : public entry_spot_t
 
 } // namespace zlink::samples::bingo
 
-#include "Handlers/ensure_player_actor_handler.hpp"
 #include "Handlers/match_bingo_actor_handler.hpp"
 #include "Handlers/observe_bingo_events_handler.hpp"

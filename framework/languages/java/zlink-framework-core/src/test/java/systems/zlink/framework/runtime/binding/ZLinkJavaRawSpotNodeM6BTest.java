@@ -461,6 +461,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 "inproc://jvm-m6b-remote-right-" + System.nanoTime());
             left.start();
             right.start();
+            acceptExactSource(
+                left, rightRid, right.lifecycleGeneration());
             right.connectPeer(endpoint, leftRid);
             ZLinkBackendSpot source = right.spotNode().createSpot(
                 "jvm-m6b-remote-source");
@@ -476,12 +478,14 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 target.lifecycleGeneration(),
                 77);
             CompletableFuture<String> sent = new CompletableFuture<>();
+            AtomicInteger handlerCalls = new AtomicInteger();
             target.onDispatchEvent(info -> {
                 if (info.event() != ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
                     return;
                 }
                 try (var received =
                          target.recvRoute(ZLinkBackendRecvMode.DONT_WAIT)) {
+                    handlerCalls.incrementAndGet();
                     String value =
                         received.parts().getLast().toUtf8String();
                     if (received.requestSeq().isPresent()) {
@@ -532,6 +536,40 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             assertEquals(
                 "remote-reply",
                 reply.get(2, TimeUnit.SECONDS));
+            assertEquals(2, handlerCalls.get());
+
+            left.setPeerAuthorityResolver(
+                (meshName, candidateRid, candidateGeneration) ->
+                    CompletableFuture.completedFuture(
+                        candidateRid.equals(leftRid)
+                            ? java.util.Optional.of(
+                                new ZLinkInternalMeshNode
+                                    .PeerAuthorityFence(
+                                        leftRid,
+                                        candidateGeneration,
+                                        "target-owner",
+                                        1))
+                            : java.util.Optional.empty()));
+            CompletableFuture<ZLinkBackendRequestResult> stale =
+                new CompletableFuture<>();
+            try (Message message = Message.from("stale-source")) {
+                assertTrue(source.requestToSpot(
+                    leftRid,
+                    targetRid.toString(),
+                    target.lifecycleGeneration(),
+                    List.of(message),
+                    received -> {
+                        try (received) {
+                            stale.complete(received.result());
+                        }
+                    },
+                    SendFlags.DONT_WAIT,
+                    Duration.ofSeconds(2)));
+            }
+            assertEquals(
+                ZLinkBackendRequestResult.CONFLICT,
+                stale.get(2, TimeUnit.SECONDS));
+            assertEquals(2, handlerCalls.get());
         }
     }
 
@@ -611,6 +649,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 "inproc://jvm-m6b-actor-right-" + System.nanoTime());
             left.start();
             right.start();
+            acceptExactSource(
+                left, rightRid, right.lifecycleGeneration());
             right.connectPeer(endpoint, leftRid);
             ZLinkBackendSpot entry = left.spotNode().entrySpot();
             entry.onDispatchEvent(info -> {
@@ -1333,6 +1373,10 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     + System.nanoTime());
             actorNode.start();
             sessionNode.start();
+            acceptExactSource(
+                actorNode,
+                sessionNodeRid,
+                sessionNode.lifecycleGeneration());
             sessionNode.connectPeer(endpoint, actorNodeRid);
 
             ZLinkBackendSpot entry = actorNode.spotNode().entrySpot();
@@ -1561,5 +1605,22 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 reactivated.spot().lifecycleGeneration()
                     > firstGeneration);
         }
+    }
+
+    private static void acceptExactSource(
+        ZLinkJavaRawMeshNode target,
+        RoutingId sourceRid,
+        long sourceGeneration) {
+        target.setPeerAuthorityResolver(
+            (meshName, candidateRid, candidateGeneration) ->
+                CompletableFuture.completedFuture(
+                    candidateGeneration > 0
+                        ? java.util.Optional.of(
+                            new ZLinkInternalMeshNode.PeerAuthorityFence(
+                                candidateRid,
+                                candidateGeneration,
+                                "test-source-owner",
+                                1))
+                        : java.util.Optional.empty()));
     }
 }

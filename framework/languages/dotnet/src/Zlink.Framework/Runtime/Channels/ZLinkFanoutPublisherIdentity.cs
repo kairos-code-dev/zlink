@@ -23,11 +23,20 @@ internal sealed class ZLinkFanoutPublisherIdentity(
     }
 
     internal Snapshot MarkDraining()
+        => SetState(ZLinkFrameworkRuntimeState.Draining);
+
+    internal Snapshot MarkRetiring()
+        => SetState(ZLinkFrameworkRuntimeState.Retiring);
+
+    internal Snapshot MarkServing()
+        => SetState(ZLinkFrameworkRuntimeState.Serving);
+
+    private Snapshot SetState(ZLinkFrameworkRuntimeState state)
     {
         lock (_gate)
         {
             _descriptorRevision++;
-            _state = ZLinkFrameworkRuntimeState.Draining;
+            _state = state;
             return new Snapshot(_descriptorRevision, _state);
         }
     }

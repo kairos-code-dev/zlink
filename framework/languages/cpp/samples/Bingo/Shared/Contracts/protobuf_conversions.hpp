@@ -115,14 +115,12 @@ inline void to_protobuf (const authenticate_res_t &value, pb::AuthenticateRes &m
 {
     message.set_actor_id (value.actor_id);
     message.set_display_name (value.display_name);
-    message.set_actor_node_rid (value.actor_node_rid);
 }
 
 inline void from_protobuf (const pb::AuthenticateRes &message, authenticate_res_t &value)
 {
     value.actor_id = message.actor_id ();
     value.display_name = message.display_name ();
-    value.actor_node_rid = message.actor_node_rid ();
 }
 
 inline void to_protobuf (const authenticate_player_req_t &value, pb::AuthenticatePlayerReq &message)
@@ -219,7 +217,6 @@ inline void to_protobuf (const ensure_player_actor_req_t &value, pb::EnsurePlaye
 {
     message.set_actor_id (value.actor_id);
     message.set_display_name (value.display_name);
-    message.set_preferred_actor_node_rid (value.preferred_actor_node_rid);
 }
 
 inline void from_protobuf (const pb::EnsurePlayerActorReq &message,
@@ -227,7 +224,6 @@ inline void from_protobuf (const pb::EnsurePlayerActorReq &message,
 {
     value.actor_id = message.actor_id ();
     value.display_name = message.display_name ();
-    value.preferred_actor_node_rid = message.preferred_actor_node_rid ();
 }
 
 inline void to_protobuf (const ensure_player_actor_res_t &value, pb::EnsurePlayerActorRes &message)
@@ -259,14 +255,12 @@ inline void to_protobuf (const match_bingo_res_t &value, pb::MatchBingoRes &mess
 {
     message.set_room_id (value.room_id);
     to_protobuf (value.state, *message.mutable_state ());
-    message.set_room_owner_node_rid (value.room_owner_node_rid);
 }
 
 inline void from_protobuf (const pb::MatchBingoRes &message, match_bingo_res_t &value)
 {
     value.room_id = message.room_id ();
     from_protobuf (message.state (), value.state);
-    value.room_owner_node_rid = message.room_owner_node_rid ();
 }
 
 inline void to_protobuf (const match_bingo_api_req_t &value, pb::MatchBingoApiReq &message)
@@ -274,7 +268,6 @@ inline void to_protobuf (const match_bingo_api_req_t &value, pb::MatchBingoApiRe
     message.set_actor_id (value.actor_id);
     message.set_display_name (value.display_name);
     message.set_mode (value.mode);
-    message.set_actor_node_rid (value.actor_node_rid);
 }
 
 inline void from_protobuf (const pb::MatchBingoApiReq &message, match_bingo_api_req_t &value)
@@ -282,26 +275,22 @@ inline void from_protobuf (const pb::MatchBingoApiReq &message, match_bingo_api_
     value.actor_id = message.actor_id ();
     value.display_name = message.display_name ();
     value.mode = message.mode ();
-    value.actor_node_rid = message.actor_node_rid ();
 }
 
 inline void to_protobuf (const match_bingo_api_res_t &value, pb::MatchBingoApiRes &message)
 {
     message.set_room_id (value.room_id);
-    message.set_room_owner_node_rid (value.room_owner_node_rid);
 }
 
 inline void from_protobuf (const pb::MatchBingoApiRes &message, match_bingo_api_res_t &value)
 {
     value.room_id = message.room_id ();
-    value.room_owner_node_rid = message.room_owner_node_rid ();
 }
 
 inline void to_protobuf (const allocate_bingo_room_req_t &value, pb::AllocateBingoRoomReq &message)
 {
     message.set_mode (value.mode);
     message.set_actor_id (value.actor_id);
-    message.set_preferred_owner_node_rid (value.preferred_owner_node_rid);
 }
 
 inline void from_protobuf (const pb::AllocateBingoRoomReq &message,
@@ -309,20 +298,17 @@ inline void from_protobuf (const pb::AllocateBingoRoomReq &message,
 {
     value.mode = message.mode ();
     value.actor_id = message.actor_id ();
-    value.preferred_owner_node_rid = message.preferred_owner_node_rid ();
 }
 
 inline void to_protobuf (const allocate_bingo_room_res_t &value, pb::AllocateBingoRoomRes &message)
 {
     message.set_room_id (value.room_id);
-    message.set_room_owner_node_rid (value.room_owner_node_rid);
 }
 
 inline void from_protobuf (const pb::AllocateBingoRoomRes &message,
                            allocate_bingo_room_res_t &value)
 {
     value.room_id = message.room_id ();
-    value.room_owner_node_rid = message.room_owner_node_rid ();
 }
 
 inline void to_protobuf (const bingo_room_settings_payload_t &value,
@@ -413,14 +399,12 @@ inline void from_protobuf (const pb::ObserveBingoEventsReq &message,
 inline void to_protobuf (const observe_bingo_events_res_t &value, pb::ObserveBingoEventsRes &message)
 {
     message.set_subscribed (value.subscribed);
-    message.set_observer_node_rid (value.observer_node_rid);
 }
 
 inline void from_protobuf (const pb::ObserveBingoEventsRes &message,
                            observe_bingo_events_res_t &value)
 {
     value.subscribed = message.subscribed ();
-    value.observer_node_rid = message.observer_node_rid ();
 }
 
 inline void to_protobuf (const stop_observing_bingo_events_req_t &value,
@@ -439,14 +423,12 @@ inline void to_protobuf (const stop_observing_bingo_events_res_t &value,
                          pb::StopObservingBingoEventsRes &message)
 {
     message.set_stopped (value.stopped);
-    message.set_observer_node_rid (value.observer_node_rid);
 }
 
 inline void from_protobuf (const pb::StopObservingBingoEventsRes &message,
                            stop_observing_bingo_events_res_t &value)
 {
     value.stopped = message.stopped ();
-    value.observer_node_rid = message.observer_node_rid ();
 }
 
 inline void to_protobuf (const player_joined_notify_t &value, pb::PlayerJoinedNotify &message)
@@ -514,7 +496,6 @@ inline void to_protobuf (const bingo_reward_announced_notify_t &value,
     message.set_item_id (value.item_id);
     message.set_item_name (value.item_name);
     message.set_rarity (value.rarity);
-    message.set_receiving_spot_node_rid (value.receiving_spot_node_rid);
 }
 
 inline void from_protobuf (const pb::BingoRewardAnnouncedNotify &message,
@@ -526,7 +507,6 @@ inline void from_protobuf (const pb::BingoRewardAnnouncedNotify &message,
     value.item_id = message.item_id ();
     value.item_name = message.item_name ();
     value.rarity = message.rarity ();
-    value.receiving_spot_node_rid = message.receiving_spot_node_rid ();
 }
 
 inline void to_protobuf (const bingo_reward_acquired_event_t &value,

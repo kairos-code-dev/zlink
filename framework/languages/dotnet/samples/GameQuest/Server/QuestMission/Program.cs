@@ -39,7 +39,6 @@ internal static class Program
         builder.Services.AddSingleton<PlayerQuestOwnerProvisioner>();
         builder.Services.AddSingleton<IGameApiSnapshotClient, HttpGameApiSnapshotClient>();
         builder.Services.AddSingleton<IQuestProgressNotifier, ZLinkQuestProgressNotifier>();
-        builder.Services.AddSingleton<QuestOwnerRouter>();
         builder.Services.AddSingleton(new QuestProcessorIdentity(missionName));
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
@@ -52,20 +51,13 @@ internal static class Program
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, missionName))
                 .TraceLabel(missionName);
             options.AddHandlersFromAssemblyOf(typeof(Program));
-            var ownerChannel = SampleNames.QuestOwnerChannelFor(missionName);
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
-                .SetRoutingId(instance.MeshRid)
+                .SetRoutingIdPrefix("quest-mission")
                 .AddSpotFactory<PlayerQuestSpot>();
             mesh.ChannelName(SampleNames.GameApiChannel).SetWeight(0);
-            foreach (var mission in new[] { "mission-a", "mission-b" })
-            {
-                var channelName = SampleNames.QuestOwnerChannelFor(mission);
-                var channel = mesh.ChannelName(channelName)
-                    .SetWeight(string.Equals(channelName, ownerChannel, StringComparison.Ordinal) ? 100 : 0);
-                if (string.Equals(channelName, ownerChannel, StringComparison.Ordinal))
-                    channel.AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup);
-            }
+            mesh.ChannelName(SampleNames.QuestOwnerChannel)
+                .AddHandlerGroup(SampleNames.QuestOwnerHandlerGroup);
             mesh.ChannelName(SampleNames.MeshName);
         });
 
@@ -82,9 +74,6 @@ internal static class Program
             IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
-            if (GameQuestRouting.OwnerIndex(playerId) != instance.OwnerIndex)
-                return Results.NotFound();
-
             var spotRid = RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{playerId}"));
             return await spots.CloseAsync(spotRid, cancellationToken)
                 ? Results.Ok()

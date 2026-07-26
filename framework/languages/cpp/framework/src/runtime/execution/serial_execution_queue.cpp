@@ -11,6 +11,99 @@
 namespace zlink::framework::runtime
 {
 
+class serial_deferred_barrier_t final : public detail::deferred_barrier_t
+{
+  public:
+    void reached (serial_execution_queue_t::async_completion_t complete)
+    {
+        std::function<void ()> work;
+        {
+            std::lock_guard lock (_mutex);
+            if (_reached)
+                return;
+            _reached = true;
+            _complete = std::move (complete);
+            if (_state == state_t::pending)
+                return;
+            work = _state == state_t::activated
+                     ? std::move (_work)
+                     : std::function<void ()>{};
+            complete = std::move (_complete);
+        }
+        finish (std::move (complete), std::move (work));
+    }
+
+    result_t<void> activate (std::function<void ()> work) override
+    {
+        if (!work) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "Deferred Actor join barrier work is empty");
+        }
+        serial_execution_queue_t::async_completion_t complete;
+        {
+            std::lock_guard lock (_mutex);
+            if (_state != state_t::pending) {
+                return result_t<void>::failure (
+                  framework_error_kind_t::already_submitted,
+                  "Deferred Actor join barrier is already terminal");
+            }
+            _state = state_t::activated;
+            _work = std::move (work);
+            if (!_reached)
+                return result_t<void>::success ();
+            complete = std::move (_complete);
+            work = std::move (_work);
+        }
+        finish (std::move (complete), std::move (work));
+        return result_t<void>::success ();
+    }
+
+    void cancel () noexcept override
+    {
+        serial_execution_queue_t::async_completion_t complete;
+        {
+            std::lock_guard lock (_mutex);
+            if (_state != state_t::pending)
+                return;
+            _state = state_t::cancelled;
+            if (!_reached)
+                return;
+            complete = std::move (_complete);
+        }
+        try {
+            finish (std::move (complete), {});
+        }
+        catch (...) {
+        }
+    }
+
+  private:
+    enum class state_t
+    {
+        pending,
+        activated,
+        cancelled
+    };
+
+    static void finish (serial_execution_queue_t::async_completion_t complete,
+                        std::function<void ()> work)
+    {
+        if (!complete)
+            return;
+        complete ([work = std::move (work)] () mutable {
+            if (work)
+                work ();
+        });
+    }
+
+    std::mutex _mutex;
+    state_t _state = state_t::pending;
+    bool _reached = false;
+    serial_execution_queue_t::async_completion_t _complete;
+    std::function<void ()> _work;
+};
+
 class serial_turn_handle_impl_t final : public detail::serial_turn_t,
                                        public std::enable_shared_from_this<serial_turn_handle_impl_t>
 {
@@ -56,7 +149,8 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
     bool belongs_to (const void *owner) const noexcept override { return owner == &_queue; }
     bool allows_yield () const noexcept override { return _queue.allows_yield (); }
 
-    result_t<void> defer (std::function<void ()> work) override
+    result_t<void> defer (std::function<void ()> work,
+                          std::function<void ()> cancel) override
     {
         if (!work) {
             return result_t<void>::failure (
@@ -74,17 +168,35 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
               framework_error_kind_t::invalid_configuration,
               "A Framework handler may defer at most 64 Actor joins");
         }
-        _deferred.push_back (std::move (work));
+        _deferred.push_back (
+          deferred_work_t{std::move (work), std::move (cancel)});
         return result_t<void>::success ();
+    }
+
+    void cancel_deferred () noexcept override
+    {
+        std::vector<deferred_work_t> deferred;
+        {
+            std::lock_guard lock (_mutex);
+            deferred = std::move (_deferred);
+            _deferred.clear ();
+        }
+        cancel_entries (deferred);
     }
 
     bool complete (std::function<void ()> completion) { return finish (std::move (completion)); }
 
   private:
+    struct deferred_work_t
+    {
+        std::function<void ()> activate;
+        std::function<void ()> cancel;
+    };
+
     bool finish (std::function<void ()> completion)
     {
         serial_execution_queue_t::async_completion_t complete;
-        std::vector<std::function<void ()>> deferred;
+        std::vector<deferred_work_t> deferred;
         {
             std::lock_guard lock (_mutex);
             if (_released) {
@@ -99,30 +211,50 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
         }
         complete ([this, completion = std::move (completion),
                    deferred = std::move (deferred)] () mutable {
-            if (completion) {
-                completion ();
+            try {
+                if (completion)
+                    completion ();
+            }
+            catch (...) {
+                cancel_entries (deferred);
+                throw;
             }
             if (deferred.empty ()) {
                 return;
             }
-            (void) _queue.try_post_deferred (
-              _name + "-deferred",
-              [deferred = std::move (deferred)] () mutable {
-                  for (auto &work : deferred) {
-                      if (work) {
-                          work ();
+            auto entries = std::make_shared<std::vector<deferred_work_t>> (
+              std::move (deferred));
+            if (!_queue.try_post_deferred (
+                  _name + "-deferred",
+                  [entries] () mutable {
+                      for (auto &entry : *entries) {
+                          if (entry.activate)
+                              entry.activate ();
                       }
-                  }
-              });
+                  })) {
+                cancel_entries (*entries);
+            }
         });
         return true;
+    }
+
+    static void cancel_entries (std::vector<deferred_work_t> &entries) noexcept
+    {
+        for (auto &entry : entries) {
+            try {
+                if (entry.cancel)
+                    entry.cancel ();
+            }
+            catch (...) {
+            }
+        }
     }
 
     serial_execution_queue_t &_queue;
     std::string _name;
     mutable std::mutex _mutex;
     serial_execution_queue_t::async_completion_t _complete;
-    std::vector<std::function<void ()>> _deferred;
+    std::vector<deferred_work_t> _deferred;
     bool _released = false;
 };
 
@@ -203,6 +335,24 @@ bool serial_execution_queue_t::try_post_deferred (
     _deferred_after_active.emplace_back (
       std::move (name), std::move (work));
     return true;
+}
+
+result_t<std::shared_ptr<detail::deferred_barrier_t>>
+serial_execution_queue_t::reserve_barrier_next (std::string name)
+{
+    auto barrier = std::make_shared<serial_deferred_barrier_t> ();
+    if (!try_post_async_front (
+          std::move (name),
+          [barrier] (auto complete) mutable {
+              barrier->reached (std::move (complete));
+          })) {
+        return result_t<std::shared_ptr<detail::deferred_barrier_t>>::failure (
+          framework_error_kind_t::request_rejected,
+          "Deferred Actor join target queue is full or closed",
+          true);
+    }
+    return result_t<std::shared_ptr<detail::deferred_barrier_t>>::success (
+      std::move (barrier));
 }
 
 void serial_execution_queue_t::post (std::string name, std::function<void ()> work)

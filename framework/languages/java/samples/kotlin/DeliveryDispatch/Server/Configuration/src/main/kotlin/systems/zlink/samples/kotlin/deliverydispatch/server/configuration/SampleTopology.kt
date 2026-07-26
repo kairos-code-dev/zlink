@@ -38,16 +38,12 @@ data class SampleTopology(
         lateinit var DispatchChannelEndpoint: String
         lateinit var CustomerSpotEndpoint: String
         lateinit var CustomerSpotRouterEndpoint: String
-        lateinit var CustomerSpotNodeRid: String
-        lateinit var CourierActorNode1Rid: String
-        lateinit var CourierActorNode2Rid: String
         lateinit var CourierActorNode1SpotEndpoint: String
         lateinit var CourierActorNode2SpotEndpoint: String
         lateinit var CourierActorNode1RouterEndpoint: String
         lateinit var CourierActorNode2RouterEndpoint: String
         lateinit var CourierSessionSpotRouterEndpoint: String
         lateinit var CourierSessionSpotEndpoint: String
-        lateinit var CourierSessionSpotNodeRid: String
         lateinit var RedisEndpoint: String
         lateinit var RedisKeyPrefix: String
         lateinit var CourierNode: String
@@ -72,16 +68,12 @@ data class SampleTopology(
             DispatchChannelEndpoint = value(properties, "dispatchChannelEndpoint", "tcp://127.0.0.1:49121")
             CustomerSpotEndpoint = value(properties, "customerSpotEndpoint", "tcp://127.0.0.1:49109")
             CustomerSpotRouterEndpoint = value(properties, "customerSpotRouterEndpoint", "tcp://127.0.0.1:49110")
-            CustomerSpotNodeRid = value(properties, "customerSpotNodeRid", "customer-node-1")
-            CourierActorNode1Rid = value(properties, "courierActorNode1Rid", "courier-node-1")
-            CourierActorNode2Rid = value(properties, "courierActorNode2Rid", "courier-node-2")
             CourierActorNode1SpotEndpoint = value(properties, "courierActorNode1SpotEndpoint", "tcp://127.0.0.1:49113")
             CourierActorNode2SpotEndpoint = value(properties, "courierActorNode2SpotEndpoint", "tcp://127.0.0.1:49114")
             CourierActorNode1RouterEndpoint = value(properties, "courierActorNode1RouterEndpoint", "tcp://127.0.0.1:49115")
             CourierActorNode2RouterEndpoint = value(properties, "courierActorNode2RouterEndpoint", "tcp://127.0.0.1:49116")
             CourierSessionSpotRouterEndpoint = value(properties, "courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
             CourierSessionSpotEndpoint = value(properties, "courierSessionSpotEndpoint", "tcp://127.0.0.1:49119")
-            CourierSessionSpotNodeRid = value(properties, "courierSessionSpotNodeRid", "courier-session-node")
             RedisEndpoint = required(properties, "redisEndpoint")
             RedisKeyPrefix = value(properties, "redisKeyPrefix", "deliverydispatch:kotlin:")
             CourierNode = value(properties, "courierNode", "node1")
@@ -97,7 +89,5 @@ data class SampleTopology(
                 "Missing DeliveryDispatch sample config: $name"
             }
 
-        fun courierPlacement(courierId: String): String =
-            if (courierId == "courier-b") CourierActorNode2Rid else CourierActorNode1Rid
     }
 }

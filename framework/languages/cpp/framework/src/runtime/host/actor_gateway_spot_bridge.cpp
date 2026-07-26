@@ -607,33 +607,63 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
                                   serializer_registry_t &serializers)
 {
     trace_actor_transfer ("resolve-start", actor_ref, {}, spot_id);
+    const auto transfer_id = runtime.next_actor_transfer_id ();
+    const auto completion_operation_id =
+      runtime.actor_join_operation_id (transfer_id);
+    const auto completion_source_spot = runtime.actor_spot (actor_ref);
+    auto deliver_failed = [&] (framework_error_kind_t error_kind) {
+        const actor_join_completion_t completion =
+          actor_join_failed_t{completion_operation_id.first,
+                              completion_operation_id.second,
+                              error_kind,
+                              false};
+        return runtime.deliver_actor_join_completion (
+          actor_ref, completion, completion_source_spot);
+    };
     auto route = runtime.resolve_spot (spot_id);
     if (!route) {
         if (rid_targets_node (spot_id, local_spot_node_rid)) {
-            return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_id), payload);
+            auto joined = runtime.join_actor_to_spot_erased (
+              actor_ref, std::move (spot_id), payload, std::nullopt, {},
+              completion_operation_id.first,
+              completion_operation_id.second);
+            if (!joined)
+                (void) deliver_failed (joined.error_kind ());
+            return joined;
         }
         if (accepts_route_channels || (route_channel_name && !route_channel_name->empty ())) {
+            (void) deliver_failed (
+              framework_error_kind_t::spot_route_not_found);
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found, "remote SPOT route was not resolved");
         }
+        (void) deliver_failed (
+          framework_error_kind_t::spot_route_not_found);
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::spot_route_not_found,
                                                       "SPOT route was not resolved");
     }
     if (route->node_rid.empty () || route->node_rid.value () == local_spot_node_rid) {
-        return runtime.join_actor_to_spot_erased (actor_ref, std::move (spot_id), payload);
+        auto joined = runtime.join_actor_to_spot_erased (
+          actor_ref, std::move (spot_id), payload, std::nullopt, {},
+          completion_operation_id.first,
+          completion_operation_id.second);
+        if (!joined)
+            (void) deliver_failed (joined.error_kind ());
+        return joined;
     }
     trace_actor_transfer ("resolved", actor_ref, route->node_rid, route->spot_id);
     if ((!route_channel_name || route_channel_name->empty ()) && !runtime.native_node ()) {
+        (void) deliver_failed (
+          framework_error_kind_t::relocation_target_unavailable);
         return result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::spot_route_not_found,
           "remote SPOT route transport is not configured");
     }
-    const auto source_spot = runtime.actor_spot (actor_ref);
+    const auto source_spot = completion_source_spot;
     if (!source_spot) {
         return result_t<actor_join_reply_t>::failure (framework_error_kind_t::actor_route_not_found,
                                                       "source actor is not joined to a local spot");
     }
-    const auto transfer_id = runtime.next_actor_transfer_id ();
     trace_actor_transfer ("admission-start", actor_ref, route->node_rid, route->spot_id);
     auto admitted = request_remote_actor_admission (
       runtime, route_client, route_channel_name, route->node_rid, route->spot_id,
@@ -643,26 +673,43 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         .actor_type = std::string (actor_ref.actor_type ()),
         .actor_id = std::string (actor_ref.actor_id ()),
         .actor_generation = actor_ref.generation (),
+        .completion_operation_id_high = completion_operation_id.first,
+        .completion_operation_id_low = completion_operation_id.second,
         .source_spot_id = std::string (source_spot->value ()),
         .target_spot_id = std::string (route->spot_id),
         .payload = payload.to_bytes ()},
       serializers);
     trace_actor_transfer ("admission-completed", actor_ref, route->node_rid, route->spot_id);
     if (!admitted) {
+        (void) deliver_failed (admitted.error_kind ());
         return detail::propagate_failure<actor_join_reply_t> (admitted, "remote actor admission failed");
     }
     if (!admitted.value ().accepted) {
+        const auto reply = zlink::message_t::from (
+          admitted.value ().payload);
+        const actor_join_completion_t completion =
+          actor_join_rejected_t{completion_operation_id.first,
+                                completion_operation_id.second,
+                                reply};
+        const auto delivered = runtime.deliver_actor_join_completion (
+          actor_ref, completion, completion_source_spot);
+        if (!delivered) {
+            return detail::propagate_failure<actor_join_reply_t> (
+              delivered, "remote Actor Join rejected completion callback failed");
+        }
         return result_t<actor_join_reply_t>::success (
-          actor_join_reply_t{1, actor_ref, zlink::message_t::from (admitted.value ().payload)});
+          actor_join_reply_t{1, actor_ref, reply});
     }
 
     trace_actor_transfer ("transfer-out-start", actor_ref, route->node_rid, route->spot_id);
     auto transfer = runtime.transfer_actor_out (actor_ref, transfer_id);
     if (!transfer) {
+        (void) deliver_failed (transfer.error_kind ());
         return detail::propagate_failure<actor_join_reply_t> (transfer, "actor transfer-out failed");
     }
     auto left = runtime.leave_actor_for_remote_transfer (actor_ref);
     if (!left) {
+        (void) deliver_failed (left.error_kind ());
         return detail::propagate_failure<actor_join_reply_t> (left, "source actor leave failed");
     }
     const auto bound_session = actor_gateway.bound_session_route (actor_ref);
@@ -703,10 +750,17 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     trace_actor_transfer ("commit-completed", actor_ref, route->node_rid, route->spot_id);
     if (!joined) {
         runtime.fail_remote_actor_transfer (actor_ref, true);
+        (void) deliver_failed (joined.error_kind ());
         return joined;
     }
     if (joined.value ().result_code != 0) {
         runtime.fail_remote_actor_transfer (actor_ref, true);
+        const actor_join_completion_t completion =
+          actor_join_rejected_t{completion_operation_id.first,
+                                completion_operation_id.second,
+                                joined.value ().reply};
+        (void) runtime.deliver_actor_join_completion (
+          actor_ref, completion, completion_source_spot);
         return joined;
     }
     // The prepare RPC completes target materialization and OnJoinedActor but
@@ -1276,6 +1330,20 @@ void configure_actor_gateway_spot_bridge (
         }
         return last;
     });
+    actor_gateway.on_join_barrier (
+      [bindings = actor_gateway_spot_nodes] (
+        const actor_ref_t &actor_ref) mutable
+        -> result_t<std::shared_ptr<deferred_barrier_t>> {
+          for (auto &binding : bindings) {
+              if (!binding.runtime.actor_spot (actor_ref))
+                  continue;
+              return binding.runtime.reserve_actor_join_barrier (
+                actor_ref);
+          }
+          return result_t<std::shared_ptr<deferred_barrier_t>>::failure (
+            framework_error_kind_t::actor_route_not_found,
+            "Deferred Actor join source runtime was not found");
+      });
     actor_gateway.on_bound_session (
       [bindings = actor_gateway_spot_nodes,
        &serializers] (const actor_ref_t &actor_ref) mutable {

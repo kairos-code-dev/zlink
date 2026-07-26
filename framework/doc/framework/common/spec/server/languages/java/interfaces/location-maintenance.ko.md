@@ -1664,7 +1664,7 @@ public interface systems.zlink.framework.locations.ZLinkLocationKey {
 
 ```java
 public final class systems.zlink.framework.locations.ZLinkActorLocation extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkActorLocation(java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.actors.ActorRef, systems.zlink.contracts.core.RoutingId, long, systems.zlink.contracts.core.RoutingId, long, systems.zlink.framework.spots.ZLinkSpotKind, java.lang.String, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkActorLocation(java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.actors.ActorRef, systems.zlink.contracts.core.RoutingId, long, java.lang.String, long, systems.zlink.framework.spots.ZLinkSpotKind, java.lang.String, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1682,7 +1682,7 @@ public final class systems.zlink.framework.locations.ZLinkActorLocation extends 
   public java.time.Instant updatedAt();
 }
 public final class systems.zlink.framework.locations.ZLinkActorLocationFilter extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkActorLocationFilter(java.lang.String, systems.zlink.contracts.core.RoutingId, systems.zlink.contracts.core.RoutingId, systems.zlink.framework.spots.ZLinkSpotKind);
+  public systems.zlink.framework.locations.ZLinkActorLocationFilter(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.String, systems.zlink.framework.spots.ZLinkSpotKind);
   public static systems.zlink.framework.locations.ZLinkActorLocationFilter all();
   public final java.lang.String toString();
   public final int hashCode();
@@ -1911,7 +1911,7 @@ public final class systems.zlink.framework.locations.ZLinkRouteKind extends java
   public static systems.zlink.framework.locations.ZLinkRouteKind fromValue(int);
 }
 public final class systems.zlink.framework.locations.ZLinkSpotLocation extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkSpotLocation(java.lang.String, systems.zlink.contracts.core.RoutingId, long, systems.zlink.contracts.core.RoutingId, long, systems.zlink.framework.spots.ZLinkSpotKind, java.lang.String, java.lang.String, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkSpotLocation(java.lang.String, java.lang.String, long, systems.zlink.contracts.core.RoutingId, long, systems.zlink.framework.spots.ZLinkSpotKind, java.lang.String, java.lang.String, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);

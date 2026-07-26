@@ -7,7 +7,7 @@
 
 #include <zlink/framework.hpp>
 
-#include <map>
+#include <set>
 #include <mutex>
 #include <iostream>
 #include <memory>
@@ -202,7 +202,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
 
     task_t<void> on_disconnected (stream_t &) override
     {
-        for (const auto &[actor_id, _] : _bound_actors) {
+        for (const auto &actor_id : _bound_actors) {
             _sessions.unsubscribe_customer (actor_id);
         }
         _bound_actors.clear ();
@@ -239,8 +239,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
         const auto actor_id = std::string (bound.actor_id ());
         auto joined =
           co_await bound.context ()
-            .join_entry_spot (node_rid_t::from_string (sample_names_t::customer_spot_node),
-                              request)
+            .join_entry_spot (request)
             .async ();
         auto current = _actors.find (actor_id);
         if (!current) {
@@ -249,7 +248,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
         }
         auto reply =
           co_await current->relay_request (zlink::message_t::from_json (request)).submit ();
-        _bound_actors[actor_id] = sample_names_t::customer_spot_node;
+        _bound_actors.insert (actor_id);
         _sessions.subscribe (actor_id, request.delivery_id, stream);
         stream.reply_packet (reply).submit ();
         std::cerr << "deliverydispatch customer-session: bound customer actor="
@@ -268,7 +267,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
                                          "single bound customer actor is required for "
                                            + packet_name);
         }
-        auto actor = _actors.find (_bound_actors.begin ()->first);
+        auto actor = _actors.find (*_bound_actors.begin ());
         if (!actor) {
             throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
                                          "bound customer actor route is not found for "
@@ -279,7 +278,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
 
     customer_session_directory_t &_sessions;
     session_actor_manager_t &_actors;
-    std::map<std::string, std::string> _bound_actors;
+    std::set<std::string> _bound_actors;
 };
 
 } // namespace zlink::samples::deliverydispatch
@@ -308,7 +307,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         auto actor_mesh = options.add_route_mesh (sample_names_t::customer_actor_discovery);
-        actor_mesh.set_routing_id (zlink::routing_id_t::from (sample_names_t::customer_spot_node))
+        actor_mesh.use_allocated_routing_id (16, "delivery-customer")
           .listen (topology.customer_spot_router_endpoint);
         actor_mesh.channel_name (sample_names_t::customer_actor_discovery);
         actor_mesh.add_entry_spot<customer_entry_spot_t> ([sessions_ptr, runtime_ptr] {

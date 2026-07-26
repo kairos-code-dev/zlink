@@ -4,7 +4,6 @@ const BINGO_MATCH_QUEUE = Symbol('BINGO_MATCH_QUEUE');
 
 type WaitingRoomRecord = {
   roomId: string;
-  ownerPlayNodeRid: string;
   reservedActorIds: string[];
   requiredPlayers: number;
   createdAtUnixMs: number;
@@ -13,7 +12,6 @@ type WaitingRoomRecord = {
 type ReserveWaitingRoomInput = {
   mode: BingoMode;
   actorId: string;
-  ownerPlayNodeRid: string;
   requiredPlayers: number;
   createRoomId: () => string;
 };

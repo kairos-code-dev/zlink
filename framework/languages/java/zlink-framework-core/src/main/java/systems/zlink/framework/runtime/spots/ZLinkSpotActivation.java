@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -206,10 +207,18 @@ final class SpotActivation
         }
         List<CompletableFuture<Void>> completions = new ArrayList<>(routes.size());
         for (ZLinkBackendReceived received : routes) {
+            byte[] acceptedRecord = ZLinkSpotAcceptedJournal.encode(received);
+            var replyRoute = host.registerRelocationReply(
+                acceptedRecord,
+                received,
+                context.spotId(),
+                backendSpot.lifecycleGeneration());
             completions.add(context.enqueueAcceptedDispatch(
-                ZLinkSpotAcceptedJournal.encode(received),
-                () -> dispatchRouteAsync(received),
-                received::close).toCompletableFuture());
+                acceptedRecord,
+                () -> dispatchRouteAsync(received)
+                    .whenComplete((ignored, failure) ->
+                        replyRoute.completeLocal()),
+                replyRoute::releaseForRelocation).toCompletableFuture());
         }
         return CompletableFuture.allOf(
             completions.toArray(CompletableFuture[]::new));
@@ -328,6 +337,44 @@ final class SpotActivation
         } finally {
             if (flowScope != null) flowScope.close();
         }
+    }
+
+    CompletionStage<List<byte[]>> replayAccepted(
+        ZLinkSpotAcceptedJournal.Record record) {
+        Objects.requireNonNull(record, "record");
+        CompletableFuture<List<byte[]>> reply = new CompletableFuture<>();
+        List<Message> parts = record.parts().stream()
+            .map(Message::from)
+            .toList();
+        var received = new ZLinkBackendReceived(
+            record.result(),
+            record.routingId(),
+            record.spotId(),
+            record.requestSequence(),
+            record.applicationMetadata(),
+            new byte[0],
+            parts,
+            values -> {
+                try {
+                    reply.complete(values.stream()
+                        .map(Message::toByteArray)
+                        .toList());
+                } finally {
+                    values.forEach(Message::close);
+                }
+            },
+            () -> { });
+        CompletionStage<Void> dispatched;
+        try {
+            dispatched = dispatchRouteAsync(received);
+        } catch (RuntimeException failure) {
+            received.close();
+            return CompletableFuture.failedFuture(failure);
+        }
+        return dispatched.thenCompose(ignored ->
+            record.requestSequence().isPresent()
+                ? reply
+                : CompletableFuture.completedFuture(List.of()));
     }
 
     private CompletionStage<Void> drainSubscriptionsAsync() {

@@ -21,9 +21,7 @@ public sealed record PlayerInfo(
     int Level,
     int Wins);
 
-public sealed record PlayNodeInfo(
-    string StreamEndpoint,
-    string SpotNodeRid);
+public sealed record PlayNodeInfo(string StreamEndpoint);
 
 public sealed record CreateGameHttpReq(string? GameName);
 
@@ -87,8 +85,7 @@ public sealed record WinMilestoneNotify(
     string RoomId,
     string ActorId,
     string DisplayName,
-    int Wins,
-    string ReceivingSpotNodeRid);
+    int Wins);
 
 public sealed record PlayerWinMilestoneEvent(
     string RoomId,

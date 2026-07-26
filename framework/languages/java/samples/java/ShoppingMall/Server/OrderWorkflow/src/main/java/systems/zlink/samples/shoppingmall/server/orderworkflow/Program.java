@@ -71,12 +71,12 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(SampleFlowLog.path(workflow.logDirectory(), workflow.instanceName()))
                 .traceLabel(workflow.instanceName());
-            options.addClientServerChannel(SampleNames.orderWorkflowChannelFor(workflow.instanceName()))
+            options.addClientServerChannel(SampleNames.OrderWorkflowChannel)
                 .enableServer(workflow.channelEndpoint())
                 .addHandlerGroup("order-workflow");
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.OrderSpotDiscovery);
             node.listen(workflow.spotRouterEndpoint())
-                .setRoutingId(workflow.routingId());
+                .useAllocatedRoutingId(16, "shoppingmall-workflow");
             node.addSpotFactory(OrderWorkflowSpot.class);
         };
     }

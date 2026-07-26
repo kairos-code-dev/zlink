@@ -2522,6 +2522,7 @@ function decodeFrozenRecord(reader) {
           targetNodeRidUtf8Fixture: reader.text8(),
           targetNodeGeneration: reader.u64(),
           expectedAuthorityOwnerGeneration: reader.u64(),
+          expectedOwnerLeaseGeneration: reader.u64(),
         },
         payload: decodeApplicationPayload(reader),
       },
@@ -2959,7 +2960,8 @@ function encodeFrozenRecord(writer, record) {
       .u64(record.body.targetSpot.spotGeneration)
       .text8(record.body.targetSpot.targetNodeRidUtf8Fixture)
       .u64(record.body.targetSpot.targetNodeGeneration)
-      .u64(record.body.targetSpot.expectedAuthorityOwnerGeneration);
+      .u64(record.body.targetSpot.expectedAuthorityOwnerGeneration)
+      .u64(record.body.targetSpot.expectedOwnerLeaseGeneration);
     encodeApplicationPayload(writer, record.body.payload);
     return;
   }
@@ -5952,12 +5954,13 @@ function validateTerminationResultProfile(profile, fail) {
     ["RelocationFailed", 6],
     ["TeardownFailed", 7],
     ["RuntimeNotReady", 8],
+    ["ManualTopologyUnsupported", 9],
   ];
   const expectedPairs = new Map([
     ["Stopped", ["None"]],
     ["Blocked", [
       "TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible",
-      "DeadlineExceeded", "RuntimeNotReady",
+      "DeadlineExceeded", "RuntimeNotReady", "ManualTopologyUnsupported",
     ]],
     ["ForceStopped", ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"]],
   ]);
@@ -6010,6 +6013,7 @@ function validateTerminationResultProfile(profile, fail) {
   const exactFields = {
     undefinedPair: "protocol-error",
     relocationCeilingBeforeDraining: "Blocked/StateIncompatible",
+    peerReadinessDeadline: "Blocked/TargetUnavailable",
     preCapturedDeadline: "Blocked/DeadlineExceeded",
     postCapturedDeadline: "ForceStopped/DeadlineExceeded",
     teardownFailure: "ForceStopped/TeardownFailed",

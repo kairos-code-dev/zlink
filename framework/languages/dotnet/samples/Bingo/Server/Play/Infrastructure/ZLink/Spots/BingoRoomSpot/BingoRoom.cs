@@ -21,7 +21,7 @@ internal sealed class BingoRoom(
     private readonly Dictionary<string, PlayerActor> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PendingJoin> _pendingJoins = new(StringComparer.Ordinal);
     private bool _cleanupStarted;
-    private BingoRoomGame? _game = new(context.SpotRid.ToString(), DefaultSettings);
+    private BingoRoomGame? _game = new(context.SpotId, DefaultSettings);
     private PlayerActor? _observerActor;
     private BingoRoomSettings _settings = DefaultSettings;
 
@@ -92,7 +92,7 @@ internal sealed class BingoRoom(
             await PublishAsync(change, cancellationToken);
             logger.LogInformation(
                 "bingo room: player record loaded. room={RoomId}, actor={ActorId}, wins={Wins}, losses={Losses}",
-                Context.SpotRid.ToString(),
+                Context.SpotId,
                 actor.ActorId,
                 record.Wins,
                 record.Losses);
@@ -100,7 +100,7 @@ internal sealed class BingoRoom(
 
         logger.LogInformation(
             "bingo room: actor joined. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToString(),
+            Context.SpotId,
             actor.ActorId);
 
         // PublishAsync excludes the joining actor, so the destination room
@@ -145,7 +145,7 @@ internal sealed class BingoRoom(
             _observerActor = null;
         logger.LogInformation(
             "bingo room: actor left. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToString(),
+            Context.SpotId,
             actor.ActorId);
         if (_actors.Count == 0 && _observerActor is null)
             _ = await Context.CloseAsync(cancellationToken);
@@ -158,7 +158,7 @@ internal sealed class BingoRoom(
         actor.MarkDisconnected();
         logger.LogInformation(
             "bingo room: actor disconnected. room={RoomId}, actor={ActorId}",
-            Context.SpotRid.ToString(),
+            Context.SpotId,
             actor.ActorId);
         return ValueTask.CompletedTask;
     }
@@ -180,7 +180,7 @@ internal sealed class BingoRoom(
         ApplySettings(settings);
         logger.LogInformation(
             "bingo room: created. room={RoomId}, roomName={RoomName}, mode={Mode}, purpose={Purpose}, observedRoom={ObservedRoomId}, requiredPlayers={RequiredPlayers}, maxDrawNumber={MaxDrawNumber}",
-            Context.SpotRid.ToString(),
+            Context.SpotId,
             settings.RoomName,
             settings.Mode,
             settings.Purpose,
@@ -226,7 +226,7 @@ internal sealed class BingoRoom(
                 change.State.Winners[0],
                 BingoRewardItems.GoldenDauberId,
                 Context.NodeRid.ToString());
-            var publish = await Context.Outbound.Publish(
+            await Context.Outbound.Publish(
                     SampleNames.RoomChannel,
                     SampleNames.RewardTopic,
                     new BingoRewardAcquiredEvent
@@ -239,17 +239,6 @@ internal sealed class BingoRoom(
                         Rarity = BingoRewardItems.LegendaryRarity
                     })
                 .Async(cancellationToken);
-            logger.LogInformation(
-                "bingo reward: multicast status={Status}, remote={AdmittedRemote}/{SnapshotRemote}, local={AdmittedLocal}/{SnapshotLocal}",
-                publish.Status,
-                publish.Detail.AdmittedRemoteNodeCount,
-                publish.Detail.SnapshotRemoteNodeCount,
-                publish.Detail.AdmittedLocalSpotCount,
-                publish.Detail.SnapshotLocalSpotCount);
-            if (publish.Status != ZLinkSubmitStatus.Submitted
-                || publish.Detail.AdmittedRemoteNodeCount != 1)
-                throw new InvalidOperationException(
-                    "Bingo reward multicast did not admit the other Play MeshNode.");
             logger.LogInformation(
                 "bingo reward: published. room={RoomId}, actor={ActorId}, item={ItemId}, nodeRid={NodeRid}",
                 change.State.RoomId,
@@ -270,7 +259,7 @@ internal sealed class BingoRoom(
             actor.MarkForDestroyAfterRoomLeave();
             logger.LogInformation(
                 "bingo room: actor marked for destroy. room={RoomId}, actor={ActorId}",
-                Context.SpotRid.ToString(),
+                Context.SpotId,
                 actor.ActorId);
         }
         foreach (var actor in actors)
@@ -280,12 +269,12 @@ internal sealed class BingoRoom(
     public void ApplySettings(BingoRoomSettings settings)
     {
         _settings = settings;
-        _game = settings.IsObserver ? null : new BingoRoomGame(Context.SpotRid.ToString(), settings);
+        _game = settings.IsObserver ? null : new BingoRoomGame(Context.SpotId, settings);
     }
 
     internal void EnsureRoomId(string roomId)
     {
-        if (!string.Equals(roomId, Context.SpotRid.ToString(), StringComparison.Ordinal))
+        if (!string.Equals(roomId, Context.SpotId, StringComparison.Ordinal))
             throw new InvalidOperationException($"Player is not submitting to this room. room={roomId}");
     }
 
@@ -323,8 +312,7 @@ internal sealed class BingoRoom(
                     DrawSeq = message.DrawSeq,
                     ItemId = message.ItemId,
                     ItemName = message.ItemName,
-                    Rarity = message.Rarity,
-                    ReceivingSpotNodeRid = Context.NodeRid.ToString()
+                    Rarity = message.Rarity
                 })
             .Async(cancellationToken);
     }
@@ -386,7 +374,7 @@ internal sealed class BingoRoom(
             return new BingoRoomJoinRes { State = PreviewPendingJoins(game) };
 
         if (!game.CanAcceptPlayer())
-            throw new InvalidOperationException($"Room {Context.SpotRid} cannot accept more players.");
+            throw new InvalidOperationException($"Room {Context.SpotId} cannot accept more players.");
 
         _pendingJoins[actorId] = new PendingJoin(request);
         var state = PreviewPendingJoins(game);

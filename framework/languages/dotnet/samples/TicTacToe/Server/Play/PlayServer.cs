@@ -47,12 +47,12 @@ internal sealed class PlayServer(SampleSettings settings)
                 .TraceLabel(settings.InstanceName);
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)
-                .EnableActorDispatch(SampleNodes.Mesh)
+                .EnableActorDispatch()
                 .AddSession<PlaySession>();
 
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)
                 .Listen(settings.MeshEndpoint)
-                .SetRoutingId(RoutingId.From(settings.PlayMeshNodeRid));
+                .SetRoutingIdPrefix("tictactoe-play");
             mesh.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActor, PlayActorFactory>(
@@ -65,11 +65,7 @@ internal sealed class PlayServer(SampleSettings settings)
                     null,
                     ZLinkRelocationPolicy<TicTacToeGame>.Disabled);
             mesh.ChannelName(SampleChannels.Api).SetWeight(0);
-            var playA = mesh.ChannelName(SampleChannels.Play(0))
-                .SetWeight(settings.PlayIndex == 0 ? 100 : 0);
-            var playB = mesh.ChannelName(SampleChannels.Play(1))
-                .SetWeight(settings.PlayIndex == 1 ? 100 : 0);
-            (settings.PlayIndex == 0 ? playA : playB)
+            mesh.ChannelName(SampleChannels.Play)
                 .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
             mesh.ChannelName(SampleTopics.PlayerMilestoneChannel);
             foreach (var endpoint in settings.PeerMeshEndpoints)

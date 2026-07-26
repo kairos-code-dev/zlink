@@ -84,6 +84,14 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().commitActorRelocation(actorId, seal);
     }
 
+    Optional<List<systems.zlink.framework.execution.ZLinkAsyncSerialQueue.QueuedRecord>>
+        freezeActorRelocationIngress(
+            String actorId,
+            systems.zlink.framework.execution.ZLinkAsyncSerialQueue.RelocationSeal
+                seal) {
+        return requireActors().freezeActorRelocationIngress(actorId, seal);
+    }
+
     Optional<ZLinkActor> localActor(String actorId) {
         return actors == null ? Optional.empty() : actors.localActor(actorId);
     }
@@ -107,6 +115,23 @@ final class ZLinkActorSessionCoordinator {
             new ZLinkConfigurationException(
                 "local actor is not available: " + actorId));
         return requireActors().hasBoundSession(actor);
+    }
+
+    Optional<ZLinkActorRuntime.BoundSessionRouteSnapshot> boundSessionRoute(
+        String actorId) {
+        ZLinkActor actor = localActor(actorId).orElseThrow(() ->
+            new ZLinkConfigurationException(
+                "local actor is not available: " + actorId));
+        return requireActors().boundSessionRoute(actor);
+    }
+
+    CompletionStage<Void> completeRelocationSource(List<String> actorIds) {
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (String actorId : List.copyOf(actorIds)) {
+            chain = chain.thenCompose(ignored ->
+                requireActors().completeRelocationSource(actorId));
+        }
+        return chain;
     }
 
     boolean isActorMember(String spotId, String actorId) {
@@ -203,9 +228,22 @@ final class ZLinkActorSessionCoordinator {
             return localDispatch.apply(new LocalDispatch(actor, joinedSpotId));
         }
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
-        return runtime.submitActorDispatch(
+        byte[] acceptedRecord = runtime.encodeLocalSessionActorAccepted(
+            actor,
+            header,
+            payload);
+        if (acceptedRecord.length == 0) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "canonical local Session Actor journal context is unavailable"));
+        }
+            return runtime.submitActorDispatch(
                 actor.context().actorId(),
-                ZLinkActorAcceptedJournal.encode(actor.context().actorId(), header, payload),
+                ZLinkActorAcceptedJournal.encode(
+                    actor.context().actorId(),
+                    header,
+                    payload,
+                    acceptedRecord),
                 () -> invokeLocalDispatch(
                     localDispatch,
                     new LocalDispatch(actor, joinedSpotId),
@@ -219,7 +257,8 @@ final class ZLinkActorSessionCoordinator {
         boolean noBindRequest,
         ZLinkBackendActorReceived headerPart,
         ZLinkInternalSpotNode primaryNode,
-        Supplier<CompletionStage<Optional<Message>>> operation) {
+        Supplier<CompletionStage<Optional<Message>>> operation,
+        Runnable relocationRelease) {
         ZLinkActorRuntime runtime = requireActors();
         if (request
             && !noBindRequest
@@ -234,7 +273,31 @@ final class ZLinkActorSessionCoordinator {
                 headerPart.sourceNodeRid(),
                 headerPart.sourceSessionRid());
         }
-        return runtime.runActorDispatchTurn(actor.context().actorId(), operation);
+        Supplier<CompletionStage<Optional<Message>>> turn = () ->
+            runtime.runActorDispatchTurn(
+                actor.context().actorId(), operation);
+        byte[] acceptedRecord = headerPart.acceptedJournalRecord();
+        if (acceptedRecord.length == 0) {
+            return turn.get();
+        }
+        CompletableFuture<Optional<Message>> result =
+            new CompletableFuture<>();
+        return runtime.submitActorDispatch(
+                actor.context().actorId(),
+                acceptedRecord,
+                () -> turn.get().handle((reply, failure) -> {
+                    if (failure == null) {
+                        result.complete(reply);
+                    } else {
+                        result.completeExceptionally(failure);
+                    }
+                    return null;
+                }),
+                () -> {
+                    relocationRelease.run();
+                    result.complete(Optional.empty());
+                })
+            .thenCompose(ignored -> result);
     }
 
     boolean hasBoundSession(ZLinkActor actor) {

@@ -81,6 +81,30 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         return published;
     }
 
+    internal ValueTask<bool> MarkRetiringAsync(CancellationToken cancellationToken) =>
+        PublishStateAsync(static identity => identity.MarkRetiring(), cancellationToken);
+
+    internal ValueTask<bool> MarkServingAsync(CancellationToken cancellationToken) =>
+        PublishStateAsync(static identity => identity.MarkServing(), cancellationToken);
+
+    private async ValueTask<bool> PublishStateAsync(
+        Action<ZLinkClientServerServerIdentity> transition,
+        CancellationToken cancellationToken)
+    {
+        var published = true;
+        foreach (var server in _servers)
+        {
+            transition(server.Identity);
+            var result = await PublishAsync(
+                    server,
+                    ZLinkLocationWriteIntent.Renew,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            published &= result.Status == ZLinkLocationWriteStatus.Stored;
+        }
+        return published;
+    }
+
     internal void SetLocalWeight(string channelName, int weight)
     {
         ZLinkSocketConfig.ValidatePeerWeight(weight);

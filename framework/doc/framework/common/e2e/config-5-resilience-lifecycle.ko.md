@@ -121,19 +121,25 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 교체해도 request가 중단되지 않고, 완료 뒤에는 새 version만 처리하는가.
 
 - 절차: old와 new provider는 overlap 구간에 서로 다른 rid를 사용하고 version은 handler evidence에
-  기록한다. request를 고정된 간격과 timeout으로 계속 보낸다. rolling 경로는 새 version provider 하나를
-  새 RID로 시작해 MeshNode descriptor 반영과 실제 request 성공을 확인한 뒤 old provider 하나를 `Retire(deadline)`로
-  정상 종료하며, 같은 순서를 old provider가 없어질 때까지 반복한다. blue-green 경로는 green set 전체를
+  기록한다. request를 고정된 간격과 timeout으로 계속 보낸다. 첫 반복에서는 green descriptor를 게시한 뒤
+  handshake admission을 bounded gate에서 막고 old provider의 `Retire(deadline)`를 시작한다. Source Core peer
+  table에 green RID와 lifecycle generation이 아직 `Ready`가 아닌 동안 old host가 `Serving`과 application
+  admission을 유지하는지 확인한 뒤 gate를 해제한다. Rolling 경로는 새 version provider 하나를 새 RID로
+  시작해 exact peer `Ready`와 실제 request 성공을 확인한 뒤 old provider 하나를 `Retire(deadline)`로
+  정상 종료하며, 같은 순서를 old provider가 없어질 때까지 반복한다. Blue-green 경로는 green set 전체를
   시작해 모든 MeshNode descriptor와 각 provider의 request evidence를 확인한 뒤 blue set의 host를 하나씩
   `Retire(deadline)`한다. 각 `Retire`는
   `Draining=true` 반영과 terminal `Stopped/None`을 확인하고, 다음 old provider를 내리기 전에 하나 이상의
   serving new provider가 남아 있는지 runtime query로 확인한다.
 - 검증: 전환 구간의 모든 request가 설정한 timeout 안에 정상 reply로 끝나고 pending이 남지 않는다.
+  Green descriptor와 connect intent만으로 old host가 `Retiring`으로 전환하면 실패다. Source가 exact green
+  RID·lifecycle generation의 `Ready`를 확인한 뒤 old `Retiring`, relocation, old `Draining`과 accepted
+  barrier, descriptor·owner lease release, old connection disconnect 순서가 유지되어야 한다.
   각 단계에서 serving target이 0이 되는 순간이 없어야 한다. 완료 뒤 descriptor 성공 조회에는 새
   version set의 RID만 남고, 검증 구간의 신규 request evidence도 새 version에서만 기록된다. version은
   MeshNode descriptor의 존재만으로 추정하지 않고 실제 handler evidence로 판정한다. old endpoint로의
   반복 timeout, old provider의 신규 handler-start evidence, `ForceStopped` outcome은 없어야 한다.
-- 세부 동작: 무중단 배포 전환.
+- 세부 동작: automatic topology의 connect-new, retire-old, disconnect-old 순서를 지키는 무중단 배포 전환.
 
 #### RL-A5 provider flapping
 

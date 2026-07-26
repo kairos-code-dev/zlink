@@ -16,4 +16,7 @@ public sealed class NodePlayerCensus
     public void Record(string zoneId, int playerCount) => _byZone[zoneId] = playerCount;
 
     public int TotalPlayers => _byZone.Values.Sum();
+
+    public IReadOnlyList<string> ZoneIds =>
+        _byZone.Keys.OrderBy(value => value, StringComparer.Ordinal).ToArray();
 }

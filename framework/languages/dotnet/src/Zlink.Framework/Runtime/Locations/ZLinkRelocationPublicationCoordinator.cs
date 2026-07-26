@@ -1,4 +1,5 @@
 using System.Text;
+using System.Buffers.Binary;
 
 namespace Zlink.Framework.Runtime.Locations;
 
@@ -183,8 +184,8 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
 
                 case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
                     await DeleteOrphanAsync(stored.Reference).ConfigureAwait(false);
-                    throw new InvalidOperationException(
-                        "The authority generation space was exhausted.");
+                    throw new ZLinkAuthorityGenerationExhaustedException(
+                        "publishing relocation authority");
 
                 default:
                     await DeleteOrphanAsync(stored.Reference).ConfigureAwait(false);
@@ -316,6 +317,16 @@ internal sealed class ZLinkRelocationPublicationCoordinator(
         ZLinkRelocationEnvelope envelope,
         ZLinkRelocationManifestReference reference)
     {
+        if (!envelope.CanonicalLogicalStream.IsEmpty)
+        {
+            if (envelope.AggregateId != reference.AggregateId)
+                throw new ZLinkRelocationDataLostException(
+                    $"Relocation root '{reference.Reference}' does not match its manifest.");
+            return envelope with
+            {
+                AggregateGeneration = reference.AggregateGeneration
+            };
+        }
         if (envelope.AggregateId != reference.AggregateId
             || envelope.AggregateGeneration != reference.AggregateGeneration
             || !envelope.InventoryDigest.Span.SequenceEqual(
@@ -476,7 +487,14 @@ internal sealed record ZLinkRelocationAuthorityPayload(
     ReadOnlyMemory<byte> InventoryDigest,
     string TargetOwnerId,
     long TargetOwnerLeaseGeneration,
-    ReadOnlyMemory<byte> ApplicationPayload);
+    ReadOnlyMemory<byte> ApplicationPayload)
+{
+    internal bool IsCanonical { get; init; }
+    internal uint TerminalCompletionCount { get; init; }
+    internal uint PendingRelayCount { get; init; }
+    internal long ApplicationVersion { get; init; }
+    internal byte SourceCleanupState { get; init; }
+}
 
 internal static class ZLinkRelocationAuthorityPayloadCodec
 {
@@ -509,6 +527,31 @@ internal static class ZLinkRelocationAuthorityPayloadCodec
         out ZLinkRelocationAuthorityPayload payload)
     {
         payload = null!;
+        if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                encoded,
+                out var canonical))
+        {
+            Span<byte> id = stackalloc byte[16];
+            BinaryPrimitives.WriteUInt64BigEndian(id, canonical.RelocationHigh);
+            BinaryPrimitives.WriteUInt64BigEndian(id[8..], canonical.RelocationLow);
+            payload = new ZLinkRelocationAuthorityPayload(
+                canonical.RelocationReference,
+                canonical.RelocationChecksumCrc32c,
+                new Guid(id, bigEndian: true),
+                canonical.TargetAttemptGeneration,
+                new byte[32],
+                canonical.TargetOwnerId,
+                checked((long)canonical.TargetOwnerLeaseGeneration),
+                canonical.SteadyAuthorityPayload)
+            {
+                IsCanonical = true,
+                TerminalCompletionCount = canonical.TerminalCompletionCount,
+                PendingRelayCount = canonical.PendingRelayCount,
+                ApplicationVersion = canonical.ApplicationVersion,
+                SourceCleanupState = canonical.SourceCleanupState
+            };
+            return true;
+        }
         try
         {
             using var stream = new MemoryStream(encoded.ToArray(), writable: false);

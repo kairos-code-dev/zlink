@@ -23,6 +23,7 @@ namespace zlink::framework
 {
 
 class zlink_builder_t;
+class stream_node_options_builder_t;
 
 namespace detail
 {
@@ -277,6 +278,7 @@ struct stream_snapshot_t
     std::string packet_session_name;
     std::string tls_certificate_file;
     std::string tls_private_key_file;
+    bool tls_require_client_certificate = false;
 };
 
 class stream_builder_t
@@ -291,14 +293,17 @@ class stream_builder_t
     stream_builder_t &operator= (const stream_builder_t &) = default;
 
     stream_builder_t &bind (std::string endpoint);
-    stream_builder_t &set_tls_server (std::string certificate_file, std::string private_key_file);
     stream_builder_t &register_session (std::string session_name);
     stream_snapshot_t snapshot () const;
 
   private:
     friend class zlink_builder_t;
+    friend class stream_node_options_builder_t;
     friend class detail::stream_runtime_t;
     explicit stream_builder_t (std::shared_ptr<detail::stream_builder_state_t> state);
+    stream_builder_t &configure_tls_server (std::string certificate_file,
+                                            std::string private_key_file,
+                                            bool require_client_certificate);
 
     std::shared_ptr<detail::stream_builder_state_t> _state;
 };

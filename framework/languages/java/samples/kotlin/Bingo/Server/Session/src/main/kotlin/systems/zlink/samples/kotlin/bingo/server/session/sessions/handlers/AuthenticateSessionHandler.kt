@@ -1,12 +1,11 @@
 package systems.zlink.samples.kotlin.bingo.server.session.sessions.handlers
 
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.actors.ActorRef
+import systems.zlink.framework.actors.ZLinkActorCreateResult
+import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.channels.ZLinkRouteClient
-import systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
-import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
@@ -16,12 +15,10 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticatePlayerRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.AuthenticateRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorRes
 
 class AuthenticateSessionHandler(
     private val routes: ZLinkRouteClient,
-    private val spots: SpotHandleResolver,
-    private val allocatedRoutingIds: ZLinkAllocatedRoutingIdProvider,
+    private val actors: ZLinkActorManager,
 ) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     override fun packetName(): String = "AuthenticateReq"
 
@@ -52,39 +49,26 @@ class AuthenticateSessionHandler(
                 authenticated.reason ?: "Player authentication failed.",
             )
         }
-        val allocation = allocatedRoutingIds.waitForReadyAllocation("bingo.session").await()
-        val preferredPlayNode = RoutingId.from("play${allocation.slot()}")
-        val spot = spots.resolveSpotHandle(SampleNames.Mesh, preferredPlayNode).await()
-            .orElseThrow { IllegalStateException("spot not found: $preferredPlayNode") }
-        val ensured = routes
-            .requestToSpot(
-                spot,
-                EnsurePlayerActorReq(
-                    authenticated.actorId,
-                    authenticated.displayName,
-                    preferredPlayNode.toString(),
-                ),
-            )
-            .timeout(SampleTimings.RequestTimeout)
-            .submit(EnsurePlayerActorRes::class.java)
+        val actor = actors.getOrCreate(
+            authenticated.actorId,
+            SampleNames.PlayerActorType,
+            EnsurePlayerActorReq(authenticated.actorId, authenticated.displayName),
+        )
             .await()
-        context.actors()
-            .bind(
-                ActorRef(
-                    RoutingId.from(ensured.actor.nodeRid),
-                    ensured.actor.actorId,
-                    ensured.actor.generation,
-                ),
-            )
-            .await()
+        context.actors().bind(requireActor(actor)).await()
         context.client()
             .reply(
                 AuthenticateRes(
-                    ensured.actorId,
+                    authenticated.actorId,
                     authenticated.displayName,
-                    ensured.actor.nodeRid,
                 ),
             )
             .submit()
+    }
+
+    private fun requireActor(result: ZLinkActorCreateResult): ActorRef = when (result) {
+        is ZLinkActorCreateResult.Existing -> result.actor
+        is ZLinkActorCreateResult.Created -> result.actor
+        is ZLinkActorCreateResult.Rejected -> throw IllegalStateException("Player actor creation was rejected.")
     }
 }

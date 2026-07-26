@@ -96,3 +96,88 @@ test('Framework runtime termination surface is concrete and Nest exports topolog
   assert.equal(typeof nestjs.ZLINK_CLIENT_SERVER_RUNTIME, 'symbol');
   assert.equal(typeof nestjs.ZLINK_FANOUT_RUNTIME, 'symbol');
 });
+
+test('Retire rejects local manual topology before changing host state and Shutdown remains available', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: {
+      orders: { client: { manualConnections: ['tcp://127.0.0.1:19001'] } }
+    }
+  });
+  const host = new internal.ZLinkFrameworkRuntimeHost({ registration });
+
+  // The focused contract test enters the observable Serving state without
+  // starting transport resources; the blocker must run before touching them.
+  host.runtimeState = framework.ZLinkFrameworkRuntimeState.Serving;
+  assert.deepEqual(await host.retire(), {
+    effectiveIntent: framework.ZLinkTerminationIntent.Retire,
+    outcome: framework.ZLinkTerminationOutcome.Blocked,
+    reason: framework.ZLinkTerminationReason.ManualTopologyUnsupported
+  });
+  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Serving);
+  assert.equal(host.snapshot().workSealed, false);
+  assert.equal(host.snapshot().terminalResult, undefined);
+
+  const shutdown = await host.shutdown({ deadlineMs: 1000 });
+  assert.equal(shutdown.outcome, framework.ZLinkTerminationOutcome.Stopped);
+});
+
+test('Retire keeps Serving when descriptor publication is reversibly rolled back', async () => {
+  const host = new internal.ZLinkFrameworkRuntimeHost({
+    registration: internal.createFrameworkRegistration()
+  });
+  host.executionState = {};
+  host.runtimeState = framework.ZLinkFrameworkRuntimeState.Serving;
+  host.routeMeshCoordinator = {
+    async prepareHostRetire() { return 'store_unavailable'; }
+  };
+
+  assert.deepEqual(await host.retire(), {
+    effectiveIntent: framework.ZLinkTerminationIntent.Retire,
+    outcome: framework.ZLinkTerminationOutcome.Blocked,
+    reason: framework.ZLinkTerminationReason.StoreUnavailable
+  });
+  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Serving);
+  assert.equal(host.snapshot().terminalResult, undefined);
+});
+
+test('Retire force-stops when descriptor rollback cannot be confirmed', async () => {
+  const host = new internal.ZLinkFrameworkRuntimeHost({
+    registration: internal.createFrameworkRegistration()
+  });
+  host.executionState = {};
+  host.runtimeState = framework.ZLinkFrameworkRuntimeState.Serving;
+  host.routeMeshCoordinator = {
+    async prepareHostRetire() { throw new internal.ZLinkRetiringRollbackError(); }
+  };
+  host.stop = async () => {};
+
+  const result = await host.retire();
+  assert.equal(result.outcome, framework.ZLinkTerminationOutcome.ForceStopped);
+  assert.equal(result.reason, framework.ZLinkTerminationReason.TeardownFailed);
+  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Stopped);
+});
+
+test('Retire manual topology classification covers every local service registration', () => {
+  const manualRegistrations = [
+    { routeChannels: [{ routerChannelId: 'route-a', bind: 'tcp://127.0.0.1:19101', manualConnections: ['tcp://127.0.0.1:19001'] }] },
+    { spotNodes: { play: { router: { bind: 'tcp://127.0.0.1:19102', manualConnections: ['tcp://127.0.0.1:19002'] } } } },
+    { spotNodes: { play: { router: { bind: 'tcp://127.0.0.1:19103', manualPeerConnections: [{ peerRid: 'peer-a', endpoint: 'tcp://127.0.0.1:19003' }] } } } },
+    { channels: { orders: { client: { manualConnections: ['tcp://127.0.0.1:19004'] } } } },
+    { channels: { events: {
+      subscriber: { manualConnections: ['tcp://127.0.0.1:19005'] },
+      publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
+    } } },
+    { channels: { events: { publisher: { bind: 'tcp://127.0.0.1:19006' } } } }
+  ];
+
+  for (const options of manualRegistrations) {
+    const registration = internal.createFrameworkRegistration(options);
+    assert.equal(internal.hasUnsupportedManualTopology(registration), true);
+  }
+
+  const automaticPublisher = internal.createFrameworkRegistration({
+    locations: { useInMemoryStores: true },
+    channels: { events: { publisher: { bind: 'tcp://127.0.0.1:19007' } } }
+  });
+  assert.equal(internal.hasUnsupportedManualTopology(automaticPublisher), false);
+});

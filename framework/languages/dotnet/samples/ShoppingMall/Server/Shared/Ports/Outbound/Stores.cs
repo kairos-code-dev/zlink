@@ -51,7 +51,6 @@ public interface ICommerceStateStore
 
     ValueTask<IdempotencyMapping> ReserveIdempotencyAsync(
         string idempotencyKey,
-        string ownerInstanceId,
         CancellationToken cancellationToken);
 
     ValueTask MarkIdempotencyStartedAsync(
@@ -61,7 +60,6 @@ public interface ICommerceStateStore
     ValueTask CreatePendingMappingAsync(
         string idempotencyKey,
         string orderId,
-        string ownerInstanceId,
         CancellationToken cancellationToken);
 
     ValueTask SaveOrderPaymentMethodAsync(
@@ -128,7 +126,6 @@ public static class StoredOrderEventPayload
 public sealed record IdempotencyMapping(
     string IdempotencyKey,
     string OrderId,
-    string OwnerInstanceId,
     bool Started);
 
 public sealed record StoreEvidence(

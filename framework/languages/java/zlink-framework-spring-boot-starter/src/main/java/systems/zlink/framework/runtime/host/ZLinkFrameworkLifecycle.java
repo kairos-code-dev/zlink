@@ -253,6 +253,13 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().monitoringLocationRuntimeQuery();
     }
 
+    systems.zlink.framework.runtime.internal.monitoring
+        .ZLinkMeshNodeMonitoringProjection monitoringMeshNodeProjection(
+            String meshName,
+            RoutingId rid) {
+        return requireRuntime().monitoringMeshNodeProjection(meshName, rid);
+    }
+
     public systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider allocatedRoutingIds() {
         return requireRuntime().allocatedRoutingIds();
     }

@@ -8,15 +8,13 @@ using Zlink.Framework.Contracts.Channels;
 namespace GameQuest.GameApi.Infrastructure.ZLink;
 
 internal sealed class GameplayEventOwnerDispatcher(
-    GameQuestTopology topology,
     IZLinkRouteClient channels) : IGameplayEventOwnerDispatcher
 {
     public async ValueTask<string> DispatchAsync(
         GameplayEvent gameplayEvent,
         CancellationToken cancellationToken)
     {
-        var owner = topology.OwnerRouteRid(gameplayEvent.PlayerId);
-        await channels.SendToChannel(SampleNames.MeshName, topology.QuestOwnerChannel(gameplayEvent.PlayerId),
+        await channels.SendToChannel(SampleNames.MeshName, SampleNames.QuestOwnerChannel,
                 new GameplayMsg(
                     gameplayEvent.EventId,
                     gameplayEvent.PlayerId,
@@ -27,7 +25,7 @@ internal sealed class GameplayEventOwnerDispatcher(
                         gameplayEvent.SourceApi)),
                     gameplayEvent.CreatedAtUnixMs))
             .Async(cancellationToken);
-        return owner.ToString();
+        return SampleNames.QuestOwnerChannel;
     }
 
     private sealed record GameplayPayload(string Value, int Count, string SourceApi);

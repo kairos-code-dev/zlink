@@ -18,7 +18,6 @@ class RedisBingoMatchQueue implements BingoMatchQueue {
   async reserve(input: ReserveWaitingRoomInput): Promise<ReserveWaitingRoomResult> {
     const candidate = {
       roomId: input.createRoomId(),
-      ownerPlayNodeRid: input.ownerPlayNodeRid,
       reservedActorIds: [input.actorId],
       requiredPlayers: input.requiredPlayers,
       createdAtUnixMs: Date.now()

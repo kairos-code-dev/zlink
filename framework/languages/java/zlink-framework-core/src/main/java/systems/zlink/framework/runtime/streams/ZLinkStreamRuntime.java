@@ -282,6 +282,32 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 metadataPolicy.actorToSessionKeys());
     }
 
+    public CompletionStage<byte[]> handleSessionRelocationRoute(
+        RoutingId transportSource,
+        byte[] command44) {
+        var codec = new systems.zlink.framework.runtime.service
+            .ZLinkServiceM6BWireCodec();
+        var command = codec.decodeSessionRelocationRoute(command44);
+        if (!command.targetNodeRid().equals(transportSource)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "command 44 transport source differs from target Actor owner"));
+        }
+        List<SessionState> matches;
+        synchronized (sessions) {
+            matches = sessions.values().stream()
+                .filter(state -> state.routingId().equals(
+                    command.session().sessionRid()))
+                .toList();
+        }
+        if (matches.size() != 1) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "command 44 requires one exact local Session"));
+        }
+        return matches.getFirst().context()
+            .applyRelocationRouteCommand(command)
+            .thenApply(codec::encodeSessionRelocationRouted);
+    }
+
     private void dispatchToSession(
         StreamNodeRegistration streamNode,
         RoutingId routingId,

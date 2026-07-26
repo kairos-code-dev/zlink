@@ -1413,6 +1413,41 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task UserSpotMemberActorIsExcludedFromStandaloneRetireInventory()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var registration = new ZLinkFrameworkRegistration();
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new ThrowingBackendAdapterFactory(),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var activation = new ZLinkSpotActivation(
+            runtime,
+            services.CreateAsyncScope(),
+            new CapturingSpot(),
+            "aggregate-spot",
+            RoutingId.From("node"),
+            "node",
+            "channel",
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1));
+        activation.AttachSpot(new EmptyUserSpot(activation));
+        var standalone = new ZLinkActorRuntimeState("standalone");
+        var member = new ZLinkActorRuntimeState("member");
+        member.JoinSpot(activation);
+
+        var inventory = ZLinkActorDrainCoordinator.StandaloneActors(
+            [standalone, member]);
+
+        Assert.Equal([standalone], inventory);
+        await activation.DisposeAsync();
+    }
+
+    [Fact]
     public async Task Entry_spot_concurrent_dispose_callers_wait_for_scope_cleanup_failure()
     {
         var cleanup = new BlockingScopeCleanup();
@@ -1627,6 +1662,89 @@ public sealed partial class EntrySpotActorDispatchTests
         finally
         {
             probe.Release.TrySetResult();
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task UserSpotJoin_AuthorityCasFailureNeverPublishesTargetMembership()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(
+            node,
+            userSpotType: typeof(JoinTargetSpot));
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+            var created = await runtime.CreateAsync<JoinTargetSpot>();
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
+            var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(
+                state.SpotNodes["entry"],
+                "_spots");
+            var activations = GetPrivateField<Dictionary<string, ZLinkSpotActivation>>(
+                catalog,
+                "_spots");
+            var activation = activations[created.Spot.SpotId];
+            var store = runtime.Services.GetRequiredService<ZLinkLocationRuntime>().Store;
+            var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorRef.ActorId);
+            var current = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+                await store.ReadAuthorityAsync(key));
+            Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+                await store.CompareExchangeAuthorityAsync(
+                    key,
+                    current.Snapshot.StoreVersion,
+                    new ZLinkAuthorityMutation.Delete()));
+
+            await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+                await activation.JoinActorAsync(
+                    actor,
+                    ZLinkMessage.Empty,
+                    CancellationToken.None));
+
+            Assert.False(activation.ContainsActor(actor.Context.ActorId));
+            Assert.Equal(0, activation.JoinedActorCount);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task UserSpotJoin_RetriesPostCommitCallbackWithoutRollingBackMembership()
+    {
+        var probe = new CommittedJoinRetryProbe();
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(
+            node,
+            userSpotType: typeof(RetryingJoinTargetSpot),
+            committedJoinRetryProbe: probe);
+        try
+        {
+            var actor = RegisterProbeActor(runtime, actorRef);
+            var created = await runtime.CreateAsync<RetryingJoinTargetSpot>();
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
+            var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(
+                state.SpotNodes["entry"],
+                "_spots");
+            var activations = GetPrivateField<Dictionary<string, ZLinkSpotActivation>>(
+                catalog,
+                "_spots");
+            var activation = activations[created.Spot.SpotId];
+
+            var result = await activation.JoinActorAsync(
+                    actor,
+                    ZLinkMessage.Empty,
+                    CancellationToken.None)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.True(result.Accepted);
+            Assert.Equal(2, probe.Attempts);
+            Assert.True(activation.ContainsActor(actor.Context.ActorId));
+        }
+        finally
+        {
             await runtime.StopAsync(CancellationToken.None);
         }
     }
@@ -3287,6 +3405,7 @@ public sealed partial class EntrySpotActorDispatchTests
         Type? userSpotType = null,
         BlockingSpotCreateProbe? blockingCreateProbe = null,
         BlockingActorJoinProbe? blockingActorJoinProbe = null,
+        CommittedJoinRetryProbe? committedJoinRetryProbe = null,
         bool includeActorFactory = true,
         bool includeSpotRoute = false,
         bool preseedActorOwnership = true)
@@ -3336,6 +3455,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 new ZLinkSpotHandleRegistry()))
             .AddSingleton(blockingCreateProbe ?? new BlockingSpotCreateProbe())
             .AddSingleton(blockingActorJoinProbe ?? new BlockingActorJoinProbe())
+            .AddSingleton(committedJoinRetryProbe ?? new CommittedJoinRetryProbe())
             .AddTransient<ProbeActorFactory>()
             .AddTransient<ProbeActorRequestHandler>()
             .AddTransient<ProbeActorFlowJoinRequestHandler>()
@@ -4170,6 +4290,38 @@ public sealed partial class EntrySpotActorDispatchTests
             ValueTask.CompletedTask;
 
         public ValueTask OnLeaveActorAsync(ProbeActor actor, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class CommittedJoinRetryProbe
+    {
+        public int Attempts;
+    }
+
+    private sealed class RetryingJoinTargetSpot(
+        IZLinkSpotContext context,
+        CommittedJoinRetryProbe probe) : IZLinkSpot<ProbeActor>
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+            string actorId,
+            ZLinkMessage request,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept());
+
+        public ValueTask OnJoinedActorAsync(
+            ProbeActor actor,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref probe.Attempts) == 1)
+                throw new InvalidOperationException("post-commit callback failed");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask OnLeaveActorAsync(
+            ProbeActor actor,
+            CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
     }
 

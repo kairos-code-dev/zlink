@@ -113,7 +113,8 @@ class raw_mesh_node_owner_t
       const protocol::spot_route_fence_t &target,
       const protocol::application_payload_t &application_payload,
       std::chrono::milliseconds timeout,
-      foundation::operation_registry_t::callback_t callback);
+      foundation::operation_registry_t::callback_t callback,
+      std::optional<protocol::wire_operation_id_t> operation = std::nullopt);
     bool send_to_actor (
       const std::vector<std::uint8_t> &target_routing_id,
       const std::optional<std::pair<std::string, std::uint64_t>> &source_actor,
@@ -125,7 +126,8 @@ class raw_mesh_node_owner_t
       const protocol::actor_route_fence_t &target,
       const protocol::application_payload_t &application_payload,
       std::chrono::milliseconds timeout,
-      foundation::operation_registry_t::callback_t callback);
+      foundation::operation_registry_t::callback_t callback,
+      std::optional<protocol::wire_operation_id_t> operation = std::nullopt);
     bool request_user_spot_create (
       const std::vector<std::uint8_t> &target_routing_id,
       protocol::user_spot_create_header_t request,
@@ -183,6 +185,17 @@ class raw_mesh_node_owner_t
     bool send_session_relocation_routed (
       const std::vector<std::uint8_t> &target_routing_id,
       const protocol::session_relocation_routed_t &routed);
+    bool send_reply_relay (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::reply_relay_t &relay,
+      std::optional<protocol::application_payload_t>
+        application_reply = std::nullopt);
+    bool send_reply_relay_ack (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::reply_relay_ack_t &ack);
+    bool send_relocation_control (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::relocation_control_t &control);
     raw_mesh_pump_result_t
     pump_one (service_liveness_registry_t::clock_t::time_point now);
     std::size_t drain_monitor_events (
@@ -195,6 +208,7 @@ class raw_mesh_node_owner_t
     static foundation::operation_id_t operation_id (
       std::uint64_t lifecycle_generation,
       std::uint64_t correlation);
+    std::uint64_t next_operation_sequence ();
     bool request_to_target (
       const std::vector<std::uint8_t> &target_routing_id,
       const protocol::application_payload_t &application_payload,

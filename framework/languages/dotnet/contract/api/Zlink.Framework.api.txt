@@ -683,6 +683,7 @@ assembly Zlink.Framework
     field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationOutcome Stopped = 0 [nullability=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason DeadlineExceeded = 5 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason ManualTopologyUnsupported = 9 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason None = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason RelocationDisabled = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationReason RelocationFailed = 6 [nullability=read:not-null,write:not-null]

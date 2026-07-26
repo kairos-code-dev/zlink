@@ -11,10 +11,9 @@ final class BingoRoomAllocatorTest {
         BingoRoomAllocator allocator = new BingoRoomAllocator(queue, 100);
 
         BingoRoomAllocation allocation =
-            allocator.allocate("player-1", "two-player", "remote-play-node");
+            allocator.allocate("player-1", "two-player");
 
         assertEquals("two-player-room-1", allocation.roomId());
-        assertEquals("remote-play-node", allocation.ownerPlayNodeRid());
         assertEquals("Bingo Room 001", allocation.settings().roomName());
         assertEquals(100, allocation.settings().drawPeriodMillis());
         assertEquals("two-player-room-1", queue.newRoomId);
@@ -29,12 +28,11 @@ final class BingoRoomAllocatorTest {
         public BingoMatchReservation reserve(
             String mode,
             String actorId,
-            String preferredOwnerNodeRid,
             String newRoomId,
             int requiredPlayers) {
             this.newRoomId = newRoomId;
             this.requiredPlayers = requiredPlayers;
-            return new BingoMatchReservation(newRoomId, "remote-play-node");
+            return new BingoMatchReservation(newRoomId);
         }
     }
 }

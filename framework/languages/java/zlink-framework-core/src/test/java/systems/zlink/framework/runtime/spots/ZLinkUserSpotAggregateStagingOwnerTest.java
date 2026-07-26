@@ -32,12 +32,13 @@ final class ZLinkUserSpotAggregateStagingOwnerTest {
             backend.operations);
 
         owner.publishAndReplay(staged, (lane, record) -> {
+                assertTrue(backend.live.isEmpty());
                 backend.operations.add("replay:" + lane + ":" + record.sequence());
                 return CompletableFuture.completedFuture(null);
             })
             .toCompletableFuture().join();
 
-        assertEquals(List.of("spot", "actor-a", "actor-b"), backend.live);
+        assertEquals(List.of("actor-a", "actor-b", "spot"), backend.live);
         assertEquals("timers:publish", backend.operations.getLast());
         assertTrue(backend.operations.indexOf("replay:spot:1")
             < backend.operations.indexOf("timers:publish"));
@@ -58,6 +59,33 @@ final class ZLinkUserSpotAggregateStagingOwnerTest {
         assertTrue(backend.live.isEmpty());
         assertTrue(backend.operations.contains("discard:actor-a"));
         assertEquals("discard:spot", backend.operations.getLast());
+    }
+
+    @Test
+    void finalRootMustPreserveTheInitialFactoryAndRestoreState() {
+        FakeBackend backend = new FakeBackend();
+        ZLinkUserSpotAggregateStagingOwner owner =
+            new ZLinkUserSpotAggregateStagingOwner(backend);
+        var staged = owner.stage(request(), () -> false)
+            .toCompletableFuture().join();
+        var changed = new ZLinkUserSpotAggregateStagingOwner.Request(
+            TestSpot.class,
+            "room",
+            "room-a",
+            7,
+            new byte[] {99},
+            true,
+            new byte[] {8},
+            List.of(actor("actor-a"), actor("actor-b")),
+            request().acceptedJournal());
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> owner.publishAndReplay(
+                staged,
+                changed,
+                (lane, record) -> CompletableFuture.completedFuture(null)));
+        assertTrue(backend.live.isEmpty());
     }
 
     private static ZLinkUserSpotAggregateStagingOwner.Request request() {

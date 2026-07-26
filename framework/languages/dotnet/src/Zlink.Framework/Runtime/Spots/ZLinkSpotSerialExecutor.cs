@@ -273,7 +273,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         return false;
     }
 
-    public bool QueueAccepted(
+    public ZLinkAcceptedWorkAdmission QueueAccepted(
         ReadOnlyMemory<byte> acceptedJournalRecord,
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action relocationRelease,
@@ -284,9 +284,9 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             if (_relocationBarrier is { HoldAcceptedIngress: false })
             {
                 completion = Task.CompletedTask;
-                return false;
+                return ZLinkAcceptedWorkAdmission.Closed;
             }
-            if (_queue.TryPostAccepted(
+            var admission = _queue.TryPostAccepted(
                     acceptedJournalRecord,
                     async ct =>
                     {
@@ -305,14 +305,15 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                         }
                     },
                     relocationRelease,
-                    out var item))
+                    out var item);
+            if (admission == ZLinkAcceptedWorkAdmission.Accepted)
             {
                 completion = item.Completion;
-                return true;
+                return admission;
             }
+            completion = Task.CompletedTask;
+            return admission;
         }
-        completion = Task.CompletedTask;
-        return false;
     }
 
     internal bool TrySealRelocation(out ZLinkSpotExecutionRelocationSeal seal)
@@ -348,6 +349,13 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     internal bool TrySealRelocation(
         Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
         out ZLinkSpotExecutionRelocationSeal seal)
+        => TrySealRelocation(0, admit, out seal, out _);
+
+    internal bool TrySealRelocation(
+        int reservedAcceptedSequences,
+        Func<IReadOnlyList<ZLinkAcceptedWorkRecord>, bool> admit,
+        out ZLinkSpotExecutionRelocationSeal seal,
+        out ulong firstReservedSequence)
     {
         ArgumentNullException.ThrowIfNull(admit);
         if (!TryBeginRelocationBarrier(
@@ -355,12 +363,18 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                 out var barrier))
         {
             seal = null!;
+            firstReservedSequence = 0;
             return false;
         }
-        if (!_queue.TrySealRelocation(admit, out var queueSeal))
+        if (!_queue.TrySealRelocation(
+                reservedAcceptedSequences,
+                admit,
+                out var queueSeal,
+                out firstReservedSequence))
         {
             AbortBarrier(barrier.Generation);
             seal = null!;
+            firstReservedSequence = 0;
             return false;
         }
         MarkBarrierBoundary(barrier.Generation);
@@ -369,6 +383,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             _queue.TryAbortRelocation(queueSeal);
             AbortBarrier(barrier.Generation);
             seal = null!;
+            firstReservedSequence = 0;
             return false;
         }
         seal = new ZLinkSpotExecutionRelocationSeal(

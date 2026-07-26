@@ -73,6 +73,67 @@ internal sealed class ZLinkRelocationStartupRecovery(
         }
     }
 
+    internal async ValueTask<ZLinkRelocationRecoveryCandidate?>
+        TryReadExactPublishedAsync(
+            ZLinkRelocationEnvelope staging,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(staging);
+        var linked = new Dictionary<string, RecoveryGroup>(
+            StringComparer.Ordinal);
+        var unpublished = 0;
+        foreach (var participant in staging.Participants)
+        {
+            var read = await authorityStore.ReadAuthorityAsync(
+                    participant.AuthorityKey,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (read is not ZLinkAuthorityReadResult.Found found)
+                throw DataLost(
+                    $"Relocation authority '{participant.AuthorityKey.Value}' is unavailable during exact reconciliation.");
+            var entry = new ZLinkAuthorityEntry(
+                participant.AuthorityKey,
+                found.Snapshot);
+            if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                    found.Snapshot.Payload.Span,
+                    out _))
+            {
+                unpublished++;
+                continue;
+            }
+            AddPublished(entry, linked);
+        }
+
+        if (unpublished == staging.Participants.Count)
+            return null;
+        if (unpublished != 0 || linked.Count != 1)
+            throw DataLost(
+                $"Relocation aggregate '{staging.AggregateId:N}' has a partially visible publication.");
+
+        var group = linked.Values.Single();
+        ZLinkRelocationEnvelope envelope;
+        try
+        {
+            envelope = await new ZLinkRelocationPublicationCoordinator(
+                    authorityStore,
+                    relocationStore)
+                .ReadPreparedAsync(group.Reference, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkRelocationDataLostException error)
+        {
+            throw DataLost(error.Message, error);
+        }
+        ValidateLinkedAuthorities(group.Authorities, envelope);
+        return new ZLinkRelocationRecoveryCandidate(
+            group.Reference,
+            envelope,
+            group.Authorities
+                .OrderBy(static entry => entry.Key.Value,
+                    StringComparer.Ordinal)
+                .ToArray());
+    }
+
     private async ValueTask ScanPrefixAsync(
         string prefix,
         Dictionary<string, RecoveryGroup> linked,
@@ -151,6 +212,22 @@ internal sealed class ZLinkRelocationStartupRecovery(
         IReadOnlyList<ZLinkAuthorityEntry> authorities,
         ZLinkRelocationEnvelope envelope)
     {
+        if (!envelope.CanonicalLogicalStream.IsEmpty)
+        {
+            if (envelope.Participants.Count != authorities.Count
+                || authorities.Count(static authority =>
+                    authority.Snapshot.Allocation.ObjectKind
+                    is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot) != 1
+                || authorities.Any(static authority =>
+                    authority.Snapshot.Allocation.ObjectKind
+                    is not (ZLinkPlacementObjectKind.Actor
+                    or ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)))
+                throw DataLost(
+                    $"Canonical relocation aggregate '{envelope.AggregateId:N}' authority inventory is invalid.");
+            return;
+        }
         var participants = envelope.Participants.ToDictionary(
             static participant => participant.AuthorityKey.Value,
             StringComparer.Ordinal);
@@ -186,11 +263,14 @@ internal sealed class ZLinkRelocationStartupRecovery(
         }
     }
 
-    private static ZLinkFrameworkException DataLost(string message) =>
+    private static ZLinkFrameworkException DataLost(
+        string message,
+        Exception? innerException = null) =>
         new(
             ZLinkFrameworkErrorKind.RelocationDataLost,
             message,
-            isRetriable: false);
+            isRetriable: false,
+            innerException);
 
     private sealed record RecoveryGroup(
         ZLinkRelocationManifestReference Reference,

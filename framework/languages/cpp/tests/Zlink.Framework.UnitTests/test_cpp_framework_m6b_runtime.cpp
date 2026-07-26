@@ -1151,6 +1151,91 @@ void verify_remote_session_route_ack_and_atomic_switch ()
     actor_target->close ();
 }
 
+void verify_location_store_accepted_record_authority ()
+{
+    using namespace zlink::framework;
+    runtime::in_memory_location_store_t store;
+    const auto source_owner = std::get<owner_lease_claimed_t> (
+      store.claim_owner_lease ("source-owner", 15s).result ().value ()).token;
+    const auto target_owner = std::get<owner_lease_claimed_t> (
+      store.claim_owner_lease ("target-owner", 15s).result ().value ()).token;
+    const auto register_node = [&] (std::string rid,
+                                    const location_owner_token_t &owner) {
+        mesh_node_descriptor_t node{
+          .mesh_name = "m6b-mesh",
+          .rid = zlink::routing_id_t::from (rid),
+          .lifecycle_generation = 1,
+          .descriptor_revision = 1,
+          .endpoint = "tcp://127.0.0.1:1",
+          .application_version = 1,
+          .object_capabilities =
+            {{.object_kind = placement_object_kind_t::actor,
+              .stable_type = "player"}},
+          .object_role = object_role_t::server,
+          .capacity = {.actors = {.limit = 8}},
+          .state = framework_runtime_state_t::serving,
+          .security_identity = "test",
+          .owner_id = owner.owner_id,
+          .lease_generation = owner.lease_generation};
+        assert (store.update_mesh_node (
+                  std::move (node), location_write_intent_t::new_claim)
+                  .result ().value ().status
+                == location_write_status_t::stored);
+    };
+    register_node ("raw-source", source_owner);
+    register_node ("raw-target", target_owner);
+    const object_reserve_request_t request{
+      .key = {placement_object_kind_t::actor, "actor-authority"},
+      .intent = {.stable_type = "player"},
+      .target = {.mesh_name = "m6b-mesh",
+                 .node_rid = node_rid_t::from_string ("raw-target"),
+                 .node_lifecycle_generation = 1,
+                 .owner = target_owner},
+      .capacity_bundle = {.actor_slots = 1}};
+    const auto reserved = std::get<object_reserved_t> (
+      store.reserve (request).result ().value ());
+    const auto committed = std::get<object_committed_t> (
+      store.commit ({request.key, reserved.fence, {std::byte{1}}})
+        .result ().value ());
+
+    const auto resolver =
+      stateful::make_location_store_authority_resolver (store);
+    const auto resolved = resolver ({
+      .target = {stateful::object_kind_t::actor,
+                 "actor-authority",
+                 committed.ready.object_generation,
+                 committed.ready.authority_owner_generation,
+                 "m6b-mesh",
+                 "raw-target"},
+      .source_node_routing_id = bytes ("raw-source"),
+      .source_node_generation = 1,
+      .target_node_routing_id = bytes ("raw-target"),
+      .target_node_generation = 1,
+      .source_kind = protocol::frozen_source_kind_t::node});
+    assert (resolved);
+    assert (resolved->source.owner_id == source_owner.owner_id);
+    assert (resolved->source.lease_generation
+            == static_cast<std::uint64_t> (
+                 source_owner.lease_generation));
+    assert (resolved->target_owner_lease_generation
+            == static_cast<std::uint64_t> (
+                 target_owner.lease_generation));
+
+    auto stale = stateful::accepted_record_authority_query_t{
+      .target = {stateful::object_kind_t::actor,
+                 "actor-authority",
+                 committed.ready.object_generation,
+                 committed.ready.authority_owner_generation,
+                 "m6b-mesh",
+                 "raw-target"},
+      .source_node_routing_id = bytes ("raw-source"),
+      .source_node_generation = 2,
+      .target_node_routing_id = bytes ("raw-target"),
+      .target_node_generation = 1,
+      .source_kind = protocol::frozen_source_kind_t::node};
+    assert (!resolver (stale));
+}
+
 void verify_raw_spot_and_actor_routing ()
 {
     mesh::raw_mesh_node_owner_t source (
@@ -1201,7 +1286,23 @@ void verify_raw_spot_and_actor_routing ()
        {},
        false,
        false});
-    stateful::raw_stateful_dispatch_t dispatch (objects, target);
+    bool authority_live = true;
+    stateful::raw_stateful_dispatch_t dispatch (
+      objects, target,
+      [&] (const stateful::accepted_record_authority_query_t &query)
+        -> std::optional<stateful::accepted_record_authority_t> {
+          assert (query.source_node_routing_id
+                  == source_descriptor.node_routing_id);
+          assert (query.source_node_generation
+                  == source_descriptor.lifecycle_generation);
+          if (!authority_live)
+              return std::nullopt;
+          return stateful::accepted_record_authority_t{
+            {"source-owner", 17,
+             source_descriptor.node_routing_id,
+             source_descriptor.lifecycle_generation},
+            23};
+      });
 
     const protocol::spot_route_fence_t spot_fence{
       "spot-1",
@@ -1229,6 +1330,15 @@ void verify_raw_spot_and_actor_routing ()
     assert (spot_delivery_error == stateful::stateful_error_t::none);
     assert (spot_delivery
             && spot_delivery->payload.payload == bytes ("spot"));
+    const auto frozen_spot = protocol::decode_frozen_record (
+      spot_delivery->turn.payload);
+    assert (frozen_spot.kind
+            == protocol::frozen_record_kind_t::spot_send);
+    assert (frozen_spot.source.owner_id == "source-owner");
+    assert (frozen_spot.source.lease_generation == 17);
+    assert (frozen_spot.operation.high
+            == source_descriptor.lifecycle_generation);
+    assert (frozen_spot.operation.low != 0);
     assert (dispatch.complete (*spot_delivery)
             == stateful::stateful_error_t::none);
 
@@ -1249,7 +1359,7 @@ void verify_raw_spot_and_actor_routing ()
       [&promise] (foundation::operation_terminal_t terminal,
                   std::vector<std::uint8_t> payload) {
           promise.set_value ({terminal, std::move (payload)});
-      }));
+      }, protocol::wire_operation_id_t{77, 88}));
     mesh::raw_mesh_pump_result_t actor_pump =
       mesh::raw_mesh_pump_result_t::no_data;
     while (actor_pump != mesh::raw_mesh_pump_result_t::application
@@ -1267,6 +1377,15 @@ void verify_raw_spot_and_actor_routing ()
     assert (actor_delivery_error == stateful::stateful_error_t::none);
     assert (actor_delivery && actor_delivery->request);
     assert (actor_delivery->payload.payload == bytes ("request"));
+    const auto frozen_actor = protocol::decode_frozen_record (
+      actor_delivery->turn.payload);
+    assert (frozen_actor.kind
+            == protocol::frozen_record_kind_t::actor_request);
+    assert ((frozen_actor.operation
+             == protocol::wire_operation_id_t{77, 88}));
+    assert (frozen_actor.reply_route_id
+            && *frozen_actor.reply_route_id != 88);
+    assert (frozen_actor.source.owner_id == "source-owner");
     assert (dispatch.complete (
               *actor_delivery,
               protocol::application_payload_t{
@@ -1287,6 +1406,24 @@ void verify_raw_spot_and_actor_routing ()
             == foundation::operation_terminal_t::completed);
     assert (protocol::decode_application_payload (result.second).payload
             == bytes ("reply"));
+
+    authority_live = false;
+    assert (source.send_to_actor (
+      target_descriptor.node_routing_id, std::nullopt, actor_fence,
+      {"ActorPacket", "application/json", bytes ("stale-owner")}));
+    mesh::raw_mesh_pump_result_t stale_owner_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (stale_owner_pump != mesh::raw_mesh_pump_result_t::application
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        stale_owner_pump = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+    }
+    assert (stale_owner_pump
+            == mesh::raw_mesh_pump_result_t::application);
+    assert (dispatch.ingest (actor)
+            == stateful::stateful_error_t::conflict);
+    authority_live = true;
 
     auto stale_fence = actor_fence;
     ++stale_fence.object_generation;
@@ -1328,6 +1465,716 @@ void verify_raw_spot_and_actor_routing ()
     assert (stale_terminal_count == 1);
     source.close ();
     target.close ();
+}
+
+void verify_raw_relocation_replay_and_monotonic_ack ()
+{
+    mesh::raw_mesh_node_owner_t source (
+      {descriptor ("replay-source")});
+    mesh::raw_mesh_node_owner_t target (
+      {descriptor ("replay-target")});
+    source.start ();
+    target.start ();
+    const auto source_descriptor = source.topology ().local_descriptor ();
+    const auto target_descriptor = target.topology ().local_descriptor ();
+    const auto deadline = std::chrono::steady_clock::now () + 5s;
+    assert (source.connect_peer (target.endpoint (), target_descriptor));
+    while ((!source.topology ().peer (target_descriptor.node_routing_id)
+            || !target.topology ().peer (source_descriptor.node_routing_id))
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source.drain_monitor_events (now);
+        (void) target.drain_monitor_events (now);
+        (void) source.pump_one (now);
+        (void) target.pump_one (now);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (source.topology ().peer (target_descriptor.node_routing_id));
+    assert (target.topology ().peer (source_descriptor.node_routing_id));
+
+    const protocol::relocation_id_t relocation{91, 92};
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "coordinator-owner", 7, bytes ("coordinator"), 8, "store-9"};
+    const protocol::request_source_fence_t source_fence{
+      "source-owner", 11, source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation};
+    const protocol::relocation_object_t object{
+      protocol::relocation_object_kind_t::actor,
+      "player", "actor-1", 3, 4};
+    protocol::frozen_application_record_t accepted;
+    accepted.kind = protocol::frozen_record_kind_t::actor_send;
+    accepted.source_kind = protocol::frozen_source_kind_t::node;
+    accepted.source = source_fence;
+    accepted.operation = {77, 88};
+    accepted.body = protocol::frozen_actor_application_body_t{
+      {"actor-1", 3, target_descriptor.node_routing_id,
+       target_descriptor.lifecycle_generation, 4, 13},
+      {"ActorPacket", "application/json", bytes ("accepted")}};
+
+    protocol::relocation_data_t data{
+      relocation,
+      5,
+      coordinator,
+      protocol::relocation_role_t::source,
+      1,
+      1,
+      source_fence,
+      object,
+      protocol::relocation_phase_t::prepared,
+      0,
+      protocol::framework_error_code::none,
+      protocol::encode_frozen_application_record (accepted)};
+
+    int staged = 0;
+    stateful::raw_relocation_replay_coordinator_t target_replay (target);
+    assert (target_replay.register_target ({
+      relocation, 5, coordinator, 1, source_fence, object,
+      [&] (const protocol::relocation_data_t &record) {
+          ++staged;
+          return record.sequence == static_cast<std::uint64_t> (staged);
+      }}));
+    std::vector<std::uint64_t> acknowledged;
+    stateful::raw_relocation_replay_coordinator_t source_replay (source);
+    assert (source_replay.register_source ({
+      relocation, 5, coordinator, 1,
+      target_descriptor.node_routing_id,
+      target_descriptor.lifecycle_generation,
+      3,
+      [&] (std::uint64_t value) { acknowledged.push_back (value); }}));
+
+    const auto deliver = [&] (const protocol::relocation_data_t &record) {
+        assert (source.send_relocation_control (
+          target_descriptor.node_routing_id, record));
+        while (std::chrono::steady_clock::now () < deadline) {
+            const auto result = target.pump_one (
+              mesh::service_liveness_registry_t::clock_t::now ());
+            assert (result != mesh::raw_mesh_pump_result_t::protocol_error);
+            const auto replay = target_replay.pump_one ();
+            if (replay != stateful::raw_relocation_replay_result_t::no_data)
+                return replay;
+        }
+        return stateful::raw_relocation_replay_result_t::no_data;
+    };
+
+    assert (deliver (data)
+            == stateful::raw_relocation_replay_result_t::applied);
+    assert (target_replay.target_high_water (relocation, 5, 1) == 1);
+    bool second_participant_staged = false;
+    assert (target_replay.register_target ({
+      relocation, 5, coordinator, 2, source_fence, object,
+      [&] (const protocol::relocation_data_t &) {
+          second_participant_staged = true;
+          return true;
+      }}));
+    auto cross_participant_reuse = data;
+    cross_participant_reuse.participant_id = 2;
+    assert (deliver (cross_participant_reuse)
+            == stateful::raw_relocation_replay_result_t::conflicting_duplicate);
+    assert (!second_participant_staged);
+    assert (deliver (data)
+            == stateful::raw_relocation_replay_result_t::duplicate);
+    assert (staged == 1);
+
+    auto gap = data;
+    gap.sequence = 3;
+    assert (deliver (gap)
+            == stateful::raw_relocation_replay_result_t::sequence_gap);
+    auto conflict = data;
+    auto conflicting_frozen = accepted;
+    conflicting_frozen.operation = {77, 89};
+    conflict.frozen_record =
+      protocol::encode_frozen_application_record (conflicting_frozen);
+    assert (deliver (conflict)
+            == stateful::raw_relocation_replay_result_t::conflicting_duplicate);
+    auto stale = data;
+    stale.sequence = 2;
+    stale.coordinator.expected_authority_store_version = "store-stale";
+    assert (deliver (stale)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+
+    auto spoofed_target = data;
+    spoofed_target.sequence = 2;
+    auto wrong_target = accepted;
+    std::get<protocol::frozen_actor_application_body_t> (
+      wrong_target.body).target.actor_id = "actor-spoofed";
+    spoofed_target.frozen_record =
+      protocol::encode_frozen_application_record (wrong_target);
+    assert (deliver (spoofed_target)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+
+    data.sequence = 2;
+    assert (deliver (data)
+            == stateful::raw_relocation_replay_result_t::conflicting_duplicate);
+    accepted.operation = {77, 89};
+    data.frozen_record =
+      protocol::encode_frozen_application_record (accepted);
+    assert (deliver (data)
+            == stateful::raw_relocation_replay_result_t::applied);
+    accepted.operation = {77, 90};
+    auto large_payload = std::vector<std::uint8_t> (1024u * 1024u, 0x5a);
+    accepted.body = protocol::frozen_actor_application_body_t{
+      {"actor-1", 3, target_descriptor.node_routing_id,
+       target_descriptor.lifecycle_generation, 4, 13},
+      {"ActorPacket", "application/octet-stream", std::move (large_payload)}};
+    data.sequence = 3;
+    data.frozen_record = protocol::encode_frozen_application_record (accepted);
+    assert (deliver (data)
+            == stateful::raw_relocation_replay_result_t::applied);
+    assert (target_replay.target_retained_identity_bytes (
+              relocation, 5, 1)
+            == 3u * 32u);
+
+    std::vector<stateful::raw_relocation_replay_result_t> ack_results;
+    while (ack_results.size () != 4
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto result = source.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (result != mesh::raw_mesh_pump_result_t::protocol_error);
+        const auto replay = source_replay.pump_one ();
+        if (replay != stateful::raw_relocation_replay_result_t::no_data)
+            ack_results.push_back (replay);
+    }
+    assert ((ack_results
+             == std::vector<stateful::raw_relocation_replay_result_t>{
+               stateful::raw_relocation_replay_result_t::ack_advanced,
+               stateful::raw_relocation_replay_result_t::ack_ignored,
+               stateful::raw_relocation_replay_result_t::ack_advanced,
+               stateful::raw_relocation_replay_result_t::ack_advanced}));
+    assert ((acknowledged == std::vector<std::uint64_t>{1, 2, 3}));
+    assert (source_replay.source_ack_high_water (relocation, 5, 1) == 3);
+
+    protocol::relocation_ack_t impossible_ack{
+      relocation, 5, coordinator, protocol::relocation_role_t::target,
+      1, 4};
+    mesh::service_mailbox_record_t impossible_record{
+      "source", mesh::service_mailbox_domain_t::infrastructure,
+      {protocol::encode_relocation_control (impossible_ack)},
+      target_descriptor.node_routing_id, std::nullopt, std::nullopt,
+      target_descriptor.lifecycle_generation};
+    assert (source_replay.process (impossible_record)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+    impossible_ack.high_water = 3;
+    impossible_record.parts = {
+      protocol::encode_relocation_control (impossible_ack)};
+    ++impossible_record.source_node_generation;
+    assert (source_replay.process (impossible_record)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+    source.close ();
+    target.close ();
+}
+
+void verify_raw_reply_relay_and_exact_source_ack ()
+{
+    mesh::raw_mesh_node_owner_t source (
+      mesh::raw_mesh_node_options_t{descriptor ("relay-source")});
+    mesh::raw_mesh_node_owner_t target (
+      mesh::raw_mesh_node_options_t{descriptor ("relay-target")});
+    source.start ();
+    target.start ();
+    const auto source_descriptor = source.topology ().local_descriptor ();
+    const auto target_descriptor = target.topology ().local_descriptor ();
+    const auto deadline =
+      mesh::service_liveness_registry_t::clock_t::now () + 5s;
+    assert (source.connect_peer (target.endpoint (), target_descriptor));
+    while ((!source.topology ().peer (target_descriptor.node_routing_id)
+            || !target.topology ().peer (source_descriptor.node_routing_id))
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source.drain_monitor_events (now);
+        (void) target.drain_monitor_events (now);
+        (void) source.pump_one (now);
+        (void) target.pump_one (now);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (source.topology ().peer (target_descriptor.node_routing_id));
+    assert (target.topology ().peer (source_descriptor.node_routing_id));
+
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "coordinator", 7, target_descriptor.node_routing_id,
+      target_descriptor.lifecycle_generation, "store-3"};
+    const protocol::reply_relay_t relay{
+      {1, 2}, 3, {4, 5}, 6, coordinator, 8, 9, 0,
+      protocol::framework_error_code::none};
+    const protocol::application_payload_t payload{
+      "ReplyPacket", "application/json", bytes ("relay")};
+    assert (target.send_reply_relay (
+      source_descriptor.node_routing_id, relay, payload));
+    bool relay_received = false;
+    while (!relay_received
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto pumped = source.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        auto claim = source.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 16,
+          64 * 1024);
+        if (!claim) {
+            continue;
+        }
+        for (const auto &record : claim->records) {
+            if (protocol::decode_header (record.parts.front ()).kind
+                != protocol::command::replyRelay) {
+                continue;
+            }
+            assert (protocol::decode_reply_relay (
+                      record.parts.front ())
+                    == relay);
+            assert (protocol::decode_application_payload (
+                      record.parts.back ())
+                    == payload);
+            relay_received = true;
+        }
+        assert (source.mailbox ().release (*claim));
+    }
+    assert (relay_received);
+
+    auto failed_relay = relay;
+    failed_relay.terminal_result = 101;
+    bool failed_payload_rejected = false;
+    try {
+        (void) target.send_reply_relay (
+          source_descriptor.node_routing_id, failed_relay, payload);
+    }
+    catch (const std::invalid_argument &) {
+        failed_payload_rejected = true;
+    }
+    assert (failed_payload_rejected);
+
+    const protocol::reply_relay_ack_t ack{
+      {4, 5}, coordinator, {1, 2},
+      {"source-owner", 13, source_descriptor.node_routing_id,
+       source_descriptor.lifecycle_generation},
+      protocol::reply_relay_ack_status_t::terminal_received};
+    assert (source.send_reply_relay_ack (
+      target_descriptor.node_routing_id, ack));
+    bool ack_received = false;
+    while (!ack_received
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto pumped = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        auto claim = target.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 16,
+          64 * 1024);
+        if (!claim) {
+            continue;
+        }
+        for (const auto &record : claim->records) {
+            if (protocol::decode_header (record.parts.front ()).kind
+                != protocol::command::replyRelayAck) {
+                continue;
+            }
+            assert (protocol::decode_reply_relay_ack (
+                      record.parts.front ())
+                    == ack);
+            ack_received = true;
+        }
+        assert (target.mailbox ().release (*claim));
+    }
+    assert (ack_received);
+
+    const protocol::relocation_prepare_t prepare{
+      {10, 11},
+      1,
+      protocol::relocation_round_t::initial,
+      {"coordinator", 7, source_descriptor.node_routing_id,
+       source_descriptor.lifecycle_generation, "store-4"},
+      {target_descriptor.node_routing_id,
+       target_descriptor.lifecycle_generation,
+       "target-owner", 8},
+      protocol::relocation_role_t::source,
+      {protocol::relocation_object_kind_t::user_spot,
+       {}, "spot-1", 9, 10},
+      source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation,
+      2,
+      128,
+      {{1, protocol::relocation_participant_kind_t::object_mailbox,
+        {}, 0, {}, 0, {}, 0, 2, 128}},
+      protocol::relocation_root_t{"relocation-root", 0x12345678},
+      1};
+    assert (source.send_relocation_control (
+      target_descriptor.node_routing_id, prepare));
+    bool prepare_received = false;
+    while (!prepare_received
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto pumped = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        auto claim = target.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 16,
+          64 * 1024);
+        if (!claim)
+            continue;
+        for (const auto &record : claim->records) {
+            if (protocol::decode_header (record.parts.front ()).kind
+                != protocol::command::relocationPrepare)
+                continue;
+            assert (std::get<protocol::relocation_prepare_t> (
+                      protocol::decode_relocation_control (
+                        record.parts.front ()))
+                    == prepare);
+            prepare_received = true;
+        }
+        assert (target.mailbox ().release (*claim));
+    }
+    assert (prepare_received);
+
+    auto stale = ack;
+    ++stale.request_source.node_generation;
+    assert (source.send_reply_relay_ack (
+      target_descriptor.node_routing_id, stale));
+    mesh::raw_mesh_pump_result_t stale_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (stale_pump != mesh::raw_mesh_pump_result_t::protocol_error
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        stale_pump = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+    }
+    assert (stale_pump == mesh::raw_mesh_pump_result_t::protocol_error);
+    source.close ();
+    target.close ();
+}
+
+void verify_durable_reply_relay_single_winner ()
+{
+    mesh::raw_mesh_node_owner_t source (
+      mesh::raw_mesh_node_options_t{descriptor ("terminal-source")});
+    mesh::raw_mesh_node_owner_t target (
+      mesh::raw_mesh_node_options_t{descriptor ("terminal-target")});
+    source.start ();
+    target.start ();
+    const auto source_descriptor = source.topology ().local_descriptor ();
+    const auto target_descriptor = target.topology ().local_descriptor ();
+    auto deadline = std::chrono::steady_clock::now () + 5s;
+    assert (source.connect_peer (target.endpoint (), target_descriptor));
+    while ((!source.topology ().peer (target_descriptor.node_routing_id)
+            || !target.topology ().peer (source_descriptor.node_routing_id))
+           && std::chrono::steady_clock::now () < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source.drain_monitor_events (now);
+        (void) target.drain_monitor_events (now);
+        (void) source.pump_one (now);
+        (void) target.pump_one (now);
+    }
+    assert (source.topology ().peer (target_descriptor.node_routing_id));
+    assert (target.topology ().peer (source_descriptor.node_routing_id));
+
+    const protocol::relocation_id_t relocation{301, 302};
+    const protocol::wire_operation_id_t operation{401, 402};
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "terminal-coordinator", 9, target_descriptor.node_routing_id,
+      target_descriptor.lifecycle_generation, "store-terminal"};
+    const protocol::request_source_fence_t request_source{
+      "request-owner", 10, source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation};
+    const protocol::reply_relay_t relay{
+      operation, 501, relocation, 6, coordinator, 7, 8, 0,
+      protocol::framework_error_code::none};
+    const protocol::application_payload_t reply{
+      "TerminalReply", "application/json", bytes ("completed")};
+
+    stateful::raw_relocation_replay_coordinator_t source_coordinator (
+      source, 8, 4096, 1ms, 1ms);
+    stateful::raw_relocation_replay_coordinator_t target_coordinator (
+      target, 8, 4096, 1ms, 1ms);
+    int completion_count = 0;
+    assert (source_coordinator.register_terminal_source ({
+      relocation, coordinator, operation, request_source,
+      target_descriptor.node_routing_id,
+      target_descriptor.lifecycle_generation,
+      6, 7, 8, 501,
+      [&] (const protocol::reply_relay_t &received,
+           const std::optional<protocol::application_payload_t> &payload) {
+          ++completion_count;
+          return received == relay && payload && *payload == reply;
+      }}));
+    int persisted_ack_count = 0;
+    protocol::reply_relay_ack_status_t persisted_status{};
+    assert (target_coordinator.register_terminal_target ({
+      relay, request_source, reply,
+      [&] (protocol::reply_relay_ack_status_t status) {
+          ++persisted_ack_count;
+          persisted_status = status;
+          return true;
+      },
+      [] { return true; }}));
+    assert (target_coordinator.pending_terminal_relays () == 1);
+    assert (target_coordinator.terminal_retained_bytes () > 0);
+    const protocol::reply_relay_ack_t stale_ack{
+      relocation, coordinator, operation, request_source,
+      protocol::reply_relay_ack_status_t::terminal_received};
+    mesh::service_mailbox_record_t stale_ack_record{
+      "target", mesh::service_mailbox_domain_t::infrastructure,
+      {protocol::encode_reply_relay_ack (stale_ack)},
+      source_descriptor.node_routing_id, std::nullopt, std::nullopt,
+      source_descriptor.lifecycle_generation + 1};
+    assert (target_coordinator.process (stale_ack_record)
+            == stateful::raw_relocation_replay_result_t::stale_fence);
+
+    const auto receive = [&] (
+      mesh::raw_mesh_node_owner_t &node,
+      stateful::raw_relocation_replay_coordinator_t &coordinator) {
+        const auto receive_deadline = std::chrono::steady_clock::now () + 2s;
+        while (std::chrono::steady_clock::now () < receive_deadline) {
+            const auto pumped = node.pump_one (
+              mesh::service_liveness_registry_t::clock_t::now ());
+            assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+            const auto result = coordinator.pump_one ();
+            if (result != stateful::raw_relocation_replay_result_t::no_data)
+                return result;
+        }
+        return stateful::raw_relocation_replay_result_t::no_data;
+    };
+
+    const auto first_send_time =
+      stateful::raw_relocation_replay_coordinator_t::clock_t::now ();
+    assert (target_coordinator.retry_terminal_relays (first_send_time) == 1);
+    assert (receive (source, source_coordinator)
+            == stateful::raw_relocation_replay_result_t::terminal_received);
+    assert (completion_count == 1);
+
+    bool first_ack_dropped = false;
+    deadline = std::chrono::steady_clock::now () + 2s;
+    while (!first_ack_dropped && std::chrono::steady_clock::now () < deadline) {
+        const auto pumped = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        auto claim = target.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 16, 64 * 1024);
+        if (!claim)
+            continue;
+        for (const auto &record : claim->records) {
+            if (protocol::decode_header (record.parts.front ()).kind
+                  == protocol::command::replyRelayAck) {
+                assert (protocol::decode_reply_relay_ack (
+                          record.parts.front ()).status
+                        == protocol::reply_relay_ack_status_t::terminal_received);
+                first_ack_dropped = true;
+            }
+        }
+        assert (target.mailbox ().release (*claim));
+    }
+    assert (first_ack_dropped);
+    assert (target_coordinator.pending_terminal_relays () == 1);
+
+    auto conflicting_reply = reply;
+    conflicting_reply.payload = bytes ("conflicting");
+    assert (target.send_reply_relay (
+      source_descriptor.node_routing_id, relay, conflicting_reply));
+    assert (receive (source, source_coordinator)
+            == stateful::raw_relocation_replay_result_t::conflicting_duplicate);
+    assert (completion_count == 1);
+
+    assert (target_coordinator.retry_terminal_relays (
+              first_send_time + 2ms)
+            == 1);
+    assert (receive (source, source_coordinator)
+            == stateful::raw_relocation_replay_result_t::terminal_duplicate);
+    assert (completion_count == 1);
+    assert (receive (target, target_coordinator)
+            == stateful::raw_relocation_replay_result_t::relay_acknowledged);
+    assert (persisted_ack_count == 1);
+    assert (persisted_status
+            == protocol::reply_relay_ack_status_t::already_terminal);
+    assert (target_coordinator.pending_terminal_relays () == 0);
+    assert (target_coordinator.terminal_retained_bytes () == 0);
+
+    auto expiry_relay = relay;
+    expiry_relay.operation = {403, 404};
+    expiry_relay.reply_route_id = 502;
+    int expiry_persisted = 0;
+    assert (target_coordinator.register_terminal_target ({
+      expiry_relay, request_source, std::nullopt,
+      [] (protocol::reply_relay_ack_status_t) { return true; },
+      [&] {
+          ++expiry_persisted;
+          return true;
+      }}));
+    auto wrong_source = request_source;
+    ++wrong_source.lease_generation;
+    assert (!target_coordinator.confirm_terminal_source_lease_expired (
+      relocation, expiry_relay.operation, wrong_source));
+    assert (target_coordinator.pending_terminal_relays () == 1);
+    assert (target_coordinator.confirm_terminal_source_lease_expired (
+      relocation, expiry_relay.operation, request_source));
+    assert (expiry_persisted == 1);
+    assert (target_coordinator.pending_terminal_relays () == 0);
+    assert (target_coordinator.terminal_retained_bytes () == 0);
+
+    assert (source_coordinator.reap_terminal_tombstones (
+              stateful::raw_relocation_replay_coordinator_t::clock_t::now ()
+                + 2ms)
+            == 1);
+    assert (target.send_reply_relay (
+      source_descriptor.node_routing_id, relay, reply));
+    assert (receive (source, source_coordinator)
+            == stateful::raw_relocation_replay_result_t::not_registered);
+
+    stateful::raw_relocation_replay_coordinator_t bounded_target (
+      target, 1, 1, 1ms, 1ms);
+    assert (!bounded_target.register_terminal_target ({
+      relay, request_source, reply,
+      [] (protocol::reply_relay_ack_status_t) { return true; },
+      [] { return true; }}));
+    auto non_ok = relay;
+    non_ok.terminal_result = 101;
+    non_ok.failure_code = protocol::framework_error_code::requestFailed;
+    assert (!target_coordinator.register_terminal_target ({
+      non_ok, request_source, reply,
+      [] (protocol::reply_relay_ack_status_t) { return true; },
+      [] { return true; }}));
+    source.close ();
+    target.close ();
+}
+
+void verify_public_host_dispatches_durable_reply_relay ()
+{
+    auto source = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        mesh::raw_mesh_node_options_t{descriptor ("host-terminal-source")}});
+    auto target = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        mesh::raw_mesh_node_options_t{descriptor ("host-terminal-target")}});
+    source->start ();
+    target->start ();
+    const auto source_status = source->status ();
+    const auto target_status = target->status ();
+    assert (source->connect_peer (
+      target->transport ().endpoint (), target_status.routing_id ()));
+
+    const protocol::relocation_id_t relocation{601, 602};
+    const protocol::wire_operation_id_t operation{603, 604};
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "host-coordinator", 11, target_status.routing_id ().to_bytes (),
+      target_status.lifecycle_generation (), "host-store"};
+    const protocol::request_source_fence_t request_source{
+      "host-source-owner", 12, source_status.routing_id ().to_bytes (),
+      source_status.lifecycle_generation ()};
+    const protocol::reply_relay_t relay{
+      operation, 605, relocation, 13, coordinator, 14, 15, 0,
+      protocol::framework_error_code::none};
+    int completions = 0;
+    int acknowledgements = 0;
+    assert (source->relocation_wire ().register_terminal_source ({
+      relocation, coordinator, operation, request_source,
+      target_status.routing_id ().to_bytes (),
+      target_status.lifecycle_generation (), 13, 14, 15, 605,
+      [&] (const protocol::reply_relay_t &received,
+           const std::optional<protocol::application_payload_t> &payload) {
+          ++completions;
+          return received == relay && !payload;
+      }}));
+    assert (target->relocation_wire ().register_terminal_target ({
+      relay, request_source, std::nullopt,
+      [&] (protocol::reply_relay_ack_status_t) {
+          ++acknowledgements;
+          return true;
+      },
+      [] { return true; }}));
+    const auto dispatch = [] (const host::ready_record_t &,
+                              const host::receive_record_t &,
+                              std::vector<zlink::message_t>) {};
+    const auto deadline = std::chrono::steady_clock::now () + 5s;
+    while ((completions != 1 || acknowledgements != 1)
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        (void) target->dispatch_ready (dispatch);
+    }
+    assert (completions == 1);
+    assert (acknowledgements == 1);
+    assert (target->relocation_wire ().pending_terminal_relays () == 0);
+
+    auto duplicate_relay = relay;
+    duplicate_relay.operation = {606, 607};
+    duplicate_relay.reply_route_id = 608;
+    int duplicate_completions = 0;
+    int duplicate_acknowledgements = 0;
+    assert (source->relocation_wire ().register_terminal_source ({
+      relocation, coordinator, duplicate_relay.operation, request_source,
+      target_status.routing_id ().to_bytes (),
+      target_status.lifecycle_generation (), 13, 14, 15, 608,
+      [&] (const protocol::reply_relay_t &received,
+           const std::optional<protocol::application_payload_t> &payload) {
+          ++duplicate_completions;
+          return received == duplicate_relay && !payload;
+      }}));
+    assert (target->relocation_wire ().register_terminal_target ({
+      duplicate_relay, request_source, std::nullopt,
+      [&] (protocol::reply_relay_ack_status_t) {
+          ++duplicate_acknowledgements;
+          return true;
+      },
+      [] { return true; }}));
+
+    const auto first =
+      stateful::raw_relocation_replay_coordinator_t::clock_t::now ();
+    assert (target->relocation_wire ().retry_terminal_relays (first) == 1);
+    while (source->transport ().pump_one (
+             mesh::service_liveness_registry_t::clock_t::now ())
+           == mesh::raw_mesh_pump_result_t::no_data) {
+    }
+    assert (source->relocation_wire ().pump_one ()
+            == stateful::raw_relocation_replay_result_t::terminal_received);
+    assert (duplicate_completions == 1);
+
+    bool dropped = false;
+    while (!dropped) {
+        (void) target->transport ().pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        auto claim = target->transport ().mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 1, 64 * 1024);
+        if (!claim)
+            continue;
+        dropped = protocol::decode_header (
+          claim->records.front ().parts.front ()).kind
+          == protocol::command::replyRelayAck;
+        assert (target->transport ().mailbox ().release (*claim));
+    }
+    assert (target->relocation_wire ().pending_terminal_relays () == 1);
+    assert (target->relocation_wire ().retry_terminal_relays (
+              first + 2s) == 1);
+    while (source->transport ().pump_one (
+             mesh::service_liveness_registry_t::clock_t::now ())
+           == mesh::raw_mesh_pump_result_t::no_data) {
+    }
+    assert (source->relocation_wire ().pump_one ()
+            == stateful::raw_relocation_replay_result_t::terminal_duplicate);
+    assert (duplicate_completions == 1);
+    while (target->transport ().pump_one (
+             mesh::service_liveness_registry_t::clock_t::now ())
+           == mesh::raw_mesh_pump_result_t::no_data) {
+    }
+    assert (target->relocation_wire ().pump_one ()
+            == stateful::raw_relocation_replay_result_t::relay_acknowledged);
+    assert (duplicate_acknowledgements == 1);
+    assert (target->relocation_wire ().pending_terminal_relays () == 0);
+
+    auto expiry_relay = relay;
+    expiry_relay.operation = {609, 610};
+    expiry_relay.reply_route_id = 611;
+    int lease_expiry_persisted = 0;
+    assert (target->relocation_wire ().register_terminal_target ({
+      expiry_relay, request_source, std::nullopt,
+      [] (protocol::reply_relay_ack_status_t) { return true; },
+      [&] {
+          ++lease_expiry_persisted;
+          return true;
+      }}));
+    assert (target->relocation_wire ().confirm_terminal_source_lease_expired (
+      relocation, expiry_relay.operation, request_source));
+    assert (lease_expiry_persisted == 1);
+    assert (target->relocation_wire ().pending_terminal_relays () == 0);
+
+    source->close ();
+    target->close ();
 }
 
 void verify_remote_user_spot_create_close_terminal_once ()
@@ -2032,7 +2879,12 @@ int main ()
     verify_session_binding_and_terminal_once ();
     verify_bounded_stale_forwarding ();
     verify_remote_session_route_ack_and_atomic_switch ();
+    verify_location_store_accepted_record_authority ();
     verify_raw_spot_and_actor_routing ();
+    verify_raw_relocation_replay_and_monotonic_ack ();
+    verify_raw_reply_relay_and_exact_source_ack ();
+    verify_durable_reply_relay_single_winner ();
+    verify_public_host_dispatches_durable_reply_relay ();
     verify_remote_user_spot_create_close_terminal_once ();
     return 0;
 }

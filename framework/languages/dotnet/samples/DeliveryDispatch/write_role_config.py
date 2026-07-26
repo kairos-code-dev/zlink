@@ -16,7 +16,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--role", required=True)
-    parser.add_argument("--node-rid", default="")
     parser.add_argument("--log-dir", required=True)
     parser.add_argument("--work-dir", required=True)
     parser.add_argument("--redis-endpoint", required=True)
@@ -32,9 +31,6 @@ def main() -> None:
         "logDir": args.log_dir,
         "workDir": args.work_dir,
     }
-    if args.node_rid:
-        role["nodeRid"] = args.node_rid
-
     if args.role == "client":
         document = {
             "client": {

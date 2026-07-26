@@ -210,8 +210,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
   private async runBotTicks(): Promise<void> {
     for (const actor of [...this.actors.values()].filter((candidate) => candidate.isBot)) {
       await this.actorClient.requestToActor(
-        ZoneWorldNames.zoneMesh,
-        actor.actor,
+        actor.actor.actorId,
         new BotTickReq()
       ).submit<BotTickRes>();
     }
@@ -219,7 +218,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   private async notifyActor(actor: ActorRef, payload: unknown): Promise<void> {
     await this.actorClient
-      .sendToActor(ZoneWorldNames.zoneMesh, actor, new DeliverZoneNotification(payload))
+      .sendToActor(actor.actorId, new DeliverZoneNotification(payload))
       .submit();
   }
 

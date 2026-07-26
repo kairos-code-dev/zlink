@@ -19,7 +19,7 @@ type CourierOptions = {
 function createCourierActorNodeModule(options: CourierOptions) {
   class CourierActorNodeModule {}
   const directory = new CourierActorDirectory();
-  const nodeRid = options.courierId === 'courier-a' ? 'courier-node-1' : 'courier-node-2';
+  const nodeLabel = options.courierId === 'courier-a' ? 'courier-a' : 'courier-b';
   const spotEndpointKey = options.courierId === 'courier-a'
     ? 'courierActorNode1SpotEndpoint'
     : 'courierActorNode2SpotEndpoint';
@@ -41,13 +41,12 @@ function createCourierActorNodeModule(options: CourierOptions) {
           const builder = zlinkFramework();
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-            .traceLogFile(`${config.logDir}/flow-${nodeRid}.log`)
-            .traceLabel(nodeRid);
+            .traceLogFile(`${config.logDir}/flow-${nodeLabel}.log`)
+            .traceLabel(nodeLabel);
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(spotEndpoint).routingId(nodeRid)
-              .configureEntrySpot({ routingId: nodeRid })
+              .listen(spotEndpoint).useAllocatedRoutingId(16, 'delivery-courier')
               .addEntrySpot(CourierEntrySpot)
               .actorFactory(SampleNames.courierActorType, CourierActorFactory);
           mesh.channelName(SampleNames.dispatchChannel).setWeight(0);

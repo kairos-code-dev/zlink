@@ -100,7 +100,6 @@ export interface PlayerInfo {
 
 export interface PlayNodeInfo {
   streamEndpoint: string;
-  spotNodeRid: string;
 }
 
 export interface JoinGameReq {
@@ -192,8 +191,7 @@ export class WinMilestoneNotify {
     readonly roomId: string,
     readonly actorId: string,
     readonly displayName: string,
-    readonly wins: number,
-    readonly receivingSpotNodeRid: string
+    readonly wins: number
   ) {}
 }
 
@@ -326,16 +324,12 @@ function playerWinMilestoneEvent(
   return new PlayerWinMilestoneEvent(roomId, actorId, displayName, wins);
 }
 
-function winMilestoneNotify(
-  event: PlayerWinMilestoneEvent,
-  receivingSpotNodeRid: string
-): WinMilestoneNotify {
+function winMilestoneNotify(event: PlayerWinMilestoneEvent): WinMilestoneNotify {
   return new WinMilestoneNotify(
     event.roomId,
     event.actorId,
     event.displayName,
-    event.wins,
-    receivingSpotNodeRid
+    event.wins
   );
 }
 

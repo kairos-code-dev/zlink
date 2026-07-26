@@ -121,6 +121,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
 }
 
 export interface ZLinkNativeSpotAuthority {
+  readonly objectKind?: 'user_spot' | 'instance_spot';
   readonly stableType: string;
   readonly objectGeneration: bigint;
   readonly authorityOwnerGeneration: bigint;
@@ -142,6 +143,126 @@ export class ZLinkSpotActivationLifecycle {
 
   constructor(private readonly options: ZLinkSpotActivationLifecycleOptions) {
     this.actorAdmission = new ZLinkSpotActorAdmissionCoordinator(options);
+  }
+
+  async materializeRelocation<TSpot extends ZLinkSpot | ZLinkInstanceSpot>(
+    meshName: string,
+    objectKind: 'user_spot' | 'instance_spot',
+    stableType: string,
+    implementation: Type<TSpot>,
+    spotId: RoutingId,
+    objectGeneration: bigint,
+    authorityOwnerGeneration: bigint,
+    signal?: AbortSignal
+  ): Promise<ZLinkSpotActivation> {
+    const serial = new ZLinkSpotSerialExecutor(
+      this.options.metrics,
+      objectKind === 'user_spot' ? 'user' : 'instance',
+      true
+    );
+    const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
+    const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
+    applySpotHandlerRegistrations(
+      handlers,
+      implementation as unknown as Type<ZLinkSpot>,
+      { packetHandlers: this.options.spotPacketHandlers }
+    );
+    const timers = new ZLinkSpotTimerRegistry(
+      this.options.metrics,
+      () => this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    );
+    const outbound = new DefaultZLinkSpotOutbound(
+      serial,
+      this.options.channelClient,
+      this.options.fanoutClient,
+      this.options.spotPublisherClient,
+      this.options.routedTransport,
+      this.options.spotRouterChannelIdForMesh ?? ((selectedMesh) => selectedMesh),
+      undefined,
+      meshName,
+      undefined,
+      this.options.addressTransport
+    );
+    const nativeSpot = this.options.createNativeSpot?.(meshName, spotId, {
+      objectKind,
+      stableType,
+      objectGeneration,
+      authorityOwnerGeneration
+    });
+    let instance: TSpot | undefined;
+    const common = {
+      meshName,
+      spotId,
+      objectGeneration: toContextGeneration(objectGeneration),
+      outbound,
+      timers,
+      serial,
+      getSpot: () => instance as unknown as ZLinkSpot,
+      nodeRid: this.options.nodeRid,
+      nodeRidProvider: () => this.options.nodeRidProvider?.(meshName),
+      providerResolver: this.options.providerResolver,
+      runtimeEventPublisher: this.options.runtimeEventPublisher,
+      workerRuntime: this.options.workerRuntime,
+      close: (contextSignal?: AbortSignal) =>
+        this.options.closeSpot(meshName, spotId, contextSignal)
+    };
+    const context = objectKind === 'user_spot'
+      ? createSpotContext({
+          ...common,
+          handlers,
+          leaveActor: (actor, contextSignal) =>
+            this.options.leaveActor(spotId, actor, contextSignal)
+        })
+      : createInstanceSpotContext({
+          ...common,
+          handlers: new DefaultZLinkInstanceSpotHandlerRegistry(handlers)
+        });
+    try {
+      instance = await createFreshProviderInstance(
+        implementation,
+        this.options.providerResolver,
+        context
+      );
+      Object.defineProperty(instance, 'context', {
+        configurable: true,
+        enumerable: false,
+        value: context
+      });
+      await instance.configure?.();
+      await addSpotTimerRegistrations(
+        timers,
+        implementation as unknown as Type<ZLinkSpot>,
+        spotId,
+        instance as unknown as ZLinkSpot,
+        serial,
+        { timerHandlers: this.options.spotTimerHandlers },
+        {
+          providerResolver: this.options.providerResolver,
+          runtimeEventPublisher: this.options.runtimeEventPublisher,
+          signal
+        }
+      );
+      const activation = new ZLinkSpotActivation({
+        meshName,
+        spotId,
+        spotType: implementation as unknown as Type<ZLinkSpot>,
+        spot: instance as unknown as ZLinkSpot,
+        serial,
+        timers,
+        actorHandlers,
+        handlers,
+        externalActorCount: () => this.options.actorCountProvider?.(spotId) ?? 0,
+        nativeSpot,
+        closeWhenReady: (reason) => this.scheduleDrainClose(meshName, spotId, reason),
+        metrics: this.options.metrics
+      });
+      this.options.registerActivation(activation);
+      return activation;
+    } catch (error) {
+      await timers.dispose().catch(() => undefined);
+      await nativeSpot?.dispose().catch(() => undefined);
+      throw error;
+    }
   }
 
   async materializeInstance<TSpot extends ZLinkInstanceSpot>(

@@ -1,21 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { courierActorNodeRid, SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
-import { actorRefFromMessage, bindCourier, ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
+import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { bindCourier, ensureCourierActor, PacketNames } from '../../Shared/Contracts/messages';
 import {
   ZLinkPacket,
   type ActorRef,
   type ZLinkActorClient,
-  type ZLinkLocationStore,
+  type ZLinkActorManager,
   type ZLinkMessage,
   type ZLinkSession,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext,
-  type ZLinkSessionFactory,
-  type ZLinkSpotHandleResolver,
-  type ZLinkSpotOutbound
+  type ZLinkSessionFactory
 } from '@zlink-systems/framework';
-import type { BindCourierRes, BindCourierSessionReq, EnsureCourierActorRes } from '../../Shared/Contracts/messages';
+import type { BindCourierRes, BindCourierSessionReq } from '../../Shared/Contracts/messages';
 
 class CourierSession implements ZLinkSession {
   constructor(readonly context: ZLinkSessionContext) {
@@ -34,10 +32,8 @@ class CourierSession implements ZLinkSession {
 @ZLinkPacket(PacketNames.bindCourierSession)
 class BindCourierSessionHandler {
   constructor(
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
-    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager
   ) {}
 
   async handle(context: ZLinkSessionContext, _dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void> {
@@ -45,8 +41,7 @@ class BindCourierSessionHandler {
     const actorRef = await this.findOrEnsureActor(request.courierId);
     const actor = await context.actors.bindOrGet(actorRef);
     await this.actors.requestToActor(
-      SampleNames.routeMesh,
-      actorRef,
+      actorRef.actorId,
       bindCourier(request.courierId, context.sessionId)
     )
       .timeout(SampleTimings.requestTimeout)
@@ -56,18 +51,13 @@ class BindCourierSessionHandler {
   }
 
   private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
-    const found = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: courierId });
-    if (found !== undefined) return found.actorRef;
-    const entrySpot = await this.spotHandles.resolveSpotHandle(
-      SampleNames.routeMesh,
-      courierActorNodeRid(courierId)
-    );
-    if (entrySpot === undefined) throw new Error(`Courier entry spot was not found for '${courierId}'.`);
-    const ensured = await this.spotOutbound
-      .requestToSpot(entrySpot, ensureCourierActor(courierId))
+    const result = await this.actorManager
+      .getOrCreate(courierId, SampleNames.courierActorType)
+      .request(ensureCourierActor(courierId))
       .timeout(SampleTimings.requestTimeout)
-      .submit<EnsureCourierActorRes>();
-    return actorRefFromMessage(ensured.actor);
+      .submit();
+    if (result.status === 'rejected') throw new Error('Courier Actor creation was rejected.');
+    return result.actor;
   }
 }
 

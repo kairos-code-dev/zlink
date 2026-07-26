@@ -171,6 +171,21 @@ public final class ChannelRegistration {
         return fanout.automaticSubscriberEnabled;
     }
 
+    /**
+     * Reports registration-only topology that cannot prove continuity during
+     * automatic host retirement. Connection state is deliberately ignored.
+     */
+    public boolean blocksAutomaticRetire(boolean locationStoreAvailable) {
+        return switch (kind) {
+            case ROUTE_MESH -> !routeConnections.listConnections().isEmpty();
+            case CLIENT_SERVER ->
+                !clientConnections.listConnections().isEmpty();
+            case FANOUT ->
+                !subscriberConnections.listConnections().isEmpty()
+                    || (fanout.publisherEnabled && !locationStoreAvailable);
+        };
+    }
+
     void enableClient() {
         if (kind == ChannelKind.ROUTE_MESH) {
             routeMesh.clientEnabled = true;

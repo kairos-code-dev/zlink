@@ -38,11 +38,11 @@ class tictactoe_entry_spot_t : public entry_spot_t
     }
 
     task_t<join_game_res_t> join_game (const player_actor_t &actor,
-                                       spot_actor_request_context_t &,
+                                       message_context_t &,
                                        const join_game_req_t &request);
 
     observe_milestone_res_t observe_milestone (const player_actor_t &actor,
-                                               spot_actor_request_context_t &,
+                                               message_context_t &,
                                                const observe_milestone_req_t &);
 
     /* 공통 sample spec §13: 인증에서 받은 PlayerInfo가 actor 생성 payload로 들어오고,

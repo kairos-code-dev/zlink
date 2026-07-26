@@ -37,13 +37,13 @@ public static class CourierSessionHostFactory
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(topology.MeshEndpoint)
-                .SetRoutingId(topology.CourierSessionSpotNodeRid);
+                .SetRoutingIdPrefix("courier-session");
             mesh.ChannelName(SampleNames.MeshName).SetWeight(0);
             mesh.ChannelName(SampleNames.DispatchChannel).SetWeight(0);
             mesh.ChannelName(SampleNames.TrackingRouteChannel).SetWeight(0);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
-                .EnableActorDispatch(SampleNames.MeshName)
+                .EnableActorDispatch()
                 .AddSession<CourierSession>();
         });
 

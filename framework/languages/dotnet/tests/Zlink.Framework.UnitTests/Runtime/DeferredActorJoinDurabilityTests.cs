@@ -7,6 +7,81 @@ namespace Zlink.Framework.UnitTests.Runtime;
 public sealed class DeferredActorJoinDurabilityTests
 {
     [Fact]
+    public async Task Completion_publication_preserves_the_canonical_relocation_participant()
+    {
+        var authority = CreateAuthority();
+        var relocation = new TestRelocationStore();
+        var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey("actor-1");
+        var applicationState = new byte[] { 1, 3, 5, 7 };
+        var acceptedJob = new ZLinkRelocationQueuedJob(9, new byte[] { 2, 4, 6 });
+        var logicalTimer = new ZLinkRelocationLogicalTimer(
+            "lease-renewal",
+            1234,
+            5000,
+            new byte[] { 8, 10 });
+        var recoveryPayload = new byte[] { 11, 12, 13 };
+        var envelope = new ZLinkRelocationEnvelope(
+            Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"),
+            3,
+            Enumerable.Repeat((byte)0x2a, 32).ToArray(),
+            [
+                new ZLinkRelocationParticipantEnvelope(
+                    key,
+                    ZLinkPlacementObjectKind.Actor,
+                    7,
+                    3,
+                    applicationState,
+                    [acceptedJob],
+                    [logicalTimer],
+                    recoveryPayload)
+            ]);
+        var originalAuthorityPayload = authority.Snapshot.Payload;
+        await new ZLinkRelocationPublicationCoordinator(authority, relocation)
+            .PublishAsync(
+                new ZLinkRelocationPublicationRequest(
+                    key,
+                    authority.Snapshot.StoreVersion,
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    authority.Snapshot.OwnerId,
+                    authority.Snapshot.OwnerLeaseGeneration,
+                    originalAuthorityPayload,
+                    null,
+                    envelope),
+                CancellationToken.None);
+
+        var actor = new ActorRef("actor-1", 7, "play", RoutingId.From("node-target"));
+        var operation = new ZLinkActorJoinOperationId(19, 41);
+        await new ZLinkDeferredActorJoinCompletionJournal(authority, relocation)
+            .PrepareAsync(
+                actor.ActorId,
+                operation,
+                actor,
+                "raw",
+                new byte[] { 14, 15 },
+                CancellationToken.None);
+
+        var recovered = await new ZLinkDeferredActorJoinCompletionJournal(
+                authority,
+                relocation)
+            .RecoverAsync(actor.ActorId, CancellationToken.None);
+
+        var participant = Assert.Single(recovered!.Envelope.Participants);
+        Assert.Equal((ulong)7, participant.ObjectGeneration);
+        Assert.Equal(applicationState, participant.ApplicationState.ToArray());
+        var restoredJob = Assert.Single(participant.AcceptedJobs);
+        Assert.Equal(acceptedJob.AcceptedSequence, restoredJob.AcceptedSequence);
+        Assert.Equal(acceptedJob.Payload.ToArray(), restoredJob.Payload.ToArray());
+        var restoredTimer = Assert.Single(participant.LogicalTimers);
+        Assert.Equal(logicalTimer.TimerId, restoredTimer.TimerId);
+        Assert.Equal(logicalTimer.DueUnixTimeMilliseconds, restoredTimer.DueUnixTimeMilliseconds);
+        Assert.Equal(logicalTimer.PeriodMilliseconds, restoredTimer.PeriodMilliseconds);
+        Assert.Equal(logicalTimer.Payload.ToArray(), restoredTimer.Payload.ToArray());
+        Assert.Equal(recoveryPayload, participant.RecoveryPayload.ToArray());
+        Assert.False(participant.CompletionPayload.IsEmpty);
+        Assert.Equal((ulong)7, authority.Snapshot.ObjectGeneration);
+    }
+
+    [Fact]
     public async Task Prepared_completion_survives_journal_recreation_with_raw_reply()
     {
         var authority = CreateAuthority();

@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.supportchat.server.configuration
 
 import org.springframework.boot.context.properties.ConfigurationProperties
-import systems.zlink.contracts.core.RoutingId
 
 @ConfigurationProperties("sample")
 data class SampleTopology(
@@ -16,9 +15,6 @@ data class SampleTopology(
     val supportEntrySpotEndpoint: String?,
     val supportEntrySpotRouterEndpoint: String?,
     val streamEndpoint: String?,
-    val sessionRouterRid: String?,
-    val sessionPubRid: String?,
-    val supportEntryRid: String?,
 ) {
     fun location(): SampleLocation = SampleLocation(
         redisEndpoint = required(redisEndpoint, "redisEndpoint"),
@@ -33,18 +29,14 @@ data class SampleTopology(
     )
 
     fun session(): SampleSessionNode = SampleSessionNode(
-        pubEndpoint = required(sessionSpotEndpoint, "sessionSpotEndpoint"),
         routerEndpoint = required(sessionRouterEndpoint, "sessionRouterEndpoint"),
         streamEndpoint = required(streamEndpoint, "streamEndpoint"),
-        routingId = RoutingId.from(required(sessionRouterRid, "sessionRouterRid")),
-        publisherRoutingId = RoutingId.from(required(sessionPubRid, "sessionPubRid")),
     )
 
     fun support(): SupportTopology = SupportTopology(
         channelEndpoint = required(supportChannelEndpoint, "supportChannelEndpoint"),
         entrySpotEndpoint = required(supportEntrySpotEndpoint, "supportEntrySpotEndpoint"),
         entryRouterEndpoint = required(supportEntrySpotRouterEndpoint, "supportEntrySpotRouterEndpoint"),
-        entryRoutingId = RoutingId.from(required(supportEntryRid, "supportEntryRid")),
     )
 
     companion object {
@@ -68,13 +60,9 @@ data class SupportTopology(
     val channelEndpoint: String,
     val entrySpotEndpoint: String,
     val entryRouterEndpoint: String,
-    val entryRoutingId: RoutingId,
 )
 
 data class SampleSessionNode(
-    val pubEndpoint: String,
     val routerEndpoint: String,
     val streamEndpoint: String,
-    val routingId: RoutingId,
-    val publisherRoutingId: RoutingId,
 )

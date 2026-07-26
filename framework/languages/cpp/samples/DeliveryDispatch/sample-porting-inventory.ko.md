@@ -56,7 +56,7 @@ CMake sample target과 runner를 둔다.
 | `Server/CourierGateway/CourierDirectory.cs` | `Server/CourierGateway/main.cpp` | infrastructure | done | courier id별 actor node/session route binding을 role 내부 directory에 저장한다. |
 | `Server/CourierGateway/CourierGatewayHandlers.cs` | `Server/CourierGateway/main.cpp` | handler | done | bind 요청은 actor node ensure route로 보내고, offer는 저장된 actor node rid로 라우팅한다. |
 | `Server/CourierGateway/Program.cs` | `Server/CourierGateway/main.cpp` | server-role | done | courier gateway role 진입점이다. |
-| `Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | courier actor node target이 대응한다. runner가 node 1/2를 같은 executable의 다른 routing id로 실행한다. |
+| `Server/CourierActorNode/DeliveryDispatch.Server.CourierActorNode.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | courier actor node target이 대응한다. runner는 같은 executable을 두 instance로 실행하고 RouteMesh routing id는 runtime allocation을 사용한다. |
 | `Server/CourierActorNode/NodeHostFactory.cs` | `Server/CourierActorNode/main.cpp` | server-role | done | courier actor node별 channel과 courier actor spot mesh를 구성한다. |
 | `Server/CourierActorNode/ActorDirectory.cs` | `Server/CourierActorNode/main.cpp` | infrastructure | done | C++ role은 route handler의 actor manager와 decision directory로 courier actor 위치와 pending decision을 관리한다. |
 | `Server/CourierActorNode/CourierActor.cs` | `Server/CourierActorNode/main.cpp` | actor | done | Courier actor가 actor context를 보유하고, entry spot handler가 bound session으로 `OfferDeliveryNotify`를 push한다. |

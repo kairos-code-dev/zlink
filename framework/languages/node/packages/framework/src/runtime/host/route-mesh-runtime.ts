@@ -25,6 +25,8 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
     meshName: string
   ) => ZLinkMeshNodeDescriptor | undefined;
   readonly admission: ZLinkRuntimeAdmissionGate;
+  readonly publishRetiring: (meshName: string, signal: AbortSignal) => Promise<void>;
+  readonly rollbackRetiring: (meshName: string, signal: AbortSignal) => Promise<void>;
   readonly publishDraining: (meshName: string, signal: AbortSignal) => Promise<void>;
   readonly publishHostDraining: (signal: AbortSignal) => Promise<void>;
   readonly drainResources: (meshName: string, signal: AbortSignal) => Promise<void>;
@@ -45,6 +47,7 @@ interface ZLinkMeshDrainState {
 export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private readonly states = new Map<string, ZLinkMeshDrainState>();
   private hostOperation?: Promise<ZLinkMeshDrainResult>;
+  private hostRetiringPrepared = false;
 
   constructor(private readonly options: ZLinkRouteMeshRuntimeCoordinatorOptions) {
     for (const meshName of options.meshNames) {
@@ -185,6 +188,49 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     return waitForOperation(this.hostOperation, signal);
   }
 
+  async prepareHostRetire(
+    deadlineMs: number
+  ): Promise<'prepared' | 'store_unavailable' | 'deadline_exceeded'> {
+    if (this.hostRetiringPrepared) return 'prepared';
+    const deadline = new AbortController();
+    const timer = setTimeout(
+      () => deadline.abort(new Error('Retire descriptor publication deadline exceeded.')),
+      deadlineMs
+    );
+    const attempted: string[] = [];
+    try {
+      for (const meshName of this.states.keys()) {
+        attempted.push(meshName);
+        await this.options.publishRetiring(meshName, deadline.signal);
+      }
+      this.hostRetiringPrepared = true;
+      return 'prepared';
+    } catch {
+      // A failed response can still follow a committed Store write. Restore
+      // every attempted descriptor before the host reports a reversible block.
+      const rollback = new AbortController();
+      const rollbackTimer = setTimeout(
+        () => rollback.abort(new Error('Retire descriptor rollback deadline exceeded.')),
+        Math.min(deadlineMs, 1000)
+      );
+      let rollbackFailed = false;
+      for (const meshName of attempted.reverse()) {
+        try {
+          await this.options.rollbackRetiring(meshName, rollback.signal);
+        } catch {
+          rollbackFailed = true;
+        }
+      }
+      clearTimeout(rollbackTimer);
+      if (rollbackFailed) {
+        throw new ZLinkRetiringRollbackError();
+      }
+      return deadline.signal.aborted ? 'deadline_exceeded' : 'store_unavailable';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async performDrain(
     meshName: string,
     state: ZLinkMeshDrainState,
@@ -224,22 +270,29 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const entries = [...this.states.entries()];
     if (entries.length === 0) return { kind: 'drained' };
     const deadlineAt = new Date(Date.now() + deadlineMs);
-    for (const [meshName, state] of entries) {
+    for (const [, state] of entries) {
       state.deadline = deadlineAt;
-      this.options.admission.seal(meshName);
-      this.transition(meshName, state, ZLinkMeshNodeState.Draining);
     }
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(new Error('Drain deadline exceeded.')), deadlineMs);
     let result: ZLinkMeshDrainResult;
     try {
+      if (!this.hostRetiringPrepared) {
+        await Promise.all(entries.map(([meshName]) =>
+          this.options.publishRetiring(meshName, deadline.signal)));
+      }
+      this.hostRetiringPrepared = false;
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.drainResources(meshName, deadline.signal)));
+      for (const [meshName, state] of entries) {
+        this.options.admission.seal(meshName);
+        this.transition(meshName, state, ZLinkMeshNodeState.Draining);
+      }
       await Promise.all(entries.map(([meshName]) =>
         this.options.publishDraining(meshName, deadline.signal)));
       await this.options.publishHostDraining(deadline.signal);
       await Promise.all(entries.map(([meshName]) =>
         this.options.admission.awaitZero(meshName, deadline.signal)));
-      await Promise.all(entries.map(([meshName]) =>
-        this.options.drainResources(meshName, deadline.signal)));
       await this.options.cleanupHostResources(deadline.signal);
       result = { kind: 'drained' };
       for (const [meshName, state] of entries) {
@@ -297,6 +350,13 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const state = this.states.get(meshName);
     if (state !== undefined) return state;
     throw routeNotFound(meshName);
+  }
+}
+
+export class ZLinkRetiringRollbackError extends Error {
+  constructor() {
+    super('Retiring descriptor publication could not be rolled back to Serving.');
+    this.name = 'ZLinkRetiringRollbackError';
   }
 }
 

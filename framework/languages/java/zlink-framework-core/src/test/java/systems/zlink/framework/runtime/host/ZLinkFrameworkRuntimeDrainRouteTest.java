@@ -20,6 +20,38 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 
 final class ZLinkFrameworkRuntimeDrainRouteTest {
     @Test
+    void retireBlocksStorelessManualPublisherBeforeStateChanges()
+        throws Exception {
+        DefaultZLinkFrameworkOptions options =
+            new DefaultZLinkFrameworkOptions();
+        options.addFanoutChannel("manual-events")
+            .enablePublisher(
+                "inproc://manual-events-" + java.util.UUID.randomUUID());
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+            options,
+            new ZLinkJavaBackendAdapterFactory());
+        long readyDeadline = System.nanoTime()
+            + java.time.Duration.ofSeconds(1).toNanos();
+        while (!runtime.isReady() && System.nanoTime() < readyDeadline) {
+            Thread.sleep(1);
+        }
+
+        ZLinkTerminationResult result = runtime.retire(
+                java.time.Duration.ofSeconds(1))
+            .toCompletableFuture()
+            .get(2, TimeUnit.SECONDS);
+
+        assertEquals(ZLinkTerminationOutcome.BLOCKED, result.outcome());
+        assertEquals(
+            ZLinkTerminationReason.MANUAL_TOPOLOGY_UNSUPPORTED,
+            result.reason());
+        assertEquals(ZLinkFrameworkRuntimeState.SERVING, runtime.state());
+        runtime.shutdown(java.time.Duration.ofSeconds(1))
+            .toCompletableFuture()
+            .get(2, TimeUnit.SECONDS);
+    }
+
+    @Test
     void shutdownPublishesTheHostWideTerminalContract() throws Exception {
         DefaultZLinkFrameworkOptions options =
             new DefaultZLinkFrameworkOptions();
@@ -111,6 +143,55 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
         assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(prefixOnly, "player", Set.of()));
         assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(
             capable, "player", Set.of(remote)));
+    }
+
+    @Test
+    void automaticRetireRequiresNonDrainingExactGenerationAdmittedPeer() {
+        RoutingId local = RoutingId.from("blue-a");
+        RoutingId green = RoutingId.from("green-b");
+        ZLinkPeerLocation descriptor = new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            "game",
+            green,
+            ZLinkLocationRole.ROUTER,
+            "tcp://green:9000",
+            100,
+            false,
+            0,
+            Map.of(),
+            List.of(),
+            "green-owner",
+            7,
+            Instant.now());
+        var admitted = new systems.zlink.contracts.service.spot.MeshPeerEntry(
+            green,
+            "tcp://green:9000",
+            1,
+            systems.zlink.contracts.service.spot.MeshPeerSource.DISCOVERY,
+            systems.zlink.contracts.service.spot.MeshPeerState.ADMITTED,
+            7,
+            1,
+            0,
+            0,
+            0);
+        var stale = new systems.zlink.contracts.service.spot.MeshPeerEntry(
+            green,
+            "tcp://green:9000",
+            1,
+            systems.zlink.contracts.service.spot.MeshPeerSource.DISCOVERY,
+            systems.zlink.contracts.service.spot.MeshPeerState.ADMITTED,
+            6,
+            1,
+            0,
+            0,
+            0);
+
+        assertFalse(ZLinkFrameworkRuntime.hasExactReadyReplacement(
+            List.of(), local, List.of(admitted)));
+        assertFalse(ZLinkFrameworkRuntime.hasExactReadyReplacement(
+            List.of(descriptor), local, List.of(stale)));
+        assertTrue(ZLinkFrameworkRuntime.hasExactReadyReplacement(
+            List.of(descriptor), local, List.of(admitted)));
     }
 
     private static ZLinkPeerLocation peer(RoutingId nodeRid, List<String> capabilities) {

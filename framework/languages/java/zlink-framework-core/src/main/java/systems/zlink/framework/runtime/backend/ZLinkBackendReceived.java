@@ -12,6 +12,7 @@ public record ZLinkBackendReceived(
     Optional<String> spotId,
     Optional<Long> requestSeq,
     byte[] applicationMetadata,
+    byte[] acceptedJournalRecord,
     List<Message> parts,
     Consumer<List<Message>> reply,
     Runnable closeAction) implements AutoCloseable {
@@ -19,6 +20,30 @@ public record ZLinkBackendReceived(
         result = result == null ? ZLinkBackendRequestResult.OK : result;
         applicationMetadata =
             applicationMetadata == null ? new byte[0] : applicationMetadata.clone();
+        acceptedJournalRecord = acceptedJournalRecord == null
+            ? new byte[0]
+            : acceptedJournalRecord.clone();
+    }
+
+    public ZLinkBackendReceived(
+        ZLinkBackendRequestResult result,
+        Optional<RoutingId> routingId,
+        Optional<String> spotId,
+        Optional<Long> requestSeq,
+        byte[] applicationMetadata,
+        List<Message> parts,
+        Consumer<List<Message>> reply,
+        Runnable closeAction) {
+        this(
+            result,
+            routingId,
+            spotId,
+            requestSeq,
+            applicationMetadata,
+            new byte[0],
+            parts,
+            reply,
+            closeAction);
     }
 
     public ZLinkBackendReceived(
@@ -35,6 +60,7 @@ public record ZLinkBackendReceived(
             spotId,
             requestSeq,
             new byte[0],
+            new byte[0],
             parts,
             reply,
             closeAction);
@@ -50,6 +76,7 @@ public record ZLinkBackendReceived(
             routingId,
             spotId,
             requestSeq,
+            new byte[0],
             new byte[0],
             parts,
             null,
@@ -68,6 +95,7 @@ public record ZLinkBackendReceived(
             spotId,
             requestSeq,
             new byte[0],
+            new byte[0],
             parts,
             reply,
             () -> { });
@@ -86,6 +114,7 @@ public record ZLinkBackendReceived(
             spotId,
             requestSeq,
             new byte[0],
+            new byte[0],
             parts,
             reply,
             closeAction);
@@ -103,6 +132,7 @@ public record ZLinkBackendReceived(
             spotId,
             requestSeq,
             new byte[0],
+            new byte[0],
             parts,
             null,
             () -> { });
@@ -111,6 +141,11 @@ public record ZLinkBackendReceived(
     @Override
     public byte[] applicationMetadata() {
         return applicationMetadata.clone();
+    }
+
+    @Override
+    public byte[] acceptedJournalRecord() {
+        return acceptedJournalRecord.clone();
     }
 
     public void reply(List<Message> replyParts) {

@@ -47,7 +47,7 @@ class tictactoe_game_spot_t : public spot_t
 
     spot_create_response_t on_create (const message_t &)
     {
-        auto room_id = std::string (_context.spot_rid ().value ());
+        auto room_id = _context.spot_id ();
         if (const auto separator = room_id.rfind (':');
             separator != std::string::npos && separator + 1 < room_id.size ()) {
             room_id = room_id.substr (separator + 1);
@@ -80,11 +80,11 @@ class tictactoe_game_spot_t : public spot_t
     }
 
     place_mark_res_t place_mark (const player_actor_t &actor,
-                                 const spot_actor_request_context_t &context,
+                                 const message_context_t &context,
                                  const place_mark_req_t &request);
 
     void leave_game (const player_actor_t &actor,
-                     const spot_actor_send_context_t &,
+                     const message_context_t &,
                      const leave_game_req_t &request);
 
     task_t<void> on_actor_joined (const player_actor_t &actor)

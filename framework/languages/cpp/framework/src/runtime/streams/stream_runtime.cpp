@@ -728,8 +728,10 @@ stream_builder_t &stream_builder_t::bind (std::string endpoint)
     return *this;
 }
 
-stream_builder_t &stream_builder_t::set_tls_server (std::string certificate_file,
-                                                    std::string private_key_file)
+stream_builder_t &stream_builder_t::configure_tls_server (
+  std::string certificate_file,
+  std::string private_key_file,
+  bool require_client_certificate)
 {
     if (certificate_file.empty () || private_key_file.empty ()) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -737,6 +739,7 @@ stream_builder_t &stream_builder_t::set_tls_server (std::string certificate_file
     }
     _state->snapshot.tls_certificate_file = std::move (certificate_file);
     _state->snapshot.tls_private_key_file = std::move (private_key_file);
+    _state->snapshot.tls_require_client_certificate = require_client_certificate;
     return *this;
 }
 

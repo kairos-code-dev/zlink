@@ -1,5 +1,6 @@
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.Contracts.Configuration;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
 using ZoneWorld.Server.ZoneNode.Application.Zone;
@@ -23,7 +24,7 @@ internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
             case ZLinkSpotEvent.TimerHandlerFailed failed:
                 await ops.ReportSpotEventAsync(
                     NodeAlertKinds.TimerHandlerFailed,
-                    $"timer={failed.Diagnostic.TimerName} spot={failed.Diagnostic.SpotRid}",
+                    $"timer={failed.Diagnostic.TimerName} spot={failed.Diagnostic.SpotId}",
                     failed.Timestamp,
                     cancellationToken);
                 break;
@@ -51,21 +52,19 @@ internal sealed class OpsReportAdapter(
         DateTimeOffset occurredAt,
         CancellationToken cancellationToken) =>
         await channels
-            .SendToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ReportChannel,
+            .SendToChannel(ZoneWorldNames.ReportChannel,
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
             .Async(cancellationToken);
 
     public async ValueTask ReportNodeStatusAsync(
-        string nodeRid,
         IReadOnlyList<string> zones,
         int playerCount,
         bool maintenanceEnabled,
         CancellationToken cancellationToken) =>
         await channels
-            .SendToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ReportChannel,
+            .SendToChannel(ZoneWorldNames.ReportChannel,
                 new ReportNodeStatusMsg(
                     maintenance.OwnNodeId,
-                    nodeRid,
                     zones,
                     playerCount,
                     maintenanceEnabled))
@@ -97,8 +96,7 @@ internal sealed class NodeStatusReporter(
             try
             {
                 await ops.ReportNodeStatusAsync(
-                    nodeRid,
-                    ZoneTopology.ZonesOf(maintenance.OwnNodeId),
+                    census.ZoneIds,
                     census.TotalPlayers,
                     maintenance.IsOwnNodeUnderMaintenance,
                     stoppingToken);

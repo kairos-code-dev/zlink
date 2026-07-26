@@ -34,14 +34,6 @@ inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
 namespace zlink::samples::deliverydispatch
 {
 
-/* courier actor가 bind되는 SpotNode routing id. bind 응답의 actor node rid로 client가
- * 노드 배치를 확인한다(공통 sample spec §16). */
-struct courier_actor_nodes_t
-{
-    static constexpr const char *node_1 = "delivery-courier-node-1";
-    static constexpr const char *node_2 = "delivery-courier-node-2";
-};
-
 using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct delivery_status_t

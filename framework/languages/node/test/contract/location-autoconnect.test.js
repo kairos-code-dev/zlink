@@ -63,8 +63,8 @@ test('spot auto-connect removes a pending intent without disconnecting a peer th
     targetKey: 'remote',
     lifecycleGeneration: 0n,
     endpoint: 'tcp://remote',
-    role: framework.ZLinkLocationRole.Spot,
-    connectionKind: 'spot-router'
+    role: framework.ZLinkLocationRole.Router,
+    connectionKind: 'route-mesh'
   };
 
   assert.equal(capability.executor.connect(target), true);
@@ -132,20 +132,12 @@ test('auto-connect planner applies role policy pairwise initiator and dial-only 
   ]);
   assert.deepEqual([...dialOnlyDesired.values()].map((target) => target.endpoint), ['tcp://a']);
 
-  const dealer = local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-d', 'tcp://dealer');
-  const clientServerDesired = internal.ZLinkAutoConnectPlanner.computeDesired(dealer, [
-    peer('owner-router', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router'),
-    peer('owner-dealer', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-x', 'tcp://peer-dealer')
+  const subscriber = local(framework.ZLinkLocationAutoConnectType.Fanout, framework.ZLinkLocationRole.Sub, 'node-d', 'tcp://subscriber');
+  const fanoutDesired = internal.ZLinkAutoConnectPlanner.computeDesired(subscriber, [
+    peer('owner-publisher', framework.ZLinkLocationAutoConnectType.Fanout, framework.ZLinkLocationRole.Pub, 'node-r', 'tcp://publisher'),
+    peer('owner-subscriber', framework.ZLinkLocationAutoConnectType.Fanout, framework.ZLinkLocationRole.Sub, 'node-x', 'tcp://peer-subscriber')
   ]);
-  assert.deepEqual([...clientServerDesired.values()].map((target) => target.endpoint), ['tcp://router']);
-
-  const spot = local(framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-a', 'tcp://spot-a');
-  const spotDesired = internal.ZLinkAutoConnectPlanner.computeDesired(spot, [
-    { ...peer('owner-b', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-b', 'tcp://spot-b'), metadata: { 'pub-endpoint': 'tcp://pub-b' } },
-    { ...peer('owner-0', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Spot, 'node-0', 'tcp://spot-0'), metadata: { 'pub-endpoint': 'tcp://pub-0' } },
-    peer('owner-router', framework.ZLinkLocationAutoConnectType.SpotMesh, framework.ZLinkLocationRole.Router, 'node-r', 'tcp://router')
-  ]);
-  assert.deepEqual([...spotDesired.values()].map((target) => target.endpoint), ['tcp://spot-b', 'tcp://pub-b', 'tcp://pub-0']);
+  assert.deepEqual([...fanoutDesired.values()].map((target) => target.endpoint), ['tcp://publisher']);
 });
 
 test('store peer resolver reads store each time and joins owner liveness', async () => {
@@ -230,7 +222,9 @@ test('store resolver refreshes a cached expired lease when the same owner renews
   });
 
   assert.equal(await tracker.isOwnerLive('owner-renewed'), true);
-  nowMs += 101;
+  // The store still accepts the renewal before its lease deadline, while the
+  // local monotonic projection has already exhausted the cached snapshot.
+  nowMs += 50;
   monotonicMs += 101;
   assert.equal(ownerRenewed.kind, 'claimed');
   await store.renewOwnerLease(ownerRenewed.token, 30_000);
@@ -258,7 +252,7 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
 
   await store.claimOwnerLease('owner-remote', 30000);
   const remote = await store.updatePeer(
-    peer('owner-remote', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
+    peer('owner-remote', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   assert.equal(remote.status, framework.ZLinkLocationWriteStatus.Stored);
@@ -273,8 +267,8 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
   }));
   const calls = [];
   const reconciler = new internal.ZLinkAutoConnectReconciler({
-    local: local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
-    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    local: local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-local', 'tcp://local'),
     runtime,
     peerResolver: resolver,
     executor: executor(calls),
@@ -284,32 +278,32 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
 
   await reconciler.tick();
   assert.deepEqual(calls, ['connect:tcp://remote:owner-remote']);
-  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 1);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://local' })).length, 1);
   assert.equal(reconciler.knowsPeer(rid('node-remote')), true);
 
   await store.claimOwnerLease('owner-restarted', 30000);
   await store.updatePeer(
-    peer('owner-restarted', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
+    peer('owner-restarted', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
     framework.ZLinkLocationWriteIntent.Takeover
   );
   await reconciler.tick();
   assert.deepEqual(calls, [
     'connect:tcp://remote:owner-remote',
-    'disconnect:tcp://remote:owner-remote',
-    'connect:tcp://remote:owner-restarted'
+    'connect:tcp://remote:owner-restarted',
+    'disconnect:tcp://remote:owner-remote'
   ]);
 
   resolver.fail = true;
   await reconciler.tick();
   assert.equal(reconciler.storeFailed, true);
   assert.equal(reconciler.activeTargets.length, 1);
-  assert.deepEqual(calls.slice(-1), ['connect:tcp://remote:owner-restarted']);
+  assert.equal(calls.length, 3);
 
   await reconciler.shutdown();
   assert.deepEqual(calls.slice(-1), ['disconnect:tcp://remote:owner-restarted']);
-  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 1);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://local' })).length, 1);
   await runtime.stop();
-  assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 0);
+  assert.equal((await store.listPeers({ endpoint: 'tcp://local' })).length, 0);
 });
 
 test('auto-connect reconciler does not mark a target active when executor skips dial', async () => {
@@ -416,15 +410,15 @@ test('auto-connect reconciler removes a disconnected endpoint until a fresh stor
   const calls = [];
   const remote = peer(
     'owner-remote',
-    framework.ZLinkLocationAutoConnectType.ClientServer,
+    framework.ZLinkLocationAutoConnectType.RouteMesh,
     framework.ZLinkLocationRole.Router,
     'node-remote',
     'tcp://remote'
   );
   const reconciler = new internal.ZLinkAutoConnectReconciler({
     local: local(
-      framework.ZLinkLocationAutoConnectType.ClientServer,
-      framework.ZLinkLocationRole.Dealer,
+      framework.ZLinkLocationAutoConnectType.RouteMesh,
+      framework.ZLinkLocationRole.Router,
       'node-local',
       'tcp://dealer'
     ),
@@ -469,8 +463,8 @@ test('auto-connect reconciler retries the last desired target only within store 
   let connectAttempts = 0;
   const reconciler = new internal.ZLinkAutoConnectReconciler({
     local: local(
-      framework.ZLinkLocationAutoConnectType.ClientServer,
-      framework.ZLinkLocationRole.Dealer,
+    framework.ZLinkLocationAutoConnectType.RouteMesh,
+    framework.ZLinkLocationRole.Router,
       'node-local',
       'tcp://dealer'
     ),
@@ -480,7 +474,7 @@ test('auto-connect reconciler retries the last desired target only within store 
         if (storeFailed) throw new Error('store unavailable');
         return [peer(
           'owner-remote',
-          framework.ZLinkLocationAutoConnectType.ClientServer,
+          framework.ZLinkLocationAutoConnectType.RouteMesh,
           framework.ZLinkLocationRole.Router,
           'node-remote',
           'tcp://remote'
@@ -549,13 +543,13 @@ test('auto-connect reconciler retains an existing draining peer without dialing 
   await runtime.start(rid('node-local'));
   await store.claimOwnerLease('owner-existing', 30000);
   const existing = await store.updatePeer(
-    peer('owner-existing', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
+    peer('owner-existing', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   const calls = [];
   const reconciler = new internal.ZLinkAutoConnectReconciler({
-    local: local(framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
-    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Dealer, 'node-local', 'tcp://dealer'),
+    local: local(framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://local'),
+    localRow: peer('ignored', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-a', 'tcp://local'),
     runtime,
     peerResolver: new internal.ZLinkStoreLocationResolvers({
       stores: stores(store),
@@ -567,13 +561,13 @@ test('auto-connect reconciler retains an existing draining peer without dialing 
   });
   await reconciler.tick();
   await store.updatePeer({
-    ...peer('owner-existing', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
+    ...peer('owner-existing', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
     draining: true,
     generation: existing.generation
   }, framework.ZLinkLocationWriteIntent.Renew);
   await store.claimOwnerLease('owner-new', 30000);
   await store.updatePeer({
-    ...peer('owner-new', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-new', 'tcp://new'),
+    ...peer('owner-new', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-new', 'tcp://new'),
     draining: true
   }, framework.ZLinkLocationWriteIntent.NewClaim);
   await reconciler.tick();

@@ -1,6 +1,5 @@
 using GameQuest.Shared;
 using Microsoft.Extensions.Configuration;
-using Systems.Zlink;
 
 namespace GameQuest.Server.Configuration;
 
@@ -10,14 +9,13 @@ public static class SampleNames
     public const string GameApiChannel = "gamequest.session.api";
     public const string GameApiHandlerGroup = "game-api";
     public const string SessionActorType = "gamequest.session.actor";
+    public const string QuestOwnerChannel = "gamequest.quest.owner";
     public const string QuestOwnerHandlerGroup = "quest-owner";
     public const string StreamNode = "gamequest.stream";
     public const string ProgressPacket = nameof(QuestProgressNotify);
     public const string CompletedPacket = nameof(QuestCompletedNotify);
 
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
-
-    public static string QuestOwnerChannelFor(string missionName) => $"gamequest.quest.owner.{missionName}";
 
 }
 
@@ -47,11 +45,7 @@ public sealed record GameQuestTopology(
     string GameApiAMeshEndpoint,
     string GameApiBMeshEndpoint,
     string MissionAMeshEndpoint,
-    string MissionBMeshEndpoint,
-    RoutingId MissionAMeshRid,
-    RoutingId MissionBMeshRid,
-    RoutingId GameApiAMeshRid,
-    RoutingId GameApiBMeshRid)
+    string MissionBMeshEndpoint)
 {
     public static GameQuestRuntimeConfiguration LoadGameApi(string[] args) => Load(args, "api");
 
@@ -78,11 +72,7 @@ public sealed record GameQuestTopology(
             settings.GameApiAMeshEndpoint,
             settings.GameApiBMeshEndpoint,
             settings.MissionAMeshEndpoint,
-            settings.MissionBMeshEndpoint,
-            RoutingId.From("7101"),
-            RoutingId.From("7102"),
-            RoutingId.From("7201"),
-            RoutingId.From("7202"));
+            settings.MissionBMeshEndpoint);
         var streamBindEndpoint = string.Equals(settings.InstanceName, "api-b", StringComparison.Ordinal)
             ? settings.GameApiBStreamBindEndpoint
             : settings.GameApiAStreamBindEndpoint;
@@ -96,25 +86,14 @@ public sealed record GameQuestTopology(
     public QuestMissionInstanceTopology ForQuestMission(string missionName)
     {
         return string.Equals(missionName, "mission-b", StringComparison.Ordinal)
-            ? new QuestMissionInstanceTopology(missionName, MissionBMeshEndpoint, MissionBMeshRid, OwnerIndex: 1)
-            : new QuestMissionInstanceTopology("mission-a", MissionAMeshEndpoint, MissionAMeshRid, OwnerIndex: 0);
+            ? new QuestMissionInstanceTopology(missionName, MissionBMeshEndpoint)
+            : new QuestMissionInstanceTopology("mission-a", MissionAMeshEndpoint);
     }
 
     public string MissionHttpBaseUrl(string missionName) =>
         string.Equals(missionName, "mission-b", StringComparison.Ordinal)
             ? MissionBHttpBaseUrl
             : MissionAHttpBaseUrl;
-
-    public RoutingId MeshRidForApi(string apiName) =>
-        string.Equals(apiName, "api-b", StringComparison.Ordinal)
-            ? GameApiBMeshRid
-            : GameApiAMeshRid;
-
-    public RoutingId OwnerRouteRid(string playerId) =>
-        GameQuestRouting.OwnerIndex(playerId) == 1 ? MissionBMeshRid : MissionAMeshRid;
-
-    public string QuestOwnerChannel(string playerId) =>
-        SampleNames.QuestOwnerChannelFor(GameQuestRouting.OwnerIndex(playerId) == 1 ? "mission-b" : "mission-a");
 
     public string GameApiMeshEndpoint(string apiName) =>
         string.Equals(apiName, "api-b", StringComparison.Ordinal)
@@ -183,22 +162,6 @@ public sealed class GameQuestConfiguration
     }
 }
 
-public static class GameQuestRouting
-{
-    public static int OwnerIndex(string playerId)
-    {
-        var sum = 0;
-        foreach (var value in System.Text.Encoding.UTF8.GetBytes(playerId))
-        {
-            sum += value;
-        }
-
-        return sum % 2;
-    }
-}
-
 public sealed record QuestMissionInstanceTopology(
     string MissionName,
-    string MeshEndpoint,
-    RoutingId MeshRid,
-    int OwnerIndex);
+    string MeshEndpoint);

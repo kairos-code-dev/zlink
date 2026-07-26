@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Systems.Zlink;
 
 namespace ShoppingMall.Server.Configuration;
 
@@ -7,11 +6,10 @@ public static class SampleNames
 {
     public const string MeshName = "shoppingmall";
     public const string OrderWorkflowHandlerGroup = "order-workflow";
+    public const string OrderWorkflowChannel = "shoppingmall.order.workflow";
     public const string OrderProjectionTopic = "shoppingmall.order.projection";
     public const string OrderProjectionChannel = "shoppingmall.order.projection.channel";
 
-    public static string OrderWorkflowChannelFor(string instanceId)
-        => $"shoppingmall.order.workflow.{instanceId}";
 }
 
 public static class OrderStatuses
@@ -41,11 +39,7 @@ public sealed record SampleTopology(
     string ApiAMeshEndpoint,
     string ApiBMeshEndpoint,
     string WorkflowAMeshEndpoint,
-    string WorkflowBMeshEndpoint,
-    RoutingId ApiAMeshRid,
-    RoutingId ApiBMeshRid,
-    RoutingId WorkflowAMeshRid,
-    RoutingId WorkflowBMeshRid)
+    string WorkflowBMeshEndpoint)
 {
     public static SampleRuntimeConfiguration LoadApi(string[] args) => Load(args, "api");
 
@@ -72,19 +66,15 @@ public sealed record SampleTopology(
             settings.ApiAMeshEndpoint,
             settings.ApiBMeshEndpoint,
             settings.WorkflowAMeshEndpoint,
-            settings.WorkflowBMeshEndpoint,
-            RoutingId.From("6001"),
-            RoutingId.From("6002"),
-            RoutingId.From("6101"),
-            RoutingId.From("6102"));
+            settings.WorkflowBMeshEndpoint);
         return new SampleRuntimeConfiguration(topology, settings.InstanceId, settings.LogDirectory);
     }
 
     public ApiInstanceTopology ForInstance(string instanceId)
     {
         return string.Equals(instanceId, "api-b", StringComparison.Ordinal)
-            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBMeshEndpoint, ApiBMeshRid)
-            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiAMeshEndpoint, ApiAMeshRid);
+            ? new ApiInstanceTopology(instanceId, ApiBHttpUrl, ApiBMeshEndpoint)
+            : new ApiInstanceTopology("api-a", ApiAHttpUrl, ApiAMeshEndpoint);
     }
 
     public WorkflowInstanceTopology ForWorkflowInstance(string instanceId)
@@ -93,34 +83,11 @@ public sealed record SampleTopology(
             ? new WorkflowInstanceTopology(
                 instanceId,
                 WorkflowBHttpUrl,
-                WorkflowBMeshEndpoint,
-                WorkflowBMeshRid,
-                OwnerIndex: 1)
+                WorkflowBMeshEndpoint)
             : new WorkflowInstanceTopology(
                 "workflow-a",
                 WorkflowAHttpUrl,
-                WorkflowAMeshEndpoint,
-                WorkflowAMeshRid,
-                OwnerIndex: 0);
-    }
-
-    public WorkflowInstanceTopology ForOrderId(string orderId)
-    {
-        var ownerIndex = StableOwnerIndex(orderId);
-        return ownerIndex == 1
-            ? ForWorkflowInstance("workflow-b")
-            : ForWorkflowInstance("workflow-a");
-    }
-
-    private static int StableOwnerIndex(string orderId)
-    {
-        var sum = 0;
-        foreach (var c in orderId)
-        {
-            sum = (sum * 31 + c) & 0x7fffffff;
-        }
-
-        return sum % 2;
+                WorkflowAMeshEndpoint);
     }
 
 }
@@ -184,12 +151,9 @@ public sealed class SampleConfiguration
 public sealed record ApiInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    string MeshEndpoint,
-    RoutingId MeshRid);
+    string MeshEndpoint);
 
 public sealed record WorkflowInstanceTopology(
     string InstanceId,
     string HttpUrl,
-    string MeshEndpoint,
-    RoutingId MeshRid,
-    int OwnerIndex);
+    string MeshEndpoint);

@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
@@ -27,6 +28,7 @@ import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
+import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Logger LOGGER = Logger.getLogger(ZLinkSessionActorsRuntime.class.getName());
@@ -47,6 +49,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private final List<ZLinkSessionActor> bound = new CopyOnWriteArrayList<>();
     private final java.util.concurrent.ConcurrentHashMap<String, StoredBindingRoute>
         bindingRoutes = new java.util.concurrent.ConcurrentHashMap<>();
+    private final AtomicLong bindingGenerations = new AtomicLong();
     private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
 
     public ZLinkSessionActorsRuntime metadataPolicy(
@@ -387,6 +390,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             current.nodeRid(),
             0,
             0,
+            0,
+            bindingGenerations.incrementAndGet(),
             0));
     }
 
@@ -441,6 +446,46 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         });
     }
 
+    public CompletionStage<ZLinkServiceM6BWireCodec.SessionRelocationRouted>
+        applyRelocationRouteCommand(
+            ZLinkServiceM6BWireCodec.SessionRelocationRoute command) {
+        java.util.Objects.requireNonNull(command, "command");
+        if (command.action()
+                != ZLinkServiceM6BWireCodec.SessionRelocationRouteAction.COMMIT
+            || !sessionRid.equals(command.session().sessionRid())) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "Session relocation route command does not target this Session"));
+        }
+        StoredBindingRoute observed = bindingRoutes.get(command.actor().actorId());
+        if (observed == null
+            || observed.bindingGeneration()
+                != command.session().bindingGeneration()
+            || observed.lastAcceptedSessionSequence()
+                > command.lastAcceptedSessionSequence()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "Session relocation route command has a stale binding fence"));
+        }
+        RelocationRouteUpdate update = new RelocationRouteUpdate(
+            command.actor().actorId(),
+            command.actor().generation(),
+            observed.nodeRid(),
+            command.targetNodeRid(),
+            command.targetNodeGeneration(),
+            command.previousAuthorityOwnerGeneration(),
+            command.currentAuthorityOwnerGeneration(),
+            command.session().bindingGeneration(),
+            command.lastAcceptedSessionSequence());
+        return applyRelocationRouteUpdate(update).thenApply(ignored ->
+            new ZLinkServiceM6BWireCodec.SessionRelocationRouted(
+                command.relocation(),
+                command.coordinator(),
+                command.actor(),
+                command.session(),
+                command.action(),
+                command.currentAuthorityOwnerGeneration(),
+                command.lastAcceptedSessionSequence()));
+    }
+
     record RelocationRouteUpdate(
         String actorId,
         long objectGeneration,
@@ -448,12 +493,29 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         RoutingId targetNodeRid,
         long targetNodeGeneration,
         long sourceAuthorityOwnerGeneration,
-        long targetAuthorityOwnerGeneration) {
+        long targetAuthorityOwnerGeneration,
+        long bindingGeneration,
+        long lastAcceptedSessionSequence) {
+        RelocationRouteUpdate(
+            String actorId,
+            long objectGeneration,
+            RoutingId sourceNodeRid,
+            RoutingId targetNodeRid,
+            long targetNodeGeneration,
+            long sourceAuthorityOwnerGeneration,
+            long targetAuthorityOwnerGeneration) {
+            this(actorId, objectGeneration, sourceNodeRid, targetNodeRid,
+                targetNodeGeneration, sourceAuthorityOwnerGeneration,
+                targetAuthorityOwnerGeneration, 0, 0);
+        }
+
         RelocationRouteUpdate {
             if (actorId == null || actorId.isBlank()
                 || objectGeneration <= 0
                 || targetNodeGeneration <= 0
                 || sourceAuthorityOwnerGeneration <= 0
+                || bindingGeneration < 0
+                || lastAcceptedSessionSequence < 0
                 || targetAuthorityOwnerGeneration
                     != sourceAuthorityOwnerGeneration + 1) {
                 throw new IllegalArgumentException(
@@ -471,11 +533,17 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         RoutingId nodeRid,
         long nodeGeneration,
         long authorityOwnerGeneration,
-        long ownerLeaseGeneration) {
+        long ownerLeaseGeneration,
+        long bindingGeneration,
+        long lastAcceptedSessionSequence) {
         boolean matchesSource(RelocationRouteUpdate update) {
             return actorId.equals(update.actorId())
                 && objectGeneration == update.objectGeneration()
                 && nodeRid.equals(update.sourceNodeRid())
+                && (update.bindingGeneration() == 0
+                    || bindingGeneration == update.bindingGeneration())
+                && lastAcceptedSessionSequence
+                    <= update.lastAcceptedSessionSequence()
                 && (authorityOwnerGeneration == 0
                     || authorityOwnerGeneration
                         == update.sourceAuthorityOwnerGeneration());
@@ -489,7 +557,9 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 update.targetNodeRid(),
                 update.targetNodeGeneration(),
                 update.targetAuthorityOwnerGeneration(),
-                ownerLeaseGeneration);
+                ownerLeaseGeneration,
+                bindingGeneration,
+                update.lastAcceptedSessionSequence());
         }
     }
 

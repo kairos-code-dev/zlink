@@ -4,18 +4,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.zip.CRC32C;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
+import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
 
 final class ZLinkAggregateRelocationCoordinatorTest {
     private static final ZLinkStoreCancellation NEVER = () -> false;
@@ -60,8 +67,8 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertInstanceOf(
             ZLinkAggregateRelocationCoordinator.AuthorityConflictException.class,
             failure.getCause());
-        assertEquals(2, relocation.deleteCount,
-            "prepare conflict removes the chunk and manifest");
+        assertEquals(1, relocation.deleteCount,
+            "prepare conflict removes only the unpublished manifest");
         assertEquals(0, authority.commitCount);
     }
 
@@ -77,8 +84,8 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         coordinator.abort(prepared).toCompletableFuture().join();
 
         assertEquals(1, authority.abortCount);
-        assertEquals(2, relocation.deleteCount,
-            "abort removes the chunk and manifest");
+        assertEquals(1, relocation.deleteCount,
+            "abort removes only the unpublished manifest");
     }
 
     @Test
@@ -96,7 +103,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
 
         var completed = coordinator.completeSourceCleanup(
                 activated,
-                new byte[] {4, 5, 6},
+                goldenRoot(),
                 NEVER)
             .toCompletableFuture().join();
 
@@ -108,31 +115,180 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertEquals(
             new ZLinkPlacementCapacityBundle(0, 0, Optional.empty()),
             authority.prepared.capacityBundle());
-        assertEquals(2, relocation.deleteCount,
-            "completion removes the previous chunk and manifest after commit");
+        assertEquals(1, relocation.deleteCount,
+            "completion removes only the previous manifest after commit");
     }
 
     @Test
-    void authorityPayloadRoundTripsDotNetGuidAndUnsignedChecksum() {
-        UUID aggregateId = UUID.fromString(
-            "00112233-4455-6677-8899-aabbccddeeff");
-        var payload = new ZLinkRelocationAuthorityPayloadCodec.Payload(
-            "root-a",
-            0xfedcba98L,
-            aggregateId,
-            7,
-            new byte[32],
-            "owner-a",
-            9,
-            new byte[] {1, 2, 3});
+    void completedAggregateNormalizesToSteadyAuthorityWithoutGenerationChange() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority,
+            new FakeRelocationStore());
+        var source = request();
+        var activated = coordinator.commit(
+                coordinator.prepare(source, NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+        coordinator.completeSourceCleanup(activated, goldenRoot(), NEVER)
+            .toCompletableFuture().join();
+        var expected = source.participants().stream()
+            .map(value -> new ZLinkAggregateRelocationCoordinator
+                .ExpectedParticipant(
+                    value.authorityKey(),
+                    value.objectGeneration(),
+                    value.authorityOwnerGeneration()))
+            .toList();
 
-        var decoded = ZLinkRelocationAuthorityPayloadCodec.decode(
-            ZLinkRelocationAuthorityPayloadCodec.encode(payload));
+        coordinator.normalizeCompletedAggregate(
+                expected,
+                activated.fence(),
+                source.targetOwner(),
+                NEVER)
+            .toCompletableFuture().join();
+
+        for (var participant : source.participants()) {
+            ZLinkAuthoritySnapshot normalized = authority.rows.get(
+                participant.authorityKey());
+            assertArrayEquals(
+                participant.applicationAuthorityPayload(),
+                normalized.payload());
+            assertEquals(
+                participant.authorityOwnerGeneration() + 1,
+                normalized.authorityOwnerGeneration());
+            assertEquals(source.targetOwner().ownerId(), normalized.ownerId());
+        }
+        assertEquals(3, authority.commitCount,
+            "steady normalization is one atomic Location Store commit");
+        coordinator.normalizeCompletedAggregate(
+                expected,
+                activated.fence(),
+                source.targetOwner(),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(3, authority.commitCount,
+            "an already steady aggregate is idempotent");
+    }
+
+    @Test
+    void authorityPayloadPublishesCanonicalRelocationSlot() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority, new FakeRelocationStore());
+        coordinator.prepare(request(), NEVER).toCompletableFuture().join();
+
+        var decoded = ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+            authority.prepared.participants().getFirst().authorityPayload());
 
         assertNotNull(decoded);
-        assertEquals(aggregateId, decoded.aggregateId());
-        assertEquals(0xfedcba98L, decoded.checksumCrc32c());
-        assertArrayEquals(new byte[] {1, 2, 3}, decoded.applicationPayload());
+        assertEquals(new UUID(0, 9), decoded.aggregateId());
+        assertEquals(7, decoded.aggregateGeneration());
+        assertEquals("owner-b", decoded.targetOwnerId());
+    }
+
+    @Test
+    void canonicalReplyEvidenceSurvivesSourceCleanupPublication() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        FakeRelocationStore relocation = new FakeRelocationStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority, relocation);
+        var source = request();
+        var activated = coordinator.commit(
+                coordinator.prepare(source, NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+        var expected = source.participants().stream()
+            .map(value -> new ZLinkAggregateRelocationCoordinator
+                .ExpectedParticipant(
+                    value.authorityKey(),
+                    value.objectGeneration(),
+                    value.authorityOwnerGeneration()))
+            .toList();
+        var completion = ZLinkServiceRelocationEnvelopeCodec
+            .decode(goldenRoot()).terminalCompletions().getFirst();
+
+        var durable = coordinator.updateCanonicalReplay(
+                expected,
+                source.targetOwner(),
+                current -> ZLinkServiceRelocationEnvelopeCodec
+                    .completeDelivery(
+                        current,
+                        completion.operationHigh(),
+                        completion.operationLow(),
+                        completion.sourceOwnerId(),
+                        completion.sourceOwnerLeaseGeneration(),
+                        RoutingId.from(completion.sourceNodeRid()),
+                        completion.sourceNodeGeneration(),
+                        2),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(2, durable.root().terminalCompletions().getFirst()
+            .deliveryState());
+        assertTrue(durable.root().recoveryReleaseEligible());
+        assertFalse(ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+            authority.rows.get("spot:room-a").payload())
+            .sourceCleanupCompleted());
+
+        coordinator.completeSourceCleanup(activated, goldenRoot(), NEVER)
+            .toCompletableFuture().join();
+        coordinator.verifyCompletedAggregate(
+                expected,
+                activated.fence(),
+                source.targetOwner(),
+                NEVER)
+            .toCompletableFuture().join();
+        assertTrue(ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+            authority.rows.get("spot:room-a").payload())
+            .sourceCleanupCompleted());
+        assertEquals(
+            source.participants().getFirst().authorityOwnerGeneration() + 1,
+            authority.rows.get("spot:room-a").authorityOwnerGeneration());
+    }
+
+    @Test
+    void publishedAggregateRejectsDifferentParticipantGenerationFence() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        FakeRelocationStore relocation = new FakeRelocationStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority,
+            relocation);
+        var source = request();
+        var published = coordinator.commit(
+                coordinator.prepare(source, NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+        List<ZLinkAggregateRelocationCoordinator.ExpectedParticipant>
+            expected = source.participants().stream()
+                .map(value -> new ZLinkAggregateRelocationCoordinator
+                    .ExpectedParticipant(
+                        value.authorityKey(),
+                        value.objectGeneration(),
+                        value.authorityOwnerGeneration()))
+                .toList();
+        expected = new java.util.ArrayList<>(expected);
+        var first = expected.getFirst();
+        expected.set(0, new ZLinkAggregateRelocationCoordinator
+            .ExpectedParticipant(
+                first.authorityKey(),
+                first.objectGeneration(),
+                first.sourceAuthorityOwnerGeneration() + 1));
+
+        var exact = expected;
+        var failure = assertThrows(
+            java.util.concurrent.CompletionException.class,
+            () -> coordinator.readPublishedAggregate(
+                    exact,
+                    published.fence(),
+                    source.targetOwner(),
+                    published.inventoryDigest(),
+                    NEVER)
+                .toCompletableFuture().join());
+        assertInstanceOf(
+            ZLinkAggregateRelocationCoordinator.RelocationDataLostException.class,
+            failure.getCause());
     }
 
     @Test
@@ -170,14 +326,91 @@ final class ZLinkAggregateRelocationCoordinatorTest {
             failure.getCause());
     }
 
+    @Test
+    void treeSplitsAtSixtyFourMiBAndRenewsEveryComponent() {
+        FakeRelocationStore relocation = new FakeRelocationStore();
+        byte[] logicalRoot = new byte[ZLinkRelocationTreeStore.CHUNK_BYTES + 1];
+        logicalRoot[0] = 1;
+        logicalRoot[logicalRoot.length - 1] = 2;
+        byte[] inventoryDigest = new byte[32];
+
+        var stored = ZLinkRelocationTreeStore.put(
+                relocation,
+                logicalRoot,
+                inventoryDigest,
+                Duration.ofHours(24),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(2, stored.chunkCount());
+        var read = ZLinkRelocationTreeStore.read(
+                relocation,
+                stored.root().reference(),
+                stored.root().checksumCrc32c(),
+                NEVER)
+            .toCompletableFuture().join();
+        assertArrayEquals(logicalRoot, read.logicalRoot());
+        assertEquals(2, read.chunkCount());
+
+        ZLinkRelocationTreeStore.renew(
+                relocation,
+                stored.root().reference(),
+                stored.root().checksumCrc32c(),
+                Duration.ofHours(24),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(3, relocation.renewCount,
+            "both chunks and the manifest renew retention");
+    }
+
+    @Test
+    void deletingOneManifestPreservesItsSharedContentAddressedChunk() {
+        FakeRelocationStore relocation = new FakeRelocationStore();
+        byte[] logicalRoot = new byte[] {9, 8, 7, 6};
+        byte[] firstDigest = new byte[32];
+        byte[] secondDigest = new byte[32];
+        secondDigest[0] = 1;
+        var first = ZLinkRelocationTreeStore.put(
+                relocation,
+                logicalRoot,
+                firstDigest,
+                Duration.ofHours(24),
+                NEVER)
+            .toCompletableFuture().join();
+        var second = ZLinkRelocationTreeStore.put(
+                relocation,
+                logicalRoot,
+                secondDigest,
+                Duration.ofHours(24),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(3, relocation.valueCount(),
+            "the two manifests share one content-addressed chunk");
+
+        ZLinkRelocationTreeStore.delete(
+                relocation,
+                first.root().reference(),
+                NEVER)
+            .toCompletableFuture().join();
+
+        assertEquals(2, relocation.valueCount());
+        var surviving = ZLinkRelocationTreeStore.read(
+                relocation,
+                second.root().reference(),
+                second.root().checksumCrc32c(),
+                NEVER)
+            .toCompletableFuture().join();
+        assertArrayEquals(logicalRoot, surviving.logicalRoot());
+        assertArrayEquals(secondDigest, surviving.inventoryDigest());
+    }
+
     private static ZLinkAggregateRelocationCoordinator.Request request() {
         return new ZLinkAggregateRelocationCoordinator.Request(
-            UUID.fromString("00112233-4455-6677-8899-aabbccddeeff"),
+            new UUID(0, 9),
             7,
             List.of(
                 participant("spot:room-a", ZLinkPlacementObjectKind.USER_SPOT),
                 participant("actor:user-a", ZLinkPlacementObjectKind.ACTOR)),
-            new byte[] {9, 8, 7},
+            goldenRoot(),
             new ZLinkMeshNodeDescriptorKey(
                 "game",
                 RoutingId.from("node-b")),
@@ -202,14 +435,47 @@ final class ZLinkAggregateRelocationCoordinatorTest {
             5,
             "version-1",
             ZLinkAuthorityGenerationTransition.NEW_OWNER,
-            new byte[] {1},
+            authorityPayload(kind),
             new byte[] {2});
+    }
+
+    private static byte[] authorityPayload(ZLinkPlacementObjectKind kind) {
+        RoutingId node = RoutingId.from("node-a");
+        if (kind == ZLinkPlacementObjectKind.ACTOR) {
+            return new ZLinkActorAuthorityPayloadCodec().encode(
+                ZLinkActorAuthorityPayloadCodec.State.READY,
+                "Player", "user-a", "room-a", 3, 2,
+                "owner-a", 6, "game", node, 3);
+        }
+        return new ZLinkServiceAuthorityPayloadCodec().encodeUser(
+            ZLinkServiceAuthorityPayloadCodec.State.READY,
+            "RoomSpot", "room-a", "owner-a", 6, "game", node, 3);
+    }
+
+    private static final Pattern LOGICAL_HEX = Pattern.compile(
+        "\\\"logicalHex\\\"\\s*:\\s*\\\"([0-9a-f]+)\\\"");
+
+    private static byte[] goldenRoot() {
+        Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (current != null) {
+            Path fixture = current.resolve(
+                "runtime/protocol/golden/relocation-envelope-v1.json");
+            if (Files.isRegularFile(fixture)) {
+                try {
+                    var match = LOGICAL_HEX.matcher(Files.readString(fixture));
+                    if (match.find()) return HexFormat.of().parseHex(match.group(1));
+                } catch (java.io.IOException failure) {
+                    throw new IllegalStateException(failure);
+                }
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException("shared relocation fixture was not found");
     }
 
     private static final class FakeRelocationStore
         implements ZLinkRelocationStore {
         private final Map<String, byte[]> values = new ConcurrentHashMap<>();
-        private final AtomicInteger nextReference = new AtomicInteger();
         private int renewCount;
         private int deleteCount;
 
@@ -218,7 +484,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
             byte[] payload,
             Duration retention,
             ZLinkStoreCancellation cancellation) {
-            String reference = "reference-" + nextReference.incrementAndGet();
+            String reference = "sha256:" + sha256(payload);
             values.put(reference, payload.clone());
             return CompletableFuture.completedFuture(new ZLinkRelocationStored(
                 reference,
@@ -264,6 +530,19 @@ final class ZLinkAggregateRelocationCoordinatorTest {
             CRC32C checksum = new CRC32C();
             checksum.update(payload);
             return checksum.getValue();
+        }
+
+        private static String sha256(byte[] payload) {
+            try {
+                return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(payload));
+            } catch (NoSuchAlgorithmException failure) {
+                throw new AssertionError(failure);
+            }
+        }
+
+        private int valueCount() {
+            return values.size();
         }
 
         private void corruptChunk() {
@@ -361,7 +640,37 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         public CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
             String key, ZLinkAuthorityExpectation expectation,
             ZLinkAuthorityMutation mutation, ZLinkStoreCancellation cancellation) {
-            return unsupported();
+            ZLinkAuthoritySnapshot current = rows.get(key);
+            if (!(expectation instanceof ZLinkAuthorityExpectFound found)
+                || current == null
+                || !current.storeVersion().equals(found.storeVersion())
+                || !(mutation instanceof ZLinkAuthorityPut put)
+                || put.generationTransition()
+                    != ZLinkAuthorityGenerationTransition.PRESERVE) {
+                return CompletableFuture.completedFuture(
+                    new ZLinkAuthorityConflict(current == null
+                        ? new ZLinkAuthorityMissing(Instant.now())
+                        : current));
+            }
+            ZLinkAuthoritySnapshot stored = new ZLinkAuthoritySnapshot(
+                "normalized-" + key,
+                put.payload(),
+                current.objectGeneration(),
+                current.authorityOwnerGeneration(),
+                current.ownerId(),
+                current.ownerLeaseGeneration(),
+                current.allocation(),
+                Instant.now());
+            rows.put(key, stored);
+            return CompletableFuture.completedFuture(new ZLinkAuthorityStored(
+                stored.storeVersion(),
+                stored.payload(),
+                stored.objectGeneration(),
+                stored.authorityOwnerGeneration(),
+                stored.ownerId(),
+                stored.ownerLeaseGeneration(),
+                stored.allocation(),
+                stored.storeNow()));
         }
 
         @Override

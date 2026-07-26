@@ -275,6 +275,50 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler);
 }
 
+internal interface IZLinkBackendRelocationReplyRelay
+{
+    void SetRelocationReplyRelayTarget(IRelocationReplyRelayTarget target);
+
+    ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord> RelayRelocationReplyAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        ZLinkServiceWireCodec.RequestSourceFence expectedSource,
+        IReadOnlyList<Message> payload,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+}
+
+internal interface IZLinkBackendCanonicalRelocationReservation
+{
+    void SetCanonicalRelocationReservationTarget(
+        ICanonicalRelocationReservationTarget target);
+
+    ValueTask<ZLinkServiceWireCodec.RelocationReservedRecord>
+        ReserveCanonicalRelocationAsync(
+            RoutingId targetNodeRid,
+            ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+            TimeSpan timeout,
+            CancellationToken cancellationToken);
+
+    ValueTask StageCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+        IReadOnlyList<ZLinkServiceWireCodec.RelocationDataRecord> data,
+        TimeSpan timeout,
+        CancellationToken cancellationToken);
+
+    ValueTask CompleteCanonicalRelocationAsync(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationCompleteRecord complete,
+        CancellationToken cancellationToken);
+
+    void CancelCanonicalRelocation(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.RelocationWireId relocationId,
+        ulong targetAttemptGeneration,
+        ZLinkServiceWireCodec.RelocationCoordinatorFence coordinator);
+}
+
 internal interface IZLinkBackendSpot : IAsyncDisposable
 {
     RoutingId RoutingId { get; }

@@ -22,6 +22,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
     private ZLinkInstanceSpotActivationTarget? _instanceSpotActivationTarget;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
+    private IRelocationReplyRelayTarget? _relocationReplyRelayTarget;
+    private ZLinkCanonicalRelocationReservationOwner?
+        _canonicalRelocationReservationOwner;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotDispatchPump? _entryDispatchPump;
     private ZLinkSpotOutboundTransport? _entryOutbound;
@@ -83,6 +86,49 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node,
             spotChannelName,
             locationLifecycle);
+        if (frameworkRegistration.Locations.ResolveStore()
+            is { } relocationAuthorityStore
+            && node is IZLinkBackendRelocationReplyRelay relayBackend)
+        {
+            _relocationReplyRelayTarget =
+                new ZLinkRelocationReplyTarget(
+                    runtime,
+                    relocationAuthorityStore);
+            relayBackend.SetRelocationReplyRelayTarget(
+                _relocationReplyRelayTarget);
+        }
+        if (frameworkRegistration.Locations.ResolveStore()
+                is IZLinkAuthorityStore canonicalAuthorityStore
+            && node is IZLinkBackendCanonicalRelocationReservation
+                canonicalBackend
+            && startupState is { } canonicalStartup
+            && (registration.SpotRelocations.Values.Any(
+                    static relocation => relocation.PolicyKind != 0)
+                || registration.InstanceSpotRelocations.Values.Any(
+                    static relocation => relocation.PolicyKind != 0)
+                || registration.ActorRelocations.Values.Any(
+                    static relocation => relocation.PolicyKind != 0)))
+        {
+            _canonicalRelocationReservationOwner =
+                new ZLinkCanonicalRelocationReservationOwner(
+                    canonicalAuthorityStore,
+                    runtime.RelocationPermits,
+                    spotChannelName,
+                    node.RoutingId,
+                    canonicalStartup.Descriptor.LifecycleGeneration,
+                    frameworkRegistration.DefaultRequestTimeout,
+                    relocationStore:
+                        frameworkRegistration.Locations.RelocationStoreInstance
+                        ?? throw new ZLinkConfigurationException(
+                            "Relocation Store is not registered."),
+                    targetRuntime:
+                        services.GetRequiredService<
+                            ZLinkSpotRetireTargetRuntime>(),
+                    standaloneActorRuntime:
+                        runtime.StandaloneActorRelocationRuntime);
+            canonicalBackend.SetCanonicalRelocationReservationTarget(
+                _canonicalRelocationReservationOwner);
+        }
         if (registration.SpotRelocations.Count > 0
             && frameworkRegistration.Locations.ResolveStore() is { } authorityStore)
         {
@@ -124,6 +170,32 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 locationLifecycle.OwnerToken);
             node.SetInstanceSpotActivationTarget(_instanceSpotActivationTarget);
         }
+    }
+
+    internal bool TryTakeCanonicalRelocationPermit(
+        ZLinkServiceWireCodec.RelocationWireId relocationId,
+        ulong targetAttemptGeneration,
+        long actualPayloadBytes,
+        out IDisposable permit,
+        out ZLinkPreparedAggregateRelocation? preparedAggregate)
+    {
+        if (_canonicalRelocationReservationOwner is not null)
+            return _canonicalRelocationReservationOwner.TryTakeStagingPermit(
+                relocationId, targetAttemptGeneration, actualPayloadBytes,
+                out permit, out preparedAggregate);
+        permit = null!;
+        preparedAggregate = null!;
+        return false;
+    }
+
+    internal void BeginCanonicalRelocationStaging(
+        ZLinkServiceWireCodec.RelocationWireId relocationId,
+        ulong targetAttemptGeneration)
+    {
+        (_canonicalRelocationReservationOwner
+            ?? throw new InvalidOperationException(
+                "Canonical relocation reservation owner is not configured."))
+            .BeginStaging(relocationId, targetAttemptGeneration);
     }
 
     internal ZLinkMeshNodeStartupState? StartupState { get; }
@@ -462,6 +534,27 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             ZLinkMessageParts.DisposeAll);
     }
 
+    internal ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord>
+        RelayRelocationReplyAsync(
+            RoutingId targetNodeRid,
+            ZLinkServiceWireCodec.ReplyRelayRecord relay,
+            ZLinkServiceWireCodec.RequestSourceFence expectedSource,
+            IReadOnlyList<Message> payload,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+        Node is IZLinkBackendRelocationReplyRelay backend
+            ? backend.RelayRelocationReplyAsync(
+                targetNodeRid,
+                relay,
+                expectedSource,
+                payload,
+                timeout,
+                cancellationToken)
+            : ValueTask.FromException<
+                ZLinkServiceWireCodec.ReplyRelayAckRecord>(
+                new NotSupportedException(
+                    "The MeshNode backend does not support relocation reply relay."));
+
     internal void RequestStop()
     {
         lock (_disposeGate)
@@ -507,6 +600,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(DisposeEntrySpotAsync).ConfigureAwait(false);
         await CaptureAsync(_nodeSubmitter.DisposeAsync).ConfigureAwait(false);
+        if (_canonicalRelocationReservationOwner is { } reservationOwner)
+            await CaptureAsync(reservationOwner.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(Node.DisposeAsync).ConfigureAwait(false);
         Capture(() =>
         {
@@ -677,12 +772,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return await _spots.CloseAsync(spotId, cancellationToken);
     }
 
-    internal ValueTask<bool> TryDrainSpotsAsync(
+    internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
-        CancellationToken cancellationToken) =>
-        relocate
-            ? _spots.TryRelocateForRetireAsync(cancellationToken)
-            : _spots.TryDrainAsync(cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        if (relocate)
+            return await _spots.TryRelocateForRetireAsync(cancellationToken)
+                .ConfigureAwait(false);
+        return new ZLinkSpotDrainResult(
+            await _spots.TryDrainAsync(cancellationToken).ConfigureAwait(false),
+            0);
+    }
 
     public ValueTask<bool> ConnectPeerAsync(string endpoint, CancellationToken cancellationToken)
     {

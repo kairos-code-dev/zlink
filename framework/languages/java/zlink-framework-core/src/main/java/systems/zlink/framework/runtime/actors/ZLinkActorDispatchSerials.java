@@ -50,6 +50,15 @@ final class ZLinkActorDispatchSerials {
         QueuedTurn turn,
         byte[] acceptedJournalRecord,
         Supplier<CompletionStage<Void>> operation) {
+        return enqueue(
+            turn, acceptedJournalRecord, operation, () -> { });
+    }
+
+    CompletionStage<Void> enqueue(
+        QueuedTurn turn,
+        byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
         Supplier<CompletionStage<Void>> turnOperation = () -> {
             synchronized (this) {
                 activeActorIds.add(turn.actorId);
@@ -65,7 +74,8 @@ final class ZLinkActorDispatchSerials {
             ? turn.queue.enqueue(turnOperation)
             : turn.queue.enqueueRelocatable(
                 acceptedJournalRecord,
-                turnOperation);
+                turnOperation,
+                relocationRelease);
     }
 
     CompletionStage<Void> enqueueBarrier(
@@ -99,6 +109,16 @@ final class ZLinkActorDispatchSerials {
         return queue == null
             ? Optional.empty()
             : queue.commitRelocation(seal);
+    }
+
+    synchronized Optional<List<ZLinkAsyncSerialQueue.QueuedRecord>>
+        freezeIngress(
+            String actorId,
+            ZLinkAsyncSerialQueue.RelocationSeal seal) {
+        ZLinkAsyncSerialQueue queue = queues.get(actorId);
+        return queue == null
+            ? Optional.empty()
+            : queue.freezeRelocationIngress(seal);
     }
 
     synchronized CompletionStage<Void> awaitQuiescence() {

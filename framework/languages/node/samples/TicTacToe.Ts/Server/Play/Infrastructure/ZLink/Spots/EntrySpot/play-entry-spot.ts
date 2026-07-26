@@ -44,13 +44,13 @@ class MilestoneObserverRegistry {
     this.subscriptions.delete(actorId);
   }
 
-  async notify(event: PlayerWinMilestoneEvent, receivingSpotNodeRid: string): Promise<void> {
-    const payload = winMilestoneNotify(event, receivingSpotNodeRid);
+  async notify(event: PlayerWinMilestoneEvent): Promise<void> {
+    const payload = winMilestoneNotify(event);
     for (const actorId of this.subscriptions) {
       const actor = this.actors.get(actorId);
       if (actor !== undefined) {
         await this.actorClient
-          .sendToActor(SampleNames.playSpotNode, actor, new DeliverPlayNotification(payload))
+          .sendToActor(actor.actorId, new DeliverPlayNotification(payload))
           .submit();
       }
     }
@@ -95,7 +95,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
   }
 
   async notifyMilestone(event: PlayerWinMilestoneEvent): Promise<void> {
-    await this.milestoneObservers.notify(event, String(this.context.nodeRid));
+    await this.milestoneObservers.notify(event);
   }
 
   async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
@@ -105,8 +105,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
   async onCreateActor(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void> {
     const player = createRequest.decode<Partial<TicTacToeActor>>(Object as never);
     await this.actorClient.sendToActor(
-      SampleNames.playSpotNode,
-      actor.actor,
+      actor.actor.actorId,
       new InitializePlayActor(
         typeof player.displayName === 'string' ? player.displayName : actor.actor.actorId,
         typeof player.level === 'number' ? player.level : 0,
@@ -120,7 +119,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     this.milestoneObservers.track(actor);
     if (this.pendingDestroys.consume(actor.actor.actorId)) {
       const submitted = await this.actorClient
-        .sendToActor(SampleNames.playSpotNode, actor.actor, new DestroyPlayActor())
+        .sendToActor(actor.actor.actorId, new DestroyPlayActor())
         .submit();
       if (submitted.status !== 'submitted') {
         throw new Error(

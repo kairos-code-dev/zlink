@@ -7,6 +7,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <utility>
 #include <set>
 #include <string>
 #include <vector>
@@ -28,6 +29,8 @@ struct service_mailbox_record_t
     std::vector<std::uint8_t> source_routing_id{};
     std::optional<std::uint64_t> request_sequence = std::nullopt;
     std::optional<std::uint64_t> correlation = std::nullopt;
+    std::uint64_t source_node_generation = 0;
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> operation;
 };
 
 struct service_mailbox_claim_t

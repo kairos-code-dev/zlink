@@ -123,12 +123,18 @@ export class ZLinkSpotRuntimeOptionsFactory {
         }
         const restored = authority === undefined
           ? undefined
-          : node.restoreUserSpotAuthority?.(
+          : node.restoreSpotAuthority?.(
               String(spotId),
+              authority.objectKind ?? 'user_spot',
               authority.stableType,
               authority.objectGeneration,
               authority.authorityOwnerGeneration
-            );
+            ) ?? node.restoreUserSpotAuthority?.(
+                String(spotId),
+                authority.stableType,
+                authority.objectGeneration,
+                authority.authorityOwnerGeneration
+              );
         const result = restored === undefined
           ? node.getOrCreateSpot(BindingRoutingId.from(String(spotId)))
           : { spot: restored, created: true };

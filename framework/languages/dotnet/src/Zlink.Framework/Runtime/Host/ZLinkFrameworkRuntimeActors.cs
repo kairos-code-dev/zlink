@@ -44,6 +44,20 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     internal ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
+        IZLinkActor actor,
+        ZLinkMessage request,
+        ZLinkActorJoinOperationId? operationId,
+        CancellationToken cancellationToken = default)
+    {
+        _drainAdmission.RequireSpotAdmission();
+        return _actors.JoinActorEntrySpotAsync(
+            actor,
+            request,
+            operationId,
+            cancellationToken);
+    }
+
+    internal ValueTask<ZLinkActorJoinResult> JoinActorEntrySpotAsync(
         RoutingId spotNodeRid,
         IZLinkActor actor,
         ZLinkMessage request,
@@ -67,15 +81,132 @@ internal sealed partial class ZLinkFrameworkRuntime
         return JoinActorEntrySpotAsync(spotNodeRid, managedActor, request, cancellationToken);
     }
 
-    internal ValueTask<bool> DrainActorsAsync(CancellationToken cancellationToken) =>
+    internal ValueTask<ZLinkActorDrainResult> DrainActorsAsync(
+        CancellationToken cancellationToken) =>
         _actorDrainCoordinator.DrainAsync(cancellationToken);
 
     internal async ValueTask<ZLinkFrameworkTerminationReason?> PreflightRetireAsync(
         CancellationToken cancellationToken)
     {
+        if (HasUnsupportedManualTopology(Registration))
+            return ZLinkFrameworkTerminationReason.ManualTopologyUnsupported;
+
+        if (!await WaitForExactPeerReadinessAsync(
+                HasExactAutomaticRouteMeshPeerReadiness,
+                Registration.Locations.Options.PollingInterval,
+                cancellationToken)
+            .ConfigureAwait(false))
+            return ZLinkFrameworkTerminationReason.TargetUnavailable;
+
+        var plan = new ZLinkRetirePreflightPlan();
+        foreach (var node in GetOrStartState().SpotNodes.Values)
+        {
+            var blocker = await node.Catalog.PreflightRetireAsync(
+                    plan,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (blocker is not null)
+                return blocker;
+        }
+
         await WaitForAcceptedActorHandoffsAsync(cancellationToken).ConfigureAwait(false);
-        return await _actorDrainCoordinator.PreflightAsync(cancellationToken)
+        return await _actorDrainCoordinator.PreflightAsync(plan, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<bool> PublishRetiringAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var published = _autoConnect is null
+                            || await _autoConnect.MarkRetiringAsync(cancellationToken)
+                                .ConfigureAwait(false);
+            if (published)
+                _drainAdmission.BeginDrain();
+            return published;
+        }
+        catch (ZLinkRetiringPublicationRollbackException)
+        {
+            _drainAdmission.BeginDrain();
+            _drainAdmission.Seal();
+            throw;
+        }
+    }
+
+    internal static bool HasUnsupportedManualTopology(
+        ZLinkFrameworkRegistration registration)
+    {
+        if (registration.SpotNodes.Values.Any(static node =>
+                node.Router?.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual))
+            return true;
+
+        if (registration.Channels.Values.Any(static channel =>
+                channel.Client?.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual
+                || channel.Subscriber?.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual))
+            return true;
+
+        return registration.Channels.Values.Any(channel =>
+            channel.Publisher is not null && !registration.Locations.Enabled);
+    }
+
+    internal bool HasExactAutomaticRouteMeshPeerReadiness()
+    {
+        var localNodeRids = Registration.SpotNodes.Values
+            .Select(static node => node.RoutingId)
+            .ToHashSet();
+        foreach (var registration in Registration.SpotNodes.Values)
+        {
+            if (registration.Router?.AcquisitionMode != ZLinkPeerAcquisitionMode.AutoConnect)
+                continue;
+
+            var meshName = registration.SpotMeshChannelName ?? registration.SpotNodeName;
+            var descriptors = _topologyQuery?.GetCompleteRouteMeshPeers(meshName);
+            if (descriptors is null) return false;
+
+            var corePeers = GetMeshNodeRuntime(meshName).Node.MeshPeers();
+            if (!HasExactPeerReadiness(
+                    descriptors,
+                    corePeers,
+                    localNodeRids))
+                return false;
+        }
+
+        return true;
+    }
+
+    internal static bool HasExactPeerReadiness(
+        IReadOnlyList<ZLinkRouteMeshPeerIdentity> descriptors,
+        IReadOnlyList<MeshNodePeer> corePeers,
+        IReadOnlySet<RoutingId> localNodeRids)
+    {
+        var eligible = descriptors
+            .Where(descriptor => !descriptor.Draining
+                                 && !localNodeRids.Contains(descriptor.NodeRid))
+            .ToArray();
+        return eligible.Length > 0
+               && eligible.All(descriptor => corePeers.Any(peer =>
+                peer.RoutingId == descriptor.NodeRid
+                && peer.LifecycleGeneration == descriptor.LifecycleGeneration
+                && peer.State == MeshPeerState.Admitted));
+    }
+
+    internal static async ValueTask<bool> WaitForExactPeerReadinessAsync(
+        Func<bool> isReady,
+        TimeSpan pollingInterval,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!isReady())
+                await Task.Delay(pollingInterval, cancellationToken)
+                    .ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
     }
 
     internal static string? ResolveActorDrainMeshName(
@@ -922,6 +1053,14 @@ internal sealed partial class ZLinkFrameworkRuntime
                             ZLinkFrameworkErrorKind.RelocationDataLost,
                             "Standalone Actor relocation root contains another authority.",
                             isRetriable: false);
+                    if (ZLinkStandaloneActorRelocationRuntime.OwnsRecovery(
+                            candidate))
+                    {
+                        await _standaloneActorRelocationRuntime
+                            .RecoverPublishedAsync(candidate, token)
+                            .ConfigureAwait(false);
+                        return;
+                    }
                     if (!ZLinkRelocationAuthorityPayloadCodec.TryDecode(
                             actorAuthority.Snapshot.Payload.Span,
                             out var publication)
@@ -1318,21 +1457,21 @@ internal sealed partial class ZLinkFrameworkRuntime
                     var authorityStore = Registration.Locations.ResolveStore()
                                          ?? throw new ZLinkConfigurationException(
                                              "Cross-node Actor relocation requires an Authority Store.");
-                    var targetAuthority = await authorityStore.ReadAuthorityAsync(
-                            ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(
-                                target.TargetRid),
-                            ct)
-                        .ConfigureAwait(false);
+                    var targetFenceValid = target.EntrySpot is not null
+                        ? request.TargetSpotAuthorityOwnerGeneration
+                          == targetNodeGeneration
+                        : await HasExactUserSpotAuthorityAsync(
+                                target.TargetRid,
+                                request.TargetSpotGeneration,
+                                request.TargetSpotAuthorityOwnerGeneration,
+                                authorityStore,
+                                ct)
+                            .ConfigureAwait(false);
                     if (request.ActorGeneration == 0
                         || request.ActorAuthorityOwnerGeneration == 0
                         || request.PredictedPayloadBytes <= 0
                         || request.TargetSpotGeneration != targetSpotGeneration
-                        || targetAuthority
-                           is not ZLinkAuthorityReadResult.Found currentTarget
-                        || currentTarget.Snapshot.ObjectGeneration
-                           != request.TargetSpotGeneration
-                        || currentTarget.Snapshot.AuthorityOwnerGeneration
-                           != request.TargetSpotAuthorityOwnerGeneration
+                        || !targetFenceValid
                         || targetNodeGeneration == 0)
                         throw new ZLinkFrameworkException(
                             ZLinkFrameworkErrorKind.ActorGenerationStale,
@@ -1458,11 +1597,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         var spotGeneration = target.UserSpot?.ObjectGeneration
                              ?? target.EntrySpot?.ObjectGeneration
                              ?? 0;
-        var targetAuthority = await authorityStore.ReadAuthorityAsync(
-                ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(
-                    target.TargetRid),
-                cancellationToken)
-            .ConfigureAwait(false);
+        var targetFenceValid = target.EntrySpot is not null
+            ? request.TargetSpotAuthorityOwnerGeneration == nodeGeneration
+            : await HasExactUserSpotAuthorityAsync(
+                    target.TargetRid,
+                    request.TargetSpotGeneration,
+                    request.TargetSpotAuthorityOwnerGeneration,
+                    authorityStore,
+                    cancellationToken)
+                .ConfigureAwait(false);
         if (string.IsNullOrEmpty(request.ReservationToken)
             || request.ReservedPayloadBytes <= 0
             || request.TargetNodeRid is null
@@ -1470,17 +1613,29 @@ internal sealed partial class ZLinkFrameworkRuntime
                 target.NodeRid.ToBytes())
             || request.TargetNodeGeneration != nodeGeneration
             || request.TargetSpotGeneration != spotGeneration
-            || targetAuthority
-               is not ZLinkAuthorityReadResult.Found currentTarget
-            || currentTarget.Snapshot.ObjectGeneration
-               != request.TargetSpotGeneration
-            || currentTarget.Snapshot.AuthorityOwnerGeneration
-               != request.TargetSpotAuthorityOwnerGeneration
+            || !targetFenceValid
             || request.TargetAuthorityOwnerGeneration
                != checked(request.ActorAuthorityOwnerGeneration + 1))
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{request.ActorId}' relocation target fence changed.");
+    }
+
+    private static async ValueTask<bool> HasExactUserSpotAuthorityAsync(
+        string spotId,
+        ulong objectGeneration,
+        ulong authorityOwnerGeneration,
+        IZLinkAuthorityStore authorityStore,
+        CancellationToken cancellationToken)
+    {
+        var read = await authorityStore.ReadAuthorityAsync(
+                ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        return read is ZLinkAuthorityReadResult.Found found
+               && found.Snapshot.ObjectGeneration == objectGeneration
+               && found.Snapshot.AuthorityOwnerGeneration
+                  == authorityOwnerGeneration;
     }
 
     private async ValueTask PrepareTransferredActorTargetAsync(
@@ -1707,6 +1862,21 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
     {
         return _actorSessionManager.JoinActorToSpotAsync(activation, actor, cancellationToken);
+    }
+
+    internal ValueTask<ZLinkSpotActivation?> CommitActorToSpotAsync(
+        ZLinkSpotActivation activation,
+        IZLinkActor actor,
+        Func<CancellationToken, ValueTask> commitAuthority,
+        Action publishTargetMembership,
+        CancellationToken cancellationToken = default)
+    {
+        return _actorSessionManager.CommitActorToSpotAsync(
+            activation,
+            actor,
+            commitAuthority,
+            publishTargetMembership,
+            cancellationToken);
     }
 
     internal ValueTask RestoreActorSpotAfterFailedCommitAsync(

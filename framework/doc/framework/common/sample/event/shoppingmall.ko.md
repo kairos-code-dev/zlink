@@ -270,6 +270,11 @@ CommerceApi는 호출 전용 membership 0개 MeshNode이고, 두 OrderWorkflow n
 `shoppingmall.order-workflow`의 actor-free Instance factory를 등록한다. 주문 command 전달을 위한
 ClientServer shard Channel이나 wildcard ChannelName은 사용하지 않는다.
 
+모든 OrderWorkflow instance는 일반 workflow ChannelName 하나를 제공한다. `CommerceApi`는 `OrderId`를
+업무 식별자로 포함한 command를 이 channel로 보내며, instance 이름이나 owner node를 channel 선택 입력으로
+사용하지 않는다. Framework가 channel admission과 Location Store authority를 사용해 현재 owner를 결정한다.
+`InstanceId`는 process 설정과 log label에만 사용한다.
+
 CommerceApi는 Order ID를 Spot RID로 변환해
 `(shoppingmall.workflow, shoppingmall.order-workflow, OrderId RID)` 주소로 명시적인 업무 message를 보낸다.
 Framework는 같은 type을 제공하는 serving node 가운데 owner 후보를 선택하고 target-side location claim으로

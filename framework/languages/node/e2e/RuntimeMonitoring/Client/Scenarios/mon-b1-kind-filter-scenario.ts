@@ -1,4 +1,4 @@
-// MON-B1: remote ROUTER backpressure 시나리오를 검증한다.
+// MON-B1: remote target 실패와 monitoring 부재 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';

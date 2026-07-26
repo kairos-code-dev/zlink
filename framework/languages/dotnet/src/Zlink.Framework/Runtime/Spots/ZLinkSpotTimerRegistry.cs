@@ -123,6 +123,20 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
         CancellationToken stopToken,
         Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, CancellationToken, ValueTask<bool>> dispatchAsync,
         Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask>
+            reportFailureAsync) =>
+        RestoreRelocation(
+            logicalTimers,
+            typeof(object),
+            stopToken,
+            dispatchAsync,
+            reportFailureAsync);
+
+    internal void RestoreRelocation(
+        IReadOnlyList<ZLinkRelocationLogicalTimer> logicalTimers,
+        Type spotType,
+        CancellationToken stopToken,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, CancellationToken, ValueTask<bool>> dispatchAsync,
+        Func<ZLinkSpotTimerDescriptor, ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask>
             reportFailureAsync)
     {
         ArgumentNullException.ThrowIfNull(logicalTimers);
@@ -136,7 +150,9 @@ internal sealed class ZLinkSpotTimerRegistry(Func<bool> flowCaptureEnabled) : IA
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var logicalTimer in logicalTimers)
             {
-                var snapshot = ZLinkSpotTimerRelocationCodec.Decode(logicalTimer);
+                var snapshot = ZLinkSpotTimerRelocationCodec.Decode(
+                    logicalTimer,
+                    spotType);
                 if (!names.Add(snapshot.Timer.Name))
                     throw new InvalidDataException(
                         $"Duplicate logical timer '{snapshot.Timer.Name}'.");

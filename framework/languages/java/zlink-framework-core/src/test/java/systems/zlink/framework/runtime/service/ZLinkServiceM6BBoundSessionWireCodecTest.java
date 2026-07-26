@@ -16,6 +16,23 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
         new ZLinkServiceM6BWireCodec();
 
     @Test
+    void spotAndActorHeadersPreserveOperationAndForwardingFence() {
+        var spotRoute = new ZLinkServiceM6BWireCodec.SpotRouteFence(
+            "room", 2, RoutingId.from("target"), 3, 4);
+        var spot = codec.decodeSpotHeader(codec.encodeSpotHeader(
+            true, 0, 7L, 11, 12, 3, "source", spotRoute));
+        assertEquals(11, spot.operationHigh());
+        assertEquals(12, spot.operationLow());
+        assertEquals(3, spot.forwardingHopCount());
+
+        var actor = codec.decodeActorHeader(codec.encodeActorHeader(
+            false, 0, null, 21, 22, 4, null, route()));
+        assertEquals(21, actor.operationHigh());
+        assertEquals(22, actor.operationLow());
+        assertEquals(4, actor.forwardingHopCount());
+    }
+
+    @Test
     void command36RoundTripsTheCompleteActorAndBindingFence() {
         var route = route();
         byte[] encoded =
@@ -74,6 +91,9 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
             false,
             flags,
             null,
+            1,
+            2,
+            0,
             null,
             route(),
             tail);
@@ -88,6 +108,9 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
                 systems.zlink.framework.runtime.protocol
                     .ServiceWireConstants.FLAG_BOUND_SESSION,
                 null,
+                1,
+                2,
+                0,
                 null,
                 route(),
                 tail));

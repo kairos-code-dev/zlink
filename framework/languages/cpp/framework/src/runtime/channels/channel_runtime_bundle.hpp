@@ -38,7 +38,7 @@ class channel_runtime_bundle_t
     std::set<std::string> _manual_connections;
     std::map<std::string, int> _auto_connections;
     std::size_t _next_manual_connection = 0;
-    std::uint64_t _next_connection = 0;
+    std::map<std::string, std::int64_t> _selection_current;
     std::uint64_t _connection_version = 0;
     std::atomic_bool _receive_active = false;
 };

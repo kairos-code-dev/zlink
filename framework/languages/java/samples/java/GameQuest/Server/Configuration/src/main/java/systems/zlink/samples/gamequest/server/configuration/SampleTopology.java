@@ -1,8 +1,6 @@
 package systems.zlink.samples.gamequest.server.configuration;
 
-import java.nio.charset.StandardCharsets;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import systems.zlink.contracts.core.RoutingId;
 
 @ConfigurationProperties("sample")
 public record SampleTopology(
@@ -41,22 +39,13 @@ public record SampleTopology(
             required(spotEndpoint, "spotEndpoint"),
             required(spotRouterEndpoint, "spotRouterEndpoint"),
             required(apiANotificationChannelEndpoint, "apiANotificationChannelEndpoint"),
-            required(apiBNotificationChannelEndpoint, "apiBNotificationChannelEndpoint"),
-            RoutingId.from(instanceName));
+            required(apiBNotificationChannelEndpoint, "apiBNotificationChannelEndpoint"));
     }
 
     public Location location() {
         return new Location(
             required(redisEndpoint, "redisEndpoint"),
             required(redisKeyPrefix, "redisKeyPrefix"));
-    }
-
-    public String ownerMissionName(String playerId) {
-        int sum = 0;
-        for (byte value : playerId.getBytes(StandardCharsets.UTF_8)) {
-            sum += Byte.toUnsignedInt(value);
-        }
-        return sum % 2 == 1 ? "mission-b" : "mission-a";
     }
 
     public static String configPath(String[] args) {
@@ -91,8 +80,7 @@ public record SampleTopology(
         String spotEndpoint,
         String spotRouterEndpoint,
         String apiANotificationChannelEndpoint,
-        String apiBNotificationChannelEndpoint,
-        RoutingId routingId) {
+        String apiBNotificationChannelEndpoint) {
     }
 
     public record Location(String redisEndpoint, String redisKeyPrefix) {

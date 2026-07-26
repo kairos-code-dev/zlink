@@ -12,7 +12,7 @@ internal sealed class SubmitBingoCardHandler
     public async ValueTask<SubmitBingoCardRes> HandleAsync(
         BingoRoom spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SubmitBingoCardReq message,
         CancellationToken cancellationToken)
     {

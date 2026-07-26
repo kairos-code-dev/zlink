@@ -55,6 +55,35 @@ import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class DefaultZLinkFrameworkOptionsTest {
     @Test
+    void retireTopologyGateUsesRegistrationRatherThanConnectionState() {
+        DefaultZLinkFrameworkOptions options =
+            new DefaultZLinkFrameworkOptions();
+        options.addRouteMeshChannel("manual-route")
+            .enableClient("inproc://manual-route");
+        options.addClientServerChannel("manual-client")
+            .client()
+            .connect("inproc://manual-client");
+        options.addFanoutChannel("manual-subscriber")
+            .enableSubscriber("inproc://manual-subscriber");
+        options.addFanoutChannel("storeless-publisher")
+            .enablePublisher("inproc://storeless-publisher");
+
+        var channels = options.registration().channels();
+        assertTrue(channels.stream()
+            .filter(value -> value.name().equals("manual-route"))
+            .findFirst().orElseThrow().blocksAutomaticRetire(true));
+        assertTrue(channels.stream()
+            .filter(value -> value.name().equals("manual-client"))
+            .findFirst().orElseThrow().blocksAutomaticRetire(true));
+        assertTrue(channels.stream()
+            .filter(value -> value.name().equals("manual-subscriber"))
+            .findFirst().orElseThrow().blocksAutomaticRetire(true));
+        assertTrue(channels.stream()
+            .filter(value -> value.name().equals("storeless-publisher"))
+            .findFirst().orElseThrow().blocksAutomaticRetire(false));
+    }
+
+    @Test
     void routeMeshBuilderRegistersOneMeshNodeWithChannelsAndPeers() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

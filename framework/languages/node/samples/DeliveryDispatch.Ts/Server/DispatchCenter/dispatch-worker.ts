@@ -1,13 +1,12 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { ZLINK_ACTOR_CLIENT, ZLINK_CHANNEL_CLIENT, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
-import { courierActorNodeRid, SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
-import { actorRefFromMessage, deliveryStatusChanged, ensureCourierActor, offerDelivery } from '../../Shared/Contracts/messages';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { SampleNames, SampleTimings } from '../../Shared/Configuration/sample-names';
+import { deliveryStatusChanged, ensureCourierActor, offerDelivery } from '../../Shared/Contracts/messages';
 import { DeliveryOfferStore } from './delivery-offer-store';
-import type { ActorRef, SpotHandle, ZLinkActorClient, ZLinkChannelClient, ZLinkLocationStore, ZLinkSpotHandleResolver, ZLinkSpotOutbound } from '@zlink-systems/framework';
+import type { ActorRef, ZLinkActorClient, ZLinkActorManager, ZLinkChannelClient } from '@zlink-systems/framework';
 import type {
   AssignDeliveryMsg,
   DeliveryStatusChangedReq,
-  EnsureCourierActorRes,
   OfferDeliveryResultMsg
 } from '../../Shared/Contracts/messages';
 import type { DeliveryOffer, DeliveryOfferStatus } from './delivery-offer-store';
@@ -22,9 +21,7 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient,
     @Inject(ZLINK_ACTOR_CLIENT) private readonly actors: ZLinkActorClient,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound,
-    @Inject('DELIVERYDISPATCH_LOCATION_STORE') private readonly locations: ZLinkLocationStore,
+    @Inject(ZLINK_ACTOR_MANAGER) private readonly actorManager: ZLinkActorManager,
     private readonly offers: DeliveryOfferStore
   ) {}
 
@@ -80,8 +77,7 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
       courierId
     ));
     await this.actors.sendToActor(
-      SampleNames.routeMesh,
-      actor,
+      actor.actorId,
       offerDelivery(courierId, request.deliveryId, attempt, request.pickupAddress, request.dropoffAddress)
     ).submit();
   }
@@ -125,23 +121,13 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
-    const found = await this.locations.resolveActor({ meshName: SampleNames.routeMesh, actorId: courierId });
-    if (found !== undefined) return found.actorRef;
-    const entrySpot = await this.resolveEntrySpot(courierId);
-    const ensured = await this.spotOutbound
-      .requestToSpot(entrySpot, ensureCourierActor(courierId))
+    const result = await this.actorManager
+      .getOrCreate(courierId, SampleNames.courierActorType)
+      .request(ensureCourierActor(courierId))
       .timeout(SampleTimings.requestTimeout)
-      .submit<EnsureCourierActorRes>();
-    return actorRefFromMessage(ensured.actor);
-  }
-
-  private async resolveEntrySpot(courierId: string): Promise<SpotHandle> {
-    const handle = await this.spotHandles.resolveSpotHandle(
-      SampleNames.routeMesh,
-      courierActorNodeRid(courierId)
-    );
-    if (handle === undefined) throw new Error(`Courier entry spot was not found for '${courierId}'.`);
-    return handle;
+      .submit();
+    if (result.status === 'rejected') throw new Error('Courier Actor creation was rejected.');
+    return result.actor;
   }
 
   private async continueAcceptedDelivery(offer: DeliveryOffer): Promise<void> {

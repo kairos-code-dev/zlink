@@ -11,7 +11,6 @@ class BingoRoomAllocator(
     suspend fun allocate(
         actorId: String,
         mode: String,
-        preferredOwnerNodeRid: String,
     ): BingoRoomAllocation {
         if (actorId.isBlank()) {
             throw IllegalStateException("actorId is required")
@@ -24,11 +23,10 @@ class BingoRoomAllocator(
         val reservation = matchQueue.reserve(
             mode,
             actorId,
-            preferredOwnerNodeRid,
             "${settings.mode}-room-$roomSeq",
             settings.requiredPlayers,
         )
-        return BingoRoomAllocation(reservation.roomId, reservation.ownerPlayNodeRid, settings)
+        return BingoRoomAllocation(reservation.roomId, settings)
     }
 
     @Synchronized

@@ -1,7 +1,6 @@
 import type {
   ActorRef,
   ZLinkActor,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership
 } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
@@ -17,6 +16,12 @@ export interface ZLinkActorLifecycleSnapshotSource {
 interface ZLinkActorLifecycleSnapshotContext {
   readonly actorId?: string;
   readonly [ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?: () => ZLinkActorLifecycleSnapshotSource;
+}
+
+interface ZLinkActorJoinRequest {
+  readonly actor: ActorRef;
+  readonly actorType: string;
+  readonly expectedMembershipEpoch: bigint;
 }
 
 /**

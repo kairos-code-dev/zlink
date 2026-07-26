@@ -23,11 +23,16 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
+        long operationHigh,
+        long operationLow,
+        int forwardingHopCount,
         String sourceSpotId,
         SpotRouteFence target) {
         if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0
             || request != (correlation != null)
-            || (correlation != null && correlation <= 0)) {
+            || (correlation != null && correlation <= 0)
+            || operationHigh == 0 && operationLow == 0
+            || forwardingHopCount < 0 || forwardingHopCount > 8) {
             throw protocol("invalid Spot message header");
         }
         Objects.requireNonNull(sourceSpotId, "sourceSpotId");
@@ -40,6 +45,9 @@ public final class ZLinkServiceM6BWireCodec {
         if (correlation != null) {
             writer.u64(correlation);
         }
+        writer.bits64(operationHigh);
+        writer.bits64(operationLow);
+        writer.u8(forwardingHopCount);
         writer.text8(sourceSpotId, "sourceSpotId");
         writer.text8(target.spotId(), "targetSpotId");
         writer.nonzero(target.spotGeneration(), "targetSpotGeneration");
@@ -70,6 +78,15 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation = request
             ? reader.nonzeroU64("correlation")
             : null;
+        long operationHigh = reader.bits64("operation.high");
+        long operationLow = reader.bits64("operation.low");
+        if (operationHigh == 0 && operationLow == 0) {
+            throw protocol("Spot operation id is zero");
+        }
+        int forwardingHopCount = reader.u8("forwardingHopCount");
+        if (forwardingHopCount > 8) {
+            throw protocol("Spot forwarding hop count exceeds its bound");
+        }
         String sourceSpotId = reader.text8("sourceSpotId");
         SpotRouteFence target = new SpotRouteFence(
             reader.text8("targetSpotId"),
@@ -82,6 +99,9 @@ public final class ZLinkServiceM6BWireCodec {
             request,
             header.flags(),
             correlation,
+            operationHigh,
+            operationLow,
+            forwardingHopCount,
             sourceSpotId,
             target);
     }
@@ -90,12 +110,18 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
+        long operationHigh,
+        long operationLow,
+        int forwardingHopCount,
         ZLinkBackendActorRef sourceActor,
         ActorRouteFence target) {
         return encodeActorHeader(
             request,
             flags,
             correlation,
+            operationHigh,
+            operationLow,
+            forwardingHopCount,
             sourceActor,
             target,
             null);
@@ -105,6 +131,9 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
+        long operationHigh,
+        long operationLow,
+        int forwardingHopCount,
         ZLinkBackendActorRef sourceActor,
         ActorRouteFence target,
         BoundSessionTail boundSession) {
@@ -117,7 +146,9 @@ public final class ZLinkServiceM6BWireCodec {
             || ((flags & boundFlags) != 0
                 && (flags & boundFlags) != boundFlags)
             || ((flags & boundFlags) == boundFlags)
-                != (boundSession != null)) {
+                != (boundSession != null)
+            || operationHigh == 0 && operationLow == 0
+            || forwardingHopCount < 0 || forwardingHopCount > 8) {
             throw protocol("invalid Actor message header");
         }
         Objects.requireNonNull(target, "target");
@@ -129,6 +160,9 @@ public final class ZLinkServiceM6BWireCodec {
         if (correlation != null) {
             writer.u64(correlation);
         }
+        writer.bits64(operationHigh);
+        writer.bits64(operationLow);
+        writer.u8(forwardingHopCount);
         if (sourceActor == null) {
             writer.u8(0);
         } else {
@@ -181,6 +215,15 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation = request
             ? reader.nonzeroU64("correlation")
             : null;
+        long operationHigh = reader.bits64("operation.high");
+        long operationLow = reader.bits64("operation.low");
+        if (operationHigh == 0 && operationLow == 0) {
+            throw protocol("Actor operation id is zero");
+        }
+        int forwardingHopCount = reader.u8("forwardingHopCount");
+        if (forwardingHopCount > 8) {
+            throw protocol("Actor forwarding hop count exceeds its bound");
+        }
         String sourceActorId = reader.optionalText8("sourceActorId");
         ActorIdentity sourceActor = sourceActorId == null
             ? null
@@ -210,6 +253,9 @@ public final class ZLinkServiceM6BWireCodec {
             request,
             header.flags(),
             correlation,
+            operationHigh,
+            operationLow,
+            forwardingHopCount,
             sourceActor,
             target,
             boundSession);
@@ -902,6 +948,221 @@ public final class ZLinkServiceM6BWireCodec {
             correlation, terminalResult, failureCode, closed);
     }
 
+    public byte[] encodeSessionRelocationRoute(SessionRelocationRoute route) {
+        Objects.requireNonNull(route, "route");
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE, 0);
+        writeRelocationIdentity(writer, route.relocation());
+        writeCoordinatorFence(writer, route.coordinator());
+        writer.u8(route.senderRole().wireValue);
+        writeActorIdentity(writer, route.actor());
+        writeSessionOwner(writer, route.session());
+        writer.u8(route.action().wireValue);
+        Writer selected = new Writer();
+        if (route.action() == SessionRelocationRouteAction.COMMIT) {
+            selected.nonzero(route.previousAuthorityOwnerGeneration(),
+                "previousAuthorityOwnerGeneration");
+            selected.nonzero(route.currentAuthorityOwnerGeneration(),
+                "targetAuthorityOwnerGeneration");
+            selected.rid(route.targetNodeRid(), "targetNodeRid");
+            selected.nonzero(route.targetNodeGeneration(), "targetNodeGeneration");
+            selected.u64(route.lastAcceptedSessionSequence());
+        } else {
+            selected.nonzero(route.currentAuthorityOwnerGeneration(),
+                "currentAuthorityOwnerGeneration");
+        }
+        byte[] body = selected.toByteArray();
+        writer.u16(body.length);
+        writer.bytes(body);
+        return writer.toByteArray();
+    }
+
+    public SessionRelocationRoute decodeSessionRelocationRoute(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command() != ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE
+            || header.flags() != 0) {
+            throw protocol("command is not sessionRelocationRoute");
+        }
+        RelocationIdentity relocation = readRelocationIdentity(reader);
+        RelocationCoordinatorFence coordinator = readCoordinatorFence(reader);
+        RelocationRole senderRole = RelocationRole.fromWire(reader.u8("senderRole"));
+        ActorIdentity actor = readActorIdentity(reader);
+        SessionOwnerFence session = readSessionOwner(reader);
+        SessionRelocationRouteAction action =
+            SessionRelocationRouteAction.fromWire(reader.u8("action"));
+        Reader selected = reader.reader(reader.u16("routeBodyLength"));
+        long previous = 0;
+        long current;
+        RoutingId targetNodeRid = null;
+        long targetNodeGeneration = 0;
+        long highWater = 0;
+        if (action == SessionRelocationRouteAction.COMMIT) {
+            previous = selected.nonzeroU64("previousAuthorityOwnerGeneration");
+            current = selected.nonzeroU64("targetAuthorityOwnerGeneration");
+            targetNodeRid = selected.rid("targetNodeRid");
+            targetNodeGeneration = selected.nonzeroU64("targetNodeGeneration");
+            highWater = selected.u64("replayedHighWater");
+        } else {
+            current = selected.nonzeroU64("currentAuthorityOwnerGeneration");
+        }
+        selected.end();
+        reader.end();
+        return new SessionRelocationRoute(relocation, coordinator, senderRole,
+            actor, session, action, previous, current, targetNodeRid,
+            targetNodeGeneration, highWater);
+    }
+
+    public byte[] encodeSessionRelocationRouted(SessionRelocationRouted routed) {
+        Objects.requireNonNull(routed, "routed");
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTED, 0);
+        writeRelocationIdentity(writer, routed.relocation());
+        writeCoordinatorFence(writer, routed.coordinator());
+        writeActorIdentity(writer, routed.actor());
+        writeSessionOwner(writer, routed.session());
+        writer.u8(routed.action().wireValue);
+        writer.nonzero(routed.currentAuthorityOwnerGeneration(),
+            "currentAuthorityOwnerGeneration");
+        writer.u64(routed.lastAcceptedSessionSequence());
+        return writer.toByteArray();
+    }
+
+    public SessionRelocationRouted decodeSessionRelocationRouted(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command() != ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTED
+            || header.flags() != 0) {
+            throw protocol("command is not sessionRelocationRouted");
+        }
+        SessionRelocationRouted routed = new SessionRelocationRouted(
+            readRelocationIdentity(reader), readCoordinatorFence(reader),
+            readActorIdentity(reader), readSessionOwner(reader),
+            SessionRelocationRouteAction.fromWire(reader.u8("action")),
+            reader.nonzeroU64("currentAuthorityOwnerGeneration"),
+            reader.u64("lastAcceptedSessionSequence"));
+        reader.end();
+        return routed;
+    }
+
+    public enum RelocationRole {
+        SOURCE(1), TARGET(2), COORDINATOR(3);
+        private final int wireValue;
+        RelocationRole(int wireValue) { this.wireValue = wireValue; }
+        private static RelocationRole fromWire(int value) {
+            return switch (value) {
+                case 1 -> SOURCE;
+                case 2 -> TARGET;
+                case 3 -> COORDINATOR;
+                default -> throw protocol("unknown relocation role");
+            };
+        }
+    }
+
+    public enum SessionRelocationRouteAction {
+        COMMIT(1), ABORT(2);
+        private final int wireValue;
+        SessionRelocationRouteAction(int wireValue) { this.wireValue = wireValue; }
+        private static SessionRelocationRouteAction fromWire(int value) {
+            return switch (value) {
+                case 1 -> COMMIT;
+                case 2 -> ABORT;
+                default -> throw protocol("unknown Session relocation route action");
+            };
+        }
+    }
+
+    public record RelocationIdentity(long high, long low) {
+        public RelocationIdentity {
+            if (high == 0 && low == 0) throw protocol("relocation id is zero");
+        }
+    }
+
+    public record RelocationCoordinatorFence(
+        String ownerId, long leaseGeneration, RoutingId nodeRid,
+        long nodeGeneration, String expectedAuthorityStoreVersion) {
+        public RelocationCoordinatorFence {
+            Objects.requireNonNull(ownerId, "ownerId");
+            Objects.requireNonNull(nodeRid, "nodeRid");
+            Objects.requireNonNull(expectedAuthorityStoreVersion,
+                "expectedAuthorityStoreVersion");
+            if (leaseGeneration <= 0 || nodeGeneration <= 0) {
+                throw protocol("coordinator generations must be nonzero");
+            }
+        }
+    }
+
+    public record SessionOwnerFence(
+        RoutingId nodeRid, long nodeGeneration, String ownerId,
+        long ownerLeaseGeneration, RoutingId sessionRid,
+        long bindingGeneration) {
+        public SessionOwnerFence {
+            Objects.requireNonNull(nodeRid, "nodeRid");
+            Objects.requireNonNull(ownerId, "ownerId");
+            Objects.requireNonNull(sessionRid, "sessionRid");
+            if (nodeGeneration <= 0 || ownerLeaseGeneration <= 0
+                || bindingGeneration <= 0) {
+                throw protocol("Session owner generations must be nonzero");
+            }
+        }
+    }
+
+    public record SessionRelocationRoute(
+        RelocationIdentity relocation, RelocationCoordinatorFence coordinator,
+        RelocationRole senderRole, ActorIdentity actor,
+        SessionOwnerFence session, SessionRelocationRouteAction action,
+        long previousAuthorityOwnerGeneration,
+        long currentAuthorityOwnerGeneration, RoutingId targetNodeRid,
+        long targetNodeGeneration, long lastAcceptedSessionSequence) {
+        public SessionRelocationRoute {
+            Objects.requireNonNull(relocation, "relocation");
+            Objects.requireNonNull(coordinator, "coordinator");
+            Objects.requireNonNull(senderRole, "senderRole");
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(session, "session");
+            Objects.requireNonNull(action, "action");
+            if (senderRole != RelocationRole.TARGET) {
+                throw protocol("route update sender must be target");
+            }
+            if (currentAuthorityOwnerGeneration <= 0
+                || lastAcceptedSessionSequence < 0) {
+                throw protocol("route update generations are invalid");
+            }
+            if (action == SessionRelocationRouteAction.COMMIT) {
+                Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+                if (previousAuthorityOwnerGeneration <= 0
+                    || currentAuthorityOwnerGeneration
+                        != previousAuthorityOwnerGeneration + 1
+                    || targetNodeGeneration <= 0) {
+                    throw protocol("commit route update is invalid");
+                }
+            } else if (previousAuthorityOwnerGeneration != 0
+                || targetNodeRid != null || targetNodeGeneration != 0
+                || lastAcceptedSessionSequence != 0) {
+                throw protocol("abort route update contains commit fields");
+            }
+        }
+    }
+
+    public record SessionRelocationRouted(
+        RelocationIdentity relocation, RelocationCoordinatorFence coordinator,
+        ActorIdentity actor, SessionOwnerFence session,
+        SessionRelocationRouteAction action,
+        long currentAuthorityOwnerGeneration,
+        long lastAcceptedSessionSequence) {
+        public SessionRelocationRouted {
+            Objects.requireNonNull(relocation, "relocation");
+            Objects.requireNonNull(coordinator, "coordinator");
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(session, "session");
+            Objects.requireNonNull(action, "action");
+            if (currentAuthorityOwnerGeneration <= 0
+                || lastAcceptedSessionSequence < 0) {
+                throw protocol("route ACK generations are invalid");
+            }
+        }
+    }
+
     public record SpotRouteFence(
         String spotId,
         long spotGeneration,
@@ -923,8 +1184,19 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
+        long operationHigh,
+        long operationLow,
+        int forwardingHopCount,
         String sourceSpotId,
         SpotRouteFence target) {
+        public SpotMessage(
+            boolean request,
+            int flags,
+            Long correlation,
+            String sourceSpotId,
+            SpotRouteFence target) {
+            this(request, flags, correlation, 1, 1, 0, sourceSpotId, target);
+        }
     }
 
     public record ActorRouteFence(
@@ -945,6 +1217,9 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
+        long operationHigh,
+        long operationLow,
+        int forwardingHopCount,
         ActorIdentity sourceActor,
         ActorRouteFence target,
         BoundSessionTail boundSession) {
@@ -952,15 +1227,49 @@ public final class ZLinkServiceM6BWireCodec {
             boolean request,
             int flags,
             Long correlation,
+            long operationHigh,
+            long operationLow,
+            int forwardingHopCount,
             ActorIdentity sourceActor,
             ActorRouteFence target) {
             this(
                 request,
                 flags,
                 correlation,
+                operationHigh,
+                operationLow,
+                forwardingHopCount,
                 sourceActor,
                 target,
                 null);
+        }
+
+        public ActorMessage(
+            boolean request,
+            int flags,
+            Long correlation,
+            ActorIdentity sourceActor,
+            ActorRouteFence target) {
+            this(request, flags, correlation, 1, 1, 0, sourceActor, target, null);
+        }
+
+        public ActorMessage(
+            boolean request,
+            int flags,
+            Long correlation,
+            ActorIdentity sourceActor,
+            ActorRouteFence target,
+            BoundSessionTail boundSession) {
+            this(
+                request,
+                flags,
+                correlation,
+                1,
+                1,
+                0,
+                sourceActor,
+                target,
+                boundSession);
         }
     }
 
@@ -1384,6 +1693,78 @@ public final class ZLinkServiceM6BWireCodec {
         return typedFailure ? failureCode != 0 : failureCode == 0;
     }
 
+    private static void writeRelocationIdentity(
+        Writer writer,
+        RelocationIdentity relocation) {
+        writer.bits64(relocation.high());
+        writer.bits64(relocation.low());
+    }
+
+    private static RelocationIdentity readRelocationIdentity(Reader reader) {
+        return new RelocationIdentity(
+            reader.bits64("relocation.high"),
+            reader.bits64("relocation.low"));
+    }
+
+    private static void writeCoordinatorFence(
+        Writer writer,
+        RelocationCoordinatorFence coordinator) {
+        writer.text8(coordinator.ownerId(), "coordinatorOwnerId");
+        writer.nonzero(coordinator.leaseGeneration(),
+            "coordinatorLeaseGeneration");
+        writer.rid(coordinator.nodeRid(), "coordinatorNodeRid");
+        writer.nonzero(coordinator.nodeGeneration(),
+            "coordinatorNodeGeneration");
+        writer.text16(coordinator.expectedAuthorityStoreVersion(),
+            "expectedAuthorityStoreVersion");
+    }
+
+    private static RelocationCoordinatorFence readCoordinatorFence(
+        Reader reader) {
+        return new RelocationCoordinatorFence(
+            reader.text8("coordinatorOwnerId"),
+            reader.nonzeroU64("coordinatorLeaseGeneration"),
+            reader.rid("coordinatorNodeRid"),
+            reader.nonzeroU64("coordinatorNodeGeneration"),
+            reader.text16("expectedAuthorityStoreVersion"));
+    }
+
+    private static void writeActorIdentity(
+        Writer writer,
+        ActorIdentity actor) {
+        writer.text8(actor.actorId(), "actorId");
+        writer.nonzero(actor.generation(), "objectGeneration");
+    }
+
+    private static ActorIdentity readActorIdentity(Reader reader) {
+        return new ActorIdentity(
+            reader.text8("actorId"),
+            reader.nonzeroU64("objectGeneration"));
+    }
+
+    private static void writeSessionOwner(
+        Writer writer,
+        SessionOwnerFence session) {
+        writer.rid(session.nodeRid(), "sessionOwnerNodeRid");
+        writer.nonzero(session.nodeGeneration(),
+            "sessionOwnerNodeGeneration");
+        writer.text8(session.ownerId(), "sessionOwnerId");
+        writer.nonzero(session.ownerLeaseGeneration(),
+            "sessionOwnerLeaseGeneration");
+        writer.rid(session.sessionRid(), "sessionRid");
+        writer.nonzero(session.bindingGeneration(), "bindingGeneration");
+    }
+
+    private static SessionOwnerFence readSessionOwner(Reader reader) {
+        return new SessionOwnerFence(
+            reader.rid("sessionOwnerNodeRid"),
+            reader.nonzeroU64("sessionOwnerNodeGeneration"),
+            reader.text8("sessionOwnerId"),
+            reader.nonzeroU64("sessionOwnerLeaseGeneration"),
+            reader.rid("sessionRid"),
+            reader.nonzeroU64("bindingGeneration"));
+    }
+
     private static void writeActorRoute(
         Writer writer,
         ActorRouteFence target) {
@@ -1430,6 +1811,13 @@ public final class ZLinkServiceM6BWireCodec {
             if (value < 0) {
                 throw protocol("value exceeds supported u64 range");
             }
+            output.writeBytes(ByteBuffer.allocate(Long.BYTES)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putLong(value)
+                .array());
+        }
+
+        void bits64(long value) {
             output.writeBytes(ByteBuffer.allocate(Long.BYTES)
                 .order(ByteOrder.BIG_ENDIAN)
                 .putLong(value)
@@ -1558,6 +1946,11 @@ public final class ZLinkServiceM6BWireCodec {
                 throw protocol(field + " exceeds supported u64 range");
             }
             return value;
+        }
+
+        long bits64(String field) {
+            require(Long.BYTES, field);
+            return input.getLong();
         }
 
         int u16(String field) {

@@ -1164,6 +1164,13 @@ class stream_host_service_t::listener_t
         _tls_context.emplace (ssl::context::tls_server);
         _tls_context->use_certificate_chain_file (_stream.tls_certificate_file);
         _tls_context->use_private_key_file (_stream.tls_private_key_file, ssl::context::pem);
+        if (_stream.tls_require_client_certificate) {
+            _tls_context->set_default_verify_paths ();
+            _tls_context->set_verify_mode (
+              ssl::verify_peer | ssl::verify_fail_if_no_peer_cert | ssl::verify_client_once);
+        } else {
+            _tls_context->set_verify_mode (ssl::verify_none);
+        }
 #else
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                      "STREAM TLS support requires OpenSSL");

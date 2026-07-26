@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
@@ -21,7 +20,7 @@ internal sealed class PlayerMoveHandler(PlayerMovement movement)
     public ValueTask HandleAsync(
         ZoneSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         MoveMsg message,
         CancellationToken cancellationToken) =>
         movement.MoveAsync(spot, actor, message.X, message.Y, cancellationToken);
@@ -39,7 +38,7 @@ internal sealed class PlayerBotTickHandler(PlayerMovement movement)
     public async ValueTask<BotTickRes> HandleAsync(
         ZoneSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         BotTickReq request,
         CancellationToken cancellationToken)
     {
@@ -58,7 +57,6 @@ internal sealed class PlayerBotTickHandler(PlayerMovement movement)
 /// </summary>
 internal sealed class PlayerMovement(
     MoveUseCase moves,
-    NodeMaintenancePolicy maintenance,
     ILogger<PlayerMovement> logger)
 {
     public async ValueTask MoveAsync(
@@ -98,8 +96,8 @@ internal sealed class PlayerMovement(
     {
         var joined = await actor.Context
             .JoinSpot(
-                RoutingId.From(to.ZoneId),
-                new EnterZoneMsg(actor.ActorId, to.X, to.Y, actor.IsBot, maintenance.OwnNodeId))
+                to.ZoneId,
+                new EnterZoneMsg(actor.ActorId, to.X, to.Y, actor.IsBot, InitialEntry: false))
             .Yield(cancellationToken);
 
         if (joined is ZLinkActorJoinResult.Rejected rejected)

@@ -7,6 +7,44 @@ internal sealed class ZLinkActorRemoteJoiner(
     ZLinkSpotRuntimeManager spots,
     ZLinkActorSessionManager actorSessionManager)
 {
+    internal ValueTask<ZLinkActorJoinResult> JoinEntrySpotAsync(
+        ZLinkMeshNodeDescriptor target,
+        IZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        ZLinkMessage request,
+        ZLinkActorJoinOperationId? operationId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(target.EntrySpotId)
+            || target.LifecycleGeneration == 0
+            || target.LeaseGeneration <= 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotRouteNotFound,
+                "The selected Entry Spot descriptor is incomplete.");
+        var snapshot = new ZLinkSpotHandleSnapshot(
+            target.MeshName,
+            target.Rid,
+            target.EntrySpotId,
+            target.LifecycleGeneration,
+            ZLinkSpotKind.Entry,
+            target.LifecycleGeneration,
+            target.LifecycleGeneration,
+            checked((ulong)target.LeaseGeneration));
+        var handle = new ZLinkResolvedSpotHandle(
+            snapshot,
+            target.DescriptorRevision,
+            _ => ValueTask.FromResult<
+                (ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>(null));
+        return SubmitRoutedJoinActorAsync(
+            actor,
+            actorRef,
+            actorSessionManager.GetOrCreateState(actor.Context.ActorId),
+            handle,
+            request,
+            operationId,
+            cancellationToken);
+    }
+
     public ValueTask<ZLinkActorJoinResult> JoinAsync(
         ZLinkFrameworkComponentState state,
         string spotId,

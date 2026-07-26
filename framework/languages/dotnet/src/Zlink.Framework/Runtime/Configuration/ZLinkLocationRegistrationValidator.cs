@@ -5,6 +5,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateLocations(ZLinkFrameworkRegistration registration)
     {
         var locations = registration.Locations;
+        ValidateLocationPollingTimes(locations.Options);
         ValidateOwnerLeaseTimes(locations.Options);
         ValidateRelocationLimits(locations.Options);
         ValidateObjectRoutingTimes(locations.Options);
@@ -15,6 +16,14 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 + "UseTestLocationStore.");
         }
 
+    }
+
+    private static void ValidateLocationPollingTimes(ZLinkLocationOptions options)
+    {
+        if (options.PollingInterval <= TimeSpan.Zero
+            || options.StoreFailureGrace <= TimeSpan.Zero)
+            throw new ZLinkConfigurationException(
+                "PollingInterval and StoreFailureGrace must both be greater than zero.");
     }
 
     private static void ValidateRelocationLimits(ZLinkLocationOptions options)

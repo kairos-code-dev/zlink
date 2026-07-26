@@ -282,7 +282,7 @@ wait_port api-b-http "$API_B_HTTP_ENDPOINT"
 
 wait_grep "observer-connected endpoint=tcp://127.0.0.1:" "$LOG_DIR/client.log"
 wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.log"
-wait_grep "observer-win-milestone=verified actor=player-x wins=100 receivingSpotNodeRid=play-node-" "$LOG_DIR/client.log"
+wait_grep "observer-win-milestone=verified actor=player-x wins=100" "$LOG_DIR/client.log"
 wait_grep "tictactoe completed" "$LOG_DIR/client.log"
 grep -q "stream-inbound sample=TicTacToe" "$LOG_DIR/client.log"
 grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "$LOG_DIR/client.log"

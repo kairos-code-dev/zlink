@@ -113,6 +113,32 @@ using actor_join_completion_t =
                actor_join_rejected_t,
                actor_join_failed_t>;
 
+namespace detail
+{
+inline actor_join_completion_t
+actor_join_completion_from_erased (
+  actor_join_completion_outcome_t outcome,
+  std::uint64_t operation_id_high,
+  std::uint64_t operation_id_low,
+  const actor_ref_t *committed,
+  const std::optional<message_t> &reply,
+  framework_error_kind_t error_kind,
+  bool retryable)
+{
+    if (outcome == actor_join_completion_outcome_t::accepted
+        && committed != nullptr) {
+        return actor_join_accepted_t{
+          operation_id_high, operation_id_low, *committed, reply};
+    }
+    if (outcome == actor_join_completion_outcome_t::rejected) {
+        return actor_join_rejected_t{
+          operation_id_high, operation_id_low, reply};
+    }
+    return actor_join_failed_t{
+      operation_id_high, operation_id_low, error_kind, retryable};
+}
+} // namespace detail
+
 class actor_t
 {
   public:
@@ -366,18 +392,54 @@ class actor_join_call_t
               "Actor join call has no deferred operation");
         }
         const auto deadline = std::chrono::steady_clock::now () + _timeout;
+        std::shared_ptr<detail::deferred_barrier_t> barrier;
+        if (_reserve_barrier) {
+            auto reserved = _reserve_barrier ();
+            if (!reserved) {
+                const auto *error = reserved.error ();
+                throw framework_exception_t (
+                  reserved.error_kind (),
+                  error != nullptr ? error->what ()
+                                   : "Actor join barrier reservation failed");
+            }
+            barrier = std::move (reserved.value ());
+        }
         auto registered = detail::defer_current_serial_turn (
-          [deferred = std::move (_deferred), deadline] () mutable {
-              const auto now = std::chrono::steady_clock::now ();
-              if (now >= deadline) {
-                  throw framework_exception_t (
-                    framework_error_kind_t::deadline_exceeded,
-                    "Deferred Actor join deadline elapsed before activation");
+          [deferred = std::move (_deferred), deadline,
+           barrier] () mutable {
+              auto run = [deferred = std::move (deferred),
+                          deadline] () mutable {
+                  const auto now = std::chrono::steady_clock::now ();
+                  if (now >= deadline) {
+                      throw framework_exception_t (
+                        framework_error_kind_t::deadline_exceeded,
+                        "Deferred Actor join deadline elapsed before activation");
+                  }
+                  deferred (
+                    std::chrono::duration_cast<std::chrono::milliseconds> (
+                      deadline - now));
+              };
+              if (barrier) {
+                  const auto activated = barrier->activate (
+                    std::move (run));
+                  if (!activated) {
+                      const auto *error = activated.error ();
+                      throw framework_exception_t (
+                        activated.error_kind (),
+                        error != nullptr ? error->what ()
+                                         : "Actor join barrier activation failed");
+                  }
+                  return;
               }
-              deferred (std::chrono::duration_cast<std::chrono::milliseconds> (
-                deadline - now));
+              run ();
+          },
+          [barrier] {
+              if (barrier)
+                  barrier->cancel ();
           });
         if (!registered) {
+            if (barrier)
+                barrier->cancel ();
             const auto *error = registered.error ();
             throw framework_exception_t (
               registered.error_kind (),
@@ -387,7 +449,17 @@ class actor_join_call_t
     }
 
   private:
+    friend class actor_context_t;
+
+    actor_join_call_t (
+      deferred_fn_t deferred,
+      detail::deferred_barrier_reserver_t reserve_barrier) :
+        _deferred (std::move (deferred)),
+        _reserve_barrier (std::move (reserve_barrier))
+    {}
+
     deferred_fn_t _deferred;
+    detail::deferred_barrier_reserver_t _reserve_barrier;
     std::chrono::milliseconds _timeout{5000};
     bool _deferred_once = false;
 };
@@ -463,32 +535,41 @@ class bound_session_t
 class actor_context_t
 {
   public:
-    actor_context_t ();
     ~actor_context_t ();
 
     actor_context_t (actor_context_t &&) noexcept;
-    actor_context_t &operator= (actor_context_t &&) noexcept;
-    actor_context_t (const actor_context_t &) = default;
-    actor_context_t &operator= (const actor_context_t &) = default;
+    actor_context_t &operator= (actor_context_t &&) = delete;
+    actor_context_t (const actor_context_t &) = delete;
+    actor_context_t &operator= (const actor_context_t &) = delete;
 
     const actor_ref_t &actor_ref () const noexcept;
+    std::string_view actor_id () const noexcept;
+    std::uint64_t object_generation () const noexcept;
+    std::string_view mesh_name () const noexcept;
     std::optional<spot_id_t> spot_id () const;
     bound_session_t bound_session () const;
 
   private:
     actor_join_call_t join_spot_payload (spot_id_t spot_id, const zlink::message_t &request)
     {
+        auto context = std::shared_ptr<actor_context_t> (
+          new actor_context_t (
+            _state, *_actor_ref, _source_binding_generation, _mesh_name));
+        context->_actor_ref = _actor_ref;
         return actor_join_call_t (
-          [context = *this, spot_id = std::move (spot_id), request] (
+          [context, spot_id = std::move (spot_id), request] (
             std::chrono::milliseconds timeout) mutable {
               const auto erased =
-                context.join_spot_erased (std::move (spot_id), request, timeout);
+                context->join_spot_erased (std::move (spot_id), request, timeout);
               if (!erased) {
                   const auto *error = erased.error ();
                   throw framework_exception_t (
                     erased.error_kind (),
                     error != nullptr ? error->what () : "actor join spot failed");
               }
+          },
+          [context] {
+              return context->reserve_join_barrier ();
           });
     }
 
@@ -565,19 +646,26 @@ class actor_context_t
     friend class session_actor_t;
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
+    actor_context_t ();
     explicit actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                               actor_ref_t actor_ref,
-                              std::uint64_t source_binding_generation = 0);
+                              std::uint64_t source_binding_generation = 0,
+                              std::string mesh_name = {});
+
+    bool has_same_source_fence (const actor_context_t &other) const noexcept;
 
     result_t<detail::actor_join_reply_t> join_spot_erased (spot_id_t spot_id,
                                                            const zlink::message_t &request,
                                                            std::chrono::milliseconds timeout);
+    result_t<std::shared_ptr<detail::deferred_barrier_t>>
+    reserve_join_barrier () const;
     serializer_registry_t *serializer_registry () const noexcept;
     std::optional<zlink::message_t> create_payload () const;
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
     std::shared_ptr<actor_ref_t> _actor_ref;
     std::uint64_t _source_binding_generation = 0;
+    std::string _mesh_name;
 };
 
 class session_actor_t
@@ -705,10 +793,14 @@ spot_node_builder_t::add_actor_factory (
       {},
       [] (void *actor, const actor_ref_t &,
           void *actor_context) {
-          if (actor_context != nullptr) {
-              static_cast<TActor *> (actor)->context ()
-                = *static_cast<actor_context_t *> (
-                  actor_context);
+          if (actor_context == nullptr
+              || !static_cast<TActor *> (actor)->context ()
+                    .has_same_source_fence (
+                      *static_cast<actor_context_t *> (
+                        actor_context))) {
+              throw framework_exception_t (
+                framework_error_kind_t::invalid_configuration,
+                "Actor factory must return an Actor that exposes the provided Context");
           }
       },
       [] (void *, serializer_registry_t &)
@@ -729,21 +821,27 @@ spot_node_builder_t::add_actor_factory (
                 framework_error_kind_t::actor_route_not_found,
                 "Actor factory returned null");
           }
+          if (!created.value ()->context ().has_same_source_fence (context)) {
+              throw framework_exception_t (
+                framework_error_kind_t::invalid_configuration,
+                "Actor factory must return an Actor that exposes the provided Context");
+          }
           created.value ()->configure ();
           return std::static_pointer_cast<void> (
             std::move (created.value ()));
       },
       [] (void *actor,
+          detail::actor_join_completion_outcome_t outcome,
           std::uint64_t operation_id_high,
           std::uint64_t operation_id_low,
-          const actor_ref_t &committed,
-          const std::optional<message_t> &reply) {
-          const actor_join_completion_t completion =
-            actor_join_accepted_t{
-              operation_id_high,
-              operation_id_low,
-              committed,
-              reply};
+          const actor_ref_t *committed,
+          const std::optional<message_t> &reply,
+          framework_error_kind_t error_kind,
+          bool retryable) {
+          const auto completion =
+            detail::actor_join_completion_from_erased (
+              outcome, operation_id_high, operation_id_low, committed,
+              reply, error_kind, retryable);
           return static_cast<TActor *> (actor)
             ->on_join_completed (completion);
       });

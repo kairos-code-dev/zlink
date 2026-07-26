@@ -157,6 +157,29 @@ final class ZLinkUserSpotRelocationBarrier {
             heldIngress));
     }
 
+    synchronized Optional<Map<String, List<
+        ZLinkAsyncSerialQueue.QueuedRecord>>> freezeIngress(Seal seal) {
+        if (seal == null || seal != active) {
+            return Optional.empty();
+        }
+        LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> held =
+            new LinkedHashMap<>();
+        for (Map.Entry<String, ZLinkAsyncSerialQueue.RelocationSeal> actor
+            : seal.actorSeals.entrySet()) {
+            held.put(
+                "actor:" + actor.getKey(),
+                actors.freezeActorRelocationIngress(
+                    actor.getKey(), actor.getValue())
+                    .orElseThrow(() -> new IllegalStateException(
+                        "User Spot barrier freeze lost Actor lane: "
+                            + actor.getKey())));
+        }
+        held.putAll(barrier.freezeIngress(seal.composite)
+            .orElseThrow(() -> new IllegalStateException(
+                "User Spot barrier freeze lost local lane")));
+        return Optional.of(java.util.Collections.unmodifiableMap(held));
+    }
+
     private void rollback(
         ZLinkCompositeRelocationBarrier.Seal localSeal,
         Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals) {

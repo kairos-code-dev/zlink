@@ -23,7 +23,6 @@ public final class BingoClientScenario {
         Messages.AuthenticateRes client1Auth =
             client1.request(BingoMessages.authenticateReq("player-1")).submit(Messages.AuthenticateRes.class).toCompletableFuture().join();
         ensure(client1Auth.getActorId().equals("player-1"));
-        ensure(!client1Auth.getActorNodeRid().isBlank());
         AtomicInteger client1OwnJoinNotifications = new AtomicInteger();
         client1.on(SampleNames.PlayerJoinedPacket, Messages.PlayerJoinedNotify.class, message -> {
             if (client1Auth.getActorId().equals(message.payload().getActorId())) {
@@ -36,18 +35,14 @@ public final class BingoClientScenario {
             client1.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
         ensure(client1Match.getState().getStatus().equals("WaitingForPlayers"));
         ensure(client1Match.getState().getHostActorId().equals(client1Auth.getActorId()));
-        ensure(client1Match.getRoomOwnerNodeRid().equals(client1Auth.getActorNodeRid()));
 
         Messages.AuthenticateRes observerAuth =
             observer.request(BingoMessages.authenticateReq("observer")).submit(Messages.AuthenticateRes.class).toCompletableFuture().join();
         ensure(observerAuth.getActorId().equals("observer"));
-        ensure(!observerAuth.getActorNodeRid().equals(client1Match.getRoomOwnerNodeRid()));
         Messages.ObserveBingoEventsRes observed = observer
             .request(BingoMessages.observeBingoEventsReq(client1Match.getRoomId()))
             .submit(Messages.ObserveBingoEventsRes.class).toCompletableFuture().join();
         ensure(observed.getSubscribed());
-        ensure(observed.getObserverNodeRid().equals(observerAuth.getActorNodeRid()));
-        ensure(!observed.getObserverNodeRid().equals(client1Match.getRoomOwnerNodeRid()));
 
         var client1SawClient2Join =
             client1.waitFor(SampleNames.PlayerJoinedPacket).submit(Messages.PlayerJoinedNotify.class);
@@ -58,7 +53,6 @@ public final class BingoClientScenario {
             client2.request(BingoMessages.authenticateReq("player-2")).submit(Messages.AuthenticateRes.class).toCompletableFuture().join();
         ensure(client2Auth.getActorId().equals("player-2"));
         ensure(!client2Auth.getActorId().equals(client1Auth.getActorId()));
-        ensure(!client2Auth.getActorNodeRid().equals(client1Auth.getActorNodeRid()));
         AtomicInteger client2OwnJoinNotifications = new AtomicInteger();
         client2.on(SampleNames.PlayerJoinedPacket, Messages.PlayerJoinedNotify.class, message -> {
             if (client2Auth.getActorId().equals(message.payload().getActorId())) {
@@ -71,8 +65,6 @@ public final class BingoClientScenario {
             client2.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
         ensure(client2Match.getRoomId().equals(client1Match.getRoomId()));
         ensure(client2Match.getState().getStatus().equals("Running"));
-        ensure(client2Match.getRoomOwnerNodeRid().equals(client1Match.getRoomOwnerNodeRid()));
-        ensure(!client2Auth.getActorNodeRid().equals(client2Match.getRoomOwnerNodeRid()));
 
         Messages.PlayerJoinedNotify join = client1SawClient2Join.toCompletableFuture().join().payload();
         ensure(join.getActorId().equals(client2Auth.getActorId()));
@@ -160,14 +152,11 @@ public final class BingoClientScenario {
         ensure(reward.getItemId().equals("rare-golden-dauber"));
         ensure(reward.getItemName().equals("Golden Dauber"));
         ensure(reward.getRarity().equals("Legendary"));
-        ensure(reward.getReceivingSpotNodeRid().equals(observed.getObserverNodeRid()));
-        ensure(!reward.getReceivingSpotNodeRid().equals(client1Match.getRoomOwnerNodeRid()));
 
         Messages.StopObservingBingoEventsRes stopped = observer
             .request(BingoMessages.stopObservingBingoEventsReq(client1Match.getRoomId()))
             .submit(Messages.StopObservingBingoEventsRes.class).toCompletableFuture().join();
         ensure(stopped.getStopped());
-        ensure(stopped.getObserverNodeRid().equals(observed.getObserverNodeRid()));
         ensure(client1OwnJoinNotifications.get() == 0);
         ensure(client2OwnJoinNotifications.get() == 0);
     }

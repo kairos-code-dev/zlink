@@ -8,7 +8,7 @@ namespace zlink::samples::bingo
 
 inline task_t<submit_bingo_card_res_t> bingo_room_spot_t::submit_card (
   const player_actor_t &actor,
-  const spot_actor_request_context_t &context,
+  const message_context_t &context,
   const submit_bingo_card_req_t &request)
 {
     if (context.packet_name.empty ()) {

@@ -1,13 +1,9 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway
 
-import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCourierActorRes
 
 class CourierDirectory {
     private val actors = mutableMapOf<String, CourierBinding>()
-
-    fun choosePlacement(courierId: String): String =
-        SampleTopology.courierPlacement(courierId)
 
     fun remember(ensured: EnsureCourierActorRes, sessionRoute: String): CourierBinding =
         synchronized(actors) {

@@ -16,7 +16,6 @@ struct sample_names_t
     static constexpr const char *game_spot_node = "tictactoe.game.rooms";
     static constexpr const char *player_milestone_topic = "tictactoe.player.milestone";
     static constexpr int required_level = 3;
-    static constexpr const char *entry_spot_routing_id = "3301";
     static constexpr const char *x_actor_id = "player-x";
     static constexpr const char *o_actor_id = "player-o";
     static constexpr const char *observer_actor_id = "observer";

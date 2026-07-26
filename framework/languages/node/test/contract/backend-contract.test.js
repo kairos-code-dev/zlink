@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const path = require('node:path');
 const nodeTest = require('node:test');
 
@@ -34,6 +35,28 @@ function test(name, body) {
     assert.equal(typeof factory.createMeshAdapter, 'function');
     assert.equal(factory.createSpotAdapter, undefined);
   });
+}
+
+async function submitEventually(submit, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  let result;
+  do {
+    result = submit();
+    if (result === zlink.SubmitResult.Ok) return result;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  } while (Date.now() < deadline);
+  return result;
+}
+
+async function reserveTcpEndpoint() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return `tcp://127.0.0.1:${address.port}`;
 }
 
 test('backend adapter factory exposes the supported backend adapters', () => {
@@ -72,22 +95,35 @@ test('backend mesh dispatch pump drains a local channel record through claim and
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();
   const meshName = `backend.dispatch.${process.pid}`;
-  const meshNode = factory.createMeshAdapter().createMeshNode(context, {
+  const receiver = factory.createMeshAdapter().createMeshNode(context, {
     meshName,
-    routingId: `backend-dispatch-node-${process.pid}`
+    routingId: `backend-dispatch-receiver-${process.pid}`
+  });
+  const sender = factory.createMeshAdapter().createMeshNode(context, {
+    meshName,
+    routingId: `backend-dispatch-sender-${process.pid}`
   });
   let pump;
+  let senderPump;
 
   try {
-    meshNode.setBind(`inproc://${meshName}`);
-    meshNode.addChannelName('backend.dispatch');
-    meshNode.start();
+    const receiverEndpoint = await reserveTcpEndpoint();
+    const senderEndpoint = await reserveTcpEndpoint();
+    receiver.setBind(receiverEndpoint);
+    receiver.addChannelName('backend.dispatch');
+    receiver.start();
+    sender.setBind(senderEndpoint);
+    sender.start();
+    sender.connectPeer({
+      endpoint: receiverEndpoint,
+      expectedRid: receiver.status().routingId
+    });
     const received = new Promise((resolve, reject) => {
       const timeout = setTimeout(
         () => reject(new Error('Mesh dispatch pump did not receive the local channel record.')),
-        1000
+        5000
       );
-      pump = new backend.ZLinkMeshDispatchPump(meshNode, {
+      pump = new backend.ZLinkMeshDispatchPump(receiver, {
         dispatch(_owner, record) {
           clearTimeout(timeout);
           resolve({
@@ -103,19 +139,26 @@ test('backend mesh dispatch pump drains a local channel record through claim and
       });
       pump.start();
     });
+    senderPump = new backend.ZLinkMeshDispatchPump(sender, {
+      dispatch() {},
+      reportError(error) { throw error; }
+    });
+    senderPump.start();
 
-    assert.equal(
-      meshNode.sendToChannel('backend.dispatch', Buffer.from('mesh-pump')),
-      zlink.SubmitResult.Ok
-    );
+    assert.equal(await submitEventually(
+      () => sender.sendToChannel('backend.dispatch', Buffer.from('mesh-pump'))
+    ), zlink.SubmitResult.Ok);
     const record = await received;
     assert.equal(record.kind, framework.ReceiveKind.ChannelSend);
     assert.equal(record.channelName, 'backend.dispatch');
     assert.equal(record.payload, 'mesh-pump');
   } finally {
+    await senderPump?.dispose();
     await pump?.dispose();
-    meshNode.shutdown(1000);
-    meshNode.close();
+    sender.shutdown(1000);
+    sender.close();
+    receiver.shutdown(1000);
+    receiver.close();
     await context.dispose();
   }
 });
@@ -398,9 +441,11 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();
   const meshName = `runtime.dispatch.${process.pid}`;
+  const receiverEndpoint = await reserveTcpEndpoint();
+  const senderEndpoint = await reserveTcpEndpoint();
   const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
     const mesh = builder.addRouteMesh(meshName)
-      .listen(`inproc://${meshName}`)
+      .listen(receiverEndpoint)
       .routingId(`runtime-node-${process.pid}`);
     mesh.channelName(meshName);
   });
@@ -420,14 +465,29 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
       });
     }
   });
+  const sender = factory.createMeshAdapter().createMeshNode(context, {
+    meshName,
+    routingId: `runtime-sender-${process.pid}`
+  });
+  let senderPump;
 
   try {
     await runtime.start();
+    sender.setBind(senderEndpoint);
+    sender.start();
+    senderPump = new backend.ZLinkMeshDispatchPump(sender, {
+      dispatch() {},
+      reportError(error) { throw error; }
+    });
+    senderPump.start();
+    sender.connectPeer({
+      endpoint: receiverEndpoint,
+      expectedRid: runtime.primaryMeshNode.status().routingId
+    });
     assert.equal(runtime.meshNodesByName.size, 1);
-    assert.equal(
-      runtime.primaryMeshNode.sendToChannel(meshName, Buffer.from('runtime-pump')),
-      zlink.SubmitResult.Ok
-    );
+    assert.equal(await submitEventually(
+      () => sender.sendToChannel(meshName, Buffer.from('runtime-pump'))
+    ), zlink.SubmitResult.Ok);
     let timeout;
     const record = await Promise.race([
       received.finally(() => clearTimeout(timeout)),
@@ -442,6 +502,9 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
     assert.equal(record.channelName, meshName);
     assert.equal(record.payload, 'runtime-pump');
   } finally {
+    await senderPump?.dispose();
+    sender.shutdown(1000);
+    sender.close();
     await runtime.dispose();
     await context.dispose();
   }
@@ -663,6 +726,8 @@ test('Logical Multicast binding commit preserves admission after post-start abor
 
 test('framework host dispatches a MeshNode channel record through registered handler lifecycle', async () => {
   const meshName = `host.dispatch.${process.pid}`;
+  const receiverEndpoint = await reserveTcpEndpoint();
+  const senderEndpoint = await reserveTcpEndpoint();
   let resolveHandled;
   const handled = new Promise((resolve) => {
     resolveHandled = resolve;
@@ -674,17 +739,35 @@ test('framework host dispatches a MeshNode channel record through registered han
   }
   const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
     const mesh = builder.addRouteMesh(meshName)
-      .listen(`inproc://${meshName}`)
+      .listen(receiverEndpoint)
       .routingId(`host-dispatch-node-${process.pid}`);
     mesh.channelName(meshName).addSendHandler(MeshNotice);
   });
   const host = new framework.ZLinkFrameworkRuntimeHost({ registration });
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const context = factory.createChannelAdapter().createContext();
+  const sender = factory.createMeshAdapter().createMeshNode(context, {
+    meshName,
+    routingId: `host-dispatch-sender-${process.pid}`
+  });
+  let senderPump;
 
   try {
     await host.start();
     const node = host.requirePrimaryMeshNode();
-    assert.equal(
-      node.sendToChannel(
+    sender.setBind(senderEndpoint);
+    sender.start();
+    senderPump = new backend.ZLinkMeshDispatchPump(sender, {
+      dispatch() {},
+      reportError(error) { throw error; }
+    });
+    senderPump.start();
+    sender.connectPeer({
+      endpoint: receiverEndpoint,
+      expectedRid: node.status().routingId
+    });
+    assert.equal(await submitEventually(
+      () => sender.sendToChannel(
         meshName,
         channelEnvelope.encodeChannelEnvelopeParts(
           3,
@@ -692,9 +775,8 @@ test('framework host dispatches a MeshNode channel record through registered han
           'MeshNotice',
           { value: 'handled' }
         )
-      ),
-      zlink.SubmitResult.Ok
-    );
+      )
+    ), zlink.SubmitResult.Ok);
     let timeout;
     const result = await Promise.race([
       handled.finally(() => clearTimeout(timeout)),
@@ -706,6 +788,10 @@ test('framework host dispatches a MeshNode channel record through registered han
     assert.equal(result.context.channelName, meshName);
     assert.equal(result.context.packetName, 'MeshNotice');
   } finally {
+    await senderPump?.dispose();
+    sender.shutdown(1000);
+    sender.close();
+    await context.dispose();
     await host.stop();
   }
 });
@@ -753,7 +839,8 @@ test('framework host dispatches MeshNode node-direct send and request records', 
     });
     const sent = await handled;
     assert.deepEqual(sent.message, { value: 'sent' });
-    assert.equal(sent.context.routerChannelId, meshName);
+    assert.equal(sent.context.meshName, meshName);
+    assert.equal(sent.context.channelName, undefined);
     assert.equal(String(sent.context.sourceNodeRid), String(target));
 
     const requestParts = channelEnvelope.encodeChannelEnvelopeParts(

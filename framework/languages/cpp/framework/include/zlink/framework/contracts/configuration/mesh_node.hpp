@@ -165,6 +165,14 @@ class mesh_node_builder_t
         return *this;
     }
 
+    template <typename TEntrySpot>
+    mesh_node_builder_t &add_entry_spot (
+      std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
+    {
+        spot_builder ().template add_entry_spot<TEntrySpot> (std::move (factory));
+        return *this;
+    }
+
     template <typename TSpot>
     mesh_node_builder_t &
     add_spot (std::string spot_name,
@@ -187,10 +195,34 @@ class mesh_node_builder_t
     }
 
     template <typename TSpot>
+    mesh_node_builder_t &add_spot (
+      std::string spot_name,
+      std::function<std::shared_ptr<TSpot> (spot_context_t)> factory,
+      user_spot_execution_mode_t execution_mode =
+        user_spot_execution_mode_t::spot_wide)
+    {
+        spot_builder ().template add_spot<TSpot> (
+          std::move (spot_name), std::move (factory), execution_mode);
+        return *this;
+    }
+
+    template <typename TSpot>
     requires std::derived_from<TSpot, instance_spot_t>
     mesh_node_builder_t &
     add_instance_spot_factory (std::string stable_type,
                                std::function<std::shared_ptr<TSpot> ()> factory)
+    {
+        spot_builder ().template add_instance_spot_factory<TSpot> (
+          std::move (stable_type), std::move (factory));
+        return *this;
+    }
+
+
+    template <typename TSpot>
+    requires std::derived_from<TSpot, instance_spot_t>
+    mesh_node_builder_t &add_instance_spot_factory (
+      std::string stable_type,
+      std::function<std::shared_ptr<TSpot> (instance_spot_context_t)> factory)
     {
         spot_builder ().template add_instance_spot_factory<TSpot> (
           std::move (stable_type), std::move (factory));

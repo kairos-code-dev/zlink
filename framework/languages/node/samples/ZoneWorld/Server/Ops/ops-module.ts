@@ -42,8 +42,7 @@ function createOpsModule() {
           .registerSession(OpsSessionFactory);
         builder.addFanoutChannel(ZoneWorldNames.broadcastChannel).enablePublisher(ops.broadcastEndpoint);
         const mesh = builder.addRouteMesh(ZoneWorldNames.zoneMesh)
-          .listen(ops.reportEndpoint)
-          .routingId('zoneworld-ops-report');
+          .listen(ops.reportEndpoint);
         mesh.channelName(ZoneWorldNames.reportChannel).addHandlerGroup('ops');
         mesh.channelName(ZoneWorldNames.zoneMesh).setWeight(0);
         mesh.channelName(ZoneWorldNames.bridgeMesh).setWeight(0);

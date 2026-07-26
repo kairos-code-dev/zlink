@@ -14,82 +14,42 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 
 final class ZLinkSpotAcceptedJournal {
-    private static final int MAGIC = 0x5A4A5232;
-
     private ZLinkSpotAcceptedJournal() {
     }
 
     static byte[] encode(ZLinkBackendReceived received) {
-        try {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            DataOutputStream output = new DataOutputStream(buffer);
-            output.writeInt(MAGIC);
-            output.writeInt(received.result().ordinal());
-            writeRoutingId(output, received.routingId());
-            writeSpotId(output, received.spotId());
-            output.writeBoolean(received.requestSeq().isPresent());
-            if (received.requestSeq().isPresent()) {
-                output.writeLong(received.requestSeq().orElseThrow());
-            }
-            writeBytes(output, received.applicationMetadata());
-            output.writeInt(received.parts().size());
-            for (Message part : received.parts()) {
-                writeBytes(output, part.toByteArray());
-            }
-            output.flush();
-            return buffer.toByteArray();
-        } catch (IOException error) {
+        byte[] canonical = received.acceptedJournalRecord();
+        if (canonical.length == 0) {
             throw new IllegalStateException(
-                "failed to encode accepted Spot journal record",
-                error);
+                "canonical accepted Spot journal record is unavailable");
         }
+        return canonical;
     }
 
     static Record decode(byte[] encoded) {
-        try {
-            DataInputStream input = new DataInputStream(
-                new ByteArrayInputStream(encoded));
-            if (input.readInt() != MAGIC) {
-                throw new IllegalArgumentException(
-                    "invalid accepted Spot journal record");
-            }
-            int result = input.readInt();
-            ZLinkBackendRequestResult[] results = ZLinkBackendRequestResult.values();
-            if (result < 0 || result >= results.length) {
-                throw new IllegalArgumentException(
-                    "invalid accepted Spot journal result");
-            }
-            Optional<RoutingId> routingId = readRoutingId(input);
-            Optional<String> spotId = readSpotId(input);
-            Optional<Long> requestSequence = input.readBoolean()
-                ? Optional.of(input.readLong())
-                : Optional.empty();
-            byte[] metadata = readBytes(input);
-            int count = input.readInt();
-            if (count < 0 || count > 65_536) {
-                throw new IllegalArgumentException(
-                    "invalid accepted Spot journal part count");
-            }
-            List<byte[]> parts = new ArrayList<>(count);
-            for (int index = 0; index < count; index++) {
-                parts.add(readBytes(input));
-            }
-            if (input.available() != 0) {
-                throw new IllegalArgumentException(
-                    "accepted Spot journal record has trailing bytes");
-            }
+        if (systems.zlink.framework.runtime.service
+            .ZLinkServiceFrozenRecordCodec.isCanonical(encoded)) {
+            var decoded = systems.zlink.framework.runtime.service
+                .ZLinkServiceFrozenRecordCodec.decodeSpot(encoded);
             return new Record(
-                results[result],
-                routingId,
-                spotId,
-                requestSequence,
-                metadata,
-                parts);
-        } catch (IOException error) {
-            throw new IllegalArgumentException(
-                "invalid accepted Spot journal record",
-                error);
+                ZLinkBackendRequestResult.OK,
+                Optional.of(decoded.sourceNodeRid()),
+                decoded.sourceSpotId(),
+                decoded.replyRouteId(),
+                decoded.metadataFrame(),
+                List.of(
+                    decoded.packetName().getBytes(
+                        java.nio.charset.StandardCharsets.UTF_8),
+                    decoded.payload()),
+                decoded.operationHigh(),
+                decoded.operationLow(),
+                decoded.sourceOwnerId(),
+                decoded.sourceOwnerLeaseGeneration(),
+                decoded.sourceNodeGeneration(),
+                decoded.objectGeneration());
         }
+        throw new IllegalArgumentException(
+            "accepted Spot journal record is not canonical service-wire-v1");
     }
 
     private static void writeRoutingId(
@@ -171,8 +131,24 @@ final class ZLinkSpotAcceptedJournal {
         Optional<String> spotId,
         Optional<Long> requestSequence,
         byte[] applicationMetadata,
-        List<byte[]> parts) {
+        List<byte[]> parts,
+        long operationHigh,
+        long operationLow,
+        String sourceOwnerId,
+        long sourceOwnerLeaseGeneration,
+        long sourceNodeGeneration,
+        long objectGeneration) {
         Record {
+            if (operationHigh == 0 && operationLow == 0) {
+                throw new IllegalArgumentException(
+                    "accepted Spot operation identity must not be zero");
+            }
+            if (sourceOwnerId == null || sourceOwnerId.isBlank()
+                || sourceOwnerLeaseGeneration <= 0
+                || sourceNodeGeneration <= 0 || objectGeneration <= 0) {
+                throw new IllegalArgumentException(
+                    "accepted Spot source fence is invalid");
+            }
             applicationMetadata = applicationMetadata.clone();
             parts = parts.stream().map(byte[]::clone).toList();
         }

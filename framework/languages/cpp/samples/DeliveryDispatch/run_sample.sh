@@ -104,8 +104,8 @@ API_HTTP_URL="http://127.0.0.1:${API_HTTP_PORT}"
 # 파일로만 전달한다.
 write_role_config() {
   local role="$1"
-  local node_rid="${2:-}"
-  python3 - "$CONFIG_DIR/${role}.json" "$role" "$node_rid" "$FLOW_LOG_DIR" \
+  local instance_name="${2:-}"
+  python3 - "$CONFIG_DIR/${role}.json" "$role" "$instance_name" "$FLOW_LOG_DIR" \
     "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$API_HTTP_URL" "$DISPATCH_ROUTE" \
     "$DISPATCH_SPOT_ROUTER" "$DISPATCH_SPOT" "$TRACKING_ROUTE" \
     "$TRACKING_SPOT_ROUTER" "$TRACKING_SPOT" "$CUSTOMER_STREAM" \
@@ -118,7 +118,7 @@ import os
 import stat
 import sys
 
-(path, role_name, node_rid, flow_log_dir, redis_endpoint, redis_key_prefix,
+(path, role_name, instance_name, flow_log_dir, redis_endpoint, redis_key_prefix,
  api_http_url, dispatch_route, dispatch_spot_router, dispatch_spot, tracking_route,
  tracking_spot_router, tracking_spot, customer_stream, customer_spot_router,
  customer_spot, courier_stream, courier_session_route, courier_session_spot_router,
@@ -126,8 +126,8 @@ import sys
  courier_node2_route, courier_node2_router, courier_node2) = sys.argv[1:]
 
 role = {"name": role_name, "logDir": flow_log_dir}
-if node_rid:
-    role["nodeRid"] = node_rid
+if instance_name:
+    role["instanceName"] = instance_name
 
 document = {
     "sample": {

@@ -12,12 +12,6 @@ export interface ZLinkActorMembership {
   readonly membershipEpoch: bigint;
 }
 
-export interface ZLinkActorJoinRequest {
-  readonly actor: ActorRef;
-  readonly actorType: string;
-  readonly expectedMembershipEpoch: bigint;
-}
-
 export interface ZLinkLocationOptionValues {
   readonly heartbeatIntervalMs: number;
   readonly ownerLeaseTtlMs: number;

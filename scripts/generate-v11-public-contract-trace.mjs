@@ -1073,9 +1073,16 @@ const buildTrace = (config, {refreshReview = false} = {}) => {
     if (!baseline || !target
         || baseline.signatureSha256 !== override.baselineSignatureSha256
         || target.signatureSha256 !== override.targetSignatureSha256) {
+      const targetCandidates = baseline
+        ? members.filter(member => memberOwnerNameKey(member) === memberOwnerNameKey(baseline))
+          .map(member => `${member.identity} (${member.signatureSha256}) ${member.normalizedSignature}`)
+        : [];
       throw new Error(
         `member override does not name exact baseline and target signatures: ${override.baselineIdentity || '<missing>'}`
-        + ` (baseline=${baseline?.signatureSha256 || '<missing>'}, target=${target?.signatureSha256 || '<missing>'})`,
+        + ` (baseline=${baseline?.signatureSha256 || '<missing>'}, target=${target?.signatureSha256 || '<missing>'})`
+        + (targetCandidates.length > 0
+          ? `; target candidates: ${targetCandidates.join(' | ')}`
+          : '; target candidates: none'),
       );
     }
     if (classifiedTarget.has(target.identity)) {

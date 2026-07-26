@@ -1,10 +1,12 @@
 package systems.zlink.framework.runtime.spots;
 
 import java.util.List;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkAggregateRelocationCoordinator;
@@ -43,6 +45,73 @@ final class ZLinkUserSpotRetireScheduler {
                 : abortPrecommit(request, attempt.failure()));
     }
 
+    CompletionStage<Result> executeRemote(
+        RemoteRequest request,
+        ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(cancellation, "cancellation");
+        var sourceCommitted = new AtomicBoolean();
+        ZLinkSpotRetireControl.StageRequest stage =
+            request.source().stageRequest();
+        CompletionStage<Result> operation = request.client().stage(
+                stage.targetNodeRid(),
+                stage,
+                request.timeout())
+            .thenCompose(ignored -> request.source()
+                .freezeAndPrepareFinal(cancellation))
+            .thenCompose(prepared -> request.source().requireReplaySupport()
+                .thenApply(ignored -> prepared))
+            .thenCompose(prepared -> request.source()
+                .commitAuthority(cancellation))
+            .thenCompose(activated -> {
+                sourceCommitted.set(true);
+                request.source().commitSourceBarrier();
+                return CompletableFuture.completedFuture(activated);
+            })
+            .thenCompose(activated -> request.client().publish(
+                    stage.targetNodeRid(),
+                    stage.fence(),
+                    request.timeout())
+                .thenCompose(ignored -> request.sourceCleanup().cleanup())
+                .thenCompose(ignored -> request.source().completeSourceCleanup(
+                    activated,
+                    request.completedRoot(),
+                    cancellation))
+                .thenCompose(completed -> request.client()
+                    .finalizeAfterCompletion(
+                        stage.targetNodeRid(),
+                        stage.fence(),
+                        request.timeout())
+                    .thenCompose(ignored -> request.source()
+                        .discardInitialAfterCommit())
+                    .thenApply(ignored -> {
+                        request.source().releasePermitAfterCompletion();
+                        return new Result(activated, completed);
+                    })));
+        return operation.exceptionallyCompose(failure -> {
+            Throwable original = unwrap(failure);
+            if (sourceCommitted.get()) {
+                return CompletableFuture.failedFuture(original);
+            }
+            return request.client().abort(
+                    stage.targetNodeRid(),
+                    stage.fence(),
+                    request.timeout())
+                .handle((ignored, abortFailure) -> abortFailure)
+                .thenCompose(abortFailure -> request.source()
+                    .abortPrecommit()
+                    .handle((ignored, sourceFailure) -> {
+                        if (abortFailure != null) {
+                            original.addSuppressed(unwrap(abortFailure));
+                        }
+                        if (sourceFailure != null) {
+                            original.addSuppressed(unwrap(sourceFailure));
+                        }
+                        throw new CompletionException(original);
+                    }));
+        });
+    }
+
     private CompletionStage<Result> finishCommitted(
         Request request,
         ZLinkAggregateRelocationCoordinator.Published published,
@@ -53,14 +122,12 @@ final class ZLinkUserSpotRetireScheduler {
                 published,
                 request.completedRoot(),
                 cancellation))
-            .thenCompose(completed -> switchBindingRoutes(
-                    request.bindingRoutes())
-                .thenCompose(ignored -> request.normalizer().normalize())
-                .thenRun(request.admission()::open)
+            .thenCompose(completed -> request.completionFinalizer()
+                .finalizeAfterCompletion()
                 .thenApply(ignored -> new Result(published, completed)));
     }
 
-    private CompletionStage<Void> switchBindingRoutes(
+    private static CompletionStage<Void> switchBindingRoutes(
         List<BindingRouteSwitch> routes) {
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (BindingRouteSwitch route : routes) {
@@ -101,7 +168,33 @@ final class ZLinkUserSpotRetireScheduler {
         List<BindingRouteSwitch> bindingRoutes,
         SteadyNormalizer normalizer,
         Admission admission,
-        SourceSeal sourceSeal) {
+        SourceSeal sourceSeal,
+        CompletionFinalizer completionFinalizer) {
+        Request(
+            ZLinkAggregateRelocationCoordinator.Prepared prepared,
+            ZLinkUserSpotAggregateStagingOwner.Staged staged,
+            ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer,
+            SourceCleanup sourceCleanup,
+            byte[] completedRoot,
+            List<BindingRouteSwitch> bindingRoutes,
+            SteadyNormalizer normalizer,
+            Admission admission,
+            SourceSeal sourceSeal) {
+            this(
+                prepared,
+                staged,
+                replayer,
+                sourceCleanup,
+                completedRoot,
+                bindingRoutes,
+                normalizer,
+                admission,
+                sourceSeal,
+                () -> switchBindingRoutes(bindingRoutes)
+                    .thenCompose(ignored -> normalizer.normalize())
+                    .thenRun(admission::open));
+        }
+
         Request {
             Objects.requireNonNull(prepared, "prepared");
             Objects.requireNonNull(staged, "staged");
@@ -116,6 +209,8 @@ final class ZLinkUserSpotRetireScheduler {
             Objects.requireNonNull(normalizer, "normalizer");
             Objects.requireNonNull(admission, "admission");
             Objects.requireNonNull(sourceSeal, "sourceSeal");
+            Objects.requireNonNull(
+                completionFinalizer, "completionFinalizer");
         }
 
         @Override public byte[] completedRoot() {
@@ -126,6 +221,30 @@ final class ZLinkUserSpotRetireScheduler {
     record Result(
         ZLinkAggregateRelocationCoordinator.Published activated,
         ZLinkAggregateRelocationCoordinator.Published completed) {
+    }
+
+    record RemoteRequest(
+        ZLinkUserSpotRetireSourceBuilder.PreparedSource source,
+        ZLinkSpotRetireControl.Client client,
+        Duration timeout,
+        SourceCleanup sourceCleanup,
+        byte[] completedRoot) {
+        RemoteRequest {
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(client, "client");
+            Objects.requireNonNull(timeout, "timeout");
+            Objects.requireNonNull(sourceCleanup, "sourceCleanup");
+            completedRoot = Objects.requireNonNull(
+                completedRoot, "completedRoot").clone();
+            if (timeout.isZero() || timeout.isNegative()) {
+                throw new IllegalArgumentException(
+                    "remote Retire timeout must be positive");
+            }
+        }
+
+        @Override public byte[] completedRoot() {
+            return completedRoot.clone();
+        }
     }
 
     @FunctionalInterface
@@ -151,6 +270,24 @@ final class ZLinkUserSpotRetireScheduler {
     @FunctionalInterface
     interface Admission {
         void open();
+    }
+
+    @FunctionalInterface
+    interface CompletionFinalizer {
+        CompletionStage<Void> finalizeAfterCompletion();
+    }
+
+    static CompletionFinalizer remoteFinalizer(
+        ZLinkSpotRetireControl.Client client,
+        ZLinkSpotRetireControl.StageRequest request,
+        Duration timeout) {
+        Objects.requireNonNull(client, "client");
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(timeout, "timeout");
+        return () -> client.finalizeAfterCompletion(
+            request.targetNodeRid(),
+            request.fence(),
+            timeout);
     }
 
     interface Backend {
@@ -190,7 +327,7 @@ final class ZLinkUserSpotRetireScheduler {
         public CompletionStage<Void> publishAndReplay(
             ZLinkUserSpotAggregateStagingOwner.Staged staged,
             ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer) {
-            return target.publishAndReplay(staged, replayer);
+            return target.publishAndReplayHidden(staged, replayer);
         }
 
         @Override

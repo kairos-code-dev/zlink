@@ -41,6 +41,8 @@ export interface ZLinkFrameworkOptions {
   configureDispatch(): ZLinkDispatchOptionsBuilder;
   addLocationStore(store: ZLinkLocationStore): this;
   addRelocationStore(store: ZLinkRelocationStore): this;
+  setApplicationVersion(version: bigint): this;
+  setMaintenanceWave(waveId: string): this;
   setActorTransferTimeout(timeoutMs: number): this;
   /** Overrides the 5 second source forwarding window for stale actor references. */
   setActorTransferForwardWindow(timeoutMs: number): this;

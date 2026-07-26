@@ -39,6 +39,8 @@ export function createFrameworkRegistration(
   const routeChannelOptions = toRouteChannelOptions(options);
   const spotNodes = toSpotNodeMap(options.spotNodes);
   const registration: ZLinkFrameworkRegistration = {
+    applicationVersion: normalizeApplicationVersion(options.applicationVersion),
+    maintenanceWave: normalizeMaintenanceWave(options.maintenanceWave),
     messageSerializers: codecRegistry.registeredSerializers,
     codecs: codecRegistry.registration,
     requestTimeoutMs: normalizeOptionalPositiveInteger(options.requestTimeoutMs, 'requestTimeoutMs'),
@@ -72,6 +74,25 @@ export function createFrameworkRegistration(
   };
   validateFrameworkRegistration(registration, options);
   return registration;
+}
+
+const MAX_APPLICATION_VERSION = 9_223_372_036_854_775_807n;
+
+function normalizeApplicationVersion(value: bigint | undefined): bigint {
+  const version = value ?? 0n;
+  if (typeof version !== 'bigint' || version < 0n || version > MAX_APPLICATION_VERSION) {
+    throw new TypeError('applicationVersion must be a bigint in the signed 64-bit non-negative range.');
+  }
+  return version;
+}
+
+function normalizeMaintenanceWave(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const byteLength = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
+  if (typeof value !== 'string' || byteLength === 0 || byteLength > 255 || value.includes('\0')) {
+    throw new TypeError('maintenanceWave must be a 1..255 byte UTF-8 string without NUL.');
+  }
+  return value;
 }
 
 function normalizeNonNegativeInteger(value: number | undefined, name: string, fallback: number): number {

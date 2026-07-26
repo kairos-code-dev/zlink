@@ -44,9 +44,6 @@ public final class DeliveryDispatchClientScenario {
                         ZLinkStreamAssert.ensure(
                             courierBBound.courierId().equals("courier-b"),
                             "courier-b binding id mismatch");
-                        ZLinkStreamAssert.ensure(
-                            !courierABound.actor().nodeRid().equals(courierBBound.actor().nodeRid()),
-                            "courier bindings must use different actor nodes");
                         return null;
                     });
             })

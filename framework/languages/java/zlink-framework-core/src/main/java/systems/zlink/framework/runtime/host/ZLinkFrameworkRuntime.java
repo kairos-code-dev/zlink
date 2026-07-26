@@ -55,6 +55,8 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkMeshNodesRuntime meshNodes;
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
+    private final systems.zlink.framework.runtime.spots
+        .ZLinkUserSpotRetireRuntime spotRetire;
     private final ZLinkActorDirectory actorDirectory;
     private final ZLinkActorClient actorClient;
     private final ZLinkStreamRuntime streams;
@@ -248,6 +250,19 @@ public final class ZLinkFrameworkRuntime
                     handlerFactory,
                     this.meshDrains));
         }
+        if (this.locationStores != null
+            && this.locationStores.unifiedStore()
+                instanceof systems.zlink.framework.locations.ZLinkLocationStore store) {
+            var peerAuthorityResolver =
+                new systems.zlink.framework.runtime.locations
+                    .ZLinkMeshPeerAuthorityResolver(
+                        store,
+                        this.registration.locations().options()
+                            .pollingInterval());
+            this.meshNodes.nodesByName().values().forEach(
+                node -> node.setPeerAuthorityResolver(
+                    peerAuthorityResolver));
+        }
         this.objectDescriptors =
             this.locationRuntime != null
                 && this.locationStores.unifiedStore()
@@ -351,6 +366,31 @@ public final class ZLinkFrameworkRuntime
             this.spots,
             this.actors);
         this.streams = streamSubsystem.streams();
+        if (this.streams != null) {
+            this.meshNodes.nodesByName().values().forEach(node ->
+                node.setSessionRelocationRouteHandler(
+                    this.streams::handleSessionRelocationRoute));
+        }
+        this.spotRetire = this.spots != null
+            && this.actors != null
+            && this.locationStores != null
+            && this.locationStores.authorityStore() != null
+            && this.locationStores.unifiedStore()
+                instanceof systems.zlink.framework.locations
+                    .ZLinkLocationStore locationStore
+            && this.registration.relocationStore() != null
+            ? new systems.zlink.framework.runtime.spots
+                .ZLinkUserSpotRetireRuntime(
+                    this.spots,
+                    this.actors,
+                    this.registration.meshNodes(),
+                    this.meshNodes.nodesByName(),
+                    locationStore,
+                    this.locationStores.authorityStore(),
+                    this.registration.relocationStore(),
+                    this.registration.locations().options(),
+                    relocationAdapters)
+            : null;
 
         locationSubsystem.startup()
             .thenCompose(ignored ->
@@ -359,6 +399,18 @@ public final class ZLinkFrameworkRuntime
                         .completedFuture(null)
                     : this.objectDescriptors.publish(
                         ZLinkFrameworkRuntimeState.SERVING))
+            .thenCompose(ignored ->
+                this.locationStores == null
+                    || this.locationStores.unifiedStore() == null
+                    ? java.util.concurrent.CompletableFuture
+                        .completedFuture(null)
+                    : java.util.concurrent.CompletableFuture.allOf(
+                        this.meshNodes.nodesByName().values().stream()
+                            .map(node -> node
+                                .refreshLocalAuthorityFence()
+                                .toCompletableFuture())
+                            .toArray(
+                                java.util.concurrent.CompletableFuture[]::new)))
             .thenCompose(ignored -> spotSubsystem.startup())
             .thenCompose(ignored ->
                 this.authorityRouteRuntime == null
@@ -490,6 +542,53 @@ public final class ZLinkFrameworkRuntime
             throw new ZLinkConfigurationException("Location runtime is not configured");
         }
         return locationRuntimeQuery;
+    }
+
+    systems.zlink.framework.runtime.internal.monitoring
+        .ZLinkMeshNodeMonitoringProjection monitoringMeshNodeProjection(
+            String meshName,
+            RoutingId rid) {
+        var configured = registration.meshNodes().stream()
+            .filter(candidate -> candidate.meshName().equals(meshName))
+            .findFirst()
+            .orElseThrow(() -> new ZLinkConfigurationException(
+                "RouteMesh is not configured: " + meshName));
+        ZLinkInternalMeshNode node = meshNodes.nodesByName().get(meshName);
+        if (node == null) {
+            throw new ZLinkConfigurationException(
+                "RouteMesh is not configured: " + meshName);
+        }
+        if (locationStores != null
+            && locationStores.unifiedStore()
+                instanceof systems.zlink.framework.locations.ZLinkMeshNodeLocationStore store) {
+            try {
+                String continuation = null;
+                do {
+                    var page = store.listMeshNodes(
+                            meshName,
+                            new systems.zlink.framework.locations.ZLinkPageRequest(
+                                128,
+                                continuation))
+                        .toCompletableFuture()
+                        .join();
+                    for (var descriptor : page.items()) {
+                        if (descriptor.rid().equals(rid)) {
+                            return systems.zlink.framework.runtime.internal.monitoring
+                                .ZLinkMeshNodeMonitoringProjection.fromDescriptor(descriptor);
+                        }
+                    }
+                    continuation = page.continuationToken();
+                } while (continuation != null);
+            } catch (RuntimeException ignored) {
+                // Monitoring keeps the configured limits available while the
+                // descriptor store is unavailable.
+            }
+        }
+        return systems.zlink.framework.runtime.internal.monitoring
+            .ZLinkMeshNodeMonitoringProjection.fromRegistration(
+                configured,
+                node.status().descriptorRevision(),
+                node.placementWeight());
     }
 
     public systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider allocatedRoutingIds() {
@@ -682,7 +781,22 @@ public final class ZLinkFrameworkRuntime
                 return;
             }
             publishRuntimeState(ZLinkFrameworkRuntimeState.RETIRING);
-            startTermination(candidate, deadline);
+            java.time.Instant retireDeadline = terminationDeadline.get();
+            java.util.concurrent.CompletionStage<Void> relocation =
+                spotRetire == null
+                    ? java.util.concurrent.CompletableFuture
+                        .completedFuture(null)
+                    : spotRetire.relocateAll(retireDeadline);
+            relocation.whenComplete((ignored, relocationFailure) -> {
+                if (relocationFailure == null) {
+                    startTermination(candidate, deadline);
+                } else {
+                    startTermination(
+                        candidate,
+                        deadline,
+                        ZLinkTerminationReason.RELOCATION_FAILED);
+                }
+            });
         });
         return independentWaiter(candidate);
     }
@@ -691,6 +805,14 @@ public final class ZLinkFrameworkRuntime
         java.util.concurrent.CompletableFuture<ZLinkTerminationResult>
             completion,
         java.time.Duration deadline) {
+        startTermination(completion, deadline, null);
+    }
+
+    private void startTermination(
+        java.util.concurrent.CompletableFuture<ZLinkTerminationResult>
+            completion,
+        java.time.Duration deadline,
+        ZLinkTerminationReason forcedReason) {
         drain(deadline).whenComplete((result, failure) -> {
             if (completion.isDone()) {
                 return;
@@ -701,7 +823,12 @@ public final class ZLinkFrameworkRuntime
                 intent = ZLinkTerminationIntent.SHUTDOWN;
             }
             ZLinkTerminationResult terminal;
-            if (failure != null) {
+            if (forcedReason != null) {
+                terminal = new ZLinkTerminationResult(
+                    intent,
+                    ZLinkTerminationOutcome.FORCE_STOPPED,
+                    forcedReason);
+            } else if (failure != null) {
                 terminal = new ZLinkTerminationResult(
                     intent,
                     ZLinkTerminationOutcome.FORCE_STOPPED,
@@ -730,6 +857,23 @@ public final class ZLinkFrameworkRuntime
             return java.util.concurrent.CompletableFuture.completedFuture(
                 ZLinkTerminationReason.RUNTIME_NOT_READY);
         }
+        boolean locationStoreAvailable = storeLocationResolvers != null;
+        if (registration.channels().stream().anyMatch(channel ->
+                channel.blocksAutomaticRetire(locationStoreAvailable))
+            || registration.meshNodes().stream()
+                .anyMatch(node -> !node.peers().isEmpty())) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.MANUAL_TOPOLOGY_UNSUPPORTED);
+        }
+        return automaticRouteMeshRetirePreflight().thenCompose(reason ->
+            reason == ZLinkTerminationReason.NONE
+                ? retireWorkloadPreflight()
+                : java.util.concurrent.CompletableFuture.completedFuture(
+                    reason));
+    }
+
+    private java.util.concurrent.CompletionStage<ZLinkTerminationReason>
+        retireWorkloadPreflight() {
         boolean hasActiveRelocatableWork =
             (actors != null && !actors.activeActorTypes().isEmpty())
                 || (spots != null && spots.activeUserSpotCount() > 0);
@@ -739,10 +883,14 @@ public final class ZLinkFrameworkRuntime
                     .anyMatch(
                         systems.zlink.framework.runtime.mesh
                             .MeshNodeRegistration::requiresRelocationStore);
-            return java.util.concurrent.CompletableFuture.completedFuture(
-                relocationPolicyConfigured
-                    ? ZLinkTerminationReason.RELOCATION_FAILED
-                    : ZLinkTerminationReason.RELOCATION_DISABLED);
+            if (!relocationPolicyConfigured) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    ZLinkTerminationReason.RELOCATION_DISABLED);
+            }
+            if (spotRetire == null || !spotRetire.supportsActiveInventory()) {
+                return java.util.concurrent.CompletableFuture.completedFuture(
+                    ZLinkTerminationReason.STATE_INCOMPATIBLE);
+            }
         }
         if (actors == null || actors.activeActorTypes().isEmpty()) {
             return java.util.concurrent.CompletableFuture.completedFuture(
@@ -793,6 +941,83 @@ public final class ZLinkFrameworkRuntime
             });
         }
         return result;
+    }
+
+    private java.util.concurrent.CompletionStage<ZLinkTerminationReason>
+        automaticRouteMeshRetirePreflight() {
+        if (registration.meshNodes().isEmpty()) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.NONE);
+        }
+        if (storeLocationResolvers == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.STORE_UNAVAILABLE);
+        }
+        java.util.concurrent.CompletionStage<ZLinkTerminationReason> result =
+            java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.NONE);
+        for (var mesh : registration.meshNodes().stream()
+            .sorted(java.util.Comparator.comparing(
+                systems.zlink.framework.runtime.mesh.MeshNodeRegistration
+                    ::meshName))
+            .toList()) {
+            result = result.thenCompose(current -> {
+                if (current != ZLinkTerminationReason.NONE) {
+                    return java.util.concurrent.CompletableFuture
+                        .completedFuture(current);
+                }
+                var local = meshNodes.nodesByName().get(mesh.meshName());
+                if (local == null) {
+                    return java.util.concurrent.CompletableFuture
+                        .completedFuture(
+                            ZLinkTerminationReason.TARGET_UNAVAILABLE);
+                }
+                return storeLocationResolvers.listLivePeers(
+                    new systems.zlink.framework.locations
+                        .ZLinkPeerLocationFilter(
+                            systems.zlink.framework.locations
+                                .ZLinkLocationAutoConnectType.ROUTE_MESH,
+                            mesh.meshName(),
+                            systems.zlink.framework.locations
+                                .ZLinkLocationRole.ROUTER,
+                            null,
+                            null))
+                    .thenApply(snapshot -> {
+                        return hasExactReadyReplacement(
+                            snapshot,
+                            local.status().routingId(),
+                            local.peers())
+                            ? ZLinkTerminationReason.NONE
+                            : ZLinkTerminationReason.TARGET_UNAVAILABLE;
+                    });
+            });
+        }
+        return result;
+    }
+
+    static boolean hasExactReadyReplacement(
+        java.util.List<systems.zlink.framework.locations.ZLinkPeerLocation>
+            descriptorSnapshot,
+        RoutingId localNodeRid,
+        java.util.List<systems.zlink.contracts.service.spot.MeshPeerEntry>
+            corePeers) {
+        java.util.Objects.requireNonNull(
+            descriptorSnapshot, "descriptorSnapshot");
+        java.util.Objects.requireNonNull(localNodeRid, "localNodeRid");
+        java.util.Objects.requireNonNull(corePeers, "corePeers");
+        var replacements = descriptorSnapshot.stream()
+            .filter(peer -> !peer.draining())
+            .filter(peer -> !peer.nodeRid().equals(localNodeRid))
+            .toList();
+        return !replacements.isEmpty()
+            && replacements.stream().allMatch(descriptor ->
+                corePeers.stream().anyMatch(peer ->
+                    peer.routingId().equals(descriptor.nodeRid())
+                        && peer.lifecycleGeneration()
+                            == descriptor.generation()
+                        && peer.state()
+                            == systems.zlink.contracts.service.spot
+                                .MeshPeerState.ADMITTED));
     }
 
     private systems.zlink.framework.monitoring

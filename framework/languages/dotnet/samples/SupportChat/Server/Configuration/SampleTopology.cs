@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Systems.Zlink;
 
 namespace SupportChat.Server.Configuration;
 
@@ -7,13 +6,11 @@ public sealed record SampleTopology(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string MeshEndpoint,
-    string StreamEndpoint,
-    RoutingId MeshRoutingId)
+    string StreamEndpoint)
 {
     public SampleSessionNode PrimarySession => new(
         MeshEndpoint,
-        StreamEndpoint,
-        MeshRoutingId);
+        StreamEndpoint);
 
     public static SampleRuntimeConfiguration LoadApi(string[] args) => Load(args, "api");
 
@@ -36,14 +33,7 @@ public sealed record SampleTopology(
             settings.RedisEndpoint,
             settings.RedisKeyPrefix,
             settings.MeshEndpoint,
-            settings.StreamEndpoint,
-            RoutingId.From(role switch
-            {
-                "api" => "supportchat-api",
-                "support" => "supportchat-support",
-                "session" => "supportchat-session",
-                _ => throw new InvalidOperationException($"Unknown SupportChat role '{role}'.")
-            }));
+            settings.StreamEndpoint);
         return new SampleRuntimeConfiguration(topology, settings.LogDirectory);
     }
 }
@@ -87,5 +77,4 @@ public sealed class SampleConfiguration
 
 public sealed record SampleSessionNode(
     string MeshEndpoint,
-    string StreamEndpoint,
-    RoutingId RoutingId);
+    string StreamEndpoint);

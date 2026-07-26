@@ -124,16 +124,14 @@ def api(instance_name, bind_url, mesh_endpoint):
         }
     }
 
-def play(instance_name, play_index, mesh_endpoint, peer_mesh_endpoints, play_endpoint):
+def play(instance_name, mesh_endpoint, peer_mesh_endpoints, play_endpoint):
     return {
         "Sample": {
             "InstanceName": instance_name,
-            "PlayIndex": play_index,
             "MeshEndpoint": mesh_endpoint,
             "PeerMeshEndpoints": peer_mesh_endpoints,
             "PlayEndpoint": play_endpoint,
             "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
-            "PlayMeshNodeRid": f"play-node-{play_index + 1}",
             "RedisEndpoint": "${REDIS_ENDPOINT}",
             "RedisKeyPrefix": "${TICTACTOE_REDIS_KEY_PREFIX}",
             "LogDirectory": "${SAMPLE_LOG_DIR}"
@@ -143,8 +141,8 @@ def play(instance_name, play_index, mesh_endpoint, peer_mesh_endpoints, play_end
 for path, settings in [
     (api_a_path, api("api-a", "${API_A_BIND_URL}", "${API_A_MESH_ENDPOINT}")),
     (api_b_path, api("api-b", "${API_B_BIND_URL}", "${API_B_MESH_ENDPOINT}")),
-    (play_a_path, play("play-a", 0, "${PLAY_A_MESH_ENDPOINT}", [], "${PLAY_A_ENDPOINT}")),
-    (play_b_path, play("play-b", 1, "${PLAY_B_MESH_ENDPOINT}", ["${PLAY_A_MESH_ENDPOINT}"], "${PLAY_B_ENDPOINT}")),
+    (play_a_path, play("play-a", "${PLAY_A_MESH_ENDPOINT}", [], "${PLAY_A_ENDPOINT}")),
+    (play_b_path, play("play-b", "${PLAY_B_MESH_ENDPOINT}", ["${PLAY_A_MESH_ENDPOINT}"], "${PLAY_B_ENDPOINT}")),
     (client_path, {"Sample": {"ApiPublicUrls": ["${API_A_PUBLIC_URL}"], "LogDirectory": "${SAMPLE_LOG_DIR}"}}),
 ]:
     with open(path, "w", encoding="utf-8") as output:

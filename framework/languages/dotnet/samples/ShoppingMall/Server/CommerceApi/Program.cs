@@ -35,7 +35,6 @@ internal static class Program
 
         builder.WebHost.UseUrls(instance.HttpUrl);
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton(new CommerceApiInstanceOptions(instance.InstanceId));
         builder.Services.AddSingleton(new RedisCommerceStores(topology));
         builder.Services.AddSingleton<IOrderReadModelStore>(static provider =>
             provider.GetRequiredService<RedisCommerceStores>());
@@ -59,13 +58,9 @@ internal static class Program
             options.AddHandlersFromAssemblyOf(typeof(Program));
             var mesh = options.AddRouteMesh(SampleNames.MeshName)
                 .Listen(instance.MeshEndpoint)
-                .SetRoutingId(instance.MeshRid);
-            foreach (var workflow in new[] { "workflow-a", "workflow-b" })
-            {
-                var channelName = SampleNames.OrderWorkflowChannelFor(workflow);
-                mesh.ChannelName(channelName).SetWeight(0);
-            }
-            mesh.ChannelName(SampleNames.OrderProjectionChannel).SetWeight(0);
+                .SetRoutingIdPrefix("commerce-api");
+            mesh.Channel(SampleNames.OrderWorkflowChannel).Client();
+            mesh.Channel(SampleNames.OrderProjectionChannel).Client();
         });
 
         var app = builder.Build();
@@ -138,7 +133,6 @@ internal static class Program
             await commerce.CreatePendingMappingAsync(
                 request.IdempotencyKey,
                 request.OrderId,
-                request.OwnerInstanceId,
                 cancellationToken);
             return Results.Ok();
         });
@@ -160,7 +154,6 @@ internal static class Program
         app.MapPost("/self-check/assert", async (
             ServerAssertionReq request,
             RedisCommerceStores stores,
-            SampleTopology topology,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken) =>
         {
@@ -180,12 +173,7 @@ internal static class Program
                 .Append($"paymentFailures={evidence.PaymentFailureCount}")
                 .Append($"releasedReservations={evidence.ReleasedReservationCount}")
                 .Append($"startedIdempotency={evidence.StartedIdempotencyCount}")
-                .Append($"owners={topology.ForOrderId(request.SuccessfulOrderId).InstanceId},{topology.ForOrderId(request.ScaleOutOrderId).InstanceId}")
                 .ToArray();
-            var ownersDiffer = !string.Equals(
-                topology.ForOrderId(request.SuccessfulOrderId).InstanceId,
-                topology.ForOrderId(request.ScaleOutOrderId).InstanceId,
-                StringComparison.Ordinal);
             var passed =
                 HasSequence(evidence, request.SuccessfulOrderId,
                     nameof(OrderStartedEvent),
@@ -224,8 +212,7 @@ internal static class Program
                     nameof(OrderConfirmedEvent))
                 && evidence.ReleasedReservationCount >= 1
                 && evidence.PaymentFailureCount >= 1
-                && evidence.StartedIdempotencyCount == 7
-                && ownersDiffer;
+                && evidence.StartedIdempotencyCount == 7;
             loggerFactory.CreateLogger("ShoppingMall.Server.CommerceApi")
                 .LogInformation("shoppingmall evidence: {Evidence}", string.Join("; ", lines));
             return Results.Ok(new ServerAssertionRes(passed, lines));
@@ -256,8 +243,7 @@ internal static class Program
 
 internal sealed record PendingMappingHttpReq(
     string IdempotencyKey,
-    string OrderId,
-    string OwnerInstanceId);
+    string OrderId);
 
 internal sealed record ServerAssertionReq(
     string SuccessfulOrderId,

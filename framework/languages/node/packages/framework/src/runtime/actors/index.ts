@@ -136,6 +136,7 @@ export {
 export class DefaultZLinkActorManager implements ZLinkActorManager {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
   private readonly actorMeshNames = new Map<string, string>();
+  private readonly relocationStaged = new Set<string>();
   private readonly creation: ZLinkActorCreationCoordinator;
   private readonly transferredActorRollback: ZLinkTransferredActorRollbackCoordinator;
 
@@ -152,6 +153,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
   async find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
     throwIfAborted(signal);
+    if (this.relocationStaged.has(actorId)) return undefined;
     const state = this.states.get(actorId);
     if (state?.actor !== undefined) {
       return this.actorRefForState(state);
@@ -367,7 +369,82 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
   async findActor(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined> {
     throwIfAborted(signal);
+    if (this.relocationStaged.has(actorId)) return undefined;
     return this.states.get(actorId)?.actor;
+  }
+
+  async prepareRelocationActor(
+    actorId: string,
+    actorType: string,
+    objectGeneration: bigint,
+    authorityOwnerGeneration: bigint,
+    spotId: RoutingId,
+    spotGeneration: bigint,
+    membershipEpoch: bigint,
+    signal?: AbortSignal
+  ): Promise<ZLinkActor> {
+    if (this.states.has(actorId) || this.relocationStaged.has(actorId)) {
+      throw new Error(`Actor '${actorId}' already exists on the relocation target.`);
+    }
+    const node = this.options.nativeActorNodeProvider?.() ?? this.options.nativeActorNode;
+    const restore = node?.restoreActorAuthority;
+    if (node === undefined || restore === undefined) {
+      throw new Error('Actor relocation requires native authority restore support.');
+    }
+    this.relocationStaged.add(actorId);
+    let nativeRef: ZLinkBackendActorRef | undefined;
+    try {
+      nativeRef = restore.call(
+        node,
+        actorId,
+        actorType,
+        objectGeneration,
+        authorityOwnerGeneration,
+        String(spotId),
+        spotGeneration,
+        membershipEpoch
+      );
+      const actor = await this.getOrCreateWithNativeRef(
+        actorId,
+        actorType,
+        nativeRef,
+        undefined,
+        signal
+      );
+      const state = this.states.get(actorId)!;
+      state.setLocationGeneration(objectGeneration);
+      state.setJoinedSpot(spotId, undefined, membershipEpoch);
+      return actor;
+    } catch (error) {
+      if (nativeRef !== undefined) node.discardRelocatedActor?.(nativeRef);
+      this.relocationStaged.delete(actorId);
+      this.states.delete(actorId);
+      this.actorMeshNames.delete(actorId);
+      throw error;
+    }
+  }
+
+  publishRelocationActor(actorId: string): void {
+    if (!this.states.has(actorId)) {
+      throw new Error(`Actor '${actorId}' relocation staging is missing.`);
+    }
+    this.relocationStaged.delete(actorId);
+  }
+
+  abortRelocationActor(actorId: string): void {
+    const state = this.states.get(actorId);
+    const node = this.options.nativeActorNodeProvider?.() ?? this.options.nativeActorNode;
+    if (state?.nativeActorRef !== undefined) {
+      node?.discardRelocatedActor?.(state.nativeActorRef);
+    }
+    state?.clearAfterDestroy();
+    this.states.delete(actorId);
+    this.actorMeshNames.delete(actorId);
+    this.relocationStaged.delete(actorId);
+  }
+
+  completeRelocationSource(actorId: string): void {
+    this.abortRelocationActor(actorId);
   }
 
   async getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {

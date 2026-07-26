@@ -1196,16 +1196,18 @@
       { "name": "DeadlineExceeded", "wireValue": 5 },
       { "name": "RelocationFailed", "wireValue": 6 },
       { "name": "TeardownFailed", "wireValue": 7 },
-      { "name": "RuntimeNotReady", "wireValue": 8 }
+      { "name": "RuntimeNotReady", "wireValue": 8 },
+      { "name": "ManualTopologyUnsupported", "wireValue": 9 }
     ],
     "allowedPairs": [
       { "outcome": "Stopped", "reasons": ["None"] },
-      { "outcome": "Blocked", "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
+      { "outcome": "Blocked", "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady", "ManualTopologyUnsupported"] },
       { "outcome": "ForceStopped", "reasons": ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"] }
     ],
     "undefinedPair": "protocol-error",
     "relocationCeilingBeforeDraining": "Blocked/StateIncompatible",
     "preCapturedDeadline": "Blocked/DeadlineExceeded",
+    "peerReadinessDeadline": "Blocked/TargetUnavailable",
     "postCapturedDeadline": "ForceStopped/DeadlineExceeded",
     "teardownFailure": "ForceStopped/TeardownFailed"
   },

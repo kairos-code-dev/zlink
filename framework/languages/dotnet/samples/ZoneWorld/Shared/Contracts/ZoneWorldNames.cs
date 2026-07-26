@@ -19,15 +19,6 @@ public static class ZoneWorldNames
     /// <summary>Client-server channel: ZoneNode reports to Ops.</summary>
     public const string ReportChannel = "zoneworld.report";
 
-    /// <summary>Client-server channel: Gateway ensures a player actor on a ZoneNode.</summary>
-    public const string ActorsChannel = "zoneworld.actors";
-
-    /// <summary>
-    /// Owner-consistent channel. Each ZoneNode serves the channel named after
-    /// itself, so a call reaches that node and no other (§8.4).
-    /// </summary>
-    public static string OpsChannel(string nodeId) => $"zoneworld.ops.{nodeId}";
-
     public const string AnnounceTopic = "world.announce";
     public const string MaintenanceTopic = "world.maintenance";
 
@@ -61,7 +52,6 @@ public static class ZoneWorldNames
 
 public static class HandlerGroups
 {
-    public const string ZoneActors = "zone-actors";
     public const string ZoneOps = "zone-ops";
     public const string ZoneBroadcast = "zone-broadcast";
     public const string BroadcastProbe = "broadcast-probe";

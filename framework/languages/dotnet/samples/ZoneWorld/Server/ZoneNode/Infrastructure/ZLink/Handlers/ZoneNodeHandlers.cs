@@ -1,4 +1,3 @@
-using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
@@ -11,57 +10,19 @@ using ZoneWorld.Shared.Contracts;
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 
 /// <summary>
-/// Ensures the player actor exists and reports where it landed (channel
-/// <c>zoneworld.actors</c>). Only the node that hosts the spawn zone serves this channel,
-/// because that node is the authority for the maintenance admission check (§2.3).
-/// </summary>
-[ZLinkHandlerGroup(HandlerGroups.ZoneActors)]
-internal sealed class EnsurePlayerActorHandler(
-    IZLinkActorManager actors,
-    ILogger<EnsurePlayerActorHandler> logger)
-    : IZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
-{
-    public async ValueTask<EnsurePlayerActorRes> HandleAsync(
-        EnsurePlayerActorReq request,
-        ZLinkRequestContext context,
-        CancellationToken cancellationToken)
-    {
-        // The directory owns world-wide player identity and returns a transferred actor when
-        // one already exists. World entry remains a separate step after session binding so
-        // the actor's current node receives the route used for server push.
-        var actorRef = await actors
-            .GetOrCreate(request.PlayerId, ZoneWorldNames.PlayerActorType)
-            .Request(ZLinkMessage.Empty)
-            .Async(cancellationToken) switch
-        {
-            ZLinkActorCreateResult.Existing value => value.Actor,
-            ZLinkActorCreateResult.Created value => value.Actor,
-            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
-        };
-
-        logger.LogInformation("player actor ensured. player={PlayerId}", request.PlayerId);
-
-        return new EnsurePlayerActorRes(
-            request.PlayerId,
-            new ActorRefWire(actorRef.NodeRid.ToString(), actorRef.ActorId, actorRef.Generation));
-    }
-}
-
-/// <summary>
-/// Switches this node's maintenance mode (owner-consistent channel
-/// <c>zoneworld.ops.&lt;NodeId&gt;</c>). Ops calls the channel named after the node, so the
-/// call reaches that node and no other — a plain client-server channel would spread it
-/// across peers (§8.4).
+/// Switches this node's maintenance mode. Ops uses the NodeRid from its current runtime
+/// snapshot for this immediate node-direct request.
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.ZoneOps)]
 internal sealed class ApplyNodeMaintenanceHandler(
     NodeMaintenancePolicy maintenance,
+    NodePlayerCensus census,
     ILogger<ApplyNodeMaintenanceHandler> logger)
-    : IZLinkRequestHandler<ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes>
+    : IZLinkRouteRequestHandler<ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes>
 {
     public ValueTask<ApplyNodeMaintenanceRes> HandleAsync(
         ApplyNodeMaintenanceReq request,
-        ZLinkRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         maintenance.Apply(maintenance.OwnNodeId, request.Enabled);
@@ -73,7 +34,7 @@ internal sealed class ApplyNodeMaintenanceHandler(
         return ValueTask.FromResult(new ApplyNodeMaintenanceRes(
             maintenance.OwnNodeId,
             request.Enabled,
-            ZoneTopology.ZonesOf(maintenance.OwnNodeId)));
+            census.ZoneIds));
     }
 }
 
@@ -82,17 +43,17 @@ internal sealed class GetNodeDiagnosticsHandler(
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     ILogger<GetNodeDiagnosticsHandler> logger)
-    : IZLinkRequestHandler<GetNodeDiagnosticsReq, GetNodeDiagnosticsRes>
+    : IZLinkRouteRequestHandler<GetNodeDiagnosticsReq, GetNodeDiagnosticsRes>
 {
     public ValueTask<GetNodeDiagnosticsRes> HandleAsync(
         GetNodeDiagnosticsReq request,
-        ZLinkRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation("node diagnostics requested. node={NodeId}", maintenance.OwnNodeId);
         return ValueTask.FromResult(new GetNodeDiagnosticsRes(
             maintenance.OwnNodeId,
-            ZoneTopology.ZonesOf(maintenance.OwnNodeId),
+            census.ZoneIds,
             census.TotalPlayers,
             maintenance.IsOwnNodeUnderMaintenance));
     }

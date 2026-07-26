@@ -34,11 +34,11 @@ function createRoomSettings(roomSeqOrMode: number | BingoMode = 0, mode: BingoMo
   };
 }
 
-function createObserverRoomSettings(observedRoomId: string, ownerNodeRid: string): BingoRoomSettings {
+function createObserverRoomSettings(observedRoomId: string, observerActorId: string): BingoRoomSettings {
   const maxDrawNumber = 15;
   return {
     mode: 'two-player',
-    roomName: `Bingo Reward Observer ${ownerNodeRid}`,
+    roomName: `Bingo Reward Observer ${observerActorId}`,
     requiredPlayers: 1,
     maxDrawNumber,
     drawDeck: Array.from({ length: maxDrawNumber }, (_value, index) => index + 1),

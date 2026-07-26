@@ -30,12 +30,6 @@ data class SampleTopology(
 
     fun requiredStoreDirectory(): String = required(storeDirectory, "storeDirectory")
 
-    fun workflowInstanceForOrder(orderId: String): String {
-        var sum = 0
-        for (character in orderId) sum = (sum * 31 + character.code) and 0x7fffffff
-        return if (sum % 2 == 1) SampleNames.WorkflowInstanceB else SampleNames.WorkflowInstanceA
-    }
-
     fun failedPlaceholder(orderId: String): OrderState =
         OrderState(orderId, OrderStatuses.Failed, null, null, null, "order does not exist", null, null,
             System.currentTimeMillis())

@@ -28,6 +28,8 @@ import type {
 } from './ObjectRoles';
 
 export interface ZLinkFrameworkRegistration {
+  readonly applicationVersion: bigint;
+  readonly maintenanceWave?: string;
   readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly codecs: ZLinkCodecRegistration;
   readonly requestTimeoutMs?: number;
@@ -93,6 +95,8 @@ export interface ZLinkCodecRegistryOptions {
 }
 
 export interface ZLinkFrameworkRegistrationOptions {
+  readonly applicationVersion?: bigint;
+  readonly maintenanceWave?: string;
   readonly codecs?: ZLinkCodecRegistryOptions;
   readonly requestTimeoutMs?: number;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];

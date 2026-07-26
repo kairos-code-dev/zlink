@@ -16,7 +16,6 @@ namespace zlink::samples::supportchat
 {
 using namespace zlink::framework;
 
-inline constexpr const char *supportchat_session_node = "supportchat-session";
 inline constexpr const char *support_user_actor_type = "support-user";
 inline constexpr const char *conversation_id_metadata_key = "ConversationId";
 
@@ -75,7 +74,7 @@ class supportchat_session_t final : public packet_stream_session_t
             _identity_display_name = authenticated.display_name;
             _identity_role = authenticated.role;
             co_await bound.context ()
-              .join_entry_spot (node_rid_t::from_string ("supportchat-support"), ensure)
+              .join_entry_spot (ensure)
               .async ();
             stream.reply_packet (zlink::message_t::from_json (authenticated)).submit ();
             co_return;
@@ -194,11 +193,11 @@ int main (int argc, char **argv)
         options.add_client_server_channel ("supportchat.api").enable_client ();
         auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
         actor_route.listen (topology.session_actor_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (supportchat_session_node))
+          .use_allocated_routing_id (16, "support-session-route")
           .channel_name ("supportchat.session.actor.route");
         auto support_spot = options.add_route_mesh ("supportchat.support.spot");
         support_spot.channel_name ("supportchat.session.actor.route");
-        support_spot.set_routing_id (zlink::routing_id_t::from (supportchat_session_node))
+        support_spot.use_allocated_routing_id (16, "support-session")
           .listen (topology.session_spot_router_endpoint);
         options.add_stream_node ("supportchat-session-stream")
           .bind (topology.session_stream_endpoint)

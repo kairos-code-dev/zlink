@@ -35,8 +35,7 @@ function createShoppingMallCommerceApiModule(role: string): Function {
           builder.addLocationStore(createShoppingMallLocationStore(config));
           shoppingMallLocationOptions(builder.configureLocations());
           const workflowMesh = builder.addRouteMesh(SampleNames.orderWorkflowSpotMesh)
-            .listen('tcp://127.0.0.1:0')
-            .routingId(`${role}-workflow-client`);
+            .listen('tcp://127.0.0.1:0');
           workflowMesh.channelName(SampleNames.orderWorkflowChannel).setWeight(0);
           workflowMesh.channelName(SampleNames.orderWorkflowSpotMesh).setWeight(0);
           return builder.build();

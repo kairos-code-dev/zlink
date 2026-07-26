@@ -400,46 +400,80 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        var previousActivation = await StageActorMembershipAsync(actor, cancellationToken)
-            .ConfigureAwait(false);
-        if (ReferenceEquals(previousActivation, this)) return;
+        ZLinkSpotActivation? previousActivation;
         try
         {
-            if (_runtime.LocationLifecycle is { } locations)
-            {
-                _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
-                await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
-                        actor.Context.ActorId,
-                        SpotId,
-                        spotGeneration,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"location_committed actor={actor.Context.ActorId} spot={SpotId}");
-            }
+            previousActivation = await _runtime.CommitActorToSpotAsync(
+                    this,
+                    actor,
+                    async ct =>
+                    {
+                        if (_runtime.LocationLifecycle is not { } locations)
+                            return;
+                        _ = locations.SpotLocations.TryGetTrackedGeneration(
+                            SpotId,
+                            out var spotGeneration);
+                        await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
+                                actor.Context.ActorId,
+                                SpotId,
+                                spotGeneration,
+                                ct)
+                            .ConfigureAwait(false);
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"location_committed actor={actor.Context.ActorId} spot={SpotId}");
+                    },
+                    () =>
+                    {
+                        _actorsLeavingForEntrySpot.Remove(actor.Context.ActorId);
+                        _actors.Add(actor);
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch
         {
-            _actors.RemoveIfCurrent(actor);
-            await _runtime.RestoreActorSpotAfterFailedCommitAsync(
-                    this,
-                    previousActivation,
-                    actor,
-                    CancellationToken.None)
-                .ConfigureAwait(false);
             throw;
         }
 
-        await NotifyJoinedActorCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+        if (ReferenceEquals(previousActivation, this)) return;
+
+        await RetryCommittedMembershipCallbackAsync(
+                ct => NotifyJoinedActorCoreAsync(actor, ct))
+            .ConfigureAwait(false);
         if (previousActivation is null)
-            await _runtime.NotifyEntrySpotActorLeftAsync(actor, NodeRid, cancellationToken)
+            await RetryCommittedMembershipCallbackAsync(
+                    ct => _runtime.NotifyEntrySpotActorLeftAsync(
+                        actor,
+                        NodeRid,
+                        ct))
                 .ConfigureAwait(false);
         else if (!ReferenceEquals(previousActivation, this)
                  && !previousActivation.IsDisposed)
-            await previousActivation.NotifyActorLeftAfterCommittedMembershipAsync(
-                    actor,
-                    cancellationToken)
+            await RetryCommittedMembershipCallbackAsync(
+                    ct => previousActivation
+                        .NotifyActorLeftAfterCommittedMembershipAsync(actor, ct))
                 .ConfigureAwait(false);
+    }
+
+    private static async ValueTask RetryCommittedMembershipCallbackAsync(
+        Func<CancellationToken, ValueTask> callback)
+    {
+        while (true)
+        {
+            try
+            {
+                await callback(CancellationToken.None).ConfigureAwait(false);
+                return;
+            }
+            catch
+            {
+                // Same-node membership is already durable. Keep the current
+                // serial turn sealed and retry post-commit lifecycle work;
+                // caller cancellation cannot turn Accepted back into Failed.
+                await Task.Delay(TimeSpan.FromMilliseconds(10), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+        }
     }
 
     private async ValueTask<ZLinkSpotActivation?> StageActorMembershipAsync(

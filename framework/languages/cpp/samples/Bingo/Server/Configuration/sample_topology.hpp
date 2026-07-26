@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 
 #include <stdexcept>
@@ -86,10 +85,6 @@ struct sample_topology_t
         if (auto value = section.get ("sessionRouterRid")) {
             topology.session_a_router_rid = *value;
         }
-        topology.session_a_spot_node_rid =
-          section.get ("sessionASpotNodeRid").value_or (topology.session_a_spot_node_rid);
-        topology.session_b_spot_node_rid =
-          section.get ("sessionBSpotNodeRid").value_or (topology.session_b_spot_node_rid);
         topology.session_a_pub_rid =
           section.get ("sessionAPubRid").value_or (topology.session_a_pub_rid);
         topology.session_b_pub_rid =
@@ -97,11 +92,6 @@ struct sample_topology_t
         if (auto value = section.get ("sessionPubRid")) {
             topology.session_a_pub_rid = *value;
         }
-        if (auto value = section.get ("playRid")) {
-            topology.play_rid = zlink::routing_id_t::from (*value);
-        }
-        topology.play_a_node_rid = section.get ("playANodeRid").value_or (topology.play_a_node_rid);
-        topology.play_b_node_rid = section.get ("playBNodeRid").value_or (topology.play_b_node_rid);
         topology.api_a_route_rid =
           section.get ("apiAPlayRouteRid").value_or (topology.api_a_route_rid);
         topology.api_b_route_rid =
@@ -140,10 +130,6 @@ struct sample_topology_t
     std::string api_node = "a";
     std::string play_node = "a";
     std::string session_node = "a";
-    std::string play_a_node_rid = "2201";
-    std::string play_b_node_rid = "2202";
-    std::string session_a_spot_node_rid = "1201-spot";
-    std::string session_b_spot_node_rid = "1202-spot";
     std::string api_a_route_rid = "3301";
     std::string api_b_route_rid = "3302";
     std::string session_a_route_rid = "1201";
@@ -154,7 +140,6 @@ struct sample_topology_t
     std::string session_b_router_rid = "1103";
     std::string session_a_pub_rid = "1102";
     std::string session_b_pub_rid = "1104";
-    zlink::routing_id_t play_rid = zlink::routing_id_t::from ("2202");
 
     std::string selected_api_channel_endpoint () const
     {
@@ -196,24 +181,9 @@ struct sample_topology_t
         return play_node == "b" ? play_b_route_endpoint : play_a_route_endpoint;
     }
 
-    std::string selected_session_route_rid () const
-    {
-        return session_node == "b" ? session_b_route_rid : session_a_route_rid;
-    }
-
-    std::string selected_session_router_rid () const
-    {
-        return session_node == "b" ? session_b_router_rid : session_a_router_rid;
-    }
-
     std::string selected_session_pub_rid () const
     {
         return session_node == "b" ? session_b_pub_rid : session_a_pub_rid;
-    }
-
-    std::string selected_session_spot_node_rid () const
-    {
-        return session_node == "b" ? session_b_spot_node_rid : session_a_spot_node_rid;
     }
 
     std::string selected_play_spot_endpoint () const
@@ -234,26 +204,6 @@ struct sample_topology_t
     std::string peer_play_spot_router_endpoint () const
     {
         return play_node == "b" ? play_a_spot_router_endpoint : play_b_spot_router_endpoint;
-    }
-
-    std::string selected_play_node_rid () const
-    {
-        return play_node == "b" ? play_b_node_rid : play_a_node_rid;
-    }
-
-    std::string peer_play_node_rid () const
-    {
-        return play_node == "b" ? play_a_node_rid : play_b_node_rid;
-    }
-
-    std::string preferred_play_node_rid () const
-    {
-        return session_node == "b" ? play_b_node_rid : play_a_node_rid;
-    }
-
-    std::string preferred_play_spot_router_endpoint () const
-    {
-        return session_node == "b" ? play_b_spot_router_endpoint : play_a_spot_router_endpoint;
     }
 
     std::string selected_stream_endpoint () const

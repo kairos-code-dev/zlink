@@ -10,30 +10,9 @@
 namespace zlink::samples::gamequest
 {
 
-inline int owner_index (const std::string &player_id)
-{
-    int sum = 0;
-    for (const unsigned char value : player_id) {
-        sum += static_cast<int> (value);
-    }
-    return sum % 2;
-}
-
-inline zlink::routing_id_t owner_route_rid (const std::string &player_id)
-{
-    return zlink::routing_id_t::from (
-      owner_index (player_id) == 1 ? sample_names_t::mission_b_rid
-                                   : sample_names_t::mission_a_rid);
-}
-
 inline zlink::framework::spot_rid_t player_spot_rid (const std::string &player_id)
 {
     return zlink::framework::spot_rid_t::from_string ("player:" + player_id);
-}
-
-inline std::string owner_mission_id (const std::string &player_id)
-{
-    return owner_index (player_id) == 1 ? "mission-b" : "mission-a";
 }
 
 struct sample_topology_t
@@ -141,15 +120,6 @@ struct sample_topology_t
         return api_name == "api-b" ? api_b_spot_route_endpoint : api_a_spot_route_endpoint;
     }
 
-    std::string selected_api_node_rid () const
-    {
-        return api_name == "api-b" ? sample_names_t::api_b_rid : sample_names_t::api_a_rid;
-    }
-
-    zlink::routing_id_t selected_api_rid () const
-    {
-        return zlink::routing_id_t::from (selected_api_node_rid ());
-    }
 };
 
 } // namespace zlink::samples::gamequest

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/maintenance_runtime.hpp"
+#include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
 
 #include <algorithm>
@@ -431,13 +432,198 @@ maintenance_runtime_t::maintenance_runtime_t (
           "maintenance provider set is incomplete");
 }
 
+void maintenance_runtime_t::attach_relocation_wire (
+  raw_relocation_replay_coordinator_t &wire) noexcept
+{
+    _relocation_wire = &wire;
+}
+
+std::optional<std::vector<protocol::relocation_data_t>>
+maintenance_runtime_t::build_replay_records (
+  const std::vector<frozen_object_state_t> &participants,
+  const eligible_relocation_unit_t::canonical_wire_context_t &context) const
+{
+    if (!_relocation_wire
+        || (context.relocation.high == 0 && context.relocation.low == 0)
+        || context.target_attempt_generation == 0
+        || context.coordinator.owner_id.empty ()
+        || context.coordinator.lease_generation == 0
+        || context.coordinator.node_routing_id.empty ()
+        || context.coordinator.node_generation == 0
+        || context.coordinator.expected_authority_store_version.empty ()
+        || context.target_node_routing_id.empty ()
+        || context.target_node_generation == 0
+        || context.participant_ids.size () != participants.size ()
+        || !context.prepare_target || !context.acknowledged
+        || !context.abort_target)
+        return std::nullopt;
+
+    std::vector<protocol::relocation_data_t> result;
+    for (std::size_t index = 0; index != participants.size (); ++index) {
+        const auto &participant = participants[index];
+        const auto participant_id = context.participant_ids[index];
+        if (participant_id == 0)
+            return std::nullopt;
+        std::uint64_t sequence = 0;
+        for (const auto &pending : participant.pending_application) {
+            protocol::frozen_record_t frozen;
+            try {
+                frozen = protocol::decode_frozen_record (pending.payload);
+            }
+            catch (...) {
+                return std::nullopt;
+            }
+            if (!frozen.target
+                || frozen.target->object_id != participant.owner.key
+                || frozen.target->object_generation
+                     != participant.owner.object_generation
+                || frozen.target->authority_owner_generation
+                     != participant.owner.authority_owner_generation
+                || (frozen.source.owner_id.empty ()
+                    || frozen.source.lease_generation == 0
+                    || frozen.source.node_routing_id.empty ()
+                    || frozen.source.node_generation == 0)
+                || (frozen.operation.high == 0 && frozen.operation.low == 0)
+                || ((frozen.kind
+                       == protocol::frozen_record_kind_t::actor_request
+                     || frozen.kind
+                          == protocol::frozen_record_kind_t::spot_request)
+                    && (!frozen.reply_route_id
+                        || *frozen.reply_route_id == 0)))
+                return std::nullopt;
+            protocol::relocation_object_kind_t kind;
+            switch (participant.owner.kind) {
+            case object_kind_t::actor:
+                kind = protocol::relocation_object_kind_t::actor;
+                break;
+            case object_kind_t::user_spot:
+                kind = protocol::relocation_object_kind_t::user_spot;
+                break;
+            case object_kind_t::instance_spot:
+                kind = protocol::relocation_object_kind_t::instance_spot;
+                break;
+            default:
+                return std::nullopt;
+            }
+            result.push_back ({
+              context.relocation,
+              context.target_attempt_generation,
+              context.coordinator,
+              protocol::relocation_role_t::source,
+              participant_id,
+              ++sequence,
+              frozen.source,
+              {kind, participant.stable_type, participant.owner.key,
+               participant.owner.object_generation,
+               participant.owner.authority_owner_generation},
+              protocol::relocation_phase_t::prepared,
+              0,
+              protocol::framework_error_code::none,
+              std::move (frozen)});
+        }
+    }
+    return result;
+}
+
+bool maintenance_runtime_t::prepare_replay_source (
+  const eligible_relocation_unit_t::canonical_wire_context_t &context,
+  const std::vector<frozen_object_state_t> &participants,
+  const std::vector<protocol::relocation_data_t> &records)
+{
+    if (records.empty ())
+        return true;
+    bool target_prepared = false;
+    try {
+        target_prepared = context.prepare_target (participants, records);
+    }
+    catch (...) {
+        target_prepared = false;
+    }
+    if (!target_prepared)
+        return false;
+
+    std::map<std::uint64_t, std::vector<protocol::relocation_data_t>> grouped;
+    for (const auto &record : records)
+        grouped[record.participant_id].push_back (record);
+    std::vector<std::uint64_t> registered;
+    for (auto &[participant, participant_records] : grouped) {
+        const auto high_water = participant_records.size ();
+        if (!_relocation_wire->register_source ({
+              context.relocation,
+              context.target_attempt_generation,
+              context.coordinator,
+              participant,
+              context.target_node_routing_id,
+              context.target_node_generation,
+              high_water,
+              [callback = context.acknowledged, participant] (
+                std::uint64_t value) {
+                  callback (participant, value);
+              },
+              std::move (participant_records)})) {
+            for (const auto registered_participant : registered) {
+                (void) _relocation_wire->unregister_source (
+                  context.relocation, context.target_attempt_generation,
+                  registered_participant);
+            }
+            try {
+                context.abort_target ();
+            }
+            catch (...) {
+            }
+            return false;
+        }
+        registered.push_back (participant);
+    }
+    return true;
+}
+
+bool maintenance_runtime_t::arm_replay_source (
+  const eligible_relocation_unit_t::canonical_wire_context_t &context,
+  const std::vector<protocol::relocation_data_t> &records)
+{
+    std::set<std::uint64_t> participants;
+    for (const auto &record : records)
+        participants.insert (record.participant_id);
+    for (const auto participant : participants) {
+        if (!_relocation_wire->arm_source (
+              context.relocation, context.target_attempt_generation,
+              participant))
+            return false;
+    }
+    (void) _relocation_wire->retry_source_replays (
+      raw_relocation_replay_coordinator_t::clock_t::now ());
+    return true;
+}
+
+void maintenance_runtime_t::abort_replay_source (
+  const eligible_relocation_unit_t::canonical_wire_context_t &context,
+  const std::vector<protocol::relocation_data_t> &records) noexcept
+{
+    std::set<std::uint64_t> participants;
+    for (const auto &record : records)
+        participants.insert (record.participant_id);
+    for (const auto participant : participants) {
+        (void) _relocation_wire->unregister_source (
+          context.relocation, context.target_attempt_generation,
+          participant);
+    }
+    try {
+        context.abort_target ();
+    }
+    catch (...) {
+    }
+}
+
 relocation_result_t maintenance_runtime_t::relocate (
   const object_ref_t &source,
   std::string target_node_id,
   location_owner_token_t target_owner,
   relocation_capacity_fence_t relocation_capacity_fence,
   std::size_t encoded_upper_bound,
-  inventory_digest_t inventory_digest)
+  inventory_digest_t inventory_digest,
+  const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
+    &canonical_wire)
 {
     auto permit = try_acquire (encoded_upper_bound);
     if (!permit) {
@@ -455,6 +641,19 @@ relocation_result_t maintenance_runtime_t::relocate (
              ? relocation_reason_t::turn_active
              : relocation_reason_t::restore_failed,
            std::nullopt});
+    }
+
+    std::vector<protocol::relocation_data_t> replay_records;
+    if (canonical_wire) {
+        const auto built = build_replay_records ({seal.frozen}, *canonical_wire);
+        if (!built) {
+            (void) _objects.abort_relocation (seal.token);
+            return finish (
+              {relocation_terminal_t::blocked,
+               relocation_reason_t::restore_failed,
+               std::nullopt});
+        }
+        replay_records = *built;
     }
 
     std::vector<std::uint8_t> payload;
@@ -503,6 +702,21 @@ relocation_result_t maintenance_runtime_t::relocate (
            std::nullopt});
     }
 
+
+    if (canonical_wire
+        && !prepare_replay_source (
+          *canonical_wire, {seal.frozen}, replay_records)) {
+        try {
+            _relocations->remove (stored.reference);
+        }
+        catch (...) {
+        }
+        (void) _objects.abort_relocation (seal.token);
+        return finish (
+          {relocation_terminal_t::blocked,
+           relocation_reason_t::restore_failed,
+           std::nullopt});
+    }
     authority_publish_result_t published;
     bool publish_uncertain = false;
     try {
@@ -544,8 +758,11 @@ relocation_result_t maintenance_runtime_t::relocate (
             return finish (
               {relocation_terminal_t::recovery_required,
                relocation_reason_t::authority_publish_failed,
-               std::nullopt});
+               std::nullopt,
+               replay_records});
         }
+        if (canonical_wire)
+            abort_replay_source (*canonical_wire, replay_records);
         try {
             _relocations->remove (stored.reference);
         }
@@ -562,6 +779,15 @@ relocation_result_t maintenance_runtime_t::relocate (
            published.current});
     }
 
+
+    if (canonical_wire
+        && !arm_replay_source (*canonical_wire, replay_records)) {
+        return finish (
+          {relocation_terminal_t::recovery_required,
+           relocation_reason_t::restore_failed,
+           published.current,
+           replay_records});
+    }
     const auto [commit_error, committed] =
       _objects.commit_relocation (
         seal.token, published.current->target.node_id);
@@ -570,12 +796,14 @@ relocation_result_t maintenance_runtime_t::relocate (
         return finish (
           {relocation_terminal_t::recovery_required,
            relocation_reason_t::restore_failed,
-           published.current});
+           published.current,
+           replay_records});
     }
     return finish (
       {relocation_terminal_t::completed,
        relocation_reason_t::none,
-       published.current});
+       published.current,
+       replay_records});
 }
 
 relocation_result_t maintenance_runtime_t::recover (
@@ -850,7 +1078,9 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
   std::vector<relocation_capacity_fence_t>
     relocation_capacity_fences,
   std::size_t encoded_upper_bound,
-  inventory_digest_t inventory_digest)
+  inventory_digest_t inventory_digest,
+  const std::optional<eligible_relocation_unit_t::canonical_wire_context_t>
+    &canonical_wire)
 {
     if (!_aggregate_authority || sources.size () < 2) {
         return {
@@ -874,6 +1104,19 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
             ? relocation_reason_t::turn_active
             : relocation_reason_t::restore_failed,
           {}};
+    }
+    std::vector<protocol::relocation_data_t> replay_records;
+    if (canonical_wire) {
+        const auto built =
+          build_replay_records (seal.participants, *canonical_wire);
+        if (!built) {
+            (void) _objects.abort_relocation (seal.token);
+            return {
+              relocation_terminal_t::blocked,
+              relocation_reason_t::restore_failed,
+              {}};
+        }
+        replay_records = *built;
     }
     std::vector<std::uint8_t> payload;
     try {
@@ -921,6 +1164,21 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
           {}};
     }
 
+
+    if (canonical_wire
+        && !prepare_replay_source (
+          *canonical_wire, seal.participants, replay_records)) {
+        try {
+            _relocations->remove (stored.reference);
+        }
+        catch (...) {
+        }
+        (void) _objects.abort_relocation (seal.token);
+        return {
+          relocation_terminal_t::blocked,
+          relocation_reason_t::restore_failed,
+          {}};
+    }
     aggregate_publish_result_t prepared;
     try {
         prepared = _aggregate_authority->prepare (
@@ -930,6 +1188,8 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
           inventory_digest);
     }
     catch (...) {
+        if (canonical_wire)
+            abort_replay_source (*canonical_wire, replay_records);
         try {
             _relocations->remove (stored.reference);
         }
@@ -943,6 +1203,8 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
     }
     if (prepared.status != aggregate_publish_status_t::prepared
         || prepared.fence.value == 0) {
+        if (canonical_wire)
+            abort_replay_source (*canonical_wire, replay_records);
         try {
             _relocations->remove (stored.reference);
         }
@@ -967,11 +1229,14 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
         return {
           relocation_terminal_t::recovery_required,
           relocation_reason_t::authority_publish_failed,
-          prepared.current};
+          prepared.current,
+          replay_records};
     }
     if (committed.status != aggregate_publish_status_t::committed
         || committed.current.size () != sources.size ()) {
         if (committed.status == aggregate_publish_status_t::conflict) {
+            if (canonical_wire)
+                abort_replay_source (*canonical_wire, replay_records);
             try {
                 _aggregate_authority->abort (prepared.fence);
             }
@@ -991,7 +1256,17 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
         return {
           relocation_terminal_t::recovery_required,
           relocation_reason_t::authority_publish_failed,
-          committed.current};
+          committed.current,
+          replay_records};
+    }
+
+    if (canonical_wire
+        && !arm_replay_source (*canonical_wire, replay_records)) {
+        return {
+          relocation_terminal_t::recovery_required,
+          relocation_reason_t::restore_failed,
+          committed.current,
+          replay_records};
     }
     const auto [commit_error, local] =
       _objects.commit_relocation_aggregate (
@@ -1001,7 +1276,8 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
         return {
           relocation_terminal_t::recovery_required,
           relocation_reason_t::restore_failed,
-          committed.current};
+          committed.current,
+          replay_records};
     }
     for (const auto &current : committed.current) {
         const auto match = std::find (
@@ -1010,13 +1286,15 @@ aggregate_relocation_result_t maintenance_runtime_t::relocate_aggregate (
             return {
               relocation_terminal_t::recovery_required,
               relocation_reason_t::restore_failed,
-              committed.current};
+              committed.current,
+              replay_records};
         }
     }
     return {
       relocation_terminal_t::completed,
       relocation_reason_t::none,
-      committed.current};
+      committed.current,
+      replay_records};
 }
 
 relocation_gate_snapshot_t maintenance_runtime_t::gate_snapshot () const
@@ -1671,7 +1949,8 @@ termination_result_t host_maintenance_runtime_t::run_retire ()
               eligible.target_node_id, eligible.target_owner,
               eligible.relocation_capacity_fences.front (),
               eligible.encoded_upper_bound,
-              eligible.inventory_digest);
+              eligible.inventory_digest,
+              eligible.canonical_wire);
             terminal = result.terminal;
             if (result.authority)
                 current.push_back (*result.authority);
@@ -1681,7 +1960,8 @@ termination_result_t host_maintenance_runtime_t::run_retire ()
               eligible.target_owner,
               eligible.relocation_capacity_fences,
               eligible.encoded_upper_bound,
-              eligible.inventory_digest);
+              eligible.inventory_digest,
+              eligible.canonical_wire);
             terminal = result.terminal;
             current = result.authority;
         }
@@ -1831,6 +2111,7 @@ void public_host_runtime_t::configure_maintenance (
       std::make_unique<stateful::maintenance_runtime_t> (
       _objects, std::move (providers), limits,
       std::move (relocation_observer));
+    maintenance->attach_relocation_wire (*_relocation_wire);
     auto termination =
       std::make_unique<stateful::host_maintenance_runtime_t> (
         _objects, _sessions, *maintenance, std::move (targets),

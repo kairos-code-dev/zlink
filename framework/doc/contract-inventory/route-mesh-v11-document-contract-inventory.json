@@ -8,7 +8,7 @@
     "e2e_path": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
     "outcomes": [
       { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
-      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
+      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady", "ManualTopologyUnsupported"] },
       { "name": "ForceStopped", "wire_value": 2, "reasons": ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"] }
     ],
     "reasons": [
@@ -20,7 +20,8 @@
       { "name": "DeadlineExceeded", "wire_value": 5 },
       { "name": "RelocationFailed", "wire_value": 6 },
       { "name": "TeardownFailed", "wire_value": 7 },
-      { "name": "RuntimeNotReady", "wire_value": 8 }
+      { "name": "RuntimeNotReady", "wire_value": 8 },
+      { "name": "ManualTopologyUnsupported", "wire_value": 9 }
     ],
     "checkpoint_ceiling_pair": "Blocked/StateIncompatible",
     "forbidden_fragments": ["CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
@@ -49,6 +50,7 @@
         "ValueTask OnActorRelocatedAsync(",
         "public int MaxActiveOutboundRelocations { get; set; } = 64;",
         "Retiring = 2,",
+        "ManualTopologyUnsupported = 9",
         "bool HasSnapshotAdapter",
         "public readonly record struct ActorRef(",
         "public readonly record struct SpotRef(",
@@ -88,6 +90,7 @@
         "on_actor_relocated(TActor &actor)",
         "std::size_t max_active_outbound_relocations = 64;",
         "retiring = 2,",
+        "manual_topology_unsupported = 9",
         "class actor_ref_t final",
         "class spot_ref_t final",
         "class actor_manager_t",
@@ -125,6 +128,7 @@
         "default CompletionStage<Void> onActorRelocated(TActor actor)",
         "int maxActiveOutboundRelocations();",
         "RETIRING(2)",
+        "MANUAL_TOPOLOGY_UNSUPPORTED(9)",
         "boolean hasSnapshotAdapter",
         "public final class systems.zlink.framework.actors.ActorRef",
         "public final class systems.zlink.framework.spots.SpotRef",
@@ -227,6 +231,7 @@
         "onActorRelocatedSuspending(",
         "active outbound\n64, active inbound 64",
         "`RETIRING(2)`",
+        "`MANUAL_TOPOLOGY_UNSUPPORTED(9)`",
         "hasSnapshotAdapter()",
         "actor: ActorRef",
         "protected abstract suspend fun createActor(",
@@ -269,6 +274,7 @@
         "onActorRelocated?(actor: TActor): Promise<void>;",
         "maxActiveOutboundRelocations(value: number): this;",
         "Retiring = 2,",
+        "ManualTopologyUnsupported = 9",
         "export interface ZLinkInstanceSpot {",
         "readonly context: ZLinkInstanceSpotContext;",
         "sendToSpot(spotId: SpotId",
@@ -738,7 +744,7 @@
     },
     {
       "path": "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md",
-      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `RelocationFailed`, `TeardownFailed` |"],
+      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "ManualTopologyUnsupported=9", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady`, `ManualTopologyUnsupported` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `RelocationFailed`, `TeardownFailed` |"],
       "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate", "DrainNatural", "CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
     },
     {

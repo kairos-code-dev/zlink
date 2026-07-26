@@ -220,7 +220,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
 
   private async notifyActor(actor: ActorRef, payload: ConstructorParameters<typeof DeliverPlayNotification>[0]): Promise<void> {
     await this.actorClient
-      .sendToActor(SampleNames.playSpotNode, actor, new DeliverPlayNotification(payload))
+      .sendToActor(actor.actorId, new DeliverPlayNotification(payload))
       .submit();
   }
 

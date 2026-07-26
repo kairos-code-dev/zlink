@@ -485,6 +485,14 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     return live;
   }
 
+  async listLiveMeshNodes(
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkMeshNodeDescriptor[]> {
+    const rows = await this.stores.locationStore.listMeshNodes(meshName, signal);
+    return this.filterLive(rows, (row) => row.ownerId, signal);
+  }
+
   async listSpotLocations(
     filter: ZLinkSpotLocationFilter,
     page?: ZLinkPageRequest,

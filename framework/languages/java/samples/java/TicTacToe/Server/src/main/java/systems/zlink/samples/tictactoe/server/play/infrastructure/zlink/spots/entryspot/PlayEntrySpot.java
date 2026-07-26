@@ -92,8 +92,7 @@ public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
             event.roomId(),
             event.actorId(),
             event.displayName(),
-            event.wins(),
-            settings.playSpotNodeRid());
+            event.wins());
         for (PlayActor observer : java.util.List.copyOf(milestoneObservers)) {
             observer.context().boundSession()
                 .send(payload)

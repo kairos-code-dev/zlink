@@ -94,7 +94,14 @@ export class ServiceStatefulRegistry {
   }
 
   createEntrySpot(spotId = this.nodeRid): ServiceSpotState {
-    return this.createSpot(spotId, 'entry', 'entry');
+    const current = this.spots.get(spotId);
+    if (current !== undefined) return current;
+    return this.restoreSpot(
+      { spotId, generation: this.nodeGeneration },
+      'entry',
+      'entry',
+      this.nodeGeneration
+    );
   }
 
   createSpot(

@@ -8,7 +8,7 @@
 #include <zlink/framework.hpp>
 
 #include <iostream>
-#include <map>
+#include <set>
 #include <string>
 
 namespace zlink::samples::deliverydispatch
@@ -19,14 +19,10 @@ using namespace framework;
 class courier_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types = dependency_list_t<route_client_t,
-                                               spot_handle_resolver_t,
-                                               session_actor_manager_t>;
+    using dependency_types = dependency_list_t<session_actor_manager_t>;
 
-    courier_session_t (route_client_t &routes,
-                       spot_handle_resolver_t &spot_handles,
-                       session_actor_manager_t &actors) :
-        _routes (routes), _spot_handles (spot_handles), _actors (actors)
+    explicit courier_session_t (session_actor_manager_t &actors) :
+        _actors (actors)
     {
     }
 
@@ -48,37 +44,30 @@ class courier_session_t final : public packet_stream_session_t
                   << dispatch.packet_name () << "\n";
         if (dispatch.packet_name () == bind_courier_session_req_t::packet_name) {
             const auto request = payload.parse_json<bind_courier_session_req_t> ();
-            /* 공통 sample spec §8.1: 기존 actor를 먼저 찾고, 없을 때만 만든다. 배치 노드는
-             * courier id가 정한다(placement policy). */
-            const auto node = sample_names_t::courier_actor_node (request.courier_id);
-            auto entry_spot = co_await resolve_courier_entry_spot (node);
-            auto found =
-              co_await _routes
-                .request_to_spot (entry_spot, find_courier_actor_req_t{request.courier_id})
-                .submit<find_courier_actor_res_t> ();
-            auto actor_ref = found.actor;
-            if (!actor_ref) {
-                auto ensured =
-                  co_await _routes
-                    .request_to_spot (entry_spot,
-                                      ensure_courier_actor_req_t{request.courier_id})
-                    .submit<ensure_courier_actor_res_t> ();
-                actor_ref = ensured.actor;
+            /* Global ActorId로 current owner를 찾거나 eligible node에 생성한다. Application은
+             * courier id에서 physical NodeRid를 계산하지 않는다. */
+            auto located = _actors.get_or_create (
+              sample_names_t::courier_actor_type, request.courier_id,
+              ensure_courier_actor_req_t{request.courier_id});
+            if (!located) {
+                throw framework_exception_t (
+                  located.error_kind (),
+                  located.error () ? located.error ()->what ()
+                                   : "courier actor could not be located");
             }
+            const auto actor_ref = actor_ref_snapshot_t::from (located.value ().ref ());
 
             const std::string session_route = "courier-session:" + request.courier_id;
             auto actor =
               co_await _actors
-                .bind_or_get (actor_ref->to_actor_ref (sample_names_t::courier_actor_type))
+                .bind_or_get (actor_ref.to_actor_ref (sample_names_t::courier_actor_type))
                 .submit ();
             const auto actor_id = std::string (actor.actor_id ());
-            _bound_actors[actor_id] = std::string (actor_ref->node_rid.value ());
-            /* location store 조회를 await한 뒤라 stream dispatch 문맥의 thread-local 헤더에
-             * 기댈 수 없다. relay 대상 packet name을 명시하는 오버로드를 쓴다. */
+            _bound_actors.insert (actor_id);
             auto reply = co_await actor
                            .relay_request (bind_courier_session_req_t::packet_name,
                                            zlink::message_t::from_json (bind_courier_session_req_t{
-                                             request.courier_id, *actor_ref, session_route}))
+                                             request.courier_id, actor_ref, session_route}))
                            .submit ();
             stream.reply_packet (reply).submit ();
             std::cerr << "deliverydispatch courier-session: bound courier=" << request.courier_id
@@ -94,18 +83,6 @@ class courier_session_t final : public packet_stream_session_t
     }
 
   private:
-    task_t<spot_handle_t> resolve_courier_entry_spot (const std::string &node_rid)
-    {
-        auto handle =
-          co_await _spot_handles.resolve_spot_handle (spot_rid_t::from_string (node_rid));
-        if (!handle) {
-            throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
-                                         "courier entry spot has no live location row: "
-                                           + node_rid);
-        }
-        co_return *handle;
-    }
-
     session_actor_t require_bound_actor (const std::string &actor_id)
     {
         if (!_bound_actors.contains (actor_id)) {
@@ -120,10 +97,8 @@ class courier_session_t final : public packet_stream_session_t
         return *actor;
     }
 
-    route_client_t &_routes;
-    spot_handle_resolver_t &_spot_handles;
     session_actor_manager_t &_actors;
-    std::map<std::string, std::string> _bound_actors;
+    std::set<std::string> _bound_actors;
 };
 
 } // namespace zlink::samples::deliverydispatch
@@ -144,7 +119,7 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::courier_session_spot_node))
+          .use_allocated_routing_id (16, "delivery-session")
           .listen (topology.courier_session_spot_router_endpoint)
           .channel_name (sample_names_t::courier_actor_discovery);
         options.add_stream_node (sample_names_t::courier_stream_node)

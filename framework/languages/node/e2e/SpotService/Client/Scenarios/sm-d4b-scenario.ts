@@ -1,4 +1,4 @@
-// SM-D4B: Store가 없는 process topology에서 stored route와 stale route single-attempt를 검증한다.
+// SM-D4B: 저장 route relay와 stale mapping 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
 import {

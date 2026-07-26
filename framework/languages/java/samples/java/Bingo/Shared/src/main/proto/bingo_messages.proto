@@ -12,7 +12,7 @@ message AuthenticateReq {
 message AuthenticateRes {
   string actor_id = 1;
   string display_name = 2;
-  string actor_node_rid = 3;
+  reserved 3;
 }
 
 message AuthenticatePlayerReq {
@@ -52,19 +52,13 @@ message ReportBingoResultRes {
 message EnsurePlayerActorReq {
   string actor_id = 1;
   string display_name = 2;
-  string preferred_actor_node_rid = 3;
-}
-
-message ActorRefWire {
-  string node_rid = 1;
-  string actor_id = 2;
-  uint64 generation = 3;
+  reserved 3;
 }
 
 message EnsurePlayerActorRes {
   string actor_id = 1;
   string actor_type = 2;
-  ActorRefWire actor = 3;
+  reserved 3;
 }
 
 message MatchBingoReq {
@@ -74,30 +68,30 @@ message MatchBingoReq {
 message MatchBingoRes {
   string room_id = 1;
   BingoRoomState state = 2;
-  string room_owner_node_rid = 3;
+  reserved 3;
 }
 
 message MatchBingoApiReq {
   string actor_id = 1;
   string display_name = 2;
   string mode = 3;
-  string actor_node_rid = 4;
+  reserved 4;
 }
 
 message MatchBingoApiRes {
   string room_id = 1;
-  string room_owner_node_rid = 2;
+  reserved 2;
 }
 
 message AllocateBingoRoomReq {
   string mode = 1;
   string actor_id = 2;
-  string preferred_owner_node_rid = 3;
+  reserved 3;
 }
 
 message AllocateBingoRoomRes {
   string room_id = 1;
-  string room_owner_node_rid = 2;
+  reserved 2;
 }
 
 message BingoRoomSettingsPayload {
@@ -135,7 +129,7 @@ message ObserveBingoEventsReq {
 
 message ObserveBingoEventsRes {
   bool subscribed = 1;
-  string observer_node_rid = 2;
+  reserved 2;
 }
 
 message StopObservingBingoEventsReq {
@@ -144,7 +138,7 @@ message StopObservingBingoEventsReq {
 
 message StopObservingBingoEventsRes {
   bool stopped = 1;
-  string observer_node_rid = 2;
+  reserved 2;
 }
 
 message PlayerJoinedNotify {
@@ -182,7 +176,7 @@ message BingoRewardAnnouncedNotify {
   string item_id = 4;
   string item_name = 5;
   string rarity = 6;
-  string receiving_spot_node_rid = 7;
+  reserved 7;
 }
 
 message BingoRewardAcquiredEvent {

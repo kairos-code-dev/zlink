@@ -4,20 +4,18 @@ namespace TicTacToe.Server.Configuration;
 
 internal sealed record SampleSettings(
     string InstanceName,
-    int PlayIndex,
     string ApiBindUrl,
     string MeshEndpoint,
     IReadOnlyList<string> PeerMeshEndpoints,
     string PlayEndpoint,
     IReadOnlyList<string> PlayEndpoints,
-    string PlayMeshNodeRid,
     string RedisEndpoint,
     string RedisKeyPrefix,
     string LogDirectory)
 {
     public IReadOnlyList<PlayNodeInfo> PlayNodes =>
         PlayEndpoints
-            .Select((endpoint, index) => new PlayNodeInfo(endpoint, PlayMeshNodeRidAt(index)))
+            .Select(static endpoint => new PlayNodeInfo(endpoint))
             .ToArray();
 
     public static SampleSettings LoadApi(string[] args)
@@ -26,13 +24,11 @@ internal sealed record SampleSettings(
         var playEndpoints = RequireList(section, nameof(PlayEndpoints), 2);
         return new SampleSettings(
             RequireString(section, nameof(InstanceName)),
-            0,
             RequireString(section, nameof(ApiBindUrl)),
             RequireString(section, nameof(MeshEndpoint)),
             RequireList(section, nameof(PeerMeshEndpoints), 2),
             string.Empty,
             playEndpoints,
-            string.Empty,
             string.Empty,
             string.Empty,
             RequireString(section, nameof(LogDirectory)));
@@ -41,16 +37,13 @@ internal sealed record SampleSettings(
     public static SampleSettings LoadPlay(string[] args)
     {
         var section = LoadSection(args);
-        var playIndex = RequireIndex(section, nameof(PlayIndex));
         return new SampleSettings(
             RequireString(section, nameof(InstanceName)),
-            playIndex,
             string.Empty,
             RequireString(section, nameof(MeshEndpoint)),
             ReadList(section, nameof(PeerMeshEndpoints)),
             RequireString(section, nameof(PlayEndpoint)),
             RequireList(section, nameof(PlayEndpoints), 2),
-            RequireString(section, nameof(PlayMeshNodeRid)),
             RequireString(section, nameof(RedisEndpoint)),
             RequireString(section, nameof(RedisKeyPrefix)),
             RequireString(section, nameof(LogDirectory)));
@@ -75,13 +68,6 @@ internal sealed record SampleSettings(
             : value;
     }
 
-    private static int RequireIndex(IConfigurationSection section, string name)
-    {
-        return int.TryParse(section[name], out var value) && value is 0 or 1
-            ? value
-            : throw new InvalidOperationException($"Sample.{name} must be 0 or 1.");
-    }
-
     private static IReadOnlyList<string> RequireList(
         IConfigurationSection section,
         string name,
@@ -104,7 +90,4 @@ internal sealed record SampleSettings(
             .Select(static value => value!)
             .ToArray();
     }
-
-    private static string PlayMeshNodeRidAt(int index) => $"play-node-{index + 1}";
-
 }

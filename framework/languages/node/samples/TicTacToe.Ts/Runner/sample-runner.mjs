@@ -25,8 +25,6 @@ export async function runSample(ctx) {
     redisEndpoint: ctx.redisEndpoint,
     redisKeyPrefix,
     logDir: path.join(ctx.logDir, 'flow'),
-    playSpotNodeRid: `play-node-${playIndex + 1}`,
-    peerPlaySpotNodeRid: `play-node-${peerPlayIndex + 1}`,
     peerPlaySpotEndpoint: endpoints.playSpot[peerPlayIndex]
   });
   const roleConfig = (name, value, keys) => ctx.writeConfig(name,
@@ -37,7 +35,7 @@ export async function runSample(ctx) {
   const apiB = config('api-b', 1, 0, 1);
   const playKeys = [
     'apiEndpoints', 'playSpotEndpoint', 'playStreamEndpoint', 'playEndpoints',
-    'redisEndpoint', 'redisKeyPrefix', 'playSpotNodeRid', 'peerPlaySpotNodeRid', 'peerPlaySpotEndpoint',
+    'redisEndpoint', 'redisKeyPrefix', 'peerPlaySpotEndpoint', 'instanceName',
     'logDir'
   ];
   const apiKeys = ['apiHttpEndpoint', 'apiEndpoints', 'apiIndex', 'playSpotEndpoints', 'logDir'];

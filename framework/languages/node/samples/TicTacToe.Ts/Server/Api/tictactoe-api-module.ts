@@ -27,7 +27,7 @@ function createTicTacToeApiModule() {
             .traceLabel(`api-${config.apiIndex}`);
           const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
             .listen(config.apiEndpoints[config.apiIndex])
-            .routingId(`api-${config.apiIndex + 1}`);
+            .useAllocatedRoutingId(16, 'tictactoe-api');
           mesh.channelName(SampleNames.apiChannel)
             .addRequestHandler(PacketNames.authenticatePlayerReq, AuthenticatePlayerHandler);
           mesh.channelName(SampleNames.playChannel).setWeight(0);

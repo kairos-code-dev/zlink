@@ -342,6 +342,32 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
     }
 
+    internal static void RejectApplicationRouteForRelocation(
+        ZLinkBackendRouteReceived received,
+        string channelName)
+    {
+        using (received)
+        {
+            if (!received.CanReply || received.Parts.Count == 0) return;
+            try
+            {
+                var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+                var reply = ZLinkSpotReplyEnvelope.EncodeErrorParts(
+                    channelName,
+                    header.MessageName,
+                    header.CorrelationId,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.SpotMoving,
+                        "SPOT relocation ingress hold is full or sealed.",
+                        true));
+                ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private async ValueTask InvokeSubscriptionAsync(
         ZLinkSpotSubscriptionDescriptor descriptor,
         object? message,

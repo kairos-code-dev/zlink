@@ -1,4 +1,4 @@
-// ST-B2: source cleanup 실패는 성공을 되돌리지 않음 시나리오를 검증한다.
+// ST-B2: commit 뒤 source 종료와 cleanup recovery 시나리오를 검증한다.
 import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActor, probeActor, post, unique, delay, require } from '../Support/scenario-support';
 
 export async function runStB2(): Promise<void> {

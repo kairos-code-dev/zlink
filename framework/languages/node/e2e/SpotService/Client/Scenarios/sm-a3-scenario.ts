@@ -1,4 +1,4 @@
-// SM-A3: route resolver 시나리오를 검증한다.
+// SM-A3: global Spot ID route resolve 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

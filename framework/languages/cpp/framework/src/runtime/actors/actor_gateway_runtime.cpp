@@ -270,19 +270,44 @@ actor_context_t::actor_context_t () :
 
 actor_context_t::actor_context_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                                   actor_ref_t actor_ref,
-                                  std::uint64_t source_binding_generation) :
+                                  std::uint64_t source_binding_generation,
+                                  std::string mesh_name) :
     _state (std::move (state)), _actor_ref (std::make_shared<actor_ref_t> (std::move (actor_ref))),
-    _source_binding_generation (source_binding_generation)
+    _source_binding_generation (source_binding_generation), _mesh_name (std::move (mesh_name))
 {
 }
 
 actor_context_t::~actor_context_t () = default;
 actor_context_t::actor_context_t (actor_context_t &&) noexcept = default;
-actor_context_t &actor_context_t::operator= (actor_context_t &&) noexcept = default;
 
 const actor_ref_t &actor_context_t::actor_ref () const noexcept
 {
     return *_actor_ref;
+}
+
+std::string_view actor_context_t::actor_id () const noexcept
+{
+    return _actor_ref->actor_id ();
+}
+
+std::uint64_t actor_context_t::object_generation () const noexcept
+{
+    return _actor_ref->generation ();
+}
+
+std::string_view actor_context_t::mesh_name () const noexcept
+{
+    return _mesh_name;
+}
+
+bool actor_context_t::has_same_source_fence (const actor_context_t &other) const noexcept
+{
+    return _state == other._state
+           && _actor_ref->node_rid ().value () == other._actor_ref->node_rid ().value ()
+           && _actor_ref->actor_type () == other._actor_ref->actor_type ()
+           && _actor_ref->actor_id () == other._actor_ref->actor_id ()
+           && _actor_ref->generation () == other._actor_ref->generation ()
+           && _mesh_name == other._mesh_name;
 }
 
 std::optional<spot_id_t> actor_context_t::spot_id () const
@@ -386,37 +411,64 @@ actor_context_t::join_spot_erased (spot_id_t spot_id,
     return joined;
 }
 
+result_t<std::shared_ptr<detail::deferred_barrier_t>>
+actor_context_t::reserve_join_barrier () const
+{
+    detail::actor_gateway_state_t::join_barrier_reserver_t reserver;
+    actor_ref_t actor;
+    {
+        const std::lock_guard lock (_state->mutex);
+        if (_actor_ref->empty ()) {
+            return result_t<std::shared_ptr<detail::deferred_barrier_t>>::failure (
+              framework_error_kind_t::actor_route_not_found,
+              "Actor join barrier source is empty");
+        }
+        if (!_state->join_barrier_reserver) {
+            return result_t<std::shared_ptr<detail::deferred_barrier_t>>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "Actor join barrier runtime is not configured");
+        }
+        actor = *_actor_ref;
+        reserver = _state->join_barrier_reserver;
+    }
+    return reserver (actor);
+}
+
 actor_join_call_t actor_context_t::join_entry_spot_payload (
   const zlink::message_t &request)
 {
+    auto context = std::shared_ptr<actor_context_t> (
+      new actor_context_t (
+        _state, *_actor_ref, _source_binding_generation, _mesh_name));
+    context->_actor_ref = _actor_ref;
     return actor_join_call_t (
-      [context = *this, request] (std::chrono::milliseconds timeout) mutable {
+      [context, request] (std::chrono::milliseconds timeout) mutable {
           detail::actor_gateway_state_t::join_entry_spot_dispatcher_t dispatcher;
           zlink::message_t effective_request = request;
           {
-              const std::lock_guard lock (context._state->mutex);
-              if (context._actor_ref->empty ()) {
+              const std::lock_guard lock (context->_state->mutex);
+              if (context->_actor_ref->empty ()) {
                   throw framework_exception_t (
                     framework_error_kind_t::actor_route_not_found,
                     "actor ref is empty");
               }
-              if (!context._state->join_entry_spot_dispatcher) {
+              if (!context->_state->join_entry_spot_dispatcher) {
                   throw framework_exception_t (
                     framework_error_kind_t::actor_dispatch_handler_not_found,
                     "actor join entry spot dispatcher is not configured");
               }
-              dispatcher = context._state->join_entry_spot_dispatcher;
+              dispatcher = context->_state->join_entry_spot_dispatcher;
               if (effective_request.to_string ().empty ()) {
-                  const auto found = context._state->actors_by_id.find (
-                    std::string (context._actor_ref->actor_id ()));
-                  if (found != context._state->actors_by_id.end ()
+                  const auto found = context->_state->actors_by_id.find (
+                    std::string (context->_actor_ref->actor_id ()));
+                  if (found != context->_state->actors_by_id.end ()
                       && found->second.create_payload) {
                       effective_request = *found->second.create_payload;
                   }
               }
           }
 
-          auto joined = dispatcher (*context._actor_ref, effective_request, timeout);
+          auto joined = dispatcher (*context->_actor_ref, effective_request, timeout);
           if (!joined) {
               const auto *error = joined.error ();
               throw framework_exception_t (
@@ -425,14 +477,17 @@ actor_join_call_t actor_context_t::join_entry_spot_payload (
           }
 
           if (joined.value ().result_code == 0) {
-              const std::lock_guard lock (context._state->mutex);
-              *context._actor_ref = joined.value ().actor;
+              const std::lock_guard lock (context->_state->mutex);
+              *context->_actor_ref = joined.value ().actor;
               auto found =
-                context._state->actors_by_id.find (std::string (context._actor_ref->actor_id ()));
-              if (found != context._state->actors_by_id.end ()) {
-                  found->second.ref = *context._actor_ref;
+                context->_state->actors_by_id.find (std::string (context->_actor_ref->actor_id ()));
+              if (found != context->_state->actors_by_id.end ()) {
+                  found->second.ref = *context->_actor_ref;
               }
           }
+      },
+      [context] {
+          return context->reserve_join_barrier ();
       });
 }
 
@@ -1084,6 +1139,13 @@ actor_context_t actor_gateway_runtime_t::actor_context (
       _state, actor_ref, found->second.source_binding_generation);
 }
 
+bool actor_gateway_runtime_t::same_context_source_fence (
+  const actor_context_t &left,
+  const actor_context_t &right) const noexcept
+{
+    return left.has_same_source_fence (right);
+}
+
 result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &actor_ref)
 {
     const std::lock_guard lock (_state->mutex);
@@ -1382,6 +1444,13 @@ void actor_gateway_runtime_t::on_membership (actor_gateway_state_t::membership_q
 {
     const std::lock_guard lock (_state->mutex);
     _state->membership_query = std::move (query);
+}
+
+void actor_gateway_runtime_t::on_join_barrier (
+  actor_gateway_state_t::join_barrier_reserver_t reserver)
+{
+    const std::lock_guard lock (_state->mutex);
+    _state->join_barrier_reserver = std::move (reserver);
 }
 
 void actor_gateway_runtime_t::bind_serializers (serializer_registry_t &serializers)

@@ -84,7 +84,7 @@ test('location runtime monitoring source publishes snapshot changes and suppress
       async listServiceSummaries() {
         return [{
           meshName: 'api',
-          autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+          autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
           role: framework.ZLinkLocationRole.Router,
           totalCount: 1,
           readyCount,
@@ -176,7 +176,7 @@ test('location monitoring event emitter publishes registered row and resolve-mis
   emitter.peerRowUpdated({
     kind: framework.ZLinkLocationKind.Peer,
     key: {
-      autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
       meshName: 'api',
       role: framework.ZLinkLocationRole.Router,
       endpoint: 'tcp://127.0.0.1:7001'
@@ -393,7 +393,7 @@ function locationTopologyEntry(readyCount) {
 
 function peerRow() {
   return {
-    autoConnectType: framework.ZLinkLocationAutoConnectType.ClientServer,
+    autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
     meshName: 'api',
     role: framework.ZLinkLocationRole.Router,
     endpoint: 'tcp://127.0.0.1:7001',

@@ -110,6 +110,25 @@ public final class ZLinkCompositeRelocationBarrier {
         return Optional.of(Map.copyOf(held));
     }
 
+    public synchronized Optional<Map<String, List<
+        ZLinkAsyncSerialQueue.QueuedRecord>>> freezeIngress(Seal seal) {
+        if (seal == null || seal != active) {
+            return Optional.empty();
+        }
+        LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> held =
+            new LinkedHashMap<>();
+        for (Map.Entry<String, ZLinkAsyncSerialQueue> lane
+            : seal.lanes.entrySet()) {
+            held.put(
+                lane.getKey(),
+                lane.getValue().freezeRelocationIngress(
+                    seal.seals.get(lane.getKey()))
+                    .orElseThrow(() -> new IllegalStateException(
+                        "composite relocation freeze lost a lane fence")));
+        }
+        return Optional.of(java.util.Collections.unmodifiableMap(held));
+    }
+
     public synchronized <T> CompletionStage<T> runCapture(
         Seal seal,
         Supplier<CompletionStage<T>> capture) {

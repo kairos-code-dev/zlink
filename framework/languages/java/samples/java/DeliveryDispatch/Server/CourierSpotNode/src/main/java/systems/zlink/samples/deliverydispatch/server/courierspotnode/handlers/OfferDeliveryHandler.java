@@ -28,7 +28,7 @@ public final class OfferDeliveryHandler
         return actors.find(message.courierId()).thenAccept(found -> {
             var actorRef = found.orElseThrow(() -> new IllegalStateException(
                 "Courier actor is not bound: " + message.courierId()));
-            actorClient.sendToActor(actorRef, message).submit();
+            actorClient.sendToActor(actorRef.actorId(), message).submit();
         });
     }
 }

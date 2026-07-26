@@ -240,19 +240,12 @@ public final class TicTacToeClientScenario {
             ensure(options.xActorId().equals(hostWinNotify.state().winner()));
 
             WinMilestoneNotify milestone = observerSawMilestone.toCompletableFuture().join().payload();
-            String expectedRid = game.playNodes().stream()
-                .filter(node -> observerEndpoint.equals(node.streamEndpoint()))
-                .findFirst()
-                .orElseThrow()
-                .spotNodeRid();
             ensure(milestone.wins() == 100);
-            ensure(expectedRid.equals(milestone.receivingSpotNodeRid()));
             ensure(hostOwnJoinNotifications.get() == 0);
             ensure(guestOwnJoinNotifications.get() == 0);
             System.out.println("observer-win-milestone=verified actor="
                 + milestone.actorId()
-                + " wins=" + milestone.wins()
-                + " receivingSpotNodeRid=" + milestone.receivingSpotNodeRid());
+                + " wins=" + milestone.wins());
 
             host.send(new LeaveGameReq(game.roomId())).submit();
             guest.send(new LeaveGameReq(game.roomId())).submit();

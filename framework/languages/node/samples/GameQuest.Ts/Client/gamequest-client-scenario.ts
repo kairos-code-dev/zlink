@@ -248,8 +248,8 @@ class GameQuestClientScenario {
     await apiBReconnectStream.close();
     const assertion = await waitForServerAssertion(apiA, signal);
     zlinkStreamAssert.ensure(assertion.passed, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(assertion.evidence.includes('owner:mission-a:player-alice'), 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(assertion.evidence.includes('owner:mission-b:player-bob'), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(assertion.evidence.some((entry) => /^owner:mission-[ab]:player-alice$/.test(entry)), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(assertion.evidence.some((entry) => /^owner:mission-[ab]:player-bob$/.test(entry)), 'Sample scenario assertion failed.');
     console.log('gamequest-concurrent-owners=completed');
     console.log('gamequest-server-evidence=completed');
   }

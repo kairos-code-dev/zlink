@@ -30,9 +30,9 @@ test('runtime task runner observes detached task exceptions without unhandled re
   }
 });
 
-test('framework runtime state aborts listener tasks before disposing backend context', async () => {
+test('framework execution state aborts listener tasks before disposing backend context', async () => {
   const events = [];
-  const state = new framework.ZLinkFrameworkRuntimeState({
+  const state = new framework.ZLinkFrameworkExecutionState({
     async dispose() {
       events.push('context:dispose');
     }

@@ -7,11 +7,11 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
-import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkMeshNodeMonitoringProjection;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 
 /**
@@ -88,80 +88,36 @@ public final class ZLinkObjectServerDescriptorPublisher {
         ZLinkInternalMeshNode node,
         ZLinkLocationOwnerToken owner,
         ZLinkFrameworkRuntimeState state) {
-        List<ZLinkObjectCapability> capabilities = new ArrayList<>();
-        configured.relocatableSpotFactories().values().forEach(factory ->
-            capabilities.add(capability(
-                ZLinkPlacementObjectKind.USER_SPOT,
-                factory.stableType(),
-                factory.options().stableTypeLimit(),
-                factory.relocationPolicy())));
-        configured.relocatableInstanceSpotFactories().values().forEach(factory ->
-            capabilities.add(capability(
-                ZLinkPlacementObjectKind.INSTANCE_SPOT,
-                factory.stableType(),
-                factory.options().stableTypeLimit(),
-                factory.relocationPolicy())));
-        configured.relocatableActorFactories().values().forEach(factory ->
-            capabilities.add(capability(
-                ZLinkPlacementObjectKind.ACTOR,
-                factory.stableType(),
-                0,
-                factory.relocationPolicy())));
+        long descriptorRevision = revision.getAndIncrement();
+        ZLinkMeshNodeMonitoringProjection placement =
+            ZLinkMeshNodeMonitoringProjection.fromRegistration(
+                configured,
+                descriptorRevision,
+                state == ZLinkFrameworkRuntimeState.SERVING
+                    ? node.placementWeight()
+                    : 0);
         return new ZLinkMeshNodeDescriptor(
             configured.meshName(),
             node.status().routingId(),
             node.status().lifecycleGeneration(),
-            revision.getAndIncrement(),
+            descriptorRevision,
             configured.bindEndpoint(),
             node.channelWeights(),
             0,
-            capabilities,
+            placement.objectCapabilities(),
             ZLinkMeshNodeObjectRole.SERVER,
             Optional.of(configured.entrySpotId()),
-            state == ZLinkFrameworkRuntimeState.SERVING
-                ? node.placementWeight()
-                : 0,
-            new ZLinkPlacementCapacity(
-                new ZLinkCapacityUsage(
-                    0, 0, configured.actorCapacity()),
-                new ZLinkCapacityUsage(
-                    0, 0, configured.spotCapacity()),
-                capabilities.stream()
-                    .filter(capability ->
-                        capability.objectKind()
-                            != ZLinkPlacementObjectKind.ACTOR)
-                    .map(capability -> new ZLinkSpotTypeCapacity(
-                        capability.objectKind(),
-                        capability.stableType(),
-                        new ZLinkCapacityUsage(
-                            0, 0, capability.spotLimit())))
-                    .toList()),
+            placement.placementWeight(),
+            placement.objectCapacity(),
             new ZLinkActivationConcurrency(
-                0,
-                configured.activationConcurrency()),
+                placement.activationConcurrency().active(),
+                placement.activationConcurrency().limit()),
             Optional.empty(),
             state,
             node.status().routingId().toString(),
             owner.ownerId(),
             owner.leaseGeneration(),
             Instant.now());
-    }
-
-    private static ZLinkObjectCapability capability(
-        ZLinkPlacementObjectKind kind,
-        String stableType,
-        int stableTypeLimit,
-        ZLinkRelocationPolicy<?> policy) {
-        return new ZLinkObjectCapability(
-            kind,
-            stableType,
-            policy instanceof ZLinkRelocationPolicy.Snapshot<?>
-                ? ZLinkObjectMaintenancePolicyKind.SNAPSHOT
-                : policy instanceof ZLinkRelocationPolicy.Recreate<?>
-                    ? ZLinkObjectMaintenancePolicyKind.RECREATE
-                    : ZLinkObjectMaintenancePolicyKind.DISABLED,
-            policy instanceof ZLinkRelocationPolicy.Snapshot<?>,
-            kind == ZLinkPlacementObjectKind.ACTOR ? 0 : stableTypeLimit);
     }
 
     private static CompletionStage<Void> all(

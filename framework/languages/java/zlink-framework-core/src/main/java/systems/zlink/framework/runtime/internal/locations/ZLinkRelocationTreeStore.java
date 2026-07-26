@@ -179,26 +179,14 @@ final class ZLinkRelocationTreeStore {
         ZLinkRelocationStore store,
         String rootReference,
         ZLinkStoreCancellation cancellation) {
-        return store.get(rootReference, cancellation)
-            .handle((read, failure) -> failure == null
-                && read instanceof ZLinkRelocationFound found
-                ? safeManifest(found.payload())
-                : null)
-            .thenCompose(manifest -> {
-                CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-                if (manifest != null) {
-                    for (Chunk chunk : manifest.chunks()) {
-                        chain = chain.thenCompose(ignored -> store.delete(
-                                chunk.reference(),
-                                cancellation)
-                            .handle((value, failure) -> null));
-                    }
-                }
-                return chain.thenCompose(ignored -> store.delete(
-                        rootReference,
-                        cancellation)
-                    .handle((value, failure) -> null));
-            });
+        Objects.requireNonNull(store, "store");
+        Objects.requireNonNull(rootReference, "rootReference");
+        Objects.requireNonNull(cancellation, "cancellation");
+        // Chunk references are content-addressed and may be shared by another
+        // published manifest. Removing only the manifest makes its root
+        // unreachable; provider retention later removes unreferenced chunks.
+        return store.delete(rootReference, cancellation)
+            .handle((value, failure) -> null);
     }
 
     private static CompletionStage<ZLinkRelocationStored> putVerified(
@@ -375,14 +363,6 @@ final class ZLinkRelocationTreeStore {
         }
         return ByteBuffer.wrap(encoded, HEADER_BYTES, (int) bodyLength)
             .slice().order(ByteOrder.BIG_ENDIAN);
-    }
-
-    private static Manifest safeManifest(byte[] encoded) {
-        try {
-            return decodeManifest(encoded);
-        } catch (RuntimeException ignored) {
-            return null;
-        }
     }
 
     private static byte[] take(ByteBuffer input, int length) {

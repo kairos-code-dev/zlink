@@ -8,7 +8,7 @@ namespace zlink::samples::tictactoe
 
 inline observe_milestone_res_t
 tictactoe_entry_spot_t::observe_milestone (const player_actor_t &actor,
-                                           spot_actor_request_context_t &,
+                                           message_context_t &,
                                            const observe_milestone_req_t &)
 {
     observers[actor.actor_id] = const_cast<player_actor_t *> (&actor);

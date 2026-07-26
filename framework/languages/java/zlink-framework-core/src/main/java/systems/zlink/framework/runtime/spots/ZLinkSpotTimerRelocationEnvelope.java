@@ -33,6 +33,128 @@ final class ZLinkSpotTimerRelocationEnvelope {
     private ZLinkSpotTimerRelocationEnvelope() {
     }
 
+    static List<CanonicalTimer> canonicalize(byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return List.of();
+        }
+        FrozenClassResolver resolver = new FrozenClassResolver();
+        return decode(payload, resolver::resolve).timers().stream()
+            .map(timer -> {
+                Instant next = timer.nextScheduledAt().orElseGet(() ->
+                    timer.pendingTick().orElseThrow().tick().scheduledAt());
+                CanonicalPending pending = timer.pendingTick()
+                    .map(value -> new CanonicalPending(
+                        value.tick().deliveryIndex(),
+                        value.tick().scheduledIndex(),
+                        value.tick().scheduledAt().toEpochMilli(),
+                        value.tick().skippedTicks()))
+                    .orElse(null);
+                return new CanonicalTimer(
+                    timer.name(),
+                    timer.handlerType().getName(),
+                    timer.schedule().period().toMillis(),
+                    timer.schedule().options().overrunPolicy().value() + 1,
+                    timer.schedule().options().maxCatchUpTicks(),
+                    timer.schedule().options().stopOnUnhandledException(),
+                    timer.schedule().deliveryIndex(),
+                    timer.schedule().lastScheduledIndex(),
+                    next.toEpochMilli(),
+                    pending);
+            }).toList();
+    }
+
+    static byte[] encodeCanonical(List<CanonicalTimer> values) {
+        if (values.isEmpty()) {
+            return new byte[0];
+        }
+        FrozenClassResolver resolver = new FrozenClassResolver();
+        List<ZLinkSpotTimerRegistry.TimerSnapshot> timers = values.stream()
+            .map(value -> {
+                ZLinkTimerOverrunPolicy policy = switch (value.overrunPolicy()) {
+                    case 1 -> ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS;
+                    case 2 -> ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED;
+                    case 3 -> ZLinkTimerOverrunPolicy.DELAY_NEXT_TICK;
+                    default -> throw invalid(null);
+                };
+                Duration period = Duration.ofMillis(value.periodMilliseconds());
+                Instant next = Instant.ofEpochMilli(
+                    value.nextScheduledAtUnixMilliseconds());
+                var schedule = new ZLinkSpotTimerSchedule.State(
+                    value.name(),
+                    period,
+                    new ZLinkTimerOptions(
+                        policy,
+                        Math.toIntExact(value.maxCatchUpTicks()),
+                        value.stopOnUnhandledException()),
+                    next,
+                    value.lastCompletedDeliveryIndex(),
+                    value.lastCompletedScheduledIndex());
+                Optional<Instant> scheduled = value.pending() == null
+                    ? Optional.of(next)
+                    : Optional.empty();
+                Optional<ZLinkSpotTimerSchedule.PendingTick> pending =
+                    value.pending() == null
+                        ? Optional.empty()
+                        : Optional.of(new ZLinkSpotTimerSchedule.PendingTick(
+                            value.pending().scheduledIndex(),
+                            new ZLinkTimerTick(
+                                value.name(),
+                                value.pending().deliveryIndex(),
+                                value.pending().scheduledIndex(),
+                                period,
+                                Instant.ofEpochMilli(
+                                    value.pending()
+                                        .scheduledAtUnixMilliseconds()),
+                                Instant.ofEpochMilli(
+                                    value.pending()
+                                        .scheduledAtUnixMilliseconds()),
+                                Duration.ZERO,
+                                Duration.ZERO,
+                                Duration.ZERO,
+                                value.pending().skippedTicks())));
+                return new ZLinkSpotTimerRegistry.TimerSnapshot(
+                    value.name(),
+                    resolver.resolve(value.handlerType()),
+                    schedule,
+                    scheduled,
+                    pending);
+            }).toList();
+        return encode(new ZLinkSpotTimerRegistry.FrozenTimers(timers));
+    }
+
+    record CanonicalTimer(
+        String name,
+        String handlerType,
+        long periodMilliseconds,
+        int overrunPolicy,
+        long maxCatchUpTicks,
+        boolean stopOnUnhandledException,
+        long lastCompletedDeliveryIndex,
+        long lastCompletedScheduledIndex,
+        long nextScheduledAtUnixMilliseconds,
+        CanonicalPending pending) {
+    }
+
+    record CanonicalPending(
+        long deliveryIndex,
+        long scheduledIndex,
+        long scheduledAtUnixMilliseconds,
+        long skippedTicks) {
+    }
+
+    private static final class FrozenClassResolver {
+        Class<?> resolve(String name) {
+            try {
+                return Class.forName(
+                    name,
+                    false,
+                    Thread.currentThread().getContextClassLoader());
+            } catch (ClassNotFoundException failure) {
+                throw invalid(failure);
+            }
+        }
+    }
+
     static byte[] encode(ZLinkSpotTimerRegistry.FrozenTimers state) {
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();

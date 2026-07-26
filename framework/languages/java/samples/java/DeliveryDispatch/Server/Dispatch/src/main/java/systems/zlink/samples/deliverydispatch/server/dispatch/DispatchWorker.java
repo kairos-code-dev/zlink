@@ -3,14 +3,10 @@ package systems.zlink.samples.deliverydispatch.server.dispatch;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.spots.SpotHandle;
-import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.server.dispatch.DeliveryOfferStore.DeliveryOffer;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 
@@ -24,22 +20,16 @@ public final class DispatchWorker {
     private static final List<String> Candidates = List.of("courier-a", "courier-b");
 
     private final ZLinkClient channels;
-    private final ZLinkRouteClient routes;
-    private final SpotHandleResolver spotHandles;
+    private final ZLinkActorClient actors;
     private final DeliveryOfferStore offers;
-    private final SampleTopology topology;
 
     public DispatchWorker(
         ZLinkClient channels,
-        ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles,
-        DeliveryOfferStore offers,
-        SampleTopology topology) {
+        ZLinkActorClient actors,
+        DeliveryOfferStore offers) {
         this.channels = channels;
-        this.routes = routes;
-        this.spotHandles = spotHandles;
+        this.actors = actors;
         this.offers = offers;
-        this.topology = topology;
     }
 
     /** The first offer. Records it, sends it, and returns — nobody is left waiting. */
@@ -103,23 +93,16 @@ public final class DispatchWorker {
         Messages.AssignDeliveryMsg request,
         String courierId,
         int attempt) {
-        return courierAddress(courierId).thenCompose(address -> routes
-            .sendToSpot(
-                address,
+        return actors
+            .sendToActor(
+                courierId,
                 new Messages.OfferDeliveryMsg(
                     courierId,
                     request.deliveryId(),
                     attempt,
                     request.pickupAddress(),
                     request.dropoffAddress()))
-            .submit()
-            .thenApply(ignored -> null));
-    }
-
-    private CompletionStage<SpotHandle> courierAddress(String courierId) {
-        RoutingId nodeRid = RoutingId.from(topology.courierPlacement(courierId));
-        return spotHandles.resolveSpotHandle(nodeRid).thenApply(found -> found.orElseThrow(() ->
-            new IllegalStateException("courier Spot is not registered: " + nodeRid)));
+            .submit();
     }
 
     private CompletionStage<Void> publishStatus(

@@ -23,6 +23,11 @@
 #include <string>
 #include <vector>
 
+namespace zlink::framework::runtime::stateful
+{
+class raw_relocation_replay_coordinator_t;
+}
+
 namespace zlink::framework::runtime::host
 {
 
@@ -421,6 +426,8 @@ class public_host_runtime_t :
         termination_observer = {});
     stateful::maintenance_runtime_t *maintenance () noexcept;
     stateful::host_maintenance_runtime_t *termination () noexcept;
+    stateful::raw_relocation_replay_coordinator_t &
+    relocation_wire () noexcept;
     void configure_user_spot_operations (
       std::shared_ptr<zlink::framework::location_store_t> store,
       user_spot_materializer_t materializer);
@@ -565,6 +572,8 @@ class public_host_runtime_t :
 
     host_options_t _options;
     std::shared_ptr<mesh::raw_mesh_node_owner_t> _transport;
+    std::unique_ptr<stateful::raw_relocation_replay_coordinator_t>
+      _relocation_wire;
     stateful::stateful_object_runtime_t _objects;
     stateful::stream_session_registry_t _sessions;
     std::unique_ptr<stateful::maintenance_runtime_t> _maintenance;

@@ -22,8 +22,8 @@ public sealed partial class RegressionTests
             Assert.Contains("AddHandlersFromAssemblyOf", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
-            Assert.Contains("OrderWorkflowChannelFor", source, StringComparison.Ordinal);
-            Assert.Contains("ChannelName(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            Assert.Contains("Channel(SampleNames.OrderWorkflowChannel)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("OrderWorkflowChannelFor", source, StringComparison.Ordinal);
         }
 
         var workflow = File.ReadAllText(hosts[1]);
@@ -112,9 +112,7 @@ public sealed partial class RegressionTests
             powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Join-Path $LogDir \"workflow-a.out.log\"", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Join-Path $LogDir \"workflow-b.out.log\"", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("workflow-a did not record a shoppingmall order start", powershellRunner,
-            StringComparison.Ordinal);
-        Assert.Contains("workflow-b did not record a shoppingmall order start", powershellRunner,
+        Assert.Contains("No workflow instance recorded a shoppingmall order start", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"message flow\"",
             powershellRunner, StringComparison.Ordinal);
@@ -136,9 +134,10 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("var cart = await commerce.GetCartAsync", commerceApi, StringComparison.Ordinal);
         Assert.DoesNotContain("ReserveIdempotencyAsync", commerceApi, StringComparison.Ordinal);
         Assert.Contains("evidence.StartedIdempotencyCount == 7", commerceApi, StringComparison.Ordinal);
-        Assert.Contains("owners={topology.ForOrderId(request.SuccessfulOrderId).InstanceId},{topology.ForOrderId(request.ScaleOutOrderId).InstanceId}",
-            commerceApi, StringComparison.Ordinal);
-        Assert.Contains("ownersDiffer", commerceApi, StringComparison.Ordinal);
+        Assert.DoesNotContain("ForOrderId", commerceApi, StringComparison.Ordinal);
+        Assert.DoesNotContain("ownersDiffer", commerceApi, StringComparison.Ordinal);
+        Assert.DoesNotContain("OwnerInstanceId", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("OwnerInstanceId", stores, StringComparison.Ordinal);
         Assert.DoesNotContain("ServerAssertionReq", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("ServerAssertionRes", messages, StringComparison.Ordinal);
         Assert.Contains("internal sealed record ServerAssertionReq", commerceApi, StringComparison.Ordinal);

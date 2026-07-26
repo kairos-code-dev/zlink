@@ -38,7 +38,8 @@ public enum ZLinkFrameworkTerminationReason
     DeadlineExceeded = 5,
     RelocationFailed = 6,
     TeardownFailed = 7,
-    RuntimeNotReady = 8
+    RuntimeNotReady = 8,
+    ManualTopologyUnsupported = 9
 }
 
 public readonly record struct ZLinkFrameworkTerminationResult(
@@ -377,6 +378,15 @@ seal 시점의 member Actor는 bounded aggregate로 함께 이전한다. Partici
 aggregate 전체를 commit 전에 차단한다. Enum의 숫자와 허용 outcome·reason 조합은
 [Host Retire, Shutdown & Handoff](../../../../54-graceful-drain-handoff.ko.md)를
 그대로 투영한다.
+
+Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
+하나라도 등록되어 있으면 `RetireAsync`는 state와 admission을 바꾸기 전에
+`Blocked/ManualTopologyUnsupported`를 반환한다. `ShutdownAsync`에는 이 제한을 적용하지 않는다. Automatic
+RouteMesh는 source의 Core peer table에서 descriptor와 같은 RID·lifecycle generation이 `Ready`가 된 뒤에만
+`Retiring`으로 전환한다.
+이 검사는 현재 process의 registration만 판정한다. 다른 process의 manual endpoint나 Framework 밖의 client
+connection mode는 관찰할 수 없으며, 참여 process 전체가 automatic discovery를 사용한다는 조건은 deployment가
+보장한다.
 
 `Blocked/DeadlineExceeded`는 모든 target의 `Prepared` 완료와 `Draining` publication 전에 [deadline](../../../../01-glossary.ko.md#deadline)이 끝난
 결과다. Framework는 reversible 작업을 정리하고 host state와 admission을 복원한다. `Draining` publication 뒤

@@ -16,11 +16,18 @@ final class ZLinkSpotAcceptedJournalTest {
     void acceptedRouteRecordPreservesRelayIdentityMetadataAndParts() {
         ZLinkBackendReceived received = new ZLinkBackendReceived(
             ZLinkBackendRequestResult.OK,
-            Optional.of(RoutingId.fromHex("01")),
-            Optional.of("02"),
+            Optional.of(RoutingId.from("journal-node")),
+            Optional.of("source-spot"),
             Optional.of(17L),
-            new byte[] {3, 4},
-            List.of(Message.from(new byte[] {5}), Message.from(new byte[] {6, 7})),
+            new byte[0],
+            ZLinkAcceptedJournalTestRecords.spot(
+                "source-spot",
+                "target-spot",
+                17,
+                "packet",
+                java.util.Map.of(),
+                new byte[] {6, 7}),
+            List.of(Message.from("packet"), Message.from(new byte[] {6, 7})),
             null,
             () -> { });
 
@@ -32,8 +39,9 @@ final class ZLinkSpotAcceptedJournalTest {
         assertEquals(received.routingId(), record.routingId());
         assertEquals(received.spotId(), record.spotId());
         assertEquals(received.requestSeq(), record.requestSequence());
-        assertArrayEquals(new byte[] {3, 4}, record.applicationMetadata());
-        assertArrayEquals(new byte[] {5}, record.parts().get(0));
+        assertArrayEquals(new byte[0], record.applicationMetadata());
+        assertArrayEquals("packet".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+            record.parts().get(0));
         assertArrayEquals(new byte[] {6, 7}, record.parts().get(1));
         received.close();
     }

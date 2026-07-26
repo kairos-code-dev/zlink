@@ -12,7 +12,6 @@ type PlayerIdentity = {
 
 type BingoRoomAllocation = {
   roomId: string;
-  ownerPlayNodeRid: string;
   created: boolean;
   settings: BingoRoomSettings;
 };
@@ -24,20 +23,17 @@ class BingoRoomAllocator {
 
   async allocate(
     actor: PlayerIdentity,
-    ownerPlayNodeRid: string,
     mode: BingoMode = 'two-player'
   ): Promise<BingoRoomAllocation> {
     const settings = createRoomSettings(mode);
     const reserved = await this.matchQueue.reserve({
       mode,
       actorId: actor.actorId,
-      ownerPlayNodeRid,
       requiredPlayers: settings.requiredPlayers,
       createRoomId: () => `bingo-room-${randomUUID().replaceAll('-', '')}`
     });
     return {
       roomId: reserved.record.roomId,
-      ownerPlayNodeRid: reserved.record.ownerPlayNodeRid,
       created: reserved.created,
       settings
     };

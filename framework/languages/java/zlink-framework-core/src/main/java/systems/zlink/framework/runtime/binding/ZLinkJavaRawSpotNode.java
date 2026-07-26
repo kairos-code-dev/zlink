@@ -26,6 +26,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
 import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
@@ -631,7 +632,32 @@ final class ZLinkJavaRawSpotNode
             0,
             0,
             sourceNodeRid,
-            sourceSessionRid);
+            sourceSessionRid,
+            0,
+            0);
+    }
+
+    @Override
+    public byte[] encodeLocalSessionActorAccepted(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence,
+        long requestSequence,
+        String packetName,
+        java.util.Map<String, String> metadata,
+        byte[] payload) {
+        return owner.encodeLocalActorAccepted(
+            actor,
+            sourceNodeRid,
+            sourceSessionRid,
+            sourceBindingGeneration,
+            sourceSessionSequence,
+            requestSequence,
+            packetName,
+            metadata,
+            payload);
     }
 
     synchronized boolean forwardBoundStreamSession(
@@ -665,7 +691,9 @@ final class ZLinkJavaRawSpotNode
             0,
             0,
             routingId(),
-            sourceSessionRid);
+            sourceSessionRid,
+            sourceBindingGeneration,
+            sourceSessionSequence);
     }
 
     @Override
@@ -792,6 +820,23 @@ final class ZLinkJavaRawSpotNode
         byte[] metadata,
         List<Message> parts,
         Consumer<List<Message>> reply) {
+        return enqueueRemoteSpot(
+            new ZLinkInternalMeshNode.PeerAuthorityFence(
+                sourceNodeRid, 1, "test-owner", 1),
+            header,
+            metadata,
+            new byte[0],
+            parts,
+            reply);
+    }
+
+    boolean enqueueRemoteSpot(
+        ZLinkInternalMeshNode.PeerAuthorityFence source,
+        ZLinkServiceM6BWireCodec.SpotMessage header,
+        byte[] metadata,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        Consumer<List<Message>> reply) {
         ZLinkJavaRawSpot target = localSpot(
             routingId(),
             header.target().spotId(),
@@ -808,10 +853,11 @@ final class ZLinkJavaRawSpotNode
             .ZLinkBackendReceived(
                 systems.zlink.framework.runtime.backend
                     .ZLinkBackendRequestResult.OK,
-                Optional.of(sourceNodeRid),
+                Optional.of(source.sourceNodeRid()),
                 Optional.of(header.sourceSpotId()),
                 Optional.ofNullable(header.correlation()),
                 metadata,
+                acceptedJournalRecord,
                 parts,
                 header.request() ? reply : null,
                 () -> { }));
@@ -824,13 +870,63 @@ final class ZLinkJavaRawSpotNode
         List<Message> parts,
         Consumer<List<Message>> reply) {
         return enqueueRemoteActor(
-            sourceNodeRid, 0, header, parts, reply);
+            sourceNodeRid,
+            0,
+            header,
+            new byte[0],
+            parts,
+            reply);
+    }
+
+    boolean enqueueRemoteActor(
+        ZLinkInternalMeshNode.PeerAuthorityFence source,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        List<Message> parts,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteActor(
+            source.sourceNodeRid(),
+            source.sourceNodeGeneration(),
+            header,
+            new byte[0],
+            parts,
+            reply);
+    }
+
+    boolean enqueueRemoteActor(
+        ZLinkInternalMeshNode.PeerAuthorityFence source,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteActor(
+            source.sourceNodeRid(),
+            source.sourceNodeGeneration(),
+            header,
+            acceptedJournalRecord,
+            parts,
+            reply);
     }
 
     boolean enqueueRemoteActor(
         RoutingId sourceNodeRid,
         long sourceNodeGeneration,
         ZLinkServiceM6BWireCodec.ActorMessage header,
+        List<Message> parts,
+        Consumer<List<Message>> reply) {
+        return enqueueRemoteActor(
+            sourceNodeRid,
+            sourceNodeGeneration,
+            header,
+            new byte[0],
+            parts,
+            reply);
+    }
+
+    boolean enqueueRemoteActor(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        byte[] acceptedJournalRecord,
         List<Message> parts,
         Consumer<List<Message>> reply) {
         ZLinkBackendActorRef actor = header.target().actor();
@@ -885,7 +981,10 @@ final class ZLinkJavaRawSpotNode
                 requestId,
                 header.request() ? 1 : 0,
                 parts.get(index),
-                index + 1 < parts.size()));
+                index + 1 < parts.size(),
+                index == 0
+                    ? acceptedJournalRecord
+                    : new byte[0]));
         }
         target.enqueueActor(messages);
         return true;
@@ -1231,6 +1330,26 @@ final class ZLinkJavaRawSpotNode
         int flags,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid) {
+        return dispatchLocalActor(
+            actor,
+            parts,
+            requestId,
+            flags,
+            sourceNodeRid,
+            sourceSessionRid,
+            0,
+            0);
+    }
+
+    private boolean dispatchLocalActor(
+        ZLinkBackendActorRef actor,
+        List<Message> parts,
+        long requestId,
+        int flags,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence) {
         if (!isCurrentActor(actor)) {
             return false;
         }
@@ -1240,6 +1359,14 @@ final class ZLinkJavaRawSpotNode
             return false;
         }
         List<Message> copied = ZLinkJavaRawSpot.copy(parts);
+        byte[] acceptedRecord = owner.encodeLocalActorAccepted(
+            actor,
+            sourceNodeRid,
+            sourceSessionRid,
+            sourceBindingGeneration,
+            sourceSessionSequence,
+            requestId,
+            parts);
         List<ZLinkBackendActorReceived> messages =
             new java.util.ArrayList<>(copied.size());
         for (int index = 0; index < copied.size(); index++) {
@@ -1251,7 +1378,10 @@ final class ZLinkJavaRawSpotNode
                 requestId,
                 flags,
                 copied.get(index),
-                index + 1 < copied.size()));
+                index + 1 < copied.size(),
+                index == 0
+                    ? acceptedRecord
+                    : new byte[0]));
         }
         target.enqueueActor(messages);
         return true;
@@ -1365,6 +1495,13 @@ final class ZLinkJavaRawSpotNode
         if (target == null) {
             return false;
         }
+        byte[] acceptedRecord = owner.encodeLocalSpotAccepted(
+            source.routingId(),
+            targetSpotId,
+            targetGeneration,
+            metadata,
+            parts,
+            null);
         target.enqueueRoute(new systems.zlink.framework.runtime.backend
             .ZLinkBackendReceived(
                 systems.zlink.framework.runtime.backend
@@ -1373,6 +1510,7 @@ final class ZLinkJavaRawSpotNode
                 Optional.of(source.routingId()),
                 Optional.empty(),
                 metadata,
+                acceptedRecord,
                 ZLinkJavaRawSpot.copy(parts),
                 null,
                 () -> { }));
@@ -1405,6 +1543,13 @@ final class ZLinkJavaRawSpotNode
             return false;
         }
         long sequence = nextRequestSequence.getAndIncrement();
+        byte[] acceptedRecord = owner.encodeLocalSpotAccepted(
+            source.routingId(),
+            targetSpotId,
+            targetGeneration,
+            metadata,
+            parts,
+            sequence);
         AtomicBoolean terminal = new AtomicBoolean();
         CompletionStage<Void> enqueued = target.enqueueRoute(
             new systems.zlink.framework.runtime.backend
@@ -1415,6 +1560,7 @@ final class ZLinkJavaRawSpotNode
                 Optional.of(source.routingId()),
                 Optional.of(sequence),
                 metadata,
+                acceptedRecord,
                 ZLinkJavaRawSpot.copy(parts),
                 reply -> {
                     if (!terminal.compareAndSet(false, true)) {

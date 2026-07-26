@@ -127,7 +127,7 @@ export class ZLinkFanoutLocationRuntime {
       }
       const generatedLifecycle = BigInt(
         `0x${randomUUID().replaceAll('-', '').slice(0, 16)}`
-      );
+      ) & 0x7fff_ffff_ffff_ffffn;
       const identity = this.publisherIdentities.get(channelName) ?? {
         publisherRid: channel.routingId ?? `fanout-${randomUUID()}`,
         lifecycleGeneration: generatedLifecycle === 0n

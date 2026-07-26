@@ -57,8 +57,7 @@ class tictactoe_client_scenario_t
                   return std::count_if (
                            room.play_nodes.begin (), room.play_nodes.end (),
                            [&endpoint] (const play_node_info_t &node) {
-                               return node.stream_endpoint == endpoint
-                                      && !node.spot_node_rid.empty ();
+                               return node.stream_endpoint == endpoint;
                            })
                          == 1;
               }));
@@ -71,9 +70,6 @@ class tictactoe_client_scenario_t
             }
             if (guest_endpoint.empty ()) {
                 throw std::runtime_error ("API did not return a non-owner Play endpoint.");
-            }
-            if (non_owner_node_rid (room).empty ()) {
-                throw std::runtime_error ("API did not return the non-owner Play node rid.");
             }
 
             zlink::stream_connector::connector_options_t connector_options;
@@ -409,10 +405,8 @@ class tictactoe_client_scenario_t
             ensure (milestone.actor_id == options.x_actor_id);
             ensure (milestone.display_name == client1_auth.player.display_name);
             ensure (milestone.wins == 100);
-            ensure (milestone.receiving_spot_node_rid == non_owner_node_rid (room));
             std::cout << "observer-win-milestone=verified actor=" << milestone.actor_id
-                      << " wins=" << milestone.wins
-                      << " receivingSpotNodeRid=" << milestone.receiving_spot_node_rid << '\n';
+                      << " wins=" << milestone.wins << '\n';
 
             const auto client1_leave_request = leave_game_req_t{room.room_id};
             client1.send (client1_leave_request).submit ();
@@ -486,16 +480,6 @@ class tictactoe_client_scenario_t
         return {};
     }
 
-    static std::string non_owner_node_rid (const create_game_http_res_t &room)
-    {
-        const auto endpoint = non_owner_endpoint (room);
-        for (const auto &node : room.play_nodes) {
-            if (node.stream_endpoint == endpoint) {
-                return node.spot_node_rid;
-            }
-        }
-        return {};
-    }
 };
 
 #undef ensure

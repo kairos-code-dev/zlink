@@ -209,6 +209,48 @@ final class ZLinkInMemoryAggregateCapacityTest {
     }
 
     @Test
+    void aggregateCommitRejectsExpiredExactTargetOwnerWithoutMutation()
+        throws Exception {
+        Fixture fixture = fixture();
+        fixture.sourceLive.set(false);
+        var prepared = assertInstanceOf(
+            ZLinkAggregatePrepared.class,
+            fixture.store.prepareAggregate(
+                    aggregateRequest(
+                        UUID.randomUUID(),
+                        fixture.current,
+                        fixture.target,
+                        new byte[] {2}),
+                    () -> false)
+                .toCompletableFuture().get());
+        fixture.targetLive.set(false);
+
+        assertEquals(
+            ZLinkAggregateCommitResult.STALE,
+            fixture.store.commitAggregate(prepared.fence(), () -> false)
+                .toCompletableFuture().get());
+        ZLinkAuthoritySnapshot current = current(fixture);
+        assertEquals(fixture.source.ownerId(), current.ownerId());
+        assertEquals(
+            fixture.current.storeVersion(),
+            current.storeVersion());
+        assertEquals(
+            1,
+            fixture.store.activeCapacity(SOURCE_DESCRIPTOR, 7));
+        assertEquals(
+            1,
+            fixture.store.pendingCapacity(TARGET_DESCRIPTOR, 9));
+
+        assertEquals(
+            ZLinkAggregateAbortResult.ABORTED,
+            fixture.store.abortAggregate(prepared.fence(), () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            0,
+            fixture.store.pendingCapacity(TARGET_DESCRIPTOR, 9));
+    }
+
+    @Test
     void nextGenerationPreserveAggregateChangesOnlyPayload() throws Exception {
         Fixture fixture = fixture();
         fixture.sourceLive.set(false);
@@ -301,6 +343,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
 
     private static Fixture fixture() throws Exception {
         AtomicBoolean sourceLive = new AtomicBoolean(true);
+        AtomicBoolean targetLive = new AtomicBoolean(true);
         AtomicBoolean targetDescriptorLive = new AtomicBoolean(true);
         ZLinkLocationOwnerToken source =
             new ZLinkLocationOwnerToken("source", 1);
@@ -309,8 +352,9 @@ final class ZLinkInMemoryAggregateCapacityTest {
         ZLinkInMemoryAuthorityStore store =
             new ZLinkInMemoryAuthorityStore(
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                owner -> !owner.equals(source)
-                    || sourceLive.get(),
+                owner -> owner.equals(source)
+                    ? sourceLive.get()
+                    : !owner.equals(target) || targetLive.get(),
                 (descriptor, generation, owner) ->
                     descriptor.equals(TARGET_DESCRIPTOR)
                         && !targetDescriptorLive.get()
@@ -344,6 +388,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
             current,
             capacityRequest,
             sourceLive,
+            targetLive,
             targetDescriptorLive);
     }
 
@@ -462,6 +507,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
         ZLinkAuthoritySnapshot current,
         ZLinkRelocationCapacityReservationRequest capacityRequest,
         AtomicBoolean sourceLive,
+        AtomicBoolean targetLive,
         AtomicBoolean targetDescriptorLive) {
     }
 }

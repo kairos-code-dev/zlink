@@ -1,12 +1,10 @@
 package systems.zlink.samples.bingo.server.session.sessions.handlers;
 
 
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
+import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.spots.SpotHandle;
-import systems.zlink.framework.spots.SpotHandleResolver;
-import systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -18,16 +16,13 @@ import systems.zlink.samples.bingo.shared.contracts.Messages;
 public final class AuthenticateSessionHandler
     implements ZLinkTypedSessionPacketHandler<ZLinkSessionContext, Messages.AuthenticateReq> {
     private final ZLinkRouteClient routes;
-    private final SpotHandleResolver spots;
-    private final ZLinkAllocatedRoutingIdProvider allocatedRoutingIds;
+    private final ZLinkActorManager actors;
 
     public AuthenticateSessionHandler(
         ZLinkRouteClient routes,
-        SpotHandleResolver spots,
-        ZLinkAllocatedRoutingIdProvider allocatedRoutingIds) {
+        ZLinkActorManager actors) {
         this.routes = routes;
-        this.spots = spots;
-        this.allocatedRoutingIds = allocatedRoutingIds;
+        this.actors = actors;
     }
 
     @Override
@@ -51,30 +46,16 @@ public final class AuthenticateSessionHandler
             .submit(Messages.AuthenticatePlayerRes.class)
             .thenCompose(authenticated -> {
                 requireAuthenticated(authenticated);
-                return allocatedRoutingIds.waitForReadyAllocation("bingo.session")
-                    .thenCompose(allocation -> {
-                        RoutingId preferredPlayNode = RoutingId.from(
-                            "play" + allocation.slot());
-                        return spots.resolveSpotHandle(
-                            SampleNames.Mesh,
-                            preferredPlayNode)
-                    .thenCompose(handle -> routes.requestToSpot(
-                            requireSpot(handle, preferredPlayNode),
-                            BingoMessages.ensurePlayerActorReq(
-                                authenticated.getActorId(),
-                                authenticated.getDisplayName(),
-                                preferredPlayNode.toString()))
-                        .timeout(SampleTimings.RequestTimeout)
-                        .submit(Messages.EnsurePlayerActorRes.class))
-                    .thenCompose(ensured -> context.actors().bind(new ActorRef(
-                            RoutingId.from(ensured.getActor().getNodeRid()),
-                            ensured.getActor().getActorId(),
-                            ensured.getActor().getGeneration()))
+                return actors.getOrCreate(
+                        authenticated.getActorId(),
+                        SampleNames.PlayerActorType,
+                        BingoMessages.ensurePlayerActorReq(
+                            authenticated.getActorId(),
+                            authenticated.getDisplayName()))
+                    .thenCompose(result -> context.actors().bind(requireActor(result))
                         .thenRun(() -> context.client().reply(BingoMessages.authenticateRes(
-                            ensured.getActorId(),
-                            authenticated.getDisplayName(),
-                            ensured.getActor().getNodeRid())).submit()));
-                    });
+                            authenticated.getActorId(),
+                            authenticated.getDisplayName())).submit()));
             });
     }
 
@@ -88,9 +69,13 @@ public final class AuthenticateSessionHandler
         }
     }
 
-    private static SpotHandle requireSpot(
-        java.util.Optional<SpotHandle> handle,
-        RoutingId spotRid) {
-        return handle.orElseThrow(() -> new IllegalStateException("spot not found: " + spotRid));
+    private static ActorRef requireActor(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Existing existing) {
+            return existing.actor();
+        }
+        if (result instanceof ZLinkActorCreateResult.Created created) {
+            return created.actor();
+        }
+        throw new IllegalStateException("Player actor creation was rejected.");
     }
 }

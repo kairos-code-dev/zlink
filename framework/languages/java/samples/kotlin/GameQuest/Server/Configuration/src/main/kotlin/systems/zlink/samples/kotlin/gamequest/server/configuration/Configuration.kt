@@ -6,7 +6,6 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.sync.RedisCommands
-import java.nio.charset.StandardCharsets
 import java.time.Duration
 import org.springframework.boot.context.properties.ConfigurationProperties
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
@@ -16,11 +15,10 @@ import systems.zlink.samples.kotlin.gamequest.shared.contracts.StoredQuestEvent
 
 object SampleNames {
     const val StreamNode = "gamequest-stream"
-    private const val QuestOwnerChannelPrefix = "gamequest.quest-owner."
+    const val QuestOwnerChannel = "gamequest.quest-owner"
     const val CompletedMarker = "gamequest=completed"
     const val ServerEvidenceMarker = "gamequest-server-evidence=completed"
 
-    fun questOwnerChannelFor(instanceId: String): String = "$QuestOwnerChannelPrefix$instanceId"
 }
 
 object SampleTimings {
@@ -60,12 +58,6 @@ data class SampleTopology(
         required(redisEndpoint, "redisEndpoint"),
         required(redisKeyPrefix, "redisKeyPrefix"),
     )
-
-    fun ownerChannel(playerId: String): String =
-        SampleNames.questOwnerChannelFor(if (ownerIndex(playerId) == 1) "mission-b" else "mission-a")
-
-    private fun ownerIndex(playerId: String): Int =
-        playerId.toByteArray(StandardCharsets.UTF_8).sumOf { it.toInt() and 0xff } % 2
 
     data class GameApi(
         val instanceName: String,

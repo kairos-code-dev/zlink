@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import systems.zlink.contracts.core.RoutingId
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.kotlin.awaitJoin
@@ -56,15 +55,18 @@ class BingoEntrySpot(
         actor: PlayerActor,
         request: ObserveBingoEventsReq,
     ): ObserveBingoEventsRes {
-        val observerRid = "observe:${request.roomId}:${context.nodeRid()}"
+        val observerSpotId = "observe:${request.roomId}:${actor.actorId()}"
         val settings = BingoRoomSettings.createObserver(
             request.roomId,
-            context.nodeRid().toString(),
+            actor.actorId(),
             SampleTimings.DrawPeriod.toMillis(),
         )
-        spots.getOrCreate(BingoRoomSpot::class.java, RoutingId.from(observerRid), ZLinkMessage.of(settings)).await()
+        spots.getOrCreate(observerSpotId, BingoRoomSpot::class.java.name)
+            .request(settings)
+            .submit()
+            .await()
         val joined = actor.context().joinSpot(
-            RoutingId.from(observerRid),
+            observerSpotId,
             BingoRoomJoinReq(
                 request.roomId,
                 actor.actorId(),
@@ -76,7 +78,6 @@ class BingoEntrySpot(
             ?: error("observer actor join was rejected")
         return ObserveBingoEventsRes(
             accepted.reply().state.status == "Running",
-            accepted.actor().nodeRid().toString(),
         )
     }
 }

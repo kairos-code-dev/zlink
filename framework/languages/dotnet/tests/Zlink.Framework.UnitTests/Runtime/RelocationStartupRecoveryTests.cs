@@ -61,6 +61,54 @@ public sealed class RelocationStartupRecoveryTests
     }
 
     [Fact]
+    public async Task ExactReconciliationReadsOnlyStagedParticipantAuthorities()
+    {
+        var fixture = await RecoveryFixture.CreateAsync();
+        var recovery = new ZLinkRelocationStartupRecovery(
+            fixture.Authority,
+            fixture.Relocation);
+
+        var attempts = await Task.WhenAll(
+            recovery.TryReadExactPublishedAsync(fixture.Envelope)
+                .AsTask(),
+            recovery.TryReadExactPublishedAsync(fixture.Envelope)
+                .AsTask());
+
+        Assert.All(attempts, static candidate => Assert.NotNull(candidate));
+        Assert.Equal(
+            fixture.Envelope.Participants.Count * 2,
+            fixture.Authority.ReadCalls.Count);
+        Assert.Equal(0, fixture.Authority.ScanCalls);
+    }
+
+    [Fact]
+    public async Task ExactReconciliationRejectsPartialPublication()
+    {
+        var fixture = await RecoveryFixture.CreateAsync();
+        var entries = fixture.Authority.Entries
+            .Select((entry, index) => index == 0
+                ? entry
+                : entry with
+                {
+                    Snapshot = entry.Snapshot with
+                    {
+                        Payload = new byte[] { 1, 2, 3 }
+                    }
+                })
+            .ToArray();
+        var recovery = new ZLinkRelocationStartupRecovery(
+            new RecoveryAuthorityStore(entries),
+            fixture.Relocation);
+
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+            () => recovery.TryReadExactPublishedAsync(fixture.Envelope)
+                .AsTask());
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RelocationDataLost, error.Kind);
+        Assert.False(error.IsRetriable);
+    }
+
+    [Fact]
     public async Task PublishedMissingRootFailsAsNonRetriableRelocationDataLost()
     {
         var fixture = await RecoveryFixture.CreateAsync();
@@ -128,7 +176,8 @@ public sealed class RelocationStartupRecoveryTests
     private sealed record RecoveryFixture(
         RecoveryAuthorityStore Authority,
         RecoveryRelocationStore Relocation,
-        string Reference)
+        string Reference,
+        ZLinkRelocationEnvelope Envelope)
     {
         internal static async ValueTask<RecoveryFixture> CreateAsync(
             ZLinkPlacementObjectKind spotKind =
@@ -156,7 +205,8 @@ public sealed class RelocationStartupRecoveryTests
             return new RecoveryFixture(
                 new RecoveryAuthorityStore(entries),
                 relocation,
-                prepared.Relocation.Reference);
+                prepared.Relocation.Reference,
+                envelope);
         }
 
         internal static ZLinkRelocationEnvelope CreateEnvelope(
@@ -285,14 +335,20 @@ public sealed class RelocationStartupRecoveryTests
         IReadOnlyList<ZLinkAuthorityEntry> entries) : IZLinkAuthorityStore
     {
         internal List<ZLinkAuthorityKey> CompareExchangeCalls { get; } = [];
+        internal List<ZLinkAuthorityKey> ReadCalls { get; } = [];
+        internal IReadOnlyList<ZLinkAuthorityEntry> Entries => entries;
+        internal int ScanCalls { get; private set; }
 
         public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkAuthorityReadResult>(
+            CancellationToken cancellationToken = default)
+        {
+            ReadCalls.Add(key);
+            return ValueTask.FromResult<ZLinkAuthorityReadResult>(
                 entries.FirstOrDefault(item => item.Key == key) is { } entry
                     ? new ZLinkAuthorityReadResult.Found(entry.Snapshot)
                     : new ZLinkAuthorityReadResult.Missing(DateTimeOffset.UnixEpoch));
+        }
 
         public ValueTask<ZLinkAuthorityCompareExchangeResult>
             CompareExchangeAuthorityAsync(
@@ -316,8 +372,10 @@ public sealed class RelocationStartupRecoveryTests
             string prefix,
             ZLinkAuthorityScanCursor? cursor,
             int limit,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ZLinkAuthorityScanResult>(
+            CancellationToken cancellationToken = default)
+        {
+            ScanCalls++;
+            return ValueTask.FromResult<ZLinkAuthorityScanResult>(
                 new ZLinkAuthorityScanResult.Page(
                     new ZLinkAuthorityPage(
                         entries.Where(item => item.Key.Value.StartsWith(
@@ -326,6 +384,7 @@ public sealed class RelocationStartupRecoveryTests
                             .Take(limit)
                             .ToArray(),
                         null)));
+        }
 
         public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
             ZLinkObjectReservationRequest request,

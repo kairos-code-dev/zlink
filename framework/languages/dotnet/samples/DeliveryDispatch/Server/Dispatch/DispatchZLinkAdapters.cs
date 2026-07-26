@@ -12,9 +12,7 @@ namespace DeliveryDispatch.Server.Dispatch;
 /// message (common sample spec §7.4).
 /// </summary>
 internal sealed class CourierOfferPort(
-    SampleTopology topology,
-    IZLinkSpotClient spotsClient,
-    IZLinkSpotHandleResolver spots)
+    Zlink.Framework.Contracts.Actors.IZLinkActorClient actors)
 {
     public async ValueTask OfferAsync(
         AssignDeliveryMsg delivery,
@@ -22,17 +20,9 @@ internal sealed class CourierOfferPort(
         int attempt,
         CancellationToken cancellationToken)
     {
-        var placement = topology.CourierPlacement(courierId);
-        var entrySpot = await spots.ResolveSpotHandleAsync(
-                            SampleNames.MeshName,
-                            placement.NodeRid,
-                            cancellationToken)
-                        ?? throw new InvalidOperationException(
-                            $"Courier entry spot has no live location row: {placement.NodeRid}");
-
-        await spotsClient
-            .SendToSpot(
-                entrySpot,
+        await actors
+            .SendToActor(
+                courierId,
                 new OfferDeliveryMsg(
                     courierId,
                     delivery.DeliveryId,

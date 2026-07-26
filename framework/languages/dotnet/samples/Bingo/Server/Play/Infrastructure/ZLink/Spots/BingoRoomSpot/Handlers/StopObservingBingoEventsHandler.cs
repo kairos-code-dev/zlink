@@ -11,16 +11,14 @@ internal sealed class StopObservingBingoEventsHandler
     public async ValueTask<StopObservingBingoEventsRes> HandleAsync(
         BingoRoom spot,
         PlayerActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         StopObservingBingoEventsReq message,
         CancellationToken cancellationToken)
     {
-        var observerNodeRid = spot.Context.NodeRid.ToString();
         var stopped = await spot.StopObservingAsync(actor, message.RoomId, cancellationToken);
         return new StopObservingBingoEventsRes
         {
-            Stopped = stopped,
-            ObserverNodeRid = observerNodeRid
+            Stopped = stopped
         };
     }
 }

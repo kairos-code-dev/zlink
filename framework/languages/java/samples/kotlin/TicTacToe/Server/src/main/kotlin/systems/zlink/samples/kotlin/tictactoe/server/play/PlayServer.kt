@@ -1,7 +1,6 @@
 package systems.zlink.samples.kotlin.tictactoe.server.play
 
 import kotlinx.coroutines.Dispatchers
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
@@ -28,12 +27,12 @@ object PlayServer {
             options.codecs().use(ZLinkMessagePackCodec.defaultCodec())
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleLogging.flowLogPath(settings, settings.playSpotNodeRid))
-                traceLabel(settings.playSpotNodeRid)
+                traceLogFile(SampleLogging.flowLogPath(settings, "play-${settings.playIndex}"))
+                traceLabel("play-${settings.playIndex}")
             }
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient(settings.apiChannelEndpoint)
-            val playChannel = options.addClientServerChannel(SampleNames.playChannel(settings.playIndex))
+            val playChannel = options.addClientServerChannel(SampleNames.PlayChannel)
                 .enableServer(settings.playChannelEndpoint)
             playChannel.addRequestHandler(
                 CreateGameHandler::class.java,
@@ -44,12 +43,9 @@ object PlayServer {
             val routeEndpoint = settings.routeEndpoint.ifBlank { settings.spotEndpoint }
 
             node.listen(routeEndpoint)
-                .setRoutingId(RoutingId.from(settings.playSpotNodeRid))
+                .setRoutingIdPrefix("tictactoe-play")
             node.channelName(SampleNames.PlayNode)
-            node.peerConnections().connect(
-                RoutingId.from(settings.peerPlaySpotNodeRid),
-                settings.peerSpotEndpoint,
-            )
+            node.peerConnections().connect(settings.peerSpotEndpoint)
             node.addEntrySpot(PlayEntrySpot::class.java)
             node.addSpotFactory(TicTacToeGame::class.java)
             node.addActorFactory(SampleNames.PlayActor, PlayActorFactory::class.java)

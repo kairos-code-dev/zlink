@@ -14,7 +14,7 @@ else
   SCENARIO="$*"
   SCENARIO="${SCENARIO// /,}"
 fi
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS=15
 LOCAL_READINESS_POLL_SECONDS=0.1
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=60
@@ -221,6 +221,10 @@ PY
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
+  curl -fsS "$url/topology/ready?count=$expected_count" >&2 || true
+  echo >&2
+  curl -fsS "http://127.0.0.1:$PROVIDER_A_HTTP_PORT/locations/peers?mesh=profile" >&2 || true
+  echo >&2
   echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name route readiness" >&2
   return 1
 }

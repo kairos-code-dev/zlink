@@ -150,7 +150,7 @@ final class MonitoringEventsTest {
         ZLinkLocationRuntime locationRuntime = new ZLinkLocationRuntime(
             stores,
             locationOptions.ownerLeaseTtl(),
-            locationOptions.heartbeatInterval());
+            locationOptions.ownerLeaseRenewInterval());
         locationRuntime.start(RoutingId.from("node-a")).toCompletableFuture().get();
         store.updatePeer(peer(locationRuntime.ownerId()), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()

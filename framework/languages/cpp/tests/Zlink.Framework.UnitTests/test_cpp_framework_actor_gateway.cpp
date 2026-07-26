@@ -222,11 +222,38 @@ int route_update_preserves_object_generation ()
       node_rid_t::from_string ("actor-node-a"), "player", "actor-route", 7);
     auto original_binding =
       manager.bind (original).submit ().result ().value ();
+    const actor_ref_t unaffected (
+      node_rid_t::from_string ("actor-node-a"), "player", "actor-other", 3);
+    auto unaffected_binding =
+      manager.bind (unaffected).submit ().result ().value ();
+
+    std::vector<actor_ref_t> relay_routes;
+    gateway.on_relay (
+      [&] (const actor_ref_t &actor,
+           const actor_context_t &,
+           const stream_header_t &,
+           const zlink::message_t &) {
+          relay_routes.push_back (actor);
+          return result_t<std::optional<zlink::message_t>>::success (
+            std::nullopt);
+      });
 
     const actor_ref_t relocated (
       node_rid_t::from_string ("actor-node-b"), "player", "actor-route", 7);
     if (!gateway.update_actor_ref (relocated))
         return 1;
+    if (!original_binding.relay ("packet", zlink::message_t{}).result ()
+        || relay_routes.size () != 1
+        || relay_routes.front ().node_rid ().value ()
+             != relocated.node_rid ().value ()) {
+        return 5;
+    }
+    if (!unaffected_binding.relay ("packet", zlink::message_t{}).result ()
+        || relay_routes.size () != 2
+        || relay_routes.back ().node_rid ().value ()
+             != unaffected.node_rid ().value ()) {
+        return 6;
+    }
     const actor_ref_t new_incarnation (
       node_rid_t::from_string ("actor-node-c"), "player", "actor-route", 8);
     const auto rejected = gateway.update_actor_ref (new_incarnation);

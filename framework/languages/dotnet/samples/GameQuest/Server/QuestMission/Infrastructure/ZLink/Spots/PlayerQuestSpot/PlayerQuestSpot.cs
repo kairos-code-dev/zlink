@@ -33,8 +33,12 @@ internal sealed class PlayerQuestSpot(
         return ZLinkSpotCreateResponse.Accept();
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 

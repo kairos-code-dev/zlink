@@ -86,6 +86,26 @@ class mesh_node_runtime_t
     void configure_user_spot_operations (
       std::shared_ptr<location_store_t> store,
       host::user_spot_materializer_t materializer);
+    void configure_instance_spot_operations (
+      std::shared_ptr<location_store_t> store,
+      std::shared_ptr<runtime::stateful::relocation_store_port_t> relocations,
+      location_owner_token_t owner,
+      host::instance_spot_activation_materializer_t materializer);
+    void configure_session_route_owner (
+      std::function<std::optional<location_owner_token_t> ()>
+        owner_resolver);
+    bool activate_instance_spot_remote (
+      const zlink::routing_id_t &target_node,
+      zlink::framework::runtime::protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      zlink::framework::runtime::protocol::application_payload_t application_payload,
+      std::chrono::milliseconds timeout,
+      host::instance_spot_activation_completion_t completion);
+    bool send_instance_spot_activation_remote (
+      const zlink::routing_id_t &target_node,
+      zlink::framework::runtime::protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      zlink::framework::runtime::protocol::application_payload_t application_payload);
     void connect_peer (const zlink::routing_id_t &expected_routing_id,
                        const std::string &endpoint);
     void disconnect_peer (const std::string &endpoint) noexcept;
@@ -195,6 +215,11 @@ class mesh_node_runtime_t
       const stream_header_t &header,
       const zlink::message_t &payload,
       std::chrono::milliseconds timeout);
+    result_t<std::optional<zlink::message_t>> relay_application_actor (
+      const actor_ref_t &actor,
+      const runtime::messaging::envelope_header_t &header,
+      const zlink::message_t &payload,
+      std::chrono::milliseconds timeout);
     result_t<void> bind_application_actor_session (
       const actor_ref_t &actor,
       const node_rid_t &session_node,
@@ -246,6 +271,13 @@ class mesh_node_runtime_t
     serializer_registry_t *_serializers = nullptr;
     std::shared_ptr<location_store_t> _user_spot_store;
     host::user_spot_materializer_t _user_spot_materializer;
+    host::instance_spot_activation_materializer_t
+      _instance_spot_materializer;
+    std::shared_ptr<runtime::stateful::relocation_store_port_t>
+      _instance_spot_relocations;
+    location_owner_token_t _instance_spot_owner;
+    std::function<std::optional<location_owner_token_t> ()>
+      _session_route_owner_resolver;
     std::function<void (const std::map<std::string, int> &,
                         int,
                         std::uint64_t)> _descriptor_publisher;

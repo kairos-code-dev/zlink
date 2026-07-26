@@ -44,5 +44,10 @@ public record ZLinkRelocationCapacityReservationRequest(
                 "reservationId must not be zero");
         }
         Objects.requireNonNull(capacityBundle, "capacityBundle");
+        if (capacityBundle.actorSlots() == 0
+            && capacityBundle.spotSlots() == 0) {
+            throw new IllegalArgumentException(
+                "relocation capacity reservation must reserve at least one slot");
+        }
     }
 }

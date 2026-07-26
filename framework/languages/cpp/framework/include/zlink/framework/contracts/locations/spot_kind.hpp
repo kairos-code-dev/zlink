@@ -8,7 +8,8 @@ enum class spot_kind
 {
     invalid = 0,
     entry = 1,
-    user = 2
+    user = 2,
+    instance = 3
 };
 
 } // namespace zlink

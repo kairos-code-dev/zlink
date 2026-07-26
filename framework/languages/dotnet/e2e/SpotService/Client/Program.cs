@@ -1,5 +1,6 @@
 using SpotService.Client.Scenarios;
 using SpotService.Client.Support;
+using SpotService.Shared;
 using Zlink.HttpClient;
 
 var options = ClientOptions.Parse(args);
@@ -86,7 +87,12 @@ await (options.OperationGroup switch
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),
-    "sm-d1-d6" => RunD1D2D6Async(sessionA, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-d1-d6" => RunD1D2D6Async(
+        playA,
+        playB,
+        sessionA,
+        options.SessionAStreamEndpoint,
+        options.SessionBStreamEndpoint),
     "sm-d9-d11-d13" => RunD9D11D13Async(sessionA, options.SessionAStreamEndpoint),
     "sm-c1-c2" => RunC1C2Async(playA),
     "sm-q9" => MultiNodeSpotRoutingProbe.RunAsync(multiA, multiB),
@@ -115,10 +121,22 @@ static async Task RunA3A6B4B7Async(
     ZLinkHttpClient playB,
     string sessionAStreamEndpoint)
 {
-    await SmA3SpecificSpotOwnerRoutingScenario.RunAsync(playA, playB);
-    await SmA6SpotInitializeCloseLifecycleScenario.RunAsync(playA);
-    await SmB4RemoteActorRequestReplyScenario.RunAsync(playB, sessionAStreamEndpoint);
-    await SmB7ActorLifecycleOrderScenario.RunAsync(playA, sessionAStreamEndpoint);
+    try
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmA3SpecificSpotOwnerRoutingScenario.RunAsync(playA, playB);
+        await SmA6SpotInitializeCloseLifecycleScenario.RunAsync(playA);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 0, playBWeight: 100);
+        await SmB4RemoteActorRequestReplyScenario.RunAsync(playB, sessionAStreamEndpoint);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmB7ActorLifecycleOrderScenario.RunAsync(playA, sessionAStreamEndpoint);
+    }
+    finally
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 100);
+    }
 }
 
 static async Task RunB1B2B3B5Async(
@@ -126,20 +144,67 @@ static async Task RunB1B2B3B5Async(
     ZLinkHttpClient playB,
     string sessionAStreamEndpoint)
 {
-    await SmB1LocalActorJoinScenario.RunAsync(playA, sessionAStreamEndpoint);
-    await SmB2RemoteActorJoinScenario.RunAsync(playB, sessionAStreamEndpoint);
-    await SmB3RequestMessageFidelityScenario.RunAsync(playA, sessionAStreamEndpoint);
-    await SmB5MissingActorPacketScenario.RunAsync(playA, sessionAStreamEndpoint);
+    try
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmB1LocalActorJoinScenario.RunAsync(playA, sessionAStreamEndpoint);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 0, playBWeight: 100);
+        await SmB2RemoteActorJoinScenario.RunAsync(playB, sessionAStreamEndpoint);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmB3RequestMessageFidelityScenario.RunAsync(playA, sessionAStreamEndpoint);
+        await SmB5MissingActorPacketScenario.RunAsync(playA, sessionAStreamEndpoint);
+    }
+    finally
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 100);
+    }
+}
+
+static async Task SetPlacementWeightsAsync(
+    ZLinkHttpClient playA,
+    ZLinkHttpClient playB,
+    int playAWeight,
+    int playBWeight)
+{
+    await playA.Post("/placement-weight")
+        .Body(new PlacementWeightReq(playAWeight))
+        .Async<PlacementWeightRes>();
+    await playB.Post("/placement-weight")
+        .Body(new PlacementWeightReq(playBWeight))
+        .Async<PlacementWeightRes>();
 }
 
 static async Task RunD1D2D6Async(
+    ZLinkHttpClient playA,
+    ZLinkHttpClient playB,
     ZLinkHttpClient sessionA,
     string sessionAStreamEndpoint,
     string sessionBStreamEndpoint)
 {
-    await SmD1LocalActorSessionRelayScenario.RunAsync(sessionA, sessionAStreamEndpoint);
-    await SmD2RemoteActorSessionRelayScenario.RunAsync(sessionA, sessionAStreamEndpoint);
-    await SmD6BoundSessionPushTargetingScenario.RunAsync(sessionAStreamEndpoint, sessionBStreamEndpoint);
+    try
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmD1LocalActorSessionRelayScenario.RunAsync(sessionA, sessionAStreamEndpoint);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 0, playBWeight: 100);
+        await SmD2RemoteActorSessionRelayScenario.RunAsync(sessionA, sessionAStreamEndpoint);
+
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 0);
+        await SmD6BoundSessionPushTargetingScenario.RunAsync(
+            sessionAStreamEndpoint,
+            sessionBStreamEndpoint,
+            () => SetPlacementWeightsAsync(
+                playA,
+                playB,
+                playAWeight: 0,
+                playBWeight: 100));
+    }
+    finally
+    {
+        await SetPlacementWeightsAsync(playA, playB, playAWeight: 100, playBWeight: 100);
+    }
 }
 
 static async Task RunC1C2Async(ZLinkHttpClient playA)

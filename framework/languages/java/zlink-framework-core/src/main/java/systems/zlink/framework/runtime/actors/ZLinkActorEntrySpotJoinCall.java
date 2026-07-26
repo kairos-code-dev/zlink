@@ -101,6 +101,7 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
                         services.serializer(),
                         result.joinResultCode(),
                         result.actor(),
+                        context.meshName(),
                         result.replyParts());
                     return result.joinResultCode() == 0
                         ? services.locationRenewal().renew(context.actor(), result.targetNodeRid())

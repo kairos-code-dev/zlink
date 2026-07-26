@@ -86,6 +86,15 @@ export type ZLinkMessageFlowOutcome =
   | 'cancelled'
   | 'shutdown';
 
+export type ZLinkMessageFlowReason =
+  | 'backpressure'
+  | 'stale_target'
+  | 'target_closed'
+  | 'shutdown'
+  | 'location_unavailable'
+  | 'activation_rejected'
+  | 'activation_timeout';
+
 export interface ZLinkRuntimeMessageFlowEvent {
   readonly outcome: ZLinkRuntimeMessageFlowOutcome;
   readonly surface: ZLinkDispatchErrorSurface;

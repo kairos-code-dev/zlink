@@ -53,8 +53,8 @@ internal static class WorkflowHostFactory
 
             var mesh = framework.AddRouteMesh("workflow")
                 .Listen(options.WorkflowEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
-            var workflow = mesh.ChannelName("workflow").SetWeight(options.Weight);
+                .SetRoutingIdPrefix(options.Rid);
+            var workflow = mesh.Channel("workflow").Server().SetWeight(options.Weight);
             workflow.AddRequestHandler<WorkflowRequestHandler, WorkflowReq, WorkflowRes>("WorkflowReq");
         });
 

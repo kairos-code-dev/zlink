@@ -94,7 +94,11 @@ internal sealed class AuthSessionHandler(
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
-            new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+            new ActorRef(
+                ensured.ActorId,
+                ensured.Generation,
+                SpotServiceNames.SpotChannel,
+                RoutingId.From(ensured.NodeRid)),
             cancellationToken);
         await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid))
             .Async(cancellationToken);
@@ -122,7 +126,7 @@ internal sealed class AuthSessionHandler(
         return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
-            actor.Generation);
+            actor.ObjectGeneration);
     }
 }
 
@@ -145,7 +149,11 @@ internal sealed class MultiBindSessionHandler(
                     new EnsureActorReq(actorId, actorId, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
             await context.Actors.BindAsync(
-                new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+                new ActorRef(
+                    ensured.ActorId,
+                    ensured.Generation,
+                    SpotServiceNames.SpotChannel,
+                    RoutingId.From(ensured.NodeRid)),
                 cancellationToken);
         }
 
@@ -176,7 +184,11 @@ internal sealed class UserSpotAuthSessionHandler(
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
-            new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+            new ActorRef(
+                ensured.ActorId,
+                ensured.Generation,
+                SpotServiceNames.SpotChannel,
+                RoutingId.From(ensured.NodeRid)),
             cancellationToken);
         await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid))
             .Async(cancellationToken);
@@ -204,6 +216,6 @@ internal sealed class UserSpotAuthSessionHandler(
         return new EnsureActorRes(
             actor.ActorId,
             request.NodeRid,
-            actor.Generation);
+            actor.ObjectGeneration);
     }
 }

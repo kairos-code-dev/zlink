@@ -51,8 +51,12 @@ internal sealed class ConversationSpot(
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
-    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public async ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         await ValueTask.CompletedTask;
     }
 

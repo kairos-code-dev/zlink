@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -345,11 +346,13 @@ class actor_client_impl_t final : public actor_client_t
     actor_client_impl_t (live_location_reader_t &store,
                          serializer_registry_t &serializers,
                          std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes,
-                         std::shared_ptr<actor_location_observer_t> actor_locations) :
+                         std::shared_ptr<actor_location_observer_t> actor_locations,
+                         location_options_t options) :
         _store (&store),
         _serializers (&serializers),
         _mesh_nodes (std::move (mesh_nodes)),
-        _actor_locations (std::move (actor_locations))
+        _actor_locations (std::move (actor_locations)),
+        _location_options (std::move (options))
     {
     }
 
@@ -546,6 +549,16 @@ class actor_client_impl_t final : public actor_client_t
               framework_error_kind_t::route_not_connected,
               "actor lookup requires a running MeshNode", true);
         }
+        if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()) {
+            std::lock_guard lock (_route_cache_gate);
+            const auto cached = _route_cache.find (actor_id);
+            if (cached != _route_cache.end ()) {
+                if (std::chrono::steady_clock::now () < cached->second.expires_at) {
+                    return result_t<resolved_actor_t>::success (cached->second.actor);
+                }
+                _route_cache.erase (cached);
+            }
+        }
         auto row =
           _store->resolve_actor (actor_location_key_t{runtime->mesh_name (), actor_id}).result ();
         if (!row) {
@@ -572,12 +585,24 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor SPOT location became stale",
               policy == stale_policy_t::location_stale);
         }
-        return result_t<resolved_actor_t>::success (
-          resolved_actor_t{row.value ()->actor_ref, row.value ()->actor_ref,
-                           node_rid_t::from_string (
-                             row.value ()->owner_node_rid.to_string ()),
-                           spot_id_t (
-                             row.value ()->spot_id)});
+        auto resolved = resolved_actor_t{
+          row.value ()->actor_ref, row.value ()->actor_ref,
+          node_rid_t::from_string (row.value ()->owner_node_rid.to_string ()),
+          spot_id_t (row.value ()->spot_id)};
+        const auto lease_lifetime = _store->owner_admission_lifetime (row.value ()->owner_id);
+        if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()
+            && lease_lifetime) {
+            const auto lifetime = std::min (
+              std::chrono::duration_cast<std::chrono::steady_clock::duration> (
+                _location_options.route_cache_max_age),
+              *lease_lifetime);
+            if (lifetime > std::chrono::steady_clock::duration::zero ()) {
+                std::lock_guard lock (_route_cache_gate);
+                _route_cache.insert_or_assign (
+                  actor_id, cached_actor_t{resolved, std::chrono::steady_clock::now () + lifetime});
+            }
+        }
+        return result_t<resolved_actor_t>::success (std::move (resolved));
     }
 
     result_t<void> submit_send (const resolved_actor_t &actor,
@@ -595,6 +620,7 @@ class actor_client_impl_t final : public actor_client_t
                                            std::move (packet_name), std::move (message),
                                            std::chrono::milliseconds (0), {}, metadata);
         if (!relayed) {
+            invalidate_cached_route_on_stale (actor, relayed.error_kind ());
             return result_t<void>::failure (
               relayed.error_kind (),
               relayed.error () ? relayed.error ()->what () : "actor send failed",
@@ -620,6 +646,7 @@ class actor_client_impl_t final : public actor_client_t
                                            std::move (packet_name), std::move (request), timeout,
                                            request_id);
         if (!relayed) {
+            invalidate_cached_route_on_stale (actor, relayed.error_kind ());
             return result_t<message_t>::failure (
               relayed.error_kind (),
               relayed.error () ? relayed.error ()->what () : "actor request failed",
@@ -728,6 +755,18 @@ class actor_client_impl_t final : public actor_client_t
         }
     }
 
+    void invalidate_cached_route_on_stale (const resolved_actor_t &actor,
+                                           framework_error_kind_t kind)
+    {
+        if (kind != framework_error_kind_t::actor_location_stale
+            && kind != framework_error_kind_t::actor_route_not_found
+            && kind != framework_error_kind_t::route_not_connected) {
+            return;
+        }
+        std::lock_guard lock (_route_cache_gate);
+        _route_cache.erase (std::string (actor.framework_ref.actor_id ()));
+    }
+
     std::shared_ptr<detail::mesh_node_runtime_t> first_mesh_node () const
     {
         for (const auto &mesh_node : _mesh_nodes)
@@ -792,6 +831,14 @@ class actor_client_impl_t final : public actor_client_t
     serializer_registry_t *_serializers;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     std::shared_ptr<actor_location_observer_t> _actor_locations;
+    location_options_t _location_options;
+    struct cached_actor_t
+    {
+        resolved_actor_t actor;
+        std::chrono::steady_clock::time_point expires_at;
+    };
+    std::mutex _route_cache_gate;
+    std::map<std::string, cached_actor_t> _route_cache;
     std::chrono::milliseconds _default_timeout{std::chrono::seconds (30)};
     const std::string _request_id_prefix =
       std::to_string (reinterpret_cast<std::uintptr_t> (this)) + "-";
@@ -802,10 +849,12 @@ std::shared_ptr<actor_client_t>
 make_actor_client (live_location_reader_t &store,
                    serializer_registry_t &serializers,
                    std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes,
-                   std::shared_ptr<actor_location_observer_t> actor_locations)
+                   std::shared_ptr<actor_location_observer_t> actor_locations,
+                   location_options_t options)
 {
     return std::make_shared<actor_client_impl_t> (
-      store, serializers, std::move (mesh_nodes), std::move (actor_locations));
+      store, serializers, std::move (mesh_nodes), std::move (actor_locations),
+      std::move (options));
 }
 
 } // namespace zlink::framework::runtime

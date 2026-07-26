@@ -8,13 +8,16 @@ import {
 import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from '../actors';
 import { decodeWireRoutingId } from '../actors/actor-remote-wire';
 import {
   decodeRemoteBoundSessionErrorPayload,
+  decodeRemoteBoundSessionSealPayload,
   decodeRemoteBoundSessionOwnershipPayload,
   decodeRemoteBoundSessionResponsePayload,
   decodeRemoteBoundSessionSendPayload
@@ -57,7 +60,46 @@ export interface ZLinkRemoteBoundSessionOwnership {
   readonly actorNodeRid: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
+  readonly previousActorOwnershipGeneration: string;
   readonly actorOwnershipGeneration: string;
+  readonly bindingGeneration: string;
+  readonly previousOwnerLeaseGeneration: string;
+  readonly targetOwnerLeaseGeneration: string;
+  readonly acceptedHighWater: string;
+  readonly sealId: string;
+  readonly acceptedJournalReference: string;
+  readonly acceptedJournalChecksumCrc32c: number;
+  readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
+}
+
+export interface ZLinkRemoteBoundSessionSeal {
+  readonly actorId: string;
+  readonly actorGeneration: string;
+  readonly actorOwnershipGeneration: string;
+  readonly bindingGeneration: string;
+  readonly ownerLeaseGeneration: string;
+  readonly sealId: string;
+  readonly abort: boolean;
+  readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
+}
+
+export function decodeRemoteBoundSessionSeal(
+  parts: readonly BindingMessage[],
+  codecs?: ZLinkChannelEnvelopeCodecRegistry
+): ZLinkRemoteBoundSessionSeal | undefined {
+  try {
+    const decoded = decodeMultipartPayload(parts, codecs);
+    if (
+      decoded.packetName !== ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET &&
+      decoded.packetName !== ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET
+    ) return undefined;
+    return {
+      ...decodeRemoteBoundSessionSealPayload(decoded.payload),
+      envelope: decoded.envelope
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function decodeRemoteBoundSessionOwnership(
@@ -67,7 +109,10 @@ export function decodeRemoteBoundSessionOwnership(
   try {
     const decoded = decodeMultipartPayload(parts, codecs);
     if (decoded.packetName !== ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET) return undefined;
-    return decodeRemoteBoundSessionOwnershipPayload(decoded.payload);
+    return {
+      ...decodeRemoteBoundSessionOwnershipPayload(decoded.payload),
+      envelope: decoded.envelope
+    };
   } catch {
     return undefined;
   }
@@ -194,8 +239,8 @@ export function decodeRemoteActorPacketRelay(
         actorId: relay.actorId,
         actorNodeRid: relay.actorNodeRid,
         actorNodeRidHex: relay.actorNodeRidHex,
-        actorGeneration: relay.actorGeneration
-      }, relay.handoffTargetSpotId),
+      actorGeneration: relay.actorGeneration
+      }, relay.handoffTargetSpotId, relay.operationId, relay.forwardingHopCount),
       bindingActorRef: decodeActorRef({
         actorId: relay.actorId,
         actorNodeRid: relay.bindingActorNodeRid,
@@ -214,10 +259,12 @@ function decodeForwardedActorRef(payload: {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
-}, targetSpotId: unknown): ActorRef | undefined {
+}, targetSpotId: unknown, operationId?: string, forwardingHopCount?: number): ActorRef | undefined {
   const actorRef = decodeActorRef(payload);
   if (actorRef !== undefined) {
     (actorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded = true;
+    (actorRef as ActorRef & { handoffOperationId?: string }).handoffOperationId = operationId;
+    (actorRef as ActorRef & { handoffForwardingHopCount?: number }).handoffForwardingHopCount = forwardingHopCount;
     if (typeof targetSpotId === 'string') {
       (actorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId = targetSpotId;
     }

@@ -17,6 +17,7 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   type ZLinkActorLocationStore,
+  type ZLinkAuthorityStore,
   type ZLinkLocationRuntimeQuery,
   type ZLinkLocationStore,
   type ZLinkLocationOwnerToken,
@@ -63,6 +64,7 @@ import type { ZLinkOwnershipLostEvent } from './lifecycle-runtime';
 
 export interface ZLinkLocationRuntimeStores {
   readonly locationStore: ZLinkLocationStore;
+  readonly authorityStore: ZLinkAuthorityStore;
   readonly clientServerStore?: ZLinkClientServerLocationStore;
   readonly fanoutStore?: ZLinkFanoutLocationStore;
   readonly peerStore: ZLinkPeerLocationStore;
@@ -365,7 +367,9 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     intent: ZLinkLocationWriteIntent,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult> {
-    const stamped = { ...spot, ownerId: this.ownerId };
+    const owner = this.ownerToken;
+    if (owner === undefined) throw new Error('Spot location write requires a claimed owner token.');
+    const stamped = { ...spot, ownerId: owner.ownerId, leaseGeneration: owner.leaseGeneration };
     const result = await this.guardWrite(() => this.stores.spotStore.updateSpot(stamped, intent, signal));
     const key = { meshName: spot.meshName, spotId: spot.spotId };
     if (result.status === ZLinkLocationWriteStatus.Stored) {
@@ -380,10 +384,13 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     intent: ZLinkLocationWriteIntent,
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult> {
+    const owner = this.ownerToken;
+    if (owner === undefined) throw new Error('Actor location write requires a claimed owner token.');
     const stamped = {
       ...actor,
       actorType: actor.actorType,
-      ownerId: this.ownerId
+      ownerId: owner.ownerId,
+      leaseGeneration: owner.leaseGeneration
     };
     const result = await this.guardWrite(() => this.stores.actorStore.updateActor(stamped, intent, signal));
     const key = { meshName: stamped.meshName, actorId: stamped.actorId };

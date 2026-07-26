@@ -1337,6 +1337,9 @@ final class ZLinkRedisAuthorityClient {
                 actors = actors + rowActors
                 spots = spots + rowSpots
                 typeSlots = typeSlots + rowTypeSlots
+            elseif requestedActors == 0 and requestedSpots == 0
+                and participant.MembershipMutation ~= '' then
+                return {'conflict', nowMs}
             end
         end
         if actors ~= requestedActors or spots ~= requestedSpots

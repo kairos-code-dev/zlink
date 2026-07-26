@@ -115,8 +115,12 @@ internal sealed class TicTacToeGame(
             cancellationToken: cancellationToken);
     }
 
-    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public async ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         if (_gameTick is not null) await _gameTick.CancelAsync();
     }
 

@@ -75,6 +75,10 @@ export class ZLinkManagedStream implements ZLinkStream {
     return this.backendSessionRoutingId as RoutingId;
   }
 
+  actorBindingGeneration(actorId: string): bigint | undefined {
+    return this.nativeActorBindings.get(actorId)?.bindingGeneration;
+  }
+
   get localAddr(): string | undefined {
     return this.currentLocalAddr;
   }

@@ -370,6 +370,7 @@ export class ZLinkMeshMonitoringSource {
       descriptorSources: [],
       peers,
       channels: localChannels,
+      instanceSpots: [],
       claims: {
         applicationActive: status.pendingApplicationMessages > 0n,
         pendingApplicationWork: status.pendingApplicationMessages,
@@ -422,6 +423,8 @@ function meshNodeState(state: number): ZLinkMeshNodeState {
     default: return ZLinkMeshNodeState.Faulted;
   }
 }
+
+export * from './topology-runtime-projections';
 
 function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent): ZLinkSocketEvent | undefined {
   const event = mapSocketEvent(raw.nativeEvent as ZLinkSocketNativeEventType, raw.value);

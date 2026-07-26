@@ -68,8 +68,8 @@ internal static class MultiNodeHostFactory
                     var routeEndpoint = options.MultiRouteAEndpoint;
                     var routeMesh = framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelA)
                         .Listen(routeEndpoint)
-                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA));
-                    routeMesh.ChannelName(SpotServiceNames.MultiRouteChannelA);
+                        .SetRoutingIdPrefix(SpotServiceNames.MultiSpotNodeA);
+                    routeMesh.Channel(SpotServiceNames.MultiRouteChannelA).Server();
                     routeMesh.AddRouteRequestHandler<
                         MultiNodeCreateSpotAHandler,
                         MultiNodeCreateSpotReq,
@@ -78,7 +78,7 @@ internal static class MultiNodeHostFactory
 
                 var mesh20 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterAEndpoint, "MultiSpotRouterAEndpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA));
+                    .SetRoutingIdPrefix(SpotServiceNames.MultiSpotNodeA);
                 mesh20.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
@@ -97,7 +97,7 @@ internal static class MultiNodeHostFactory
                         SpotServiceNames.MultiSpotTypeA,
                         null,
                         ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled);
-                mesh20.ChannelName(ResolveSpotMeshName(options));
+                mesh20.Channel(ResolveSpotMeshName(options)).Server();
             }
 
             if (isNodeB)
@@ -107,8 +107,8 @@ internal static class MultiNodeHostFactory
                     var routeEndpoint = options.MultiRouteBEndpoint;
                     var routeMesh = framework.AddRouteMesh(SpotServiceNames.MultiRouteChannelB)
                         .Listen(routeEndpoint)
-                        .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB));
-                    routeMesh.ChannelName(SpotServiceNames.MultiRouteChannelB);
+                        .SetRoutingIdPrefix(SpotServiceNames.MultiSpotNodeB);
+                    routeMesh.Channel(SpotServiceNames.MultiRouteChannelB).Server();
                     routeMesh.AddRouteRequestHandler<
                         MultiNodeCreateSpotBHandler,
                         MultiNodeCreateSpotReq,
@@ -117,7 +117,7 @@ internal static class MultiNodeHostFactory
 
                 var mesh21 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterBEndpoint, "MultiSpotRouterBEndpoint"))
-                    .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB));
+                    .SetRoutingIdPrefix(SpotServiceNames.MultiSpotNodeB);
                 mesh21.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
@@ -136,7 +136,7 @@ internal static class MultiNodeHostFactory
                         SpotServiceNames.MultiSpotTypeB,
                         null,
                         ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
-                mesh21.ChannelName(ResolveSpotMeshName(options));
+                mesh21.Channel(ResolveSpotMeshName(options)).Server();
             }
         });
 
@@ -232,8 +232,7 @@ internal static class MultiNodeHostFactory
                 _ => throw new InvalidOperationException("Actor creation was rejected.")
             };
             var result = await actorClient.RequestToActor(
-                    ResolveSpotMeshName(options),
-                    actor,
+                    actor.ActorId,
                     request)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Async<SpotOnlyJoinRes>(cancellationToken);
@@ -249,7 +248,6 @@ internal static class MultiNodeHostFactory
         });
         app.MapPost("/spot/state/request", async (
             IZLinkSpotClient spotsClient,
-            IZLinkSpotHandleResolver locator,
             NodeOptions node,
             MultiNodeStateRouteReq request,
             CancellationToken cancellationToken) =>
@@ -257,8 +255,6 @@ internal static class MultiNodeHostFactory
             var isNodeA = string.Equals(node.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
             var result = await MultiNodeScenario.RequestStateAsync(
                 spotsClient,
-                locator,
-                node.Rid,
                 request.SpotRid,
                 request.Delta,
                 cancellationToken);

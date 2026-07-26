@@ -27,8 +27,12 @@ internal sealed class OrderWorkflowSpot(
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 

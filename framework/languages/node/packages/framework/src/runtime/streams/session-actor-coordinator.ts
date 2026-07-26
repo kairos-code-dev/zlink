@@ -164,12 +164,20 @@ export class ZLinkSessionActorCoordinator {
     }
 
     const bindingToken = reuseActor?.bindingToken ?? createBindingToken();
-    const sessionActor = reuseActor ?? new DefaultZLinkSessionActor(this.sessionActorRuntime, actorRef, bindingToken);
-    sessionActor.updateRef(actorRef);
-    if (previous !== undefined) {
-      this.routes.unbind(actorRef.actorId, previous.context, previous.bindingToken);
+    const boundActorRef = withBindingGeneration(
+      actorRef,
+      context.stream instanceof ZLinkManagedStream
+        ? context.stream.actorBindingGeneration(actorRef.actorId)
+        : undefined,
+      previous?.actor.ref
+    );
+    const sessionActor = reuseActor ?? new DefaultZLinkSessionActor(this.sessionActorRuntime, boundActorRef, bindingToken);
+    sessionActor.updateRef(boundActorRef);
+    if (previous === undefined) {
+      this.routes.bind(context, sessionActor, bindingToken);
+    } else {
+      this.routes.replace(previous, context, sessionActor, bindingToken);
     }
-    this.routes.bind(context, sessionActor, bindingToken);
     return sessionActor;
   }
 
@@ -219,6 +227,19 @@ export class ZLinkSessionActorCoordinator {
       const route = this.routes.route(actorRef.actorId);
       if (route === undefined) return;
       requireSameIncarnation(route.actor.ref, actorRef);
+      await this.replaceBinding(route.context, actorRef, signal);
+    });
+  }
+
+  async commitActorRoute(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
+    await this.lifecycle.run(actorRef.actorId, async () => {
+      throwIfAborted(signal);
+      const route = this.routes.requireRoute(actorRef.actorId);
+      requireSameIncarnation(route.actor.ref, actorRef);
+      if (routingIdsEqual(route.actor.ref.nodeRid, actorRef.nodeRid)) {
+        route.actor.updateRef(actorRef);
+        return;
+      }
       await this.replaceBinding(route.context, actorRef, signal);
     });
   }
@@ -292,6 +313,21 @@ export class ZLinkSessionActorCoordinator {
     }
     this.remoteBoundSessions.relayRemoteBoundSessionBind(context.stream, actorRef);
   }
+}
+
+function withBindingGeneration(
+  actorRef: ActorRef,
+  nativeBindingGeneration: bigint | undefined,
+  previousRef: ActorRef | undefined
+): ActorRef {
+  const input = actorRef as ActorRef & { readonly bindingGeneration?: bigint };
+  const previous = previousRef as (ActorRef & { readonly bindingGeneration?: bigint }) | undefined;
+  const bindingGeneration = input.bindingGeneration
+    ?? previous?.bindingGeneration
+    ?? nativeBindingGeneration;
+  return bindingGeneration === undefined
+    ? actorRef
+    : { ...actorRef, bindingGeneration } as ActorRef;
 }
 
 function isActorRef(value: ZLinkActor | ActorRef): value is ActorRef {

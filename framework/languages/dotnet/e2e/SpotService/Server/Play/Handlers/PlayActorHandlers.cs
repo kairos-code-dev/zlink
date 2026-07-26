@@ -14,7 +14,7 @@ internal sealed class ChannelEchoHandler(EvidenceStore evidence)
 {
     public ValueTask<ChannelEchoRes> HandleAsync(
         ChannelEchoReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -30,7 +30,7 @@ internal sealed class ChannelNotifyHandler(EvidenceStore evidence)
 {
     public ValueTask HandleAsync(
         ChannelNotify message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -47,7 +47,7 @@ internal sealed class EntryActorPingHandler(EvidenceStore evidence)
     public ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPingReq request,
         CancellationToken cancellationToken)
     {
@@ -73,7 +73,7 @@ internal sealed class EntrySlowActorPingHandler(EvidenceStore evidence)
     public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SlowActorPingReq request,
         CancellationToken cancellationToken)
     {
@@ -102,7 +102,7 @@ internal sealed class EntryUserActorPingHandler(EvidenceStore evidence)
     public ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPingReq request,
         CancellationToken cancellationToken)
     {
@@ -128,7 +128,7 @@ internal sealed class UserActorPingHandler(EvidenceStore evidence)
     public ValueTask<ActorPingRes> HandleAsync(
         ScenarioUserSpot spot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPingReq request,
         CancellationToken cancellationToken)
     {
@@ -154,7 +154,7 @@ internal sealed class EntryUserSpotActorJoinHandler
     public ValueTask<JoinUserSpotActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinUserSpotActorReq request,
         CancellationToken cancellationToken)
     {
@@ -181,7 +181,7 @@ internal sealed class EntryAdmittedUserSpotActorJoinHandler
     public ValueTask<JoinAdmittedUserSpotActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         JoinAdmittedUserSpotActorReq request,
         CancellationToken cancellationToken)
     {
@@ -208,7 +208,7 @@ internal sealed class EntryActorLeaveHandler(EvidenceStore evidence)
     public ValueTask<LeaveRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         LeaveReq request,
         CancellationToken cancellationToken)
     {
@@ -230,7 +230,7 @@ internal sealed class UserActorLeaveHandler
     public async ValueTask<LeaveRes> HandleAsync(
         ScenarioUserSpot spot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         LeaveReq request,
         CancellationToken cancellationToken)
     {
@@ -250,7 +250,7 @@ internal sealed class EntryActorSnapshotHandler
     public ValueTask<SnapshotRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SnapshotReq request,
         CancellationToken cancellationToken)
     {
@@ -271,7 +271,7 @@ internal sealed class EntryActorDestroyHandler(EvidenceStore evidence)
     public async ValueTask<DestroyActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         DestroyActorReq request,
         CancellationToken cancellationToken)
     {
@@ -300,7 +300,7 @@ internal sealed class ActorPushHandler
     public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPushReq request,
         CancellationToken cancellationToken)
     {
@@ -326,7 +326,7 @@ internal sealed class EntryUserActorPushHandler
     public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPushReq request,
         CancellationToken cancellationToken)
     {
@@ -351,7 +351,7 @@ internal sealed class UserActorPushHandler
     public async ValueTask<ActorPingRes> HandleAsync(
         ScenarioUserSpot spot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPushReq request,
         CancellationToken cancellationToken)
     {
@@ -375,7 +375,7 @@ internal sealed class ComplexActorHandler(EvidenceStore evidence)
     public ValueTask<ComplexActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ComplexActorReq request,
         CancellationToken cancellationToken)
     {

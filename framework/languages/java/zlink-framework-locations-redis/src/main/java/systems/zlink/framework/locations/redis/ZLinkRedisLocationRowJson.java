@@ -834,9 +834,12 @@ final class ZLinkRedisLocationRowJson {
             return;
         }
         ObjectNode actorRef = JSON.createObjectNode();
-        putRid(actorRef, "nodeRid", value.nodeRid());
         actorRef.put("actorId", value.actorId());
-        actorRef.put("generation", value.generation());
+        actorRef.put(
+            "objectGeneration",
+            Long.toString(value.objectGeneration()));
+        actorRef.put("meshName", value.meshName());
+        putRid(actorRef, "nodeRid", value.nodeRid());
         node.set(field, actorRef);
     }
 
@@ -844,13 +847,10 @@ final class ZLinkRedisLocationRowJson {
         if (node == null || node.isNull()) {
             return null;
         }
-        if (node.isTextual()) {
-            String legacy = node.asText();
-            return legacy.isBlank() ? null : new ActorRef(null, legacy, 0);
-        }
         return new ActorRef(
-            rid(node, "nodeRid"),
             text(node, "actorId"),
-            node.path("generation").asLong());
+            Long.parseLong(text(node, "objectGeneration")),
+            text(node, "meshName"),
+            rid(node, "nodeRid"));
     }
 }

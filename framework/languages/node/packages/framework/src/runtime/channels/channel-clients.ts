@@ -1,5 +1,6 @@
 import type {
   ZLinkChannelClient,
+  ZLinkChannelRequestCall,
   ZLinkFanoutClient,
   ZLinkFanoutPublishCall,
   ZLinkMessageMetadata,
@@ -59,7 +60,7 @@ export class DefaultZLinkChannelClient implements ZLinkChannelClient {
     );
   }
 
-  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall {
     return new DefaultZLinkRequestCall(
       () => this.requireChannel(channelName),
       (packetName, timeoutMs, metadata, signal) =>
@@ -187,7 +188,7 @@ export class DefaultZLinkRouteClient implements ZLinkRouteClient {
     );
   }
 
-  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall {
     return new DefaultZLinkRequestCall(
       () => { this.resolveMeshChannel(channelName); },
       (packetName, timeoutMs, metadata, signal) => {
@@ -369,7 +370,7 @@ function normalizeSubmitResult(result: void | ZLinkSubmitResult): ZLinkSubmitRes
   return result ?? { status: ZLinkSubmitStatus.Submitted };
 }
 
-class DefaultZLinkRequestCall implements ZLinkRequestCall {
+class DefaultZLinkRequestCall implements ZLinkChannelRequestCall {
   private timeoutMs?: number;
   private readonly selectedMetadata = new Map<string, string>();
   private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();

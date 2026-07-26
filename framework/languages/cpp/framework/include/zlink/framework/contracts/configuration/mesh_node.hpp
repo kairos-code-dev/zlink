@@ -186,6 +186,17 @@ class mesh_node_builder_t
         return *this;
     }
 
+    template <typename TSpot>
+    requires std::derived_from<TSpot, instance_spot_t>
+    mesh_node_builder_t &
+    add_instance_spot_factory (std::string stable_type,
+                               std::function<std::shared_ptr<TSpot> ()> factory)
+    {
+        spot_builder ().template add_instance_spot_factory<TSpot> (
+          std::move (stable_type), std::move (factory));
+        return *this;
+    }
+
     template <typename TActorFactory>
     mesh_node_builder_t &add_actor_factory (std::string actor_type)
     {

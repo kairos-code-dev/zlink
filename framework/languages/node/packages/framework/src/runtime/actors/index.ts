@@ -22,6 +22,11 @@ import type {
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 import { closeMeshCompletion } from '../backend/mesh-completion-table';
+import {
+  captureZLinkSpotSerialTurn,
+  requireZLinkYieldTurn,
+  type ZLinkSpotSerialTurn
+} from '../execution';
 
 export {
   DefaultZLinkActorClient,
@@ -110,10 +115,16 @@ export {
 } from './actor-packet-relay-wire';
 export {
   ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET,
   ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET
 } from './bound-session-wire';
+export {
+  ZLinkBoundSessionAcceptedJournal,
+  type ZLinkBoundSessionAcceptedJournalRoot
+} from './bound-session-accepted-journal';
 export {
   actorJoinIdentity,
   createActorJoinRequest,
@@ -601,6 +612,7 @@ class ZLinkActorCreateCallRuntime implements ZLinkActorCreateCall {
   private timeoutMsValue = 30_000;
   private timeoutConfigured = false;
   private submitted = false;
+  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(private readonly execute: ZLinkActorCreateSubmit) {}
 
@@ -635,6 +647,16 @@ class ZLinkActorCreateCallRuntime implements ZLinkActorCreateCall {
   }
 
   submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult> {
+    return this.executeOnce(signal);
+  }
+
+  yield(signal?: AbortSignal): Promise<ZLinkActorCreateResult> {
+    const turn = requireZLinkYieldTurn(this.turn);
+    const pending = this.executeOnce(signal);
+    return turn.yieldPromise(pending);
+  }
+
+  private executeOnce(signal?: AbortSignal): Promise<ZLinkActorCreateResult> {
     this.requireMutable();
     this.submitted = true;
     return this.execute({

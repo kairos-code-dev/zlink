@@ -3,10 +3,12 @@ export const ZLINK_FRAMEWORK_REGISTRATION = Symbol.for('@zlink-systems/framework
 export const ZLINK_FRAMEWORK_RUNTIME = Symbol.for('@zlink-systems/framework:runtime');
 export const ZLINK_CHANNEL_CLIENT = Symbol.for('@zlink-systems/framework:channel-client');
 export const ZLINK_CHANNEL_RUNTIME_OPTIONS = Symbol.for('@zlink-systems/framework:channel-runtime-options');
+export const ZLINK_CLIENT_SERVER_RUNTIME = Symbol.for('@zlink-systems/framework:client-server-runtime');
 export const ZLINK_ROUTE_MESH_RUNTIME_OPTIONS =
   Symbol.for('@zlink-systems/framework:route-mesh-runtime-options');
 export const ZLINK_ROUTE_CLIENT = Symbol.for('@zlink-systems/framework:route-client');
 export const ZLINK_FANOUT_CLIENT = Symbol.for('@zlink-systems/framework:fanout-client');
+export const ZLINK_FANOUT_RUNTIME = Symbol.for('@zlink-systems/framework:fanout-runtime');
 export const ZLINK_ACTOR_CLIENT = Symbol.for('@zlink-systems/framework:actor-client');
 export const ZLINK_BOUND_SESSION_FACTORY = Symbol.for('@zlink-systems/framework:bound-session-factory');
 export const ZLINK_MESSAGE_METADATA_POLICY = Symbol.for('@zlink-systems/framework:message-metadata-policy');

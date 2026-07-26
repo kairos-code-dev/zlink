@@ -2,15 +2,20 @@ package systems.zlink.framework.actors;
 
 import systems.zlink.contracts.core.RoutingId;
 
-public record ActorRefSnapshot(RoutingId nodeRid, String actorId, long generation) {
+public record ActorRefSnapshot(
+    String actorId,
+    long objectGeneration,
+    String meshName,
+    RoutingId nodeRid) {
     public static ActorRefSnapshot from(ActorRef actorRef) {
         return new ActorRefSnapshot(
-            actorRef.nodeRid(),
             actorRef.actorId(),
-            actorRef.generation());
+            actorRef.objectGeneration(),
+            actorRef.meshName(),
+            actorRef.nodeRid());
     }
 
     public ActorRef toActorRef() {
-        return new ActorRef(nodeRid, actorId, generation);
+        return new ActorRef(actorId, objectGeneration, meshName, nodeRid);
     }
 }

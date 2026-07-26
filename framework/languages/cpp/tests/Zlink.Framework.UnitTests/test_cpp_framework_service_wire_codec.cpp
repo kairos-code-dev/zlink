@@ -4,10 +4,34 @@
 
 #include <cassert>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace protocol = zlink::framework::runtime::protocol;
 namespace mesh = zlink::framework::runtime::mesh;
+
+namespace
+{
+std::vector<std::uint8_t> from_hex (std::string_view value)
+{
+    assert (value.size () % 2 == 0);
+    const auto digit = [] (char value) -> std::uint8_t {
+        if (value >= '0' && value <= '9')
+            return static_cast<std::uint8_t> (value - '0');
+        if (value >= 'a' && value <= 'f')
+            return static_cast<std::uint8_t> (value - 'a' + 10);
+        assert (false);
+        return 0;
+    };
+    std::vector<std::uint8_t> result;
+    result.reserve (value.size () / 2);
+    for (std::size_t index = 0; index < value.size (); index += 2) {
+        result.push_back (static_cast<std::uint8_t> (
+          (digit (value[index]) << 4) | digit (value[index + 1])));
+    }
+    return result;
+}
+}
 
 int main ()
 {
@@ -120,6 +144,70 @@ int main ()
               protocol::encode_user_spot_create_header (
                 user_spot_create))
             == user_spot_create);
+    const protocol::instance_spot_activation_header_t instance_activation{
+      {{'t', 'a', 'r', 'g', 'e', 't'},
+       7,
+       "spot-1",
+       "main",
+       "quest",
+       "descriptor-9",
+       1700000000000ULL},
+      3,
+      {'s', 'o', 'u', 'r', 'c', 'e'},
+      std::string ("entry"),
+      true,
+      {0, 9},
+      11,
+      true};
+    const auto encoded_instance_activation =
+      protocol::encode_instance_spot_activation_header (
+        instance_activation);
+    assert (encoded_instance_activation[3]
+            == static_cast<std::uint8_t> (
+              protocol::command::instanceSpot));
+    assert (protocol::decode_instance_spot_activation_header (
+              encoded_instance_activation)
+            == instance_activation);
+    auto trailing_instance_activation = encoded_instance_activation;
+    trailing_instance_activation.push_back (0);
+    bool rejected_instance_activation = false;
+    try {
+        (void) protocol::decode_instance_spot_activation_header (
+          trailing_instance_activation);
+    }
+    catch (const protocol::service_wire_error_t &) {
+        rejected_instance_activation = true;
+    }
+    assert (rejected_instance_activation);
+    const protocol::instance_activation_recovery_t instance_recovery{
+      instance_activation,
+      from_hex ("01010574726163650003616263"),
+      {"quest.start", "application/json",
+       {'{', '"', 'x', '"', ':', '1', '}'}}};
+    const auto golden_instance_recovery = from_hex (
+      "5a4c4941010000000000a00673706f742d31057175657374046d61696e067461"
+      "7267657400000000000000070c64657363726970746f722d3906736f75726365"
+      "00000000000000030105656e7472790200000000000000000000000000000009"
+      "000000000000000b0000018bcfe5680001010105747261636500036162630100"
+      "0000280b71756573742e7374617274106170706c69636174696f6e2f6a736f6e"
+      "000000077b2278223a317de138c97b");
+    assert (protocol::encode_instance_activation_recovery (
+              instance_recovery)
+            == golden_instance_recovery);
+    assert (protocol::decode_instance_activation_recovery (
+              golden_instance_recovery)
+            == instance_recovery);
+    auto corrupt_instance_recovery = golden_instance_recovery;
+    corrupt_instance_recovery.back () ^= 1;
+    bool rejected_instance_recovery = false;
+    try {
+        (void) protocol::decode_instance_activation_recovery (
+          corrupt_instance_recovery);
+    }
+    catch (const protocol::service_wire_error_t &) {
+        rejected_instance_recovery = true;
+    }
+    assert (rejected_instance_recovery);
     const protocol::user_spot_close_header_t user_spot_close{
       correlation,
       {6, 7},
@@ -220,6 +308,109 @@ int main ()
             static_cast<void> (
               protocol::decode_application_payload (malformed_payload));
         } catch (const protocol::service_wire_error_t &) {
+            rejected = true;
+        }
+        assert (rejected);
+    }
+
+    const protocol::session_relocation_seal_t session_seal{
+      {1, 2},
+      {"coord", 3, {0xc1}, 4, "v5"},
+      protocol::relocation_role_t::source,
+      {"actor", 6, {0xe1}, 14, 10, 15},
+      {0xa1},
+      7,
+      "owner",
+      8,
+      {0xb1},
+      9};
+    const auto encoded_session_seal =
+      protocol::encode_session_relocation_seal (session_seal);
+    assert (protocol::decode_session_relocation_seal (
+              encoded_session_seal)
+            == session_seal);
+    const protocol::session_relocation_sealed_t session_sealed{
+      session_seal.relocation,
+      session_seal.coordinator,
+      session_seal.actor,
+      session_seal.session_owner_node_routing_id,
+      session_seal.session_owner_node_generation,
+      session_seal.session_owner_id,
+      session_seal.session_owner_lease_generation,
+      session_seal.session_routing_id,
+      session_seal.binding_generation,
+      13};
+    assert (protocol::decode_session_relocation_sealed (
+              protocol::encode_session_relocation_sealed (
+                session_sealed))
+            == session_sealed);
+
+    const protocol::session_relocation_route_t session_route{
+      {1, 2},
+      {"coord", 3, {0xc1}, 4, "v5"},
+      protocol::relocation_role_t::target,
+      {"actor", 6},
+      {0xa1},
+      7,
+      "owner",
+      8,
+      {0xb1},
+      9,
+      {protocol::session_relocation_route_action_t::commit,
+       10, 11, {0xd1}, 12, 13, 0}};
+    const auto encoded_session_route =
+      protocol::encode_session_relocation_route (session_route);
+    assert (encoded_session_route == from_hex (
+      "5a4d012c00"
+      "00000000000000010000000000000002"
+      "05636f6f7264000000000000000301c1"
+      "00000000000000040002763502"
+      "056163746f72000000000000000601a1"
+      "0000000000000007056f776e6572"
+      "000000000000000801b10000000000000009"
+      "010022000000000000000a000000000000000b01d1"
+      "000000000000000c000000000000000d"));
+    assert (protocol::decode_session_relocation_route (
+              encoded_session_route)
+            == session_route);
+    auto abort_session_route = session_route;
+    abort_session_route.sender_role =
+      protocol::relocation_role_t::source;
+    abort_session_route.route = {
+      protocol::session_relocation_route_action_t::abort,
+      0, 0, {}, 0, 0, 10};
+    assert (protocol::decode_session_relocation_route (
+              protocol::encode_session_relocation_route (
+                abort_session_route))
+            == abort_session_route);
+
+    const protocol::session_relocation_routed_t session_routed{
+      {1, 2},
+      {"coord", 3, {0xc1}, 4, "v5"},
+      {"actor", 6},
+      {0xa1},
+      7,
+      "owner",
+      8,
+      {0xb1},
+      9,
+      protocol::session_relocation_route_action_t::commit,
+      11,
+      13};
+    const auto encoded_session_routed =
+      protocol::encode_session_relocation_routed (session_routed);
+    assert (protocol::decode_session_relocation_routed (
+              encoded_session_routed)
+            == session_routed);
+    {
+        auto malformed = encoded_session_route;
+        malformed.push_back (0);
+        bool rejected = false;
+        try {
+            static_cast<void> (
+              protocol::decode_session_relocation_route (malformed));
+        }
+        catch (const protocol::service_wire_error_t &) {
             rejected = true;
         }
         assert (rejected);

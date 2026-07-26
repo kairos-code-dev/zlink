@@ -11,6 +11,9 @@ export interface ZLinkRequestCall {
   metadata(metadata: ZLinkMessageMetadata): this;
   timeout(timeoutMs: number): this;
   submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+}
+
+export interface ZLinkChannelRequestCall extends ZLinkRequestCall {
   yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 

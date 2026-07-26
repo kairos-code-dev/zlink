@@ -48,6 +48,9 @@ export interface ZLinkPendingObjectCreation {
   readonly requestEncodedSize: bigint;
 }
 
+/** Immutable creation reservation projected by an authority snapshot. */
+export interface ZLinkReservedObjectCreation extends ZLinkPendingObjectCreation {}
+
 export interface ZLinkAuthoritySnapshot {
   readonly kind: 'snapshot';
   readonly storeVersion: ZLinkAuthorityStoreVersion;

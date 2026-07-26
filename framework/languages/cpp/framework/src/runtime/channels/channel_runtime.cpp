@@ -15,7 +15,7 @@
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
-#include "runtime/locations/spot_handle_state.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
@@ -528,6 +528,22 @@ void channel_runtime_t::bind_spot_mesh_transport (
     std::lock_guard lock (_state->mutex);
     _state->spot_mesh_senders.insert_or_assign (mesh_name, std::move (send));
     _state->spot_mesh_requesters.insert_or_assign (std::move (mesh_name), std::move (request));
+}
+
+void channel_runtime_t::bind_spot_address_resolver (
+  runtime::spot_address_resolver_t &resolver) noexcept
+{
+    std::lock_guard lock (_state->mutex);
+    _state->spot_resolver = &resolver;
+}
+
+void channel_runtime_t::bind_instance_spot_activator (
+  channel_runtime_state_t::instance_spot_send_t send,
+  channel_runtime_state_t::instance_spot_request_t request)
+{
+    std::lock_guard lock (_state->mutex);
+    _state->instance_spot_sender = std::move (send);
+    _state->instance_spot_requester = std::move (request);
 }
 
 void channel_runtime_t::bind_mesh_node_transport (
@@ -2021,75 +2037,107 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
     return output;
 }
 
-namespace
-{
-
-/* Refresh-and-retry is only safe when the target is known not to have
- * handled the first attempt. Timeouts and transport failures may have
- * delivered the request, so they never retry. */
-bool is_spot_handle_refresh_candidate (framework_error_kind_t kind)
-{
-    return kind == framework_error_kind_t::spot_route_not_found
-           || kind == framework_error_kind_t::request_target_not_found;
-}
-
-} // namespace
-
-result_t<void> route_client_t::submit_spot_handle_send_erased (
+result_t<void> route_client_t::submit_spot_id_send_erased (
   const std::shared_ptr<detail::route_client_state_t> &state,
-  const spot_handle_t &target,
+  const spot_id_t &target,
+  const detail::spot_activation_intent_t &intent,
   const std::string &packet_name,
   std::type_index message_type,
   payload_encoder_t encode_payload,
   const route_send_call_t::metadata_map_t &metadata)
 {
-    const auto &handle_state = detail::spot_handle_access_t::state (target);
-    if (!handle_state) {
-        return result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                        "spot handle is not resolved");
+    if (!state || !state->runtime || state->runtime->spot_resolver == nullptr) {
+        return result_t<void>::failure (framework_error_kind_t::object_client_not_configured,
+                                        "Spot location resolver is not configured");
     }
-    const auto address = handle_state->snapshot ();
-    return submit_spot_send_erased (state, address.mesh_name, address.node_rid,
-                                    spot_id_t (address.spot_id),
-                                    address.spot_generation,
-                                    packet_name, message_type, std::move (encode_payload),
-                                    metadata);
+    if (intent.mesh_name && !intent.instance) {
+        return result_t<void>::failure (
+          framework_error_kind_t::invalid_configuration,
+          "in_mesh requires Instance Spot intent");
+    }
+    auto address = state->runtime->spot_resolver
+                     ->resolve_spot_address ({}, target).result ().value ();
+    if (!address && intent.instance) {
+        detail::channel_runtime_state_t::instance_spot_send_t activate;
+        {
+            std::lock_guard lock (state->runtime->mutex);
+            activate = state->runtime->instance_spot_sender;
+        }
+        if (!activate) {
+            return result_t<void>::failure (
+              framework_error_kind_t::object_client_not_configured,
+              "Instance Spot activation runtime is not configured");
+        }
+        return activate (target, intent, packet_name, message_type,
+                         std::move (encode_payload), metadata);
+    }
+    if (!address) {
+        return result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
+                                        "Spot route was not found");
+    }
+    auto submitted = submit_spot_send_erased (
+      state, address->mesh_name, address->node_rid, spot_id_t (address->spot_id),
+      address->spot_generation, packet_name, message_type, std::move (encode_payload), metadata);
+    if (!submitted
+        && (submitted.error_kind () == framework_error_kind_t::spot_route_not_found
+            || submitted.error_kind () == framework_error_kind_t::route_not_connected)) {
+        state->runtime->spot_resolver->invalidate_spot_address (target);
+    }
+    return submitted;
 }
 
-task_t<zlink::message_t> route_client_t::submit_spot_handle_request_reply_message_erased (
+task_t<zlink::message_t> route_client_t::submit_spot_id_request_reply_message_erased (
   const std::shared_ptr<detail::route_client_state_t> &state,
-  spot_handle_t target,
+  spot_id_t target,
+  detail::spot_activation_intent_t intent,
   std::string packet_name,
   std::type_index request_type,
   payload_encoder_t encode_payload,
   std::chrono::milliseconds timeout,
   std::map<std::string, std::string> metadata)
 {
-    auto handle_state = detail::spot_handle_access_t::state (target);
-    if (!handle_state) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "spot handle is not resolved");
+    if (!state || !state->runtime || state->runtime->spot_resolver == nullptr) {
+        throw framework_exception_t (framework_error_kind_t::object_client_not_configured,
+                                     "Spot location resolver is not configured");
     }
-    const auto address = handle_state->snapshot ();
+    if (intent.mesh_name && !intent.instance) {
+        throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                     "in_mesh requires Instance Spot intent");
+    }
+    auto address = state->runtime->spot_resolver
+                     ->resolve_spot_address ({}, target).result ().value ();
+    if (!address && intent.instance) {
+        detail::channel_runtime_state_t::instance_spot_request_t activate;
+        {
+            std::lock_guard lock (state->runtime->mutex);
+            activate = state->runtime->instance_spot_requester;
+        }
+        if (!activate) {
+            throw framework_exception_t (
+              framework_error_kind_t::object_client_not_configured,
+              "Instance Spot activation runtime is not configured");
+        }
+        co_return co_await activate (
+          target, intent, std::move (packet_name), request_type,
+          std::move (encode_payload), timeout, std::move (metadata));
+    }
+    if (!address) {
+        throw framework_exception_t (framework_error_kind_t::spot_route_not_found,
+                                     "Spot route was not found");
+    }
     try {
         co_return co_await submit_spot_request_reply_message_erased (
-          state, address.mesh_name, address.node_rid,
-          spot_id_t (address.spot_id), address.spot_generation,
-          packet_name, request_type,
-          encode_payload, timeout, metadata);
+          state, address->mesh_name, address->node_rid,
+          spot_id_t (address->spot_id), address->spot_generation, std::move (packet_name),
+          request_type, std::move (encode_payload), timeout, std::move (metadata));
     }
     catch (const framework_exception_t &error) {
-        if (!is_spot_handle_refresh_candidate (error.kind ())
-            || !handle_state->refresh_snapshot ()) {
-            throw;
+        if (error.kind () == framework_error_kind_t::spot_route_not_found
+            || error.kind () == framework_error_kind_t::route_not_connected) {
+            state->runtime->spot_resolver->invalidate_spot_address (target);
         }
+        throw;
     }
-    const auto refreshed = handle_state->snapshot ();
-    co_return co_await submit_spot_request_reply_message_erased (
-      state, refreshed.mesh_name, refreshed.node_rid,
-      spot_id_t (refreshed.spot_id), refreshed.spot_generation,
-      std::move (packet_name),
-      request_type, std::move (encode_payload), timeout, std::move (metadata));
 }
 
 zlink_builder_t::zlink_builder_t () : _state (std::make_shared<detail::zlink_builder_state_t> ())

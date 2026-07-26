@@ -53,6 +53,8 @@ import {
   type ZLinkNestFrameworkOptionsBuilder,
   type ZLinkNestModuleRegistrationOptions,
   type ZLinkNestMeshChannelBuilder,
+  type ZLinkNestMeshChannelClientBuilder,
+  type ZLinkNestMeshChannelServerBuilder,
   type ZLinkNestMeshObjectClientBuilder,
   type ZLinkNestMeshObjectRoleBuilder,
   type ZLinkNestMeshObjectServerBuilder,
@@ -545,7 +547,7 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     super(state);
   }
 
-  channelName(name: string): ZLinkNestMeshChannelBuilder {
+  channel(name: string): ZLinkNestMeshChannelBuilder {
     if (name.trim().length === 0 || name.trim() !== name) {
       throw new framework.ZLinkConfigurationException('Mesh channel name must not be empty or padded.');
     }
@@ -560,6 +562,11 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     channels[name] = {};
     this.spotOptions.meshChannels = channels;
     return new DefaultZLinkNestMeshChannelBuilder(this.state, channels[name]);
+  }
+
+  /** Runtime compatibility for pre-contract JavaScript callers; not part of ZLinkNestMeshNodeBuilder. */
+  channelName(name: string): ZLinkNestMeshChannelServerBuilder {
+    return this.channel(name).server();
   }
 
   listen(endpoint: string): this {
@@ -859,6 +866,27 @@ function rejectDuplicateObjectType(
 }
 
 class DefaultZLinkNestMeshChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestMeshChannelBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly channel: Mutable<NonNullable<ZLinkSpotNodeOptions['meshChannels']>[string]>
+  ) {
+    super(state);
+  }
+
+  client(): ZLinkNestMeshChannelClientBuilder {
+    return new DefaultZLinkNestMeshChannelClientBuilder(this.state);
+  }
+
+  server(): ZLinkNestMeshChannelServerBuilder {
+    return new DefaultZLinkNestMeshChannelServerBuilder(this.state, this.channel);
+  }
+}
+
+class DefaultZLinkNestMeshChannelClientBuilder extends ZLinkNestOptionsBuilder
+  implements ZLinkNestMeshChannelClientBuilder {}
+
+class DefaultZLinkNestMeshChannelServerBuilder extends ZLinkNestOptionsBuilder
+  implements ZLinkNestMeshChannelServerBuilder {
   constructor(
     state: ZLinkNestBuilderState,
     private readonly channel: Mutable<NonNullable<ZLinkSpotNodeOptions['meshChannels']>[string]>

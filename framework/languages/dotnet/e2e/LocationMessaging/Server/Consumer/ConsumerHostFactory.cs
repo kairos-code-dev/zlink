@@ -45,11 +45,16 @@ internal static class ConsumerHostFactory
                 .TraceLabel(options.TraceLabel);
 
             var profileMesh = framework.AddRouteMesh("profile")
-                .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From(options.TraceLabel));
-            profileMesh.ChannelName("profile").SetWeight(0);
+                .Listen()
+                .SetBindHost("127.0.0.1")
+                .SetAdvertiseHost("127.0.0.1");
+            profileMesh.Channel("profile").Client();
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
             {
+                // The client-only automatic member uses a deterministic low
+                // prefix so the pairwise RID rule makes this process initiate
+                // the provider links in this topology fixture.
+                profileMesh.SetRoutingIdPrefix($"00-{options.TraceLabel}");
                 // Endpoint-less client: valid only because the shared Redis
                 // location store is registered; the framework auto-connects
                 // from live peer rows (doc §2).
@@ -59,6 +64,7 @@ internal static class ConsumerHostFactory
             }
             else
             {
+                profileMesh.SetRoutingId(RoutingId.From(options.TraceLabel));
                 foreach (var endpoint in options.ProviderEndpoints ?? [])
                     profileMesh.PeerConnections.Connect(endpoint);
             }

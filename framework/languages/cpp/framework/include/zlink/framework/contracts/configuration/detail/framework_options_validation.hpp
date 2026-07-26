@@ -20,10 +20,55 @@ inline void validate_dispatch_options (const dispatch_options_t &options)
     }
 }
 
+inline void validate_location_options (const location_options_t &options)
+{
+    using namespace std::chrono_literals;
+    if (options.owner_lease_renew_interval <= 0ms
+        || options.owner_lease_ttl <= 0ms
+        || options.polling_interval <= 0ms
+        || options.store_failure_grace <= 0ms
+        || options.owner_lease_fencing_margin <= 0ms
+        || options.owner_lease_renew_timeout <= 0ms) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "location lease, polling, failure-grace, fencing, and renewal durations must be greater than zero");
+    }
+    if (options.owner_lease_renew_interval + options.owner_lease_renew_timeout
+        >= options.owner_lease_ttl - options.owner_lease_fencing_margin) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "owner lease renewal interval plus timeout must be shorter than the fenced lease lifetime");
+    }
+    if (options.route_cache_max_age < 0ms
+        || options.relocation_forwarding_window < 0ms) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "route cache and relocation forwarding durations must not be negative");
+    }
+    if (options.route_cache_max_age > 0ms
+        && options.relocation_forwarding_window > 0ms
+        && options.relocation_forwarding_window
+             < options.route_cache_max_age + 5s) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "relocation forwarding window must be at least five seconds longer than route cache max age");
+    }
+    if (options.max_active_outbound_relocations == 0
+        || options.max_active_inbound_relocations == 0
+        || options.max_concurrent_relocation_captures == 0
+        || options.max_concurrent_relocation_restores == 0
+        || options.max_relocation_payload_in_flight_bytes == 0) {
+        throw framework_exception_t (
+          framework_error_kind_t::request_protocol_error,
+          "relocation concurrency and payload limits must be greater than zero");
+    }
+}
+
 inline void validate_framework_options (const framework_options_state_t &options,
                                         const handler_group_options_state_t &handler_groups)
 {
     validate_dispatch_options (options.dispatch);
+    validate_location_options (options.locations);
     if (options.has_location_store_instance && options.use_in_memory_location_stores) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,

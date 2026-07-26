@@ -723,15 +723,22 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 request.aggregateId(),
                 request.aggregateGeneration());
             if (existing != null) {
-                return completed(
-                    exactAggregateRequest(
-                        existing.request,
-                        request)
-                        ? new ZLinkAggregateAlreadyPrepared(fence)
-                        : existing.request.aggregateGeneration()
-                            == request.aggregateGeneration()
+                if (exactAggregateRequest(existing.request, request)) {
+                    return completed(new ZLinkAggregateAlreadyPrepared(fence));
+                }
+                boolean nextCommittedGeneration =
+                    existing.state == State.COMMITTED
+                        && existing.request.aggregateGeneration()
+                            != Long.MAX_VALUE
+                        && request.aggregateGeneration()
+                            == existing.request.aggregateGeneration() + 1;
+                if (!nextCommittedGeneration) {
+                    return completed(
+                        existing.request.aggregateGeneration()
+                                == request.aggregateGeneration()
                             ? new ZLinkAggregateConflict()
                             : new ZLinkAggregateStale());
+                }
             }
             if (!ownerLeaseIsLive.test(request.targetOwner())) {
                 return completed(new ZLinkAggregateConflict());
@@ -749,6 +756,11 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                         participant.ownerTransition()
                             == ZLinkAuthorityGenerationTransition.NEW_OWNER)
                     .count());
+            if (ownerGenerationCount == 0
+                && request.participants().stream().anyMatch(participant ->
+                    participant.membershipMutation().length != 0)) {
+                return completed(new ZLinkAggregateConflict());
+            }
             if (!hasCounterRoom(
                     authorityOwnerGeneration,
                     ownerGenerationCount)

@@ -28,10 +28,12 @@ function targetActorRef(name = 'target', generation = 2n) {
 
 function harness(forwardWindowMs = 30) {
   const forwarded = [];
+  const forwardedPayloads = [];
   const markers = [];
   let currentGeneration = 2n;
   const transport = {
     async sendToSpot(_target, payload) {
+      forwardedPayloads.push(payload);
       forwarded.push(Buffer.from(payload.payload, 'base64').toString());
     },
     async requestToSpot() {
@@ -48,6 +50,7 @@ function harness(forwardWindowMs = 30) {
   return {
     coordinator,
     forwarded,
+    forwardedPayloads,
     markers,
     setCurrentGeneration(value) { currentGeneration = value; }
   };
@@ -70,6 +73,54 @@ test('in-flight handoff preserves moving packet arrival order in the commit back
     'handoff_backlog',
     'handoff_backlog'
   ]);
+});
+
+test('forwarding preserves operation identity and increments a bounded hop count', async () => {
+  const { coordinator, forwardedPayloads } = harness();
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+  const ref = Object.assign(actorRef(1n), {
+    handoffOperationId: 'source-op-7',
+    handoffForwardingHopCount: 7
+  });
+  const parts = frame('last-hop');
+  await coordinator.capture('actor-1', parts, false, undefined, ref);
+  parts.forEach((part) => part.close());
+  assert.equal(forwardedPayloads[0].operationId, 'source-op-7');
+  assert.equal(forwardedPayloads[0].forwardingHopCount, 8);
+
+  const loop = frame('loop');
+  const exhausted = Object.assign(actorRef(1n), {
+    handoffOperationId: 'source-op-8',
+    handoffForwardingHopCount: 8
+  });
+  await assert.rejects(
+    coordinator.capture('actor-1', loop, false, undefined, exhausted),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+  );
+  loop.forEach((part) => part.close());
+});
+
+test('forwarding mapping rejects a queue above 1024 messages without a Store lookup or retry', async () => {
+  const coordinator = new framework.ZLinkActorHandoffCoordinator({
+    routedTransport: { sendToSpot: async () => new Promise(() => {}) },
+    forwardWindowMs: 1000
+  });
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+  for (let index = 0; index < 1024; index++) {
+    const parts = frame(`queued-${index}`);
+    void coordinator.capture('actor-1', parts, false, undefined, actorRef(1n));
+    parts.forEach((part) => part.close());
+  }
+  const overflow = frame('overflow');
+  assert.throws(
+    () => coordinator.capture('actor-1', overflow, false, undefined, actorRef(1n)),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+  );
+  overflow.forEach((part) => part.close());
 });
 
 test('packets captured after the commit snapshot are forwarded only after backlog completion', async () => {

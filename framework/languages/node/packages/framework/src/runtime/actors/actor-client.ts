@@ -8,6 +8,7 @@ import {
 } from '@zlink-systems/zlink';
 import type {
   ActorRef,
+  ZLinkActorLocation,
   ZLinkActorClient,
   ZLinkActorRequestCall,
   ZLinkActorSendCall,
@@ -84,37 +85,37 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     );
   }
 
-  sendToActor(meshName: string, actor: ActorRef, message: unknown): ZLinkActorSendCall {
-    requireMeshName(meshName);
+  sendToActor(actorId: string, message: unknown): ZLinkActorSendCall {
+    requireActorId(actorId);
     return new DefaultZLinkActorSendCall(
       (packetName, metadata, signal) =>
-        this.send(meshName, actor, packetName, message, metadata, signal),
+        this.send(actorId, packetName, message, metadata, signal),
       message
     );
   }
 
-  requestToActor(meshName: string, actor: ActorRef, request: unknown): ZLinkActorRequestCall {
-    requireMeshName(meshName);
+  requestToActor(actorId: string, request: unknown): ZLinkActorRequestCall {
+    requireActorId(actorId);
     return new DefaultZLinkActorRequestCall(
       (packetName, timeoutMs, signal) =>
-        this.request(meshName, actor, packetName, request, timeoutMs, signal),
+        this.request(actorId, packetName, request, timeoutMs, signal),
       request,
       this.options.defaultRequestTimeoutMs
     );
   }
 
   private async send(
-    meshName: string,
-    actor: ActorRef,
+    actorId: string,
     explicitPacketName: string | undefined,
     message: unknown,
     metadata: ReadonlyMap<string, string>,
     signal?: AbortSignal
   ): Promise<ZLinkSubmitResult> {
+    throwIfAborted(signal);
+    const { meshName, actorRef: actor } = await this.resolveActorRoute(actorId, signal);
     this.throwIfKnownStale(meshName, actor);
     const parts = this.createPacketParts(ZLinkStreamMessageKind.Send, undefined, explicitPacketName, message, metadata);
     try {
-      throwIfAborted(signal);
       const handoff = this.options.handoffCapture?.(meshName, actor.actorId, parts, false, actor);
       if (handoff !== undefined) {
         await awaitWithAbort(handoff, signal);
@@ -127,6 +128,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       );
     } catch (error) {
       if (isStaleActorError(error)) {
+        this.invalidateActorRoute(actorId);
         this.options.staleActorRefReporter?.(meshName, actor.actorId);
         throw actorLocationStale(actor.actorId, error);
       }
@@ -137,17 +139,17 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
   }
 
   private async request<TReply>(
-    meshName: string,
-    actor: ActorRef,
+    actorId: string,
     explicitPacketName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
     signal?: AbortSignal
   ): Promise<TReply> {
+    throwIfAborted(signal);
+    const { meshName, actorRef: actor } = await this.resolveActorRoute(actorId, signal);
     this.throwIfKnownStale(meshName, actor);
     const parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request, new Map());
     try {
-      throwIfAborted(signal);
       const handoff = this.options.handoffCapture?.(meshName, actor.actorId, parts, true, actor);
       if (handoff !== undefined) {
         return await waitHandoffReply<TReply>(handoff, timeoutMs);
@@ -161,6 +163,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       );
     } catch (error) {
       if (isStaleActorError(error)) {
+        this.invalidateActorRoute(actorId);
         this.options.staleActorRefReporter?.(meshName, actor.actorId);
         throw actorLocationStale(actor.actorId, error);
       }
@@ -170,8 +173,34 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     }
   }
 
+  private async resolveActorRoute(
+    actorId: string,
+    signal?: AbortSignal
+  ): Promise<Pick<ZLinkActorLocation, 'meshName' | 'actorRef'>> {
+    const resolver = this.options.locationResolver();
+    if (resolver === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.InvalidConfiguration,
+        'Actor direct messaging requires a Location Store.'
+      );
+    }
+    const row = await resolver.resolveDirectActorRoute(actorId, signal);
+    if (row === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        `Actor route '${actorId}' was not found.`
+      );
+    }
+    return row;
+  }
+
+  private invalidateActorRoute(actorId: string): void {
+    this.options.locationResolver()?.invalidateActorRoute(actorId);
+  }
+
   private throwIfKnownStale(meshName: string, actor: ActorRef): void {
     if (this.options.staleActorRefPredicate?.(meshName, actor) !== true) return;
+    this.invalidateActorRoute(actor.actorId);
     this.options.staleActorRefReporter?.(meshName, actor.actorId);
     throw actorLocationStale(actor.actorId, undefined);
   }
@@ -256,9 +285,10 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
   }
 }
 
-function requireMeshName(meshName: string): void {
-  if (meshName.trim().length === 0 || meshName !== meshName.trim()) {
-    throw new ZLinkConfigurationException('Actor client RouteMesh name must not be empty or padded.');
+function requireActorId(actorId: string): void {
+  const byteLength = Buffer.byteLength(actorId, 'utf8');
+  if (byteLength < 1 || byteLength > 255) {
+    throw new ZLinkConfigurationException('Actor ID must contain 1..255 UTF-8 bytes.');
   }
 }
 

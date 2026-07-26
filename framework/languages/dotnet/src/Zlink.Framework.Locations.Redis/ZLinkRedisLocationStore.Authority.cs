@@ -275,13 +275,22 @@ public sealed partial class ZLinkRedisLocationStore
 
                     var now = DateTimeOffset.FromUnixTimeMilliseconds(
                         result.GetProperty("storeNowMs").GetInt64());
-                    var entries = result.GetProperty("rows")
-                        .EnumerateArray()
-                        .Select(row => new ZLinkAuthorityEntry(
-                            new ZLinkAuthorityKey(
-                                row.GetProperty("key").GetString()!),
-                            Snapshot(row.GetProperty("row"), now)))
-                        .ToArray();
+                    var rows = result.GetProperty("rows");
+                    var entries = rows.ValueKind switch
+                    {
+                        JsonValueKind.Array => rows.EnumerateArray()
+                            .Select(row => new ZLinkAuthorityEntry(
+                                new ZLinkAuthorityKey(
+                                    row.GetProperty("key").GetString()!),
+                                Snapshot(row.GetProperty("row"), now)))
+                            .ToArray(),
+                        // Redis cjson encodes an empty Lua table as `{}`. A
+                        // scan with no matching authority rows is an empty page.
+                        JsonValueKind.Object when !rows.EnumerateObject().Any()
+                            => Array.Empty<ZLinkAuthorityEntry>(),
+                        _ => throw new InvalidOperationException(
+                            "Redis authority scan returned an invalid rows value.")
+                    };
                     ZLinkAuthorityScanCursor? next =
                         result.GetProperty("hasMore").GetBoolean()
                         ? new ZLinkAuthorityScanCursor(

@@ -60,10 +60,14 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     const existing = await this.resolveExisting(spotId, call.signal);
     if (existing !== undefined) {
       this.validateExisting(existing, call);
-      return await this.options.routed.sendToSpot(existing, message, {
+      const result = await this.options.routed.sendToSpot(existing, message, {
         signal: call.signal,
         metadata: call.metadata
       });
+      if (result.status === ZLinkSubmitStatus.TargetNotFound) {
+        this.options.resolver()?.invalidate?.(spotId);
+      }
+      return result;
     }
     if (!call.instanceSpot) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
@@ -91,11 +95,25 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     const existing = await this.resolveExisting(spotId, call.signal);
     if (existing !== undefined) {
       this.validateExisting(existing, call);
-      return await this.options.routed.requestToSpot<TReply>(existing, request, {
-        timeoutMs: call.timeoutMs,
-        signal: call.signal,
-        metadata: call.metadata
-      });
+      try {
+        return await this.options.routed.requestToSpot<TReply>(existing, request, {
+          timeoutMs: call.timeoutMs,
+          signal: call.signal,
+          metadata: call.metadata
+        });
+      } catch (error) {
+        if (
+          error instanceof ZLinkFrameworkException
+          && (
+            error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
+            || error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
+            || error.kind === ZLinkFrameworkErrorKind.SpotMoving
+          )
+        ) {
+          this.options.resolver()?.invalidate?.(spotId);
+        }
+        throw error;
+      }
     }
     if (!call.instanceSpot) {
       throw new ZLinkFrameworkException(

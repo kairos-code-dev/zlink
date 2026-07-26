@@ -78,6 +78,7 @@ import {
 } from './stream-session-runtime';
 export { ZLinkPendingSessionRequest } from './session-requests';
 export { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
+export { ZLinkActorSessionBindingRegistry } from './actor-session-binding-registry';
 export { zlinkStreamLz4CompressionCodec } from './stream-frame-factory';
 export { ZLinkManagedStream } from './managed-stream';
 export {
@@ -364,6 +365,34 @@ export class ZLinkStreamBindingRuntime {
 
   async refreshActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
     await this.sessionActors.refreshActor(actorRef, signal);
+  }
+
+  async commitActorRoute(actorRef: ActorRef, signal?: AbortSignal): Promise<void> {
+    await this.sessionActors.commitActorRoute(actorRef, signal);
+  }
+
+  sealActorRoute(input: {
+    readonly actorId: string;
+    readonly actorGeneration: bigint;
+    readonly actorOwnershipGeneration: bigint;
+    readonly bindingGeneration: bigint;
+    readonly ownerLeaseGeneration: bigint;
+    readonly sealId: string;
+  }): bigint {
+    return this.routes.seal(input.actorId, input.sealId, {
+      objectGeneration: input.actorGeneration,
+      authorityOwnerGeneration: input.actorOwnershipGeneration,
+      bindingGeneration: input.bindingGeneration,
+      ownerLeaseGeneration: input.ownerLeaseGeneration
+    });
+  }
+
+  abortActorRouteSeal(actorId: string, sealId: string): boolean {
+    return this.routes.abortSeal(actorId, sealId);
+  }
+
+  validateActorRouteSeal(actorId: string, sealId: string, acceptedHighWater: bigint): boolean {
+    return this.routes.validateSeal(actorId, sealId, acceptedHighWater);
   }
 
   unbind(actorId: string, context: DefaultZLinkSessionContext, bindingToken: string): void {

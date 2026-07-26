@@ -91,19 +91,16 @@ internal static class SpotLifecycleEndpoints
         });
         app.MapPost("/spot/state/request", async (
             IZLinkSpotClient spotsClient,
-            IZLinkSpotHandleResolver locator,
             SpotStateRouteReq request) =>
         {
             var result = await RequestSpotStateAsync(
                 spotsClient,
-                locator,
                 request.SpotRid,
                 new StateReq(request.Operation, request.Delta));
             return Results.Ok(result);
         });
         app.MapPost("/spot/state/command", async (
             IZLinkSpotClient spotsClient,
-            IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotStateCommandReq request) =>
@@ -111,7 +108,6 @@ internal static class SpotLifecycleEndpoints
             var before = evidence.Snapshot();
             await SendSpotCommandAsync(
                 spotsClient,
-                locator,
                 request.SpotRid,
                 new StateMsg(request.Marker));
             await WaitUntilAsync(

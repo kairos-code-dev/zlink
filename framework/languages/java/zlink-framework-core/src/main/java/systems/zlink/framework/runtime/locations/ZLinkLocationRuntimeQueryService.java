@@ -338,7 +338,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
         ZLinkPageRequest safePage = page == null ? ZLinkPageRequest.firstPage() : page;
         return safePage.pageSize() > 0
             ? safePage
-            : new ZLinkPageRequest(options.listPageSize(), safePage.continuationToken());
+            : new ZLinkPageRequest(1000, safePage.continuationToken());
     }
 
     private static int parseOffset(String token) {

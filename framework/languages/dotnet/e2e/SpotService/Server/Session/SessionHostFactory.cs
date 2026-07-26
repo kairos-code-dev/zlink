@@ -62,16 +62,8 @@ internal static class SessionHostFactory
                 .TraceLabel(options.Rid);
             var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
-            controlMesh.ChannelName(SpotServiceNames.ControlChannel);
-            if (!string.IsNullOrWhiteSpace(options.ControlPeerAEndpoint))
-                controlMesh.PeerConnections.Connect(
-                    RoutingId.From("play-a"),
-                    options.ControlPeerAEndpoint);
-            if (!string.IsNullOrWhiteSpace(options.ControlPeerBEndpoint))
-                controlMesh.PeerConnections.Connect(
-                    RoutingId.From("play-b"),
-                    options.ControlPeerBEndpoint);
+                .SetRoutingIdPrefix(options.Rid);
+            controlMesh.Channel(SpotServiceNames.ControlChannel).Server();
             controlMesh
                 .AddRouteRequestHandler<EnsureActorHandler>()
                 .AddRouteRequestHandler<ControlPingHandler>()
@@ -80,15 +72,8 @@ internal static class SessionHostFactory
                 .AddRouteRequestHandler<SpotTypeMismatchHandler>();
             var mesh22 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
-            if (!string.IsNullOrWhiteSpace(options.SpotPeerAEndpoint))
-                mesh22.PeerConnections.Connect(
-                    RoutingId.From("play-a"),
-                    options.SpotPeerAEndpoint);
-            if (!string.IsNullOrWhiteSpace(options.SpotPeerBEndpoint))
-                mesh22.PeerConnections.Connect(
-                    RoutingId.From("play-b"),
-                    options.SpotPeerBEndpoint);
+                .SetRoutingIdPrefix(options.Rid)
+                .SetPlacementWeight(0);
             mesh22.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
@@ -111,15 +96,15 @@ internal static class SessionHostFactory
                     SpotServiceNames.MultiSpotTypeB,
                     null,
                     ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
-            mesh22.ChannelName(SpotServiceNames.SpotChannel);
+            mesh22.Channel(SpotServiceNames.SpotChannel).Server();
             framework.AddStreamNode(SpotServiceNames.StreamNode)
                 .Bind(Require(options.StreamEndpoint, "StreamEndpoint"))
-                .EnableActorDispatch(SpotServiceNames.SpotChannel)
+                .EnableActorDispatch()
                 .AddSession<ScenarioSession>();
             if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
                 framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
                     .Bind(options.TlsStreamEndpoint)
-                    .EnableActorDispatch(SpotServiceNames.SpotChannel)
+                    .EnableActorDispatch()
                     .SetTlsServer(
                         Require(options.TlsCertPath, "TlsCertPath"),
                         Require(options.TlsKeyPath, "TlsKeyPath"))
@@ -133,10 +118,12 @@ internal static class SessionHostFactory
             IZLinkRouteMeshRuntime meshRuntime) =>
         {
             var peer = meshRuntime.Snapshot(SpotServiceNames.SpotChannel).Peers
-                .FirstOrDefault(candidate => string.Equals(
-                    candidate.Rid.ToString(),
-                    targetRid,
-                    StringComparison.Ordinal));
+                .FirstOrDefault(candidate =>
+                {
+                    var candidateRid = candidate.Rid.ToString();
+                    return string.Equals(candidateRid, targetRid, StringComparison.Ordinal)
+                           || candidateRid.StartsWith($"{targetRid}-", StringComparison.Ordinal);
+                });
             return peer is { Ready: true }
                 ? Results.Ok(peer)
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
@@ -158,11 +145,15 @@ internal static class SessionHostFactory
         app.MapPost("/channel/control-ping/{targetRid}", async (
             string targetRid,
             ControlPingReq request,
-            IZLinkRouteClient route) =>
+            IZLinkRouteClient route,
+            IZLinkRouteMeshRuntime meshRuntime) =>
         {
             var reply = await route.RequestToNode(
                     SpotServiceNames.ControlChannel,
-                    RoutingId.From(targetRid),
+                    ResolvePeerRoutingId(
+                        meshRuntime,
+                        SpotServiceNames.ControlChannel,
+                        targetRid),
                     request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ControlPingRes>();
@@ -174,6 +165,22 @@ internal static class SessionHostFactory
             return Results.Ok(new { status = "stopping" });
         });
         return app;
+    }
+
+    internal static RoutingId ResolvePeerRoutingId(
+        IZLinkRouteMeshRuntime meshRuntime,
+        string meshName,
+        string ridOrPrefix)
+    {
+        var peer = meshRuntime.Snapshot(meshName).Peers.SingleOrDefault(candidate =>
+        {
+            var candidateRid = candidate.Rid.ToString();
+            return string.Equals(candidateRid, ridOrPrefix, StringComparison.Ordinal)
+                   || candidateRid.StartsWith($"{ridOrPrefix}-", StringComparison.Ordinal);
+        });
+        return peer?.Rid
+               ?? throw new InvalidOperationException(
+                   $"Mesh '{meshName}' has no Ready node for prefix '{ridOrPrefix}'.");
     }
 
     private static string Require(string? value, string optionName)

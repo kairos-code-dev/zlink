@@ -3,6 +3,7 @@ import {
   type ZLinkLocationOptionOverrides
 } from '../../contracts/Locations/Options';
 import {
+  type ZLinkLocationOwnerToken,
   type ZLinkOwnerLeaseReadResult,
   type ZLinkOwnerLeaseStore
 } from '../../contracts/Locations';
@@ -36,6 +37,28 @@ export class ZLinkOwnerLeaseTracker {
   async isOwnerLive(ownerId: string, signal?: AbortSignal): Promise<boolean> {
     const snapshot = await this.getSnapshot(ownerId, signal);
     return this.isLive(snapshot);
+  }
+
+  async remainingLeaseMs(ownerId: string, signal?: AbortSignal): Promise<number> {
+    const snapshot = await this.getSnapshot(ownerId, signal);
+    if (snapshot.result.kind !== 'found') return 0;
+    return Math.max(0, snapshot.result.leaseExpiresAt.getTime()
+      - snapshot.result.storeNow.getTime()
+      - (this.monotonicNowMs() - snapshot.fetchedAtMs));
+  }
+
+  async remainingOwnerTokenLeaseMs(
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<number> {
+    const snapshot = await this.getSnapshot(owner.ownerId, signal);
+    if (
+      snapshot.result.kind !== 'found'
+      || snapshot.result.token.leaseGeneration !== owner.leaseGeneration
+    ) return 0;
+    return Math.max(0, snapshot.result.leaseExpiresAt.getTime()
+      - snapshot.result.storeNow.getTime()
+      - (this.monotonicNowMs() - snapshot.fetchedAtMs));
   }
 
   async getLiveOwnerSetVersion(signal?: AbortSignal): Promise<number> {

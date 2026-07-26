@@ -63,6 +63,7 @@ import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
+  ZLinkLocationChangeScopeKind,
   ZLinkFrameworkRuntimeState,
   type RoutingId,
   type ZLinkLocationChangeStampStore,
@@ -116,7 +117,6 @@ import {
   type ZLinkRelocationCapacityReservationRequest,
   type ZLinkRelocationCapacityReserveResult,
   type ZLinkRelocationReference,
-  type ZLinkRelocationStore,
   type ZLinkRelocationStored,
   type ZLinkOwnerLeaseClaimResult,
   type ZLinkOwnerLeaseReadResult,
@@ -151,7 +151,6 @@ export class ZLinkRedisLocationStore implements
   ZLinkFanoutLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkOwnerLeaseStore,
-  ZLinkRelocationStore,
   ZLinkRoutingIdSlotAllocationStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
@@ -182,7 +181,7 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
-  async putRelocation(
+  protected async putRelocationPayload(
     payload: Uint8Array,
     retentionMs: number,
     signal?: AbortSignal
@@ -208,7 +207,7 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
-  async getRelocation(
+  protected async getRelocationPayload(
     reference: ZLinkRelocationReference,
     signal?: AbortSignal
   ): Promise<{ readonly kind: 'found'; readonly payload: Uint8Array } | { readonly kind: 'missing' }> {
@@ -225,7 +224,7 @@ export class ZLinkRedisLocationStore implements
     return { kind: 'found', payload };
   }
 
-  async renewRelocation(
+  protected async renewRelocationPayload(
     reference: ZLinkRelocationReference,
     retentionMs: number,
     signal?: AbortSignal
@@ -249,7 +248,7 @@ export class ZLinkRedisLocationStore implements
     };
   }
 
-  async deleteRelocation(
+  protected async deleteRelocationPayload(
     reference: ZLinkRelocationReference,
     signal?: AbortSignal
   ): Promise<'deleted' | 'missing'> {
@@ -929,7 +928,8 @@ export class ZLinkRedisLocationStore implements
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint> {
-    const value = await this.command(['GET', this.keys.stamp(kindTagOf(scope.kind), scope.meshName)], signal);
+    const partition = scope.channelName ?? scope.meshName;
+    const value = await this.command(['GET', this.keys.stamp(changeStampTag(scope.kind), partition)], signal);
     return value === null ? 0n : BigInt(asString(value));
   }
 
@@ -2003,6 +2003,18 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
+}
+
+function changeStampTag(kind: ZLinkLocationChangeStampScope['kind']): string {
+  switch (kind) {
+    case ZLinkLocationChangeScopeKind.MeshNode: return kindMeshNode.tag;
+    case ZLinkLocationChangeScopeKind.ClientServer: return kindClientServer.tag;
+    case ZLinkLocationChangeScopeKind.Spot: return kindSpot.tag;
+    case ZLinkLocationChangeScopeKind.Authority: return 'authority';
+    case ZLinkLocationChangeScopeKind.OwnerLease: return 'owner_lease';
+    case ZLinkLocationChangeScopeKind.FanoutPublisher: return kindFanoutPublisher.tag;
+    default: return kindTagOf(kind);
+  }
 }
 
 interface AuthorityJson {

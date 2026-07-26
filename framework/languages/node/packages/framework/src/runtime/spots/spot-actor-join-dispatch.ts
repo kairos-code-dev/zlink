@@ -169,6 +169,7 @@ export class ZLinkSpotActorJoinDispatch {
       routedBoundSessionResponseReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionResponse.bind(options.boundSessionRuntime),
       routedBoundSessionErrorReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionError.bind(options.boundSessionRuntime),
       routedBoundSessionOwnershipReceiver: options.boundSessionRuntime?.receiveRemoteBoundSessionOwnership.bind(options.boundSessionRuntime),
+      routedBoundSessionSealReceiver: options.boundSessionRuntime?.receiveRemoteBoundSessionSeal.bind(options.boundSessionRuntime),
       actorPacketTargetProvider: options.boundSessionRuntime?.actorPacketTargetForState.bind(options.boundSessionRuntime),
       messageSerializers: options.messageSerializers,
       providerResolver: options.providerResolver,

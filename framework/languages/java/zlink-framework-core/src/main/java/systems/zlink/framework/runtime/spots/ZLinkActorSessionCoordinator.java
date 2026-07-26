@@ -88,6 +88,27 @@ final class ZLinkActorSessionCoordinator {
         return actors == null ? Optional.empty() : actors.localActor(actorId);
     }
 
+    String actorType(String actorId) {
+        ZLinkActor actor = localActor(actorId).orElseThrow(() ->
+            new ZLinkConfigurationException(
+                "local actor is not available: " + actorId));
+        return requireActors().actorTypeFor(actor);
+    }
+
+    ZLinkBackendActorRef actorRef(String actorId) {
+        ZLinkActor actor = localActor(actorId).orElseThrow(() ->
+            new ZLinkConfigurationException(
+                "local actor is not available: " + actorId));
+        return requireActors().currentRef(actor);
+    }
+
+    boolean hasBoundSession(String actorId) {
+        ZLinkActor actor = localActor(actorId).orElseThrow(() ->
+            new ZLinkConfigurationException(
+                "local actor is not available: " + actorId));
+        return requireActors().hasBoundSession(actor);
+    }
+
     boolean isActorMember(String spotId, String actorId) {
         if (actors == null) {
             return false;
@@ -323,6 +344,10 @@ final class ZLinkActorSessionCoordinator {
             throw new ZLinkConfigurationException("actor runtime is required for Spot actor operation");
         }
         return actors;
+    }
+
+    ZLinkActorRuntime runtime() {
+        return requireActors();
     }
 
     private Object currentSpotSurface(ZLinkActor actor) {

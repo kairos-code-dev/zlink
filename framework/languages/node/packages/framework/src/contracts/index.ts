@@ -19,6 +19,7 @@ export type {
   ZLinkMessageFlowEvent,
   ZLinkMessageFlowObserver,
   ZLinkMessageFlowOutcome,
+  ZLinkMessageFlowReason,
   ZLinkUnhandledDispatchOptions
 } from './Dispatch';
 export * from './Errors';

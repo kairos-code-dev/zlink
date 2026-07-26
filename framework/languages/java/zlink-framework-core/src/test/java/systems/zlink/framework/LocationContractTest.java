@@ -277,12 +277,8 @@ final class LocationContractTest {
         assertEquals(ZLinkLocationOptions.class, ZLinkFrameworkOptions.class
             .getMethod("configureLocations")
             .getReturnType());
-        assertEquals(void.class, ZLinkLocationOptions.class
-            .getMethod("setSpotRouterChannel", String.class, String.class)
-            .getReturnType());
-        assertEquals(Map.class, ZLinkLocationOptions.class
-            .getMethod("spotRouterChannels")
-            .getReturnType());
+        assertNoPublicMethod(ZLinkLocationOptions.class, "setSpotRouterChannel");
+        assertNoPublicMethod(ZLinkLocationOptions.class, "spotRouterChannels");
 
         assertEquals(ZLinkPeerLocationStore.class, ZLinkPeerLocationStore.class);
         assertEquals(ZLinkSpotLocationStore.class, ZLinkSpotLocationStore.class);
@@ -336,7 +332,18 @@ final class LocationContractTest {
                 systems.zlink.framework.messaging.ZLinkMessage.class)
             .getReturnType());
         assertMissing("systems.zlink.framework.actors.ZLinkActorPlacement");
-        assertRecordComponents(ActorRefSnapshot.class, "nodeRid", "actorId", "generation");
+        assertRecordComponents(
+            ActorRef.class,
+            "actorId",
+            "objectGeneration",
+            "meshName",
+            "nodeRid");
+        assertRecordComponents(
+            ActorRefSnapshot.class,
+            "actorId",
+            "objectGeneration",
+            "meshName",
+            "nodeRid");
         assertEquals(ActorRef.class, ActorRefSnapshot.class
             .getMethod("toActorRef")
             .getReturnType());
@@ -350,12 +357,12 @@ final class LocationContractTest {
     }
 
     @Test
-    void actorClientPinsL13CompletionStageSurface() throws Exception {
+    void actorClientPinsGlobalIdCompletionStageSurface() throws Exception {
         assertEquals(ZLinkActorSendCall.class, ZLinkActorClient.class
-            .getMethod("sendToActor", ActorRef.class, Object.class)
+            .getMethod("sendToActor", String.class, Object.class)
             .getReturnType());
         assertEquals(ZLinkActorRequestCall.class, ZLinkActorClient.class
-            .getMethod("requestToActor", ActorRef.class, Object.class)
+            .getMethod("requestToActor", String.class, Object.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkActorSendCall.class
             .getMethod("submit")
@@ -472,7 +479,8 @@ final class LocationContractTest {
         assertEnumValues(ZLinkSpotKind.class, Map.of(
             "INVALID", 0,
             "ENTRY", 1,
-            "USER", 2));
+            "USER", 2,
+            "INSTANCE", 3));
         assertEnumValues(ZLinkLocationRuntimeEventKind.class, Map.of(
             "STATUS_CHANGED", 0,
             "TOPOLOGY_CHANGED", 1,

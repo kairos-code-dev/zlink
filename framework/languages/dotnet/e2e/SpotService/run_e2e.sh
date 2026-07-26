@@ -836,6 +836,20 @@ wait_for_log_after() {
   return 1
 }
 
+wait_for_log_in_either_after() {
+  local first_name="$1" second_name="$2" pattern="$3"
+  local first_line="$4" second_line="$5" attempts="${6:-200}"
+  for ((i = 0; i < attempts; i++)); do
+    if tail -n +"$first_line" "$LOG_DIR/$first_name.log" 2>/dev/null | grep -q "$pattern" \
+      || tail -n +"$second_line" "$LOG_DIR/$second_name.log" 2>/dev/null | grep -q "$pattern"; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting for '$pattern' in $first_name or $second_name" >&2
+  return 1
+}
+
 crash_play_a() {
   local wrapper_pid child_pid
   wrapper_pid="$(pid_for_role play-a)"
@@ -936,9 +950,11 @@ run_client() {
     set -e
     [[ "$client_status" -eq 0 ]] || return "$client_status"
   elif [[ "$operation_group" == *"d13"* ]]; then
-    local first_line evidence_first_line client_pid session_pid session_pgid client_status
+    local first_line play_a_evidence_first_line play_b_evidence_first_line
+    local client_pid session_pid session_pgid client_status
     first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
-    evidence_first_line=$(($(wc -l <"$LOG_DIR/play-a.evidence.log") + 1))
+    play_a_evidence_first_line=$(($(wc -l <"$LOG_DIR/play-a.evidence.log") + 1))
+    play_b_evidence_first_line=$(($(wc -l <"$LOG_DIR/play-b.evidence.log") + 1))
     timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
       2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
       | tee -a "$LOG_DIR/client.stdout.log" &
@@ -961,8 +977,13 @@ run_client() {
     set -e
     kill -CONT -- "-$session_pid" 2>/dev/null || true
     [[ "$client_status" -eq 0 ]] || return "$client_status"
-    wait_for_log_after play-a.evidence \
-      "entry-disconnected|rid=play-a|actor=actor-sm-d13" "$evidence_first_line" 600
+    # GetOrCreate is coordinated through play-a, but the Location Store may
+    # place the Actor on either eligible Object Server. Verify the callback at
+    # the committed owner instead of treating the coordinator as the owner.
+    wait_for_log_in_either_after \
+      play-a.evidence play-b.evidence \
+      "entry-disconnected|rid=play-[ab]|actor=actor-sm-d13" \
+      "$play_a_evidence_first_line" "$play_b_evidence_first_line" 600
   elif [[ "$operation_group" == "sm-c6" ]]; then
     local first_line client_pid client_status play_b_pid play_b_pgid
     first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))

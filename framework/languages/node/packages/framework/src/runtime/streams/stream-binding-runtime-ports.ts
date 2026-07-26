@@ -11,6 +11,17 @@ export interface ZLinkStreamActorLookupPort {
 export interface ZLinkStreamActorLifecyclePort {
   rebindActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void>;
   refreshActor(actorRef: ActorRef, signal?: AbortSignal): Promise<void>;
+  commitActorRoute(actorRef: ActorRef, signal?: AbortSignal): Promise<void>;
+  sealActorRoute(input: {
+    readonly actorId: string;
+    readonly actorGeneration: bigint;
+    readonly actorOwnershipGeneration: bigint;
+    readonly bindingGeneration: bigint;
+    readonly ownerLeaseGeneration: bigint;
+    readonly sealId: string;
+  }): bigint;
+  abortActorRouteSeal(actorId: string, sealId: string): boolean;
+  validateActorRouteSeal(actorId: string, sealId: string, acceptedHighWater: bigint): boolean;
   unbindActor(actorId: string): void;
 }
 

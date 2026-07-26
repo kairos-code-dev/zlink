@@ -680,6 +680,10 @@ export class ZLinkChannelSocketRegistry {
     return this.clientServerDiscovery.clientServerDescriptors(channelName);
   }
 
+  fanoutActiveTargets(channelName: string) {
+    return this.clientServerDiscovery.fanoutEndpoints(channelName);
+  }
+
   setClientServerServerDescriptor(
     descriptor: ZLinkClientServerServerDescriptor | undefined,
     channelName: string

@@ -6,7 +6,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
     private readonly object _remoteForwardGate = new();
     private readonly Dictionary<string, List<byte[]>> _remoteForwardBuffers = new(StringComparer.Ordinal);
-    private readonly Dictionary<(string ActorId, ulong RequestId), string>
+    private readonly Dictionary<(string ActorId, ulong RequestId), PendingRemoteRequest>
         _pendingRemoteRequests = new();
     private readonly Func<string, ZLinkActorRuntimeState> _getState;
     private readonly Func<IZLinkBackendSpotNode?> _getNode;
@@ -94,6 +94,78 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         return written ? RemotePushDelivery.Delivered : RemotePushDelivery.Backpressured;
     }
 
+    public bool TryClaimRemoteSessionReply(
+        string actorId,
+        ulong requestId,
+        uint flags,
+        string replyCapability,
+        RoutingId sourceNodeRid,
+        RoutingId responderNodeRid,
+        out RemoteReplyClaim claim)
+    {
+        PendingRemoteRequest? pending;
+        lock (_pendingRemoteRequests)
+        {
+            _pendingRemoteRequests.TryGetValue(
+                (actorId, requestId),
+                out pending);
+            if (pending is null
+                || pending.Claimed
+                || flags != ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind
+                || sourceNodeRid != responderNodeRid
+                || !string.Equals(
+                    pending.ReplyCapability,
+                    replyCapability,
+                    StringComparison.Ordinal))
+            {
+                claim = null!;
+                return false;
+            }
+
+            // Validation and ownership transfer are one atomic step. Keep the
+            // claimed entry indexed until terminal cleanup so request-id reuse
+            // cannot overtake the reply that owns the completion.
+            pending.Claimed = true;
+        }
+
+        claim = new RemoteReplyClaim(
+            frame => DeliverClaimedRemoteSessionReply(
+                actorId,
+                pending.Binding,
+                frame),
+            () => CompleteRemoteSessionRequest(
+                actorId,
+                requestId,
+                pending,
+                allowClaimed: true));
+        return true;
+    }
+
+    private RemotePushDelivery DeliverClaimedRemoteSessionReply(
+        string actorId,
+        ZLinkSessionBindingEntry expected,
+        byte[] frame)
+    {
+        if (!_sessionBindings.TryGet(
+                actorId,
+                expected.BindingToken,
+                out ZLinkSessionBindingEntry entry))
+            return _sessionBindings.TryGetByActorId(actorId, out _)
+                ? RemotePushDelivery.WrongSession
+                : RemotePushDelivery.NoBinding;
+        if (!ReferenceEquals(entry.Context, expected.Context)
+            || entry.BindingGeneration != expected.BindingGeneration
+            || entry.SessionOwnerNodeGeneration != expected.SessionOwnerNodeGeneration
+            || entry.Route != expected.Route
+            || entry.Context.RoutingId != expected.Context.RoutingId)
+            return RemotePushDelivery.WrongSession;
+
+        using var message = Message.From(frame);
+        return entry.Context.Write(message)
+            ? RemotePushDelivery.Delivered
+            : RemotePushDelivery.Backpressured;
+    }
+
     public ulong NextBindingGeneration()
         => checked((ulong)Interlocked.Increment(ref _bindingGeneration));
 
@@ -137,35 +209,82 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         string bindingToken)
         => _sessionBindings.CompleteAccepted(actorId, bindingToken);
 
-    public void TrackRemoteSessionRequest(
+    public string TrackRemoteSessionRequest(
         string actorId,
         ulong requestId,
         string bindingToken)
     {
+        if (!_sessionBindings.TryGet(
+                actorId,
+                bindingToken,
+                out ZLinkSessionBindingEntry binding))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                $"Actor '{actorId}' session binding changed before request tracking.",
+                true);
+        var pending = new PendingRemoteRequest(
+            binding,
+            Guid.NewGuid().ToString("N"));
         lock (_pendingRemoteRequests)
         {
             if (!_pendingRemoteRequests.TryAdd(
                     (actorId, requestId),
-                    bindingToken))
+                    pending))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestProtocolError,
                     $"Actor '{actorId}' remote session request '{requestId}' is already pending.");
         }
+        _ = ExpireRemoteSessionRequestAsync(actorId, requestId, pending);
+        return pending.ReplyCapability;
     }
 
     public void CompleteRemoteSessionRequest(
         string actorId,
         ulong requestId)
+        => CompleteRemoteSessionRequest(
+            actorId,
+            requestId,
+            expected: null,
+            allowClaimed: true);
+
+    private void CompleteRemoteSessionRequest(
+        string actorId,
+        ulong requestId,
+        PendingRemoteRequest? expected,
+        bool allowClaimed)
     {
-        string? bindingToken;
+        PendingRemoteRequest? pending;
         lock (_pendingRemoteRequests)
         {
-            _pendingRemoteRequests.Remove(
-                (actorId, requestId),
-                out bindingToken);
+            var key = (actorId, requestId);
+            if (!_pendingRemoteRequests.TryGetValue(key, out pending)
+                || (expected is not null && !ReferenceEquals(pending, expected))
+                || (!allowClaimed && pending.Claimed))
+                return;
+            _pendingRemoteRequests.Remove(key);
         }
-        if (bindingToken is not null)
-            _sessionBindings.CompleteAccepted(actorId, bindingToken);
+        if (pending is not null)
+            _sessionBindings.CompleteAccepted(
+                actorId,
+                pending.Binding.BindingToken);
+    }
+
+    private async Task ExpireRemoteSessionRequestAsync(
+        string actorId,
+        ulong requestId,
+        PendingRemoteRequest pending)
+    {
+        try
+        {
+            await Task.Delay(_registration.DefaultRequestTimeout)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        CompleteRemoteSessionRequest(
+            actorId,
+            requestId,
+            pending,
+            allowClaimed: false);
     }
 
     public bool AbortSessionRouteSeal(ZLinkSessionRouteSeal request)
@@ -265,10 +384,43 @@ internal sealed class ZLinkActorBoundSessionCoordinator
 
     public void ResetGeneration()
     {
+        PendingRemoteRequest[] pending;
+        lock (_pendingRemoteRequests)
+        {
+            pending = _pendingRemoteRequests.Values.ToArray();
+            _pendingRemoteRequests.Clear();
+        }
+        foreach (var request in pending)
+            _sessionBindings.CompleteAccepted(
+                request.Binding.ActorRef.ActorId,
+                request.Binding.BindingToken);
         _sessionBindings.ResetGeneration();
         _boundSessions.Clear();
-        lock (_pendingRemoteRequests) _pendingRemoteRequests.Clear();
         Interlocked.Exchange(ref _bindingGeneration, 0);
+    }
+
+    private sealed class PendingRemoteRequest(
+        ZLinkSessionBindingEntry binding,
+        string replyCapability)
+    {
+        internal ZLinkSessionBindingEntry Binding { get; } = binding;
+        internal string ReplyCapability { get; } = replyCapability;
+        internal bool Claimed { get; set; }
+    }
+
+    internal sealed class RemoteReplyClaim(
+        Func<byte[], RemotePushDelivery> deliver,
+        Action completePending) : IDisposable
+    {
+        private int _completed;
+
+        internal RemotePushDelivery Deliver(byte[] frame) => deliver(frame);
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _completed, 1) == 0)
+                completePending();
+        }
     }
 
     public bool Send(string actorId, IReadOnlyList<Message> parts, SendFlags flags)
@@ -496,40 +648,44 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     }
 
     public ValueTask NotifyRemoteDisconnectedAsync(
-        ZLinkActorRuntimeState state,
-        ZLinkBackendActorRef actorRef,
-        string meshName,
+        ZLinkSessionBindingEntry binding,
         IZLinkBackendSpotNode node,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!state.TryGetBoundSession(out var session) || session.SessionNodeRid is not { } sourceNodeRid)
+        var actorRef = binding.Route.Ref.ToBackend();
+        if (binding.Context.RoutingId is not { } sourceSessionRid)
         {
             node.CloseActorBoundSession(actorRef, _registration.DefaultRequestTimeout, cancellationToken);
             return ValueTask.CompletedTask;
         }
+        var sourceNodeRid = node.RoutingId;
 
         var header = new ZlinkStreamHeader(ZlinkStreamMessageKind.Send, ZlinkStreamCodec.Raw,
             ZlinkStreamHeaderFlags.None, null, ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
             ZlinkStreamMetadata.Empty);
         using var headerPart = Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span);
-        using var bodyPart = Message.From(Array.Empty<byte>());
+        using var bodyPart = Message.From(
+            ZLinkActorBoundSessionRelay.EncodeSessionDisconnected(
+                binding.BindingToken,
+                binding.BindingGeneration,
+                binding.SessionOwnerNodeGeneration));
         // The disconnect frame takes the same route as any session frame to
         // this actor: ForwardPart relays it to the actor's owner node when the
         // actor is remote and writes the native bound session when it is local.
         if (!ForwardPart(
-                actorRef, sourceNodeRid, session.SessionRid, headerPart, true,
-                SendFlags.DontWait, meshName, node,
-                session.TargetNodeGeneration,
-                session.AuthorityOwnerGeneration,
-                session.OwnerLeaseGeneration))
+                actorRef, sourceNodeRid, sourceSessionRid, headerPart, true,
+                SendFlags.DontWait, binding.MeshName, node,
+                binding.TargetNodeGeneration,
+                binding.AuthorityOwnerGeneration,
+                binding.OwnerLeaseGeneration))
             throw new InvalidOperationException("Actor session disconnect header forward failed.");
         if (!ForwardPart(
-                actorRef, sourceNodeRid, session.SessionRid, bodyPart, false,
-                SendFlags.DontWait, meshName, node,
-                session.TargetNodeGeneration,
-                session.AuthorityOwnerGeneration,
-                session.OwnerLeaseGeneration))
+                actorRef, sourceNodeRid, sourceSessionRid, bodyPart, false,
+                SendFlags.DontWait, binding.MeshName, node,
+                binding.TargetNodeGeneration,
+                binding.AuthorityOwnerGeneration,
+                binding.OwnerLeaseGeneration))
             throw new InvalidOperationException("Actor session disconnect body forward failed.");
         return ValueTask.CompletedTask;
     }

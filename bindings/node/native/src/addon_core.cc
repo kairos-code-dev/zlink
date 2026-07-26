@@ -842,7 +842,7 @@ bool attach_send_ready_handler (napi_env env, void *socket, napi_value handler)
     if (!create_tsfn_slot_queue (env, handler, slot, "zlink-send-ready-handler",
                                  send_ready_handler_tsfn_finalize,
                                  send_ready_handler_tsfn_call_js,
-                                 "sendReadyHandler failed to create callback queue", false, &tsfn))
+                                 "sendReadyHandler failed to create callback queue", true, &tsfn))
         return false;
 
     {
@@ -875,7 +875,7 @@ bool attach_socket_monitor_handler (napi_env env, void *monitor, napi_value hand
     if (!create_tsfn_slot_queue (env, handler, slot, "zlink-monitor-handler",
                                  socket_monitor_handler_tsfn_finalize,
                                  socket_monitor_handler_tsfn_call_js,
-                                 "monitorHandler failed to create callback queue", false, &tsfn))
+                                 "monitorHandler failed to create callback queue", true, &tsfn))
         return false;
 
     {

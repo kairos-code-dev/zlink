@@ -2,6 +2,7 @@
 
 #include "runtime/stateful/stream_session_registry.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -62,7 +63,9 @@ bool stream_session_registry_t::close (
 std::pair<stateful_error_t, stream_binding_t>
 stream_session_registry_t::bind (
   const stream_connection_t &connection,
-  const object_ref_t &actor)
+  const object_ref_t &actor,
+  std::uint64_t target_node_generation,
+  std::uint64_t owner_lease_generation)
 {
     const auto authority = _resolver (actor.key);
     if (!authority || !exact_actor (*authority, actor)) {
@@ -84,7 +87,8 @@ stream_session_registry_t::bind (
     if (state.barrier_tokens.contains (actor_id))
         return {stateful_error_t::moving, {}};
     stream_binding_t binding{
-      connection, state.next_binding_generation++, actor};
+      connection, state.next_binding_generation++, actor,
+      target_node_generation, owner_lease_generation};
     const auto previous = _actor_bindings.find (actor_id);
     if (previous != _actor_bindings.end ()) {
         const auto previous_connection =
@@ -245,13 +249,180 @@ stateful_error_t stream_session_registry_t::commit_barrier (
             return stateful_error_t::conflict;
         auto next = binding->second;
         next.actor = target;
-        next.binding_generation = state.next_binding_generation++;
         binding->second = next;
         indexed->second = next;
         state.barrier_tokens.erase (token);
     }
     _barriers.erase (found);
     return stateful_error_t::none;
+}
+
+stream_route_seal_admission_t
+stream_session_registry_t::seal_remote_route (
+  const std::string &connection_id,
+  std::uint64_t binding_generation,
+  const object_ref_t &actor,
+  std::uint64_t target_node_generation,
+  std::uint64_t owner_lease_generation)
+{
+    std::lock_guard lock (_mutex);
+    const auto connection = _connections.find (connection_id);
+    const auto indexed = _actor_bindings.find (actor.key);
+    if (connection == _connections.end ()
+        || indexed == _actor_bindings.end ()
+        || indexed->second.connection != connection->second.connection
+        || indexed->second.binding_generation != binding_generation) {
+        return {stateful_error_t::not_found, std::nullopt, {}, 0};
+    }
+    auto &state = connection->second;
+    const auto binding = state.bindings.find (actor.key);
+    const auto last_sequence = state.next_inbound_sequence - 1;
+    const auto active = std::any_of (
+      state.active_inbound.begin (), state.active_inbound.end (),
+      [&actor] (const auto &entry) {
+          return entry.second == actor.key;
+      });
+    if (binding == state.bindings.end ()
+        || binding->second != indexed->second
+        || binding->second.actor.kind != object_kind_t::actor
+        || actor.kind != object_kind_t::actor
+        || binding->second.actor.key != actor.key
+        || binding->second.actor.object_generation
+             != actor.object_generation
+        || binding->second.actor.authority_owner_generation
+             != actor.authority_owner_generation
+        || binding->second.actor.node_id != actor.node_id
+        || target_node_generation == 0
+        || owner_lease_generation == 0
+        || binding->second.target_node_generation
+             != target_node_generation
+        || binding->second.owner_lease_generation
+             != owner_lease_generation
+        || active
+        || state.barrier_tokens.contains (actor.key)
+        || _next_barrier_token == 0) {
+        return {active ? stateful_error_t::backpressured
+                       : stateful_error_t::conflict,
+                binding == state.bindings.end ()
+                  ? std::optional<stream_binding_t>{}
+                  : std::make_optional (binding->second),
+                {}, last_sequence};
+    }
+    const auto token = _next_barrier_token++;
+    const stream_barrier_t barrier{token, binding->second.actor};
+    state.barrier_tokens.emplace (actor.key, token);
+    _barriers.emplace (token, binding->second.actor);
+    return {stateful_error_t::none, binding->second,
+            barrier, last_sequence};
+}
+
+stream_route_admission_t stream_session_registry_t::commit_remote_route (
+  const std::string &connection_id,
+  std::uint64_t binding_generation,
+  const std::string &actor_id,
+  std::uint64_t object_generation,
+  std::uint64_t previous_authority_owner_generation,
+  object_ref_t target,
+  std::uint64_t target_node_generation,
+  std::uint64_t replayed_high_water)
+{
+    std::lock_guard lock (_mutex);
+    const auto connection = _connections.find (connection_id);
+    const auto indexed = _actor_bindings.find (actor_id);
+    if (connection == _connections.end ()
+        || indexed == _actor_bindings.end ()
+        || indexed->second.connection != connection->second.connection
+        || indexed->second.binding_generation != binding_generation) {
+        return {stateful_error_t::not_found, std::nullopt, 0};
+    }
+    auto &state = connection->second;
+    const auto binding = state.bindings.find (actor_id);
+    const auto barrier = state.barrier_tokens.find (actor_id);
+    const auto last_sequence = state.next_inbound_sequence - 1;
+    const auto active = std::any_of (
+      state.active_inbound.begin (), state.active_inbound.end (),
+      [&actor_id] (const auto &entry) {
+          return entry.second == actor_id;
+      });
+    if (binding == state.bindings.end ()
+        || binding->second != indexed->second
+        || binding->second.actor.kind != object_kind_t::actor
+        || binding->second.actor.object_generation != object_generation
+        || binding->second.actor.authority_owner_generation
+             != previous_authority_owner_generation
+        || barrier == state.barrier_tokens.end ()
+        || !_barriers.contains (barrier->second)
+        || !exact_actor (_barriers.at (barrier->second),
+                         binding->second.actor)
+        || target.kind != object_kind_t::actor
+        || target.key != actor_id
+        || target.object_generation != object_generation
+        || target.authority_owner_generation
+             <= previous_authority_owner_generation
+        || target_node_generation == 0
+        || active
+        || replayed_high_water != last_sequence) {
+        return {stateful_error_t::conflict,
+                binding == state.bindings.end ()
+                  ? std::optional<stream_binding_t>{}
+                  : std::make_optional (binding->second),
+                last_sequence};
+    }
+    auto next = binding->second;
+    next.actor = std::move (target);
+    next.target_node_generation = target_node_generation;
+    binding->second = next;
+    indexed->second = next;
+    _barriers.erase (barrier->second);
+    state.barrier_tokens.erase (barrier);
+    return {stateful_error_t::none, next, last_sequence};
+}
+
+stream_route_admission_t
+stream_session_registry_t::acknowledge_remote_abort (
+  const std::string &connection_id,
+  std::uint64_t binding_generation,
+  const std::string &actor_id,
+  std::uint64_t object_generation,
+  std::uint64_t current_authority_owner_generation)
+{
+    std::lock_guard lock (_mutex);
+    const auto connection = _connections.find (connection_id);
+    const auto indexed = _actor_bindings.find (actor_id);
+    if (connection == _connections.end ()
+        || indexed == _actor_bindings.end ()
+        || indexed->second.connection != connection->second.connection
+        || indexed->second.binding_generation != binding_generation) {
+        return {stateful_error_t::not_found, std::nullopt, 0};
+    }
+    const auto last_sequence =
+      connection->second.next_inbound_sequence - 1;
+    const auto barrier =
+      connection->second.barrier_tokens.find (actor_id);
+    if (indexed->second.actor.kind != object_kind_t::actor
+        || indexed->second.actor.object_generation != object_generation
+        || indexed->second.actor.authority_owner_generation
+             != current_authority_owner_generation
+        || barrier == connection->second.barrier_tokens.end ()
+        || !_barriers.contains (barrier->second)
+        || !exact_actor (_barriers.at (barrier->second),
+                         indexed->second.actor)) {
+        return {stateful_error_t::conflict, indexed->second,
+                last_sequence};
+    }
+    _barriers.erase (barrier->second);
+    connection->second.barrier_tokens.erase (barrier);
+    return {stateful_error_t::none, indexed->second, last_sequence};
+}
+
+std::optional<stream_binding_t> stream_session_registry_t::current_binding (
+  const std::string &actor_id) const
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _actor_bindings.find (actor_id);
+    if (found == _actor_bindings.end ())
+        return std::nullopt;
+    return found->second;
 }
 
 bool stream_session_registry_t::try_seal_all ()

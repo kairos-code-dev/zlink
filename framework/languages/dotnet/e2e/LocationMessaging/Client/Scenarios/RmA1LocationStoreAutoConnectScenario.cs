@@ -7,9 +7,8 @@ namespace LocationMessaging.Client.Scenarios;
 
 // RM-A1 verifies that an endpoint-less channel client auto-connects from the
 // shared location store and that both providers' peer location rows are alive:
-// live rows via IZLinkLocationRuntimeQuery.ListPeerLocationsAsync (no cache) and the
-// member-peer user surface via IZLinkPeerLocationResolver.ListLivePeersAsync with
-// Refresh, both exposed through the provider's /locations endpoints.
+// Both endpoints use the public operational Location query; the second path
+// verifies that callers do not need the removed public resolver abstraction.
 internal static class RmA1LocationStoreAutoConnectScenario
 {
     public static async Task RunAsync(
@@ -25,15 +24,15 @@ internal static class RmA1LocationStoreAutoConnectScenario
 
         var rawPeers = (await providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>()).Body;
         var liveProviderRows = rawPeers.Count(row =>
-            row.Role == "Router" && row.NodeRid is "api-a" or "api-b");
+            row.Role == "Router" && IsProviderRid(row.NodeRid));
         ZlinkStreamAssert.Ensure(
             liveProviderRows >= 2,
             "RM-A1 expected live peer location rows for both profile providers in the runtime query.");
 
         var memberPeers = (await providerA.Get("/locations/member-peers?mesh=profile").Async<PeerLocationRow[]>()).Body;
         ZlinkStreamAssert.Ensure(
-            memberPeers.Count(row => row.Role == "Router" && row.NodeRid is "api-a" or "api-b") >= 2,
-            "RM-A1 expected both providers on the member-peer resolver surface (Refresh).");
+            memberPeers.Count(row => row.Role == "Router" && IsProviderRid(row.NodeRid)) >= 2,
+            "RM-A1 expected both providers on the public operational query surface.");
 
         var status = (await providerA.Get("/locations/status").Async<LocationStatusRes>()).Body;
         ZlinkStreamAssert.Ensure(status.StoreHealthy, "RM-A1 expected a healthy location store.");
@@ -45,4 +44,9 @@ internal static class RmA1LocationStoreAutoConnectScenario
             providerEvidence.Any(line => line.Contains("value=rm-a1", StringComparison.Ordinal)),
             "RM-A1 provider evidence missing.");
     }
+
+    private static bool IsProviderRid(string? value) =>
+        value is not null
+        && (value.StartsWith("api-a-", StringComparison.Ordinal)
+            || value.StartsWith("api-b-", StringComparison.Ordinal));
 }

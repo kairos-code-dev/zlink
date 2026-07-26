@@ -81,6 +81,31 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public async Task Retire_Seals_After_Selection_Exclusion_Is_Published()
+    {
+        var probe = new DrainExecutionProbe();
+        var executor = new ZLinkFrameworkDrainExecutor(
+            probe.Operations,
+            new ZLinkLocationOptions
+            {
+                PollingInterval = TimeSpan.FromMilliseconds(-5_099)
+            });
+
+        var reason = await executor.ExecuteAsync(
+            ZLinkFrameworkTerminationIntent.Retire,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Null(reason);
+        Assert.True(probe.Events.IndexOf("marker")
+                    < probe.Events.IndexOf("quiesce-serving-channels"));
+        Assert.True(probe.Events.IndexOf("quiesce-serving-channels")
+                    < probe.Events.IndexOf("seal-admission"));
+        Assert.True(probe.Events.IndexOf("seal-admission")
+                    < probe.Events.IndexOf("wait-accepted"));
+    }
+
+    [Fact]
     public async Task Drain_Executor_Seals_Admission_Before_Weight_Quiescence()
     {
         var probe = new DrainExecutionProbe();

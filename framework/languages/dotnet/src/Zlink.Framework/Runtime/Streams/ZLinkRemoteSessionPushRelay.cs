@@ -273,6 +273,7 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     byte ForwardingHopCount,
     ulong ReplyRequestId,
     uint ReplyFlags,
+    string? ReplyCapability,
     byte[] Header,
     byte[] Body);
 
@@ -280,6 +281,8 @@ internal sealed record ZLinkRemoteActorReplyRelay(
     string ActorId,
     ulong RequestId,
     uint Flags,
+    string ReplyCapability,
+    string ResponderNodeRid,
     byte[] Frame);
 
 internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime runtime)
@@ -310,6 +313,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 message.ForwardingHopCount,
                 message.ReplyRequestId,
                 message.ReplyFlags,
+                message.ReplyCapability,
                 message.Header,
                 message.Body,
                 cancellationToken)
@@ -353,18 +357,22 @@ internal sealed class ZLinkRemoteSessionPushRelayHandler(ZLinkFrameworkRuntime r
 internal sealed class ZLinkRemoteActorReplyRelayHandler(ZLinkFrameworkRuntime runtime)
     : IZLinkRouteSendHandler<ZLinkRemoteActorReplyRelay>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask HandleAsync(
         ZLinkRemoteActorReplyRelay message,
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        runtime.DeliverRemoteActorReply(
-            message.ActorId,
-            message.RequestId,
-            message.Flags,
-            message.Frame);
-        return ValueTask.CompletedTask;
+        await runtime.DeliverRemoteActorReplyAsync(
+                message.ActorId,
+                message.RequestId,
+                message.Flags,
+                message.ReplyCapability,
+                context.SourceNodeRid,
+                RoutingId.FromHex(message.ResponderNodeRid),
+                message.Frame,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }

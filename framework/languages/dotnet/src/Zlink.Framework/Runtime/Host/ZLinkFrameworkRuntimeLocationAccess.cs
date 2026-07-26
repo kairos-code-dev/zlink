@@ -114,10 +114,12 @@ internal sealed partial class ZLinkFrameworkRuntime
                         "Framework runtime is not started.");
         if (state.TryGetSpotNodeByRoutingId(selected.Rid, out var localTarget))
         {
+            var operationId = source.Node.AllocateOperationId();
             var local = await localTarget.ActivateInstanceSpotLocalAsync(
                     target,
                     source.Node.RoutingId,
                     sourceStatus.LifecycleGeneration,
+                    operationId,
                     sourceSpotId,
                     parts.Select(static part =>
                             (ReadOnlyMemory<byte>)part.ToArray())

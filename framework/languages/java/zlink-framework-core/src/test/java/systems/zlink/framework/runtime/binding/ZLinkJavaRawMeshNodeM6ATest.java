@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
@@ -19,6 +20,48 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
+    @Test
+    void relocationControlUsesAdmittedPeerAndBypassesApplicationMailbox()
+        throws Exception {
+        String endpoint = "inproc://jvm-m6c-relocation-" + System.nanoTime();
+        RoutingId sourceRid = RoutingId.from("jvm-m6c-relocation-source");
+        RoutingId targetRid = RoutingId.from("jvm-m6c-relocation-target");
+        try (var context = Zlink.createContext();
+             var source = new ZLinkJavaRawMeshNode(context, "mesh");
+             var target = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            source.setRoutingId(sourceRid);
+            source.setBind("inproc://jvm-m6c-relocation-source-"
+                + System.nanoTime());
+            target.setRoutingId(targetRid);
+            target.setBind(endpoint);
+            AtomicInteger applicationDispatches = new AtomicInteger();
+            target.startDispatch(record -> {
+                applicationDispatches.incrementAndGet();
+                record.close();
+            });
+            target.setRelocationControlHandler((actualSource, command) -> {
+                assertEquals(sourceRid, actualSource);
+                assertArrayEquals(new byte[] {1, 2, 3}, command);
+                return CompletableFuture.completedFuture(
+                    new byte[] {9, 8, 7});
+            });
+            source.start();
+            target.start();
+            source.connectPeer(endpoint, targetRid);
+            awaitAdmitted(source);
+
+            byte[] reply = source.requestRelocationControl(
+                    targetRid,
+                    new byte[] {1, 2, 3},
+                    Duration.ofSeconds(2))
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            assertArrayEquals(new byte[] {9, 8, 7}, reply);
+            assertEquals(0, applicationDispatches.get());
+        }
+    }
+
     @Test
     void nodeSendUsesOnlyRawPublicBindingAndDispatchesOwnedParts() throws Exception {
         String endpoint = "inproc://jvm-m6a-" + System.nanoTime();
@@ -125,5 +168,22 @@ final class ZLinkJavaRawMeshNodeM6ATest {
                     reply.parts().getFirst().toByteArray());
             }
         }
+    }
+
+    private static void awaitAdmitted(ZLinkJavaRawMeshNode node)
+        throws InterruptedException {
+        long deadline =
+            System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (node.peers().stream().noneMatch(peer ->
+                peer.state()
+                    == systems.zlink.contracts.service.spot
+                        .MeshPeerState.ADMITTED)
+            && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        assertTrue(node.peers().stream().anyMatch(peer ->
+            peer.state()
+                == systems.zlink.contracts.service.spot
+                    .MeshPeerState.ADMITTED));
     }
 }

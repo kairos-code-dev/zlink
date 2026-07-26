@@ -90,8 +90,19 @@ internal sealed class ZLinkActorStragglerForwarder
                 mapping.TargetAuthorityOwnerGeneration,
                 mapping.TargetOwnerLeaseGeneration,
                 requestId,
-                flags)
-            : default;
+                flags,
+                routeContext.ReplyCapability)
+            : routeContext.ReplyRequestId != 0
+                ? new ZLinkBackendActorRouteContext(
+                    default,
+                    0,
+                    mapping.TargetNodeGeneration,
+                    mapping.TargetAuthorityOwnerGeneration,
+                    mapping.TargetOwnerLeaseGeneration,
+                    requestId,
+                    flags,
+                    routeContext.ReplyCapability)
+                : default;
 
     private async ValueTask ForwardAsync(ForwardedFrame frame, CancellationToken cancellationToken)
     {
@@ -168,6 +179,7 @@ internal sealed class ZLinkActorStragglerForwarder
                     frame.SourceSessionRid,
                     frame.RequestId,
                     frame.Flags,
+                    frame.ForwardedRouteContext.ReplyCapability,
                     frame.Header,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorLocationStale,

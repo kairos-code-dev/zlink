@@ -145,6 +145,7 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame.SourceSessionRid,
                     frame.RequestId,
                     frame.Flags,
+                    frame.RouteContext.ReplyCapability,
                     frame.Header,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -171,6 +172,7 @@ internal sealed class ZLinkActorInboundPipeline(
                 frame.SourceSessionRid,
                 frame.RequestId,
                 frame.Flags,
+                frame.RouteContext.ReplyCapability,
                 frame.Header);
             acknowledgeHandledFrame?.Invoke();
             return;
@@ -228,6 +230,7 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame.SourceSessionRid,
                     frame.RequestId,
                     frame.Flags,
+                    frame.RouteContext.ReplyCapability,
                     frame.Header,
                     exception,
                     cancellationToken)
@@ -247,13 +250,26 @@ internal sealed class ZLinkActorInboundPipeline(
     {
         if (ZLinkActorBoundSessionRelay.IsSessionDisconnectedPacket(frame.Header))
         {
-            ZLinkActorBoundSessionRelay.RemoveNativeBinding(
-                runtime,
-                actor.Context.ActorId,
-                frame.SourceSessionRid);
-            await endpoint.NotifyDisconnectedAsync(actor.Context.ActorId, cancellationToken)
-                .ConfigureAwait(false);
-            acknowledgeHandledFrame?.Invoke();
+            if (!ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+                    state,
+                    frame.SourceNodeRid,
+                    frame.SourceSessionRid,
+                    frame.Body,
+                    out var bindingToken))
+            {
+                acknowledgeHandledFrame?.Invoke();
+                return;
+            }
+            try
+            {
+                await endpoint.NotifyDisconnectedAsync(actor.Context.ActorId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                runtime.RemoveActorSessionBinding(actor.Context.ActorId, bindingToken);
+                acknowledgeHandledFrame?.Invoke();
+            }
             return;
         }
 
@@ -301,6 +317,7 @@ internal sealed class ZLinkActorInboundPipeline(
                                 frame.SourceSessionRid,
                                 frame.RequestId,
                                 frame.Flags,
+                                frame.RouteContext.ReplyCapability,
                                 boundSession.IsNoBind,
                                 frame.Header,
                                 reply,
@@ -317,6 +334,7 @@ internal sealed class ZLinkActorInboundPipeline(
                                     frame.SourceSessionRid,
                                     frame.RequestId,
                                     frame.Flags,
+                                    frame.RouteContext.ReplyCapability,
                                     boundSession.IsNoBind,
                                     frame.Header,
                                     reply,

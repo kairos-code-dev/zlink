@@ -126,18 +126,22 @@ class KotlinFrameworkExtensionsContractTest {
 
         assertEquals(ACTOR_REF.nodeRid(), snapshot.nodeRid())
         assertEquals(ACTOR_REF.actorId(), snapshot.actorId())
-        assertEquals(ACTOR_REF.generation(), snapshot.generation())
+        assertEquals(ACTOR_REF.objectGeneration(), snapshot.objectGeneration())
+        assertEquals(ACTOR_REF.meshName(), snapshot.meshName())
         assertEquals(ACTOR_REF, snapshot.actorRef())
     }
 
     @Test
-    fun `actor request extension delegates to Java actor ref client call`() = runBlocking {
+    fun `actor request extension delegates to Java global actor id call`() = runBlocking {
         val actorClient = RecordingActorClient(ActorReply("reply"))
 
-        val reply = actorClient.requestToActorAwait<ActorReply>(ACTOR_REF, ActorMessage("request"))
+        val reply = actorClient.requestToActorAwait<ActorReply>(
+            ACTOR_REF.actorId(),
+            ActorMessage("request"),
+        )
 
         assertEquals(ActorReply("reply"), reply)
-        assertEquals(ACTOR_REF, actorClient.requestedActorRef)
+        assertEquals(ACTOR_REF.actorId(), actorClient.requestedActorId)
         assertEquals(ActorMessage("request"), actorClient.requestedMessage)
     }
 
@@ -163,10 +167,10 @@ class KotlinFrameworkExtensionsContractTest {
     @Test
     fun `session actor logical disconnect awaits only the selected exact binding`() = runBlocking {
         val oldBinding = RecordingSessionActor(
-            ActorRef(NODE_RID, "actor-a", 7),
+            ActorRef("actor-a", 7, "mesh-a", NODE_RID),
         )
         val newIncarnation = RecordingSessionActor(
-            ActorRef(NODE_RID, "actor-a", 8),
+            ActorRef("actor-a", 8, "mesh-a", NODE_RID),
         )
 
         awaitFrameworkStage(oldBinding.notifyDisconnected())
@@ -174,8 +178,8 @@ class KotlinFrameworkExtensionsContractTest {
 
         assertEquals(1, oldBinding.disconnects)
         assertEquals(0, newIncarnation.disconnects)
-        assertEquals(7, oldBinding.ref().generation())
-        assertEquals(8, newIncarnation.ref().generation())
+        assertEquals(7, oldBinding.ref().objectGeneration())
+        assertEquals(8, newIncarnation.ref().objectGeneration())
     }
 
     private data class CreateActor(val value: String)
@@ -243,19 +247,19 @@ class KotlinFrameworkExtensionsContractTest {
     private class RecordingActorClient<TReply>(
         private val reply: TReply,
     ) : ZLinkActorClient {
-        var sentActorRef: ActorRef? = null
+        var sentActorId: String? = null
         var sentMessage: Any? = null
-        var requestedActorRef: ActorRef? = null
+        var requestedActorId: String? = null
         var requestedMessage: Any? = null
 
-        override fun sendToActor(actorRef: ActorRef, message: Any): ZLinkActorSendCall {
-            sentActorRef = actorRef
+        override fun sendToActor(actorId: String, message: Any): ZLinkActorSendCall {
+            sentActorId = actorId
             sentMessage = message
             return RecordingActorSendCall()
         }
 
-        override fun requestToActor(actorRef: ActorRef, request: Any): ZLinkActorRequestCall {
-            requestedActorRef = actorRef
+        override fun requestToActor(actorId: String, request: Any): ZLinkActorRequestCall {
+            requestedActorId = actorId
             requestedMessage = request
             return RecordingActorRequestCall(reply)
         }
@@ -385,6 +389,6 @@ class KotlinFrameworkExtensionsContractTest {
             ZLinkSpotCreateState.CREATED,
             ZLinkMessage.empty(),
         )
-        private val ACTOR_REF = ActorRef(NODE_RID, "actor-a", 7)
+        private val ACTOR_REF = ActorRef("actor-a", 7, "mesh-a", NODE_RID)
     }
 }

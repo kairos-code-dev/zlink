@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
+import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 
 final class ZLinkOwnerLeaseTracker {
     private final ZLinkOwnerLeaseStore store;
@@ -35,28 +36,43 @@ final class ZLinkOwnerLeaseTracker {
     }
 
     CompletionStage<Boolean> isOwnerLive(String ownerId) {
+        return remainingAdmissionLifetime(ownerId, 0L)
+            .thenApply(remaining -> remaining != null);
+    }
+
+    CompletionStage<Duration> remainingAdmissionLifetime(
+        String ownerId,
+        long expectedGeneration) {
         ObservedLease current = observed.get(ownerId);
         long now = nanoTime.getAsLong();
         if (current != null
             && Duration.ofNanos(now - current.fetchedAtNanos)
                 .compareTo(pollingInterval) < 0) {
+            Duration remaining = current.remaining(now);
             return CompletableFuture.completedFuture(
-                current.remaining(now).compareTo(Duration.ZERO) > 0);
+                current.matches(expectedGeneration)
+                    && remaining.compareTo(Duration.ZERO) > 0
+                        ? remaining
+                        : null);
         }
         return store.readOwnerLease(ownerId).thenApply(result -> {
             long fetchedAt = nanoTime.getAsLong();
             if (result instanceof ZLinkOwnerLeaseFound found) {
                 ObservedLease refreshed = new ObservedLease(
+                    found.token(),
                     Duration.between(
                         found.storeNow(),
                         found.leaseExpiresAt()),
                     fetchedAt);
                 observed.put(ownerId, refreshed);
-                return refreshed.remaining(fetchedAt)
-                    .compareTo(Duration.ZERO) > 0;
+                Duration remaining = refreshed.remaining(fetchedAt);
+                return refreshed.matches(expectedGeneration)
+                    && remaining.compareTo(Duration.ZERO) > 0
+                        ? remaining
+                        : null;
             }
             observed.remove(ownerId);
-            return false;
+            return null;
         });
     }
 
@@ -71,8 +87,14 @@ final class ZLinkOwnerLeaseTracker {
     }
 
     private record ObservedLease(
+        ZLinkLocationOwnerToken token,
         Duration storeRemaining,
         long fetchedAtNanos) {
+        private boolean matches(long expectedGeneration) {
+            return expectedGeneration == 0L
+                || token.leaseGeneration() == expectedGeneration;
+        }
+
         private Duration remaining(long nowNanos) {
             return storeRemaining.minus(
                 Duration.ofNanos(nowNanos - fetchedAtNanos));

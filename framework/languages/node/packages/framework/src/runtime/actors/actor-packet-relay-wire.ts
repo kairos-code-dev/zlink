@@ -68,6 +68,10 @@ export function encodeForwardedRemoteActorPacketRelayPayload(input: {
   readonly actorNodeRid: string;
   readonly actorGeneration: string;
   readonly handoffTargetSpotId: string;
+  readonly operationId: string;
+  readonly forwardingHopCount: number;
+  readonly authorityOwnerGeneration?: string;
+  readonly ownerLeaseGeneration?: string;
 }): Record<string, unknown> {
   return { packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, ...input };
 }
@@ -141,6 +145,10 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
   readonly handoffTargetSpotId?: string;
+  readonly operationId?: string;
+  readonly forwardingHopCount?: number;
+  readonly authorityOwnerGeneration?: string;
+  readonly ownerLeaseGeneration?: string;
   readonly bindingActorNodeRid?: string;
   readonly bindingActorNodeRidHex?: string;
   readonly bindingActorGeneration?: string;
@@ -166,10 +174,28 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: optionalString(payload, 'actorGeneration'),
     handoffTargetSpotId: optionalString(payload, 'handoffTargetSpotId'),
+    operationId: optionalString(payload, 'operationId'),
+    forwardingHopCount: optionalBoundedInteger(payload, 'forwardingHopCount', 0, 8),
+    authorityOwnerGeneration: optionalString(payload, 'authorityOwnerGeneration'),
+    ownerLeaseGeneration: optionalString(payload, 'ownerLeaseGeneration'),
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
     bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
     bindingActorGeneration: optionalString(payload, 'bindingActorGeneration')
   };
+}
+
+function optionalBoundedInteger(
+  value: object,
+  key: string,
+  min: number,
+  max: number
+): number | undefined {
+  const field = (value as Record<string, unknown>)[key];
+  if (field === undefined) return undefined;
+  if (!Number.isSafeInteger(field) || (field as number) < min || (field as number) > max) {
+    throw new Error(`Remote actor packet relay ${key} is invalid.`);
+  }
+  return field as number;
 }
 
 function optionalString(value: object, key: string): string | undefined {

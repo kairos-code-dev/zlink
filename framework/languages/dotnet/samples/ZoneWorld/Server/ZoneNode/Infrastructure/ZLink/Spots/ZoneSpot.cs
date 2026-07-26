@@ -76,8 +76,12 @@ public sealed class ZoneSpot(
         logger.LogInformation("zone spot ready. zone={ZoneId}, node={NodeId}", ZoneId, NodeId);
     }
 
-    public async ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public async ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         if (_tick is not null) await _tick.CancelAsync();
         if (_botTick is not null) await _botTick.CancelAsync();
     }

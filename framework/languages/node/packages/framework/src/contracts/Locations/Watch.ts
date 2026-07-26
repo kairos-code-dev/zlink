@@ -13,6 +13,15 @@ export enum ZLinkLocationChangeType {
   Expired = 'expired'
 }
 
+export enum ZLinkLocationChangeScopeKind {
+  MeshNode = 'meshNode',
+  ClientServer = 'clientServer',
+  Spot = 'spot',
+  Authority = 'authority',
+  OwnerLease = 'ownerLease',
+  FanoutPublisher = 'fanoutPublisher'
+}
+
 export interface ZLinkLocationChanged {
   readonly kind: ZLinkLocationKind;
   readonly key: ZLinkLocationKey;
@@ -22,6 +31,7 @@ export interface ZLinkLocationChanged {
 }
 
 export interface ZLinkLocationChangeStampScope {
-  readonly kind: ZLinkLocationKind;
+  readonly kind: ZLinkLocationKind | ZLinkLocationChangeScopeKind;
   readonly meshName?: string;
+  readonly channelName?: string;
 }

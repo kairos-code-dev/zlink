@@ -7,6 +7,7 @@
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/mesh/mesh_record_dispatcher.hpp"
+#include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/user_spot_terminal_mapping.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
@@ -1223,6 +1224,29 @@ void mesh_node_host_service_t::start (service_provider_t &services)
       &services.get_required<location_store_t> (),
       [] (location_store_t *) noexcept {});
     _location_store = store;
+    auto &location_runtime =
+      services.get_required<location_runtime_t> ();
+    _location_owner = location_runtime.current_owner_token ();
+    if (!_location_owner)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "MeshNode publication requires an active Location owner lease");
+    std::shared_ptr<stateful::relocation_store_port_t>
+      instance_relocations;
+    const auto has_instance_factories = std::any_of (
+      _registrations.begin (), _registrations.end (),
+      [] (const auto &registration) {
+          return registration && registration->spot_state
+                 && !registration->spot_state->snapshot
+                       .instance_spot_names.empty ();
+      });
+    if (has_instance_factories) {
+        auto &relocations = services.get_required<
+          stateful::relocation_store_port_t> ();
+        instance_relocations = std::shared_ptr<
+          stateful::relocation_store_port_t> (
+            &relocations, [] (auto *) noexcept {});
+    }
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto registration = _registrations[index];
         const auto source = _nodes[index];
@@ -1319,16 +1343,78 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                        == spot_create_state_t::existing,
                 std::move (application_reply)};
           });
+        if (!registration->spot_state->snapshot.instance_spot_names.empty ()) {
+            if (!instance_relocations)
+                throw framework_exception_t (
+                  framework_error_kind_t::invalid_configuration,
+                  "Instance Spot factories require a Relocation Store");
+            _nodes[index]->configure_instance_spot_operations (
+              store, instance_relocations, *_location_owner,
+              host::instance_spot_activation_materializer_t{
+                [registration] (
+                  const protocol::instance_spot_activation_header_t &request) {
+                    const auto created = detail::spot_node_runtime_t (
+                      registration->spot_state)
+                      .get_or_create_spot (
+                        request.target.stable_type,
+                        spot_id_t (request.target.spot_id));
+                    return created.state
+                           == spot_create_state_t::created
+                           || created.state
+                                == spot_create_state_t::existing;
+                },
+                [this, registration, &services] (
+                  const protocol::instance_spot_activation_header_t &request,
+                  const std::optional<std::vector<std::uint8_t>> &metadata,
+                  const protocol::application_payload_t &application) {
+                    try {
+                        std::map<std::string, std::string> decoded_metadata;
+                        if (metadata
+                            && !detail::mesh_metadata_codec_t::decode (
+                              *metadata, decoded_metadata))
+                            return host::instance_spot_activation_result_t{
+                              107,
+                              static_cast<std::uint32_t> (
+                                protocol::framework_error_code::requestFailed),
+                              std::nullopt};
+                        auto reply = detail::spot_node_runtime_t (
+                          registration->spot_state)
+                          .dispatch_instance_activation (
+                            spot_id_t (request.target.spot_id),
+                            application.packet_name,
+                            application.content_type,
+                            application.payload,
+                            std::move (decoded_metadata),
+                            request.request,
+                            std::to_string (request.operation.high)
+                              + ":"
+                              + std::to_string (request.operation.low),
+                            services, *_serializers)
+                          .result ().value ();
+                        std::optional<protocol::application_payload_t>
+                          application_reply;
+                        if (request.request) {
+                            application_reply =
+                              protocol::application_payload_t{
+                                application.packet_name,
+                                "application/octet-stream",
+                                reply.to_bytes ()};
+                        }
+                        return host::instance_spot_activation_result_t{
+                          0, 0, std::move (application_reply)};
+                    }
+                    catch (const framework_exception_t &error) {
+                        return host::instance_spot_activation_result_t{
+                          105,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::requestFailed),
+                          std::nullopt};
+                    }
+                }});
+        }
     }
     for (const auto &node : _nodes)
         node->start ();
-    auto &location_runtime =
-      services.get_required<location_runtime_t> ();
-    _location_owner = location_runtime.current_owner_token ();
-    if (!_location_owner)
-        throw framework_exception_t (
-          framework_error_kind_t::invalid_configuration,
-          "MeshNode publication requires an active Location owner lease");
     _published_mesh_nodes.clear ();
     _published_mesh_descriptors.clear ();
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
@@ -1386,6 +1472,12 @@ void mesh_node_host_service_t::start (service_provider_t &services)
             if (registration->spot_state->snapshot.entry_spot_name
                 == stable_type)
                 continue;
+            if (std::find (
+                  registration->spot_state->snapshot.instance_spot_names.begin (),
+                  registration->spot_state->snapshot.instance_spot_names.end (),
+                  stable_type)
+                != registration->spot_state->snapshot.instance_spot_names.end ())
+                continue;
             descriptor.object_capabilities.push_back (
               object_capability_t{
                 .object_kind =
@@ -1395,6 +1487,18 @@ void mesh_node_host_service_t::start (service_provider_t &services)
               spot_type_capacity_t{
                 .object_kind =
                   placement_object_kind_t::user_spot,
+                .stable_type = stable_type,
+                .usage = {}});
+        }
+        for (const auto &stable_type :
+             registration->spot_state->snapshot.instance_spot_names) {
+            descriptor.object_capabilities.push_back (
+              object_capability_t{
+                .object_kind = placement_object_kind_t::instance_spot,
+                .stable_type = stable_type});
+            descriptor.capacity.spot_types.push_back (
+              spot_type_capacity_t{
+                .object_kind = placement_object_kind_t::instance_spot,
                 .stable_type = stable_type,
                 .usage = {}});
         }

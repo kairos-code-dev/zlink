@@ -2,9 +2,13 @@ package systems.zlink.framework.runtime.messaging;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.ZLinkEncodedPayload;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ActorRefSnapshot;
 
 final class ZLinkJsonMessageSerializerTest {
@@ -35,15 +39,47 @@ final class ZLinkJsonMessageSerializerTest {
     void preservesFrameworkActorReferences() {
         ZLinkJsonMessageSerializer serializer = new ZLinkJsonMessageSerializer();
         ActorRefSnapshot expected = new ActorRefSnapshot(
-            RoutingId.from(new byte[] {0, 65, 66}),
             "courier-a",
-            7L);
+            7L,
+            "game",
+            RoutingId.from(new byte[] {0, 65, 66}));
 
         ActorRefSnapshot actual = serializer.deserialize(
             serializer.serialize(expected),
             ActorRefSnapshot.class);
 
         assertEquals(expected, actual);
+    }
+
+    @Test
+    void actorRefUsesTheExactTypedJsonContract() {
+        ZLinkJsonMessageSerializer serializer = new ZLinkJsonMessageSerializer();
+        ActorRef expected = new ActorRef(
+            "courier-a",
+            7,
+            "game",
+            RoutingId.from(new byte[] {0, 65, 66}));
+
+        ZLinkEncodedPayload encoded = serializer.serialize(expected);
+        assertEquals(
+            "{\"actorId\":\"courier-a\",\"objectGeneration\":\"7\","
+                + "\"meshName\":\"game\",\"nodeRid\":\"004142\"}",
+            new String(encoded.bytes(), StandardCharsets.UTF_8));
+        assertEquals(expected, serializer.deserialize(encoded, ActorRef.class));
+
+        assertThrows(IllegalArgumentException.class, () -> serializer.deserialize(
+            ZLinkEncodedPayload.from((
+                "{\"actorId\":\"courier-a\",\"objectGeneration\":7,"
+                    + "\"meshName\":\"game\",\"nodeRid\":\"004142\"}")
+                .getBytes(StandardCharsets.UTF_8)),
+            ActorRef.class));
+        assertThrows(IllegalArgumentException.class, () -> serializer.deserialize(
+            ZLinkEncodedPayload.from((
+                "{\"actorId\":\"courier-a\",\"actorId\":\"duplicate\","
+                    + "\"objectGeneration\":\"7\",\"meshName\":\"game\","
+                    + "\"nodeRid\":\"004142\"}")
+                .getBytes(StandardCharsets.UTF_8)),
+            ActorRef.class));
     }
 
     record ProfileReply(String value) {

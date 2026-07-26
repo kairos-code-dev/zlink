@@ -8,6 +8,8 @@ import type {
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,
+  ZLinkMeshChannelClientBuilder,
+  ZLinkMeshChannelServerBuilder,
   ZLinkMeshNodeBuilder,
   ZLinkMeshObjectClientBuilder,
   ZLinkMeshObjectRoleBuilder,
@@ -308,6 +310,41 @@ export class DefaultLocationOptionsBuilder implements ZLinkLocationOptions {
 
   ownerLeaseRenewTimeoutMs(value: number): this {
     this.options.ownerLeaseRenewTimeoutMs = value;
+    return this;
+  }
+
+  routeCacheMaxAgeMs(value: number): this {
+    this.options.routeCacheMaxAgeMs = value;
+    return this;
+  }
+
+  relocationForwardingWindowMs(value: number): this {
+    this.options.relocationForwardingWindowMs = value;
+    return this;
+  }
+
+  maxActiveOutboundRelocations(value: number): this {
+    this.options.maxActiveOutboundRelocations = value;
+    return this;
+  }
+
+  maxActiveInboundRelocations(value: number): this {
+    this.options.maxActiveInboundRelocations = value;
+    return this;
+  }
+
+  maxConcurrentRelocationCaptures(value: number): this {
+    this.options.maxConcurrentRelocationCaptures = value;
+    return this;
+  }
+
+  maxConcurrentRelocationRestores(value: number): this {
+    this.options.maxConcurrentRelocationRestores = value;
+    return this;
+  }
+
+  maxRelocationPayloadInFlightBytes(value: number): this {
+    this.options.maxRelocationPayloadInFlightBytes = value;
     return this;
   }
 }
@@ -704,7 +741,7 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     this.spot = new DefaultSpotNodeBuilder(name, node);
   }
 
-  channelName(channelName: string): ZLinkMeshChannelBuilder {
+  channel(channelName: string): ZLinkMeshChannelBuilder {
     requireRegistrationName(channelName, 'Mesh channel');
     this.node.meshChannels ??= {};
     if (Object.prototype.hasOwnProperty.call(this.node.meshChannels, channelName)) {
@@ -715,6 +752,11 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     const channel: MutableMeshChannelOptions = {};
     this.node.meshChannels[channelName] = channel;
     return new DefaultMeshChannelBuilder(channel);
+  }
+
+  /** Runtime compatibility for pre-contract JavaScript callers; not part of ZLinkMeshNodeBuilder. */
+  channelName(channelName: string): ZLinkMeshChannelServerBuilder {
+    return this.channel(channelName).server();
   }
 
   listen(endpoint: string): this {
@@ -950,8 +992,29 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
 class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
   constructor(private readonly channel: MutableMeshChannelOptions) {}
 
+  client(): ZLinkMeshChannelClientBuilder {
+    return new DefaultMeshChannelClientBuilder();
+  }
+
+  server(): ZLinkMeshChannelServerBuilder {
+    return new DefaultMeshChannelServerBuilder(this.channel);
+  }
+}
+
+class DefaultMeshChannelClientBuilder implements ZLinkMeshChannelClientBuilder {}
+
+class DefaultMeshChannelServerBuilder implements ZLinkMeshChannelServerBuilder {
+  constructor(private readonly channel: MutableMeshChannelOptions) {}
+
   setWeight(weight: number): this {
     this.channel.weight = requirePublicWeight(weight, 'Mesh channel weight');
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    requireRegistrationName(groupName, 'Mesh channel handler group');
+    this.channel.handlerGroups ??= [];
+    if (!this.channel.handlerGroups.includes(groupName)) this.channel.handlerGroups.push(groupName);
     return this;
   }
 
@@ -1212,6 +1275,7 @@ interface MutableObjectFactoryRegistration<T, TImplementation = T, TOptions = un
 
 interface MutableMeshChannelOptions {
   weight?: number;
+  handlerGroups?: string[];
   sendHandlers?: Array<{ packetName: string; handlerType: Type }>;
   requestHandlers?: Array<{ packetName: string; handlerType: Type }>;
 }

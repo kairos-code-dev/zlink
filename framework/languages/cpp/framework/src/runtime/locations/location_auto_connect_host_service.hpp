@@ -7,6 +7,7 @@
 #include "runtime/fanout/fanout_location_runtime.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/live_location_reader.hpp"
+#include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/locations/location_value_codec.hpp"
 #include "runtime/mesh/mesh_node_runtime.hpp"
 
@@ -26,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -61,6 +63,9 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     {
         _runtime = &services.get_required<location_runtime_t> ();
         _store = &services.get_required<live_location_reader_t> ();
+        if (auto route_cache = services.get<store_location_resolvers_t> ()) {
+            _route_cache = &route_cache->get ();
+        }
         detail::channel_runtime_manager_t manager = detail::channel_runtime_manager_t::from (_bus);
         manager.initialize_publisher_channels ();
         manager.initialize_client_channels ();
@@ -350,12 +355,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         if (loop.recovering_from_store_failure) {
             loop.recovering_from_store_failure = false;
             loop.store_failure_started_at.reset ();
+            if (_route_cache != nullptr) {
+                _route_cache->invalidate_all_routes_after_store_recovery ();
+            }
             republish_after_store_recovery (loop);
             /* A restarted store can be empty. Give every live node one heartbeat
              * interval to restore its local rows, then observe the result on the
              * following polling tick before removing prior targets. */
             loop.reconcile_after =
-              std::chrono::steady_clock::now () + _runtime->options ().heartbeat_interval
+              std::chrono::steady_clock::now () + _runtime->options ().owner_lease_renew_interval
               + _runtime->options ().polling_interval;
             return;
         }
@@ -700,6 +708,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;
     live_location_reader_t *_store = nullptr;
+    store_location_resolvers_t *_route_cache = nullptr;
     std::mutex _peers_gate;
     std::size_t _peers_total = 0;
     std::optional<std::size_t> _peers_observed;

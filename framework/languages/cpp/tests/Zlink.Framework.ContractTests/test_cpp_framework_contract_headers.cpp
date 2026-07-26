@@ -41,7 +41,6 @@
 #include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/locations/rows.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
-#include <zlink/framework/contracts/locations/spot_handle.hpp>
 #include <zlink/framework/contracts/locations/spot_kind.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
@@ -617,17 +616,8 @@ static_assert (
                                std::declval<zlink::framework::peer_location_filter_t> ())),
                  zlink::framework::task_t<std::vector<zlink::framework::peer_location_t>>>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_handle_resolver_t &> ()
-                             .resolve_spot_handle (
-                               std::declval<zlink::framework::spot_id_t> ())),
-                 zlink::framework::task_t<std::optional<zlink::framework::spot_handle_t>>>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::actor_spot_handle_resolver_t &> ()
-                             .resolve_actor_spot_handle (std::declval<std::string> ())),
-                 zlink::framework::task_t<std::optional<zlink::framework::spot_handle_t>>>);
-static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_handle_t &> ().spot_id ()),
-                 zlink::framework::spot_id_t>);
+  std::is_same_v<decltype (std::declval<const zlink::framework::spot_ref_t &> ().spot_id ()),
+                 const zlink::framework::spot_id_t &>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
                              .get_status ()),
@@ -932,6 +922,10 @@ struct contract_spot_t : public zlink::framework::spot_t
     {
         return {};
     }
+};
+
+struct contract_instance_spot_t : public zlink::framework::instance_spot_t
+{
 };
 
 void to_json (nlohmann::json &json, const named_request_t &value)
@@ -1473,6 +1467,13 @@ static_assert (
       "stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
     zlink::framework::spot_node_builder_t &>);
 static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
+                .add_instance_spot_factory<contract_instance_spot_t> (
+                  "shopping-cart",
+                  std::declval<std::function<std::shared_ptr<contract_instance_spot_t> ()>> ())),
+    zlink::framework::mesh_node_builder_t &>);
+static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_create_result_t> ().reply),
                  std::optional<zlink::framework::message_t>>);
 static_assert (
@@ -1664,9 +1665,9 @@ static_assert (
                  std::shared_ptr<const zlink::message_t>>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send_to_spot (
-                                std::declval<zlink::framework::spot_handle_t> (),
+                                std::declval<zlink::framework::spot_id_t> (),
                                 std::declval<named_request_t> ())),
-                              zlink::framework::route_send_call_t>);
+                              zlink::framework::spot_send_call_t>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ()
                                          .send_to_channel (
@@ -1682,9 +1683,9 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_cli
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ()
                                           .request_to_spot (
-                                            std::declval<zlink::framework::spot_handle_t> (),
+                                            std::declval<zlink::framework::spot_id_t> (),
                                             std::declval<named_request_t> ())),
-                              zlink::framework::channel_request_call_t>);
+                              zlink::framework::spot_request_call_t>);
 
 } // namespace
 

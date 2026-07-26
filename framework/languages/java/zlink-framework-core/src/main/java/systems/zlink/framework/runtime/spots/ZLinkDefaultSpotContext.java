@@ -309,6 +309,17 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             name -> loadTimerHandler(loader, name)));
     }
 
+    void stageTimerRelocationEnvelope(byte[] envelope) {
+        ClassLoader loader = spot.getClass().getClassLoader();
+        timers.stageRestore(ZLinkSpotTimerRelocationEnvelope.decode(
+            envelope,
+            name -> loadTimerHandler(loader, name)));
+    }
+
+    void publishStagedTimerRelocation() {
+        timers.publishStagedRestore();
+    }
+
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {

@@ -45,6 +45,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkMessageFlowTracer flow;
     private final List<ZLinkSessionActor> bound = new CopyOnWriteArrayList<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, StoredBindingRoute>
+        bindingRoutes = new java.util.concurrent.ConcurrentHashMap<>();
     private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
 
     public ZLinkSessionActorsRuntime metadataPolicy(
@@ -183,8 +185,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
-            actor.generation());
-        return bindBackendRef(ref);
+            actor.objectGeneration());
+        return bindBackendRef(ref, actor.meshName());
     }
 
     @Override
@@ -192,13 +194,13 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         ZLinkBackendActorRef ref = new ZLinkBackendActorRef(
             actor.nodeRid(),
             actor.actorId(),
-            actor.generation());
+            actor.objectGeneration());
         Optional<ZLinkSessionActor> existing = bound.stream()
             .filter(boundActor -> sameRef(boundActor.ref(), actor))
             .findFirst();
         return existing
             .<CompletionStage<ZLinkSessionActor>>map(CompletableFuture::completedFuture)
-            .orElseGet(() -> bindBackendRef(ref));
+            .orElseGet(() -> bindBackendRef(ref, actor.meshName()));
     }
 
     @Override
@@ -213,7 +215,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         return CompletableFuture.allOf(current.stream()
             .map(ZLinkSessionActorsRuntime::notifyDisconnectedSafely)
             .toArray(CompletableFuture[]::new))
-            .whenComplete((ignored, error) -> bound.removeAll(current));
+            .whenComplete((ignored, error) -> current.forEach(
+                this::removeBinding));
     }
 
     private static CompletableFuture<Void> notifyDisconnectedSafely(
@@ -226,7 +229,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     }
 
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
-        ZLinkBackendActorRef ref) {
+        ZLinkBackendActorRef ref,
+        String meshName) {
         trace("session-actor bind-start sessionRid=" + sessionRid
             + " actorNode=" + ref.nodeRid()
             + " actorId=" + ref.actorId()
@@ -265,6 +269,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     stream,
                     sessionRid,
                     ref,
+                    meshName,
                     Optional.empty(),
                     actors,
                     serializer,
@@ -278,7 +283,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     () -> isCurrentBinding(binding.get()),
                     metadataPolicy);
                 binding.set(actor);
-                actor.setUnbindListener(() -> bound.remove(actor));
+                actor.setUnbindListener(() -> removeBinding(actor));
                 replaceBinding(actor);
                 return actor;
             })
@@ -286,7 +291,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 .thenApply(ignored -> (ZLinkSessionActor) actor))
             .whenComplete((actor, error) -> {
                 if (error != null && actor instanceof ZLinkBoundActor boundActor) {
-                    bound.remove(boundActor);
+                    removeBinding(boundActor);
                 }
             })
             .whenComplete((ignored, error) -> {
@@ -305,7 +310,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
             && right != null
             && left.actorId().equals(right.actorId())
             && left.nodeRid().equals(right.nodeRid())
-            && left.generation() == right.generation();
+            && left.objectGeneration() == right.objectGeneration()
+            && left.meshName().equals(right.meshName());
     }
 
     CompletionStage<ZLinkSessionActor> bindManagedAsync(ZLinkActor actor) {
@@ -348,6 +354,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     stream,
                     sessionRid,
                     ref,
+                    actors.meshName(),
                     Optional.of(actor),
                     actors,
                     serializer,
@@ -361,8 +368,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     () -> isCurrentBinding(binding.get()),
                     metadataPolicy);
                 binding.set(boundActor);
-                boundSession.setUnbindListener(() -> bound.remove(boundActor));
-                boundActor.setUnbindListener(() -> bound.remove(boundActor));
+                boundSession.setUnbindListener(() -> removeBinding(boundActor));
+                boundActor.setUnbindListener(() -> removeBinding(boundActor));
                 boundSession.setRebindListener(boundActor::rebindNativeActor);
                 replaceBinding(boundActor);
                 return boundActor;
@@ -372,6 +379,118 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private void replaceBinding(ZLinkBoundActor actor) {
         bound.removeIf(existing -> existing.actorId().equals(actor.actorId()));
         bound.add(actor);
+        ActorRef current = actor.ref();
+        bindingRoutes.put(actor.actorId(), new StoredBindingRoute(
+            current.actorId(),
+            current.objectGeneration(),
+            current.meshName(),
+            current.nodeRid(),
+            0,
+            0,
+            0));
+    }
+
+    private void removeBinding(ZLinkSessionActor actor) {
+        if (bound.remove(actor)) {
+            bindingRoutes.computeIfPresent(actor.actorId(),
+                (ignored, route) -> bound.stream().anyMatch(
+                    candidate -> candidate.actorId().equals(actor.actorId()))
+                        ? route
+                        : null);
+        }
+    }
+
+    /**
+     * Applies relocation command 44 to this Session owner's stored route.
+     * Successful completion is command 45 ACK; the route is changed only
+     * after the target route is Ready and the exact source route still matches.
+     */
+    CompletionStage<Void> applyRelocationRouteUpdate(
+        RelocationRouteUpdate update) {
+        java.util.Objects.requireNonNull(update, "update");
+        StoredBindingRoute observed = bindingRoutes.get(update.actorId());
+        if (observed == null || !observed.matchesSource(update)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "stored binding route does not match relocation source: "
+                    + update.actorId()));
+        }
+        ZLinkBackendActorRef target = new ZLinkBackendActorRef(
+            update.targetNodeRid(),
+            update.actorId(),
+            update.objectGeneration());
+        return awaitRouteReady(target).thenRun(() -> {
+            synchronized (this) {
+                StoredBindingRoute current = bindingRoutes.get(
+                    update.actorId());
+                if (current == null || !current.matchesSource(update)) {
+                    throw new ZLinkConfigurationException(
+                        "stored binding route changed before relocation ACK: "
+                            + update.actorId());
+                }
+                ZLinkBoundActor actor = bound.stream()
+                    .filter(candidate -> candidate.actorId().equals(
+                        update.actorId()))
+                    .map(ZLinkBoundActor.class::cast)
+                    .findFirst()
+                    .orElseThrow(() -> new ZLinkConfigurationException(
+                        "bound Actor disappeared before relocation ACK: "
+                            + update.actorId()));
+                actor.rebindNativeActor(target);
+                bindingRoutes.put(update.actorId(), current.toTarget(update));
+            }
+        });
+    }
+
+    record RelocationRouteUpdate(
+        String actorId,
+        long objectGeneration,
+        RoutingId sourceNodeRid,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        long sourceAuthorityOwnerGeneration,
+        long targetAuthorityOwnerGeneration) {
+        RelocationRouteUpdate {
+            if (actorId == null || actorId.isBlank()
+                || objectGeneration <= 0
+                || targetNodeGeneration <= 0
+                || sourceAuthorityOwnerGeneration <= 0
+                || targetAuthorityOwnerGeneration
+                    != sourceAuthorityOwnerGeneration + 1) {
+                throw new IllegalArgumentException(
+                    "relocation binding-route generations are invalid");
+            }
+            java.util.Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+            java.util.Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        }
+    }
+
+    private record StoredBindingRoute(
+        String actorId,
+        long objectGeneration,
+        String meshName,
+        RoutingId nodeRid,
+        long nodeGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
+        boolean matchesSource(RelocationRouteUpdate update) {
+            return actorId.equals(update.actorId())
+                && objectGeneration == update.objectGeneration()
+                && nodeRid.equals(update.sourceNodeRid())
+                && (authorityOwnerGeneration == 0
+                    || authorityOwnerGeneration
+                        == update.sourceAuthorityOwnerGeneration());
+        }
+
+        StoredBindingRoute toTarget(RelocationRouteUpdate update) {
+            return new StoredBindingRoute(
+                actorId,
+                objectGeneration,
+                meshName,
+                update.targetNodeRid(),
+                update.targetNodeGeneration(),
+                update.targetAuthorityOwnerGeneration(),
+                ownerLeaseGeneration);
+        }
     }
 
     private boolean isCurrentBinding(ZLinkBoundActor actor) {

@@ -3,6 +3,7 @@ import type { ZLinkSpotKind } from '../../contracts/Spots';
 
 export interface ZLinkSpotRouteResolver {
   resolve(spotId: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget>;
+  invalidate?(spotId: RoutingId): void;
 }
 
 export interface ZLinkSpotRouteTarget {
@@ -18,6 +19,8 @@ export interface ZLinkSpotRouteTarget {
   readonly targetNodeGeneration?: bigint;
   /** Authority fence used to reject a superseded Spot owner. */
   readonly authorityOwnerGeneration?: bigint;
+  /** Exact owner lease generation paired with the authority route. */
+  readonly ownerLeaseGeneration?: bigint;
   /** Store version paired with the authority fence. */
   readonly authorityStoreVersion?: string;
 }

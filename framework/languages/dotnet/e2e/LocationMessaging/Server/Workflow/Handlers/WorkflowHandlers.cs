@@ -10,7 +10,7 @@ internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
 {
     public ValueTask<WorkflowRes> HandleAsync(
         WorkflowReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

@@ -121,6 +121,22 @@ public final class ZLinkCompositeRelocationBarrier {
             capture.get(), "capture result");
     }
 
+    /** Returns the immutable accepted journal fixed by this active seal. */
+    public synchronized Optional<Map<String, List<
+        ZLinkAsyncSerialQueue.QueuedRecord>>> captured(Seal seal) {
+        if (seal == null || seal != active) {
+            return Optional.empty();
+        }
+        LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
+            captured = new LinkedHashMap<>();
+        for (String laneId : seal.lanes.keySet()) {
+            captured.put(
+                laneId,
+                seal.seals.get(laneId).captured());
+        }
+        return Optional.of(java.util.Collections.unmodifiableMap(captured));
+    }
+
     private static void rollback(
         Map<String, ZLinkAsyncSerialQueue> lanes,
         Map<String, ZLinkAsyncSerialQueue.RelocationSeal> seals) {

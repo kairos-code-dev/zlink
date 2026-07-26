@@ -1462,6 +1462,10 @@ public final class ZLinkSpotRuntime
         return actorSessions;
     }
 
+    ZLinkSpotLifecycle spotLifecycle() {
+        return spotLifecycle;
+    }
+
     ZLinkActorSpotAdmission actorAdmissions() {
         return actorAdmissions;
     }

@@ -217,7 +217,7 @@ class location_runtime_t
         if (metrics_enabled) {
             std::lock_guard lock (_state_gate);
             if (_last_renew_started_at) {
-                due_at = *_last_renew_started_at + _options.heartbeat_interval;
+                due_at = *_last_renew_started_at + _options.owner_lease_renew_interval;
             }
         }
         const auto started_at = std::chrono::steady_clock::now ();
@@ -258,7 +258,7 @@ class location_runtime_t
                           << std::chrono::duration_cast<std::chrono::milliseconds> (
                                completed_at - started_at)
                                .count ()
-                          << " heartbeatMs=" << _options.heartbeat_interval.count ()
+                          << " renewIntervalMs=" << _options.owner_lease_renew_interval.count ()
                           << " ttlMs=" << _options.owner_lease_ttl.count () << '\n';
             }
             std::lock_guard lock (_state_gate);
@@ -415,7 +415,7 @@ class location_runtime_t
     {
         while (!_heartbeat_stop.load (std::memory_order_acquire)) {
             std::unique_lock lock (_heartbeat_gate);
-            _heartbeat_wake.wait_for (lock, _options.heartbeat_interval, [this] {
+            _heartbeat_wake.wait_for (lock, _options.owner_lease_renew_interval, [this] {
                 return _heartbeat_stop.load (std::memory_order_acquire);
             });
             if (_heartbeat_stop.load (std::memory_order_acquire)) {

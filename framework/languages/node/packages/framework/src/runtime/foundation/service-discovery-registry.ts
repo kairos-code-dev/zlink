@@ -33,7 +33,7 @@ export interface SelectedClientServer {
 export class ServiceDiscoveryRegistry {
   private readonly clientServers = new Map<string, Current<ClientServerDescriptor>>();
   private readonly fanoutPublishers = new Map<string, Current<FanoutPublisherDescriptor>>();
-  private readonly cursors = new Map<string, bigint>();
+  private readonly clientServerSelectionWeights = new Map<string, Map<string, bigint>>();
 
   admitClientServer(descriptor: ClientServerDescriptor, connectionId: string): boolean {
     validateClientServer(descriptor);
@@ -67,26 +67,33 @@ export class ServiceDiscoveryRegistry {
         left.descriptor.serverRoutingId.localeCompare(right.descriptor.serverRoutingId));
     const total = eligible.reduce((sum, value) => sum + BigInt(value.descriptor.weight), 0n);
     if (total === 0n) return undefined;
-    const cursor = this.cursors.get(channelName) ?? 0n;
-    this.cursors.set(channelName, cursor + 1n);
-    const selected = cursor % total;
-    let offset = 0n;
+    const currentWeights = this.clientServerSelectionWeights.get(channelName) ?? new Map();
+    this.clientServerSelectionWeights.set(channelName, currentWeights);
+    const eligibleIds = new Set(eligible.map(value => value.descriptor.serverRoutingId));
+    for (const serverRoutingId of currentWeights.keys()) {
+      if (!eligibleIds.has(serverRoutingId)) currentWeights.delete(serverRoutingId);
+    }
+
+    let selected = eligible[0]!;
+    let selectedWeight: bigint | undefined;
     for (const current of eligible) {
-      offset += BigInt(current.descriptor.weight);
-      if (selected < offset) {
-        return {
-          descriptor: { ...current.descriptor },
-          connectionId: current.connectionId
-        };
+      const serverRoutingId = current.descriptor.serverRoutingId;
+      const nextWeight = (currentWeights.get(serverRoutingId) ?? 0n)
+        + BigInt(current.descriptor.weight);
+      currentWeights.set(serverRoutingId, nextWeight);
+      if (selectedWeight === undefined || nextWeight > selectedWeight) {
+        selected = current;
+        selectedWeight = nextWeight;
       }
     }
-    const fallback = eligible.at(-1);
-    return fallback === undefined
-      ? undefined
-      : {
-          descriptor: { ...fallback.descriptor },
-          connectionId: fallback.connectionId
-        };
+    currentWeights.set(
+      selected.descriptor.serverRoutingId,
+      currentWeights.get(selected.descriptor.serverRoutingId)! - total
+    );
+    return {
+      descriptor: { ...selected.descriptor },
+      connectionId: selected.connectionId
+    };
   }
 
   clientServerDescriptors(channelName: string): readonly ClientServerDescriptor[] {

@@ -25,6 +25,13 @@ export interface ZLinkLocationOptionValues {
   readonly storeFailureGraceMs: number;
   readonly routingIdFencingMarginMs: number;
   readonly ownerLeaseRenewTimeoutMs: number;
+  readonly routeCacheMaxAgeMs: number;
+  readonly relocationForwardingWindowMs: number;
+  readonly maxActiveOutboundRelocations: number;
+  readonly maxActiveInboundRelocations: number;
+  readonly maxConcurrentRelocationCaptures: number;
+  readonly maxConcurrentRelocationRestores: number;
+  readonly maxRelocationPayloadInFlightBytes: number;
 }
 
 export type ZLinkMessageSurface =
@@ -95,13 +102,13 @@ export interface ZLinkMeshPeerSnapshot {
 }
 
 export enum ZLinkMeshNodeState {
-  Starting = 1,
-  Serving = 2,
-  Draining = 3,
-  Drained = 4,
-  ForceStopping = 5,
-  Stopped = 6,
-  Faulted = 7
+  Starting = 0,
+  Serving = 1,
+  Draining = 2,
+  Drained = 3,
+  ForceStopping = 4,
+  Stopped = 5,
+  Faulted = 6
 }
 
 export interface ZLinkMeshChannelSnapshot {
@@ -160,6 +167,7 @@ export interface ZLinkMeshNodeSnapshot {
   readonly descriptorSources: readonly string[];
   readonly peers: readonly ZLinkMeshPeerSnapshot[];
   readonly channels: readonly ZLinkMeshChannelSnapshot[];
+  readonly instanceSpots: readonly import('./RuntimeTopology').ZLinkInstanceSpotTypeSnapshot[];
   readonly claims: ZLinkMeshClaimSnapshot;
   readonly location: ZLinkLocationRuntimeSnapshot;
   readonly drain: ZLinkMeshDrainSnapshot;

@@ -223,6 +223,32 @@ final class ZLinkSpotLifecycle {
         }
     }
 
+    Object preparedSpot(PreparedUserSpot prepared) {
+        requireNewPrepared(prepared);
+        return prepared.created().activation().spot();
+    }
+
+    void stageReservedTimers(
+        PreparedUserSpot prepared,
+        byte[] timerEnvelope) {
+        requireNewPrepared(prepared);
+        prepared.created().activation().context
+            .stageTimerRelocationEnvelope(timerEnvelope);
+    }
+
+    void publishReservedTimers(PreparedUserSpot prepared) {
+        requireNewPrepared(prepared);
+        prepared.created().activation().context
+            .publishStagedTimerRelocation();
+    }
+
+    private static void requireNewPrepared(PreparedUserSpot prepared) {
+        if (prepared == null || prepared.existing()) {
+            throw new IllegalStateException(
+                "relocation staging requires a new prepared User Spot");
+        }
+    }
+
     CompletionStage<Boolean> closeReserved(
         String spotId,
         long objectGeneration) {

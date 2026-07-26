@@ -881,6 +881,9 @@ public final class ZLinkFrameworkRuntime
         if (authorityRouteRuntime != null) {
             shutdown.defer(authorityRouteRuntime::close);
         }
+        if (storeLocationResolvers != null) {
+            shutdown.defer(storeLocationResolvers::close);
+        }
         shutdown.defer(meshNodes::close);
         if (locationRuntime != null) {
             shutdown.defer(locationRuntime::close);
@@ -1056,12 +1059,10 @@ public final class ZLinkFrameworkRuntime
     static String transferRouteChannelName(
         systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration registration,
         String spotMeshName) {
-        String mapped = registration.locations().options().spotRouterChannels()
-            .getOrDefault(spotMeshName, spotMeshName);
         return registration.channels().stream()
             .filter(channel -> channel.kind()
                 == systems.zlink.framework.runtime.channels.ChannelKind.ROUTE_MESH)
-            .filter(channel -> channel.name().equals(mapped))
+            .filter(channel -> channel.name().equals(spotMeshName))
             .map(systems.zlink.framework.runtime.channels.ChannelRegistration::name)
             .findFirst()
             .orElse(null);

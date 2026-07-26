@@ -123,6 +123,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       descriptorSources: [],
       peers,
       channels,
+      instanceSpots: [],
       claims: {
         applicationActive: pendingApplicationWork > 0n,
         pendingApplicationWork,

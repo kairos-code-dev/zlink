@@ -30,7 +30,9 @@ internal static class SmB1LocalActorJoinScenario
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
         ZlinkStreamAssert.Ensure(ping.ActorId == actorId, "SM-B1 actor reply mismatch.");
-        ZlinkStreamAssert.Ensure(ping.NodeRid == "play-a", "SM-B1 local node mismatch.");
+        ZlinkStreamAssert.Ensure(
+            ping.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
+            "SM-B1 local node mismatch.");
         var expectedEvidence = new[]
         {
             $"entry-created|rid=play-a|actor={actorId}",

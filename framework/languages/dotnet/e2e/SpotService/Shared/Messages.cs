@@ -63,6 +63,10 @@ public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     int TimeoutMilliseconds = 10000);
 
+public sealed record PlacementWeightReq(int Weight);
+
+public sealed record PlacementWeightRes(int Weight);
+
 public sealed record SpotMissingHandlerReq(string SpotRid);
 
 public sealed record SpotMissingHandlerRes(string SpotRid, bool Failed, string[] Evidence);

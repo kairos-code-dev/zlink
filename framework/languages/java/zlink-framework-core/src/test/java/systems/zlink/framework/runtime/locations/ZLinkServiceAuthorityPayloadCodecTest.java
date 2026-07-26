@@ -38,6 +38,24 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
     }
 
     @Test
+    void spotIdUsesUtf8TextRatherThanTransportRoutingIdentity() {
+        var codec = new ZLinkServiceAuthorityPayloadCodec();
+        String spotId = "room/서울:alpha";
+
+        var decoded = codec.decode(codec.encodeUser(
+            ZLinkServiceAuthorityPayloadCodec.State.READY,
+            "game.room",
+            spotId,
+            "owner-b",
+            31,
+            "game",
+            RoutingId.from("node-b"),
+            17)).orElseThrow();
+
+        assertEquals(spotId, decoded.spotId());
+    }
+
+    @Test
     void corruptedAuthorityNeverEntersDurableRouteCache() {
         var codec = new ZLinkServiceAuthorityPayloadCodec();
         byte[] payload = codec.encodeUser(

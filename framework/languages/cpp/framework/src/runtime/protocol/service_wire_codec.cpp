@@ -14,6 +14,20 @@ constexpr std::size_t liveness_size = 13;
 constexpr std::size_t prefix_size = 5;
 constexpr std::uint8_t application_payload_version = 1;
 
+std::uint32_t crc32c (std::span<const std::uint8_t> payload) noexcept
+{
+    std::uint32_t crc = 0xffffffffu;
+    for (const auto byte : payload) {
+        crc ^= byte;
+        for (int bit = 0; bit < 8; ++bit) {
+            const auto mask = static_cast<std::uint32_t> (
+              -static_cast<std::int32_t> (crc & 1u));
+            crc = (crc >> 1u) ^ (0x82f63b78u & mask);
+        }
+    }
+    return ~crc;
+}
+
 void append_u32 (std::vector<std::uint8_t> &bytes, std::uint32_t value)
 {
     bytes.push_back (static_cast<std::uint8_t> ((value >> 24u) & 0xffu));
@@ -536,6 +550,734 @@ actor_message_header_t decode_actor_message_header (
           "invalid or trailing Actor route fence");
     }
     return result;
+}
+
+std::vector<std::uint8_t> encode_session_relocation_route (
+  const session_relocation_route_t &record)
+{
+    if ((record.relocation.high == 0 && record.relocation.low == 0)
+        || record.coordinator.lease_generation == 0
+        || record.coordinator.node_generation == 0
+        || (record.sender_role != relocation_role_t::target
+            && record.sender_role != relocation_role_t::source
+            && record.sender_role != relocation_role_t::coordinator)
+        || record.actor.object_generation == 0
+        || record.session_owner_node_generation == 0
+        || record.session_owner_lease_generation == 0
+        || record.binding_generation == 0) {
+        throw service_wire_error_t (
+          "Session relocation route contains a zero or invalid exact fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::sessionRelocationRoute), 0};
+    append_u64 (bytes, record.relocation.high);
+    append_u64 (bytes, record.relocation.low);
+    append_text8 (bytes, record.coordinator.owner_id,
+                  "coordinator owner ID");
+    append_u64 (bytes, record.coordinator.lease_generation);
+    append_bytes8 (bytes, record.coordinator.node_routing_id,
+                   "coordinator node RID");
+    append_u64 (bytes, record.coordinator.node_generation);
+    append_text16 (bytes,
+                   record.coordinator.expected_authority_store_version,
+                   "expected authority StoreVersion");
+    bytes.push_back (static_cast<std::uint8_t> (record.sender_role));
+    append_text8 (bytes, record.actor.actor_id, "Actor ID");
+    append_u64 (bytes, record.actor.object_generation);
+    append_bytes8 (bytes, record.session_owner_node_routing_id,
+                   "session owner node RID");
+    append_u64 (bytes, record.session_owner_node_generation);
+    append_text8 (bytes, record.session_owner_id, "session owner ID");
+    append_u64 (bytes, record.session_owner_lease_generation);
+    append_bytes8 (bytes, record.session_routing_id, "Session RID");
+    append_u64 (bytes, record.binding_generation);
+
+    std::vector<std::uint8_t> route;
+    if (record.route.action == session_relocation_route_action_t::commit) {
+        if ((record.sender_role != relocation_role_t::target
+             && record.sender_role != relocation_role_t::coordinator)
+            || record.route.previous_authority_owner_generation == 0
+            || record.route.target_authority_owner_generation
+                 <= record.route.previous_authority_owner_generation
+            || record.route.target_node_generation == 0
+            || record.route.current_authority_owner_generation != 0) {
+            throw service_wire_error_t (
+              "Session relocation commit route has an invalid authority fence");
+        }
+        append_u64 (route,
+                    record.route.previous_authority_owner_generation);
+        append_u64 (route,
+                    record.route.target_authority_owner_generation);
+        append_bytes8 (route, record.route.target_node_routing_id,
+                       "target node RID");
+        append_u64 (route, record.route.target_node_generation);
+        append_u64 (route, record.route.replayed_high_water);
+    }
+    else if (record.route.action
+             == session_relocation_route_action_t::abort) {
+        if ((record.sender_role != relocation_role_t::source
+             && record.sender_role != relocation_role_t::coordinator)
+            || record.route.current_authority_owner_generation == 0
+            || record.route.previous_authority_owner_generation != 0
+            || record.route.target_authority_owner_generation != 0
+            || !record.route.target_node_routing_id.empty ()
+            || record.route.target_node_generation != 0
+            || record.route.replayed_high_water != 0) {
+            throw service_wire_error_t (
+              "Session relocation abort route has an invalid authority fence");
+        }
+        append_u64 (route,
+                    record.route.current_authority_owner_generation);
+    }
+    else {
+        throw service_wire_error_t (
+          "Session relocation route action is invalid");
+    }
+    bytes.push_back (static_cast<std::uint8_t> (record.route.action));
+    append_u16 (bytes, static_cast<std::uint16_t> (route.size ()));
+    bytes.insert (bytes.end (), route.begin (), route.end ());
+    return bytes;
+}
+
+std::vector<std::uint8_t> encode_session_relocation_seal (
+  const session_relocation_seal_t &record)
+{
+    if ((record.relocation.high == 0 && record.relocation.low == 0)
+        || record.coordinator.lease_generation == 0
+        || record.coordinator.node_generation == 0
+        || (record.sender_role != relocation_role_t::source
+            && record.sender_role != relocation_role_t::coordinator)
+        || record.actor.object_generation == 0
+        || record.actor.target_node_generation == 0
+        || record.actor.authority_owner_generation == 0
+        || record.actor.owner_lease_generation == 0
+        || record.session_owner_node_generation == 0
+        || record.session_owner_lease_generation == 0
+        || record.binding_generation == 0) {
+        throw service_wire_error_t (
+          "Session relocation seal contains a zero or invalid exact fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::sessionRelocationSeal), 0};
+    append_u64 (bytes, record.relocation.high);
+    append_u64 (bytes, record.relocation.low);
+    append_text8 (bytes, record.coordinator.owner_id,
+                  "coordinator owner ID");
+    append_u64 (bytes, record.coordinator.lease_generation);
+    append_bytes8 (bytes, record.coordinator.node_routing_id,
+                   "coordinator node RID");
+    append_u64 (bytes, record.coordinator.node_generation);
+    append_text16 (bytes,
+                   record.coordinator.expected_authority_store_version,
+                   "expected authority StoreVersion");
+    bytes.push_back (static_cast<std::uint8_t> (record.sender_role));
+    append_text8 (bytes, record.actor.actor_id, "Actor ID");
+    append_u64 (bytes, record.actor.object_generation);
+    append_bytes8 (bytes, record.actor.target_node_routing_id,
+                   "Actor owner node RID");
+    append_u64 (bytes, record.actor.target_node_generation);
+    append_u64 (bytes, record.actor.authority_owner_generation);
+    append_u64 (bytes, record.actor.owner_lease_generation);
+    append_bytes8 (bytes, record.session_owner_node_routing_id,
+                   "session owner node RID");
+    append_u64 (bytes, record.session_owner_node_generation);
+    append_text8 (bytes, record.session_owner_id, "session owner ID");
+    append_u64 (bytes, record.session_owner_lease_generation);
+    append_bytes8 (bytes, record.session_routing_id, "Session RID");
+    append_u64 (bytes, record.binding_generation);
+    return bytes;
+}
+
+session_relocation_seal_t decode_session_relocation_seal (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::sessionRelocationSeal
+        || header.flags != 0)
+        throw service_wire_error_t (
+          "record is not a Session relocation seal command");
+    std::size_t offset = prefix_size;
+    session_relocation_seal_t record;
+    record.relocation.high = read_u64 (bytes, offset);
+    record.relocation.low = read_u64 (bytes, offset);
+    record.coordinator.owner_id =
+      read_text8 (bytes, offset, "coordinator owner ID");
+    record.coordinator.lease_generation = read_u64 (bytes, offset);
+    record.coordinator.node_routing_id =
+      read_bytes8 (bytes, offset, "coordinator node RID");
+    record.coordinator.node_generation = read_u64 (bytes, offset);
+    record.coordinator.expected_authority_store_version =
+      read_text16 (bytes, offset, "expected authority StoreVersion");
+    if (offset >= bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation seal sender role is truncated");
+    record.sender_role = static_cast<relocation_role_t> (bytes[offset++]);
+    record.actor.actor_id = read_text8 (bytes, offset, "Actor ID");
+    record.actor.object_generation = read_u64 (bytes, offset);
+    record.actor.target_node_routing_id =
+      read_bytes8 (bytes, offset, "Actor owner node RID");
+    record.actor.target_node_generation = read_u64 (bytes, offset);
+    record.actor.authority_owner_generation = read_u64 (bytes, offset);
+    record.actor.owner_lease_generation = read_u64 (bytes, offset);
+    record.session_owner_node_routing_id =
+      read_bytes8 (bytes, offset, "session owner node RID");
+    record.session_owner_node_generation = read_u64 (bytes, offset);
+    record.session_owner_id =
+      read_text8 (bytes, offset, "session owner ID");
+    record.session_owner_lease_generation = read_u64 (bytes, offset);
+    record.session_routing_id =
+      read_bytes8 (bytes, offset, "Session RID");
+    record.binding_generation = read_u64 (bytes, offset);
+    if (offset != bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation seal has trailing bytes");
+    (void) encode_session_relocation_seal (record);
+    return record;
+}
+
+std::vector<std::uint8_t> encode_session_relocation_sealed (
+  const session_relocation_sealed_t &record)
+{
+    if ((record.relocation.high == 0 && record.relocation.low == 0)
+        || record.coordinator.lease_generation == 0
+        || record.coordinator.node_generation == 0
+        || record.actor.object_generation == 0
+        || record.actor.target_node_generation == 0
+        || record.actor.authority_owner_generation == 0
+        || record.actor.owner_lease_generation == 0
+        || record.session_owner_node_generation == 0
+        || record.session_owner_lease_generation == 0
+        || record.binding_generation == 0) {
+        throw service_wire_error_t (
+          "Session relocation sealed ACK contains an invalid exact fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::sessionRelocationSealed), 0};
+    append_u64 (bytes, record.relocation.high);
+    append_u64 (bytes, record.relocation.low);
+    append_text8 (bytes, record.coordinator.owner_id,
+                  "coordinator owner ID");
+    append_u64 (bytes, record.coordinator.lease_generation);
+    append_bytes8 (bytes, record.coordinator.node_routing_id,
+                   "coordinator node RID");
+    append_u64 (bytes, record.coordinator.node_generation);
+    append_text16 (bytes,
+                   record.coordinator.expected_authority_store_version,
+                   "expected authority StoreVersion");
+    append_text8 (bytes, record.actor.actor_id, "Actor ID");
+    append_u64 (bytes, record.actor.object_generation);
+    append_bytes8 (bytes, record.actor.target_node_routing_id,
+                   "Actor owner node RID");
+    append_u64 (bytes, record.actor.target_node_generation);
+    append_u64 (bytes, record.actor.authority_owner_generation);
+    append_u64 (bytes, record.actor.owner_lease_generation);
+    append_bytes8 (bytes, record.session_owner_node_routing_id,
+                   "session owner node RID");
+    append_u64 (bytes, record.session_owner_node_generation);
+    append_text8 (bytes, record.session_owner_id, "session owner ID");
+    append_u64 (bytes, record.session_owner_lease_generation);
+    append_bytes8 (bytes, record.session_routing_id, "Session RID");
+    append_u64 (bytes, record.binding_generation);
+    append_u64 (bytes, record.last_accepted_session_sequence);
+    return bytes;
+}
+
+session_relocation_sealed_t decode_session_relocation_sealed (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::sessionRelocationSealed
+        || header.flags != 0)
+        throw service_wire_error_t (
+          "record is not a Session relocation sealed ACK");
+    std::size_t offset = prefix_size;
+    session_relocation_sealed_t record;
+    record.relocation.high = read_u64 (bytes, offset);
+    record.relocation.low = read_u64 (bytes, offset);
+    record.coordinator.owner_id =
+      read_text8 (bytes, offset, "coordinator owner ID");
+    record.coordinator.lease_generation = read_u64 (bytes, offset);
+    record.coordinator.node_routing_id =
+      read_bytes8 (bytes, offset, "coordinator node RID");
+    record.coordinator.node_generation = read_u64 (bytes, offset);
+    record.coordinator.expected_authority_store_version =
+      read_text16 (bytes, offset, "expected authority StoreVersion");
+    record.actor.actor_id = read_text8 (bytes, offset, "Actor ID");
+    record.actor.object_generation = read_u64 (bytes, offset);
+    record.actor.target_node_routing_id =
+      read_bytes8 (bytes, offset, "Actor owner node RID");
+    record.actor.target_node_generation = read_u64 (bytes, offset);
+    record.actor.authority_owner_generation = read_u64 (bytes, offset);
+    record.actor.owner_lease_generation = read_u64 (bytes, offset);
+    record.session_owner_node_routing_id =
+      read_bytes8 (bytes, offset, "session owner node RID");
+    record.session_owner_node_generation = read_u64 (bytes, offset);
+    record.session_owner_id =
+      read_text8 (bytes, offset, "session owner ID");
+    record.session_owner_lease_generation = read_u64 (bytes, offset);
+    record.session_routing_id =
+      read_bytes8 (bytes, offset, "Session RID");
+    record.binding_generation = read_u64 (bytes, offset);
+    record.last_accepted_session_sequence = read_u64 (bytes, offset);
+    if (offset != bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation sealed ACK has trailing bytes");
+    (void) encode_session_relocation_sealed (record);
+    return record;
+}
+
+session_relocation_route_t decode_session_relocation_route (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::sessionRelocationRoute
+        || header.flags != 0) {
+        throw service_wire_error_t (
+          "record is not a Session relocation route command");
+    }
+    std::size_t offset = prefix_size;
+    session_relocation_route_t record;
+    record.relocation.high = read_u64 (bytes, offset);
+    record.relocation.low = read_u64 (bytes, offset);
+    record.coordinator.owner_id =
+      read_text8 (bytes, offset, "coordinator owner ID");
+    record.coordinator.lease_generation = read_u64 (bytes, offset);
+    record.coordinator.node_routing_id =
+      read_bytes8 (bytes, offset, "coordinator node RID");
+    record.coordinator.node_generation = read_u64 (bytes, offset);
+    record.coordinator.expected_authority_store_version =
+      read_text16 (bytes, offset, "expected authority StoreVersion");
+    if (offset >= bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation sender role is truncated");
+    record.sender_role = static_cast<relocation_role_t> (bytes[offset++]);
+    record.actor.actor_id = read_text8 (bytes, offset, "Actor ID");
+    record.actor.object_generation = read_u64 (bytes, offset);
+    record.session_owner_node_routing_id =
+      read_bytes8 (bytes, offset, "session owner node RID");
+    record.session_owner_node_generation = read_u64 (bytes, offset);
+    record.session_owner_id =
+      read_text8 (bytes, offset, "session owner ID");
+    record.session_owner_lease_generation = read_u64 (bytes, offset);
+    record.session_routing_id =
+      read_bytes8 (bytes, offset, "Session RID");
+    record.binding_generation = read_u64 (bytes, offset);
+    if (offset >= bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation route action is truncated");
+    record.route.action =
+      static_cast<session_relocation_route_action_t> (bytes[offset++]);
+    const auto route_length = read_u16 (bytes, offset);
+    if (bytes.size () - offset != route_length)
+        throw service_wire_error_t (
+          "Session relocation route length does not match");
+    const auto route = bytes.subspan (offset, route_length);
+    std::size_t route_offset = 0;
+    if (record.route.action
+        == session_relocation_route_action_t::commit) {
+        record.route.previous_authority_owner_generation =
+          read_u64 (route, route_offset);
+        record.route.target_authority_owner_generation =
+          read_u64 (route, route_offset);
+        record.route.target_node_routing_id =
+          read_bytes8 (route, route_offset, "target node RID");
+        record.route.target_node_generation =
+          read_u64 (route, route_offset);
+        record.route.replayed_high_water =
+          read_u64 (route, route_offset);
+    }
+    else if (record.route.action
+             == session_relocation_route_action_t::abort) {
+        record.route.current_authority_owner_generation =
+          read_u64 (route, route_offset);
+    }
+    else {
+        throw service_wire_error_t (
+          "Session relocation route action is invalid");
+    }
+    if (route_offset != route.size ())
+        throw service_wire_error_t (
+          "Session relocation route has trailing bytes");
+    (void) encode_session_relocation_route (record);
+    return record;
+}
+
+std::vector<std::uint8_t> encode_session_relocation_routed (
+  const session_relocation_routed_t &record)
+{
+    if ((record.relocation.high == 0 && record.relocation.low == 0)
+        || record.coordinator.lease_generation == 0
+        || record.coordinator.node_generation == 0
+        || record.actor.object_generation == 0
+        || record.session_owner_node_generation == 0
+        || record.session_owner_lease_generation == 0
+        || record.binding_generation == 0
+        || record.current_authority_owner_generation == 0
+        || (record.action != session_relocation_route_action_t::commit
+            && record.action
+                 != session_relocation_route_action_t::abort)) {
+        throw service_wire_error_t (
+          "Session relocation routed ACK contains an invalid exact fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::sessionRelocationRouted), 0};
+    append_u64 (bytes, record.relocation.high);
+    append_u64 (bytes, record.relocation.low);
+    append_text8 (bytes, record.coordinator.owner_id,
+                  "coordinator owner ID");
+    append_u64 (bytes, record.coordinator.lease_generation);
+    append_bytes8 (bytes, record.coordinator.node_routing_id,
+                   "coordinator node RID");
+    append_u64 (bytes, record.coordinator.node_generation);
+    append_text16 (bytes,
+                   record.coordinator.expected_authority_store_version,
+                   "expected authority StoreVersion");
+    append_text8 (bytes, record.actor.actor_id, "Actor ID");
+    append_u64 (bytes, record.actor.object_generation);
+    append_bytes8 (bytes, record.session_owner_node_routing_id,
+                   "session owner node RID");
+    append_u64 (bytes, record.session_owner_node_generation);
+    append_text8 (bytes, record.session_owner_id, "session owner ID");
+    append_u64 (bytes, record.session_owner_lease_generation);
+    append_bytes8 (bytes, record.session_routing_id, "Session RID");
+    append_u64 (bytes, record.binding_generation);
+    bytes.push_back (static_cast<std::uint8_t> (record.action));
+    append_u64 (bytes, record.current_authority_owner_generation);
+    append_u64 (bytes, record.last_accepted_session_sequence);
+    return bytes;
+}
+
+session_relocation_routed_t decode_session_relocation_routed (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::sessionRelocationRouted
+        || header.flags != 0) {
+        throw service_wire_error_t (
+          "record is not a Session relocation routed ACK");
+    }
+    std::size_t offset = prefix_size;
+    session_relocation_routed_t record;
+    record.relocation.high = read_u64 (bytes, offset);
+    record.relocation.low = read_u64 (bytes, offset);
+    record.coordinator.owner_id =
+      read_text8 (bytes, offset, "coordinator owner ID");
+    record.coordinator.lease_generation = read_u64 (bytes, offset);
+    record.coordinator.node_routing_id =
+      read_bytes8 (bytes, offset, "coordinator node RID");
+    record.coordinator.node_generation = read_u64 (bytes, offset);
+    record.coordinator.expected_authority_store_version =
+      read_text16 (bytes, offset, "expected authority StoreVersion");
+    record.actor.actor_id = read_text8 (bytes, offset, "Actor ID");
+    record.actor.object_generation = read_u64 (bytes, offset);
+    record.session_owner_node_routing_id =
+      read_bytes8 (bytes, offset, "session owner node RID");
+    record.session_owner_node_generation = read_u64 (bytes, offset);
+    record.session_owner_id =
+      read_text8 (bytes, offset, "session owner ID");
+    record.session_owner_lease_generation = read_u64 (bytes, offset);
+    record.session_routing_id =
+      read_bytes8 (bytes, offset, "Session RID");
+    record.binding_generation = read_u64 (bytes, offset);
+    if (offset >= bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation routed action is truncated");
+    record.action =
+      static_cast<session_relocation_route_action_t> (bytes[offset++]);
+    record.current_authority_owner_generation = read_u64 (bytes, offset);
+    record.last_accepted_session_sequence = read_u64 (bytes, offset);
+    if (offset != bytes.size ())
+        throw service_wire_error_t (
+          "Session relocation routed ACK has trailing bytes");
+    (void) encode_session_relocation_routed (record);
+    return record;
+}
+
+std::vector<std::uint8_t> encode_instance_spot_activation_header (
+  const instance_spot_activation_header_t &record)
+{
+    if (record.target.target_node_generation == 0
+        || record.target.deadline_unix_ms == 0
+        || record.target.deadline_unix_ms
+             > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ())
+        || record.source_node_generation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.request != (record.reply_route_id != 0)) {
+        throw service_wire_error_t (
+          "Instance Spot activation contains a zero or inconsistent required field");
+    }
+    std::vector<std::uint8_t> route;
+    append_bytes8 (route, record.target.target_node_routing_id,
+                   "target node RID");
+    append_u64 (route, record.target.target_node_generation);
+    append_text8 (route, record.target.spot_id, "target SpotId");
+    append_text8 (route, record.target.mesh_name, "target MeshName");
+    append_text8 (route, record.target.stable_type, "stable type");
+    append_text8 (route, record.target.descriptor_version,
+                  "target descriptor version");
+    append_u64 (route, record.target.deadline_unix_ms);
+    if (route.size () > std::numeric_limits<std::uint16_t>::max ()) {
+        throw service_wire_error_t (
+          "Instance Spot activation route exceeds u16 bound");
+    }
+
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::instanceSpot),
+      static_cast<std::uint8_t> (
+        record.has_metadata ? static_cast<std::uint8_t> (flag::metadata) : 0)};
+    bytes.push_back (2);
+    append_u16 (bytes, static_cast<std::uint16_t> (route.size ()));
+    bytes.insert (bytes.end (), route.begin (), route.end ());
+    append_u64 (bytes, record.source_node_generation);
+    append_bytes8 (bytes, record.source_node_routing_id,
+                   "source node RID");
+    if (record.source_spot_id) {
+        append_text8 (bytes, *record.source_spot_id, "source SpotId");
+    }
+    else {
+        bytes.push_back (0);
+    }
+    bytes.push_back (record.request ? 2 : 1);
+    append_u64 (bytes, record.operation.high);
+    append_u64 (bytes, record.operation.low);
+    if (record.request) {
+        append_u64 (bytes, record.reply_route_id);
+    }
+    return bytes;
+}
+
+instance_spot_activation_header_t decode_instance_spot_activation_header (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    const auto metadata_flag = static_cast<std::uint8_t> (flag::metadata);
+    if (header.kind != command::instanceSpot
+        || (header.flags & ~metadata_flag) != 0) {
+        throw service_wire_error_t (
+          "record is not an Instance Spot activation command");
+    }
+    std::size_t offset = prefix_size;
+    if (offset >= bytes.size () || bytes[offset++] != 2) {
+        throw service_wire_error_t (
+          "Instance Spot activation route version is invalid");
+    }
+    const auto route_length = read_u16 (bytes, offset);
+    if (route_length == 0 || bytes.size () - offset < route_length) {
+        throw service_wire_error_t (
+          "Instance Spot activation route is truncated");
+    }
+    const auto route = bytes.subspan (offset, route_length);
+    offset += route_length;
+    std::size_t route_offset = 0;
+    instance_spot_activation_header_t record;
+    record.target.target_node_routing_id =
+      read_bytes8 (route, route_offset, "target node RID");
+    record.target.target_node_generation = read_u64 (route, route_offset);
+    record.target.spot_id = read_text8 (route, route_offset, "target SpotId");
+    record.target.mesh_name = read_text8 (route, route_offset, "target MeshName");
+    record.target.stable_type = read_text8 (route, route_offset, "stable type");
+    record.target.descriptor_version =
+      read_text8 (route, route_offset, "target descriptor version");
+    record.target.deadline_unix_ms = read_u64 (route, route_offset);
+    if (route_offset != route.size ()) {
+        throw service_wire_error_t (
+          "Instance Spot activation route has trailing bytes");
+    }
+    record.source_node_generation = read_u64 (bytes, offset);
+    record.source_node_routing_id =
+      read_bytes8 (bytes, offset, "source node RID");
+    if (offset >= bytes.size ()) {
+        throw service_wire_error_t (
+          "Instance Spot activation source SpotId is truncated");
+    }
+    if (bytes[offset] == 0) {
+        ++offset;
+    }
+    else {
+        record.source_spot_id = read_text8 (bytes, offset, "source SpotId");
+    }
+    if (offset >= bytes.size ()) {
+        throw service_wire_error_t (
+          "Instance Spot activation operation kind is truncated");
+    }
+    const auto operation_kind = bytes[offset++];
+    if (operation_kind != 1 && operation_kind != 2) {
+        throw service_wire_error_t (
+          "Instance Spot activation operation kind is invalid");
+    }
+    record.request = operation_kind == 2;
+    record.operation.high = read_u64 (bytes, offset);
+    record.operation.low = read_u64 (bytes, offset);
+    if (record.request) {
+        record.reply_route_id = read_u64 (bytes, offset);
+    }
+    record.has_metadata = (header.flags & metadata_flag) != 0;
+    if (offset != bytes.size ()
+        || record.target.target_node_generation == 0
+        || record.target.deadline_unix_ms == 0
+        || record.target.deadline_unix_ms
+             > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ())
+        || record.source_node_generation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.request != (record.reply_route_id != 0)) {
+        throw service_wire_error_t (
+          "Instance Spot activation contains invalid or trailing fields");
+    }
+    return record;
+}
+
+std::vector<std::uint8_t> encode_instance_activation_recovery (
+  const instance_activation_recovery_t &record)
+{
+    const auto &activation = record.activation;
+    if (activation.has_metadata != record.metadata.has_value ()) {
+        throw service_wire_error_t (
+          "Instance activation recovery metadata presence is inconsistent");
+    }
+    /* Reuse command-39 validation without persisting its transport prefix. */
+    (void) encode_instance_spot_activation_header (activation);
+    std::vector<std::uint8_t> body;
+    append_text8 (body, activation.target.spot_id, "target SpotId");
+    append_text8 (body, activation.target.stable_type, "stable type");
+    append_text8 (body, activation.target.mesh_name, "target MeshName");
+    append_bytes8 (body, activation.target.target_node_routing_id,
+                   "target node RID");
+    append_u64 (body, activation.target.target_node_generation);
+    append_text8 (body, activation.target.descriptor_version,
+                  "target descriptor version");
+    append_bytes8 (body, activation.source_node_routing_id,
+                   "source node RID");
+    append_u64 (body, activation.source_node_generation);
+    body.push_back (activation.source_spot_id ? 1 : 0);
+    if (activation.source_spot_id)
+        append_text8 (body, *activation.source_spot_id, "source SpotId");
+    body.push_back (activation.request ? 2 : 1);
+    append_u64 (body, activation.operation.high);
+    append_u64 (body, activation.operation.low);
+    if (activation.request)
+        append_u64 (body, activation.reply_route_id);
+    append_u64 (body, activation.target.deadline_unix_ms);
+    body.push_back (activation.has_metadata ? 1 : 0);
+    if (record.metadata) {
+        if (record.metadata->empty ())
+            throw service_wire_error_t (
+              "Instance activation recovery metadata frame is empty");
+        body.insert (body.end (), record.metadata->begin (),
+                     record.metadata->end ());
+    }
+    const auto application =
+      encode_application_payload (record.application_payload);
+    body.insert (body.end (), application.begin (), application.end ());
+    if (body.size () > std::numeric_limits<std::uint32_t>::max ()) {
+        throw service_wire_error_t (
+          "Instance activation recovery exceeds u32 body bound");
+    }
+    std::vector<std::uint8_t> result{'Z', 'L', 'I', 'A', 1};
+    append_u16 (result, 0);
+    append_u32 (result, static_cast<std::uint32_t> (body.size ()));
+    result.insert (result.end (), body.begin (), body.end ());
+    append_u32 (result, crc32c (result));
+    return result;
+}
+
+instance_activation_recovery_t decode_instance_activation_recovery (
+  std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size () < 15 || bytes[0] != 'Z' || bytes[1] != 'L'
+        || bytes[2] != 'I' || bytes[3] != 'A' || bytes[4] != 1) {
+        throw service_wire_error_t (
+          "Instance activation recovery prefix is invalid");
+    }
+    std::size_t offset = 5;
+    if (read_u16 (bytes, offset) != 0) {
+        throw service_wire_error_t (
+          "Instance activation recovery flags are invalid");
+    }
+    const auto body_length = read_u32 (bytes, offset);
+    if (body_length != bytes.size () - offset - 4) {
+        throw service_wire_error_t (
+          "Instance activation recovery body length does not match frame");
+    }
+    std::size_t checksum_offset = bytes.size () - 4;
+    auto checksum_read_offset = checksum_offset;
+    const auto expected_checksum = read_u32 (bytes, checksum_read_offset);
+    if (expected_checksum != crc32c (bytes.first (checksum_offset))) {
+        throw service_wire_error_t (
+          "Instance activation recovery checksum mismatch");
+    }
+    const auto body_end = checksum_offset;
+    instance_activation_recovery_t record;
+    auto &activation = record.activation;
+    activation.target.spot_id = read_text8 (bytes, offset, "target SpotId");
+    activation.target.stable_type = read_text8 (bytes, offset, "stable type");
+    activation.target.mesh_name = read_text8 (bytes, offset, "target MeshName");
+    activation.target.target_node_routing_id =
+      read_bytes8 (bytes, offset, "target node RID");
+    activation.target.target_node_generation = read_u64 (bytes, offset);
+    activation.target.descriptor_version =
+      read_text8 (bytes, offset, "target descriptor version");
+    activation.source_node_routing_id =
+      read_bytes8 (bytes, offset, "source node RID");
+    activation.source_node_generation = read_u64 (bytes, offset);
+    if (offset >= body_end)
+        throw service_wire_error_t (
+          "Instance activation recovery source SpotId is truncated");
+    const auto has_source_spot = bytes[offset++];
+    if (has_source_spot == 1)
+        activation.source_spot_id =
+          read_text8 (bytes, offset, "source SpotId");
+    else if (has_source_spot != 0)
+        throw service_wire_error_t (
+          "Instance activation recovery source SpotId flag is invalid");
+    if (offset >= body_end || (bytes[offset] != 1 && bytes[offset] != 2))
+        throw service_wire_error_t (
+          "Instance activation recovery operation kind is invalid");
+    activation.request = bytes[offset++] == 2;
+    activation.operation.high = read_u64 (bytes, offset);
+    activation.operation.low = read_u64 (bytes, offset);
+    if (activation.request)
+        activation.reply_route_id = read_u64 (bytes, offset);
+    activation.target.deadline_unix_ms = read_u64 (bytes, offset);
+    if (offset >= body_end || bytes[offset] > 1)
+        throw service_wire_error_t (
+          "Instance activation recovery metadata flag is invalid");
+    activation.has_metadata = bytes[offset++] == 1;
+    if (activation.has_metadata) {
+        /* metadata-frame v1: version u8, entry count u16, then
+         * text8 key and u16-length value for each entry. Keep the exact bytes. */
+        const auto metadata_start = offset;
+        if (offset >= body_end || bytes[offset++] != 1)
+            throw service_wire_error_t (
+              "Instance activation recovery metadata version is invalid");
+        if (offset >= body_end)
+            throw service_wire_error_t (
+              "Instance activation recovery metadata count is truncated");
+        const auto count = bytes[offset++];
+        for (std::uint16_t index = 0; index < count; ++index) {
+            (void) read_text8 (bytes, offset, "metadata key");
+            const auto value_length = read_u16 (bytes, offset);
+            if (body_end - offset < value_length)
+                throw service_wire_error_t (
+                  "Instance activation recovery metadata value is truncated");
+            offset += value_length;
+        }
+        record.metadata = std::vector<std::uint8_t> (
+          bytes.begin () + static_cast<std::ptrdiff_t> (metadata_start),
+          bytes.begin () + static_cast<std::ptrdiff_t> (offset));
+    }
+    if (offset >= body_end)
+        throw service_wire_error_t (
+          "Instance activation recovery application payload is missing");
+    record.application_payload = decode_application_payload (
+      bytes.subspan (offset, body_end - offset));
+    activation.has_metadata = record.metadata.has_value ();
+    (void) encode_instance_spot_activation_header (activation);
+    return record;
 }
 
 std::vector<std::uint8_t> encode_user_spot_create_header (

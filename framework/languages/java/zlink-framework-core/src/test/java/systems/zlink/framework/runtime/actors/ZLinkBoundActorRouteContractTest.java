@@ -41,6 +41,7 @@ final class ZLinkBoundActorRouteContractTest {
             RoutingId.from("session"),
             new ZLinkBackendActorRef(
                 RoutingId.from("actor-node-a"), "actor-1", 7),
+            "game",
             Optional.empty(),
             null,
             new UnsupportedSerializer(),

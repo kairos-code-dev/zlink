@@ -123,6 +123,8 @@ export interface ZLinkSpotLocation {
   readonly ownerNodeGeneration: bigint;
   readonly spotKind: ZLinkSpotKind;
   readonly ownerId: string;
+  /** Generation of the exact owner lease that published this row. */
+  readonly leaseGeneration: bigint;
   readonly updatedAt: Date;
 }
 
@@ -141,6 +143,8 @@ export interface ZLinkActorLocation {
   readonly spotGeneration: bigint;
   readonly membershipEpoch: bigint;
   readonly ownerId: string;
+  /** Generation of the exact owner lease that published this row. */
+  readonly leaseGeneration: bigint;
   readonly updatedAt: Date;
 }
 

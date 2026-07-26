@@ -29,8 +29,12 @@ internal sealed class BingoRoom(
 
     public IZLinkSpotContext Context { get; } = context;
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
     }
 

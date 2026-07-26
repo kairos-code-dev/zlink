@@ -75,6 +75,23 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
+    void directActorMessagingAcceptsOnlyTheGlobalActorId() throws Exception {
+        Class<?> client = Class.forName(
+            "systems.zlink.framework.actors.ZLinkActorClient");
+        assertNotNull(client.getMethod(
+            "sendToActor", String.class, Object.class));
+        assertNotNull(client.getMethod(
+            "requestToActor", String.class, Object.class));
+        Class<?> actorRef = Class.forName(
+            "systems.zlink.framework.actors.ActorRef");
+        assertFalse(Arrays.stream(client.getMethods()).anyMatch(method ->
+            (method.getName().equals("sendToActor")
+                || method.getName().equals("requestToActor"))
+                && Arrays.asList(method.getParameterTypes()).contains(
+                    actorRef)));
+    }
+
+    @Test
     void spotAddressIsHiddenBehindOpaqueHandle() throws Exception {
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandle"));
         assertNotNull(Class.forName("systems.zlink.framework.spots.SpotHandleResolver"));
@@ -198,6 +215,27 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
+    void locationOptionsExposeObjectRoutingAndRelocationBudgets() throws Exception {
+        Class<?> options = Class.forName(
+            "systems.zlink.framework.locations.ZLinkLocationOptions");
+        for (String getter : new String[] {
+            "ownerLeaseRenewInterval",
+            "ownerLeaseFencingMargin",
+            "routeCacheMaxAge",
+            "relocationForwardingWindow",
+            "maxActiveOutboundRelocations",
+            "maxActiveInboundRelocations",
+            "maxConcurrentRelocationCaptures",
+            "maxConcurrentRelocationRestores",
+            "maxRelocationPayloadInFlightBytes"
+        }) {
+            assertNotNull(options.getMethod(getter), getter);
+        }
+        assertNoPublicMethodNamed(options, "heartbeatInterval");
+        assertNoPublicMethodNamed(options, "routingIdFencingMargin");
+    }
+
+    @Test
     void javaCoreDoesNotReimplementKotlinSuspendInvocation() throws Exception {
         Class<?> invoker = Class.forName("systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker");
         assertFalse(Arrays.stream(invoker.getDeclaredMethods()).anyMatch(method ->
@@ -263,4 +301,5 @@ final class JavaTargetContractGapTest {
             // Target contract reached.
         }
     }
+
 }

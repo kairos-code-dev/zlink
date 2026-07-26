@@ -121,16 +121,29 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     }
 
     synchronized void restore(FrozenTimers state) {
+        stageRestore(state);
+        publishStagedRestore();
+    }
+
+    synchronized void stageRestore(FrozenTimers state) {
         close();
-        frozen = false;
+        frozen = true;
         for (TimerSnapshot snapshot : state.timers()) {
             ManagedTimer timer = new ManagedTimer(snapshot);
             if (timers.put(snapshot.name(), timer) != null) {
                 throw new ZLinkConfigurationException(
                     "duplicate timer in relocation envelope: " + snapshot.name());
             }
-            timer.resume();
         }
+    }
+
+    synchronized void publishStagedRestore() {
+        if (!frozen) {
+            throw new IllegalStateException(
+                "timer relocation staging is not active");
+        }
+        frozen = false;
+        timers.values().forEach(ManagedTimer::resume);
     }
 
     @Override

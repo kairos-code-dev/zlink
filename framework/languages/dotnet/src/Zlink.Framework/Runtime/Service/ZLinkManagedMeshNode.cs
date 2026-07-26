@@ -361,14 +361,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         else
         {
-            lock (_operationGate)
-            {
-                var low = ++_nextOperation;
-                if (low == 0)
-                    throw new InvalidOperationException(
-                        "The operation id space was exhausted.");
-                operationId = new MeshOperationId(_lifecycleGeneration, low);
-            }
+            operationId = NextStandaloneOperationId();
         }
 
         var operation = new InstanceSpotActivationOperation(
@@ -2018,6 +2011,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
     }
 
+    public MeshOperationId AllocateOperationId() => NextStandaloneOperationId();
+
     private bool TryRemoveOperation(
         ulong correlation,
         out PendingOperation operation)
@@ -3428,7 +3423,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ZLinkServiceAdmissionDecision decision;
         lock (_gate)
         {
-            peer = FindPeerForAdmission(sourceRid, command)
+            peer = FindPeerForAdmission(
+                       sourceRid,
+                       command,
+                       admission.AdvertisedEndpoint)
                    ?? new Peer(
                        checked(++_nextIntent),
                        admission.AdvertisedEndpoint,
@@ -4139,7 +4137,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private Peer? FindPeerForAdmission(
         RoutingId sourceRid,
-        ServiceWireConstants.Command command)
+        ServiceWireConstants.Command command,
+        string advertisedEndpoint)
     {
         if (_peersByRid.TryGetValue(sourceRid, out var exact)
             && (command == ServiceWireConstants.Command.Update
@@ -4150,14 +4149,36 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             return exact;
         if (command == ServiceWireConstants.Command.Hello)
             return null;
-        return _peersByIntent.Values
+        var candidates = _peersByIntent.Values
             .Where(peer =>
                 peer.Direction == ZLinkServiceConnectionDirection.Outbound
-                && (peer.ExpectedRid == sourceRid
-                    || peer.PhysicalRoutingId == sourceRid
-                    || (!peer.Admitted && peer.ExpectedRid is null)))
+                && !peer.Admitted)
             .OrderBy(static peer => peer.Discriminator, StringComparer.Ordinal)
-            .FirstOrDefault();
+            .ToArray();
+        var identityMatch = candidates.FirstOrDefault(peer =>
+            peer.ExpectedRid == sourceRid
+            || peer.PhysicalRoutingId == sourceRid);
+        if (identityMatch is not null)
+            return identityMatch;
+
+        // When the caller did not configure an expected RID, multiple
+        // outbound intents are distinguished by the endpoint echoed in the
+        // admission descriptor. Selecting the first unadmitted intent would
+        // attach two different peers to the same physical pipe.
+        var endpointMatch = candidates.FirstOrDefault(peer =>
+            peer.ExpectedRid is null
+            && string.Equals(
+                peer.Endpoint,
+                advertisedEndpoint,
+                StringComparison.Ordinal));
+        if (endpointMatch is not null)
+            return endpointMatch;
+
+        var unknownIdentity = candidates
+            .Where(static peer => peer.ExpectedRid is null)
+            .Take(2)
+            .ToArray();
+        return unknownIdentity.Length == 1 ? unknownIdentity[0] : null;
     }
 
     private Peer? FindDuplicatePeer(RoutingId sourceRid, Peer candidate)

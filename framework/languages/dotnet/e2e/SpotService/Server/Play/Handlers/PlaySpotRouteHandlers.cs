@@ -8,9 +8,7 @@ using Zlink.Framework.Contracts.Spots;
 namespace SpotService.Server.Play.Handlers;
 
 [ZLinkSpotRequestHandler("SpotToSpotReq")]
-internal sealed class SpotToSpotHandler(
-    EvidenceStore evidence,
-    IZLinkSpotHandleResolver spots)
+internal sealed class SpotToSpotHandler(EvidenceStore evidence)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotReq, SpotToSpotRes>
 {
     public async ValueTask<SpotToSpotRes> HandleAsync(
@@ -18,18 +16,12 @@ internal sealed class SpotToSpotHandler(
         SpotToSpotReq request,
         CancellationToken cancellationToken)
     {
-        // Resolve one opaque handle for the interaction; the framework owns its
-        // location snapshot and safe request refresh behavior.
-        var target = await spots.ResolveSpotHandleAsync(
-                         spot.Context.MeshName,
-                         request.TargetSpotRid,
-                         cancellationToken)
-                     ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
         var reply = await spot.Context.Outbound
-            .RequestToSpot(target, new StateReq("add", 3))
+            .RequestToSpot(request.TargetSpotRid, new StateReq("add", 3))
             .Async<StateRes>(cancellationToken);
-        await spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
+        await spot.Context.Outbound.SendToSpot(
+                request.TargetSpotRid,
+                new StateMsg($"sm-c3-send-{request.Marker}"))
             .Async(cancellationToken);
         await spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotChannel,
@@ -47,9 +39,7 @@ internal sealed class SpotToSpotHandler(
 }
 
 [ZLinkSpotRequestHandler("SpotToSpotTimeoutReq")]
-internal sealed class SpotToSpotTimeoutHandler(
-    EvidenceStore evidence,
-    IZLinkSpotHandleResolver spots)
+internal sealed class SpotToSpotTimeoutHandler(EvidenceStore evidence)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotTimeoutReq, SpotToSpotTimeoutRes>
 {
     public async ValueTask<SpotToSpotTimeoutRes> HandleAsync(
@@ -60,14 +50,8 @@ internal sealed class SpotToSpotTimeoutHandler(
         var failed = false;
         try
         {
-            var target = await spots.ResolveSpotHandleAsync(
-                             spot.Context.MeshName,
-                             request.TargetSpotRid,
-                             cancellationToken)
-                         ?? throw new InvalidOperationException(
-                             $"Target spot '{request.TargetSpotRid}' has no live location row.");
             await spot.Context.Outbound
-                .RequestToSpot(target, new SlowSpotReq(request.Marker, 1500))
+                .RequestToSpot(request.TargetSpotRid, new SlowSpotReq(request.Marker, 1500))
                 .Timeout(TimeSpan.FromMilliseconds(100))
                 .Async<SlowSpotRes>(cancellationToken);
         }
@@ -87,9 +71,7 @@ internal sealed class SpotToSpotTimeoutHandler(
 }
 
 [ZLinkSpotRequestHandler("SpotToSpotNegativeReq")]
-internal sealed class SpotToSpotNegativeHandler(
-    EvidenceStore evidence,
-    IZLinkSpotHandleResolver spots)
+internal sealed class SpotToSpotNegativeHandler(EvidenceStore evidence)
     : IZLinkSpotRequestHandler<ScenarioUserSpot, SpotToSpotNegativeReq, SpotToSpotNegativeRes>
 {
     public async ValueTask<SpotToSpotNegativeRes> HandleAsync(
@@ -97,20 +79,13 @@ internal sealed class SpotToSpotNegativeHandler(
         SpotToSpotNegativeReq request,
         CancellationToken cancellationToken)
     {
-        // The negative here is the missing HANDLER on a live target spot:
-        // the handle resolves, the request reply-errors, and the
-        // best-effort send is dropped at the target with evidence.
-        var target = await spots.ResolveSpotHandleAsync(
-                         spot.Context.MeshName,
-                         request.TargetSpotRid,
-                         cancellationToken)
-                     ?? throw new InvalidOperationException(
-                         $"Target spot '{request.TargetSpotRid}' has no live location row.");
+        // The target Spot exists, but the requested handler does not. Direct
+        // routing resolves the global SpotId before target dispatch.
         var requestFailed = false;
         try
         {
             await spot.Context.Outbound
-                .RequestToSpot(target, new MissingSpotReq("noop"))
+                .RequestToSpot(request.TargetSpotRid, new MissingSpotReq("noop"))
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<StateRes>(cancellationToken);
         }
@@ -119,7 +94,9 @@ internal sealed class SpotToSpotNegativeHandler(
             requestFailed = true;
         }
 
-        await spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
+        await spot.Context.Outbound.SendToSpot(
+                request.TargetSpotRid,
+                new MissingSpotMsg($"missing-{request.Marker}"))
             .Async(cancellationToken);
 
         evidence.Add(

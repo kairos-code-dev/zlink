@@ -45,8 +45,11 @@ internal static class RmA6MultipleChannelsScenario
             workflowRows.Length > 0 && workflowRows.All(row => row.MeshName == "workflow"),
             "RM-A6 workflow mesh filter returned rows from another mesh.");
         ZlinkStreamAssert.Ensure(
-            workflowRows.Any(row => row.Role == "Router" && row.NodeRid == "workflow-a")
-            && workflowRows.All(row => row.NodeRid is not ("api-a" or "api-b")),
+            workflowRows.Any(row => row.Role == "Router"
+                && row.NodeRid?.StartsWith("workflow-a-", StringComparison.Ordinal) == true)
+            && workflowRows.All(row =>
+                row.NodeRid?.StartsWith("api-a-", StringComparison.Ordinal) != true
+                && row.NodeRid?.StartsWith("api-b-", StringComparison.Ordinal) != true),
             "RM-A6 workflow mesh rows should contain workflow-a only.");
 
         var providerEvidence = await ProviderEvidence.WaitFromEitherAsync(

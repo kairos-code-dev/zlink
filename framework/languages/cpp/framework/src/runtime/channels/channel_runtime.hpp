@@ -11,6 +11,7 @@
 #include "runtime/channels/channel_runtime_bundle.hpp"
 #include "runtime/channels/route_channel_registration.hpp"
 #include "runtime/channels/route_channel_runtime.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
@@ -40,10 +41,46 @@ class channel_native_publisher_t;
 namespace zlink::framework::runtime
 {
 class offload_executor_t;
+class spot_address_resolver_t;
 } // namespace zlink::framework::runtime
 
 namespace zlink::framework::detail
 {
+
+class route_client_runtime_t
+{
+  public:
+    template <typename TRequest, typename TReply>
+    static task_t<TReply> request_to_spot_address (
+      const route_client_t &client,
+      runtime::spot_address_t address,
+      TRequest request,
+      std::chrono::milliseconds timeout)
+    {
+        if (client._serializers == nullptr) {
+            co_return result_t<TReply>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "route client has no serializer registry");
+        }
+        auto request_value = std::make_shared<TRequest> (std::move (request));
+        auto reply = co_await route_client_t::submit_spot_request_reply_message_erased (
+          client._state, std::move (address.mesh_name), std::move (address.node_rid),
+          std::move (address.spot_id), address.spot_generation,
+          detail::message_name<TRequest> (), std::type_index (typeid (TRequest)),
+          [request_value] (serializer_registry_t &serializers) {
+              return serializers.template get<TRequest> ().serialize (*request_value);
+          },
+          timeout, {});
+        try {
+            co_return result_t<TReply>::success (
+              client._serializers->template get<TReply> ().deserialize (
+                detail::encoded_payload_from_raw (reply)));
+        }
+        catch (const framework_exception_t &error) {
+            co_return detail::result_access_t::failure<TReply> (error);
+        }
+    }
+};
 
 result_t<void> validate_channel_native_reply (const runtime::messaging::message_parts_t &parts);
 
@@ -89,6 +126,18 @@ class route_client_state_t
 class channel_runtime_state_t
 {
   public:
+    runtime::spot_address_resolver_t *spot_resolver = nullptr;
+    using instance_spot_send_t = std::function<result_t<void> (
+      const spot_id_t &, const spot_activation_intent_t &,
+      const std::string &, std::type_index,
+      std::function<encoded_payload_t (serializer_registry_t &)>,
+      const std::map<std::string, std::string> &)>;
+    using instance_spot_request_t = std::function<task_t<zlink::message_t> (
+      const spot_id_t &, const spot_activation_intent_t &,
+      std::string, std::type_index,
+      std::function<encoded_payload_t (serializer_registry_t &)>,
+      std::chrono::milliseconds,
+      std::map<std::string, std::string>)>;
     using mesh_node_send_t = std::function<result_t<void> (
       const zlink::routing_id_t &,
       runtime::messaging::message_parts_t)>;
@@ -161,6 +210,8 @@ class channel_runtime_state_t
     std::map<std::string, fanout_publish_t> fanout_publishers;
     std::map<std::string, spot_mesh_send_t> spot_mesh_senders;
     std::map<std::string, spot_mesh_request_t> spot_mesh_requesters;
+    instance_spot_send_t instance_spot_sender;
+    instance_spot_request_t instance_spot_requester;
     std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
     std::map<std::string, route_handler_registry_t> route_handlers;
     std::map<std::string, int> server_peer_weight_overrides;
@@ -236,6 +287,10 @@ class channel_runtime_t
     void bind_spot_mesh_transport (std::string mesh_name,
                                    channel_runtime_state_t::spot_mesh_send_t send,
                                    channel_runtime_state_t::spot_mesh_request_t request);
+    void bind_spot_address_resolver (runtime::spot_address_resolver_t &resolver) noexcept;
+    void bind_instance_spot_activator (
+      channel_runtime_state_t::instance_spot_send_t send,
+      channel_runtime_state_t::instance_spot_request_t request);
     void bind_mesh_node_transport (std::string mesh_name,
                                    channel_runtime_state_t::mesh_node_send_t send,
                                    channel_runtime_state_t::mesh_node_request_t request);

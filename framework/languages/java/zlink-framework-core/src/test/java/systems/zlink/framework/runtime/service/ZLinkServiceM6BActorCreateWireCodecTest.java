@@ -46,9 +46,10 @@ final class ZLinkServiceM6BActorCreateWireCodecTest {
                 new ZLinkServiceM6BWireCodec.ActorCreateTerminal(
                     ZLinkServiceM6BWireCodec.ActorCreateResult.CREATED,
                     new ActorRef(
-                        RoutingId.from("target"),
                         "actor-1",
-                        9)),
+                        9,
+                        "game",
+                        RoutingId.from("target"))),
                 application);
         byte[] durable =
             codec.encodeCreationOperationTerminal(terminal);
@@ -59,11 +60,11 @@ final class ZLinkServiceM6BActorCreateWireCodecTest {
         byte[] retry = codec.encodeActorCreateReply(202, restored);
 
         assertNotEquals(
-            codec.decodeActorCreateReply(first).correlation(),
-            codec.decodeActorCreateReply(retry).correlation());
+            codec.decodeActorCreateReply(first, "game").correlation(),
+            codec.decodeActorCreateReply(retry, "game").correlation());
         assertEquals(
             terminal.creation(),
-            codec.decodeActorCreateReply(first).terminal().creation());
+            codec.decodeActorCreateReply(first, "game").terminal().creation());
         assertArrayEquals(
             application,
             restored.applicationPayloadFrame());

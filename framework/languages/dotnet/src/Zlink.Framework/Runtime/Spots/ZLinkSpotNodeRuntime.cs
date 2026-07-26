@@ -21,10 +21,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private IActorCreateOperationTarget? _actorCreateOperationTarget;
     private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
     private ZLinkInstanceSpotActivationTarget? _instanceSpotActivationTarget;
-    private long _nextLocalActorCreateOperation;
-    private long _nextLocalInstanceActivationOperation;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
-    private long _nextLocalUserSpotOperation;
     private IZLinkBackendSpot? _entrySpot;
     private ZLinkEntrySpotDispatchPump? _entryDispatchPump;
     private ZLinkSpotOutboundTransport? _entryOutbound;
@@ -161,8 +158,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (remaining <= 0)
             throw new TimeoutException("The User Spot create deadline elapsed.");
 
-        var correlation = checked((ulong)Interlocked.Increment(
-            ref _nextLocalUserSpotOperation));
+        var operationId = Node.AllocateOperationId();
+        var correlation = operationId.Low;
         var status = Node.MeshStatus();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -171,7 +168,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         var terminal = await target.CreateAsync(
                 new UserSpotCreateOperation(
                     correlation,
-                    new MeshOperationId(status.LifecycleGeneration, correlation),
+                    operationId,
                     Node.RoutingId,
                     status.LifecycleGeneration,
                     spotId,
@@ -196,6 +193,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         InstanceSpotActivationTarget target,
         RoutingId sourceNodeRid,
         ulong sourceNodeGeneration,
+        MeshOperationId operationId,
         string sourceSpotId,
         IReadOnlyList<ReadOnlyMemory<byte>> payload,
         bool request,
@@ -207,17 +205,15 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                                ?? throw new ZLinkFrameworkException(
                                    ZLinkFrameworkErrorKind.InvalidConfiguration,
                                    $"MeshNode '{Name}' does not host Instance Spot factories.");
-        var operationId = checked((ulong)Interlocked.Increment(
-            ref _nextLocalInstanceActivationOperation));
         return activationTarget.ActivateAsync(
             new InstanceSpotActivationOperation(
                 target,
                 sourceNodeRid,
                 sourceNodeGeneration,
                 sourceSpotId,
-                new MeshOperationId(sourceNodeGeneration, operationId),
+                operationId,
                 request,
-                request ? operationId : 0,
+                request ? operationId.Low : 0,
                 deadlineUnixMs),
             metadata,
             payload,
@@ -242,8 +238,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (remaining <= 0)
             throw new TimeoutException("The Actor create deadline elapsed.");
 
-        var correlation = checked((ulong)Interlocked.Increment(
-            ref _nextLocalActorCreateOperation));
+        var operationId = Node.AllocateOperationId();
+        var correlation = operationId.Low;
         var status = Node.MeshStatus();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -252,7 +248,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         var terminal = await target.CreateAsync(
                 new ActorCreateOperation(
                     correlation,
-                    new MeshOperationId(status.LifecycleGeneration, correlation),
+                    operationId,
                     Node.RoutingId,
                     status.LifecycleGeneration,
                     actorId,

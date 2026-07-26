@@ -10,6 +10,9 @@ const {
   ZLinkActorTransferRuntime
 } = require('../../packages/framework/dist/runtime/host/actor-transfer-runtime');
 const {
+  crc32c
+} = require('../../packages/framework/dist/runtime/foundation/service-relocation-runtime');
+const {
   ZLinkEntryActorRuntimeService
 } = require('../../packages/framework/dist/runtime/host/entry-actor-runtime');
 const {
@@ -1929,23 +1932,359 @@ test('formal remote join rejection rolls back prepared source movement and prese
   assert.equal(manager.getState('alice').nativeActorRef.nodeRid.toHex(), rid('node-source').toHex());
 });
 
-test('target ownership publication failure releases the claimed actor location', async () => {
+test('target ownership publication retries an exact command 44 after command 45 ACK loss', async () => {
+  const actor = { context: { actorId: 'actor-ack' } };
+  const acceptedJournal = Buffer.from(JSON.stringify({
+    version: 1,
+    actorId: 'actor-ack',
+    actorGeneration: '9',
+    sealId: 'seal-ack',
+    acceptedHighWater: '41',
+    entries: []
+  }));
+  const acceptedJournalChecksum = crc32c(acceptedJournal);
+  const state = {
+    nativeActorRef: { nodeRid: rid('target-node'), actorId: 'actor-ack', generation: 9n },
+    locationGeneration: 17n,
+    ownerLeaseGeneration: 23n,
+    spotId: 'room-target',
+    remoteBoundSessionTarget: {
+      routerChannelId: 'session.route',
+      targetNodeRid: rid('session-node'),
+      spotId: 'session-entry',
+      bindingGeneration: 5n,
+      previousAuthorityOwnerGeneration: 16n,
+      previousOwnerLeaseGeneration: 22n,
+      acceptedHighWater: 41n,
+      relocationSealId: 'seal-ack',
+      acceptedJournalReference: 'journal-ack',
+      acceptedJournalChecksumCrc32c: acceptedJournalChecksum
+    }
+  };
+  const requests = [];
+  const reported = [];
+  const runtime = new ZLinkActorTransferRuntime({
+    routeTransport: {
+      async sendToSpot() { throw new Error('command 44 must use request/reply transport'); },
+      async requestToSpot(target, payload, options) {
+        requests.push({ target, payload, options });
+        if (requests.length === 1) throw new Error('command 45 ACK lost');
+        return {
+          actorId: payload.actorId,
+          actorGeneration: payload.actorGeneration,
+          actorOwnershipGeneration: payload.actorOwnershipGeneration,
+          bindingGeneration: payload.bindingGeneration,
+          targetOwnerLeaseGeneration: payload.targetOwnerLeaseGeneration,
+          acceptedHighWater: payload.acceptedHighWater,
+          sealId: payload.sealId
+        };
+      }
+    },
+    spotManager: () => undefined,
+    actorManager: () => ({ getState: () => state }),
+    primaryMeshNode: () => ({}),
+    async notifyEntrySpotActorLeft() {},
+    async restoreEntrySpotActorJoined() {},
+    locationLifecycle: () => undefined,
+    actorHandoff: {},
+    actorTransferRegistry: {},
+    authorityStore: () => undefined,
+    relocationStore: () => ({
+      async getRelocation(reference) {
+        assert.equal(reference.value, 'journal-ack');
+        return { kind: 'found', payload: acceptedJournal };
+      }
+    }),
+    reportPostCommitError(error) { reported.push(error); },
+    clearRemoteActorPacketTarget() {}
+  });
+
+  await runtime.publishRoutedActorOwnership(actor);
+
+  assert.equal(requests.length, 2);
+  assert.equal(reported.length, 1);
+  assert.deepEqual(requests[1], requests[0]);
+  assert.equal(requests[1].options.packetName, framework.ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET);
+  assert.equal(requests[1].payload.actorId, 'actor-ack');
+  assert.equal(requests[1].payload.actorGeneration, '9');
+  assert.equal(requests[1].payload.previousActorOwnershipGeneration, '16');
+  assert.equal(requests[1].payload.actorOwnershipGeneration, '17');
+  assert.equal(requests[1].payload.bindingGeneration, '5');
+  assert.equal(requests[1].payload.previousOwnerLeaseGeneration, '22');
+  assert.equal(requests[1].payload.targetOwnerLeaseGeneration, '23');
+  assert.equal(requests[1].payload.acceptedHighWater, '41');
+  assert.equal(requests[1].payload.sealId, 'seal-ack');
+  assert.equal(requests[1].payload.acceptedJournalReference, 'journal-ack');
+  assert.equal(requests[1].payload.acceptedJournalChecksumCrc32c, acceptedJournalChecksum);
+});
+
+test('source command 42 seal publishes a durable accepted journal and rollback aborts it', async () => {
+  const actor = { context: { actorId: 'actor-seal' } };
+  let moving = false;
+  let remoteTarget = {
+    routerChannelId: 'session.route',
+    targetNodeRid: rid('session-node'),
+    spotId: 'session-entry',
+    bindingGeneration: 11n
+  };
+  const state = {
+    actorType: 'player',
+    nativeActorRef: { nodeRid: rid('source-node'), actorId: 'actor-seal', generation: 9n },
+    locationGeneration: 3n,
+    ownerLeaseGeneration: 5n,
+    get remoteBoundSessionTarget() { return remoteTarget; },
+    setRemoteBoundSessionTarget(value) { remoteTarget = value; },
+    beginMove() { assert.equal(moving, false); moving = true; },
+    endMove() { moving = false; }
+  };
+  const commands = [];
+  const stored = new Map();
+  let deleted = 0;
+  const relocationStore = {
+    async putRelocation(payload) {
+      const reference = { value: 'accepted-root-1' };
+      stored.set(reference.value, Buffer.from(payload));
+      return {
+        reference,
+        checksumCrc32c: crc32c(payload),
+        expiresAt: new Date(Date.now() + 60_000),
+        storeNow: new Date()
+      };
+    },
+    async getRelocation(reference) {
+      const payload = stored.get(reference.value);
+      return payload === undefined ? { kind: 'missing' } : { kind: 'found', payload };
+    },
+    async deleteRelocation(reference) {
+      deleted++;
+      return stored.delete(reference.value) ? 'deleted' : 'missing';
+    }
+  };
+  const runtime = new ZLinkActorTransferRuntime({
+    routeTransport: {
+      async requestToSpot(_target, payload, options) {
+        commands.push({ payload, options });
+        return {
+          actorId: payload.actorId,
+          sealId: payload.sealId,
+          acceptedHighWater: options.packetName === framework.ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET ? '7' : '0'
+        };
+      }
+    },
+    spotManager: () => undefined,
+    actorManager: () => ({ getState: () => state }),
+    primaryMeshNode: () => ({}),
+    async notifyEntrySpotActorLeft() {},
+    async restoreEntrySpotActorJoined() {},
+    locationLifecycle: () => undefined,
+    actorHandoff: {
+      begin() {},
+      snapshotCoreBacklog() { return [{ index: 0, header: 'aA==', payload: 'Yg==', returnResponse: false }]; },
+      cancel() {},
+      pendingCount() { return 1; }
+    },
+    actorTransferRegistry: {
+      async transferOut() { return { state: encodedMessage('state') }; }
+    },
+    authorityStore: () => undefined,
+    relocationStore: () => relocationStore,
+    clearRemoteActorPacketTarget() {}
+  });
+
+  const prepared = await runtime.prepareSource(actor, state, undefined, 'core');
+  assert.equal(commands[0].options.packetName, framework.ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET);
+  assert.equal(remoteTarget.acceptedHighWater, 7n);
+  assert.equal(remoteTarget.acceptedJournalReference, 'accepted-root-1');
+  assert.equal(remoteTarget.relocationSealId, commands[0].payload.sealId);
+  assert.equal(stored.size, 1);
+  assert.equal(moving, true);
+
+  await prepared.rollback();
+  assert.equal(commands[1].options.packetName, framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET);
+  assert.equal(deleted, 1);
+  assert.equal(stored.size, 0);
+  assert.equal(moving, false);
+});
+
+test('target route opening retries the exact released seal after its ACK is lost', async () => {
+  const actor = { context: { actorId: 'actor-open-retry' } };
+  const state = {
+    nativeActorRef: { nodeRid: rid('target-node'), actorId: 'actor-open-retry', generation: 9n },
+    remoteBoundSessionTarget: {
+      routerChannelId: 'session.route',
+      targetNodeRid: rid('session-node'),
+      spotId: 'session-entry',
+      bindingGeneration: 5n,
+      previousAuthorityOwnerGeneration: 16n,
+      previousOwnerLeaseGeneration: 22n,
+      relocationSealId: 'seal-open-retry'
+    }
+  };
+  const requests = [];
+  const reported = [];
+  const runtime = new ZLinkActorTransferRuntime({
+    routeTransport: {
+      async requestToSpot(target, payload, options) {
+        requests.push({ target, payload, options });
+        if (requests.length === 1) throw new Error('open ACK lost');
+        return { actorId: payload.actorId, sealId: payload.sealId, acceptedHighWater: '0' };
+      }
+    },
+    spotManager: () => undefined,
+    actorManager: () => ({ getState: () => state }),
+    primaryMeshNode: () => ({}),
+    async notifyEntrySpotActorLeft() {},
+    async restoreEntrySpotActorJoined() {},
+    locationLifecycle: () => undefined,
+    actorHandoff: {},
+    actorTransferRegistry: {},
+    authorityStore: () => undefined,
+    relocationStore: () => undefined,
+    reportPostCommitError(error) { reported.push(error); },
+    clearRemoteActorPacketTarget() {}
+  });
+
+  await runtime.openRoutedActorSession(actor);
+
+  assert.equal(requests.length, 2);
+  assert.equal(reported.length, 1);
+  assert.deepEqual(requests[1], requests[0]);
+  assert.equal(requests[1].options.packetName, framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET);
+  assert.equal(requests[1].payload.sealId, 'seal-open-retry');
+});
+
+test('transferred Actor admission remains sealed until command 45 ACK completes', async () => {
+  const actor = { context: lifecycleContext('actor-steady') };
+  let joined;
+  let sealed = false;
+  let releaseAck;
+  let publishStarted;
+  let releaseOpen;
+  let openStarted;
+  const started = new Promise((resolve) => { publishStarted = resolve; });
+  const ackBlocked = new Promise((resolve) => { releaseAck = resolve; });
+  const opening = new Promise((resolve) => { openStarted = resolve; });
+  const openBlocked = new Promise((resolve) => { releaseOpen = resolve; });
+  const activation = {
+    spotId: 'room-target',
+    meshName: 'play',
+    spot: { async onJoinedActor() {} },
+    serial: { async execute(operation) { return await operation(); } },
+    commitActorJoin(value) { joined = value; },
+    beginActorTransfer() { sealed = true; },
+    cancelActorTransfer() { sealed = false; },
+    commitActorDeparture() { joined = undefined; sealed = true; },
+    resolveJoinedActor(actorId) {
+      return !sealed && joined?.context.actorId === actorId ? joined : undefined;
+    }
+  };
+  const coordinator = new framework.ZLinkSpotActorAdmissionCoordinator({
+    actorTransferRuntime: {
+      commitRoutedActor() {},
+      async claimRoutedActorLocation() {},
+      async publishRoutedActorOwnership() {
+        publishStarted();
+        await ackBlocked;
+      },
+      async openRoutedActorSession() {
+        openStarted();
+        await openBlocked;
+      },
+      clearRoutedActor() {},
+      async rollbackRoutedActor() {}
+    }
+  });
+
+  const committing = coordinator.commitTransferredActorTransaction(activation, actor, []);
+  await started;
+  assert.equal(activation.resolveJoinedActor(actor.context.actorId), undefined);
+
+  releaseAck();
+  await opening;
+  assert.equal(activation.resolveJoinedActor(actor.context.actorId), undefined);
+  releaseOpen();
+  assert.deepEqual(await committing, []);
+  assert.equal(activation.resolveJoinedActor(actor.context.actorId), actor);
+});
+
+test('command 44 completion never rolls the committed target back when route opening fails', async () => {
+  const actor = { context: lifecycleContext('actor-post-commit') };
+  let joined;
+  let sealed = false;
+  let departures = 0;
+  let clears = 0;
+  let rollbacks = 0;
+  const activation = {
+    spotId: 'room-target',
+    meshName: 'play',
+    spot: { async onJoinedActor() {} },
+    serial: { async execute(operation) { return await operation(); } },
+    commitActorJoin(value) { joined = value; },
+    beginActorTransfer() { sealed = true; },
+    cancelActorTransfer() { sealed = false; },
+    commitActorDeparture() { departures++; joined = undefined; },
+    resolveJoinedActor(actorId) {
+      return !sealed && joined?.context.actorId === actorId ? joined : undefined;
+    }
+  };
+  const coordinator = new framework.ZLinkSpotActorAdmissionCoordinator({
+    actorTransferRuntime: {
+      commitRoutedActor() {},
+      async claimRoutedActorLocation() {},
+      async publishRoutedActorOwnership() {},
+      async openRoutedActorSession() { throw new Error('route open interrupted'); },
+      clearRoutedActor() { clears++; },
+      async rollbackRoutedActor() { rollbacks++; }
+    }
+  });
+
+  await assert.rejects(
+    coordinator.commitTransferredActorTransaction(activation, actor, []),
+    /route open interrupted/
+  );
+  assert.equal(departures, 0);
+  assert.equal(clears, 0);
+  assert.equal(rollbacks, 0);
+  assert.equal(joined, actor);
+  assert.equal(sealed, true);
+});
+
+test('target ownership publication shutdown preserves the committed target location', async () => {
   const actor = { context: { actorId: 'alice' } };
+  const acceptedJournal = Buffer.from(JSON.stringify({
+    version: 1,
+    actorId: 'alice',
+    actorGeneration: '9',
+    sealId: 'seal-alice',
+    acceptedHighWater: '41',
+    entries: []
+  }));
+  const acceptedJournalChecksum = crc32c(acceptedJournal);
   let released = 0;
   let ownsLocation = false;
   let locationGeneration;
+  const shutdown = new AbortController();
   const state = {
     actorType: 'player',
     nativeActorRef: { nodeRid: rid('target-node'), actorId: 'alice', generation: 9n },
     remoteBoundSessionTarget: {
       routerChannelId: 'session.route',
       targetNodeRid: rid('source-node'),
-      spotId: rid('source-entry')
+      spotId: rid('source-entry'),
+      bindingGeneration: 5n,
+      previousAuthorityOwnerGeneration: 16n,
+      previousOwnerLeaseGeneration: 22n,
+      acceptedHighWater: 41n,
+      relocationSealId: 'seal-alice',
+      acceptedJournalReference: 'journal-alice',
+      acceptedJournalChecksumCrc32c: acceptedJournalChecksum
     },
     clearAfterDestroy() {},
     setJoinedSpot() {},
     get locationGeneration() { return locationGeneration; },
     setLocationGeneration(value) { locationGeneration = value; },
+    ownerLeaseGeneration: 23n,
+    setOwnerLeaseGeneration(value) { this.ownerLeaseGeneration = value; },
     get ownsLocation() { return ownsLocation; },
     markLocationOwned() { ownsLocation = true; },
     markLocationReleased() { ownsLocation = false; }
@@ -1969,14 +2308,17 @@ test('target ownership publication failure releases the claimed actor location',
       assert.equal(spotGeneration, 9n);
       assert.equal(membershipEpoch, 12n);
       assert.equal(ownerNodeGeneration, 4n);
-      return { status: 'claimed', generation: 17n };
+      return { status: 'claimed', generation: 17n, claimed: { leaseGeneration: 23n } };
     },
     async releaseActor() { released++; },
     async releaseActorEventually() { throw new Error('not used'); }
   };
   const runtime = new ZLinkActorTransferRuntime({
     routeTransport: {
-      async requestRawToSpot() { throw new Error('ownership route unavailable'); }
+      async requestToSpot() {
+        shutdown.abort();
+        throw new Error('ownership route unavailable');
+      }
     },
     spotManager: () => undefined,
     actorManager: () => ({
@@ -2000,23 +2342,22 @@ test('target ownership publication failure releases the claimed actor location',
     locationLifecycle: () => lifecycle,
     actorHandoff: {},
     actorTransferRegistry: {},
+    relocationStore: () => ({
+      async getRelocation() { return { kind: 'found', payload: acceptedJournal }; }
+    }),
+    shutdownSignal: () => shutdown.signal,
     clearRemoteActorPacketTarget() {}
   });
 
   await assert.rejects(
     async () => {
-      try {
-        await runtime.claimRoutedActorLocation(actor, rid('room'), 'play');
-        await runtime.publishRoutedActorOwnership(actor);
-      } catch (error) {
-        await runtime.rollbackRoutedActor(actor);
-        throw error;
-      }
+      await runtime.claimRoutedActorLocation(actor, rid('room'), 'play');
+      await runtime.publishRoutedActorOwnership(actor);
     },
-    /bound-session ownership update failed/
+    /stopped before command 45 ACK/
   );
-  assert.equal(released, 1);
-  assert.equal(ownsLocation, false);
+  assert.equal(released, 0);
+  assert.equal(ownsLocation, true);
   assert.equal(locationGeneration, 17n);
 });
 

@@ -38,11 +38,28 @@ function createReplyFrame(value) {
   ];
 }
 
-function createFailingResolver() {
+function actorLocation(actorId = 'actor-1', generation = 1n, meshName = 'play-mesh') {
+  const actor = actorRef(actorId, generation);
   return {
-    resolveActorRow() {
-      throw new Error('actor client must not resolve ActorRef targets');
-    }
+    meshName,
+    actorId,
+    actorType: 'Player',
+    actorRef: actor,
+    ownerNodeRid: actor.nodeRid,
+    ownerNodeGeneration: 7n,
+    spotKind: framework.ZLinkSpotKind.Entry,
+    spotId: 'node-a-entry-test',
+    spotGeneration: 1n,
+    membershipEpoch: 1n,
+    ownerId: 'owner-a',
+    updatedAt: new Date()
+  };
+}
+
+function createResolver(resolve = ({ actorId }) => actorLocation(actorId)) {
+  return {
+    resolveDirectActorRoute: (actorId, signal) => resolve({ actorId }, signal),
+    invalidateActorRoute() {}
   };
 }
 
@@ -71,15 +88,14 @@ test('actor client submit completes without exposing an admission result', async
       return 0;
     }
   };
-  const resolver = createFailingResolver();
+  const resolver = createResolver();
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     locationResolver: () => resolver
   });
 
   const call = client.sendToActor(
-    'play-mesh',
-    actorRef(),
+    'actor-1',
     new ActorNotify('ping')
   );
   const submitted = await call.submit();
@@ -96,7 +112,7 @@ test('actor client submit completes without exposing an admission result', async
   assert.equal(sends.length, 1);
 });
 
-test('actor client selects the MeshNode and completion table by explicit RouteMesh name', async () => {
+test('actor client selects the MeshNode and completion table from the current Actor authority', async () => {
   const selected = [];
   const nodes = new Map([
     ['mesh-a', {
@@ -141,14 +157,15 @@ test('actor client selects the MeshNode and completion table by explicit RouteMe
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: (meshName) => nodes.get(meshName),
     completionTableProvider: (meshName) => completions.get(meshName),
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver(({ actorId }) =>
+      actorLocation(actorId, 1n, actorId === 'actor-a' ? 'mesh-a' : 'mesh-b'))
   });
 
   const first = await client
-    .requestToActor('mesh-a', actorRef(), new ActorAsk('ping'))
+    .requestToActor('actor-a', new ActorAsk('ping'))
     .submit();
   const second = await client
-    .requestToActor('mesh-b', actorRef(), new ActorAsk('ping'))
+    .requestToActor('actor-b', new ActorAsk('ping'))
     .submit();
 
   assert.deepEqual(first, { mesh: 'mesh-a' });
@@ -160,8 +177,12 @@ test('actor client selects the MeshNode and completion table by explicit RouteMe
     'completion:mesh-b'
   ]);
   assert.throws(
-    () => client.requestToActor(' mesh-a', actorRef(), new ActorAsk('ping')),
-    /RouteMesh name must not be empty or padded/
+    () => client.requestToActor('', new ActorAsk('ping')),
+    /Actor ID must contain 1\.\.255 UTF-8 bytes/
+  );
+  assert.throws(
+    () => client.requestToActor('가'.repeat(86), new ActorAsk('ping')),
+    /Actor ID must contain 1\.\.255 UTF-8 bytes/
   );
 });
 
@@ -181,14 +202,14 @@ test('actor client request decodes the handler reply and never auto-creates a mi
     RequestResult.Ok,
     createReplyParts({ value: 'pong' })
   );
-  const resolver = createFailingResolver();
+  const resolver = createResolver();
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     completionTableProvider: () => completions,
     locationResolver: () => resolver
   });
 
-  const reply = await client.requestToActor('play-mesh', actorRef(), new ActorAsk('ping'))
+  const reply = await client.requestToActor('actor-1', new ActorAsk('ping'))
     .timeout(100)
     .submit();
 
@@ -208,16 +229,16 @@ test('actor client request decodes a single framed handler reply through stream 
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     completionTableProvider: () => completions,
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver()
   });
 
-  const reply = await client.requestToActor('play-mesh', actorRef(), new ActorAsk('ping'))
+  const reply = await client.requestToActor('actor-1', new ActorAsk('ping'))
     .submit();
 
   assert.deepEqual(reply, { value: 'framed-pong' });
 });
 
-test('actor client maps stale ActorRef submit without resolving a replacement', async () => {
+test('actor client invalidates a stale resolved route without retrying the operation', async () => {
   const first = actorRef('actor-1', 1n);
   const sends = [];
   const node = {
@@ -229,18 +250,21 @@ test('actor client maps stale ActorRef submit without resolving a replacement', 
       );
     }
   };
-  const resolver = createFailingResolver();
+  let invalidations = 0;
+  const resolver = createResolver(() => actorLocation('actor-1', 1n));
+  resolver.invalidateActorRoute = () => { invalidations += 1; };
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => node,
     locationResolver: () => resolver
   });
 
   await assert.rejects(
-    () => client.sendToActor('play-mesh', first, new ActorNotify('ping')).submit(),
+    () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
 
   assert.deepEqual(sends.map((actor) => actor.generation), [1n]);
+  assert.equal(invalidations, 1);
 });
 
 test('actor client submit maps native terminal outcomes to operation-specific errors', async () => {
@@ -252,11 +276,11 @@ test('actor client submit maps native terminal outcomes to operation-specific er
   const accepted = new framework.DefaultZLinkActorClient({
     nodeProvider: () => ({ sendToActor: () => 0 }),
     completionTableProvider: () => undefined,
-    locationResolver: () => createFailingResolver(),
+    locationResolver: () => createResolver(),
     meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
   });
   assert.equal(
-    await accepted.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+    await accepted.sendToActor('actor-1', new ActorNotify('ping')).submit(),
     undefined
   );
 
@@ -268,11 +292,11 @@ test('actor client submit maps native terminal outcomes to operation-specific er
         }
       }),
       completionTableProvider: () => undefined,
-      locationResolver: () => createFailingResolver(),
+      locationResolver: () => createResolver(),
       meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
     });
     await assert.rejects(
-      () => client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+      () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
       (error) => error.kind === expectedKind
     );
   }
@@ -281,11 +305,11 @@ test('actor client submit maps native terminal outcomes to operation-specific er
     const client = new framework.DefaultZLinkActorClient({
       nodeProvider: () => ({ sendToActor: () => nativeResult }),
       completionTableProvider: () => undefined,
-      locationResolver: () => createFailingResolver(),
+      locationResolver: () => createResolver(),
       meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
     });
     await assert.rejects(
-      () => client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+      () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(),
       (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
     );
   }
@@ -297,11 +321,11 @@ test('actor client submit maps native terminal outcomes to operation-specific er
       }
     }),
     completionTableProvider: () => undefined,
-    locationResolver: () => createFailingResolver(),
+    locationResolver: () => createResolver(),
     meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
   });
   await assert.rejects(
-    () => invalid.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+    () => invalid.sendToActor('actor-1', new ActorNotify('ping')).submit(),
     /submit result 6/
   );
 });
@@ -379,7 +403,7 @@ test('Mesh submit uses the configured per-mesh timeout and releases capacity aft
   registry.dispose();
 });
 
-test('actor target validation wins over a pre-aborted signal', async () => {
+test('pre-aborted Actor call does not read authority or submit transport work', async () => {
   const controller = new AbortController();
   controller.abort();
   let attempts = 0;
@@ -387,17 +411,17 @@ test('actor target validation wins over a pre-aborted signal', async () => {
     nodeProvider: () => ({
       sendToActor() {
         attempts += 1;
-        return zlink.SubmitResult.Ok;
+        return 0;
       }
     }),
     completionTableProvider: () => undefined,
-    locationResolver: () => createFailingResolver(),
+    locationResolver: () => createResolver(),
     staleActorRefPredicate: () => true
   });
 
   await assert.rejects(
-    () => client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(controller.signal),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
+    () => client.sendToActor('actor-1', new ActorNotify('ping')).submit(controller.signal),
+    (error) => error?.name === 'AbortError'
   );
   assert.equal(attempts, 0);
 });
@@ -406,10 +430,10 @@ test('actor client maps stale and disconnected route failures', async () => {
   const noNode = new framework.DefaultZLinkActorClient({
     nodeProvider: () => undefined,
     completionTableProvider: () => undefined,
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver()
   });
   await assert.rejects(
-    () => noNode.requestToActor('play-mesh', actorRef('missing'), new ActorAsk('ping')).submit(),
+    () => noNode.requestToActor('missing', new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
   );
 
@@ -421,10 +445,10 @@ test('actor client maps stale and disconnected route failures', async () => {
   const stale = new framework.DefaultZLinkActorClient({
     nodeProvider: () => staleNode,
     completionTableProvider: () => completionTable(RequestResult.Conflict),
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver(({ actorId }) => actorLocation(actorId, 1n))
   });
   await assert.rejects(
-    () => stale.requestToActor('play-mesh', actorRef('actor-1', 1n), new ActorAsk('ping')).submit(),
+    () => stale.requestToActor('actor-1', new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
 
@@ -436,10 +460,10 @@ test('actor client maps stale and disconnected route failures', async () => {
   const disconnected = new framework.DefaultZLinkActorClient({
     nodeProvider: () => disconnectedNode,
     completionTableProvider: () => completionTable(RequestResult.NotConnected),
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver()
   });
   await assert.rejects(
-    () => disconnected.requestToActor('play-mesh', actorRef(), new ActorAsk('ping')).submit(),
+    () => disconnected.requestToActor('actor-1', new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected && error.isRetriable === true
   );
 });
@@ -453,11 +477,11 @@ test('actor client preserves ActorRouteNotFound for a missing actor route', asyn
   const client = new framework.DefaultZLinkActorClient({
     nodeProvider: () => missingNode,
     completionTableProvider: () => completionTable(RequestResult.NotFound),
-    locationResolver: () => createFailingResolver()
+    locationResolver: () => createResolver(({ actorId }) => actorLocation(actorId))
   });
 
   await assert.rejects(
-    () => client.requestToActor('play-mesh', actorRef('missing-actor'), new ActorAsk('ping')).submit(),
+    () => client.requestToActor('missing-actor', new ActorAsk('ping')).submit(),
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound
   );
 });

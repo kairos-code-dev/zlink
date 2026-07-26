@@ -32,7 +32,8 @@ final class ZLinkAutoConnectLoop implements AutoCloseable {
 
     CompletionStage<Void> start() {
         running = true;
-        startupPollingUntilNanos = System.nanoTime() + options.heartbeatInterval().toNanos();
+        startupPollingUntilNanos = System.nanoTime()
+            + options.ownerLeaseRenewInterval().toNanos();
         return tick().whenComplete((ignored, failure) -> {
             if (running) {
                 scheduleNext();

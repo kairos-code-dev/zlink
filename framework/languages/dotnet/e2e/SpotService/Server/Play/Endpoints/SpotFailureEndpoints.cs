@@ -15,13 +15,12 @@ internal static class SpotFailureEndpoints
     {
         app.MapPost("/spot/missing-handler/request", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             SpotMissingHandlerReq request) =>
         {
             var before = evidence.Snapshot();
             var failed = await FailsAsync(
-                routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
+                routes.RequestToSpot(request.SpotRid,
                         new MissingSpotReq("sm-e1"))
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StateRes>().AsTask());
@@ -34,7 +33,6 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-handler/command", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             SpotMissingCommandReq request) =>
         {
@@ -43,7 +41,7 @@ internal static class SpotFailureEndpoints
             {
                 try
                 {
-                    await routes.SendToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
+                    await routes.SendToSpot(request.SpotRid,
                             new MissingSpotMsg(request.Marker)).Async(missingSendCts.Token);
                 }
                 catch (OperationCanceledException) when (missingSendCts.IsCancellationRequested)
@@ -60,17 +58,16 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/missing-target/request", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             SpotMissingTargetReq request) =>
         {
-            // The missing spot has no live location row, so the resolve itself
-            // is the expected failure — it must fail inside the awaited task.
+            // Direct routing resolves the missing global SpotId inside the
+            // awaited operation and returns the typed route failure.
             var failed = await FailsAsync(RequestMissingTargetAsync());
             return Results.Ok(new SpotMissingTargetRes(request.SpotRid, failed));
 
             async Task<StateRes> RequestMissingTargetAsync()
             {
-                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
+                return await routes.RequestToSpot(request.SpotRid,
                         new StateReq("noop", 0))
                     .Timeout(TimeSpan.FromSeconds(2))
                     .Async<StateRes>();
@@ -78,11 +75,10 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/slow/request", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             SpotSlowRouteReq request) =>
         {
             var timedOut = await FailsAsync(
-                routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
+                routes.RequestToSpot(request.SpotRid,
                         new SlowSpotReq(request.Marker, request.DelayMs))
                     .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
                     .Async<SlowSpotRes>().AsTask());
@@ -90,10 +86,9 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/timeout", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             SpotToSpotTimeoutRouteReq request) =>
         {
-            var result = await routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SourceSpotRid),
+            var result = await routes.RequestToSpot(request.SourceSpotRid,
                     new SpotToSpotTimeoutReq(request.TargetSpotRid, request.Marker))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<SpotToSpotTimeoutRes>();
@@ -101,12 +96,11 @@ internal static class SpotFailureEndpoints
         });
         app.MapPost("/spot/to-spot/negative", async (
             IZLinkSpotClient routes,
-            IZLinkSpotHandleResolver locator,
             EvidenceStore evidence,
             NodeOptions node,
             SpotToSpotNegativeRouteReq request) =>
         {
-            var result = await routes.RequestToSpot(await locator.ResolveRequiredAsync(request.SourceSpotRid),
+            var result = await routes.RequestToSpot(request.SourceSpotRid,
                     new SpotToSpotNegativeReq(request.TargetSpotRid, request.Marker))
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<SpotToSpotNegativeRes>();

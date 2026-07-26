@@ -36,11 +36,12 @@ internal static class SmB7ActorLifecycleOrderScenario
                                           && replies[1].Value == "order-2" && replies[1].Seen == 2,
             "SM-B7 stream replies did not preserve actor packet order.");
         var evidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq([$"actor-ping|rid=play-a|actor={actorId}", "value=order-2|seen=2"]))
+            .Body(new EvidenceWaitReq(["actor-ping|rid=play-a-", $"|actor={actorId}", "value=order-2|seen=2"]))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
-                line.Contains($"actor-ping|rid=play-a|actor={actorId}", StringComparison.Ordinal)
+                line.Contains("actor-ping|rid=play-a-", StringComparison.Ordinal)
+                && line.Contains($"|actor={actorId}", StringComparison.Ordinal)
                 && line.Contains("value=order-2|seen=2", StringComparison.Ordinal)),
             "SM-B7 evidence did not include ordered second request.");
         Console.WriteLine("operation SpotService.sm-b7 passed");

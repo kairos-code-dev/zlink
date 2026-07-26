@@ -67,6 +67,7 @@ final class ZLinkDeferredJoinAcceptedRecovery {
         return deliver(
             manifest,
             currentActor,
+            runtime.meshName(),
             runtime::actorById,
             runtime::submitActorDispatch);
     }
@@ -74,6 +75,7 @@ final class ZLinkDeferredJoinAcceptedRecovery {
     CompletionStage<Void> deliver(
         Manifest manifest,
         ZLinkBackendActorRef currentActor,
+        String meshName,
         Function<String, ZLinkActor> actorResolver,
         BiFunction<String, Supplier<CompletionStage<Void>>, CompletionStage<Void>>
             mailbox) {
@@ -106,7 +108,9 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                         new IllegalStateException(
                             "target Actor is not materialized for Join completion"));
                 }
-                ActorRef publicRef = ZLinkActorRuntime.toPublicActorRef(currentActor);
+                ActorRef publicRef = ZLinkActorRuntime.toPublicActorRef(
+                    currentActor,
+                    meshName);
                 ZLinkMessage reply = stored.rawReply().length == 0
                     ? ZLinkMessage.empty()
                     : ZLinkMessage.fromEncoded(

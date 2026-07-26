@@ -65,23 +65,13 @@ internal static class GatewayHostFactory
                 .TraceLabel(options.Rid);
             var externalMesh = framework.AddRouteMesh(SpotServiceNames.ExternalSpotChannel)
                 .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From(options.Rid));
-            externalMesh.ChannelName(SpotServiceNames.ExternalSpotChannel).SetWeight(0);
-            externalMesh.PeerConnections.Connect(
-                Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
+                .SetRoutingIdPrefix(options.Rid);
+            externalMesh.Channel(SpotServiceNames.ExternalSpotChannel).Client();
             var mesh19 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .SetRoutingIdPrefix(options.Rid);
             mesh19.Objects().Client();
-            mesh19.ChannelName(SpotServiceNames.SpotChannel);
-            if (!string.IsNullOrWhiteSpace(options.SpotPeerAEndpoint))
-                mesh19.PeerConnections.Connect(
-                    RoutingId.From("play-a"),
-                    options.SpotPeerAEndpoint);
-            if (!string.IsNullOrWhiteSpace(options.SpotPeerBEndpoint))
-                mesh19.PeerConnections.Connect(
-                    RoutingId.From("play-b"),
-                    options.SpotPeerBEndpoint);
+            mesh19.Channel(SpotServiceNames.SpotChannel).Client();
             var publisherConfig = mesh19.ConfigureSpotPublisher();
             publisherConfig.SendHighWaterMark = options.SpotPublisherSendHighWaterMark;
             publisherConfig.SendTimeout = TimeSpan.FromMilliseconds(
@@ -159,18 +149,16 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/spot/route-state", async (
             IZLinkSpotClient spotsClient,
-            IZLinkSpotHandleResolver handles,
             SpotStateRouteReq request,
             CancellationToken cancellationToken) =>
         {
-            var target = await handles.ResolveRequiredAsync(request.SpotRid, cancellationToken);
-            var reply = await spotsClient.RequestToSpot(target, new StateReq(request.Operation, request.Delta))
+            var reply = await spotsClient
+                .RequestToSpot(request.SpotRid, new StateReq(request.Operation, request.Delta))
                 .Async<StateRes>(cancellationToken);
             return Results.Ok(reply);
         });
         app.MapPost("/actor/push", async (
             ActorPushByActorReq request,
-            IZLinkActorManager actorDirectory,
             IZLinkActorClient actors,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
@@ -178,13 +166,8 @@ internal static class GatewayHostFactory
             evidence.Add($"actor-push-request|rid={options.Rid}|actor={request.ActorId}|value={request.Value}");
             try
             {
-                var actor = await actorDirectory.FindAsync(request.ActorId, cancellationToken)
-                            ?? throw new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                                $"Actor route '{request.ActorId}' was not found.");
                 var reply = await actors.RequestToActor(
-                        SpotServiceNames.SpotChannel,
-                        actor,
+                        request.ActorId,
                         new ActorPushReq(request.Value))
                     .Timeout(TimeSpan.FromSeconds(10))
                     .Async<ActorPingRes>(cancellationToken);
@@ -244,7 +227,7 @@ internal static class GatewayHostFactory
                             ZLinkFrameworkErrorKind.ActorRouteNotFound,
                             $"Actor route '{request.ActorId}' was not found.");
             return Results.Ok(new ActorRefSnapshotRes(
-                actor.ActorId, actor.NodeRid.ToString(), actor.Generation));
+                actor.ActorId, actor.NodeRid.ToString(), actor.ObjectGeneration));
         });
         app.MapPost("/actor/request-ref", async (
             ActorRefRequestReq request,
@@ -253,15 +236,11 @@ internal static class GatewayHostFactory
         {
             try
             {
-                var actor = new ActorRef(
-                    RoutingId.From(request.Actor.NodeRid),
-                    request.Actor.ActorId,
-                    request.Actor.Generation);
                 var call = request.DelayMilliseconds > 0
-                    ? actors.RequestToActor(SpotServiceNames.SpotChannel, actor,
+                    ? actors.RequestToActor(request.Actor.ActorId,
                         new SlowActorPingReq(request.Value, request.DelayMilliseconds))
                     : actors.RequestToActor(
-                        SpotServiceNames.SpotChannel, actor, new ActorPingReq(request.Value));
+                        request.Actor.ActorId, new ActorPingReq(request.Value));
                 var reply = await call
                     .Timeout(TimeSpan.FromMilliseconds(
                         Math.Clamp(request.TimeoutMilliseconds, 1, 30000)))
@@ -280,7 +259,6 @@ internal static class GatewayHostFactory
         app.MapPost("/node/wait-ready", async (
             NodeReadinessWaitReq request,
             IZLinkLocationRuntimeQuery locations,
-            IZLinkSpotHandleResolver handles,
             IZLinkSpotClient spotsClient,
             IZLinkRouteMeshRuntime meshRuntime,
             CancellationToken cancellationToken) =>
@@ -293,20 +271,25 @@ internal static class GatewayHostFactory
             while (DateTimeOffset.UtcNow < deadline)
             {
                 var peers = await locations.ListMeshNodeDescriptorsAsync(
-                    SpotServiceNames.SpotChannel, cancellationToken);
-                var peerReady = peers.Any(row => string.Equals(
-                    row.Rid.ToString(), request.NodeRid, StringComparison.Ordinal));
-                var entry = await handles.ResolveSpotHandleAsync(
                     SpotServiceNames.SpotChannel,
-                    request.NodeRid,
-                    cancellationToken);
+                    cancellationToken: cancellationToken);
+                var descriptor = peers.Items.SingleOrDefault(row =>
+                {
+                    var rowRid = row.Rid.ToString();
+                    return string.Equals(rowRid, request.NodeRid, StringComparison.Ordinal)
+                           || rowRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal);
+                });
+                var peerReady = descriptor is not null;
+                var entrySpotId = descriptor?.EntrySpotId;
                 lastPeerReady = peerReady;
-                lastEntryReady = entry is not null;
-                if (peerReady && entry is not null)
+                lastEntryReady = entrySpotId is not null;
+                if (peerReady && entrySpotId is not null)
                     try
                     {
                         var marker = $"ready-{Guid.NewGuid():N}";
-                        var reply = await spotsClient.RequestToSpot(entry, new EntryReadinessReq(marker))
+                        var reply = await spotsClient.RequestToSpot(
+                                entrySpotId,
+                                new EntryReadinessReq(marker))
                             .Timeout(TimeSpan.FromSeconds(1))
                             .Async<EntryReadinessRes>(cancellationToken);
                         if (reply.NodeRid == request.NodeRid && reply.Marker == marker)
@@ -332,17 +315,21 @@ internal static class GatewayHostFactory
         app.MapPost("/entry/join", async (
             EntryJoinRouteReq request,
             IZLinkSpotClient spotsClient,
-            IZLinkSpotHandleResolver handles,
+            IZLinkLocationRuntimeQuery locations,
             IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
         {
-            var entry = await handles.ResolveSpotHandleAsync(
-                            SpotServiceNames.SpotChannel,
-                            request.NodeRid,
-                            cancellationToken)
-                        ?? throw new InvalidOperationException(
-                            $"Entry Spot for node '{request.NodeRid}' is not ready.");
-            var joined = await spotsClient.RequestToSpot(entry, request.Join)
+            var descriptors = await locations.ListMeshNodeDescriptorsAsync(
+                SpotServiceNames.SpotChannel,
+                cancellationToken: cancellationToken);
+            var entrySpotId = descriptors.Items.SingleOrDefault(descriptor =>
+                                  descriptor.Rid.ToString().StartsWith(
+                                      $"{request.NodeRid}-",
+                                      StringComparison.Ordinal))
+                              ?.EntrySpotId
+                              ?? throw new InvalidOperationException(
+                                  $"Entry Spot for node '{request.NodeRid}' is not ready.");
+            var joined = await spotsClient.RequestToSpot(entrySpotId, request.Join)
                 .Async<JoinRes>(cancellationToken);
             var elapsed = Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromSeconds(3))

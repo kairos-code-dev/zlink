@@ -37,7 +37,7 @@ internal sealed class ApplicationJoinCoordinator(
             };
             evidence.Add(
                 $"application-join-completed|actor={actor.ActorId}|node={actor.NodeRid}"
-                + $"|generation={actor.Generation}");
+                + $"|generation={actor.ObjectGeneration}");
         }
         catch (Exception error)
         {

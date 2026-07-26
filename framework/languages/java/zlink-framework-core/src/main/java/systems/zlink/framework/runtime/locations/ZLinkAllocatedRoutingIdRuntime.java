@@ -230,14 +230,14 @@ public final class ZLinkAllocatedRoutingIdRuntime
         if (groups.isEmpty()) {
             return;
         }
-        Duration renewalDeadline = options.heartbeatInterval()
+        Duration renewalDeadline = options.ownerLeaseRenewInterval()
             .plus(options.ownerLeaseRenewTimeout());
         Duration fencingDeadline = options.ownerLeaseTtl()
-            .minus(options.routingIdFencingMargin());
+            .minus(options.ownerLeaseFencingMargin());
         if (!renewalDeadline.minus(fencingDeadline).isNegative()) {
             throw new ZLinkConfigurationException(
-                "routing ID lease options must satisfy heartbeatInterval + "
-                    + "ownerLeaseRenewTimeout < ownerLeaseTtl - routingIdFencingMargin");
+                "owner lease options must satisfy ownerLeaseRenewInterval + "
+                    + "ownerLeaseRenewTimeout < ownerLeaseTtl - ownerLeaseFencingMargin");
         }
     }
 

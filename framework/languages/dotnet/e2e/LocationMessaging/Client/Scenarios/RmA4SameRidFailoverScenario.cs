@@ -5,10 +5,10 @@ using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Scenarios;
 
-// RM-A4 verifies that the location store keeps the same logical provider rid
-// after the backing provider process is replaced with a new endpoint: the
-// runtime query peer list must show a single live api-a row at the new
-// endpoint before traffic is resumed (peer handover, stale endpoint avoided).
+// RM-A4 verifies replacement under the same application prefix. Automatic
+// topology issues a new physical RID for the new process, so the runtime query
+// must remove the old row and expose one live api-a-prefixed row at the new
+// endpoint before traffic resumes.
 internal static class RmA4SameRidFailoverScenario
 {
     public static async Task RunAsync(ClientOptions options)
@@ -36,8 +36,8 @@ internal static class RmA4SameRidFailoverScenario
 
         var drained = await cluster.StopAsync(providerV1);
         ZlinkStreamAssert.Ensure(
-            drained is { Result: "Drained", Reason: null },
-            $"RM-A4 v1 did not reach terminal Drained: {drained.Result}/{drained.Reason}.");
+            drained is { Result: "Stopped", Reason: null },
+            $"RM-A4 v1 did not reach terminal Stopped: {drained.Result}/{drained.Reason}.");
         await WaitForPeerAsync(observer, "api-a", present: false);
 
         var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
@@ -45,8 +45,8 @@ internal static class RmA4SameRidFailoverScenario
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
 
-        // Wait until the runtime query's peer list shows the api-a rid served
-        // by exactly one live row whose endpoint is v2's (doc RM-A4).
+        // Wait until the runtime query shows one current api-a-prefixed row at
+        // v2's endpoint; the previous physical RID must no longer be live.
         await WaitForSingleLiveRowAsync(providerV2Client, providerV2.ChannelEndpoint);
 
         var beforeV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);

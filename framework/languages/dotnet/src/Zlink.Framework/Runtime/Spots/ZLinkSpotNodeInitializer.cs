@@ -187,9 +187,9 @@ internal sealed class ZLinkSpotNodeInitializer(
 
     private static bool RequiresAutomaticDescriptorClaim(
         ZLinkSpotNodeRegistration registration) =>
-        registration.ObjectRoleSelected
-        && !registration.HasExplicitRoutingId
-        && registration.Router is not null;
+        !registration.HasExplicitRoutingId
+        && registration.Router?.AcquisitionMode
+            == ZLinkPeerAcquisitionMode.AutoConnect;
 
     private static Exception CreateClaimFailure(
         ZLinkSpotNodeRegistration registration,

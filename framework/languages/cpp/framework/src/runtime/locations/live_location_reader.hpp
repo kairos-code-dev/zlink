@@ -25,10 +25,45 @@ class live_location_reader_t final
 {
   public:
     live_location_reader_t (location_store_t &store, location_options_t options = {}) :
-        _store (&store)
+        _store (&store), _options (std::move (options))
     {
-        static_cast<void> (options);
     }
+
+    std::optional<std::chrono::steady_clock::duration>
+    owner_admission_lifetime (const std::string &owner_id)
+    {
+        const auto lease = _store->read_owner_lease (owner_id).result ().value ();
+        const auto *found = std::get_if<owner_lease_found_t> (&lease);
+        return admission_lifetime (found);
+    }
+
+    std::optional<std::chrono::steady_clock::duration>
+    owner_admission_lifetime (const location_owner_token_t &owner)
+    {
+        const auto lease = _store->read_owner_lease (owner.owner_id).result ().value ();
+        const auto *found = std::get_if<owner_lease_found_t> (&lease);
+        if (found == nullptr || found->token.lease_generation != owner.lease_generation) {
+            return std::nullopt;
+        }
+        return admission_lifetime (found);
+    }
+
+  private:
+    std::optional<std::chrono::steady_clock::duration>
+    admission_lifetime (const owner_lease_found_t *found) const
+    {
+        if (found == nullptr || found->lease_expires_at <= found->store_now) {
+            return std::nullopt;
+        }
+        const auto remaining = found->lease_expires_at - found->store_now
+                               - _options.owner_lease_fencing_margin;
+        if (remaining <= std::chrono::system_clock::duration::zero ()) {
+            return std::nullopt;
+        }
+        return std::chrono::duration_cast<std::chrono::steady_clock::duration> (remaining);
+    }
+
+  public:
 
     task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter)
     {
@@ -87,6 +122,11 @@ class live_location_reader_t final
     {
         auto row = _store->resolve_route (std::move (key)).result ().value ();
         return completed (live (std::move (row)));
+    }
+
+    task_t<authority_read_result_t> read_authority (authority_key_t key)
+    {
+        return _store->read_authority (std::move (key));
     }
 
     task_t<location_page_t<route_location_t>>
@@ -197,6 +237,7 @@ class live_location_reader_t final
     }
 
     location_store_t *_store;
+    location_options_t _options;
 };
 
 } // namespace zlink::framework::runtime

@@ -187,10 +187,11 @@ export class ZLinkActorRuntimeOptionsFactory {
   }
 
   createActorClientOptions(): ConstructorParameters<typeof DefaultZLinkActorClient>[0] {
+    const locationResolver = this.options.createActorLocationResolver();
     return {
       nodeProvider: this.options.meshNode,
       completionTableProvider: this.options.meshCompletions,
-      locationResolver: this.options.createActorLocationResolver,
+      locationResolver: () => locationResolver,
       messageSerializers: this.options.registration.messageSerializers,
       defaultRequestTimeoutMs: this.options.registration.requestTimeoutMs,
       staleActorRefReporter: (_meshName, actorId) => this.options.actorHandoff.recordStaleFailure(actorId),

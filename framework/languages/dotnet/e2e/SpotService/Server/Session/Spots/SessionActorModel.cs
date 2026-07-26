@@ -101,9 +101,12 @@ internal sealed class ScenarioUserSpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }

@@ -15,9 +15,9 @@ class ZLinkAllocatedRoutingIdRuntimeTest {
     void locationLeaseDefaultsMatchRoutingIdAllocationContract() {
         ZLinkLocationOptions options = new ZLinkLocationOptions();
 
-        assertEquals(Duration.ofSeconds(10), options.heartbeatInterval());
+        assertEquals(Duration.ofSeconds(5), options.ownerLeaseRenewInterval());
         assertEquals(Duration.ofSeconds(30), options.ownerLeaseTtl());
-        assertEquals(Duration.ofSeconds(5), options.routingIdFencingMargin());
+        assertEquals(Duration.ofSeconds(5), options.ownerLeaseFencingMargin());
         assertEquals(Duration.ofSeconds(3), options.ownerLeaseRenewTimeout());
     }
 
@@ -27,12 +27,12 @@ class ZLinkAllocatedRoutingIdRuntimeTest {
         options.addRouteMesh("room")
             .useAllocatedRoutingId(2, "play");
         ZLinkLocationOptions locationOptions = new ZLinkLocationOptions();
-        locationOptions.setHeartbeatInterval(Duration.ofSeconds(22));
+        locationOptions.setOwnerLeaseRenewInterval(Duration.ofSeconds(22));
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime locations = new ZLinkLocationRuntime(
             ZLinkRegisteredLocationStores.fromUnified(store),
             locationOptions.ownerLeaseTtl(),
-            locationOptions.heartbeatInterval());
+            locationOptions.ownerLeaseRenewInterval());
 
         try {
             assertThrows(
@@ -58,7 +58,7 @@ class ZLinkAllocatedRoutingIdRuntimeTest {
         ZLinkLocationRuntime locations = new ZLinkLocationRuntime(
             ZLinkRegisteredLocationStores.fromUnified(store),
             locationOptions.ownerLeaseTtl(),
-            locationOptions.heartbeatInterval());
+            locationOptions.ownerLeaseRenewInterval());
         locations.start(RoutingId.from("owner-node")).toCompletableFuture().join();
 
         try (ZLinkAllocatedRoutingIdRuntime runtime = new ZLinkAllocatedRoutingIdRuntime(

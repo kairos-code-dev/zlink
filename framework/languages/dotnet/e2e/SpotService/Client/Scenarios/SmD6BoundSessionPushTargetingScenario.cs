@@ -7,7 +7,10 @@ namespace SpotService.Client.Scenarios;
 
 internal static class SmD6BoundSessionPushTargetingScenario
 {
-    public static async Task RunAsync(string sessionAStreamEndpoint, string sessionBStreamEndpoint)
+    public static async Task RunAsync(
+        string sessionAStreamEndpoint,
+        string sessionBStreamEndpoint,
+        Func<Task>? prepareShadowPlacement = null)
     {
         IZlinkStreamConnector? bound = null;
         IZlinkStreamConnector? unbound = null;
@@ -26,6 +29,9 @@ internal static class SmD6BoundSessionPushTargetingScenario
             await bound.Request(new AuthReq("actor-sm-d6", "bound", "play-a"))
                 .PacketName("AuthReq")
                 .Async<AuthRes>();
+
+            if (prepareShadowPlacement is not null)
+                await prepareShadowPlacement();
 
             unbound = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {

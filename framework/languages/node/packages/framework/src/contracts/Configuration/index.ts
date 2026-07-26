@@ -5,6 +5,8 @@ export type {
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,
+  ZLinkMeshChannelClientBuilder,
+  ZLinkMeshChannelServerBuilder,
   ZLinkMeshObjectClientBuilder,
   ZLinkMeshObjectRoleBuilder,
   ZLinkMeshObjectServerBuilder,
@@ -12,6 +14,7 @@ export type {
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
+  ZLinkNetworkOptions,
   ZLinkMetadataPolicyBuilder,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamNodeBuilder

@@ -574,6 +574,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         return _node.Status();
     }
 
+    public MeshOperationId AllocateOperationId()
+    {
+        return _node.AllocateOperationId();
+    }
+
     public IReadOnlyList<MeshNodePeer> MeshPeers()
     {
         return _node.Peers();

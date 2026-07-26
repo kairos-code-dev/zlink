@@ -111,6 +111,29 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Alternate backends may not yet own Framework Actor creation.
     }
 
+    /**
+     * Installs the infrastructure-only relocation command endpoint. Commands
+     * use the admitted RouteMesh peer and never enter an application mailbox.
+     */
+    default void setRelocationControlHandler(
+        RelocationControlHandler handler) {
+        // Alternate backends may not yet support remote relocation control.
+    }
+
+    /**
+     * Sends one relocation command to the exact target node. The transport
+     * performs one submission only; a stale or failed route is not resolved
+     * and retried inside the same operation.
+     */
+    default CompletionStage<byte[]> requestRelocationControl(
+        RoutingId targetNodeRid,
+        byte[] command,
+        Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote relocation control is unavailable"));
+    }
+
     default CompletionStage<ActorCreateResponse> requestActorCreate(
         RoutingId targetNodeRid,
         ActorCreateIntent intent,
@@ -172,6 +195,13 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     interface ActorCreateOperationHandler {
         CompletionStage<ActorCreateResponse> create(
             ActorCreateRequest request);
+    }
+
+    @FunctionalInterface
+    interface RelocationControlHandler {
+        CompletionStage<byte[]> handle(
+            RoutingId sourceNodeRid,
+            byte[] command);
     }
 
     record UserSpotCreateIntent(

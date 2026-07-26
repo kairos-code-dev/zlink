@@ -31,7 +31,9 @@ internal static class SmD2RemoteActorSessionRelayScenario
             .PacketName("ActorPushReq").Async<ActorPingRes>();
         var remoteNotify = await remotePushed;
         ZlinkStreamAssert.Ensure(remoteReply.ActorId == "actor-sm-d2", "SM-D2 actor reply mismatch.");
-        ZlinkStreamAssert.Ensure(remoteReply.NodeRid == "play-b", "SM-D2 remote node mismatch.");
+        ZlinkStreamAssert.Ensure(
+            remoteReply.NodeRid.StartsWith("play-b-", StringComparison.Ordinal),
+            "SM-D2 remote node mismatch.");
         ZlinkStreamAssert.Ensure(remoteNotify.Payload.ActorId == "actor-sm-d2", "SM-D2 push actor mismatch.");
         ZlinkStreamAssert.Ensure(remoteNotify.Payload.Value == "push-remote", "SM-D2 push value mismatch.");
 

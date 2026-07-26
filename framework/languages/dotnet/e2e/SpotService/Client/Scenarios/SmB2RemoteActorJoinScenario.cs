@@ -29,7 +29,9 @@ internal static class SmB2RemoteActorJoinScenario
             .Async<ActorPingRes>();
 
         ZlinkStreamAssert.Ensure(reply.ActorId == actorId, "SM-B2 actor reply mismatch.");
-        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-b", "SM-B2 remote node mismatch.");
+        ZlinkStreamAssert.Ensure(
+            reply.NodeRid.StartsWith("play-b-", StringComparison.Ordinal),
+            "SM-B2 remote node mismatch.");
         var expectedEvidence = new[]
         {
             $"entry-created|rid=play-b|actor={actorId}",

@@ -42,6 +42,11 @@ public record ZLinkObjectReservationRequest(
             creatingPayload,
             "creatingPayload").clone();
         Objects.requireNonNull(capacityBundle, "capacityBundle");
+        if (capacityBundle.actorSlots() == 0
+            && capacityBundle.spotSlots() == 0) {
+            throw new IllegalArgumentException(
+                "object reservation must reserve at least one slot");
+        }
     }
 
     @Override

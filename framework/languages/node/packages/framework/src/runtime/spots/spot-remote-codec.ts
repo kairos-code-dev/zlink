@@ -136,7 +136,13 @@ export function decodeRemoteActorJoinPayload(
       payload.boundSessionNodeRidHex,
       payload.boundSessionRid,
       payload.boundSessionRidHex,
-      payload.boundSessionBindingGeneration
+      payload.boundSessionBindingGeneration,
+      payload.boundSessionPreviousAuthorityOwnerGeneration,
+      payload.boundSessionPreviousOwnerLeaseGeneration,
+      payload.boundSessionAcceptedHighWater,
+      payload.boundSessionRelocationSealId,
+      payload.boundSessionAcceptedJournalReference,
+      payload.boundSessionAcceptedJournalChecksumCrc32c
     ),
     request
   };
@@ -183,7 +189,13 @@ export function decodeRemoteBoundSessionTarget(
   sessionNodeRidHex: unknown,
   sessionRid: unknown,
   sessionRidHex: unknown,
-  bindingGeneration: unknown
+  bindingGeneration: unknown,
+  previousAuthorityOwnerGeneration?: unknown,
+  previousOwnerLeaseGeneration?: unknown,
+  acceptedHighWater?: unknown,
+  relocationSealId?: unknown,
+  acceptedJournalReference?: unknown,
+  acceptedJournalChecksumCrc32c?: unknown
 ): ZLinkRemoteBoundSessionTarget | undefined {
   if (
     typeof routerChannelId !== 'string' ||
@@ -205,6 +217,22 @@ export function decodeRemoteBoundSessionTarget(
       : undefined,
     bindingGeneration: typeof bindingGeneration === 'string'
       ? BigInt(bindingGeneration)
+      : undefined,
+    previousAuthorityOwnerGeneration: typeof previousAuthorityOwnerGeneration === 'string'
+      ? BigInt(previousAuthorityOwnerGeneration)
+      : undefined,
+    previousOwnerLeaseGeneration: typeof previousOwnerLeaseGeneration === 'string'
+      ? BigInt(previousOwnerLeaseGeneration)
+      : undefined,
+    acceptedHighWater: typeof acceptedHighWater === 'string'
+      ? BigInt(acceptedHighWater)
+      : undefined,
+    relocationSealId: typeof relocationSealId === 'string' ? relocationSealId : undefined,
+    acceptedJournalReference: typeof acceptedJournalReference === 'string'
+      ? acceptedJournalReference
+      : undefined,
+    acceptedJournalChecksumCrc32c: typeof acceptedJournalChecksumCrc32c === 'number'
+      ? acceptedJournalChecksumCrc32c
       : undefined
   };
 }

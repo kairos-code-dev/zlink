@@ -218,7 +218,17 @@ void mesh_node_runtime_t::start ()
         node->configure_user_spot_operations (
           _user_spot_store, _user_spot_materializer);
     }
+    if (_instance_spot_materializer) {
+        node->configure_instance_spot_operations (
+          _user_spot_store, _instance_spot_relocations,
+          _instance_spot_owner, _instance_spot_materializer);
+    }
+    if (_session_route_owner_resolver)
+        node->configure_session_route_owner (
+          _session_route_owner_resolver);
     node->start ();
+    if (_instance_spot_materializer)
+        (void) node->recover_instance_spot_activations ();
     const auto resolved_endpoint = node->status ().local_endpoint ();
     if (!resolved_endpoint.empty ()) {
         _state->listen_endpoint = resolved_endpoint;
@@ -253,6 +263,65 @@ void mesh_node_runtime_t::configure_user_spot_operations (
           "User Spot operations must be configured before MeshNode start");
     _user_spot_store = std::move (store);
     _user_spot_materializer = std::move (materializer);
+}
+
+void mesh_node_runtime_t::configure_instance_spot_operations (
+  std::shared_ptr<location_store_t> store,
+  std::shared_ptr<runtime::stateful::relocation_store_port_t> relocations,
+  location_owner_token_t owner,
+  host::instance_spot_activation_materializer_t materializer)
+{
+    if (_node)
+        throw configuration_error (
+          "Instance Spot operations must be configured before MeshNode start");
+    if (!store || !relocations || owner.owner_id.empty ()
+        || owner.lease_generation <= 0 || !materializer)
+        throw configuration_error (
+          "Instance Spot operations require Location and Relocation Stores, an owner lease, and a materializer");
+    _user_spot_store = std::move (store);
+    _instance_spot_relocations = std::move (relocations);
+    _instance_spot_owner = std::move (owner);
+    _instance_spot_materializer = std::move (materializer);
+}
+
+void mesh_node_runtime_t::configure_session_route_owner (
+  std::function<std::optional<location_owner_token_t> ()>
+    owner_resolver)
+{
+    if (!owner_resolver)
+        throw configuration_error (
+          "Session route owner resolver is required");
+    _session_route_owner_resolver = std::move (owner_resolver);
+    if (_node)
+        _node->configure_session_route_owner (
+          _session_route_owner_resolver);
+}
+
+bool mesh_node_runtime_t::activate_instance_spot_remote (
+  const zlink::routing_id_t &target_node,
+  runtime::protocol::instance_spot_activation_header_t request,
+  std::optional<std::vector<std::uint8_t>> metadata,
+  runtime::protocol::application_payload_t application_payload,
+  std::chrono::milliseconds timeout,
+  host::instance_spot_activation_completion_t completion)
+{
+    if (!_node)
+        return false;
+    return _node->activate_instance_spot_remote (
+      target_node, std::move (request), std::move (metadata),
+      std::move (application_payload), timeout,
+      std::move (completion));
+}
+
+bool mesh_node_runtime_t::send_instance_spot_activation_remote (
+  const zlink::routing_id_t &target_node,
+  runtime::protocol::instance_spot_activation_header_t request,
+  std::optional<std::vector<std::uint8_t>> metadata,
+  runtime::protocol::application_payload_t application_payload)
+{
+    return _node && _node->send_instance_spot_activation_remote (
+      target_node, std::move (request), std::move (metadata),
+      std::move (application_payload));
 }
 
 void mesh_node_runtime_t::stop () noexcept
@@ -830,16 +899,30 @@ mesh_node_runtime_t::relay_application_actor (
   const zlink::message_t &payload,
   std::chrono::milliseconds timeout)
 {
+    runtime::messaging::client_call_codec_t codec;
+    const auto kind =
+      header.kind () == stream_message_kind_t::send
+        ? runtime::messaging::message_kind_t::command
+        : runtime::messaging::message_kind_t::request;
+    auto envelope =
+      codec.create_envelope (kind, "actor", std::string (header.packet_name ()), timeout);
+    envelope.metadata = header.metadata ().values ();
+    if (const auto correlation = header.correlation_id ())
+        envelope.correlation_id = std::string (*correlation);
+    return relay_application_actor (actor, envelope, payload, timeout);
+}
+
+result_t<std::optional<zlink::message_t>>
+mesh_node_runtime_t::relay_application_actor (
+  const actor_ref_t &actor,
+  const runtime::messaging::envelope_header_t &header,
+  const zlink::message_t &payload,
+  std::chrono::milliseconds timeout)
+{
     try {
-        runtime::messaging::client_call_codec_t codec;
-        const auto kind =
-          header.kind () == stream_message_kind_t::send
-            ? runtime::messaging::message_kind_t::command
-            : runtime::messaging::message_kind_t::request;
-        auto envelope =
-          codec.create_envelope (kind, "actor", std::string (header.packet_name ()), timeout);
+        const auto kind = header.kind;
         auto encoded =
-          runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (envelope, payload);
+          runtime::messaging::envelope_codec_t{}.encode_raw_body_parts (header, payload);
         const auto native_actor = host::mesh_node_t::remote_actor_ref (
           zlink::routing_id_t::from (std::string (actor.node_rid ().value ())),
           std::string (actor.actor_id ()), actor.generation ());

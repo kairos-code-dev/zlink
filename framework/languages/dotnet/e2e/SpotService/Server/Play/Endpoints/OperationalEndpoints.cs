@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using SpotService.Shared;
+using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Locations;
 
 namespace SpotService.Server.Play.Endpoints;
 
@@ -30,6 +32,32 @@ internal static class OperationalEndpoints
             await Task.Yield();
             evidence.Add($"control-ping|rid={node.Rid}|value={request.Value}");
             return Results.Ok(new ControlPingRes(request.Value, node.Rid));
+        });
+        app.MapPost("/placement-weight", async (
+            PlacementWeightReq request,
+            NodeOptions node,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions,
+            IZLinkLocationRuntimeQuery location,
+            CancellationToken cancellationToken) =>
+        {
+            runtimeOptions.Mesh(SpotServiceNames.SpotChannel).PlacementWeight = request.Weight;
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < deadline)
+            {
+                var page = await location.ListMeshNodeDescriptorsAsync(
+                    SpotServiceNames.SpotChannel,
+                    cancellationToken: cancellationToken);
+                if (page.Items.Any(descriptor =>
+                        descriptor.Rid.ToString().StartsWith(
+                            node.Rid + "-",
+                            StringComparison.Ordinal)
+                        && descriptor.PlacementWeight == request.Weight))
+                {
+                    return Results.Ok(new PlacementWeightRes(request.Weight));
+                }
+                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken);
+            }
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

@@ -69,6 +69,10 @@ export class ZLinkLocationRuntimeOwner {
     return this.events;
   }
 
+  get currentLeaseTracker(): ZLinkOwnerLeaseTracker | undefined {
+    return this.leaseTrackerState?.tracker;
+  }
+
   routingIdAllocationStore(): ZLinkRoutingIdSlotAllocationStore | undefined {
     const store = this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
     return isRoutingIdAllocationStore(store) ? store : undefined;
@@ -77,6 +81,10 @@ export class ZLinkLocationRuntimeOwner {
   actorTransferStore(): ZLinkActorTransferStore | undefined {
     const store = this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
     return isActorTransferStore(store) ? store : undefined;
+  }
+
+  locationStore(): ZLinkLocationStore | undefined {
+    return this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
   }
 
   ensureRuntime(primaryMeshName: string | undefined): ZLinkLocationRuntime | undefined {
@@ -107,10 +115,11 @@ export class ZLinkLocationRuntimeOwner {
       return undefined;
     }
     return new ZLinkStoreLocationResolvers({
-      stores,
+      stores: { ...stores, authorityStore: stores.locationStore },
       leaseTracker: this.leaseTracker(stores),
       events: this.events,
-      spotMeshNames
+      spotMeshNames,
+      routeCacheMaxAgeMs: this.options.registration.locations.options.routeCacheMaxAgeMs
     });
   }
 
@@ -125,9 +134,10 @@ export class ZLinkLocationRuntimeOwner {
     }
     return new ZLinkLocationSpotRouteResolver(
       new ZLinkStoreLocationResolvers({
-        stores,
+        stores: { ...stores, authorityStore: stores.locationStore },
         leaseTracker: this.leaseTracker(stores),
-        events: this.events
+        events: this.events,
+        routeCacheMaxAgeMs: this.options.registration.locations.options.routeCacheMaxAgeMs
       }),
       spotMeshNames,
       spotRouterChannelIdByMesh,
@@ -141,10 +151,11 @@ export class ZLinkLocationRuntimeOwner {
       return undefined;
     }
     return new ZLinkStoreLocationResolvers({
-      stores,
+      stores: { ...stores, authorityStore: stores.locationStore },
       leaseTracker: this.leaseTracker(stores),
       events: this.events,
-      spotMeshNames
+      spotMeshNames,
+      routeCacheMaxAgeMs: this.options.registration.locations.options.routeCacheMaxAgeMs
     });
   }
 
@@ -226,6 +237,7 @@ export class ZLinkLocationRuntimeOwner {
       const store = new ZLinkInMemoryLocationStore();
       return {
         locationStore: store,
+        authorityStore: store,
         clientServerStore: store,
         fanoutStore: store,
         peerStore: store,
@@ -240,6 +252,7 @@ export class ZLinkLocationRuntimeOwner {
       const runtimeStore = requireOperationalLocationStore(store);
       return {
         locationStore: store,
+        authorityStore: store,
         clientServerStore: isClientServerLocationStore(store) ? store : undefined,
         fanoutStore: isFanoutLocationStore(store) ? store : undefined,
         peerStore: runtimeStore,

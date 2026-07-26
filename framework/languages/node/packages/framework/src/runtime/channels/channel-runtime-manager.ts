@@ -43,6 +43,7 @@ import { ZLinkChannelRuntimeLifecycle } from './channel-runtime-lifecycle';
 import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
 
 export class ZLinkChannelRuntimeManager {
+  private readonly registration: ZLinkFrameworkRegistration;
   private readonly sockets: ZLinkChannelSocketRegistry;
   private readonly spotRoutes: ZLinkSpotRouteDispatchStrategy;
   private readonly outbound: ZLinkChannelOutboundOperations;
@@ -55,6 +56,7 @@ export class ZLinkChannelRuntimeManager {
     providerResolver?: ZLinkProviderResolver,
     options: ZLinkChannelRuntimeManagerOptions = {}
   ) {
+    this.registration = registration;
     this.sockets = new ZLinkChannelSocketRegistry(
       registration,
       adapter,
@@ -96,6 +98,36 @@ export class ZLinkChannelRuntimeManager {
       internalRouteSendHandlers: options.internalRouteSendHandlers,
       internalRouteRequestHandlers: options.internalRouteRequestHandlers
     });
+  }
+
+  clientServerTopology(channelName: string) {
+    const channel = this.registration.channels.get(channelName);
+    const client = channel?.client !== undefined;
+    const server = channel?.server !== undefined;
+    return {
+      localRole: client && server ? 'clientAndServer' as const
+        : client ? 'client' as const
+          : server ? 'server' as const
+            : undefined,
+      descriptors: this.sockets.clientServerActiveTargets(channelName),
+      pendingRequestCount: this.outbound.pendingRequestCount(channelName)
+    };
+  }
+
+  fanoutTopology(channelName: string) {
+    return { descriptors: this.sockets.fanoutActiveTargets(channelName) };
+  }
+
+  observeClientServerTopology(channelName: string, changed: () => void): () => void {
+    const monitor = this.sockets.clientServerMonitoringSource(channelName);
+    monitor.onEvent(changed);
+    return () => { void monitor.dispose(); };
+  }
+
+  observeFanoutTopology(channelName: string, changed: () => void): () => void {
+    const monitor = this.sockets.fanoutMonitoringSource(channelName);
+    monitor.onEvent(changed);
+    return () => { void monitor.dispose(); };
   }
 
   configureLocationAutoConnect(

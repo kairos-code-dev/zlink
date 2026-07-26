@@ -131,6 +131,18 @@ class raw_mesh_node_owner_t
       protocol::user_spot_create_header_t request,
       std::chrono::milliseconds timeout,
       foundation::operation_registry_t::callback_t callback);
+    bool request_instance_spot_activation (
+      const std::vector<std::uint8_t> &target_routing_id,
+      protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      protocol::application_payload_t application_payload,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool send_instance_spot_activation (
+      const std::vector<std::uint8_t> &target_routing_id,
+      protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      protocol::application_payload_t application_payload);
     bool request_user_spot_close (
       const std::vector<std::uint8_t> &target_routing_id,
       protocol::user_spot_close_header_t request,
@@ -141,9 +153,36 @@ class raw_mesh_node_owner_t
       const protocol::user_spot_create_reply_t &reply,
       std::optional<protocol::application_payload_t>
         application_reply = std::nullopt);
+    bool reply_instance_spot_activation (
+      const service_mailbox_record_t &request,
+      std::uint32_t terminal_result,
+      std::uint32_t failure_code,
+      std::optional<protocol::application_payload_t> application_reply = std::nullopt);
     bool reply_user_spot_close (
       const service_mailbox_record_t &request,
       const protocol::user_spot_close_reply_t &reply);
+    bool send_session_relocation_route (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_route_t &route);
+    bool request_session_relocation_route (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_route_t &route,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool send_session_relocation_seal (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_seal_t &seal);
+    bool request_session_relocation_seal (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_seal_t &seal,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool send_session_relocation_sealed (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_sealed_t &sealed);
+    bool send_session_relocation_routed (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::session_relocation_routed_t &routed);
     raw_mesh_pump_result_t
     pump_one (service_liveness_registry_t::clock_t::time_point now);
     std::size_t drain_monitor_events (
@@ -166,6 +205,9 @@ class raw_mesh_node_owner_t
       const std::vector<std::uint8_t> &target_routing_id,
       std::vector<std::uint8_t> header,
       const protocol::application_payload_t &application_payload);
+    bool send_header_only (
+      const std::vector<std::uint8_t> &target_routing_id,
+      std::vector<std::uint8_t> header);
     bool request_with_header (
       const std::vector<std::uint8_t> &target_routing_id,
       const std::function<std::vector<std::uint8_t> (std::uint64_t)> &header,

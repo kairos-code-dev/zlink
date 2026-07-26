@@ -2,9 +2,12 @@ using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Actors;
 
+using System.Text;
+using System.Buffers.Binary;
+
 internal static class ZLinkActorBoundSessionRelay
 {
-    private const uint ActorRecvInfoNoBind = 1u;
+    internal const uint ActorRecvInfoNoBind = 1u;
 
     public static bool IsSessionDisconnectedPacket(ZlinkStreamHeader header)
     {
@@ -14,12 +17,93 @@ internal static class ZLinkActorBoundSessionRelay
             StringComparison.Ordinal);
     }
 
-    public static void RemoveNativeBinding(
-        ZLinkFrameworkRuntime runtime,
-        string actorId,
-        RoutingId sourceSessionRid)
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    public static byte[] EncodeSessionDisconnected(
+        string bindingToken,
+        ulong bindingGeneration,
+        ulong sessionOwnerNodeGeneration)
     {
-        runtime.RemoveActorSessionBinding(actorId, ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid));
+        if (string.IsNullOrWhiteSpace(bindingToken)
+            || bindingGeneration == 0
+            || sessionOwnerNodeGeneration == 0)
+            throw new InvalidOperationException(
+                "Actor session disconnect requires an exact binding identity.");
+        var token = StrictUtf8.GetBytes(bindingToken);
+        var payload = new byte[sizeof(uint) + token.Length + (sizeof(ulong) * 2)];
+        BinaryPrimitives.WriteUInt32BigEndian(payload, checked((uint)token.Length));
+        token.CopyTo(payload.AsSpan(sizeof(uint)));
+        var generationOffset = sizeof(uint) + token.Length;
+        BinaryPrimitives.WriteUInt64BigEndian(
+            payload.AsSpan(generationOffset),
+            bindingGeneration);
+        BinaryPrimitives.WriteUInt64BigEndian(
+            payload.AsSpan(generationOffset + sizeof(ulong)),
+            sessionOwnerNodeGeneration);
+        return payload;
+    }
+
+    public static bool TryValidateDisconnectedBinding(
+        ZLinkActorRuntimeState state,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        Message payload,
+        out string bindingToken)
+    {
+        bindingToken = string.Empty;
+        var bytes = payload.AsReadOnlyMemory();
+        if (!TryDecodeSessionDisconnected(
+                bytes.Span,
+                out var decodedBindingToken,
+                out var bindingGeneration,
+                out var sessionOwnerNodeGeneration))
+            return false;
+        if (!state.TryGetBoundSession(out var current)
+            || !string.Equals(
+                current.BindingToken,
+                decodedBindingToken,
+                StringComparison.Ordinal)
+            || current.SessionNodeRid is not { } currentNodeRid
+            || currentNodeRid != sourceNodeRid
+            || current.SessionRid != sourceSessionRid
+            || current.BindingGeneration != bindingGeneration
+            || current.SessionOwnerNodeGeneration != sessionOwnerNodeGeneration)
+            return false;
+
+        bindingToken = decodedBindingToken;
+        return true;
+    }
+
+    private static bool TryDecodeSessionDisconnected(
+        ReadOnlySpan<byte> payload,
+        out string bindingToken,
+        out ulong bindingGeneration,
+        out ulong sessionOwnerNodeGeneration)
+    {
+        bindingToken = string.Empty;
+        bindingGeneration = 0;
+        sessionOwnerNodeGeneration = 0;
+        if (payload.Length < sizeof(uint) + (sizeof(ulong) * 2)) return false;
+        var tokenLength = BinaryPrimitives.ReadUInt32BigEndian(payload);
+        if (tokenLength == 0
+            || tokenLength > int.MaxValue
+            || payload.Length != sizeof(uint) + (int)tokenLength + (sizeof(ulong) * 2))
+            return false;
+        try
+        {
+            bindingToken = StrictUtf8.GetString(
+                payload.Slice(sizeof(uint), (int)tokenLength));
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+        var generationOffset = sizeof(uint) + (int)tokenLength;
+        bindingGeneration = BinaryPrimitives.ReadUInt64BigEndian(
+            payload.Slice(generationOffset, sizeof(ulong)));
+        sessionOwnerNodeGeneration = BinaryPrimitives.ReadUInt64BigEndian(
+            payload.Slice(generationOffset + sizeof(ulong), sizeof(ulong)));
+        return bindingGeneration != 0 && sessionOwnerNodeGeneration != 0;
     }
 
     public static ZLinkActorBoundSessionDispatch EnterDispatch(
@@ -47,6 +131,7 @@ internal static class ZLinkActorBoundSessionRelay
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        string? replyCapability,
         ZlinkStreamHeader requestHeader)
     {
         if (requestHeader.Kind != ZlinkStreamMessageKind.Request
@@ -61,6 +146,7 @@ internal static class ZLinkActorBoundSessionRelay
             sourceSessionRid,
             requestId,
             flags,
+            replyCapability,
             requestHeader,
             ZLinkActorReply.FromError(new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
@@ -76,6 +162,7 @@ internal static class ZLinkActorBoundSessionRelay
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        string? replyCapability,
         bool isNoBind,
         ZlinkStreamHeader requestHeader,
         ZLinkActorReply reply,
@@ -90,6 +177,7 @@ internal static class ZLinkActorBoundSessionRelay
                 sourceSessionRid,
                 requestId,
                 flags,
+                replyCapability,
                 requestHeader,
                 reply);
             return;
@@ -107,6 +195,7 @@ internal static class ZLinkActorBoundSessionRelay
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        string? replyCapability,
         ZlinkStreamHeader requestHeader,
         ZLinkFrameworkException exception,
         CancellationToken cancellationToken)
@@ -132,6 +221,7 @@ internal static class ZLinkActorBoundSessionRelay
                     sourceSessionRid,
                     requestId,
                     flags,
+                    replyCapability,
                     dispatch.IsNoBind,
                     requestHeader,
                     ZLinkActorReply.FromError(exception),
@@ -152,6 +242,7 @@ internal static class ZLinkActorBoundSessionRelay
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        string? replyCapability,
         ZlinkStreamHeader requestHeader,
         ZLinkActorReply reply)
     {
@@ -163,6 +254,7 @@ internal static class ZLinkActorBoundSessionRelay
             sourceSessionRid,
             requestId,
             flags,
+            replyCapability,
             [replyMessage]);
         runtime.LogActorHandoff(
             $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
@@ -201,7 +293,7 @@ internal static class ZLinkActorBoundSessionRelay
             .ConfigureAwait(false);
     }
 
-    private static bool IsNoBindRequest(ulong requestId, uint flags)
+    internal static bool IsNoBindRequest(ulong requestId, uint flags)
     {
         return requestId != 0 && (flags & ActorRecvInfoNoBind) != 0;
     }

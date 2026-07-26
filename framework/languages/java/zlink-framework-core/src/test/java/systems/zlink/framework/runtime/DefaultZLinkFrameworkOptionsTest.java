@@ -183,9 +183,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions instance = new DefaultZLinkFrameworkOptions();
         ZLinkLocationStore store = new ZLinkInMemoryLocationStore();
         instance.addLocationStore(store);
-        instance.configureLocations().setListPageSize(64);
         assertEquals(store, instance.registration().locations().storeInstance());
-        assertEquals(64, instance.registration().locations().options().listPageSize());
     }
 
     @Test

@@ -257,9 +257,10 @@ public final class ZLinkActorCreationCoordinator
         return CompletableFuture.completedFuture(
             new ZLinkActorCreateResult.Existing(
                 new ActorRef(
-                    authority.nodeRid(),
                     actorId,
-                    snapshot.objectGeneration())));
+                    snapshot.objectGeneration(),
+                    authority.meshName(),
+                    authority.nodeRid())));
     }
 
     @Override
@@ -401,9 +402,10 @@ public final class ZLinkActorCreationCoordinator
             ? created.reply()
             : null;
         ActorRef published = new ActorRef(
-            node.status().routingId(),
             request.intent().actorId(),
-            snapshot.objectGeneration());
+            snapshot.objectGeneration(),
+            meshName,
+            node.status().routingId());
         byte[] envelope = terminalEnvelope(
             new ZLinkServiceM6BWireCodec.ActorCreateTerminal(
                 ZLinkServiceM6BWireCodec.ActorCreateResult.CREATED,

@@ -1,26 +1,30 @@
 package systems.zlink.framework.locations;
 
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
 
 public final class ZLinkLocationOptions {
-    private Duration heartbeatInterval = Duration.ofSeconds(10);
+    private Duration ownerLeaseRenewInterval = Duration.ofSeconds(5);
     private Duration ownerLeaseTtl = Duration.ofSeconds(30);
     private Duration pollingInterval = Duration.ofSeconds(1);
-    private int listPageSize = 1000;
     private Duration storeFailureGrace = Duration.ofSeconds(30);
-    private Duration routingIdFencingMargin = Duration.ofSeconds(5);
+    private Duration ownerLeaseFencingMargin = Duration.ofSeconds(5);
     private Duration ownerLeaseRenewTimeout = Duration.ofSeconds(3);
-    private final Map<String, String> spotRouterChannels = new LinkedHashMap<>();
+    private Duration routeCacheMaxAge = Duration.ofSeconds(15);
+    private Duration relocationForwardingWindow = Duration.ofSeconds(30);
+    private int maxActiveOutboundRelocations = 64;
+    private int maxActiveInboundRelocations = 64;
+    private int maxConcurrentRelocationCaptures = 8;
+    private int maxConcurrentRelocationRestores = 8;
+    private long maxRelocationPayloadInFlightBytes = 256L * 1024 * 1024;
 
-    public Duration heartbeatInterval() {
-        return heartbeatInterval;
+    public Duration ownerLeaseRenewInterval() {
+        return ownerLeaseRenewInterval;
     }
 
-    public void setHeartbeatInterval(Duration heartbeatInterval) {
-        this.heartbeatInterval = requirePositive(heartbeatInterval, "heartbeatInterval");
+    public void setOwnerLeaseRenewInterval(Duration value) {
+        ownerLeaseRenewInterval = requirePositive(
+            value,
+            "ownerLeaseRenewInterval");
     }
 
     public Duration ownerLeaseTtl() {
@@ -39,17 +43,6 @@ public final class ZLinkLocationOptions {
         this.pollingInterval = requirePositive(pollingInterval, "pollingInterval");
     }
 
-    public int listPageSize() {
-        return listPageSize;
-    }
-
-    public void setListPageSize(int listPageSize) {
-        if (listPageSize <= 0) {
-            throw new IllegalArgumentException("listPageSize must be positive.");
-        }
-        this.listPageSize = listPageSize;
-    }
-
     public Duration storeFailureGrace() {
         return storeFailureGrace;
     }
@@ -58,14 +51,14 @@ public final class ZLinkLocationOptions {
         this.storeFailureGrace = requirePositive(storeFailureGrace, "storeFailureGrace");
     }
 
-    public Duration routingIdFencingMargin() {
-        return routingIdFencingMargin;
+    public Duration ownerLeaseFencingMargin() {
+        return ownerLeaseFencingMargin;
     }
 
-    public void setRoutingIdFencingMargin(Duration routingIdFencingMargin) {
-        this.routingIdFencingMargin = requirePositive(
-            routingIdFencingMargin,
-            "routingIdFencingMargin");
+    public void setOwnerLeaseFencingMargin(Duration value) {
+        ownerLeaseFencingMargin = requirePositive(
+            value,
+            "ownerLeaseFencingMargin");
     }
 
     public Duration ownerLeaseRenewTimeout() {
@@ -78,14 +71,83 @@ public final class ZLinkLocationOptions {
             "ownerLeaseRenewTimeout");
     }
 
-    public Map<String, String> spotRouterChannels() {
-        return Map.copyOf(spotRouterChannels);
+    public Duration routeCacheMaxAge() {
+        return routeCacheMaxAge;
     }
 
-    public void setSpotRouterChannel(String spotMeshName, String routerChannelId) {
-        spotRouterChannels.put(
-            requireText(spotMeshName, "spotMeshName"),
-            requireText(routerChannelId, "routerChannelId"));
+    public void setRouteCacheMaxAge(Duration routeCacheMaxAge) {
+        Duration candidate = requireNonNegative(
+            routeCacheMaxAge,
+            "routeCacheMaxAge");
+        validateRouteLifetimeRelationship(
+            candidate,
+            relocationForwardingWindow);
+        this.routeCacheMaxAge = candidate;
+    }
+
+    public Duration relocationForwardingWindow() {
+        return relocationForwardingWindow;
+    }
+
+    public void setRelocationForwardingWindow(
+        Duration relocationForwardingWindow) {
+        Duration candidate = requireNonNegative(
+            relocationForwardingWindow,
+            "relocationForwardingWindow");
+        validateRouteLifetimeRelationship(routeCacheMaxAge, candidate);
+        this.relocationForwardingWindow = candidate;
+    }
+
+    public int maxActiveOutboundRelocations() {
+        return maxActiveOutboundRelocations;
+    }
+
+    public void setMaxActiveOutboundRelocations(int value) {
+        maxActiveOutboundRelocations = requirePositive(
+            value,
+            "maxActiveOutboundRelocations");
+    }
+
+    public int maxActiveInboundRelocations() {
+        return maxActiveInboundRelocations;
+    }
+
+    public void setMaxActiveInboundRelocations(int value) {
+        maxActiveInboundRelocations = requirePositive(
+            value,
+            "maxActiveInboundRelocations");
+    }
+
+    public int maxConcurrentRelocationCaptures() {
+        return maxConcurrentRelocationCaptures;
+    }
+
+    public void setMaxConcurrentRelocationCaptures(int value) {
+        maxConcurrentRelocationCaptures = requirePositive(
+            value,
+            "maxConcurrentRelocationCaptures");
+    }
+
+    public int maxConcurrentRelocationRestores() {
+        return maxConcurrentRelocationRestores;
+    }
+
+    public void setMaxConcurrentRelocationRestores(int value) {
+        maxConcurrentRelocationRestores = requirePositive(
+            value,
+            "maxConcurrentRelocationRestores");
+    }
+
+    public long maxRelocationPayloadInFlightBytes() {
+        return maxRelocationPayloadInFlightBytes;
+    }
+
+    public void setMaxRelocationPayloadInFlightBytes(long value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(
+                "maxRelocationPayloadInFlightBytes must be positive.");
+        }
+        maxRelocationPayloadInFlightBytes = value;
     }
 
     private static Duration requirePositive(Duration value, String name) {
@@ -95,11 +157,32 @@ public final class ZLinkLocationOptions {
         return value;
     }
 
-    private static String requireText(String value, String name) {
-        Objects.requireNonNull(value, name);
-        if (value.isBlank()) {
-            throw new IllegalArgumentException(name + " is required.");
+    private static int requirePositive(int value, String name) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(name + " must be positive.");
         }
         return value;
     }
+
+    private static Duration requireNonNegative(Duration value, String name) {
+        if (value == null || value.isNegative()) {
+            throw new IllegalArgumentException(
+                name + " must be greater than or equal to zero.");
+        }
+        return value;
+    }
+
+    private static void validateRouteLifetimeRelationship(
+        Duration routeCacheMaxAge,
+        Duration relocationForwardingWindow) {
+        if (!routeCacheMaxAge.isZero()
+            && !relocationForwardingWindow.isZero()
+            && routeCacheMaxAge.compareTo(
+                relocationForwardingWindow.minusSeconds(5)) > 0) {
+            throw new IllegalArgumentException(
+                "routeCacheMaxAge must be at least five seconds shorter than "
+                    + "relocationForwardingWindow when both values are enabled.");
+        }
+    }
+
 }

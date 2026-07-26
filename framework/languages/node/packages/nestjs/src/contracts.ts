@@ -259,7 +259,7 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
 }
 
 export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
-  channelName(name: string): ZLinkNestMeshChannelBuilder;
+  channel(name: string): ZLinkNestMeshChannelBuilder;
   listen(endpoint: string): this;
   routingId(routingId: string | undefined): this;
   useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
@@ -310,6 +310,13 @@ export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOpti
 }
 
 export interface ZLinkNestMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  client(): ZLinkNestMeshChannelClientBuilder;
+  server(): ZLinkNestMeshChannelServerBuilder;
+}
+
+export interface ZLinkNestMeshChannelClientBuilder extends ZLinkNestFrameworkOptionsBuilder {}
+
+export interface ZLinkNestMeshChannelServerBuilder extends ZLinkNestFrameworkOptionsBuilder {
   setWeight(weight: number): this;
   addSendHandler(packetName: string, handlerType: Type): this;
   addRequestHandler(packetName: string, handlerType: Type): this;

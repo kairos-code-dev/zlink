@@ -36,6 +36,7 @@ export class ZLinkSpotLocationClaims {
       ownerNodeGeneration,
       spotKind,
       ownerId: '',
+      leaseGeneration: 0n,
       updatedAt: new Date(0)
     };
     const result = await this.runtime.writeSpot(row, ZLinkLocationWriteIntent.NewClaim);

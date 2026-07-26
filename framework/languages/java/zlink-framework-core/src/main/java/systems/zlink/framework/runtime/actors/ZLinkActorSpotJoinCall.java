@@ -370,6 +370,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             services.serializer(),
             result.joinResultCode(),
             result.actor(),
+            context.meshName(),
             result.replyParts());
         if (!entryTarget && decoded instanceof ZLinkActorJoinOutcome.Accepted) {
             String joinedSpotId = effectiveJoinedSpotId(result);

@@ -30,11 +30,16 @@ import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 
 export class ZLinkChannelOutboundOperations {
+  private readonly pendingRequests = new Map<string, number>();
   constructor(
     private readonly sockets: ZLinkChannelSocketRegistry,
     private readonly codecs: ZLinkChannelEnvelopeCodecRegistry,
     private readonly dispatchServices: ZLinkChannelDispatchServices
   ) {}
+
+  pendingRequestCount(channelName: string): number {
+    return this.pendingRequests.get(channelName) ?? 0;
+  }
 
   /**
    * Try-style fast-fail counterpart of {@link send}. It reports the current selection instead of
@@ -497,9 +502,9 @@ export class ZLinkChannelOutboundOperations {
 
   private async measureRequest<T>(channel: string, operation: () => Promise<T>): Promise<T> {
     const metrics = this.dispatchServices.metrics();
-    if (!metrics.enabled()) return operation();
+    this.pendingRequests.set(channel, this.pendingRequestCount(channel) + 1);
     const started = process.hrtime.bigint();
-    metrics.change('zlink.channel.request.inflight', 1, { channel });
+    if (metrics.enabled()) metrics.change('zlink.channel.request.inflight', 1, { channel });
     try {
       return await operation();
     } catch (error) {
@@ -508,8 +513,13 @@ export class ZLinkChannelOutboundOperations {
       }
       throw error;
     } finally {
-      metrics.change('zlink.channel.request.inflight', -1, { channel });
-      metrics.duration('zlink.channel.request.duration', Number(process.hrtime.bigint() - started) / 1e9, { channel });
+      const remaining = this.pendingRequestCount(channel) - 1;
+      if (remaining === 0) this.pendingRequests.delete(channel);
+      else this.pendingRequests.set(channel, remaining);
+      if (metrics.enabled()) {
+        metrics.change('zlink.channel.request.inflight', -1, { channel });
+        metrics.duration('zlink.channel.request.duration', Number(process.hrtime.bigint() - started) / 1e9, { channel });
+      }
     }
   }
 }

@@ -18,6 +18,7 @@
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_monitoring_host_service.hpp"
 #include "runtime/mesh/mesh_node_host_service.hpp"
+#include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
@@ -35,6 +36,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -679,24 +681,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->services.contains (std::type_index (typeid (spot_handle_resolver_t)))) {
-        _state->services.add_factory<spot_handle_resolver_t> (
-          [] (service_provider_t &provider) {
-              return std::shared_ptr<spot_handle_resolver_t> (
-                &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (spot_handle_resolver_t *) noexcept {});
-          },
-          service_lifetime_t::singleton);
-    }
-    if (!_state->services.contains (std::type_index (typeid (actor_spot_handle_resolver_t)))) {
-        _state->services.add_factory<actor_spot_handle_resolver_t> (
-          [] (service_provider_t &provider) {
-              return std::shared_ptr<actor_spot_handle_resolver_t> (
-                &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (actor_spot_handle_resolver_t *) noexcept {});
-          },
-          service_lifetime_t::singleton);
-    }
     if (!_state->services.contains (std::type_index (typeid (runtime::spot_address_resolver_t)))) {
         _state->services.add_factory<runtime::spot_address_resolver_t> (
           [] (service_provider_t &provider) {
@@ -778,6 +762,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     *actor_mesh_name = application_mesh_name;
     {
         auto provider = _state->services.build_provider ();
+        channel_runtime.bind_spot_address_resolver (
+          provider.get_required<runtime::spot_address_resolver_t> ());
         provider.get_required<runtime::store_location_resolvers_t> ()
           .set_actor_mesh_name (application_mesh_name);
         auto &location_lifecycle =
@@ -789,6 +775,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             registration->spot_state->dispatch = options.configure_dispatch ();
             registration->spot_state->monitoring = monitoring_state;
             detail::spot_node_runtime_t spot_runtime (registration->spot_state);
+            spot_runtime.set_actor_transfer_forward_window (
+              options.location_options ().relocation_forwarding_window);
             if (_state->services.contains (
                   std::type_index (typeid (
                     runtime::stateful::relocation_store_port_t)))) {
@@ -813,6 +801,19 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             spot_runtime.bind_spot_location_resolver (spot_resolver);
             spot_runtime.bind_drain_flag (_state->draining);
             spot_runtime.set_route_client (route_client);
+            if (application_mesh_registration != mesh_node_registrations.end ()) {
+                auto application_mesh = detail::mesh_node_runtime_t::from (
+                  _state->zlink, (*application_mesh_registration)->mesh_name);
+                spot_runtime.on_actor_packet_forward (
+                  [application_mesh] (
+                    const actor_ref_t &actor,
+                    const runtime::messaging::envelope_header_t &header,
+                    const zlink::message_t &payload,
+                    std::chrono::milliseconds timeout) {
+                      return application_mesh->relay_application_actor (
+                        actor, header, payload, timeout);
+                  });
+            }
         }
     }
     if (!mesh_node_registrations.empty ()
@@ -846,6 +847,15 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           options.dispatch_options ());
         mesh_node_service = mesh_service.get ();
         mesh_nodes = mesh_service->nodes ();
+        auto provider = _state->services.build_provider ();
+        auto &location_runtime =
+          provider.get_required<runtime::location_runtime_t> ();
+        for (const auto &mesh_node : mesh_nodes) {
+            mesh_node->configure_session_route_owner (
+              [&location_runtime] {
+                  return location_runtime.current_owner_token ();
+              });
+        }
         if (!_state->services.contains (
               std::type_index (typeid (actor_manager_t))))
             _state->services.add_singleton<actor_manager_t> (
@@ -883,6 +893,282 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_singleton<route_mesh_runtime_options_t> (
           std::make_unique<runtime::route_mesh_runtime_options_service_t> (
             mesh_nodes));
+    }
+    if (!mesh_nodes.empty ()) {
+        auto provider = _state->services.build_provider ();
+        auto &location_store = provider.get_required<location_store_t> ();
+        auto operation_sequence =
+          std::make_shared<std::atomic<std::uint64_t>> (1);
+        struct selected_instance_target_t
+        {
+            std::shared_ptr<detail::mesh_node_runtime_t> source;
+            mesh_node_descriptor_t target;
+            std::string stable_type;
+        };
+        auto select_instance_target =
+          [mesh_nodes, &location_store] (
+            const spot_id_t &spot_id,
+            const detail::spot_activation_intent_t &intent)
+            -> result_t<selected_instance_target_t> {
+              std::vector<std::shared_ptr<detail::mesh_node_runtime_t>>
+                sources;
+              for (const auto &mesh : mesh_nodes) {
+                  if (!intent.mesh_name
+                      || mesh->mesh_name () == *intent.mesh_name)
+                      sources.push_back (mesh);
+              }
+              if (sources.empty ())
+                  return result_t<selected_instance_target_t>::failure (
+                    intent.mesh_name
+                      ? framework_error_kind_t::mesh_not_found
+                      : framework_error_kind_t::object_client_not_configured,
+                    "No Instance Spot source Mesh is configured");
+              if (!intent.mesh_name && sources.size () != 1)
+                  return result_t<selected_instance_target_t>::failure (
+                    framework_error_kind_t::mesh_selection_required,
+                    "More than one object Mesh is configured; select one with in_mesh");
+              const auto source = sources.front ();
+              std::vector<mesh_node_descriptor_t> candidates;
+              location_page_request_t page;
+              do {
+                  auto listed = location_store
+                    .list_mesh_nodes (source->mesh_name (), page)
+                    .result ().value ();
+                  for (auto &descriptor : listed.items) {
+                      if (descriptor.state
+                            != framework_runtime_state_t::serving
+                          || descriptor.object_role
+                               != object_role_t::server
+                          || descriptor.placement_weight <= 0)
+                          continue;
+                      const auto capable = std::any_of (
+                        descriptor.object_capabilities.begin (),
+                        descriptor.object_capabilities.end (),
+                        [&] (const auto &capability) {
+                            return capability.object_kind
+                                     == placement_object_kind_t::instance_spot
+                              && (!intent.stable_type
+                                  || capability.stable_type
+                                       == *intent.stable_type);
+                        });
+                      const auto spot_capacity =
+                        descriptor.capacity.spots;
+                      const auto typed_capacity = std::find_if (
+                        descriptor.capacity.spot_types.begin (),
+                        descriptor.capacity.spot_types.end (),
+                        [&] (const auto &typed) {
+                            return typed.object_kind
+                                     == placement_object_kind_t::instance_spot
+                              && intent.stable_type
+                              && typed.stable_type
+                                   == *intent.stable_type;
+                        });
+                      const auto typed_available =
+                        !intent.stable_type
+                        ||
+                        typed_capacity
+                          == descriptor.capacity.spot_types.end ()
+                        || typed_capacity->usage.limit == 0
+                        || typed_capacity->usage.active
+                             + typed_capacity->usage.reserved
+                             < static_cast<std::uint64_t> (
+                               typed_capacity->usage.limit);
+                      if (capable && typed_available
+                          && (spot_capacity.limit == 0
+                              || spot_capacity.active
+                                   + spot_capacity.reserved
+                                   < static_cast<std::uint64_t> (
+                                     spot_capacity.limit)))
+                          candidates.push_back (std::move (descriptor));
+                  }
+                  page.continuation_token =
+                    std::move (listed.continuation_token);
+              } while (page.continuation_token);
+              if (candidates.empty ())
+                  return result_t<selected_instance_target_t>::failure (
+                    framework_error_kind_t::spot_route_not_found,
+                    "No eligible Instance Spot target is Ready");
+              std::set<std::string> stable_types;
+              for (const auto &candidate : candidates)
+                  for (const auto &capability :
+                       candidate.object_capabilities)
+                      if (capability.object_kind
+                            == placement_object_kind_t::instance_spot
+                          && (!intent.stable_type
+                              || capability.stable_type
+                                   == *intent.stable_type))
+                          stable_types.insert (capability.stable_type);
+              if (!intent.stable_type && stable_types.size () != 1)
+                  return result_t<selected_instance_target_t>::failure (
+                    framework_error_kind_t::invalid_configuration,
+                    "Instance Spot stable type is required when the Mesh publishes multiple types");
+              const auto stable_type = intent.stable_type
+                ? *intent.stable_type
+                : *stable_types.begin ();
+              candidates.erase (
+                std::remove_if (
+                  candidates.begin (), candidates.end (),
+                  [&] (const auto &candidate) {
+                      const auto capable = std::any_of (
+                        candidate.object_capabilities.begin (),
+                        candidate.object_capabilities.end (),
+                        [&] (const auto &capability) {
+                            return capability.object_kind
+                                     == placement_object_kind_t::instance_spot
+                              && capability.stable_type == stable_type;
+                        });
+                      const auto typed = std::find_if (
+                        candidate.capacity.spot_types.begin (),
+                        candidate.capacity.spot_types.end (),
+                        [&] (const auto &capacity) {
+                            return capacity.object_kind
+                                     == placement_object_kind_t::instance_spot
+                              && capacity.stable_type == stable_type;
+                        });
+                      return !capable
+                        || (typed != candidate.capacity.spot_types.end ()
+                            && typed->usage.limit > 0
+                            && typed->usage.active
+                                 + typed->usage.reserved
+                                 >= static_cast<std::uint64_t> (
+                                   typed->usage.limit));
+                  }),
+                candidates.end ());
+              if (candidates.empty ())
+                  return result_t<selected_instance_target_t>::failure (
+                    framework_error_kind_t::spot_route_not_found,
+                    "No eligible Instance Spot target has capacity");
+              const auto index = std::hash<std::string>{} (
+                std::string (spot_id)) % candidates.size ();
+              return result_t<selected_instance_target_t>::success (
+                {source, candidates[index], stable_type});
+          };
+        auto make_activation =
+          [operation_sequence] (
+            const selected_instance_target_t &selected,
+            const spot_id_t &spot_id,
+            bool request,
+            bool has_metadata,
+            std::chrono::milliseconds timeout) {
+              const auto source_status = selected.source->status ();
+              const auto operation =
+                operation_sequence->fetch_add (
+                  1, std::memory_order_relaxed);
+              return runtime::protocol::instance_spot_activation_header_t{
+                {selected.target.rid.to_bytes (),
+                 selected.target.lifecycle_generation,
+                 std::string (spot_id), selected.target.mesh_name,
+                 selected.stable_type,
+                 std::to_string (
+                   selected.target.descriptor_revision),
+                 static_cast<std::uint64_t> (
+                   std::chrono::duration_cast<std::chrono::milliseconds> (
+                     std::chrono::system_clock::now ().time_since_epoch ()
+                     + timeout)
+                     .count ())},
+                source_status.lifecycle_generation (),
+                source_status.routing_id ().to_bytes (),
+                std::nullopt, request, {0, operation}, 0,
+                has_metadata};
+          };
+        channel_runtime.bind_instance_spot_activator (
+          [select_instance_target, make_activation,
+           serializers = &_state->serializers] (
+            const spot_id_t &spot_id,
+            const detail::spot_activation_intent_t &intent,
+            const std::string &packet_name,
+            std::type_index message_type,
+            std::function<encoded_payload_t (serializer_registry_t &)>
+              encode_payload,
+            const std::map<std::string, std::string> &metadata) {
+              auto selected = select_instance_target (spot_id, intent);
+              if (!selected)
+                  return detail::propagate_failure<void> (
+                    selected, "Instance Spot target selection failed");
+              auto metadata_frame =
+                detail::mesh_metadata_codec_t::encode (metadata);
+              auto header = make_activation (
+                selected.value (), spot_id, false,
+                !metadata_frame.empty (), std::chrono::seconds (30));
+              const auto payload = encode_payload (*serializers);
+              const auto submitted = selected.value ().source
+                ->send_instance_spot_activation_remote (
+                  selected.value ().target.rid, std::move (header),
+                  metadata_frame.empty ()
+                    ? std::optional<std::vector<std::uint8_t>>{}
+                    : std::make_optional (std::move (metadata_frame)),
+                  {packet_name,
+                   serializers->content_type (message_type),
+                   payload.to_bytes ()});
+              return submitted
+                ? result_t<void>::success ()
+                : result_t<void>::failure (
+                    framework_error_kind_t::route_not_connected,
+                    "Instance Spot activation was not admitted");
+          },
+          [select_instance_target, make_activation,
+           serializers = &_state->serializers] (
+            const spot_id_t &spot_id,
+            const detail::spot_activation_intent_t &intent,
+            std::string packet_name,
+            std::type_index request_type,
+            std::function<encoded_payload_t (serializer_registry_t &)>
+              encode_payload,
+            std::chrono::milliseconds timeout,
+            std::map<std::string, std::string> metadata)
+            -> task_t<zlink::message_t> {
+              auto selected = select_instance_target (spot_id, intent);
+              if (!selected)
+                  return task_t<zlink::message_t> (
+                    detail::propagate_failure<zlink::message_t> (
+                      selected,
+                      "Instance Spot target selection failed"));
+              auto metadata_frame =
+                detail::mesh_metadata_codec_t::encode (metadata);
+              auto header = make_activation (
+                selected.value (), spot_id, true,
+                !metadata_frame.empty (), timeout);
+              const auto payload = encode_payload (*serializers);
+              auto completion = std::make_shared<
+                detail::task_completion_source_t<zlink::message_t>> ();
+              auto output = completion->task ();
+              const auto submitted = selected.value ().source
+                ->activate_instance_spot_remote (
+                  selected.value ().target.rid, std::move (header),
+                  metadata_frame.empty ()
+                    ? std::optional<std::vector<std::uint8_t>>{}
+                    : std::make_optional (std::move (metadata_frame)),
+                  {std::move (packet_name),
+                   serializers->content_type (request_type),
+                   payload.to_bytes ()}, timeout,
+                  [completion] (
+                    runtime::foundation::operation_terminal_t terminal,
+                    runtime::protocol::reply_header_t reply,
+                    std::optional<runtime::protocol::application_payload_t>
+                      application_reply) {
+                      if (terminal
+                            != runtime::foundation::operation_terminal_t::completed
+                          || reply.terminal_result != 0
+                          || !application_reply) {
+                          completion->complete (
+                            result_t<zlink::message_t>::failure (
+                              framework_error_kind_t::request_failed,
+                              "Instance Spot activation request failed"));
+                          return;
+                      }
+                      completion->complete (
+                        result_t<zlink::message_t>::success (
+                          zlink::message_t::from (
+                            std::move (
+                              application_reply->payload))));
+                  });
+              if (!submitted)
+                  completion->complete (
+                    result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::route_not_connected,
+                      "Instance Spot activation was not admitted"));
+              return output;
+          });
     }
     const auto spot_router_channels = options.location_options ().spot_router_channels;
     for (const auto &mesh : mesh_nodes) {
@@ -1106,26 +1392,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 bound_session ? bound_session->session_rid : std::nullopt);
           });
         actor_gateway_runtime.on_relay (
-          [application_mesh, live_locations =
-             &_state->services.build_provider ()
-                .get_required<runtime::live_location_reader_t> (),
-           request_timeout] (
+          [application_mesh, request_timeout] (
             const actor_ref_t &actor,
             actor_context_t,
             const detail::stream_header_t &header,
             const zlink::message_t &payload) {
-              auto routed_actor = actor;
-              auto located =
-                live_locations->resolve_actor (
-                  actor_location_key_t{application_mesh->mesh_name (),
-                                       std::string (actor.actor_id ())})
-                  .result ();
-              if (located && located.value () && !located.value ()->actor_ref.empty ()
-                  && located.value ()->actor_ref.generation () == actor.generation ()) {
-                  routed_actor = located.value ()->actor_ref;
-              }
               return application_mesh->relay_application_actor (
-                routed_actor, header, payload, request_timeout);
+                actor, header, payload, request_timeout);
           });
         actor_gateway_runtime.on_disconnect (
           [mesh_nodes, request_timeout] (const actor_ref_t &actor) {
@@ -1181,12 +1454,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     if (!_state->services.contains (std::type_index (typeid (actor_client_t)))) {
         _state->services.add_factory<actor_client_t> (
-          [mesh_nodes,
-           actor_location_observer] (service_provider_t &provider) mutable {
+          [mesh_nodes, actor_location_observer,
+           location_options = options.location_options ()] (service_provider_t &provider) mutable {
               return runtime::make_actor_client (
                 provider.get_required<runtime::live_location_reader_t> (),
                 provider.get_required<serializer_registry_t> (), mesh_nodes,
-                actor_location_observer);
+                actor_location_observer, location_options);
           },
           service_lifetime_t::singleton);
     }

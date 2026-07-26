@@ -162,7 +162,14 @@ test('allocated routing-id location defaults match the common lease contract', (
     listPageSize: 1_000,
     storeFailureGraceMs: 30_000,
     routingIdFencingMarginMs: 5_000,
-    ownerLeaseRenewTimeoutMs: 3_000
+    ownerLeaseRenewTimeoutMs: 3_000,
+    routeCacheMaxAgeMs: 15_000,
+    relocationForwardingWindowMs: 30_000,
+    maxActiveOutboundRelocations: 64,
+    maxActiveInboundRelocations: 64,
+    maxConcurrentRelocationCaptures: 8,
+    maxConcurrentRelocationRestores: 8,
+    maxRelocationPayloadInFlightBytes: 256 * 1024 * 1024
   });
 });
 

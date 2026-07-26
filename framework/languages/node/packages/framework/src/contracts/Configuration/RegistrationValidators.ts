@@ -154,6 +154,35 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
       'In-memory location stores cannot be combined with explicit location store registrations.'
     );
   }
+  const options = { ...zlinkDefaultLocationOptions, ...locations.options };
+  for (const [name, value] of Object.entries({
+    routeCacheMaxAgeMs: options.routeCacheMaxAgeMs,
+    relocationForwardingWindowMs: options.relocationForwardingWindowMs
+  })) {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new ZLinkConfigurationException(`${name} must be a finite non-negative number.`);
+    }
+  }
+  if (
+    options.routeCacheMaxAgeMs > 0
+    && options.relocationForwardingWindowMs > 0
+    && options.routeCacheMaxAgeMs > options.relocationForwardingWindowMs - 5000
+  ) {
+    throw new ZLinkConfigurationException(
+      'routeCacheMaxAgeMs must be at least 5000 ms shorter than relocationForwardingWindowMs.'
+    );
+  }
+  for (const [name, value] of Object.entries({
+    maxActiveOutboundRelocations: options.maxActiveOutboundRelocations,
+    maxActiveInboundRelocations: options.maxActiveInboundRelocations,
+    maxConcurrentRelocationCaptures: options.maxConcurrentRelocationCaptures,
+    maxConcurrentRelocationRestores: options.maxConcurrentRelocationRestores,
+    maxRelocationPayloadInFlightBytes: options.maxRelocationPayloadInFlightBytes
+  })) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new ZLinkConfigurationException(`${name} must be a positive safe integer.`);
+    }
+  }
 }
 
 function validateClientServerLocationStore(registration: ZLinkFrameworkRegistration): void {

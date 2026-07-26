@@ -424,6 +424,7 @@ internal readonly struct MeshReceiveRecord
 internal interface IMeshNode : IDisposable, IAsyncDisposable
 {
     RoutingId RoutingId { get; }
+    MeshOperationId AllocateOperationId();
     long MaxMessageSize { get; set; }
     int RouterHighWaterMark { get; set; }
     ulong MailboxMessageBudget { get; set; }

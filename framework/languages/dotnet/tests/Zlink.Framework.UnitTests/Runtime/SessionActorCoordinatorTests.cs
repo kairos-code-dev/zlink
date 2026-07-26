@@ -194,6 +194,245 @@ public sealed class SessionActorCoordinatorTests
     }
 
     [Fact]
+    public async Task Remote_Actor_Reply_Uses_The_Preserved_Session_Request_Route()
+    {
+        var runtime = CreateRuntime();
+        var stream = new TestStream(RoutingId.From("session-node"));
+        var context = new ZLinkSessionContext(
+            runtime,
+            stream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var actor = new ActorRef(
+            "actor-remote-reply",
+            1,
+            "actors",
+            RoutingId.From("actor-node"));
+        await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(
+            actor.ActorId,
+            out var binding));
+        var replyCapability = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            requestId: 17,
+            binding.BindingToken);
+        var replyFrame = new byte[] { 4, 5, 6 };
+
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            requestId: 17,
+            flags: ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            replyCapability,
+            sourceNodeRid: actor.NodeRid,
+            responderNodeRid: actor.NodeRid,
+            replyFrame,
+            CancellationToken.None);
+
+        var written = Assert.Single(stream.Writes);
+        Assert.Equal(replyFrame, written.Payload);
+        Assert.Equal(SendFlags.DontWait, written.Flags);
+    }
+
+    [Fact]
+    public async Task Remote_Actor_Reply_Rejects_Unknown_Flags_And_Source()
+    {
+        var runtime = CreateRuntime();
+        var stream = new TestStream(RoutingId.From("session-node"));
+        var context = new ZLinkSessionContext(
+            runtime,
+            stream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var actor = new ActorRef(
+            "actor-reply-fence",
+            1,
+            "actors",
+            RoutingId.From("actor-node"));
+        await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var binding));
+
+        var wrongFlagsCapability = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            21,
+            binding.BindingToken);
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            21,
+            flags: 0,
+            wrongFlagsCapability,
+            actor.NodeRid,
+            actor.NodeRid,
+            [1],
+            CancellationToken.None);
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            21,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            wrongFlagsCapability,
+            actor.NodeRid,
+            actor.NodeRid,
+            [3],
+            CancellationToken.None);
+
+        var wrongSourceCapability = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            22,
+            binding.BindingToken);
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            22,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            wrongSourceCapability,
+            RoutingId.From("forged-node"),
+            actor.NodeRid,
+            [2],
+            CancellationToken.None);
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            22,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            wrongSourceCapability,
+            actor.NodeRid,
+            actor.NodeRid,
+            [4],
+            CancellationToken.None);
+
+        Assert.Equal(2, stream.Writes.Count);
+        Assert.Equal(new byte[] { 3 }, stream.Writes[0].Payload);
+        Assert.Equal(new byte[] { 4 }, stream.Writes[1].Payload);
+    }
+
+    [Fact]
+    public async Task Concurrent_Duplicate_Remote_Replies_Write_One_Terminal_Frame()
+    {
+        var runtime = CreateRuntime();
+        var stream = new TestStream(RoutingId.From("session-node"));
+        var context = new ZLinkSessionContext(
+            runtime,
+            stream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var actor = new ActorRef(
+            "actor-reply-once",
+            1,
+            "actors",
+            RoutingId.From("actor-node"));
+        await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var binding));
+        Assert.True(runtime.TryAcceptSessionActorFrame(
+            actor.ActorId,
+            binding.BindingToken,
+            out _));
+        Assert.True(runtime.TryAcceptSessionActorFrame(
+            actor.ActorId,
+            binding.BindingToken,
+            out _));
+        var capability = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            24,
+            binding.BindingToken);
+        _ = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            26,
+            binding.BindingToken);
+
+        Task DeliverAsync() => runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            24,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            capability,
+            actor.NodeRid,
+            actor.NodeRid,
+            [5],
+            CancellationToken.None).AsTask();
+
+        await Task.WhenAll(Task.Run(DeliverAsync), Task.Run(DeliverAsync));
+        Assert.Single(stream.Writes);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var afterReply));
+        Assert.Equal(1, afterReply.ActiveFrames);
+        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 26);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var completed));
+        Assert.Equal(0, completed.ActiveFrames);
+    }
+
+    [Fact]
+    public async Task Expired_Request_Timer_Does_Not_Remove_A_Replacement_Correlation()
+    {
+        var runtime = CreateRuntime(defaultRequestTimeout: TimeSpan.FromMilliseconds(80));
+        var stream = new TestStream(RoutingId.From("session-timeout"));
+        var context = new ZLinkSessionContext(
+            runtime,
+            stream,
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+        var actor = new ActorRef(
+            "actor-request-timeout",
+            1,
+            "actors",
+            RoutingId.From("actor-node"));
+        await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var binding));
+
+        _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 23, binding.BindingToken);
+        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 23);
+        await Task.Delay(40);
+        var replacementCapability = runtime.TrackRemoteSessionActorRequest(
+            actor.ActorId,
+            23,
+            binding.BindingToken);
+        await Task.Delay(50);
+
+        await runtime.DeliverRemoteActorReplyAsync(
+            actor.ActorId,
+            23,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            replacementCapability,
+            actor.NodeRid,
+            actor.NodeRid,
+            [6],
+            CancellationToken.None);
+        Assert.Single(stream.Writes);
+    }
+
+    [Fact]
+    public async Task Remote_Actor_Request_Timeout_Releases_The_Pending_Key()
+    {
+        var runtime = CreateRuntime(defaultRequestTimeout: TimeSpan.FromMilliseconds(20));
+        var context = CreateSessionContext(runtime, "session-timeout-release");
+        var actor = new ActorRef(
+            "actor-timeout-release",
+            1,
+            "actors",
+            RoutingId.From("actor-node"));
+        await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var binding));
+
+        _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 25, binding.BindingToken);
+        await Task.Delay(80);
+        _ = runtime.TrackRemoteSessionActorRequest(actor.ActorId, 25, binding.BindingToken);
+        runtime.CompleteRemoteSessionActorRequest(actor.ActorId, 25);
+    }
+
+    [Fact]
     public void Stale_Local_Actor_Binding_Does_Not_Fall_Through_To_Native_Routing()
     {
         var runtime = CreateRuntime();
@@ -279,6 +518,79 @@ public sealed class SessionActorCoordinatorTests
             current.BindingToken,
             out var currentContext));
         Assert.Same(replacementContext, currentContext);
+    }
+
+    [Fact]
+    public void Remote_Disconnect_Removes_Only_The_Exact_Stored_Binding_Route()
+    {
+        var runtime = CreateRuntime();
+        var actorId = "actor-remote-disconnect";
+        var sessionNodeRid = RoutingId.From("session-node");
+        var sessionRid = RoutingId.From("session-rid");
+        runtime.BindActorSession(
+            actorId,
+            sessionNodeRid,
+            sessionRid,
+            "current-binding",
+            bindingGeneration: 7,
+            objectGeneration: 3,
+            authorityOwnerGeneration: 5,
+            meshName: "actors",
+            targetNodeGeneration: 11,
+            ownerLeaseGeneration: 13,
+            sessionOwnerNodeGeneration: 17);
+        var state = runtime.GetOrCreateActorState(actorId);
+        Assert.True(runtime.TryGetActorBoundSession(actorId, out var current));
+        using var stalePayload = Message.From(
+            ZLinkActorBoundSessionRelay.EncodeSessionDisconnected(
+                "stale-binding",
+                current.BindingGeneration,
+                current.SessionOwnerNodeGeneration));
+
+        Assert.False(ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+            state,
+            sessionNodeRid,
+            sessionRid,
+            stalePayload,
+            out _));
+        Assert.True(runtime.TryGetActorBoundSession(actorId, out var retained));
+        Assert.Equal("current-binding", retained.BindingToken);
+
+        using var wrongGenerationPayload = Message.From(
+            ZLinkActorBoundSessionRelay.EncodeSessionDisconnected(
+                current.BindingToken,
+                current.BindingGeneration + 1,
+                current.SessionOwnerNodeGeneration));
+        Assert.False(ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+            state,
+            sessionNodeRid,
+            sessionRid,
+            wrongGenerationPayload,
+            out _));
+        Assert.True(runtime.TryGetActorBoundSession(actorId, out _));
+
+        using var emptyPayload = Message.From(Array.Empty<byte>());
+        Assert.False(ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+            state,
+            sessionNodeRid,
+            sessionRid,
+            emptyPayload,
+            out _));
+
+        using var exactPayload = Message.From(
+            ZLinkActorBoundSessionRelay.EncodeSessionDisconnected(
+                current.BindingToken,
+                current.BindingGeneration,
+                current.SessionOwnerNodeGeneration));
+        Assert.True(ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+            state,
+            sessionNodeRid,
+            sessionRid,
+            exactPayload,
+            out var exactBindingToken));
+        Assert.True(runtime.TryGetActorBoundSession(actorId, out _));
+        runtime.RemoveActorSessionBinding(actorId, exactBindingToken);
+        Assert.False(runtime.TryGetActorBoundSession(actorId, out _));
     }
 
     [Fact]
@@ -1021,9 +1333,13 @@ public sealed class SessionActorCoordinatorTests
         19,
         23);
 
-    private static ZLinkFrameworkRuntime CreateRuntime(IZLinkActorResolver? actorDirectory = null)
+    private static ZLinkFrameworkRuntime CreateRuntime(
+        IZLinkActorResolver? actorDirectory = null,
+        TimeSpan? defaultRequestTimeout = null)
     {
         var registration = new ZLinkFrameworkRegistration();
+        if (defaultRequestTimeout is { } timeout)
+            registration.DefaultRequestTimeout = timeout;
         var services = new ServiceCollection();
         services.AddSingleton(registration);
         if (actorDirectory is not null) services.AddSingleton(actorDirectory);

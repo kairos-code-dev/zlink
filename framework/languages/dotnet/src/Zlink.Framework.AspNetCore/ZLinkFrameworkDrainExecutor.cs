@@ -57,14 +57,15 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         TimeSpan deadline,
         CancellationToken deadlineToken)
     {
-        _operations.SealApplicationAdmissions();
+        if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            _operations.SealApplicationAdmissions();
 
         if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
             return ZLinkDrainForceReason.DrainingStatePublishFailed;
 
-        // Draining excludes actor placement, while channel weight excludes new
-        // client-server load. Admission is already sealed, so requests selected
-        // from a stale peer row fail fast instead of entering application code.
+        // The published state excludes placement and channel weight excludes
+        // new select-one load. Retire keeps admissions open for the bounded
+        // propagation interval; Shutdown sealed them before publication.
         if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
             return ZLinkDrainForceReason.DrainingStatePublishFailed;
 
@@ -80,6 +81,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             ? Task.CompletedTask
             : Task.Delay(propagationDelay, deadlineToken);
         await propagation.ConfigureAwait(false);
+        if (intent == ZLinkFrameworkTerminationIntent.Retire)
+            _operations.SealApplicationAdmissions();
         await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
             .ConfigureAwait(false);
         await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);

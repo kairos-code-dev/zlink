@@ -5,6 +5,7 @@ import {
   decodeRemoteBoundSessionError,
   decodeRemoteBoundSessionOwnership,
   decodeRemoteBoundSessionResponse,
+  decodeRemoteBoundSessionSeal,
   decodeRemoteBoundSessionSend
 } from './spot-remote-route-codec';
 import {
@@ -45,7 +46,20 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
-  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
+  readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<{
+    readonly actorId: string;
+    readonly actorGeneration: string;
+    readonly actorOwnershipGeneration: string;
+    readonly bindingGeneration: string;
+    readonly targetOwnerLeaseGeneration: string;
+    readonly acceptedHighWater: string;
+    readonly sealId: string;
+  }>;
+  readonly routedBoundSessionSealReceiver?: (payload: unknown) => Promise<{
+    readonly actorId: string;
+    readonly sealId: string;
+    readonly acceptedHighWater: string;
+  }>;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
 
@@ -53,10 +67,20 @@ export class ZLinkSpotRoutedBoundSessionDispatch {
   constructor(private readonly options: ZLinkSpotRoutedBoundSessionDispatchOptions) {}
 
   async dispatch(received: BindingReceived): Promise<boolean> {
+    const seal = decodeRemoteBoundSessionSeal(received.parts, this.options.channelCodecs());
+    if (seal !== undefined) {
+      const ack = await this.options.routedBoundSessionSealReceiver?.(seal);
+      if (isReplyableRequestSeq(received.requestSeq)) {
+        submitRoutePayloadReply(received, seal.envelope, ack ?? { ok: false });
+      }
+      return true;
+    }
     const ownership = decodeRemoteBoundSessionOwnership(received.parts, this.options.channelCodecs());
     if (ownership !== undefined) {
-      await this.options.routedBoundSessionOwnershipReceiver?.(ownership);
-      this.replyOk(received);
+      const ack = await this.options.routedBoundSessionOwnershipReceiver?.(ownership);
+      if (isReplyableRequestSeq(received.requestSeq)) {
+        submitRoutePayloadReply(received, ownership.envelope, ack ?? { ok: false });
+      }
       return true;
     }
     const boundSessionSend = decodeRemoteBoundSessionSend(received.parts, this.options.channelCodecs());

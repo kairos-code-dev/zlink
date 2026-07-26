@@ -13,6 +13,21 @@ namespace Zlink.Framework.UnitTests;
 public sealed class NodesAndServicesTests : RegistrationValidationSupport
 {
     [Fact]
+    public void AddZLinkFramework_Registers_Internal_RemoteSessionRouteHandlers()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(_ => { });
+
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkRemoteSessionBindRouteHandler));
+        Assert.Contains(
+            services,
+            descriptor => descriptor.ServiceType == typeof(ZLinkRemoteSessionUnbindRouteHandler));
+    }
+
+    [Fact]
     public void AddZLinkFramework_Rejects_Duplicate_Registration()
     {
         var services = new ServiceCollection();

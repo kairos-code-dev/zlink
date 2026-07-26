@@ -107,6 +107,14 @@ class actor_transfer_coordinator_t
                                     std::uint64_t generation) const;
     std::optional<actor_forwarding_target_t>
     forwarding_target (const std::string &actor_key, std::uint64_t generation) const;
+    std::optional<actor_forwarding_target_t>
+    try_acquire_forwarding (const std::string &actor_key,
+                            std::uint64_t generation,
+                            std::size_t payload_bytes,
+                            std::size_t hop_count);
+    void release_forwarding (const std::string &actor_key,
+                             std::uint64_t generation,
+                             std::size_t payload_bytes) noexcept;
     std::vector<evicted_actor_forwarding_t>
     evict_expired_forwarding (std::chrono::steady_clock::time_point now);
 
@@ -147,6 +155,8 @@ class actor_transfer_coordinator_t
         spot_route_t target_route;
         std::chrono::steady_clock::time_point evict_at;
         std::string transfer_id;
+        std::size_t in_flight_messages = 0;
+        std::size_t in_flight_bytes = 0;
     };
 
     mutable std::mutex _mutex;

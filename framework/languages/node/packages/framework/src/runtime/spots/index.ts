@@ -21,6 +21,9 @@ import type {
   ZLinkSpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
 export { createSpotHandle, resolveSpotHandle } from './spot-handle';
+export { requestToSpotHandle, sendToSpotHandle } from './spot-outbound';
+export { ZLinkSpotRoutedBoundSessionDispatch } from './spot-routed-bound-session-dispatch';
+export { ZLinkSpotActorAdmissionCoordinator } from './spot-actor-admission-coordinator';
 import type { ZLinkSpotRouteResolver, ZLinkSpotRouteTarget } from './spot-routing-internal';
 import type { Message } from '../../contracts/Common/Message';
 import { awaitWithAbort, throwIfAborted } from '../abort';
@@ -1369,7 +1372,13 @@ function decodeFormalRemoteTransferRequest(
       payload.boundSessionNodeRidHex,
       payload.boundSessionRid,
       payload.boundSessionRidHex,
-      payload.boundSessionBindingGeneration
+      payload.boundSessionBindingGeneration,
+      payload.boundSessionPreviousAuthorityOwnerGeneration,
+      payload.boundSessionPreviousOwnerLeaseGeneration,
+      payload.boundSessionAcceptedHighWater,
+      payload.boundSessionRelocationSealId,
+      payload.boundSessionAcceptedJournalReference,
+      payload.boundSessionAcceptedJournalChecksumCrc32c
     ),
     expectedMembershipEpoch: typeof payload.expectedMembershipEpoch === 'string'
       ? BigInt(payload.expectedMembershipEpoch)

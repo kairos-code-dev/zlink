@@ -611,8 +611,6 @@ final class SpotActorTransferContractTest {
             ZLinkInMemoryLocationStore locations) {
             DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
             options.addLocationStore(locations);
-            options.configureLocations().setSpotRouterChannel(
-                meshName, meshName);
             var node = options.addRouteMesh(meshName);
             node.listen(spotEndpoint).setRoutingId(nodeRid);
             node.channelName(meshName);

@@ -3632,6 +3632,17 @@ public sealed partial class EntrySpotActorDispatchTests
             packetName,
             ZlinkStreamMetadata.Empty,
             "corr-1");
+        var replyRoute = requestId != 0 && (flags & 1) != 0
+            ? new ZLinkBackendActorRouteContext(
+                default,
+                0,
+                1,
+                1,
+                1,
+                requestId,
+                flags,
+                "test-reply-capability")
+            : default;
         return
         [
             new ZLinkBackendActorPart(
@@ -3644,7 +3655,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 requestId,
                 flags,
                 Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
-                true),
+                true,
+                RouteContext: replyRoute),
             new ZLinkBackendActorPart(
                 actorRef,
                 sourceNode,
@@ -3654,7 +3666,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 malformedPayload
                     ? Message.From("{")
                     : Message.From(ZLinkEnvelopeCodec.EncodeJsonBytes(value, typeof(string))),
-                false)
+                false,
+                RouteContext: replyRoute)
         ];
     }
 
@@ -4614,6 +4627,7 @@ public sealed partial class EntrySpotActorDispatchTests
         IZLinkBackendAuthorityObserver
     {
         private readonly CapturingSpot _entrySpot = new();
+        private long _nextOperationId;
 
         public CapturingSpotNode()
         {
@@ -4640,6 +4654,9 @@ public sealed partial class EntrySpotActorDispatchTests
             ulong OwnerLeaseGeneration)> ObservedSpotAuthorities { get; } = [];
 
         public RoutingId EntryRoutingId => _entrySpot.RoutingId;
+
+        public MeshOperationId AllocateOperationId() =>
+            new(1, checked((ulong)Interlocked.Increment(ref _nextOperationId)));
 
         public RoutingId PublisherRoutingId { get; private set; }
 

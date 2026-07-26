@@ -25,6 +25,12 @@ export interface ZLinkRemoteBoundSessionTarget {
   readonly sessionNodeRid?: RoutingId;
   readonly sessionRid?: RoutingId;
   readonly bindingGeneration?: bigint;
+  readonly previousAuthorityOwnerGeneration?: bigint;
+  readonly previousOwnerLeaseGeneration?: bigint;
+  readonly acceptedHighWater?: bigint;
+  readonly relocationSealId?: string;
+  readonly acceptedJournalReference?: string;
+  readonly acceptedJournalChecksumCrc32c?: number;
 }
 
 export interface ZLinkRemoteActorPacketTarget {
@@ -69,6 +75,7 @@ export class ZLinkActorRuntimeState {
   private createRequestPayloadValue: Buffer | undefined;
   private ownsLocationValue = false;
   private locationGenerationValue: bigint | undefined;
+  private ownerLeaseGenerationValue: bigint | undefined;
   private movingValue = false;
   private destroyTask: Promise<void> | undefined;
 
@@ -144,6 +151,10 @@ export class ZLinkActorRuntimeState {
     return this.locationGenerationValue;
   }
 
+  get ownerLeaseGeneration(): bigint | undefined {
+    return this.ownerLeaseGenerationValue;
+  }
+
   get isMoving(): boolean {
     return this.movingValue;
   }
@@ -176,6 +187,10 @@ export class ZLinkActorRuntimeState {
 
   setLocationGeneration(generation: bigint): void {
     this.locationGenerationValue = generation;
+  }
+
+  setOwnerLeaseGeneration(generation: bigint): void {
+    this.ownerLeaseGenerationValue = generation;
   }
 
   getOrStartDestroy(
@@ -415,6 +430,7 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;
     this.locationGenerationValue = undefined;
+    this.ownerLeaseGenerationValue = undefined;
     this.destroyTask = undefined;
   }
 
@@ -435,6 +451,7 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = undefined;
     this.ownsLocationValue = false;
     this.locationGenerationValue = undefined;
+    this.ownerLeaseGenerationValue = undefined;
     this.movingValue = false;
     this.destroyTask = undefined;
   }

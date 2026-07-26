@@ -51,17 +51,17 @@ inline suspend fun <reified TReply> ZLinkActorRequestCall.yieldReply(): TReply =
     yieldReply(TReply::class.java)
 
 suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
-    actorRef: ActorRef,
+    actorId: String,
     request: Any,
     replyType: Class<TReply>,
 ): TReply =
-    requestToActor(actorRef, request).awaitReply(replyType)
+    requestToActor(actorId, request).awaitReply(replyType)
 
 inline suspend fun <reified TReply> ZLinkActorClient.requestToActorAwait(
-    actorRef: ActorRef,
+    actorId: String,
     request: Any,
 ): TReply =
-    requestToActorAwait(actorRef, request, TReply::class.java)
+    requestToActorAwait(actorId, request, TReply::class.java)
 
 suspend fun ZLinkActorDirectory.findActor(actorId: String): ActorRef? =
     awaitFrameworkStage(find(actorId)).orElse(null)

@@ -2,6 +2,7 @@ import { ZLinkSpotKind } from '../../contracts';
 import type {
   RoutingId,
   ZLinkChannelClient,
+  ZLinkChannelRequestCall,
   ZLinkFanoutClient,
   ZLinkPublishCall,
   ZLinkRequestCall,
@@ -15,15 +16,11 @@ import type {
 import {
   requireOneWayCompletion,
   throwAlreadySubmitted,
-  ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
-import {
-  ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException
-} from '../../contracts/Errors/ZLinkFrameworkException';
+import { ZLinkFrameworkErrorKind } from '../../contracts/Errors/ZLinkFrameworkException';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
 import {
@@ -33,7 +30,6 @@ import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import type { ZLinkSpotRouteTarget } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import {
-  refreshSpotHandle,
   resolveSpotHandle,
   type SpotHandle,
   type ResolvedSpotHandle
@@ -116,7 +112,7 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall {
+  requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall {
     return wrapRequestCall(
       this.serial,
       this.requireChannelClient().requestToChannel(channelName, request)
@@ -437,7 +433,10 @@ function wrapPublishCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkPublishCal
   };
 }
 
-function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCall): ZLinkRequestCall {
+function wrapRequestCall(
+  serial: ZLinkSpotSerialExecutor,
+  inner: ZLinkChannelRequestCall
+): ZLinkChannelRequestCall {
   const begin = <TReply>(signal?: AbortSignal) =>
     startRequestOnSerial(serial, () => ({ pending: inner.submit<TReply>(signal) }));
   return {
@@ -525,7 +524,7 @@ function wrapRoutedSpotRequestCall(
   request: unknown,
   spotRouterChannelIdForMesh: (meshName: string) => string,
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
-): ZLinkRequestCall {
+): ZLinkRequestCall & Pick<ZLinkChannelRequestCall, 'yield'> {
   let selectedTimeoutMs: number | undefined;
   const metadata = new Map<string, string>();
   const begin = <TReply>(signal?: AbortSignal) => startRequestOnSerial<TReply>(serial, () => ({
@@ -598,18 +597,7 @@ export async function sendToSpotHandle(
     });
   };
 
-  let first: ZLinkSubmitResult;
-  try {
-    first = await sendResolved(await requireSpotRef(spot, options.signal));
-  } catch (error) {
-    if (!isSafeStaleSpotFailure(error)) throw error;
-    const refreshed = await refreshSpotHandle(spot, options.signal);
-    if (refreshed === undefined) throw error;
-    return await sendResolved(refreshed);
-  }
-  if (!isSafeStaleSpotSubmit(first)) return first;
-  const refreshed = await refreshSpotHandle(spot, options.signal);
-  return refreshed === undefined ? first : await sendResolved(refreshed);
+  return await sendResolved(await requireSpotRef(spot, options.signal));
 }
 
 export async function requestToSpotHandle<TReply = unknown>(
@@ -638,36 +626,7 @@ export async function requestToSpotHandle<TReply = unknown>(
     return await transport.requestToSpot<TReply>(target, request, transportOptions);
   };
 
-  try {
-    return await requestResolved(await requireSpotRef(spot, options.signal));
-  } catch (error) {
-    if (!isSafeStaleSpotFailure(error)) {
-      throw error;
-    }
-    const refreshed = await refreshSpotHandle(spot, options.signal);
-    if (refreshed === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotRouteNotFound,
-        `Spot '${spot.spotId}' has no live location after refresh.`,
-        false,
-        error
-      );
-    }
-    return await requestResolved(refreshed);
-  }
-}
-
-function isSafeStaleSpotFailure(error: unknown): boolean {
-  return error instanceof ZLinkFrameworkException && (
-    error.kind === ZLinkFrameworkErrorKind.RequestTargetNotFound
-    || error.kind === ZLinkFrameworkErrorKind.SpotRouteNotFound
-  );
-}
-
-function isSafeStaleSpotSubmit(result: unknown): boolean {
-  const status = (result as { readonly status?: unknown } | null)?.status;
-  return status === ZLinkSubmitStatus.TargetNotFound
-    || status === ZLinkSubmitStatus.RouteNotConnected;
+  return await requestResolved(await requireSpotRef(spot, options.signal));
 }
 
 async function requireSpotRef(handle: SpotHandle, signal?: AbortSignal): Promise<ResolvedSpotHandle> {

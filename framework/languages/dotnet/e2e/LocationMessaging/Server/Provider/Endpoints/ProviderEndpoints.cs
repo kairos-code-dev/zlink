@@ -24,8 +24,8 @@ internal static class ProviderEndpoints
         {
             var peers = await query.ListMeshNodeDescriptorsAsync(
                 mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
-                cancellationToken);
-            return Results.Ok(peers.Select(ToPeerRow).ToArray());
+                cancellationToken: cancellationToken);
+            return Results.Ok(peers.Items.Select(ToPeerRow).ToArray());
         });
         app.MapPost("/locations/peers/wait", async (
             PeerLocationWaitReq request,
@@ -39,12 +39,14 @@ internal static class ProviderEndpoints
             {
                 rows = (await query.ListMeshNodeDescriptorsAsync(
                         request.MeshName,
-                        cancellationToken))
+                        cancellationToken: cancellationToken))
+                    .Items
                     .Select(ToPeerRow)
                     .ToArray();
                 var matches = rows.Where(row =>
                         row.Role == request.Role
-                        && row.NodeRid == request.NodeRid
+                        && (row.NodeRid == request.NodeRid
+                            || row.NodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal))
                         && (request.Weight is null || row.Weight == request.Weight))
                     .ToArray();
                 var reached = request.Present
@@ -60,17 +62,16 @@ internal static class ProviderEndpoints
                 $"Peer row did not reach the requested state for rid={request.NodeRid}.",
                 statusCode: StatusCodes.Status504GatewayTimeout);
         });
-        // Member-peer user surface check: cached resolver read with Refresh
-        // freshness (doc §1 verification basis).
+        // Public operational query for the current live descriptor page.
         app.MapGet("/locations/member-peers", async (
             string? mesh,
-            IZLinkMeshNodeLocationResolver resolver,
+            IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var peers = await resolver.ListLiveMeshNodesAsync(
+            var peers = await query.ListMeshNodeDescriptorsAsync(
                 mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
-                cancellationToken);
-            return Results.Ok(peers.Select(ToPeerRow).ToArray());
+                cancellationToken: cancellationToken);
+            return Results.Ok(peers.Items.Select(ToPeerRow).ToArray());
         });
         app.MapGet("/locations/status", async (
             IZLinkLocationRuntimeQuery query,
@@ -86,7 +87,7 @@ internal static class ProviderEndpoints
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var reply = await channel.RequestToChannel("profile", "profile", request)
+            var reply = await channel.RequestToChannel("profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(reply);
@@ -96,8 +97,8 @@ internal static class ProviderEndpoints
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            await channel.SendToChannel("profile", "profile", command)
-                .SubmitAsync(cancellationToken);
+            await channel.SendToChannel("profile", command)
+                .Async(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/route/request", async (
@@ -156,16 +157,15 @@ internal static class ProviderEndpoints
             }
         });
         app.MapPost("/admin/drain", async (
-            IZLinkDrainControl drain,
+            IZLinkFrameworkRuntime runtime,
             CancellationToken cancellationToken) =>
         {
-            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            return Results.Ok(result switch
-            {
-                Drained => new DrainResultRes(nameof(Drained)),
-                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
-                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
-            });
+            var result = await runtime.RetireAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(new DrainResultRes(
+                result.Outcome.ToString(),
+                result.Reason == ZLinkFrameworkTerminationReason.None
+                    ? null
+                    : result.Reason.ToString()));
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {

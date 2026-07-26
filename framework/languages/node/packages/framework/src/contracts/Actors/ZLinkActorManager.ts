@@ -1,11 +1,11 @@
-import type { ActorRef } from '../Common';
+import type { ActorId, ActorRef } from '../Common';
 import type { SpotRef } from '../Spots';
 
 export interface ZLinkActorManager {
-  create(actorId: string, actorType: string): ZLinkActorCreateCall;
-  getOrCreate(actorId: string, actorType: string): ZLinkActorGetOrCreateCall;
-  find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
-  findSpot(actorId: string, signal?: AbortSignal): Promise<SpotRef | undefined>;
+  create(actorId: ActorId, actorType: string): ZLinkActorCreateCall;
+  getOrCreate(actorId: ActorId, actorType: string): ZLinkActorGetOrCreateCall;
+  find(actorId: ActorId, signal?: AbortSignal): Promise<ActorRef | undefined>;
+  findSpot(actorId: ActorId, signal?: AbortSignal): Promise<SpotRef | undefined>;
   destroy(actor: ActorRef, signal?: AbortSignal): Promise<boolean>;
 }
 
@@ -14,6 +14,7 @@ export interface ZLinkActorCreateCall {
   request(request: unknown): this;
   timeout(timeoutMs: number): this;
   submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+  yield(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
 }
 
 export interface ZLinkActorGetOrCreateCall {
@@ -21,6 +22,7 @@ export interface ZLinkActorGetOrCreateCall {
   request(request: unknown): this;
   timeout(timeoutMs: number): this;
   submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+  yield(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
 }
 
 export type ZLinkActorCreateResult =

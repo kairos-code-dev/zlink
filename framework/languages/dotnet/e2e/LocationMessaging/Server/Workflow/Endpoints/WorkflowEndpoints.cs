@@ -18,7 +18,7 @@ internal static class WorkflowEndpoints
             WorkflowReq request,
             IZLinkRouteClient channel) =>
         {
-            var reply = await channel.RequestToChannel("workflow", "workflow", request)
+            var reply = await channel.RequestToChannel("workflow", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<WorkflowRes>();
             return Results.Ok(reply);

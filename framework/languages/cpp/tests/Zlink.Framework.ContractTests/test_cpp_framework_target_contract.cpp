@@ -609,15 +609,24 @@ int main ()
                       "framework_error_kind_t still exposes non-contract value: " + forbidden);
     }
 
-    /* CPP-G0-SPOTHANDLE-001 — opaque handle replaces spot_ref_t. */
-    gate.require (!tree_contains (include_root, "spot_ref_t"), "CPP-G0-SPOTHANDLE-001",
-                  "public spot_ref_t address snapshot is still exported");
-    for (const std::string required : {"spot_handle_t", "spot_handle_resolver_t",
-                                       "actor_spot_handle_resolver_t", "send_to_spot",
+    /* CPP-G0-SPOTHANDLE-001 — SpotRef remains an exact lifecycle snapshot,
+     * while direct messaging accepts only the global SpotId. The previous
+     * gate incorrectly removed SpotRef and retained an opaque messaging
+     * handle, contrary to 04-spots and 26-object-routing. */
+    for (const std::string required : {"spot_ref_t", "send_to_spot",
                                        "request_to_spot"}) {
         gate.require (tree_contains (include_root, required), "CPP-G0-SPOTHANDLE-001",
-                      "spot handle surface is missing: " + required);
+                      "Spot lifecycle or global-id messaging surface is missing: " + required);
     }
+    gate.require (!tree_contains (include_root, "spot_handle_t")
+                    && !tree_contains (include_root, "spot_handle_resolver_t")
+                    && !tree_contains (include_root, "actor_spot_handle_resolver_t"),
+                  "CPP-G0-SPOTHANDLE-001",
+                  "direct Spot messaging still exports an owner-address handle");
+    gate.require (!tree_contains (include_root, "send_to_spot (spot_ref_t")
+                    && !tree_contains (include_root, "request_to_spot (spot_ref_t"),
+                  "CPP-G0-SPOTHANDLE-001",
+                  "SpotRef is still accepted as a direct messaging target");
 
     /* CPP-G0-ACTOR-001 — nullable spot id is the single membership source. */
     gate.require (actor_hpp.find ("is_joined") == std::string::npos, "CPP-G0-ACTOR-001",
@@ -1290,13 +1299,13 @@ int main ()
 
     /* IMP-CP-06 — recovery re-registers local rows before applying disconnect diff. */
     gate.require (location_auto_connect.find ("reconcile_after") != std::string::npos
-                    && location_auto_connect.find ("heartbeat_interval") != std::string::npos,
+                    && location_auto_connect.find ("owner_lease_renew_interval") != std::string::npos,
                   "IMP-CP-06", "auto-connect recovery has no heartbeat defer boundary");
     gate.require (location_auto_connect.find ("republish_after_store_recovery")
                     != std::string::npos,
                   "IMP-CP-06", "auto-connect recovery does not republish local rows");
     gate.require (location_auto_connect.find (
-                    "_runtime->options ().heartbeat_interval\n              + _runtime->options ().polling_interval")
+                    "_runtime->options ().owner_lease_renew_interval\n              + _runtime->options ().polling_interval")
                     != std::string::npos,
                   "IMP-CP-06", "recovery diff races the first provider heartbeat");
     gate.require (location_auto_connect.find ("_runtime->options ().polling_interval")

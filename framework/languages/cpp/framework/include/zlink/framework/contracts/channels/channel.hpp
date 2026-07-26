@@ -8,7 +8,6 @@
 #include <zlink/framework/contracts/detail/message_name.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
-#include <zlink/framework/contracts/locations/spot_handle.hpp>
 #include <zlink/framework/contracts/messaging/message_context.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 
@@ -37,6 +36,7 @@ class channel_runtime_t;
 class channel_outbound_exchange_t;
 class channel_runtime_manager_t;
 class route_client_state_t;
+class route_client_runtime_t;
 class route_channel_builder_state_t;
 void connect_route_channel_peer (route_channel_builder_t &builder,
                                  zlink::routing_id_t peer_rid,
@@ -645,6 +645,112 @@ class route_send_call_t
       std::make_shared<detail::submit_once_t> ();
 };
 
+namespace detail
+{
+struct spot_activation_intent_t
+{
+    bool instance = false;
+    std::optional<std::string> stable_type;
+    std::optional<std::string> mesh_name;
+};
+}
+
+class spot_send_call_t : public route_send_call_t
+{
+  public:
+    spot_send_call_t (std::string packet_name,
+                      submit_fn_t submit,
+                      std::shared_ptr<detail::spot_activation_intent_t> intent) :
+        route_send_call_t (std::move (packet_name), std::move (submit)),
+        _intent (std::move (intent))
+    {
+    }
+
+    spot_send_call_t &metadata (std::string key, std::string value)
+    {
+        route_send_call_t::metadata (std::move (key), std::move (value));
+        return *this;
+    }
+    spot_send_call_t &instance_spot () { return set_instance (std::nullopt); }
+    spot_send_call_t &instance_spot (std::string stable_type)
+    {
+        return set_instance (std::move (stable_type));
+    }
+    spot_send_call_t &in_mesh (std::string mesh_name)
+    {
+        if (_intent->mesh_name) {
+            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                         "Spot mesh can be selected only once");
+        }
+        _intent->mesh_name = std::move (mesh_name);
+        return *this;
+    }
+
+  private:
+    spot_send_call_t &set_instance (std::optional<std::string> stable_type)
+    {
+        if (_intent->instance) {
+            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                         "Instance Spot intent can be selected only once");
+        }
+        _intent->instance = true;
+        _intent->stable_type = std::move (stable_type);
+        return *this;
+    }
+    std::shared_ptr<detail::spot_activation_intent_t> _intent;
+};
+
+class spot_request_call_t : public channel_request_call_t
+{
+  public:
+    spot_request_call_t (std::string packet_name,
+                         serializer_registry_t *serializers,
+                         submit_fn_t submit,
+                         std::shared_ptr<detail::spot_activation_intent_t> intent) :
+        channel_request_call_t (std::move (packet_name), serializers, std::move (submit)),
+        _intent (std::move (intent))
+    {
+    }
+
+    spot_request_call_t &timeout (std::chrono::milliseconds value)
+    {
+        channel_request_call_t::timeout (value);
+        return *this;
+    }
+    spot_request_call_t &metadata (std::string key, std::string value)
+    {
+        channel_request_call_t::metadata (std::move (key), std::move (value));
+        return *this;
+    }
+    spot_request_call_t &instance_spot () { return set_instance (std::nullopt); }
+    spot_request_call_t &instance_spot (std::string stable_type)
+    {
+        return set_instance (std::move (stable_type));
+    }
+    spot_request_call_t &in_mesh (std::string mesh_name)
+    {
+        if (_intent->mesh_name) {
+            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                         "Spot mesh can be selected only once");
+        }
+        _intent->mesh_name = std::move (mesh_name);
+        return *this;
+    }
+
+  private:
+    spot_request_call_t &set_instance (std::optional<std::string> stable_type)
+    {
+        if (_intent->instance) {
+            throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                         "Instance Spot intent can be selected only once");
+        }
+        _intent->instance = true;
+        _intent->stable_type = std::move (stable_type);
+        return *this;
+    }
+    std::shared_ptr<detail::spot_activation_intent_t> _intent;
+};
+
 class route_client_t
 {
   public:
@@ -699,25 +805,24 @@ class route_client_t
           });
     }
 
-    /* Sends one-way to the spot the opaque handle tracks. The handle owns the
-     * route channel and address snapshot; one-way sends are never retried. */
     template <typename TMessage>
-    route_send_call_t send_to_spot (spot_handle_t target, TMessage message)
+    spot_send_call_t send_to_spot (spot_id_t target, TMessage message)
     {
         auto state = _state;
         auto message_value = std::make_shared<TMessage> (std::move (message));
-        return route_send_call_t (
+        auto intent = std::make_shared<detail::spot_activation_intent_t> ();
+        return spot_send_call_t (
           detail::message_name<TMessage> (),
-          [state, target = std::move (target),
+          [state, target = std::move (target), intent,
            message_value] (const std::string &packet_name,
                            const route_send_call_t::metadata_map_t &metadata) -> result_t<void> {
-              return submit_spot_handle_send_erased (
-                state, target, packet_name, std::type_index (typeid (TMessage)),
+              return submit_spot_id_send_erased (
+                state, target, *intent, packet_name, std::type_index (typeid (TMessage)),
                 [message_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TMessage> ().serialize (*message_value);
                 },
                 metadata);
-          });
+          }, intent);
     }
 
     template <typename TRequest>
@@ -761,31 +866,31 @@ class route_client_t
           });
     }
 
-    /* Requests against the spot the opaque handle tracks. When the target is
-     * known not to have handled the first attempt, the framework refreshes
-     * the handle snapshot and retries once. */
+    /* Direct Spot requests resolve the global SpotId once for this operation. */
     template <typename TRequest>
-    channel_request_call_t request_to_spot (spot_handle_t target, TRequest request)
+    spot_request_call_t request_to_spot (spot_id_t target, TRequest request)
     {
         auto state = _state;
         auto request_value = std::make_shared<TRequest> (std::move (request));
-        return channel_request_call_t (
+        auto intent = std::make_shared<detail::spot_activation_intent_t> ();
+        return spot_request_call_t (
           detail::message_name<TRequest> (), _serializers,
-          [state, target = std::move (target),
+          [state, target = std::move (target), intent,
            request_value] (const std::string &packet_name, std::chrono::milliseconds timeout,
                            const channel_request_call_t::metadata_map_t &metadata) mutable
           -> task_t<zlink::message_t> {
-              return submit_spot_handle_request_reply_message_erased (
-                state, target, packet_name, std::type_index (typeid (TRequest)),
+              return submit_spot_id_request_reply_message_erased (
+                state, target, *intent, packet_name, std::type_index (typeid (TRequest)),
                 [request_value] (serializer_registry_t &serializers) {
                     return serializers.template get<TRequest> ().serialize (*request_value);
                 },
                 timeout, metadata);
-          });
+          }, intent);
     }
 
   private:
     friend class zlink_builder_t;
+    friend class detail::route_client_runtime_t;
     explicit route_client_t (std::shared_ptr<detail::route_client_state_t> state,
                              serializer_registry_t &serializers);
 
@@ -882,16 +987,18 @@ class route_client_t
       std::map<std::string, std::string> metadata);
 
     static result_t<void>
-    submit_spot_handle_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
-                                    const spot_handle_t &target,
+    submit_spot_id_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
+                                    const spot_id_t &target,
+                                    const detail::spot_activation_intent_t &intent,
                                     const std::string &packet_name,
                                     std::type_index message_type,
                                     payload_encoder_t encode_payload,
                                     const route_send_call_t::metadata_map_t &metadata);
 
-    static task_t<zlink::message_t> submit_spot_handle_request_reply_message_erased (
+    static task_t<zlink::message_t> submit_spot_id_request_reply_message_erased (
       const std::shared_ptr<detail::route_client_state_t> &state,
-      spot_handle_t target,
+      spot_id_t target,
+      detail::spot_activation_intent_t intent,
       std::string packet_name,
       std::type_index request_type,
       payload_encoder_t encode_payload,

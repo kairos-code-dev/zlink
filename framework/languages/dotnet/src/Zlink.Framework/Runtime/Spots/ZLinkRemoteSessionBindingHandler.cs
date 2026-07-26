@@ -57,6 +57,7 @@ internal static class ZLinkRemoteSessionBindingHandler
                 frame.SourceSessionRid,
                 frame.RequestId,
                 frame.Flags,
+                frame.RouteContext.ReplyCapability,
                 boundSession.IsNoBind,
                 frame.Header,
                 AcknowledgedReply(response),

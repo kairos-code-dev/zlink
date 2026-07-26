@@ -219,6 +219,53 @@ using user_spot_close_completion_t = std::function<void (
   foundation::operation_terminal_t,
   protocol::user_spot_close_reply_t)>;
 
+using session_relocation_route_completion_t = std::function<void (
+  foundation::operation_terminal_t,
+  std::optional<protocol::session_relocation_routed_t>)>;
+
+struct session_relocation_seal_result_t
+{
+    protocol::session_relocation_sealed_t sealed;
+    stateful::durable_session_journal_root_t journal_root;
+
+    friend bool operator== (const session_relocation_seal_result_t &,
+                            const session_relocation_seal_result_t &) = default;
+};
+
+using session_relocation_journal_capture_t =
+  std::function<std::vector<std::uint8_t> ()>;
+using session_relocation_seal_completion_t = std::function<void (
+  foundation::operation_terminal_t,
+  std::optional<session_relocation_seal_result_t>)>;
+
+struct instance_spot_activation_result_t
+{
+    std::uint32_t terminal_result = 0;
+    std::uint32_t failure_code = 0;
+    std::optional<protocol::application_payload_t> application_reply;
+};
+
+struct instance_spot_activation_materializer_t
+{
+    std::function<bool (
+      const protocol::instance_spot_activation_header_t &)> prepare;
+    std::function<instance_spot_activation_result_t (
+      const protocol::instance_spot_activation_header_t &,
+      const std::optional<std::vector<std::uint8_t>> &,
+      const protocol::application_payload_t &)> dispatch;
+
+    explicit operator bool () const noexcept
+    {
+        return static_cast<bool> (prepare)
+               && static_cast<bool> (dispatch);
+    }
+};
+
+using instance_spot_activation_completion_t = std::function<void (
+  foundation::operation_terminal_t,
+  protocol::reply_header_t,
+  std::optional<protocol::application_payload_t>)>;
+
 enum class actor_transfer_role_t
 {
     source,
@@ -377,6 +424,40 @@ class public_host_runtime_t :
     void configure_user_spot_operations (
       std::shared_ptr<zlink::framework::location_store_t> store,
       user_spot_materializer_t materializer);
+    void configure_instance_spot_operations (
+      std::shared_ptr<zlink::framework::location_store_t> store,
+      std::shared_ptr<stateful::relocation_store_port_t> relocations,
+      location_owner_token_t owner,
+      instance_spot_activation_materializer_t materializer);
+    void configure_session_route_owner (
+      std::function<std::optional<location_owner_token_t> ()>
+        owner_resolver);
+    void configure_session_relocation_store (
+      std::shared_ptr<stateful::relocation_store_port_t> relocations);
+    bool seal_session_remote (
+      const zlink::routing_id_t &session_owner_node,
+      protocol::session_relocation_seal_t seal,
+      std::chrono::milliseconds timeout,
+      session_relocation_journal_capture_t capture_journal,
+      session_relocation_seal_completion_t completion);
+    bool activate_instance_spot_remote (
+      const zlink::routing_id_t &target_node,
+      protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      protocol::application_payload_t application_payload,
+      std::chrono::milliseconds timeout,
+      instance_spot_activation_completion_t completion);
+    bool send_instance_spot_activation_remote (
+      const zlink::routing_id_t &target_node,
+      protocol::instance_spot_activation_header_t request,
+      std::optional<std::vector<std::uint8_t>> metadata,
+      protocol::application_payload_t application_payload);
+    bool route_session_remote (
+      const zlink::routing_id_t &session_owner_node,
+      protocol::session_relocation_route_t route,
+      std::chrono::milliseconds timeout,
+      session_relocation_route_completion_t completion);
+    std::size_t recover_instance_spot_activations ();
     bool create_user_spot_remote (
       const zlink::routing_id_t &target_node,
       protocol::user_spot_create_header_t request,
@@ -491,6 +572,34 @@ class public_host_runtime_t :
     std::shared_ptr<zlink::framework::location_store_t>
       _user_spot_store;
     user_spot_materializer_t _user_spot_materializer;
+    instance_spot_activation_materializer_t
+      _instance_spot_materializer;
+    std::shared_ptr<stateful::relocation_store_port_t>
+      _instance_spot_relocations;
+    location_owner_token_t _instance_spot_owner;
+    std::function<std::optional<location_owner_token_t> ()>
+      _session_route_owner_resolver;
+    std::shared_ptr<stateful::relocation_store_port_t>
+      _session_relocations;
+    struct session_seal_terminal_record_t
+    {
+        protocol::session_relocation_seal_t seal;
+        protocol::session_relocation_sealed_t sealed;
+        stateful::stream_barrier_t barrier;
+        bool consumed = false;
+    };
+    std::map<std::pair<std::uint64_t, std::uint64_t>,
+             session_seal_terminal_record_t>
+      _session_seal_terminals;
+    std::map<std::pair<std::uint64_t, std::uint64_t>,
+             std::pair<protocol::session_relocation_seal_t,
+                       session_relocation_seal_result_t>>
+      _session_journal_terminals;
+    std::map<
+      std::pair<std::uint64_t, std::uint64_t>,
+      std::pair<protocol::session_relocation_route_t,
+                protocol::session_relocation_routed_t>>
+      _session_route_terminals;
     struct user_spot_terminal_record_t
     {
         protocol::command kind = protocol::command::userSpotCreate;

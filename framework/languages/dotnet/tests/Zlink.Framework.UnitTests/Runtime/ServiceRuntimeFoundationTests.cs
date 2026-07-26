@@ -339,6 +339,28 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public async Task ManagedNode_LocalAndTransportOperationsShareOneIdNamespace()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        var nodeRid = RoutingId.From("orders-operation-source");
+        node.SetRoutingId(nodeRid);
+        var localOperation = node.AllocateOperationId();
+
+        using var requestPart = Message.From(new byte[] { 1 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.RequestToNode(
+                nodeRid,
+                [requestPart],
+                out var transportOperation,
+                TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(localOperation.High, transportOperation.High);
+        Assert.Equal(localOperation.Low + 1, transportOperation.Low);
+    }
+
+    [Fact]
     public async Task ManagedNode_LocalRequestPublishesOneTerminalCompletion()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -437,6 +459,53 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal(MeshRecordKind.ChannelSend, received[0].Kind);
         Assert.Equal("worker", received[0].ChannelName);
         Assert.Equal(sourceRid, received[0].SourceNodeRid);
+    }
+
+    [Fact]
+    public async Task UnknownRidAdmissionsRemainBoundToTheirConfiguredEndpoints()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = new ZLinkManagedMeshNode(context, "orders");
+        await using var targetA = new ZLinkManagedMeshNode(context, "orders");
+        await using var targetB = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var endpointA = $"inproc://orders-a-{suffix}";
+        var endpointB = $"inproc://orders-b-{suffix}";
+
+        source.SetRoutingId(RoutingId.From("orders-source"));
+        source.SetBind($"inproc://orders-source-{suffix}");
+        source.ConnectPeer(endpointA);
+        source.ConnectPeer(endpointB);
+        targetA.SetRoutingId(RoutingId.From("orders-a"));
+        targetA.SetBind(endpointA);
+        targetA.AddChannel("worker");
+        targetB.SetRoutingId(RoutingId.From("orders-b"));
+        targetB.SetBind(endpointB);
+        targetB.AddChannel("worker");
+
+        targetA.Start();
+        targetB.Start();
+        source.Start();
+
+        await WaitUntilAsync(() => source.Status().AdmittedPeerCount == 2);
+        var admittedEndpoints = source.Peers()
+            .Where(static peer => peer.State == MeshPeerState.Admitted)
+            .Select(static peer => peer.Endpoint)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.True(
+            new[] { endpointA, endpointB }.SequenceEqual(admittedEndpoints));
+
+        for (var index = 0; index < 4; index++)
+        {
+            using var payload = Message.From(new byte[] { checked((byte)index) });
+            Assert.Equal(
+                SubmitResult.Ok,
+                source.EntrySpot().SendToChannel("worker", [payload]));
+        }
+
+        await WaitForApplicationRecordAsync(targetA);
+        await WaitForApplicationRecordAsync(targetB);
     }
 
     [Fact]
@@ -677,6 +746,28 @@ public sealed class ServiceRuntimeFoundationTests
             if (bytes.AsSpan(offset, sequence.Length).SequenceEqual(sequence))
                 return offset;
         throw new InvalidOperationException("Test sequence was not found.");
+    }
+
+    private static async Task WaitForApplicationRecordAsync(
+        ZLinkManagedMeshNode node)
+    {
+        using var ready = new MeshReadyBatch();
+        await WaitUntilAsync(() =>
+        {
+            ready.Reset();
+            node.DrainReady(
+                MeshReadyDomains.Application,
+                ready,
+                RecvFlags.DontWait);
+            return ready.Count > 0;
+        });
+        using var claim = ready.TakeClaim(0);
+        using var received = new MeshReceiveBatch();
+        Assert.True(claim.Receive(received, RecvFlags.DontWait));
+        Assert.Contains(
+            MeshRecordKind.ChannelSend,
+            Enumerable.Range(0, received.Count)
+                .Select(index => received[index].Kind));
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

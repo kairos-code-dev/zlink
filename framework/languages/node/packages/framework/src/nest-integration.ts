@@ -25,11 +25,13 @@ import type {
   ZLinkActorClient,
   ZLinkActorManager,
   ZLinkChannelClient,
+  ZLinkClientServerRuntime,
   ZLinkCodecRegistryBuilder,
   ZLinkCodecRegistrar,
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
   ZLinkFanoutClient,
+  ZLinkFanoutRuntime,
   ZLinkProviderResolver,
   ZLinkRouteClient,
   ZLinkRouteMeshRuntime,
@@ -81,6 +83,8 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
   readonly routeMeshRuntime: ZLinkRouteMeshRuntime;
+  readonly clientServerRuntime: ZLinkClientServerRuntime;
+  readonly fanoutRuntime: ZLinkFanoutRuntime;
   waitForReadyAllocation(
     groupName: string,
     signal?: AbortSignal

@@ -531,7 +531,7 @@ public final class ZLinkChannelRuntime
                 adapterOptions,
                 sockets,
                 configuration.options().pollingInterval(),
-                configuration.options().listPageSize());
+                1000);
         List<AutoConnectSurface> surfaces = autoConnectSurfaces();
         configuration.install(
             new ZLinkClientServerRuntimeConfiguration.Lifecycle() {
@@ -611,7 +611,7 @@ public final class ZLinkChannelRuntime
                 context,
                 sockets,
                 configuration.options().pollingInterval(),
-                configuration.options().listPageSize(),
+                1000,
                 messageDispatcher::dispatchPublish);
         fanoutLocationRuntime = runtime;
         List<AutoConnectSurface> surfaces = autoConnectSurfaces();

@@ -36,6 +36,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     private final ZLinkBackendStreamSocket stream;
     private final RoutingId sessionRid;
     private volatile ZLinkBackendActorRef ref;
+    private final String meshName;
     private final Optional<ZLinkActor> managedActor;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
@@ -56,6 +57,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         ZLinkBackendStreamSocket stream,
         RoutingId sessionRid,
         ZLinkBackendActorRef ref,
+        String meshName,
         Optional<ZLinkActor> managedActor,
         ZLinkActorRuntime actors,
         ZLinkMessageSerializer serializer,
@@ -71,6 +73,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         this.stream = stream;
         this.sessionRid = sessionRid;
         this.ref = ref;
+        this.meshName = java.util.Objects.requireNonNull(meshName, "meshName");
         this.managedActor = managedActor;
         this.actors = actors;
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
@@ -94,7 +97,11 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     @Override
     public ActorRef ref() {
         ZLinkBackendActorRef current = ref;
-        return new ActorRef(current.nodeRid(), current.actorId(), current.generation());
+        return new ActorRef(
+            current.actorId(),
+            current.generation(),
+            meshName,
+            current.nodeRid());
     }
 
     void rebindNativeActor(ZLinkBackendActorRef targetActor) {

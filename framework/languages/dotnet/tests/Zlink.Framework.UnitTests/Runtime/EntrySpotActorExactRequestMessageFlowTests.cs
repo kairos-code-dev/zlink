@@ -132,6 +132,15 @@ public sealed partial class EntrySpotActorDispatchTests
             "corr-1",
             ExactActorFlowId,
             ZlinkStreamFlowOrigin.Application);
+        var replyRoute = new ZLinkBackendActorRouteContext(
+            default,
+            0,
+            1,
+            1,
+            1,
+            77,
+            1,
+            "exact-flow-reply-capability");
         return
         [
             new ZLinkBackendActorPart(
@@ -141,7 +150,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 77,
                 1,
                 Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
-                true),
+                true,
+                RouteContext: replyRoute),
             new ZLinkBackendActorPart(
                 actorRef,
                 RoutingId.From("source-node"),
@@ -149,7 +159,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 77,
                 1,
                 Message.From(ZLinkEnvelopeCodec.EncodeJsonBytes("exact", typeof(string))),
-                false)
+                false,
+                RouteContext: replyRoute)
         ];
     }
 

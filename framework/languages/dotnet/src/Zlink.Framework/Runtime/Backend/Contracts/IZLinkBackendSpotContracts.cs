@@ -77,6 +77,8 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // backing the IZLinkRouteMeshRuntime monitoring surface (spec 50 §2).
     MeshNodeStatus MeshStatus();
 
+    MeshOperationId AllocateOperationId();
+
     IReadOnlyList<MeshNodePeer> MeshPeers();
 
     IReadOnlyList<MeshPeerChannel> MeshPeerChannels(

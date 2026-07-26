@@ -150,6 +150,7 @@ export class ZLinkSpotActorAdmissionCoordinator {
     const transfer = this.options.actorTransferRuntime;
     let snapshot: ZLinkNativeActorJoinSnapshot | undefined;
     let rollbackMembership: (() => void) | undefined;
+    let routeSwitchStarted = false;
     try {
       snapshot = await transfer?.claimNativeActorLocation(
         actor,
@@ -158,9 +159,14 @@ export class ZLinkSpotActorAdmissionCoordinator {
       );
       transfer?.commitRoutedActor(actor, activation.spotId, activation.spot);
       rollbackMembership = activation.commitActorJoin(actor);
+      activation.beginActorTransfer(actor.context.actorId);
       await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
+      routeSwitchStarted = true;
       await transfer?.publishRoutedActorOwnership(actor);
+      await transfer?.openRoutedActorSession(actor);
+      activation.cancelActorTransfer(actor.context.actorId);
     } catch (error) {
+      if (routeSwitchStarted) throw error;
       rollbackMembership?.();
       try {
         if (snapshot !== undefined) await transfer?.rollbackNativeActorJoin(actor, snapshot);
@@ -177,9 +183,11 @@ export class ZLinkSpotActorAdmissionCoordinator {
     backlog: readonly ZLinkActorHandoffPacket[]
   ): Promise<readonly ZLinkActorHandoffResult[]> {
     const transfer = this.options.actorTransferRuntime;
+    let routeSwitchStarted = false;
     try {
       transfer?.commitRoutedActor(actor, activation.spotId, activation.spot);
       activation.commitActorJoin(actor);
+      activation.beginActorTransfer(actor.context.actorId);
       await activation.serial.execute(() => activation.spot.onJoinedActor(createActorMembership(actor)));
       const results = backlog.length === 0
         ? []
@@ -189,9 +197,13 @@ export class ZLinkSpotActorAdmissionCoordinator {
         activation.spotId,
         activation.meshName
       );
+      routeSwitchStarted = true;
       await transfer?.publishRoutedActorOwnership(actor);
+      await transfer?.openRoutedActorSession(actor);
+      activation.cancelActorTransfer(actor.context.actorId);
       return results;
     } catch (error) {
+      if (routeSwitchStarted) throw error;
       activation.commitActorDeparture(actor.context.actorId);
       transfer?.clearRoutedActor(actor);
       try {

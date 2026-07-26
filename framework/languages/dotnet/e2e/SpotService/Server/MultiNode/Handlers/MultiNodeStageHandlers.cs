@@ -1,5 +1,6 @@
 using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -13,6 +14,7 @@ internal sealed class SpotMsgHandler(EvidenceStore evidence)
     public ValueTask HandleAsync(
         ScenarioUserSpot spot,
         SpotMsg message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

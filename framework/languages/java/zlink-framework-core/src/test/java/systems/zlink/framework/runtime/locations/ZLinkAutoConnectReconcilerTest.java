@@ -510,7 +510,7 @@ final class ZLinkAutoConnectReconcilerTest {
         RecordingExecutor executor = new RecordingExecutor();
         FlakyPeerResolver resolver = new FlakyPeerResolver(store);
         ZLinkLocationOptions options = options();
-        options.setHeartbeatInterval(Duration.ofSeconds(1));
+        options.setOwnerLeaseRenewInterval(Duration.ofSeconds(1));
         options.setOwnerLeaseTtl(Duration.ofSeconds(3));
         AtomicLong now = new AtomicLong();
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
@@ -549,7 +549,7 @@ final class ZLinkAutoConnectReconcilerTest {
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
 
-        now.set(options.heartbeatInterval().plusMillis(1).toNanos());
+        now.set(options.ownerLeaseRenewInterval().plusMillis(1).toNanos());
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
 
@@ -596,7 +596,7 @@ final class ZLinkAutoConnectReconcilerTest {
 
     private static ZLinkLocationOptions options() {
         ZLinkLocationOptions options = new ZLinkLocationOptions();
-        options.setHeartbeatInterval(Duration.ofMillis(50));
+        options.setOwnerLeaseRenewInterval(Duration.ofMillis(50));
         options.setPollingInterval(Duration.ofMillis(10));
         options.setOwnerLeaseTtl(Duration.ofSeconds(30));
         return options;

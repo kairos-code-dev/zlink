@@ -92,6 +92,44 @@ class durable_join_completion_store_t
     std::shared_ptr<relocation_store_port_t> _store;
 };
 
+struct durable_session_journal_record_t
+{
+    std::uint64_t relocation_id_high = 0;
+    std::uint64_t relocation_id_low = 0;
+    object_ref_t actor;
+    std::uint64_t binding_generation = 0;
+    std::uint64_t last_accepted_session_sequence = 0;
+    std::vector<std::uint8_t> accepted_journal;
+
+    friend bool operator== (const durable_session_journal_record_t &,
+                            const durable_session_journal_record_t &) = default;
+};
+
+struct durable_session_journal_root_t
+{
+    std::string reference;
+    std::uint32_t checksum_crc32c = 0;
+
+    friend bool operator== (const durable_session_journal_root_t &,
+                            const durable_session_journal_root_t &) = default;
+};
+
+class durable_session_journal_store_t
+{
+  public:
+    explicit durable_session_journal_store_t (
+      std::shared_ptr<relocation_store_port_t> store);
+
+    durable_session_journal_root_t prepare (
+      const durable_session_journal_record_t &record);
+    std::optional<durable_session_journal_record_t> recover (
+      const durable_session_journal_root_t &root) const;
+    void cleanup (const durable_session_journal_root_t &root);
+
+  private:
+    std::shared_ptr<relocation_store_port_t> _store;
+};
+
 struct authority_relocation_reference_t
 {
     object_ref_t source;

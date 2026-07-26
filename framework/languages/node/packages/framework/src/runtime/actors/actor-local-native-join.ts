@@ -25,6 +25,7 @@ import {
   toFrameworkActorRef,
   toFrameworkRoutingId
 } from './actor-runtime-state';
+import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
 import type { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
 import type { ZLinkPostCommitActorLocation } from './post-commit-actor-location';
 import { toBindingRoutingId } from '../routing-id';
@@ -101,7 +102,7 @@ export class ZLinkLocalNativeActorJoin {
         targetSpotId: target.spotId,
         routerChannelId: target.routerChannelId,
         sourceSpotId: state.spotId ?? toFrameworkRoutingId(node.entrySpot().routingId),
-        boundSessionTarget: state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget,
+        boundSessionTarget: enrichBoundSessionTransferTarget(state),
         phase: REMOTE_ACTOR_JOIN_COMMIT,
         transferId,
         transferAdapterKey: prepared.adapterKey,
@@ -369,6 +370,19 @@ export class ZLinkLocalNativeActorJoin {
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
     }
   }
+}
+
+function enrichBoundSessionTransferTarget(state: ZLinkActorRuntimeState): ZLinkRemoteBoundSessionTarget | undefined {
+  const target = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+  return target === undefined
+    ? undefined
+    : {
+        ...target,
+        previousAuthorityOwnerGeneration:
+          target.previousAuthorityOwnerGeneration ?? state.locationGeneration,
+        previousOwnerLeaseGeneration:
+          target.previousOwnerLeaseGeneration ?? state.ownerLeaseGeneration
+      };
 }
 
 function isRetryableTerminalRouteFailure(error: unknown): boolean {

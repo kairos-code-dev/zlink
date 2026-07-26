@@ -461,6 +461,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.meshName = meshName;
     }
 
+    String meshName() {
+        return meshName;
+    }
+
     @Override
     public CompletionStage<ZLinkActorCreateResult> create(String actorId, String actorType) {
         return create(actorId, actorType, ZLinkMessage.empty());
@@ -612,9 +616,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                             actorType,
                             actorId,
                             new ActorRef(
-                                refFor(actor).nodeRid(),
                                 refFor(actor).actorId(),
-                                refFor(actor).generation()))
+                                refFor(actor).generation(),
+                                meshName,
+                                refFor(actor).nodeRid()))
                         .thenApply(ignoredSet -> actor))
                     .whenComplete((actor, error) -> {
                         if (error != null) {
@@ -788,17 +793,134 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor transfer adapter key does not match actor type: " + adapterKey));
         }
-        return activateTransferredActor(
+        return prepareTransferredActor(
                 actorId,
                 actorType,
                 adapterKey,
                 transferState,
                 factoryType,
                 reentryActorRef)
-            .thenApply(actor -> {
-                actorRegistry.markTransferred(actorId);
-                return actor;
+            .thenApply(prepared -> publishPreparedTransferredActor(prepared));
+    }
+
+    /**
+     * Runs the target factory and byte[] Restore without making the Actor
+     * discoverable through the local registry.
+     */
+    public CompletionStage<PreparedTransferredActor> prepareRelocatedActor(
+        String actorId,
+        String actorType,
+        byte[] applicationState,
+        boolean restoreSnapshot,
+        systems.zlink.framework.runtime.internal.relocation
+            .ZLinkRelocationAdapterRegistry adapters,
+        systems.zlink.framework.actors.ZLinkRelocationCancellation cancellation,
+        ZLinkBackendActorRef preparedActorRef) {
+        requireActorId(actorId);
+        java.util.Objects.requireNonNull(applicationState, "applicationState");
+        if (restoreSnapshot) {
+            java.util.Objects.requireNonNull(adapters, "adapters");
+        }
+        java.util.Objects.requireNonNull(cancellation, "cancellation");
+        Class<? extends ZLinkActorFactory> factoryType = requireFactory(actorType);
+        if (actorRegistry.contains(actorId)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "target runtime already owns actor: " + actorId));
+        }
+        ZLinkBackendActorRef actorRef = preparedActorRef;
+        if (actorRef == null) {
+            Message createRequest = Message.from(new byte[0]);
+            try {
+                actorRef = spotNode.createActor(actorId, createRequest);
+            } catch (RuntimeException failure) {
+                createRequest.close();
+                throw failure;
+            }
+        }
+        DefaultActorContext context = new DefaultActorContext(actorRef);
+        ZLinkBackendActorRef finalActorRef = actorRef;
+        context.beginMove();
+        CompletionStage<PreparedTransferredActor> activation = ZLinkHandlerStages
+            .fromSupplier(() -> createFactory(factoryType).create(context))
+            .thenCompose(stage -> stage)
+            .thenCompose(actor -> {
+                if (actor == null) {
+                    return CompletableFuture.failedFuture(
+                        new ZLinkConfigurationException(
+                            "actor factory returned null: " + actorId));
+                }
+                context.setActor(actor);
+                CompletionStage<Void> restore = restoreSnapshot
+                    ? adapters.restoreActor(
+                        actorType,
+                        actor,
+                        applicationState.clone(),
+                        cancellation)
+                    : CompletableFuture.completedFuture(null);
+                return restore.thenApply(ignored ->
+                    new PreparedTransferredActor(
+                        actorId,
+                        actorType,
+                        actor,
+                        context,
+                        finalActorRef));
             });
+        return activation.exceptionallyCompose(failure ->
+            discardPreparedBackend(finalActorRef, context)
+                .thenCompose(ignored -> CompletableFuture.failedFuture(
+                    unwrap(failure))));
+    }
+
+    public synchronized ZLinkActor publishPreparedTransferredActor(
+        PreparedTransferredActor prepared) {
+        java.util.Objects.requireNonNull(prepared, "prepared");
+        prepared.requireOwner(this);
+        if (prepared.terminal) {
+            throw new IllegalStateException(
+                "prepared Actor activation is already terminal");
+        }
+        if (actorRegistry.contains(prepared.actorId)) {
+            throw new ZLinkConfigurationException(
+                "target runtime already owns actor: " + prepared.actorId);
+        }
+        actorRegistry.register(
+            prepared.actorId,
+            prepared.actorType,
+            prepared.actor,
+            prepared.context);
+        actorRegistry.markTransferred(prepared.actorId);
+        prepared.published = true;
+        return prepared.actor;
+    }
+
+    public synchronized void completePreparedTransferredActor(
+        PreparedTransferredActor prepared) {
+        java.util.Objects.requireNonNull(prepared, "prepared");
+        prepared.requireOwner(this);
+        if (!prepared.published || prepared.terminal) {
+            throw new IllegalStateException(
+                "prepared Actor must be published exactly once before completion");
+        }
+        prepared.context.endMove();
+        actorRegistry.clearPendingTransfer(prepared.actorId);
+        prepared.terminal = true;
+    }
+
+    public CompletionStage<Void> discardPreparedTransferredActor(
+        PreparedTransferredActor prepared) {
+        java.util.Objects.requireNonNull(prepared, "prepared");
+        prepared.requireOwner(this);
+        synchronized (this) {
+            if (prepared.terminal) {
+                return CompletableFuture.completedFuture(null);
+            }
+            if (prepared.published) {
+                actorRegistry.remove(prepared.actorId, prepared.actor);
+                dispatches.remove(prepared.actorId);
+            }
+            prepared.terminal = true;
+        }
+        return discardPreparedBackend(prepared.actorRef, prepared.context);
     }
 
     private synchronized ZLinkBackendActorRef detachForwardingProxyForReentry(String actorId) {
@@ -835,7 +957,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             });
     }
 
-    private CompletionStage<ZLinkActor> activateTransferredActor(
+    private CompletionStage<PreparedTransferredActor> prepareTransferredActor(
         String actorId,
         String actorType,
         String adapterKey,
@@ -853,6 +975,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             }
         }
         DefaultActorContext context = new DefaultActorContext(actorRef);
+        ZLinkBackendActorRef finalActorRef = actorRef;
         context.beginMove();
         return ZLinkHandlerStages.fromStageSupplier(() -> adapterKey == null
                 ? createFactory(factoryType).create(context)
@@ -867,9 +990,59 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                         "actor transfer did not materialize an actor: " + actorId);
                 }
                 context.setActor(actor);
-                actorRegistry.register(actorId, actorType, actor, context);
-                return actor;
+                return new PreparedTransferredActor(
+                    actorId,
+                    actorType,
+                    actor,
+                    context,
+                    finalActorRef);
             });
+    }
+
+    private CompletionStage<Void> discardPreparedBackend(
+        ZLinkBackendActorRef actorRef,
+        DefaultActorContext context) {
+        context.clearAfterDestroy();
+        return spotNode.destroyActor(actorRef, defaultRequestTimeout)
+            .exceptionally(error -> null);
+    }
+
+    public final class PreparedTransferredActor {
+        private final String actorId;
+        private final String actorType;
+        private final ZLinkActor actor;
+        private final DefaultActorContext context;
+        private final ZLinkBackendActorRef actorRef;
+        private boolean published;
+        private boolean terminal;
+
+        private PreparedTransferredActor(
+            String actorId,
+            String actorType,
+            ZLinkActor actor,
+            DefaultActorContext context,
+            ZLinkBackendActorRef actorRef) {
+            this.actorId = actorId;
+            this.actorType = actorType;
+            this.actor = actor;
+            this.context = context;
+            this.actorRef = actorRef;
+        }
+
+        public ZLinkActor actor() {
+            return actor;
+        }
+
+        public String actorId() {
+            return actorId;
+        }
+
+        private void requireOwner(ZLinkActorRuntime owner) {
+            if (ZLinkActorRuntime.this != owner) {
+                throw new IllegalArgumentException(
+                    "prepared Actor belongs to another runtime");
+            }
+        }
     }
 
     CompletionStage<ZLinkActorTransferRegistry.TransferState> transferOut(ZLinkActor actor) {
@@ -1103,8 +1276,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return context;
     }
 
-    static ActorRef toPublicActorRef(ZLinkBackendActorRef actorRef) {
-        return new ActorRef(actorRef.nodeRid(), actorRef.actorId(), actorRef.generation());
+    static ActorRef toPublicActorRef(
+        ZLinkBackendActorRef actorRef,
+        String meshName) {
+        return new ActorRef(
+            actorRef.actorId(),
+            actorRef.generation(),
+            meshName,
+            actorRef.nodeRid());
     }
 
     private CompletionStage<Void> renewActorJoinedLocation(
@@ -1174,7 +1353,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         try {
             ZLinkBackendActorRef nativeActor = spotNode.actorLookup(actorId);
             if (nativeActor != null) {
-                return CompletableFuture.completedFuture(Optional.of(toPublicActorRef(nativeActor)));
+                return CompletableFuture.completedFuture(Optional.of(
+                    toPublicActorRef(nativeActor, meshName)));
             }
         } catch (ZlinkConfigException ex) {
             if (ex.getResult() != ConfigResult.NOT_FOUND) {
@@ -1379,9 +1559,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private ActorRef publicRefFor(ZLinkActor actor) {
         ZLinkBackendActorRef actorRef = refFor(actor);
         return new ActorRef(
-            actorRef.nodeRid(),
             actorRef.actorId(),
-            actorRef.generation());
+            actorRef.generation(),
+            meshName,
+            actorRef.nodeRid());
     }
 
     private DefaultActorContext contextFor(ActorRef actor) {
@@ -1401,14 +1582,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         ZLinkBackendActorRef currentRef = context.actorRef();
         if (!currentRef.actorId().equals(actor.actorId())
             || !currentRef.nodeRid().equals(actor.nodeRid())
-            || currentRef.generation() != actor.generation()) {
+            || currentRef.generation() != actor.objectGeneration()
+            || !meshName.equals(actor.meshName())) {
             throw new ZLinkConfigurationException(
                 "actor ref is not current for this runtime: " + actor.actorId());
         }
         return context;
     }
 
-    String actorTypeFor(ZLinkActor actor) {
+    public String actorTypeFor(ZLinkActor actor) {
         String actorType = actorRegistry.actorType(actor.context().actorId());
         if (actorType == null || actorType.isBlank()) {
             throw new ZLinkConfigurationException(

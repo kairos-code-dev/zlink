@@ -41,13 +41,14 @@ final class ZLinkSessionActorBindingContractTest {
     private static final RoutingId SESSION = RoutingId.from("session-a");
     private static final RoutingId NODE_A = RoutingId.from("actor-node-a");
     private static final RoutingId NODE_B = RoutingId.from("actor-node-b");
+    private static final String MESH = "game";
 
     @Test
     void relayUsesTheStoredBindingWithoutHiddenRebind() {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);
         ZLinkSessionActor actor = runtime.bind(
-            new ActorRef(NODE_A, "actor-1", 7)).toCompletableFuture().join();
+            new ActorRef("actor-1", 7, MESH, NODE_A)).toCompletableFuture().join();
         assertEquals(1, stream.binds.size());
 
         ZLinkSessionActorsRuntime.enterRelayDispatch(header("Play"));
@@ -68,7 +69,7 @@ final class ZLinkSessionActorBindingContractTest {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);
         ZLinkSessionActor actor = runtime.bind(
-            new ActorRef(NODE_A, "actor-1", 7)).toCompletableFuture().join();
+            new ActorRef("actor-1", 7, MESH, NODE_A)).toCompletableFuture().join();
         stream.relayFailure = SubmitResult.NOT_FOUND;
         int relaysBeforeFailure = stream.relays.size();
 
@@ -95,20 +96,20 @@ final class ZLinkSessionActorBindingContractTest {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);
         ZLinkSessionActor oldBinding = runtime.bind(
-            new ActorRef(NODE_A, "actor-1", 7)).toCompletableFuture().join();
+            new ActorRef("actor-1", 7, MESH, NODE_A)).toCompletableFuture().join();
         ZLinkSessionActor replacement = runtime.bind(
-            new ActorRef(NODE_B, "actor-1", 7)).toCompletableFuture().join();
+            new ActorRef("actor-1", 7, MESH, NODE_B)).toCompletableFuture().join();
 
         oldBinding.notifyDisconnected().toCompletableFuture().join();
         assertTrue(stream.unbinds.isEmpty());
         assertEquals(NODE_B, replacement.ref().nodeRid());
-        assertEquals(7, replacement.ref().generation());
+        assertEquals(7, replacement.ref().objectGeneration());
 
         ZLinkSessionActor newIncarnation = runtime.bind(
-            new ActorRef(NODE_A, "actor-1", 8)).toCompletableFuture().join();
+            new ActorRef("actor-1", 8, MESH, NODE_A)).toCompletableFuture().join();
         replacement.notifyDisconnected().toCompletableFuture().join();
         assertTrue(stream.unbinds.isEmpty());
-        assertEquals(8, newIncarnation.ref().generation());
+        assertEquals(8, newIncarnation.ref().objectGeneration());
         assertEquals(List.of(newIncarnation), runtime.bound());
     }
 
@@ -116,8 +117,8 @@ final class ZLinkSessionActorBindingContractTest {
     void physicalDisconnectUsesExactSnapshotAllSettledAndAlwaysCleansBindings() {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);
-        runtime.bind(new ActorRef(NODE_A, "actor-a", 1)).toCompletableFuture().join();
-        runtime.bind(new ActorRef(NODE_A, "actor-b", 1)).toCompletableFuture().join();
+        runtime.bind(new ActorRef("actor-a", 1, MESH, NODE_A)).toCompletableFuture().join();
+        runtime.bind(new ActorRef("actor-b", 1, MESH, NODE_A)).toCompletableFuture().join();
         stream.deferUnbind = true;
 
         var first = runtime.notifyDisconnectedAll();
@@ -142,15 +143,39 @@ final class ZLinkSessionActorBindingContractTest {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);
         ZLinkSessionActor first = runtime.bind(
-            new ActorRef(NODE_A, "actor-a", 1)).toCompletableFuture().join();
+            new ActorRef("actor-a", 1, MESH, NODE_A)).toCompletableFuture().join();
         ZLinkSessionActor second = runtime.bind(
-            new ActorRef(NODE_A, "actor-b", 1)).toCompletableFuture().join();
+            new ActorRef("actor-b", 1, MESH, NODE_A)).toCompletableFuture().join();
 
         first.notifyDisconnected().toCompletableFuture().join();
 
         assertEquals(List.of("actor-a"), stream.unbinds);
         assertEquals(List.of(second), runtime.bound());
         assertFalse(stream.closed);
+    }
+
+    @Test
+    void relocationCommandUpdatesOnlyTheExactStoredRouteBeforeAck() {
+        FakeStream stream = new FakeStream();
+        ZLinkSessionActorsRuntime runtime = runtime(stream);
+        ZLinkSessionActor actor = runtime.bind(
+            new ActorRef("actor-1", 7, MESH, NODE_A))
+            .toCompletableFuture().join();
+
+        runtime.applyRelocationRouteUpdate(
+            new ZLinkSessionActorsRuntime.RelocationRouteUpdate(
+                "actor-1", 7, NODE_A, NODE_B, 4, 9, 10))
+            .toCompletableFuture().join();
+
+        assertEquals(NODE_B, actor.ref().nodeRid());
+        assertEquals(7, actor.ref().objectGeneration());
+        assertThrows(
+            CompletionException.class,
+            () -> runtime.applyRelocationRouteUpdate(
+                    new ZLinkSessionActorsRuntime.RelocationRouteUpdate(
+                        "actor-1", 7, NODE_A, NODE_B, 5, 9, 10))
+                .toCompletableFuture().join(),
+            "a repeated command with the stale source route must not ACK");
     }
 
     private static ZLinkSessionActorsRuntime runtime(FakeStream stream) {

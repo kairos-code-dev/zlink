@@ -83,6 +83,9 @@ function exposeLegacyTestSpotAsMeshNode(spotNode) {
     },
     addChannelName() {},
     setChannelWeight() {},
+    setPlacementWeight() {},
+    configureObjectPlacement() {},
+    selectObjectPlacement() { return undefined; },
     start() {},
     shutdown() {
       return 0;
@@ -270,6 +273,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
     }
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addLocationStore(new framework.ZLinkInMemoryLocationStore())
     .options({ spotPublisherClients: ['events'] })
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
@@ -294,7 +298,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
     nestjs.ZLINK_SPOT_MANAGER
   ]);
   assert.equal(container.get(nestjs.ZLINK_ACTOR_MANAGER) instanceof framework.DefaultZLinkActorManager, true);
-  assert.equal(container.get(nestjs.ZLINK_SPOT_MANAGER) instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(typeof container.get(nestjs.ZLINK_SPOT_MANAGER).create, 'function');
   assert.equal(
     container.get(nestjs.ZLINK_ROUTE_MESH_RUNTIME),
     container.get(nestjs.ZLINK_FRAMEWORK_RUNTIME).routeMeshRuntime
@@ -322,6 +326,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
     onMessageFlow() {}
   }
   const builder = nestjs.zlinkFramework();
+  builder.addLocationStore(new framework.ZLinkInMemoryLocationStore());
   builder.configureDispatch().setMessageFlowObserver(DispatchObserver);
   const module = nestjs.ZLinkModule.forRoot(builder
     .addRouteMesh('game')
@@ -338,7 +343,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
   const spotManager = container.get(nestjs.ZLINK_SPOT_MANAGER);
 
   assert.equal(runtime.isStarted, false);
-  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(typeof spotManager.create, 'function');
 });
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
@@ -501,7 +506,6 @@ test('ZLinkModule.forRoot maps zlinkRequestHandler providers from NestJS DI', as
 });
 
 test('request-scoped handler filters share the channel dispatch scope with the handler', async () => {
-  const apiEndpoint = await reserveTcpEndpoint();
   let dispatchSequence = 0;
 
   class DispatchState {
@@ -541,16 +545,15 @@ test('request-scoped handler filters share the channel dispatch scope with the h
   Injectable({ scope: Scope.REQUEST })(ScopedProfileHandler);
   nestjs.zlinkRequestHandler('api', 'GetProfile')(ScopedProfileHandler);
 
+  const frameworkOptions = nestjs.zlinkFramework()
+    .options({ filters: [RequestScopeFilter] });
+  const apiChannel = frameworkOptions.addClientServerChannel('api');
+  apiChannel.client();
+  apiChannel.server().listen().addHandlerGroup('api');
+
   class HandlerModule {}
   Module({
-    imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .options({ filters: [RequestScopeFilter] })
-      .addRouteMesh('api')
-        .listen(apiEndpoint)
-        .routingId('api-node')
-        .channelName('api')
-        .addHandlerGroup('api')
-      .build())],
+    imports: [nestjs.ZLinkModule.forRoot(frameworkOptions.build())],
     providers: [DispatchState, RequestScopeFilter, ScopedProfileHandler]
   })(HandlerModule);
 
@@ -562,10 +565,10 @@ test('request-scoped handler filters share the channel dispatch scope with the h
         this.profileId = profileId;
       }
     }
-    const first = await client.requestToChannel('api', 'api', new GetProfile('p1'))
+    const first = await client.requestToChannel('api', new GetProfile('p1'))
       .timeout(1000)
       .submit();
-    const second = await client.requestToChannel('api', 'api', new GetProfile('p2'))
+    const second = await client.requestToChannel('api', new GetProfile('p2'))
       .timeout(1000)
       .submit();
 
@@ -1016,6 +1019,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+      .addLocationStore(new framework.ZLinkInMemoryLocationStore())
       .options({ spotPublisherClients: ['events'] })
       .addRouteMesh('game')
         .listen(spotEndpoint)
@@ -1036,7 +1040,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
   const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
   const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
 
-  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(typeof spotManager.create, 'function');
   assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
 
@@ -1066,14 +1070,14 @@ test('ZLinkModule.forRoot with grouped handlers omits only capabilities not impl
 
   const app = await NestFactory.createApplicationContext(HandlerModule, { logger: false, abortOnError: false });
 
-  assert.equal(app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false }) instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false }), null);
   assert.equal(app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false }), null);
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
 
   await app.close();
 });
 
-test('ZLinkModule.forRoot passes registered spot factories to the spot manager', async () => {
+test('ZLinkModule.forRoot exposes exact create calls for registered Spot factories', async () => {
   class StageSpot {
     constructor(context) {
       this.context = context;
@@ -1085,6 +1089,7 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
     }
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
+    .addLocationStore(new framework.ZLinkInMemoryLocationStore())
     .options({ spotFactories: [StageSpot] })
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
@@ -1093,11 +1098,11 @@ test('ZLinkModule.forRoot passes registered spot factories to the spot manager',
   const container = await resolveModuleProviders(module, [nestjs.ZLINK_SPOT_MANAGER]);
   const spotManager = container.get(nestjs.ZLINK_SPOT_MANAGER);
 
-  const created = await spotManager.create('game', StageSpot);
-  const localCreated = await spotManager.create('game', LocalStageSpot);
+  const configured = spotManager.create(StageSpot.name).inMesh('game');
+  const localConfigured = spotManager.create(LocalStageSpot.name).inMesh('game');
 
-  assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-  assert.equal(localCreated.state, framework.ZLinkSpotCreateState.Created);
+  assert.equal(typeof configured.submit, 'function');
+  assert.equal(typeof localConfigured.submit, 'function');
 });
 
 test('ZLinkModule.forRoot preserves Spot factories in the formal MeshNode registration', async () => {
@@ -1841,6 +1846,7 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
       return nestjs.zlinkFramework()
+        .addLocationStore(new framework.ZLinkInMemoryLocationStore())
         .options({ spotPublisherClients: ['game-events'] })
         .addRouteMesh('game')
           .listen(spotEndpoint)
@@ -1857,7 +1863,7 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
   const spotManager = app.get(nestjs.ZLINK_SPOT_MANAGER, { strict: false });
   const actorManager = app.get(nestjs.ZLINK_ACTOR_MANAGER, { strict: false });
 
-  assert.equal(spotManager instanceof framework.DefaultZLinkSpotManager, true);
+  assert.equal(typeof spotManager.create, 'function');
   assert.equal(actorManager instanceof framework.DefaultZLinkActorManager, true);
   assert.equal(app.get(nestjs.ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) instanceof framework.DefaultZLinkSpotPublisherClient, true);
   await app.close();

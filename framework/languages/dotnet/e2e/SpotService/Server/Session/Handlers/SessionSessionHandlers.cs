@@ -3,6 +3,7 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
@@ -95,6 +96,7 @@ internal sealed class NotifyBoundActorDisconnectedSessionHandler
 
 internal sealed class AuthSessionHandler(
     IZLinkRouteClient routes,
+    IZLinkRouteMeshRuntime meshRuntime,
     IZLinkActorManager actors,
     NodeOptions node,
     EvidenceStore evidence)
@@ -111,11 +113,18 @@ internal sealed class AuthSessionHandler(
             ? await EnsureLocalActorAsync(actors, node, evidence, request, cancellationToken)
             : await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
+                    SessionHostFactory.ResolvePeerRoutingId(
+                        meshRuntime,
+                        SpotServiceNames.ControlChannel,
+                        request.NodeRid),
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
-            new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+            new ActorRef(
+                ensured.ActorId,
+                ensured.Generation,
+                SpotServiceNames.SpotChannel,
+                RoutingId.From(ensured.NodeRid)),
             cancellationToken);
         await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid))
             .Async(cancellationToken);
@@ -143,12 +152,13 @@ internal sealed class AuthSessionHandler(
         return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
-            actor.Generation);
+            actor.ObjectGeneration);
     }
 }
 
 internal sealed class MultiBindSessionHandler(
-    IZLinkRouteClient routes)
+    IZLinkRouteClient routes,
+    IZLinkRouteMeshRuntime meshRuntime)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, MultiBindReq>
 {
     public async ValueTask HandleAsync(
@@ -162,11 +172,18 @@ internal sealed class MultiBindSessionHandler(
         {
             var ensured = await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
+                    SessionHostFactory.ResolvePeerRoutingId(
+                        meshRuntime,
+                        SpotServiceNames.ControlChannel,
+                        request.NodeRid),
                     new EnsureActorReq(actorId, actorId, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
             await context.Actors.BindAsync(
-                new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+                new ActorRef(
+                    ensured.ActorId,
+                    ensured.Generation,
+                    SpotServiceNames.SpotChannel,
+                    RoutingId.From(ensured.NodeRid)),
                 cancellationToken);
         }
 
@@ -178,6 +195,7 @@ internal sealed class MultiBindSessionHandler(
 internal sealed class UserSpotAuthSessionHandler(
     IZLinkActorManager actors,
     IZLinkRouteClient routes,
+    IZLinkRouteMeshRuntime meshRuntime,
     NodeOptions node,
     EvidenceStore evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, UserSpotAuthReq>
@@ -193,11 +211,18 @@ internal sealed class UserSpotAuthSessionHandler(
             ? await EnsureLocalActorAsync(actors, evidence, request, cancellationToken)
             : await routes.RequestToNode(
                     SpotServiceNames.ControlChannel,
-                    RoutingId.From(request.NodeRid),
+                    SessionHostFactory.ResolvePeerRoutingId(
+                        meshRuntime,
+                        SpotServiceNames.ControlChannel,
+                        request.NodeRid),
                     new EnsureActorReq(request.ActorId, request.DisplayName, request.NodeRid))
                 .Async<EnsureActorRes>(cancellationToken);
         await context.Actors.BindAsync(
-            new ActorRef(RoutingId.From(ensured.NodeRid), ensured.ActorId, ensured.Generation),
+            new ActorRef(
+                ensured.ActorId,
+                ensured.Generation,
+                SpotServiceNames.SpotChannel,
+                RoutingId.From(ensured.NodeRid)),
             cancellationToken);
         await context.Client.Reply(new AuthRes(ensured.ActorId, ensured.NodeRid))
             .Async(cancellationToken);
@@ -225,6 +250,6 @@ internal sealed class UserSpotAuthSessionHandler(
         return new EnsureActorRes(
             actor.ActorId,
             request.NodeRid,
-            actor.Generation);
+            actor.ObjectGeneration);
     }
 }

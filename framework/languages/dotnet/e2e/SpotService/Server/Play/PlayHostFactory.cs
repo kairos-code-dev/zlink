@@ -66,8 +66,8 @@ internal static class PlayHostFactory
                 .TraceLabel(options.Rid);
             var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)
                 .Listen(Require(options.ControlEndpoint, "ControlEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
-            controlMesh.ChannelName(SpotServiceNames.ControlChannel);
+                .SetRoutingIdPrefix(options.Rid);
+            controlMesh.Channel(SpotServiceNames.ControlChannel).Server();
             AddPlayRouteHandlers(controlMesh);
             var externalSpotChannel = string.Equals(options.Rid, "play-b", StringComparison.Ordinal)
                 ? SpotServiceNames.ExternalSpotChannelB
@@ -76,13 +76,13 @@ internal static class PlayHostFactory
             {
                 var externalMesh = framework.AddRouteMesh(externalSpotChannel)
                     .Listen(options.ExternalSpotEndpoint)
-                    .SetRoutingId(RoutingId.From(options.Rid));
-                externalMesh.ChannelName(externalSpotChannel);
+                    .SetRoutingIdPrefix(options.Rid);
+                externalMesh.Channel(externalSpotChannel).Server();
                 AddPlayRouteHandlers(externalMesh);
             }
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid));
+                .SetRoutingIdPrefix(options.Rid);
             spot.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
@@ -105,10 +105,10 @@ internal static class PlayHostFactory
                     SpotServiceNames.MultiSpotTypeB,
                     null,
                     ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
-            spot.ChannelName(SpotServiceNames.SpotChannel);
+            spot.Channel(SpotServiceNames.SpotChannel).Server();
             if (string.Equals(options.Rid, "play-a", StringComparison.Ordinal))
             {
-                spot.ChannelName(SpotServiceNames.ExternalClientChannel)
+                spot.Channel(SpotServiceNames.ExternalClientChannel).Server()
                     .AddRequestHandler<ChannelEchoHandler>()
                     .AddSendHandler<ChannelNotifyHandler>();
             }
@@ -122,18 +122,22 @@ internal static class PlayHostFactory
         app.MapGet("/mesh-snapshot", (IZLinkRouteMeshRuntime meshRuntime) =>
             Results.Ok(meshRuntime.Snapshot(SpotServiceNames.SpotChannel)));
         app.MapGet("/entry-self-check", async (
-            IZLinkSpotHandleResolver handles,
+            IZLinkLocationRuntimeQuery locations,
             IZLinkSpotClient spotsClient,
             CancellationToken cancellationToken) =>
         {
-            var entry = await handles.ResolveSpotHandleAsync(
-                            SpotServiceNames.SpotChannel,
-                            options.Rid,
-                            cancellationToken)
-                        ?? throw new InvalidOperationException(
-                            $"Entry Spot for '{options.Rid}' was not resolved.");
+            var descriptors = await locations.ListMeshNodeDescriptorsAsync(
+                SpotServiceNames.SpotChannel,
+                cancellationToken: cancellationToken);
+            var entrySpotId = descriptors.Items.SingleOrDefault(descriptor =>
+                                  descriptor.Rid.ToString().StartsWith(
+                                      $"{options.Rid}-",
+                                      StringComparison.Ordinal))
+                              ?.EntrySpotId
+                              ?? throw new InvalidOperationException(
+                                  $"Entry Spot for '{options.Rid}' was not published.");
             var marker = $"self-{Guid.NewGuid():N}";
-            var reply = await spotsClient.RequestToSpot(entry, new EntryReadinessReq(marker))
+            var reply = await spotsClient.RequestToSpot(entrySpotId, new EntryReadinessReq(marker))
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async<EntryReadinessRes>(cancellationToken);
             return Results.Ok(reply);
@@ -172,29 +176,25 @@ internal static class PlayHostFactory
 
     internal static async Task<StateRes> RequestSpotStateAsync(
         IZLinkSpotClient routes,
-        IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         StateReq request)
-        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(targetSpotRid), request)
+        => await routes.RequestToSpot(targetSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<StateRes>();
 
     internal static async Task SendSpotCommandAsync(
         IZLinkSpotClient routes,
-        IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         object command,
         CancellationToken cancellationToken = default)
-        => await routes.SendToSpot(
-                await locator.ResolveRequiredAsync(targetSpotRid, cancellationToken), command)
+        => await routes.SendToSpot(targetSpotRid, command)
             .Async(cancellationToken);
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
         IZLinkSpotClient routes,
-        IZLinkSpotHandleResolver locator,
         string sourceSpotRid,
         SpotToSpotReq request)
-        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(sourceSpotRid), request)
+        => await routes.RequestToSpot(sourceSpotRid, request)
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<SpotToSpotRes>();
 

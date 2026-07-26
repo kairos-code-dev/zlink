@@ -15,6 +15,8 @@ import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispatch';
 import {
   decodeRemoteBoundSessionErrorPayload,
+  decodeRemoteBoundSessionSealPayload,
+  encodeRemoteBoundSessionOwnershipAck,
   decodeRemoteBoundSessionOwnershipPayload,
   decodeRemoteBoundSessionResponsePayload,
   decodeRemoteBoundSessionSendPayload,
@@ -48,6 +50,11 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
 
 export class ZLinkRemoteBoundSessionRelay {
   private readonly actorOwnershipGenerations = new Map<string, bigint>();
+  private readonly routeSeals = new Map<string, {
+    readonly sealId: string;
+    readonly acceptedHighWater: bigint;
+    readonly released: boolean;
+  }>();
 
   constructor(private readonly options: ZLinkRemoteBoundSessionRelayOptions) {
   }
@@ -181,28 +188,138 @@ export class ZLinkRemoteBoundSessionRelay {
     return { ok: sent };
   }
 
-  async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void> {
+  async receiveRemoteBoundSessionOwnership(payload: unknown): Promise<{
+    readonly actorId: string;
+    readonly actorGeneration: string;
+    readonly actorOwnershipGeneration: string;
+    readonly bindingGeneration: string;
+    readonly targetOwnerLeaseGeneration: string;
+    readonly acceptedHighWater: string;
+    readonly sealId: string;
+  }> {
     const value = decodeRemoteBoundSessionOwnershipPayload(payload);
+    const previousOwnershipGeneration = BigInt(value.previousActorOwnershipGeneration);
+    const ownershipGeneration = BigInt(value.actorOwnershipGeneration);
+    const bindingGeneration = BigInt(value.bindingGeneration);
+    const previousOwnerLeaseGeneration = BigInt(value.previousOwnerLeaseGeneration);
+    const targetOwnerLeaseGeneration = BigInt(value.targetOwnerLeaseGeneration);
+    const acceptedHighWater = BigInt(value.acceptedHighWater);
+    if (
+      previousOwnershipGeneration < 0n ||
+      ownershipGeneration <= previousOwnershipGeneration ||
+      bindingGeneration <= 0n ||
+      previousOwnerLeaseGeneration <= 0n ||
+      targetOwnerLeaseGeneration <= 0n ||
+      acceptedHighWater < 0n
+    ) {
+      throw new Error(`Actor '${value.actorId}' bound-session ownership fence is invalid.`);
+    }
+    const activeSeal = this.options.streamBindingRuntime().validateActorRouteSeal(
+      value.actorId,
+      value.sealId,
+      acceptedHighWater
+    );
+    const rememberedSeal = this.routeSeals.get(value.actorId);
+    const releasedSeal = rememberedSeal?.sealId === value.sealId
+      && rememberedSeal.acceptedHighWater === acceptedHighWater
+      && rememberedSeal.released;
+    if (!activeSeal && !releasedSeal) {
+      throw new Error(`Actor '${value.actorId}' command 44 did not match its command 42 Session seal.`);
+    }
     const actorRef = {
       nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
       actorId: value.actorId,
-      generation: BigInt(value.actorGeneration)
+      generation: BigInt(value.actorGeneration),
+      bindingGeneration,
+      ownershipGeneration,
+      ownerLeaseGeneration: targetOwnerLeaseGeneration,
+      acceptedHighWater
     } as ActorRef;
-    this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
     const current = this.options.streamBindingRuntime().find(value.actorId)?.ref;
-    if (
-      current !== undefined &&
-      current.actorId === actorRef.actorId &&
-      current.generation === actorRef.generation &&
-      routingIdsEqual(current.nodeRid, actorRef.nodeRid)
-    ) {
-      this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
-      return;
+    if (current === undefined || current.generation !== actorRef.generation) {
+      throw new Error(`Actor '${value.actorId}' bound-session ownership update has no matching binding.`);
     }
-    this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
-    void this.options.streamBindingRuntime().refreshActor(actorRef).catch((error) => {
+    const currentFence = current as ActorRef & {
+      readonly bindingGeneration?: bigint;
+      readonly ownershipGeneration?: bigint;
+      readonly ownerLeaseGeneration?: bigint;
+      readonly acceptedHighWater?: bigint;
+    };
+    const currentOwnershipGeneration = this.actorOwnershipGenerations.get(value.actorId)
+      ?? currentFence.ownershipGeneration;
+    const targetAlreadyPublished =
+      routingIdsEqual(current.nodeRid, actorRef.nodeRid) &&
+      currentOwnershipGeneration === ownershipGeneration &&
+      currentFence.bindingGeneration === bindingGeneration &&
+      currentFence.ownerLeaseGeneration === targetOwnerLeaseGeneration &&
+      currentFence.acceptedHighWater === acceptedHighWater;
+    if (targetAlreadyPublished) {
+      this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
+      return encodeRemoteBoundSessionOwnershipAck(value);
+    }
+    if (!activeSeal) {
+      throw new Error(`Actor '${value.actorId}' released Session seal cannot publish a different route.`);
+    }
+    if (
+      currentOwnershipGeneration !== previousOwnershipGeneration ||
+      currentFence.bindingGeneration !== bindingGeneration ||
+      currentFence.ownerLeaseGeneration !== previousOwnerLeaseGeneration ||
+      currentFence.acceptedHighWater !== acceptedHighWater
+    ) {
+      throw new Error(`Actor '${value.actorId}' bound-session ownership update was fenced by its binding identity.`);
+    }
+    try {
+      await this.options.streamBindingRuntime().commitActorRoute(actorRef);
+    } catch (error) {
       this.options.reportOwnershipRefreshError?.(value.actorId, error);
+      throw error;
+    }
+    this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
+    this.actorOwnershipGenerations.set(value.actorId, ownershipGeneration);
+    return encodeRemoteBoundSessionOwnershipAck(value);
+  }
+
+  async receiveRemoteBoundSessionSeal(payload: unknown): Promise<{
+    readonly actorId: string;
+    readonly sealId: string;
+    readonly acceptedHighWater: string;
+  }> {
+    const value = decodeRemoteBoundSessionSealPayload(payload);
+    if (value.abort) {
+      const remembered = this.routeSeals.get(value.actorId);
+      if (this.options.streamBindingRuntime().abortActorRouteSeal(value.actorId, value.sealId)) {
+        const currentHighWater = (this.options.streamBindingRuntime().find(value.actorId)?.ref as
+          (ActorRef & { readonly acceptedHighWater?: bigint }) | undefined)?.acceptedHighWater;
+        this.routeSeals.set(value.actorId, {
+          sealId: value.sealId,
+          acceptedHighWater: remembered?.sealId === value.sealId
+            ? remembered.acceptedHighWater
+            : currentHighWater ?? 0n,
+          released: true
+        });
+      } else if (remembered?.sealId !== value.sealId || !remembered.released) {
+        throw new Error(`Actor '${value.actorId}' session route seal abort was fenced.`);
+      }
+      return { actorId: value.actorId, sealId: value.sealId, acceptedHighWater: '0' };
+    }
+    const acceptedHighWater = this.options.streamBindingRuntime().sealActorRoute({
+      actorId: value.actorId,
+      actorGeneration: BigInt(value.actorGeneration),
+      actorOwnershipGeneration: BigInt(value.actorOwnershipGeneration),
+      bindingGeneration: BigInt(value.bindingGeneration),
+      ownerLeaseGeneration: BigInt(value.ownerLeaseGeneration),
+      sealId: value.sealId
     });
+    this.routeSeals.set(value.actorId, {
+      sealId: value.sealId,
+      acceptedHighWater,
+      released: false
+    });
+    return {
+      actorId: value.actorId,
+      sealId: value.sealId,
+      acceptedHighWater: acceptedHighWater.toString()
+    };
   }
 
   rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget | undefined): void {
@@ -225,6 +342,7 @@ export class ZLinkRemoteBoundSessionRelay {
 
   clearOwnership(actorId: string): void {
     this.actorOwnershipGenerations.delete(actorId);
+    this.routeSeals.delete(actorId);
   }
 
   async sendActorResponse(

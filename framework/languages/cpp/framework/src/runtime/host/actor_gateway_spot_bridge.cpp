@@ -3,11 +3,11 @@
 #include "runtime/host/actor_gateway_spot_bridge.hpp"
 
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
-#include "runtime/locations/spot_handle_state.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <zlink.hpp>
@@ -345,13 +345,13 @@ join_actor_to_remote_spot_route_channel (route_client_t route_client,
     }
     auto request =
       make_spot_actor_join_route_request (actor_ref, target_join_spot_id, payload, actor_snapshot);
-    auto target = runtime::make_fixed_spot_handle (runtime::spot_address_t{
-      *route_channel_name, zlink::routing_id_t::from (std::string (target_node_rid.value ())),
-      target_delivery_spot_id});
-    auto reply = route_client.request_to_spot (std::move (target), std::move (request))
-                   .timeout (std::chrono::seconds (30))
-                   .async<spot_actor_join_route_reply_t> ()
-                   .result ();
+    auto reply = detail::route_client_runtime_t::request_to_spot_address<
+      spot_actor_join_route_request_t, spot_actor_join_route_reply_t> (
+      route_client,
+      runtime::spot_address_t{
+        *route_channel_name, zlink::routing_id_t::from (std::string (target_node_rid.value ())),
+        target_delivery_spot_id},
+      std::move (request), std::chrono::seconds (30)).result ();
     if (!reply) {
         const auto *error = reply.error ();
         return result_t<actor_join_reply_t>::failure (
@@ -372,13 +372,14 @@ request_remote_actor_admission (spot_node_runtime_t runtime,
                                 serializer_registry_t &serializers)
 {
     if (route_channel_name && !route_channel_name->empty ()) {
-        auto target = runtime::make_fixed_spot_handle (runtime::spot_address_t{
-          *route_channel_name, zlink::routing_id_t::from (std::string (target_node_rid.value ())),
-          target_spot_id});
-        return route_client.request_to_spot (std::move (target), std::move (request))
-          .timeout (std::chrono::seconds (30))
-          .async<spot_actor_admission_route_reply_t> ()
-          .result ();
+        return detail::route_client_runtime_t::request_to_spot_address<
+          spot_actor_admission_route_request_t, spot_actor_admission_route_reply_t> (
+          route_client,
+          runtime::spot_address_t{
+            *route_channel_name,
+            zlink::routing_id_t::from (std::string (target_node_rid.value ())),
+            target_spot_id},
+          std::move (request), std::chrono::seconds (30)).result ();
     }
 
     runtime::messaging::client_call_codec_t codec;
@@ -407,13 +408,14 @@ request_remote_actor_commit (spot_node_runtime_t runtime,
                              serializer_registry_t &serializers)
 {
     if (route_channel_name && !route_channel_name->empty ()) {
-        auto target = runtime::make_fixed_spot_handle (runtime::spot_address_t{
-          *route_channel_name, zlink::routing_id_t::from (std::string (target_node_rid.value ())),
-          target_spot_id});
-        auto reply = route_client.request_to_spot (std::move (target), std::move (request))
-                       .timeout (std::chrono::seconds (30))
-                       .async<spot_actor_join_route_reply_t> ()
-                       .result ();
+        auto reply = detail::route_client_runtime_t::request_to_spot_address<
+          spot_actor_commit_route_request_t, spot_actor_join_route_reply_t> (
+          route_client,
+          runtime::spot_address_t{
+            *route_channel_name,
+            zlink::routing_id_t::from (std::string (target_node_rid.value ())),
+            target_spot_id},
+          std::move (request), std::chrono::seconds (30)).result ();
         if (!reply) {
             return detail::propagate_failure<actor_join_reply_t> (reply, "remote actor commit failed");
         }

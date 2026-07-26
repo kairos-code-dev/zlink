@@ -31,6 +31,9 @@ internal static class RmB3ProviderCrashFailoverScenario
 
         await WaitForPeerAsync(requester, "api-a", present: true);
         await WaitForPeerAsync(requester, "api-b", present: true);
+        var apiARouteRid = await ReadActualRouteRidAsync(
+            providerBClient,
+            "api-a-route");
         await ProveBothProvidersAsync(
             requester,
             providerAClient,
@@ -92,15 +95,17 @@ internal static class RmB3ProviderCrashFailoverScenario
                 "RM-B3 post-expiry request did not use the remaining provider.");
         }
 
-        var targeted = (await providerBClient.Post("/profile/route/target")
-            .Body(new TargetedRoutePing("api-a", "rm-b3-target-dead"))
-            .Async<ExpectedFailureRes>()).Body;
+        var targeted = await RequestTargetAsync(
+            providerBClient,
+            apiARouteRid,
+            "rm-b3-target-expired");
         ZlinkStreamAssert.Ensure(
-            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.RouteNotConnected),
-            "RM-B3 known but disconnected api-a did not report RouteNotConnected.");
-        var missing = (await providerBClient.Post("/profile/route/target")
-            .Body(new TargetedRoutePing("api-missing", "rm-b3-target-missing"))
-            .Async<ExpectedFailureRes>()).Body;
+            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
+            $"RM-B3 expired automatic member completed with unexpected '{targeted.ErrorKind}'.");
+        var missing = await RequestTargetAsync(
+            providerBClient,
+            "api-missing",
+            "rm-b3-target-missing");
         ZlinkStreamAssert.Ensure(
             missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
             "RM-B3 unknown route target did not report RequestTargetNotFound.");
@@ -178,6 +183,31 @@ internal static class RmB3ProviderCrashFailoverScenario
                 TimeoutMilliseconds: present ? 30000 : 60000))
             .Async<PeerLocationRow[]>()
             .AsTask();
+
+    private static async Task<ExpectedFailureRes> RequestTargetAsync(
+        ZLinkHttpClient provider,
+        string targetRid,
+        string value) =>
+        (await provider.Post("/profile/route/target")
+            .Body(new TargetedRoutePing(targetRid, value))
+            .Async<ExpectedFailureRes>()).Body;
+
+    private static async Task<string> ReadActualRouteRidAsync(
+        ZLinkHttpClient provider,
+        string ridPrefix)
+    {
+        var rows = (await provider.Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq(
+                "profile.route",
+                "Router",
+                ridPrefix,
+                Present: true))
+            .Async<PeerLocationRow[]>()).Body;
+        return rows.Single(row =>
+                row.NodeRid is not null
+                && row.NodeRid.StartsWith($"{ridPrefix}-", StringComparison.Ordinal))
+            .NodeRid!;
+    }
 
     private sealed record RequestOutcome(string Value, string Outcome);
 }

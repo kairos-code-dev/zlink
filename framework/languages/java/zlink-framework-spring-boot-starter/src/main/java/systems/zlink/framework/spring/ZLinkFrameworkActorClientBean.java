@@ -1,6 +1,5 @@
 package systems.zlink.framework.spring;
 
-import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
@@ -14,12 +13,12 @@ final class ZLinkFrameworkActorClientBean implements ZLinkActorClient {
     }
 
     @Override
-    public ZLinkActorSendCall sendToActor(ActorRef actorRef, Object message) {
-        return lifecycle.actorClient().sendToActor(actorRef, message);
+    public ZLinkActorSendCall sendToActor(String actorId, Object message) {
+        return lifecycle.actorClient().sendToActor(actorId, message);
     }
 
     @Override
-    public ZLinkActorRequestCall requestToActor(ActorRef actorRef, Object request) {
-        return lifecycle.actorClient().requestToActor(actorRef, request);
+    public ZLinkActorRequestCall requestToActor(String actorId, Object request) {
+        return lifecycle.actorClient().requestToActor(actorId, request);
     }
 }

@@ -29,7 +29,16 @@ internal static class ConsumerEndpoints
                         && snapshot.Channels.Any(static channel =>
                             channel.ChannelName == "profile"
                             && channel.Selectable),
-                readyCount
+                readyCount,
+                rid = snapshot.Rid.ToString(),
+                peers = snapshot.Peers.Select(static peer => new
+                {
+                    rid = peer.Rid.ToString(),
+                    peer.Endpoint,
+                    peer.Ready,
+                    peer.AdmissionState,
+                    peer.LastFailure
+                })
             });
         });
         app.MapPost("/connections/wait", async (
@@ -66,7 +75,8 @@ internal static class ConsumerEndpoints
             {
                 rows = (await query.ListMeshNodeDescriptorsAsync(
                         request.MeshName,
-                        cancellationToken))
+                        cancellationToken: cancellationToken))
+                    .Items
                     .Select(peer => new PeerLocationRow(
                         peer.MeshName,
                         peer.Rid.ToString(),
@@ -78,7 +88,8 @@ internal static class ConsumerEndpoints
                     .ToArray();
                 var matches = rows.Where(row =>
                     row.Role == request.Role
-                    && row.NodeRid == request.NodeRid
+                    && (row.NodeRid == request.NodeRid
+                        || row.NodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal))
                     && (request.Weight is null || row.Weight == request.Weight));
                 if (request.Present ? matches.Any() : !matches.Any()) return Results.Ok(rows);
 
@@ -147,9 +158,9 @@ internal static class ConsumerEndpoints
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            await channel.SendToChannel("profile", "profile",
+            await channel.SendToChannel("profile",
                     new MissingProfileMsg(command.CommandId))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
@@ -186,7 +197,7 @@ internal static class ConsumerEndpoints
         IZLinkRouteClient channel,
         ProfileReq request,
         TimeSpan timeout)
-        => channel.RequestToChannel("profile", "profile", request)
+        => channel.RequestToChannel("profile", request)
             .Timeout(timeout)
             .Async<ProfileRes>()
             .AsTask();
@@ -194,7 +205,7 @@ internal static class ConsumerEndpoints
     static Task<PayloadRes> RequestPayloadAsync(
         IZLinkRouteClient channel,
         PayloadReq request)
-        => channel.RequestToChannel("profile", "profile", request)
+        => channel.RequestToChannel("profile", request)
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<PayloadRes>()
             .AsTask();
@@ -205,7 +216,7 @@ internal static class ConsumerEndpoints
     {
         try
         {
-            await channel.RequestToChannel("profile", "profile", request)
+            await channel.RequestToChannel("profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<PayloadRes>();
             throw new InvalidOperationException(
@@ -240,7 +251,7 @@ internal static class ConsumerEndpoints
     {
         try
         {
-            await channel.RequestToChannel("profile", "profile", request)
+            await channel.RequestToChannel("profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>();
             throw new InvalidOperationException(
@@ -258,9 +269,17 @@ internal static class ConsumerEndpoints
         ProfileMsg command,
         CancellationToken cancellationToken)
     {
-        var result = await channel.SendToChannel("profile", "profile", command)
-            .SubmitAsync(cancellationToken);
-        return result.Status.ToString();
+        try
+        {
+            await channel.SendToChannel("profile", command)
+                .Async(cancellationToken);
+            return "Submitted";
+        }
+        catch (ZLinkFrameworkException error) when (
+            error.Kind == ZLinkFrameworkErrorKind.DeadlineExceeded)
+        {
+            return error.Kind.ToString();
+        }
     }
 
 }

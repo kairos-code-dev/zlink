@@ -79,6 +79,7 @@ export interface ZLinkSpotActorTransferRuntime {
     }
   ): Promise<void>;
   publishRoutedActorOwnership(actor: ZLinkActor): Promise<void>;
+  openRoutedActorSession(actor: ZLinkActor): Promise<void>;
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void;
   commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void;
   clearRoutedActor(actor: ZLinkActor): void;
@@ -130,7 +131,20 @@ export interface ZLinkSpotBoundSessionRuntime {
     actorPacketTarget?: unknown,
     signal?: AbortSignal
   ): Promise<void>;
-  receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void>;
+  receiveRemoteBoundSessionOwnership(payload: unknown): Promise<{
+    readonly actorId: string;
+    readonly actorGeneration: string;
+    readonly actorOwnershipGeneration: string;
+    readonly bindingGeneration: string;
+    readonly targetOwnerLeaseGeneration: string;
+    readonly acceptedHighWater: string;
+    readonly sealId: string;
+  }>;
+  receiveRemoteBoundSessionSeal(payload: unknown): Promise<{
+    readonly actorId: string;
+    readonly sealId: string;
+    readonly acceptedHighWater: string;
+  }>;
   rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget | undefined): void;
   resolveRemoteBoundSessionTarget(
     sourceNodeRid: RoutingId,

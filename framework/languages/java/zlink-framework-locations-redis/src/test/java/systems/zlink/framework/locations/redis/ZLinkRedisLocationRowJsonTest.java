@@ -175,9 +175,10 @@ class ZLinkRedisLocationRowJsonTest {
               "ActorType": "game",
               "ActorId": "actor-1",
               "ActorRef": {
-                "nodeRid": "01",
                 "actorId": "actor-1",
-                "generation": 7
+                "objectGeneration": "7",
+                "meshName": "game",
+                "nodeRid": "01"
               },
               "NodeRid": "01",
               "Generation": 1,
@@ -192,7 +193,9 @@ class ZLinkRedisLocationRowJsonTest {
         ZLinkActorLocation row = ZLinkRedisLocationRowJson.deserializeActor(json, 5, UPDATED_AT.plusSeconds(2));
 
         assertEquals("game", row.actorType());
-        assertEquals(new ActorRef(RoutingId.fromHex("01"), "actor-1", 7), row.actorRef());
+        assertEquals(
+            new ActorRef("actor-1", 7, "game", RoutingId.fromHex("01")),
+            row.actorRef());
         assertEquals(ZLinkSpotKind.USER, row.locationKind());
         assertEquals("game", row.spotMeshName());
         assertEquals(5, row.generation());
@@ -316,7 +319,11 @@ class ZLinkRedisLocationRowJsonTest {
         return new ZLinkActorLocation(
             "actor-1",
             "player",
-            new ActorRef(RoutingId.from("node-1"), "actor-1", 1),
+            new ActorRef(
+                "actor-1",
+                1,
+                "play",
+                RoutingId.from("node-1")),
             RoutingId.from("node-1"),
             ZLinkSpotKind.ENTRY,
             "play",

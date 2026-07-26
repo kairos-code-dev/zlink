@@ -43,7 +43,7 @@ TEST (ZLinkFrameworkLocationRuntime, StartsOwnerLeaseBeforeWritingRows)
     in_memory_location_store_t store;
     location_runtime_t runtime (
       store,
-      location_options_t{.heartbeat_interval = std::chrono::milliseconds (5),
+      location_options_t{.owner_lease_renew_interval = std::chrono::milliseconds (5),
                          .owner_lease_ttl = std::chrono::seconds (15)},
       "owner-a");
 

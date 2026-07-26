@@ -19,7 +19,9 @@ internal static class SmA3SpecificSpotOwnerRoutingScenario
             .Body(new SpotStateRouteReq(spotRid, "add", 1))
             .Async<StateRes>()).Body;
         ZlinkStreamAssert.Ensure(routeReply.SpotRid == spotRid, "SM-A3 route reached the wrong spot.");
-        ZlinkStreamAssert.Ensure(routeReply.NodeRid == "play-a", "SM-A3 route reached the wrong node.");
+        ZlinkStreamAssert.Ensure(
+            routeReply.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
+            "SM-A3 route reached the wrong node.");
         ZlinkStreamAssert.Ensure(routeReply.Value == 1, "SM-A3 state reply mismatch.");
 
         var expectedPlayAEvidence = new[] { $"spot-state-request|rid=play-a|spot={spotRid}|value=1" };

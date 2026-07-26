@@ -1,5 +1,5 @@
 import type { ZLinkActor } from '../Actors';
-import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
+import type { ZLinkChannelRequestCall, ZLinkPublishCall, ZLinkSendCall } from '../Channels';
 import type {
   RoutingId,
   SpotId,
@@ -86,7 +86,7 @@ export interface ZLinkSpotOutbound {
   requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall;
   publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-  requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+  requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
 }
 
 export interface SpotRef {

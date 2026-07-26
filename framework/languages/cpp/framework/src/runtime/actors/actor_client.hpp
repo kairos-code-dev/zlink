@@ -20,6 +20,7 @@ std::shared_ptr<actor_client_t>
 make_actor_client (live_location_reader_t &store,
                    serializer_registry_t &serializers,
                    std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes,
-                   std::shared_ptr<actor_location_observer_t> actor_locations);
+                   std::shared_ptr<actor_location_observer_t> actor_locations,
+                   location_options_t options);
 
 } // namespace zlink::framework::runtime

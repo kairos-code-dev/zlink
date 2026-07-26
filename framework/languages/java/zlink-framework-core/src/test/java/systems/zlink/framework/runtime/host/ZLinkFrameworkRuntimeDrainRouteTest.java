@@ -88,15 +88,13 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     }
 
     @Test
-    void drainTransferUsesMappedRouteChannelWhenSpotMeshNameDiffers() {
+    void drainTransferUsesSpotMeshRouteChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRouteMeshChannel("route-a");
-        options.addRouteMeshChannel("route-b");
+        options.addRouteMeshChannel("game-spots");
         options.addSpotMesh("game-spots");
-        options.configureLocations().setSpotRouterChannel("game-spots", "route-b");
 
         assertEquals(
-            "route-b",
+            "game-spots",
             ZLinkFrameworkRuntime.transferRouteChannelName(
                 options.registration(), "game-spots"));
     }

@@ -966,6 +966,10 @@ test('redis resolver rejects an Actor row after the same Spot ID is recreated', 
       ownerNodeGeneration: 8n
     }, framework.ZLinkLocationWriteIntent.Takeover);
 
+    // A watch/recovery observation of the higher Spot authority version
+    // invalidates both the Spot route and Actor routes that depend on it.
+    resolvers.invalidateSpotRoute('spot-1', 'game');
+
     assert.equal(await resolvers.resolveActorRef('actor-1'), undefined);
     assert.equal(await resolvers.resolveActorSpotHandle('game', 'actor-1'), undefined);
   } finally {
@@ -1306,7 +1310,7 @@ test('redis relocation store preserves immutable bytes and provider-clock expiry
     return;
   }
   const prefix = `zlink:node-relocation:${process.pid}:${Date.now()}`;
-  const store = new redisLocations.ZLinkRedisLocationStore({
+  const store = new redisLocations.ZLinkRedisRelocationStore({
     url: fixture.url,
     keyPrefix: prefix
   });
@@ -1409,7 +1413,7 @@ function peer(ownerId, nodeRid) {
   };
 }
 
-function spot(ownerId, _generation, spotId, nodeRid) {
+function spot(ownerId, leaseGeneration, spotId, nodeRid) {
   return {
     meshName: 'play',
     spotId,
@@ -1419,6 +1423,7 @@ function spot(ownerId, _generation, spotId, nodeRid) {
     ownerNodeGeneration: 7n,
     spotKind: framework.ZLinkSpotKind.User,
     ownerId,
+    leaseGeneration: leaseGeneration > 0n ? leaseGeneration : 1n,
     updatedAt: new Date(0)
   };
 }
@@ -1436,6 +1441,7 @@ function actor(ownerId, nodeRid) {
     membershipEpoch: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
     ownerId,
+    leaseGeneration: 1n,
     updatedAt: new Date(0)
   };
 }
@@ -1604,6 +1610,7 @@ function exactActorLocation() {
     spotKind: framework.ZLinkSpotKind.User,
     membershipEpoch: 4n,
     ownerId: 'actor-owner-a',
+    leaseGeneration: 1n,
     updatedAt: new Date('2024-07-15T00:00:00.000Z')
   };
 }

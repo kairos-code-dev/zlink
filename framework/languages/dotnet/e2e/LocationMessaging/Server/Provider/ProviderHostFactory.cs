@@ -58,8 +58,8 @@ internal static class ProviderHostFactory
             {
                 var profileMesh = framework.AddRouteMesh("profile")
                     .Listen(options.ChannelEndpoint)
-                    .SetRoutingId(RoutingId.From(options.Rid));
-                var profile = profileMesh.ChannelName("profile").SetWeight(options.Weight);
+                    .SetRoutingIdPrefix(options.Rid);
+                var profile = profileMesh.Channel("profile").Server().SetWeight(options.Weight);
                 var serverSocket = profileMesh.ConfigureRouterSocket();
                 serverSocket.ReceiveHighWaterMark = 4;
                 if (options.MaxMessageSize > 0) serverSocket.MaxMessageSize = options.MaxMessageSize;
@@ -71,10 +71,16 @@ internal static class ProviderHostFactory
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))
             {
                 var route = framework.AddRouteMesh("profile.route")
-                    .Listen(options.RouteEndpoint)
-                    .SetRoutingId(RoutingId.From(options.Rid));
-                route.ChannelName("profile.route");
-                foreach (var peer in options.RoutePeers ?? []) route.PeerConnections.Connect(peer);
+                    .Listen(options.RouteEndpoint);
+                if (options.RoutePeers is { Count: > 0 })
+                {
+                    route.SetRoutingId(RoutingId.From(options.Rid));
+                    foreach (var peer in options.RoutePeers) route.PeerConnections.Connect(peer);
+                }
+                else
+                {
+                    route.SetRoutingIdPrefix($"{options.Rid}-route");
+                }
 
                 route.AddRouteRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }

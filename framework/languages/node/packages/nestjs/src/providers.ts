@@ -16,7 +16,9 @@ import {
   ZLINK_BOUND_SESSION_FACTORY,
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_CLIENT_SERVER_RUNTIME,
   ZLINK_FANOUT_CLIENT,
+  ZLINK_FANOUT_RUNTIME,
   ZLINK_FRAMEWORK_REGISTRATION,
   ZLINK_FRAMEWORK_RUNTIME,
   ZLINK_LOCATION_RUNTIME_QUERY,
@@ -130,6 +132,21 @@ interface ConditionalClientProviderSpec {
 
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
   {
+    token: ZLINK_CLIENT_SERVER_RUNTIME,
+    requiresRuntime: true,
+    isEnabled: (registration) => [...registration.channels.values()]
+      .some(channel => channel.client !== undefined || channel.server !== undefined),
+    create: (_registration, runtime) => requireRuntime(runtime).clientServerRuntime
+  },
+  {
+    token: ZLINK_FANOUT_RUNTIME,
+    requiresRuntime: true,
+    isEnabled: (registration) => [...registration.channels.values()]
+      .some(channel => channel.subscriber !== undefined
+        && (channel.subscriber.manualConnections?.length ?? 0) === 0),
+    create: (_registration, runtime) => requireRuntime(runtime).fanoutRuntime
+  },
+  {
     token: ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
     requiresRuntime: true,
     isEnabled: (registration) => registration.spotNodes.size > 0,
@@ -150,7 +167,7 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
   {
     token: ZLINK_SPOT_MANAGER,
     requiresRuntime: true,
-    isEnabled: (registration) => framework.hasSpotNode(registration),
+    isEnabled: (registration) => framework.hasSpotNode(registration) && hasLocationStores(registration),
     create: (registration, runtime, moduleRef, discovery) =>
       createSpotManager(registration, requireRuntime(runtime), moduleRef, discovery)
   },

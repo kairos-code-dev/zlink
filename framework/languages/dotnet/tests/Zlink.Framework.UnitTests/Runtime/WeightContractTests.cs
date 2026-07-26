@@ -90,6 +90,27 @@ public sealed class WeightContractTests
     }
 
     [Fact]
+    public void EqualWeightSelectionDoesNotDelayANewCandidateForAFullWeightBlock()
+    {
+        WeightedCandidate[] candidates =
+        [
+            new("existing", 100),
+            new("new", 100)
+        ];
+        long cursor = 10;
+
+        var selected = Enumerable.Range(0, 4)
+            .Select(_ => ZLinkWeightedSelector.Select(
+                candidates,
+                static candidate => candidate.Weight,
+                ref cursor)!.Name)
+            .ToArray();
+
+        Assert.Contains("existing", selected);
+        Assert.Contains("new", selected);
+    }
+
+    [Fact]
     public void ObjectPlacementFiltersCapacityAndZeroWeightBeforeSelection()
     {
         var eligible = Descriptor(

@@ -684,13 +684,15 @@ public final class ZLinkServiceM6BWireCodec {
         return writer.toByteArray();
     }
 
-    public ActorCreateReply decodeActorCreateReply(byte[] frame) {
+    public ActorCreateReply decodeActorCreateReply(
+        byte[] frame,
+        String meshName) {
         Reader reader = replyReader(frame);
         long correlation = reader.nonzeroU64("correlation");
         int terminalResult = reader.u32("terminalResult");
         int failureCode = reader.u32("failureCode");
         ActorCreateTerminal creation = terminalResult == 0
-            ? readActorCreateTerminal(reader)
+            ? readActorCreateReplyTerminal(reader, meshName)
             : null;
         reader.end();
         requireActorTerminalShape(
@@ -717,7 +719,7 @@ public final class ZLinkServiceM6BWireCodec {
         body.u32(terminal.failureCode(), "failureCode");
         body.u8(terminal.creation() == null ? 0 : 1);
         if (terminal.creation() != null) {
-            writeActorCreateTerminal(body, terminal.creation());
+            writeActorCreationOperationTerminal(body, terminal.creation());
         }
         body.u8(terminal.applicationPayloadFrame() == null ? 0 : 1);
         if (terminal.applicationPayloadFrame() != null) {
@@ -751,7 +753,7 @@ public final class ZLinkServiceM6BWireCodec {
             throw protocol("hasCreation must be bool8");
         }
         ActorCreateTerminal creation = hasCreation == 1
-            ? readActorCreateTerminal(body)
+            ? readActorCreationOperationTerminal(body)
             : null;
         int hasPayload = body.u8("hasApplicationPayload");
         if (hasPayload != 0 && hasPayload != 1) {
@@ -784,13 +786,53 @@ public final class ZLinkServiceM6BWireCodec {
             selected.rid(actor.nodeRid(), "actor.nodeRid");
             selected.text8(actor.actorId(), "actor.actorId");
             selected.nonzero(
-                actor.generation(), "actor.generation");
+                actor.objectGeneration(), "actor.objectGeneration");
         }
         writer.u16(selected.toByteArray().length);
         writer.bytes(selected.toByteArray());
     }
 
-    private static ActorCreateTerminal readActorCreateTerminal(
+    private static ActorCreateTerminal readActorCreateReplyTerminal(
+        Reader reader,
+        String meshName) {
+        ActorCreateResult result = ActorCreateResult.fromWire(
+            reader.u8("createResult"));
+        Reader selected = reader.reader(reader.u16("creationLength"));
+        ActorRef actor = null;
+        if (result != ActorCreateResult.REJECTED) {
+            RoutingId nodeRid = selected.rid("actor.nodeRid");
+            String actorId = selected.text8("actor.actorId");
+            long objectGeneration = selected.nonzeroU64(
+                "actor.objectGeneration");
+            actor = new ActorRef(
+                actorId,
+                objectGeneration,
+                meshName,
+                nodeRid);
+        }
+        selected.end();
+        return new ActorCreateTerminal(result, actor);
+    }
+
+    private static void writeActorCreationOperationTerminal(
+        Writer writer,
+        ActorCreateTerminal terminal) {
+        writer.u8(terminal.result().wireValue);
+        Writer selected = new Writer();
+        if (terminal.result() != ActorCreateResult.REJECTED) {
+            ActorRef actor = Objects.requireNonNull(
+                terminal.actor(), "actor");
+            selected.text8(actor.actorId(), "actor.actorId");
+            selected.nonzero(
+                actor.objectGeneration(), "actor.objectGeneration");
+            selected.text8(actor.meshName(), "actor.meshName");
+            selected.rid(actor.nodeRid(), "actor.nodeRid");
+        }
+        writer.u16(selected.toByteArray().length);
+        writer.bytes(selected.toByteArray());
+    }
+
+    private static ActorCreateTerminal readActorCreationOperationTerminal(
         Reader reader) {
         ActorCreateResult result = ActorCreateResult.fromWire(
             reader.u8("createResult"));
@@ -798,9 +840,10 @@ public final class ZLinkServiceM6BWireCodec {
         ActorRef actor = null;
         if (result != ActorCreateResult.REJECTED) {
             actor = new ActorRef(
-                selected.rid("actor.nodeRid"),
                 selected.text8("actor.actorId"),
-                selected.nonzeroU64("actor.generation"));
+                selected.nonzeroU64("actor.objectGeneration"),
+                selected.text8("actor.meshName"),
+                selected.rid("actor.nodeRid"));
         }
         selected.end();
         return new ActorCreateTerminal(result, actor);

@@ -12,7 +12,6 @@
 #include <zlink/framework/contracts/messaging/message_context.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
-#include <zlink/framework/contracts/locations/spot_handle.hpp>
 #include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
@@ -67,6 +66,12 @@ class entry_spot_t : public spot_t
 {
   public:
     ~entry_spot_t () override = default;
+};
+
+class instance_spot_t : public spot_t
+{
+  public:
+    ~instance_spot_t () override = default;
 };
 
 namespace detail
@@ -541,6 +546,7 @@ struct spot_node_snapshot_t
     std::vector<std::string> pub_sub_manual_connections;
     std::optional<std::string> discovery_channel_name;
     std::vector<std::string> spot_names;
+    std::vector<std::string> instance_spot_names;
     std::map<std::string, user_spot_execution_mode_t> spot_execution_modes;
     std::optional<std::string> entry_spot_name;
     std::vector<accepted_spot_route_channel_t> accepted_route_channels;
@@ -615,53 +621,20 @@ class spot_context_t
         }
     }
 
-    template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to (zlink::routing_id_t target_node_rid,
-                                       spot_id_t target_spot_id,
-                                       TRequest request)
+    template <typename TRequest>
+    spot_request_call_t request_to_spot (spot_id_t target_spot_id,
+                                         TRequest request)
     {
-        auto *serializers = serializer_registry ();
-        if (serializers == nullptr) {
-            return request_call_t<TReply> (
-              result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                         "spot request_to requires a serializer registry"));
-        }
-        try {
-            auto payload =
-              detail::encoded_payload_to_raw (serializers->get<TRequest> ().serialize (request));
-            return request_to_erased (detail::node_rid_from_target (target_node_rid),
-                                      detail::spot_id_from_target (target_spot_id),
-                                      detail::message_name<TRequest> (), std::move (payload))
-              .template as<TReply> ();
-        }
-        catch (const framework_exception_t &error) {
-            return request_call_t<TReply> (
-              detail::result_access_t::failure<TReply> (error));
-        }
+        return spot_route_client ().request_to_spot (
+          std::move (target_spot_id), std::move (request));
     }
 
     template <typename TMessage>
-    send_call_t send_to (zlink::routing_id_t target_node_rid,
-                         spot_id_t target_spot_id,
-                         TMessage message)
+    spot_send_call_t send_to_spot (spot_id_t target_spot_id,
+                                   TMessage message)
     {
-        auto *serializers = serializer_registry ();
-        if (serializers == nullptr) {
-            return send_call_t (
-              result_t<void>::failure (framework_error_kind_t::request_protocol_error,
-                                       "spot send_to requires a serializer registry"));
-        }
-        try {
-            auto payload =
-              detail::encoded_payload_to_raw (serializers->get<TMessage> ().serialize (message));
-            return send_to_erased (detail::node_rid_from_target (target_node_rid),
-                                   detail::spot_id_from_target (target_spot_id),
-                                   detail::message_name<TMessage> (), std::move (payload));
-        }
-        catch (const framework_exception_t &error) {
-            return send_call_t (
-              detail::result_access_t::failure<void> (error));
-        }
+        return spot_route_client ().send_to_spot (
+          std::move (target_spot_id), std::move (message));
     }
 
     template <typename TPayload> spot_context_t &register_packet (std::string packet_name)
@@ -889,6 +862,7 @@ class spot_context_t
     send_call_t
     publish_erased (std::string topic, std::string packet_name, zlink::message_t payload);
     serializer_registry_t *serializer_registry () const noexcept;
+    route_client_t spot_route_client () const;
     send_call_t send_to_erased (node_rid_t node_rid,
                                 spot_id_t spot_id,
                                 std::string packet_name,
@@ -1535,6 +1509,8 @@ class spot_node_builder_t
                        "SPOT type must derive from zlink::framework::spot_t");
         static_assert (!std::is_base_of_v<entry_spot_t, TSpot>,
                        "Entry SPOT type must be registered with add_entry_spot<TEntrySpot>()");
+        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>,
+                       "Instance Spot type must be registered with add_instance_spot_factory<TSpot>()");
         const auto registered_name = spot_name;
         auto &builder =
           add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false,
@@ -1553,6 +1529,8 @@ class spot_node_builder_t
                        "SPOT type must derive from zlink::framework::spot_t");
         static_assert (!std::is_base_of_v<entry_spot_t, TSpot>,
                        "Entry SPOT type must be registered with add_entry_spot<TEntrySpot>()");
+        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>,
+                       "Instance Spot type must be registered with add_instance_spot_factory<TSpot>()");
         if (!factory) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "SPOT factory must not be empty");
@@ -1589,6 +1567,24 @@ class spot_node_builder_t
           add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
                             user_spot_execution_mode_t::spot_wide);
         register_lifecycle<TEntrySpot> ("entry", std::move (factory));
+        return builder;
+    }
+
+    template <typename TSpot>
+    requires std::derived_from<TSpot, instance_spot_t>
+    spot_node_builder_t &
+    add_instance_spot_factory (std::string stable_type,
+                               std::function<std::shared_ptr<TSpot> ()> factory)
+    {
+        if (!factory) {
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "Instance Spot factory must not be empty");
+        }
+        const auto registered_type = stable_type;
+        auto &builder = add_spot_factory (
+          std::move (stable_type), std::type_index (typeid (TSpot)), false,
+          user_spot_execution_mode_t::spot_wide, true);
+        register_lifecycle<TSpot> (registered_type, std::move (factory));
         return builder;
     }
 
@@ -1766,7 +1762,8 @@ class spot_node_builder_t
     add_spot_factory (std::string spot_name,
                       std::type_index spot_type,
                       bool entry_spot,
-                      user_spot_execution_mode_t execution_mode);
+                      user_spot_execution_mode_t execution_mode,
+                      bool instance_spot = false);
     spot_node_builder_t &
     accept_implicit_route_mesh (std::string route_channel_name,
                                 std::vector<std::string> manual_connections = {});

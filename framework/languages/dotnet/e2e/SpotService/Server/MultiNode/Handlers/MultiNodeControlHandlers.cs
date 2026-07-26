@@ -18,7 +18,7 @@ internal sealed class EnsureActorHandler(
 {
     public async ValueTask<EnsureActorRes> HandleAsync(
         EnsureActorReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -37,7 +37,7 @@ internal sealed class EnsureActorHandler(
         return new EnsureActorRes(
             actor.ActorId,
             actor.NodeRid.ToString(),
-            actor.Generation);
+            actor.ObjectGeneration);
     }
 }
 
@@ -47,7 +47,7 @@ internal sealed class ControlPingHandler(NodeOptions node, EvidenceStore evidenc
 {
     public ValueTask<ControlPingRes> HandleAsync(
         ControlPingReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -66,7 +66,7 @@ internal sealed class CreateSpotHandler(
 {
     public async ValueTask<CreateSpotRes> HandleAsync(
         CreateSpotReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -86,7 +86,7 @@ internal sealed class CloseSpotHandler(
 {
     public async ValueTask<CloseSpotRes> HandleAsync(
         CloseSpotReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -106,7 +106,7 @@ internal sealed class SpotTypeMismatchHandler(
 {
     public async ValueTask<SpotTypeMismatchRes> HandleAsync(
         SpotTypeMismatchReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

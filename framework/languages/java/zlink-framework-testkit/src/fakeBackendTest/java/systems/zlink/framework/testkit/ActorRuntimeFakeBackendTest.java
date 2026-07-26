@@ -442,8 +442,7 @@ final class ActorRuntimeFakeBackendTest {
     void actorJoinSpotUsesRemoteAddressResolverWhenSpotIsNotLocal() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(remoteRoomStore());
-        options.configureLocations().setSpotRouterChannel("game", "rooms");
-        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+        { var route = options.addRouteMeshChannel("game"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
                 node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -482,8 +481,7 @@ final class ActorRuntimeFakeBackendTest {
     void remoteRoutedActorJoinRejectDoesNotDeserializeEmptyReply() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(remoteRoomStore());
-        options.configureLocations().setSpotRouterChannel("game", "rooms");
-        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+        { var route = options.addRouteMeshChannel("game"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
                 node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -510,8 +508,7 @@ final class ActorRuntimeFakeBackendTest {
     void boundManagedActorRoutesPacketsToRemoteJoinedSpotInsteadOfNativeGateway() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(remoteRoomStore());
-        options.configureLocations().setSpotRouterChannel("game", "rooms");
-        { var route = options.addRouteMeshChannel("rooms"); route.enableServer("inproc://local-route");
+        { var route = options.addRouteMeshChannel("game"); route.enableServer("inproc://local-route");
             route.enableClient("inproc://remote-route");};
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://local-router");
                 node.connectRouter(RoutingId.from("remote-node"), "inproc://remote-router");

@@ -123,7 +123,7 @@ final class ZLinkAutoConnectReconciler {
             storeFailureStartedNanos = -1;
             recoveryDeferUntilNanos = nanoTime.getAsLong()
                 + Math.max(
-                    options.heartbeatInterval().toNanos(),
+                    options.ownerLeaseRenewInterval().toNanos(),
                     options.ownerLeaseTtl().toNanos());
         }
 

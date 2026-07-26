@@ -604,6 +604,7 @@ function spotToJson(row: ZLinkSpotLocation): unknown {
     SpotKind: zlinkSpotKindToWire(row.spotKind),
     SpotType: row.spotType,
     OwnerId: row.ownerId,
+    LeaseGeneration: requiredUnsignedNumber(row.leaseGeneration, 'LeaseGeneration'),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
@@ -619,6 +620,7 @@ function spotToJsonText(row: ZLinkSpotLocation): string {
     `,"SpotKind":${zlinkSpotKindToWire(row.spotKind)}`,
     `,"SpotType":${JSON.stringify(row.spotType)}`,
     `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"LeaseGeneration":${requiredUnsigned(row.leaseGeneration, 'LeaseGeneration')}`,
     `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
     '}'
   ].join('');
@@ -636,6 +638,7 @@ function spotFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLin
     ownerNodeGeneration: unsignedBigIntOf(row.OwnerNodeGeneration),
     spotKind: zlinkSpotKindFromWire(numberOf(row.SpotKind)),
     ownerId: stringOf(row.OwnerId),
+    leaseGeneration: unsignedBigIntOf(row.LeaseGeneration),
     updatedAt
   };
 }
@@ -653,6 +656,7 @@ function actorToJson(row: ZLinkActorLocation): unknown {
     SpotKind: zlinkSpotKindToWire(row.spotKind),
     MembershipEpoch: requiredUnsignedNumber(row.membershipEpoch, 'MembershipEpoch'),
     OwnerId: row.ownerId,
+    LeaseGeneration: requiredUnsignedNumber(row.leaseGeneration, 'LeaseGeneration'),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
@@ -680,6 +684,7 @@ function actorToJsonText(row: ZLinkActorLocation): string {
     `,"SpotKind":${zlinkSpotKindToWire(row.spotKind)}`,
     `,"MembershipEpoch":${membershipEpoch}`,
     `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"LeaseGeneration":${requiredUnsigned(row.leaseGeneration, 'LeaseGeneration')}`,
     `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
     '}'
   ].join('');
@@ -687,7 +692,7 @@ function actorToJsonText(row: ZLinkActorLocation): string {
 
 function actorFromJsonText(json: string, generation: bigint, updatedAt: Date): ZLinkActorLocation {
   const lossless = json.replace(
-    /("(?:generation|OwnerNodeGeneration|SpotGeneration|MembershipEpoch)":)([0-9]+)/g,
+    /("(?:generation|OwnerNodeGeneration|SpotGeneration|MembershipEpoch|LeaseGeneration)":)([0-9]+)/g,
     '$1"$2"'
   );
   return actorFromJson(JSON.parse(lossless), generation, updatedAt);
@@ -709,6 +714,7 @@ function actorFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLi
     spotGeneration: unsignedBigIntOf(row.SpotGeneration),
     membershipEpoch: unsignedBigIntOf(row.MembershipEpoch),
     ownerId: stringOf(row.OwnerId),
+    leaseGeneration: unsignedBigIntOf(row.LeaseGeneration),
     updatedAt
   };
 }

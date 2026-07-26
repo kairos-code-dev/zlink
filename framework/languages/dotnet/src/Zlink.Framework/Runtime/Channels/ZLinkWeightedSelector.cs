@@ -14,7 +14,11 @@ internal static class ZLinkWeightedSelector
         if (total <= 0)
             return null;
         var ordinal = Interlocked.Increment(ref cursor);
-        var selected = (long)((ulong)ordinal % (ulong)total);
+        // Traverse the weighted ring with a step that is coprime to its size.
+        // This preserves the exact ratio over one full ring while avoiding a
+        // contiguous burst of up to `weight` selections for one candidate.
+        var step = CoprimeStep(total);
+        var selected = (long)(((ulong)ordinal * (ulong)step) % (ulong)total);
         foreach (var candidate in eligible)
         {
             var candidateWeight = weight(candidate);
@@ -34,4 +38,26 @@ internal static class ZLinkWeightedSelector
         eligible.Aggregate(
             0L,
             (sum, candidate) => checked(sum + weight(candidate)));
+
+    private static long CoprimeStep(long total)
+    {
+        if (total <= 2)
+            return 1;
+
+        var step = (total / 2) + 1;
+        while (GreatestCommonDivisor(step, total) != 1)
+            step++;
+        return step;
+    }
+
+    private static long GreatestCommonDivisor(long left, long right)
+    {
+        while (right != 0)
+        {
+            var remainder = left % right;
+            left = right;
+            right = remainder;
+        }
+        return left;
+    }
 }

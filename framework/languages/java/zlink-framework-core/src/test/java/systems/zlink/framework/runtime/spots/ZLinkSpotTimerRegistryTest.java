@@ -164,7 +164,11 @@ final class ZLinkSpotTimerRegistryTest {
                 .pendingTick()
                 .orElseThrow()
                 .scheduledIndex();
-            target.restore(decoded);
+            target.stageRestore(decoded);
+
+            assertFalse(restored.await(100, TimeUnit.MILLISECONDS),
+                "staged timers must not run before aggregate publication");
+            target.publishStagedRestore();
 
             assertTrue(restored.await(2, TimeUnit.SECONDS));
             assertEquals(1, restoredTick.get().deliveryIndex());

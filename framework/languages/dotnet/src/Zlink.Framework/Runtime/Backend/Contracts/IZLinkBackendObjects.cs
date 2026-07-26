@@ -94,7 +94,8 @@ internal readonly record struct ZLinkBackendActorRouteContext(
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,
     ulong ReplyRequestId = 0,
-    uint ReplyFlags = 0)
+    uint ReplyFlags = 0,
+    string? ReplyCapability = null)
 {
     internal bool IsDirectRoute => OperationId != default;
 }

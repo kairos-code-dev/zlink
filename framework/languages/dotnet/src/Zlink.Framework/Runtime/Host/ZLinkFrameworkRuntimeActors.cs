@@ -1932,52 +1932,39 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _actorSessionManager.NotifyDisconnectedByIdAsync(actorId, cancellationToken);
     }
 
-    internal ValueTask NotifyActorDisconnectedAsync(
-        ActorRef actor,
-        string bindingToken,
-        CancellationToken cancellationToken = default)
-    {
-        var nodeRuntime = GetActorClientSpotNodeRuntime();
-        var meshName = nodeRuntime.Registration.SpotMeshChannelName
-                       ?? nodeRuntime.Registration.SpotNodeName;
-        return NotifyActorDisconnectedAsync(meshName, actor, bindingToken, cancellationToken);
-    }
-
     internal async ValueTask NotifyActorDisconnectedAsync(
-        string? meshName,
-        ActorRef actor,
-        string bindingToken,
+        ZLinkSessionBindingEntry binding,
         CancellationToken cancellationToken = default)
     {
+        var actor = binding.Route.Ref;
         var state = GetOrCreateActorState(actor.ActorId);
-        if (!state.TryGetBoundSession(out var boundSession)
-            || !string.Equals(
-                boundSession.BindingToken,
-                bindingToken,
-                StringComparison.Ordinal))
-        {
-            return;
-        }
-
         if (state.Actor is not null
             && state.NativeActorRef is { } localActor
             && localActor.NodeRid == actor.NodeRid
             && localActor.Generation == actor.ObjectGeneration)
         {
-            await NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
-                .ConfigureAwait(false);
+            if (!state.TryGetBoundSession(out var current)
+                || !string.Equals(
+                    current.BindingToken,
+                    binding.BindingToken,
+                    StringComparison.Ordinal))
+                return;
+            try
+            {
+                await NotifyActorDisconnectedByIdAsync(actor.ActorId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                RemoveActorSessionBinding(actor.ActorId, binding.BindingToken);
+            }
             return;
         }
 
-        var node = GetMeshNodeRuntime(
-            meshName
-            ?? throw new ZLinkConfigurationException(
-                "STREAM Actor dispatch requires EnableActorDispatch(meshName).")).Node;
+        var node = GetMeshNodeRuntime(binding.MeshName).Node;
 
         await _actorBoundSessionCoordinator.NotifyRemoteDisconnectedAsync(
-                state,
-                actor.ToBackend(),
-                meshName!,
+                binding,
                 node,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -2046,7 +2033,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             actorId,
             bindingToken);
 
-    internal void TrackRemoteSessionActorRequest(
+    internal string TrackRemoteSessionActorRequest(
         string actorId,
         ulong requestId,
         string bindingToken)
@@ -2096,6 +2083,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         byte forwardingHopCount,
         ulong replyRequestId,
         uint replyFlags,
+        string? replyCapability,
         byte[] header,
         byte[] body,
         CancellationToken cancellationToken)
@@ -2124,7 +2112,8 @@ internal sealed partial class ZLinkFrameworkRuntime
             authorityOwnerGeneration,
             ownerLeaseGeneration,
             replyRequestId,
-            replyFlags);
+            replyFlags,
+            replyCapability);
         if (routeContext.IsDirectRoute)
         {
             if (forwardingHopCount is 0 or > 8
@@ -2141,8 +2130,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                     $"Actor '{actorId}' direct relay authority identity is stale.");
         }
         else if (forwardingHopCount != 0
-                 || replyRequestId != 0
-                 || replyFlags != 0
+                 || ((replyRequestId != 0 || replyFlags != 0)
+                     && !ZLinkActorBoundSessionRelay.IsNoBindRequest(
+                         replyRequestId,
+                         replyFlags))
                  || !state.TryGetBoundSession(out var session)
                  || session.ObjectGeneration != actorGeneration
                  || !string.Equals(
@@ -2261,6 +2252,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             routeContext.ForwardingHopCount,
             routeContext.ReplyRequestId,
             routeContext.ReplyFlags,
+            routeContext.ReplyCapability,
             header,
             body);
         var envelope = ZLinkClientCallCodec.CreateEnvelope(
@@ -2500,16 +2492,23 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId sourceSessionRid,
         ulong requestId,
         uint flags,
+        string? replyCapability,
         IReadOnlyList<Message> parts)
     {
-        var nodeRuntime = GetActorClientSpotNodeRuntime();
-        if (_actorBoundSessionCoordinator.ReplyNoBind(
-                actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts))
-            return;
+        var nodeRuntime = actor.NodeRid.IsEmpty
+            ? GetActorClientSpotNodeRuntime()
+            : GetSpotNodeRuntime(actor.NodeRid);
 
         if (!sourceNodeRid.IsEmpty
             && !sourceNodeRid.Equals(nodeRuntime.Node.RoutingId))
         {
+            if (string.IsNullOrWhiteSpace(replyCapability))
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestProtocolError,
+                    "Remote Actor reply did not preserve its reply capability.");
+            }
             var frameLength = parts.Sum(static part => checked((int)part.Size));
             var frame = new byte[frameLength];
             var offset = 0;
@@ -2525,6 +2524,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 actor.ActorId,
                 requestId,
                 flags,
+                replyCapability,
+                nodeRuntime.Node.RoutingId.ToHex(),
                 frame);
             var envelope = ZLinkClientCallCodec.CreateEnvelope(
                 ZLinkMessageKind.Command,
@@ -2540,6 +2541,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 relayParts,
                 SendFlags.DontWait);
             ZLinkMessageParts.DisposeAll(relayParts);
+            ZLinkMessageParts.DisposeAll(parts);
             if (submit != SubmitResult.Ok)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RouteNotConnected,
@@ -2548,25 +2550,48 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
+        if (_actorBoundSessionCoordinator.ReplyNoBind(
+                actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts))
+            return;
+
         ZLinkMessageParts.DisposeAll(parts);
     }
 
-    internal void DeliverRemoteActorReply(
+    internal async ValueTask DeliverRemoteActorReplyAsync(
         string actorId,
         ulong requestId,
         uint flags,
-        byte[] frame)
+        string replyCapability,
+        RoutingId sourceNodeRid,
+        RoutingId responderNodeRid,
+        byte[] frame,
+        CancellationToken cancellationToken)
     {
-        CompleteRemoteSessionActorRequest(actorId, requestId);
-        var message = Message.From(frame);
-        if (!_actorBoundSessionCoordinator.ReplyNoBind(
-                new ZLinkBackendActorRef(default, actorId, 0),
-                default,
-                default,
+        if (!_actorBoundSessionCoordinator.TryClaimRemoteSessionReply(
+                actorId,
                 requestId,
                 flags,
-                [message]))
-            message.Dispose();
+                replyCapability,
+                sourceNodeRid,
+                responderNodeRid,
+                out var claim))
+            return;
+
+        var deadline = DateTime.UtcNow + Registration.DefaultRequestTimeout;
+        using (claim)
+        {
+            while (true)
+            {
+                var delivery = claim.Deliver(frame);
+                var retryable = delivery
+                    is ZLinkActorBoundSessionCoordinator.RemotePushDelivery.Backpressured
+                    or ZLinkActorBoundSessionCoordinator.RemotePushDelivery.NoBinding;
+                if (!retryable || DateTime.UtcNow >= deadline)
+                    return;
+                await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
     }
 
     internal bool ForwardActorBoundSessionPart(

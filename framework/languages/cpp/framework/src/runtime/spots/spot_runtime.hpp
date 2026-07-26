@@ -139,6 +139,11 @@ class spot_node_builder_state_t
                                                              serializer_registry_t &,
                                                              spot_inbound_message_t)>
       actor_packet_relay;
+    std::function<result_t<std::optional<zlink::message_t>> (
+      const actor_ref_t &, const runtime::messaging::envelope_header_t &,
+      const zlink::message_t &,
+      std::chrono::milliseconds)>
+      actor_packet_forwarder;
     std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
                                                 node_rid_t,
                                                 const zlink::message_t &,
@@ -147,9 +152,9 @@ class spot_node_builder_state_t
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, actor_transfer_registration_t> actor_transfers;
     actor_transfer_coordinator_t actor_transfer_coordinator;
-    // Straggler forwarding window (spot-actor §10.4). The 5 second default is
-    // fixed across languages; deployments may override it.
-    std::chrono::milliseconds actor_transfer_forward_window{5000};
+    // A committed source route may relay stragglers only for this bounded
+    // interval. The common object-routing contract fixes the default at 30s.
+    std::chrono::milliseconds actor_transfer_forward_window{30000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::set<std::pair<std::uint64_t, std::uint64_t>>
       committed_join_locations;
@@ -390,6 +395,16 @@ class spot_node_runtime_t
     local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_id_t spot_id);
     local_spot_create_result_t
     get_or_create_spot (std::string spot_name, spot_id_t spot_id, zlink::message_t request);
+    task_t<zlink::message_t> dispatch_instance_activation (
+      const spot_id_t &spot_id,
+      std::string packet_name,
+      std::string content_type,
+      std::vector<std::uint8_t> payload,
+      std::map<std::string, std::string> metadata,
+      bool request,
+      std::string correlation_id,
+      service_provider_t &services,
+      serializer_registry_t &serializers);
     std::optional<spot_info_t> find_spot (spot_id_t spot_id) const;
     std::vector<spot_info_t> list_spots () const;
     task_t<bool> close_spot (spot_id_t spot_id);
@@ -485,6 +500,11 @@ class spot_node_runtime_t
                                                                serializer_registry_t &,
                                                                spot_inbound_message_t)>
         relay);
+    void on_actor_packet_forward (
+      std::function<result_t<std::optional<zlink::message_t>> (
+        const actor_ref_t &, const runtime::messaging::envelope_header_t &,
+        const zlink::message_t &,
+        std::chrono::milliseconds)> forwarder);
     spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
       const actor_ref_t &actor_ref,

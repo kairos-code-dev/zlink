@@ -84,7 +84,15 @@ export interface ZLinkMeshPeerConnections {
 }
 
 export interface ZLinkMeshChannelBuilder {
+  client(): ZLinkMeshChannelClientBuilder;
+  server(): ZLinkMeshChannelServerBuilder;
+}
+
+export interface ZLinkMeshChannelClientBuilder {}
+
+export interface ZLinkMeshChannelServerBuilder {
   setWeight(weight: number): this;
+  addHandlerGroup(groupName: string): this;
   addSendHandler<TMessage>(handlerType: Type<ZLinkSendHandler<TMessage>>): this;
   addRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRequestHandler<TRequest, TReply>>): this;
 }
@@ -98,7 +106,7 @@ export interface ZLinkMeshNodeSocketConfig {
 }
 
 export interface ZLinkMeshNodeBuilder {
-  channelName(channelName: string): ZLinkMeshChannelBuilder;
+  channel(channelName: string): ZLinkMeshChannelBuilder;
   listen(endpoint: string): this;
   routingId(routingId: RoutingId): this;
   useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
@@ -126,6 +134,11 @@ export interface ZLinkMeshNodeBuilder {
     actorType: string,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): this;
+}
+
+export interface ZLinkNetworkOptions {
+  bindHost: string;
+  advertiseHost?: string;
 }
 
 export interface ZLinkMeshObjectRoleBuilder {

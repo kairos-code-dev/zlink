@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   ActorRef,
   RoutingId,
@@ -19,6 +20,8 @@ import {
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
   ZLinkDeferredJoinAcceptedJournal,
+  ZLinkBoundSessionAcceptedJournal,
+  type ZLinkBoundSessionAcceptedJournalRoot,
   type ZLinkDeferredJoinAcceptedRoot,
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
@@ -27,7 +30,14 @@ import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
 import { ZLinkActorRetryDelay } from '../actors/actor-retry-delay';
 import { encodeRoutingIdStorageHex } from '../routing-id';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
-import { encodeRemoteBoundSessionOwnershipPayload } from '../actors/bound-session-wire';
+import {
+  decodeRemoteBoundSessionOwnershipAck,
+  decodeRemoteBoundSessionSealAck,
+  encodeRemoteBoundSessionOwnershipPayload,
+  encodeRemoteBoundSessionSealPayload,
+  ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
+  ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET
+} from '../actors/bound-session-wire';
 import type { ZLinkLocationLifecycle } from '../locations';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { DefaultZLinkSpotManager } from '../spots';
@@ -232,7 +242,14 @@ export class ZLinkActorTransferRuntime {
     await this.beginSourceActorMove(actor, state);
     const sourceSpotId = state.spotId;
     let sourceLeaveStarted = false;
+    let sealId: string | undefined;
+    let acceptedRoot: ZLinkBoundSessionAcceptedJournalRoot | undefined;
     try {
+      if (state.remoteBoundSessionTarget !== undefined) {
+        sealId = randomUUID();
+        const sealedTarget = await this.sealBoundSessionRoute(actor, state, sealId, signal);
+        state.setRemoteBoundSessionTarget(sealedTarget);
+      }
       const transfer = await this.options.actorTransferRegistry.transferOut(
         actor,
         state.actorType,
@@ -250,12 +267,22 @@ export class ZLinkActorTransferRuntime {
       const sourceLeaveCompletion = lifecycleAuthority === 'core'
         ? this.beginCoreSourceLeave(actor.context.actorId)
         : undefined;
+      const handoffBacklog = lifecycleAuthority === 'core'
+        ? this.options.actorHandoff.snapshotCoreBacklog(actor.context.actorId)
+        : this.options.actorHandoff.snapshot(actor.context.actorId);
+      if (sealId !== undefined) {
+        acceptedRoot = await this.prepareBoundSessionAcceptedJournal(actor, state, sealId, handoffBacklog, signal);
+        state.setRemoteBoundSessionTarget({
+          ...state.remoteBoundSessionTarget!,
+          relocationSealId: sealId,
+          acceptedJournalReference: acceptedRoot.reference.value,
+          acceptedJournalChecksumCrc32c: acceptedRoot.checksumCrc32c
+        });
+      }
       let phase: 'prepared' | 'committed' | 'rolledBack' = 'prepared';
       return {
         ...transfer,
-        handoffBacklog: lifecycleAuthority === 'core'
-          ? this.options.actorHandoff.snapshotCoreBacklog(actor.context.actorId)
-          : this.options.actorHandoff.snapshot(actor.context.actorId),
+        handoffBacklog,
         sourceLeaveCompletion,
         commit: (
           target: Parameters<ZLinkActorHandoffCoordinator['complete']>[1],
@@ -289,12 +316,24 @@ export class ZLinkActorTransferRuntime {
           if (phase !== 'prepared') return;
           phase = 'rolledBack';
           this.coreSourceLeaves.delete(actor.context.actorId);
+          if (sealId !== undefined) {
+            await this.abortBoundSessionRouteSeal(actor, state, sealId);
+          }
+          if (acceptedRoot !== undefined) {
+            await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
+          }
           await this.cancelSourceActorMove(actor, state);
           await this.restoreSourceActor(actor, sourceSpotId);
         }
       };
     } catch (error) {
       try {
+        if (sealId !== undefined) {
+          await this.abortBoundSessionRouteSeal(actor, state, sealId);
+        }
+        if (acceptedRoot !== undefined) {
+          await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
+        }
         await this.cancelSourceActorMove(actor, state);
         if (sourceLeaveStarted) await this.restoreSourceActor(actor, sourceSpotId);
       } catch (rollbackError) {
@@ -315,6 +354,113 @@ export class ZLinkActorTransferRuntime {
     } finally {
       this.coreSourceLeaves.delete(actor.context.actorId);
     }
+  }
+
+  private async sealBoundSessionRoute(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    sealId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkRemoteBoundSessionTarget> {
+    const target = state.remoteBoundSessionTarget;
+    const actorRef = state.nativeActorRef;
+    if (
+      target === undefined || actorRef === undefined ||
+      target.bindingGeneration === undefined || target.bindingGeneration <= 0n ||
+      state.locationGeneration === undefined || state.locationGeneration < 0n ||
+      state.ownerLeaseGeneration === undefined || state.ownerLeaseGeneration <= 0n
+    ) {
+      throw new Error(`Actor '${actor.context.actorId}' Session route cannot be sealed without its exact source fence.`);
+    }
+    const request = {
+      actorId: actor.context.actorId,
+      actorGeneration: actorRef.generation.toString(),
+      actorOwnershipGeneration: state.locationGeneration.toString(),
+      bindingGeneration: target.bindingGeneration.toString(),
+      ownerLeaseGeneration: state.ownerLeaseGeneration.toString(),
+      sealId
+    };
+    const ack = decodeRemoteBoundSessionSealAck(await this.options.routeTransport.requestToSpot(
+      {
+        routerChannelId: target.routerChannelId,
+        targetNodeRid: target.targetNodeRid,
+        spotId: target.spotId,
+        spotKind: ZLinkSpotKind.Entry
+      },
+      encodeRemoteBoundSessionSealPayload(request),
+      { packetName: ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET, signal }
+    ));
+    if (ack.actorId !== request.actorId || ack.sealId !== sealId || BigInt(ack.acceptedHighWater) < 0n) {
+      throw new Error(`Actor '${actor.context.actorId}' Session route seal ACK does not match command 42.`);
+    }
+    return {
+      ...target,
+      previousAuthorityOwnerGeneration: state.locationGeneration,
+      previousOwnerLeaseGeneration: state.ownerLeaseGeneration,
+      acceptedHighWater: BigInt(ack.acceptedHighWater),
+      relocationSealId: sealId
+    };
+  }
+
+  private async abortBoundSessionRouteSeal(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    sealId: string
+  ): Promise<void> {
+    const target = state.remoteBoundSessionTarget;
+    const actorRef = state.nativeActorRef;
+    if (target === undefined || actorRef === undefined || target.bindingGeneration === undefined ||
+      target.previousAuthorityOwnerGeneration === undefined || target.previousOwnerLeaseGeneration === undefined) {
+      throw new Error(`Actor '${actor.context.actorId}' Session route seal cannot be released without its exact fence.`);
+    }
+    const ack = decodeRemoteBoundSessionSealAck(await this.options.routeTransport.requestToSpot(
+      {
+        routerChannelId: target.routerChannelId,
+        targetNodeRid: target.targetNodeRid,
+        spotId: target.spotId,
+        spotKind: ZLinkSpotKind.Entry
+      },
+      encodeRemoteBoundSessionSealPayload({
+        actorId: actor.context.actorId,
+        actorGeneration: actorRef.generation.toString(),
+        actorOwnershipGeneration: target.previousAuthorityOwnerGeneration.toString(),
+        bindingGeneration: target.bindingGeneration.toString(),
+        ownerLeaseGeneration: target.previousOwnerLeaseGeneration.toString(),
+        sealId
+      }, true),
+      { packetName: ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET }
+    ));
+    if (ack.actorId !== actor.context.actorId || ack.sealId !== sealId) {
+      throw new Error(`Actor '${actor.context.actorId}' Session route seal abort ACK does not match.`);
+    }
+  }
+
+  private async prepareBoundSessionAcceptedJournal(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    sealId: string,
+    backlog: readonly import('../actors').ZLinkActorHandoffPacket[],
+    signal?: AbortSignal
+  ): Promise<ZLinkBoundSessionAcceptedJournalRoot> {
+    const actorRef = state.nativeActorRef;
+    const highWater = state.remoteBoundSessionTarget?.acceptedHighWater;
+    const journal = this.boundSessionAcceptedJournal();
+    if (actorRef === undefined || highWater === undefined || journal === undefined) {
+      throw new Error(`Actor '${actor.context.actorId}' accepted Session journal cannot be prepared.`);
+    }
+    return await journal.prepare(
+      actor.context.actorId,
+      actorRef.generation,
+      sealId,
+      highWater,
+      backlog,
+      signal
+    );
+  }
+
+  private boundSessionAcceptedJournal(): ZLinkBoundSessionAcceptedJournal | undefined {
+    const store = this.options.relocationStore();
+    return store === undefined ? undefined : new ZLinkBoundSessionAcceptedJournal(store);
   }
 
   private beginCoreSourceLeave(actorId: string): Promise<void> {
@@ -534,6 +680,9 @@ export class ZLinkActorTransferRuntime {
     if (claim.generation !== undefined) {
       state.setLocationGeneration(claim.generation);
     }
+    if (claim.claimed !== undefined) {
+      state.setOwnerLeaseGeneration(claim.claimed.leaseGeneration);
+    }
     state.setJoinedSpot(spotId, state.spot, membershipEpoch);
     state.markLocationOwned();
   }
@@ -564,17 +713,47 @@ export class ZLinkActorTransferRuntime {
     const actorRef = state?.nativeActorRef;
     const generation = state?.locationGeneration;
     if (state === undefined || actorRef === undefined || generation === undefined) return;
+    await this.verifyBoundSessionAcceptedJournal(actor, state);
     await this.publishBoundSessionOwnership(
       actor.context.actorId,
       actorRef,
       generation,
       state.remoteBoundSessionTarget,
+      state.ownerLeaseGeneration,
       state.spotId === undefined || state.remoteBoundSessionTarget === undefined ? undefined : {
         routerChannelId: state.remoteBoundSessionTarget.routerChannelId,
         targetNodeRid: actorRef.nodeRid,
         spotId: state.spotId,
         spotKind: ZLinkSpotKind.User
       }
+    );
+  }
+
+  async openRoutedActorSession(actor: ZLinkActor): Promise<void> {
+    const state = this.options.actorManager()?.getState(actor.context.actorId);
+    const sealId = state?.remoteBoundSessionTarget?.relocationSealId;
+    if (state === undefined || sealId === undefined) return;
+    const retry = new ZLinkActorRetryDelay();
+    let lastError: unknown;
+    let immediateRetry = true;
+    while (this.options.shutdownSignal?.()?.aborted !== true) {
+      try {
+        await this.abortBoundSessionRouteSeal(actor, state, sealId);
+        return;
+      } catch (error) {
+        lastError = error;
+        this.options.reportPostCommitError?.(error);
+        if (this.options.shutdownSignal?.()?.aborted === true) break;
+        if (immediateRetry) {
+          immediateRetry = false;
+          continue;
+        }
+        if (!await retry.wait(this.options.shutdownSignal?.())) break;
+      }
+    }
+    throw new Error(
+      `Actor '${actor.context.actorId}' Session route remained sealed while the runtime stopped.`,
+      { cause: lastError }
     );
   }
 
@@ -638,6 +817,7 @@ export class ZLinkActorTransferRuntime {
       throw new Error(`Actor '${actor.context.actorId}' previous SPOT location could not be restored.`);
     }
     if (restored.generation !== undefined) state.setLocationGeneration(restored.generation);
+    if (restored.claimed !== undefined) state.setOwnerLeaseGeneration(restored.claimed.leaseGeneration);
   }
 
   async rollbackRoutedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
@@ -686,35 +866,124 @@ export class ZLinkActorTransferRuntime {
     actorRef: ZLinkBackendActorRef,
     ownershipGeneration: bigint,
     target: ZLinkRemoteBoundSessionTarget | undefined,
+    targetOwnerLeaseGeneration: bigint | undefined,
     actorPacketTarget: ZLinkRemoteActorPacketTarget | undefined
   ): Promise<void> {
     if (target === undefined) {
       return;
     }
-    try {
-      await this.options.routeTransport.sendToSpot(
-        {
-          routerChannelId: target.routerChannelId,
-          targetNodeRid: target.targetNodeRid,
-          spotId: target.spotId,
-          spotKind: ZLinkSpotKind.Entry
-        },
-        encodeRemoteBoundSessionOwnershipPayload({
-          actorId,
-          actorNodeRid: String(actorRef.nodeRid),
-          actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
-          actorGeneration: actorRef.generation.toString(),
-          actorOwnershipGeneration: ownershipGeneration.toString(),
-          actorPacketTarget: encodeRemoteActorPacketTarget(actorPacketTarget)
-        }),
-        { packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET }
-      );
-    } catch (error) {
-      throw new Error(
-        `Actor '${actorId}' bound-session ownership update failed on route ` +
-        `'${target.routerChannelId}' to '${String(target.targetNodeRid)}'.`,
-        { cause: error }
-      );
+    if (
+      target.bindingGeneration === undefined ||
+      target.previousAuthorityOwnerGeneration === undefined ||
+      target.previousOwnerLeaseGeneration === undefined ||
+      target.acceptedHighWater === undefined ||
+      target.relocationSealId === undefined ||
+      target.acceptedJournalReference === undefined ||
+      target.acceptedJournalChecksumCrc32c === undefined ||
+      targetOwnerLeaseGeneration === undefined ||
+      target.bindingGeneration <= 0n ||
+      target.previousAuthorityOwnerGeneration < 0n ||
+      ownershipGeneration <= target.previousAuthorityOwnerGeneration ||
+      target.previousOwnerLeaseGeneration <= 0n ||
+      targetOwnerLeaseGeneration <= 0n ||
+      target.acceptedHighWater < 0n
+    ) {
+      throw new Error(`Actor '${actorId}' bound-session ownership fence is incomplete.`);
     }
+    const actorGeneration = actorRef.generation.toString();
+    const actorOwnershipGeneration = ownershipGeneration.toString();
+    const bindingGeneration = target.bindingGeneration.toString();
+    const targetOwnerLease = targetOwnerLeaseGeneration.toString();
+    const acceptedHighWater = target.acceptedHighWater.toString();
+    const sealId = target.relocationSealId;
+    const payload = encodeRemoteBoundSessionOwnershipPayload({
+      actorId,
+      actorNodeRid: String(actorRef.nodeRid),
+      actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
+      actorGeneration,
+      previousActorOwnershipGeneration: target.previousAuthorityOwnerGeneration.toString(),
+      actorOwnershipGeneration,
+      bindingGeneration,
+      previousOwnerLeaseGeneration: target.previousOwnerLeaseGeneration.toString(),
+      targetOwnerLeaseGeneration: targetOwnerLease,
+      acceptedHighWater,
+      sealId,
+      acceptedJournalReference: target.acceptedJournalReference,
+      acceptedJournalChecksumCrc32c: target.acceptedJournalChecksumCrc32c,
+      actorPacketTarget: encodeRemoteActorPacketTarget(actorPacketTarget)
+    });
+    const retry = new ZLinkActorRetryDelay();
+    let lastError: unknown;
+    let immediateRetry = true;
+    while (this.options.shutdownSignal?.()?.aborted !== true) {
+      try {
+        const ack = decodeRemoteBoundSessionOwnershipAck(await this.options.routeTransport.requestToSpot(
+          {
+            routerChannelId: target.routerChannelId,
+            targetNodeRid: target.targetNodeRid,
+            spotId: target.spotId,
+            spotKind: ZLinkSpotKind.Entry
+          },
+          payload,
+          {
+            packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
+            signal: this.options.shutdownSignal?.()
+          }
+        ));
+        if (
+          ack.actorId !== actorId ||
+          ack.actorGeneration !== actorGeneration ||
+          ack.actorOwnershipGeneration !== actorOwnershipGeneration ||
+          ack.bindingGeneration !== bindingGeneration ||
+          ack.targetOwnerLeaseGeneration !== targetOwnerLease ||
+          ack.acceptedHighWater !== acceptedHighWater ||
+          ack.sealId !== sealId
+        ) {
+          throw new Error(`Actor '${actorId}' bound-session ownership ACK does not match the request.`);
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        this.options.reportPostCommitError?.(error);
+        if (this.options.shutdownSignal?.()?.aborted === true) break;
+        if (immediateRetry) {
+          immediateRetry = false;
+          continue;
+        }
+        if (!await retry.wait(this.options.shutdownSignal?.())) break;
+      }
+    }
+    throw new Error(
+      `Actor '${actorId}' bound-session ownership update stopped before command 45 ACK on route ` +
+      `'${target.routerChannelId}' to '${String(target.targetNodeRid)}'.`,
+      { cause: lastError }
+    );
+  }
+
+  private async verifyBoundSessionAcceptedJournal(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState
+  ): Promise<void> {
+    const target = state.remoteBoundSessionTarget;
+    if (target === undefined) return;
+    const actorRef = state.nativeActorRef;
+    const journal = this.boundSessionAcceptedJournal();
+    if (
+      actorRef === undefined || journal === undefined ||
+      target.relocationSealId === undefined ||
+      target.acceptedHighWater === undefined ||
+      target.acceptedJournalReference === undefined ||
+      target.acceptedJournalChecksumCrc32c === undefined
+    ) {
+      throw new Error(`Actor '${actor.context.actorId}' accepted Session journal fence is incomplete.`);
+    }
+    await journal.verify({
+      actorId: actor.context.actorId,
+      actorGeneration: actorRef.generation,
+      sealId: target.relocationSealId,
+      acceptedHighWater: target.acceptedHighWater,
+      reference: { value: target.acceptedJournalReference } as import('../../contracts').ZLinkRelocationReference,
+      checksumCrc32c: target.acceptedJournalChecksumCrc32c
+    });
   }
 }

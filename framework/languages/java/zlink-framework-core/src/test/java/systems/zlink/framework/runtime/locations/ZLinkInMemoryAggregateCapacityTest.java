@@ -209,6 +209,64 @@ final class ZLinkInMemoryAggregateCapacityTest {
     }
 
     @Test
+    void nextGenerationPreserveAggregateChangesOnlyPayload() throws Exception {
+        Fixture fixture = fixture();
+        fixture.sourceLive.set(false);
+        UUID aggregateId = UUID.randomUUID();
+        var activated = assertInstanceOf(
+            ZLinkAggregatePrepared.class,
+            fixture.store.prepareAggregate(
+                    aggregateRequest(
+                        aggregateId,
+                        fixture.current,
+                        fixture.target,
+                        new byte[] {2}),
+                    () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkAggregateCommitResult.COMMITTED,
+            fixture.store.commitAggregate(activated.fence(), () -> false)
+                .toCompletableFuture().get());
+        ZLinkAuthoritySnapshot before = current(fixture);
+
+        var completed = assertInstanceOf(
+            ZLinkAggregatePrepared.class,
+            fixture.store.prepareAggregate(
+                    new ZLinkAggregatePrepareRequest(
+                        aggregateId,
+                        2,
+                        List.of(new ZLinkAggregateParticipant(
+                            fixture.key,
+                            before.storeVersion(),
+                            ZLinkAuthorityGenerationTransition.PRESERVE,
+                            new byte[] {8},
+                            new byte[0])),
+                        new byte[32],
+                        TARGET_DESCRIPTOR,
+                        9,
+                        new ZLinkPlacementCapacityBundle(
+                            0, 0, Optional.empty()),
+                        fixture.target),
+                    () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkAggregateCommitResult.COMMITTED,
+            fixture.store.commitAggregate(completed.fence(), () -> false)
+                .toCompletableFuture().get());
+
+        ZLinkAuthoritySnapshot after = current(fixture);
+        assertArrayEquals(new byte[] {8}, after.payload());
+        assertEquals(before.ownerId(), after.ownerId());
+        assertEquals(before.objectGeneration(), after.objectGeneration());
+        assertEquals(
+            before.authorityOwnerGeneration(),
+            after.authorityOwnerGeneration());
+        assertEquals(before.allocation(), after.allocation());
+        assertEquals(1, fixture.store.activeCapacity(TARGET_DESCRIPTOR, 9));
+        assertEquals(0, fixture.store.pendingCapacity(TARGET_DESCRIPTOR, 9));
+    }
+
+    @Test
     void deleteRequiresLiveCurrentOwnerAndRemovesActiveDelta()
         throws Exception {
         Fixture fixture = fixture();

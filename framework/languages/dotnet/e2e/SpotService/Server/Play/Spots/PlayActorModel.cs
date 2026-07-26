@@ -40,7 +40,7 @@ internal sealed class ScenarioActor(
             case ZLinkActorJoinCompletion.Accepted accepted:
                 evidence.Add(
                     $"actor-join-completed|rid={evidence.Rid}|actor={ActorId}"
-                    + $"|spot={Context.SpotId}|generation={accepted.Actor.Generation}");
+                    + $"|spot={Context.SpotId}|generation={accepted.Actor.ObjectGeneration}");
                 break;
             case ZLinkActorJoinCompletion.Rejected:
                 evidence.Add(
@@ -131,9 +131,12 @@ internal sealed class ScenarioUserSpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }

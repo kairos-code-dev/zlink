@@ -412,6 +412,101 @@ bool raw_mesh_node_owner_t::send_with_header (
        protocol::encode_application_payload (application_payload)});
 }
 
+bool raw_mesh_node_owner_t::send_header_only (
+  const std::vector<std::uint8_t> &target_routing_id,
+  std::vector<std::uint8_t> header)
+{
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port && port->send (target_routing_id, {std::move (header)});
+}
+
+bool raw_mesh_node_owner_t::send_session_relocation_route (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_route_t &route)
+{
+    return send_header_only (
+      target_routing_id,
+      protocol::encode_session_relocation_route (route));
+}
+
+bool raw_mesh_node_owner_t::send_session_relocation_seal (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_seal_t &seal)
+{
+    return send_header_only (
+      target_routing_id,
+      protocol::encode_session_relocation_seal (seal));
+}
+
+bool raw_mesh_node_owner_t::request_session_relocation_seal (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_seal_t &seal,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    if (timeout <= std::chrono::milliseconds::zero ())
+        throw std::invalid_argument (
+          "Session relocation seal timeout must be positive");
+    const auto operation = operation_id (
+      seal.relocation.high, seal.relocation.low);
+    if (!_operations->register_operation (
+          operation,
+          foundation::operation_registry_t::clock_t::now () + timeout,
+          std::move (callback)))
+        return false;
+    if (send_session_relocation_seal (target_routing_id, seal))
+        return true;
+    (void) _operations->fail (
+      operation, foundation::operation_terminal_t::transport_failed);
+    return false;
+}
+
+bool raw_mesh_node_owner_t::send_session_relocation_sealed (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_sealed_t &sealed)
+{
+    return send_header_only (
+      target_routing_id,
+      protocol::encode_session_relocation_sealed (sealed));
+}
+
+bool raw_mesh_node_owner_t::request_session_relocation_route (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_route_t &route,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    if (timeout <= std::chrono::milliseconds::zero ())
+        throw std::invalid_argument (
+          "Session relocation route timeout must be positive");
+    const auto operation = operation_id (
+      route.relocation.high, route.relocation.low);
+    if (!_operations->register_operation (
+          operation,
+          foundation::operation_registry_t::clock_t::now () + timeout,
+          std::move (callback))) {
+        return false;
+    }
+    if (send_session_relocation_route (target_routing_id, route))
+        return true;
+    (void) _operations->fail (
+      operation, foundation::operation_terminal_t::transport_failed);
+    return false;
+}
+
+bool raw_mesh_node_owner_t::send_session_relocation_routed (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::session_relocation_routed_t &routed)
+{
+    return send_header_only (
+      target_routing_id,
+      protocol::encode_session_relocation_routed (routed));
+}
+
 bool raw_mesh_node_owner_t::reply (
   const service_mailbox_record_t &request,
   const protocol::application_payload_t &application_payload)
@@ -597,6 +692,147 @@ bool raw_mesh_node_owner_t::request_user_spot_create (
           return pack_infrastructure_reply (parts);
       },
       timeout, std::move (callback));
+}
+
+bool raw_mesh_node_owner_t::send_instance_spot_activation (
+  const std::vector<std::uint8_t> &target_routing_id,
+  protocol::instance_spot_activation_header_t request,
+  std::optional<std::vector<std::uint8_t>> metadata,
+  protocol::application_payload_t application_payload)
+{
+    const auto local = _topology.local_descriptor ();
+    if (request.request || request.reply_route_id != 0
+        || request.source_node_routing_id != local.node_routing_id
+        || request.source_node_generation != local.lifecycle_generation
+        || request.target.target_node_routing_id != target_routing_id
+        || request.has_metadata != metadata.has_value ()) {
+        throw std::invalid_argument (
+          "Instance Spot send source, target, metadata, or operation kind is inconsistent");
+    }
+    detail::backend::raw_message_t parts{
+      protocol::encode_instance_spot_activation_header (request)};
+    if (metadata)
+        parts.push_back (std::move (*metadata));
+    parts.push_back (
+      protocol::encode_application_payload (application_payload));
+    if (target_routing_id == local.node_routing_id) {
+        return _mailbox.try_enqueue (
+          service_mailbox_record_t{
+            owner_key (local.node_routing_id),
+            service_mailbox_domain_t::infrastructure,
+            std::move (parts), local.node_routing_id,
+            std::nullopt, std::nullopt});
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port && port->send (target_routing_id, std::move (parts));
+}
+
+bool raw_mesh_node_owner_t::request_instance_spot_activation (
+  const std::vector<std::uint8_t> &target_routing_id,
+  protocol::instance_spot_activation_header_t request,
+  std::optional<std::vector<std::uint8_t>> metadata,
+  protocol::application_payload_t application_payload,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw std::invalid_argument (
+          "Instance Spot activation timeout must be positive");
+    }
+    const auto local = _topology.local_descriptor ();
+    if (request.source_node_routing_id != local.node_routing_id
+        || request.source_node_generation != local.lifecycle_generation
+        || request.target.target_node_routing_id != target_routing_id
+        || request.has_metadata != metadata.has_value ()) {
+        throw std::invalid_argument (
+          "Instance Spot activation source, target, or metadata fence is inconsistent");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    std::uint64_t correlation = 0;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+        if (!port) {
+            return false;
+        }
+        correlation = _next_correlation++;
+        if (correlation == 0 || _next_correlation == 0) {
+            _next_correlation = 1;
+            throw std::overflow_error (
+              "raw mesh request correlation is exhausted");
+        }
+    }
+    request.reply_route_id = request.request ? correlation : 0;
+    detail::backend::raw_message_t parts{
+      protocol::encode_instance_spot_activation_header (request)};
+    if (metadata)
+        parts.push_back (std::move (*metadata));
+    parts.push_back (
+      protocol::encode_application_payload (application_payload));
+    const auto id = operation_id (local.lifecycle_generation, correlation);
+    if (!_operations->register_operation (
+          id, foundation::operation_registry_t::clock_t::now () + timeout,
+          std::move (callback))) {
+        return false;
+    }
+    if (target_routing_id == local.node_routing_id) {
+        const auto accepted = _mailbox.try_enqueue (
+          service_mailbox_record_t{
+            owner_key (local.node_routing_id),
+            service_mailbox_domain_t::infrastructure,
+            std::move (parts), local.node_routing_id,
+            correlation, correlation});
+        if (!accepted)
+            (void) _operations->fail (
+              id, foundation::operation_terminal_t::transport_failed);
+        return accepted;
+    }
+    const auto operations = _operations;
+    const auto submitted = port->request (
+      target_routing_id, std::move (parts), timeout,
+      [operations, id, correlation] (
+        detail::backend::raw_request_result_t result,
+        detail::backend::raw_message_t reply_parts) mutable {
+          if (result != detail::backend::raw_request_result_t::ok) {
+              const auto terminal =
+                result == detail::backend::raw_request_result_t::timed_out
+                  ? foundation::operation_terminal_t::timed_out
+                  : result == detail::backend::raw_request_result_t::terminated
+                    ? foundation::operation_terminal_t::shutdown
+                    : foundation::operation_terminal_t::transport_failed;
+              (void) operations->fail (id, terminal);
+              return;
+          }
+          try {
+              if (reply_parts.empty () || reply_parts.size () > 2)
+                  throw protocol::service_wire_error_t (
+                    "Instance Spot activation reply has an invalid part count");
+              const auto reply =
+                protocol::decode_reply_header (reply_parts.front ());
+              if (reply.correlation != correlation)
+                  throw protocol::service_wire_error_t (
+                    "Instance Spot activation reply correlation does not match");
+              if (reply.terminal_result != 0 && reply_parts.size () != 1)
+                  throw protocol::service_wire_error_t (
+                    "failed Instance Spot activation reply carries a payload");
+              if (reply_parts.size () == 2)
+                  (void) protocol::decode_application_payload (reply_parts[1]);
+              (void) operations->complete (
+                id, pack_infrastructure_reply (reply_parts));
+          }
+          catch (const protocol::service_wire_error_t &) {
+              (void) operations->fail (
+                id, foundation::operation_terminal_t::transport_failed);
+          }
+      });
+    if (!submitted)
+        (void) _operations->fail (
+          id, foundation::operation_terminal_t::transport_failed);
+    return submitted;
 }
 
 bool raw_mesh_node_owner_t::request_user_spot_close (
@@ -813,6 +1049,47 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
               protocol::encode_application_payload (*application_reply)});
 }
 
+bool raw_mesh_node_owner_t::reply_instance_spot_activation (
+  const service_mailbox_record_t &request,
+  std::uint32_t terminal_result,
+  std::uint32_t failure_code,
+  std::optional<protocol::application_payload_t> application_reply)
+{
+    if (!request.correlation) {
+        throw std::invalid_argument (
+          "Instance Spot activation reply requires correlation");
+    }
+    if (terminal_result != 0 && application_reply) {
+        throw std::invalid_argument (
+          "failed Instance Spot activation reply cannot carry a payload");
+    }
+    detail::backend::raw_message_t parts{
+      protocol::encode_reply_header (*request.correlation,
+                                     terminal_result,
+                                     failure_code)};
+    if (application_reply)
+        parts.push_back (
+          protocol::encode_application_payload (*application_reply));
+    const auto local = _topology.local_descriptor ();
+    if (request.source_routing_id == local.node_routing_id) {
+        return _operations->complete (
+          operation_id (local.lifecycle_generation,
+                        *request.correlation),
+          pack_infrastructure_reply (parts));
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port
+           && port->reply (
+             detail::backend::raw_received_t{
+               request.source_routing_id,
+               request.request_sequence, {}},
+             std::move (parts));
+}
+
 bool raw_mesh_node_owner_t::reply_user_spot_close (
   const service_mailbox_record_t &request,
   const protocol::user_spot_close_reply_t &reply)
@@ -946,6 +1223,51 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             }
             return raw_mesh_pump_result_t::infrastructure;
         }
+        if (header.kind == protocol::command::instanceSpot) {
+            const auto activation =
+              protocol::decode_instance_spot_activation_header (
+                received->parts.front ());
+            const auto expected_parts = activation.has_metadata ? 3u : 2u;
+            if (received->parts.size () != expected_parts
+                || activation.source_node_routing_id
+                     != received->source_routing_id
+                || activation.source_node_routing_id
+                     != admitted->descriptor.node_routing_id
+                || activation.source_node_generation
+                     != admitted->descriptor.lifecycle_generation) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto local = _topology.local_descriptor ();
+            if (activation.target.target_node_routing_id
+                  != local.node_routing_id
+                || activation.target.target_node_generation
+                     != local.lifecycle_generation
+                || (activation.request
+                      != received->request_sequence.has_value ())
+                || (activation.request
+                    && activation.reply_route_id
+                         != *received->request_sequence)
+                || (!activation.request
+                    && activation.reply_route_id != 0)) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            (void) protocol::decode_application_payload (
+              received->parts.back ());
+            if (!_mailbox.try_enqueue (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    received->request_sequence,
+                    activation.request
+                      ? std::make_optional (
+                          activation.reply_route_id)
+                      : std::nullopt})) {
+                return raw_mesh_pump_result_t::backpressured;
+            }
+            return raw_mesh_pump_result_t::infrastructure;
+        }
         if (header.kind == protocol::command::userSpotCreate
             || header.kind == protocol::command::userSpotClose) {
             if (header.flags != 0 || received->parts.size () != 1
@@ -1007,6 +1329,138 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     received->request_sequence,
                     correlation})) {
                 return raw_mesh_pump_result_t::backpressured;
+            }
+            return raw_mesh_pump_result_t::infrastructure;
+        }
+        if (header.kind
+              == protocol::command::sessionRelocationSeal
+            || header.kind
+                 == protocol::command::sessionRelocationSealed
+            || header.kind
+                 == protocol::command::sessionRelocationRoute
+            || header.kind
+                 == protocol::command::sessionRelocationRouted) {
+            if (header.flags != 0 || received->parts.size () != 1
+                || received->request_sequence) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto local = _topology.local_descriptor ();
+            if (header.kind
+                == protocol::command::sessionRelocationSeal) {
+                const auto seal =
+                  protocol::decode_session_relocation_seal (
+                    received->parts.front ());
+                const auto expected_source_rid =
+                  seal.sender_role == protocol::relocation_role_t::source
+                    ? seal.actor.target_node_routing_id
+                    : seal.coordinator.node_routing_id;
+                const auto expected_source_generation =
+                  seal.sender_role == protocol::relocation_role_t::source
+                    ? seal.actor.target_node_generation
+                    : seal.coordinator.node_generation;
+                if (seal.session_owner_node_routing_id
+                      != local.node_routing_id
+                    || seal.session_owner_node_generation
+                         != local.lifecycle_generation
+                    || expected_source_rid
+                         != received->source_routing_id
+                    || expected_source_rid
+                         != admitted->descriptor.node_routing_id
+                    || expected_source_generation
+                         != admitted->descriptor.lifecycle_generation) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                if (!_mailbox.try_enqueue (
+                      service_mailbox_record_t{
+                        owner_key (local.node_routing_id),
+                        service_mailbox_domain_t::infrastructure,
+                        std::move (received->parts),
+                        std::move (received->source_routing_id),
+                        std::nullopt, std::nullopt})) {
+                    return raw_mesh_pump_result_t::backpressured;
+                }
+                return raw_mesh_pump_result_t::infrastructure;
+            }
+            if (header.kind
+                == protocol::command::sessionRelocationRoute) {
+                const auto route =
+                  protocol::decode_session_relocation_route (
+                    received->parts.front ());
+                const auto expected_source_rid =
+                  route.sender_role == protocol::relocation_role_t::target
+                    ? route.route.target_node_routing_id
+                  : route.sender_role
+                      == protocol::relocation_role_t::coordinator
+                    ? route.coordinator.node_routing_id
+                    : received->source_routing_id;
+                const auto expected_source_generation =
+                  route.sender_role == protocol::relocation_role_t::target
+                    ? route.route.target_node_generation
+                  : route.sender_role
+                      == protocol::relocation_role_t::coordinator
+                    ? route.coordinator.node_generation
+                    : admitted->descriptor.lifecycle_generation;
+                if (route.session_owner_node_routing_id
+                      != local.node_routing_id
+                    || route.session_owner_node_generation
+                         != local.lifecycle_generation
+                    || expected_source_rid
+                         != received->source_routing_id
+                    || expected_source_rid
+                         != admitted->descriptor.node_routing_id
+                    || expected_source_generation
+                         != admitted->descriptor.lifecycle_generation) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                if (!_mailbox.try_enqueue (
+                      service_mailbox_record_t{
+                        owner_key (local.node_routing_id),
+                        service_mailbox_domain_t::infrastructure,
+                        std::move (received->parts),
+                        std::move (received->source_routing_id),
+                        std::nullopt, std::nullopt})) {
+                    return raw_mesh_pump_result_t::backpressured;
+                }
+                return raw_mesh_pump_result_t::infrastructure;
+            }
+            if (header.kind
+                == protocol::command::sessionRelocationSealed) {
+                const auto sealed =
+                  protocol::decode_session_relocation_sealed (
+                    received->parts.front ());
+                if (sealed.session_owner_node_routing_id
+                      != received->source_routing_id
+                    || sealed.session_owner_node_routing_id
+                         != admitted->descriptor.node_routing_id
+                    || sealed.session_owner_node_generation
+                         != admitted->descriptor.lifecycle_generation) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                const auto operation = operation_id (
+                  sealed.relocation.high, sealed.relocation.low);
+                if (!_operations->complete (
+                      operation,
+                      std::move (received->parts.front ()))) {
+                    return raw_mesh_pump_result_t::protocol_error;
+                }
+                return raw_mesh_pump_result_t::infrastructure;
+            }
+            const auto routed =
+              protocol::decode_session_relocation_routed (
+                received->parts.front ());
+            if (routed.session_owner_node_routing_id
+                  != received->source_routing_id
+                || routed.session_owner_node_routing_id
+                     != admitted->descriptor.node_routing_id
+                || routed.session_owner_node_generation
+                     != admitted->descriptor.lifecycle_generation) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto operation = operation_id (
+              routed.relocation.high, routed.relocation.low);
+            if (!_operations->complete (
+                  operation, std::move (received->parts.front ()))) {
+                return raw_mesh_pump_result_t::protocol_error;
             }
             return raw_mesh_pump_result_t::infrastructure;
         }

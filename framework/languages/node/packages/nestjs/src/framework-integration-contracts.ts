@@ -43,6 +43,8 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: unknown;
   readonly routeMeshRuntime: import('@zlink-systems/framework').ZLinkRouteMeshRuntime;
+  readonly clientServerRuntime: import('@zlink-systems/framework').ZLinkClientServerRuntime;
+  readonly fanoutRuntime: import('@zlink-systems/framework').ZLinkFanoutRuntime;
   waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<unknown>;
   createLocationHandleResolver(): unknown;
   start(): Promise<void>;

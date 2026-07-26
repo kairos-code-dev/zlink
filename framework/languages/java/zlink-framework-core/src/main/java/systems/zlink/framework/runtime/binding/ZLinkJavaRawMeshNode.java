@@ -68,6 +68,8 @@ import systems.zlink.framework.runtime.service.ZLinkServiceWireFrame;
  */
 final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private static final int PREFIX_BYTES = 5;
+    private static final String RELOCATION_CONTROL_PACKET =
+        "zlink.internal.spot.relocation.control.v1";
     private static final int USER_SPOT_TERMINAL_CAPACITY = 4096;
     private static final long USER_SPOT_TERMINAL_RETENTION_MS =
         Duration.ofMinutes(5).toMillis();
@@ -124,6 +126,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         userSpotOperationHandler;
     private volatile ZLinkInternalMeshNode.ActorCreateOperationHandler
         actorCreateOperationHandler;
+    private volatile ZLinkInternalMeshNode.RelocationControlHandler
+        relocationControlHandler;
     private final Map<UserSpotOperationKey, UserSpotTerminalSlot>
         userSpotTerminals = new ConcurrentHashMap<>();
 
@@ -1030,6 +1034,76 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     @Override
+    public void setRelocationControlHandler(
+        ZLinkInternalMeshNode.RelocationControlHandler handler) {
+        relocationControlHandler =
+            java.util.Objects.requireNonNull(handler, "handler");
+    }
+
+    @Override
+    public CompletionStage<byte[]> requestRelocationControl(
+        RoutingId targetNodeRid,
+        byte[] command,
+        Duration timeout) {
+        java.util.Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        byte[] payload = java.util.Objects.requireNonNull(
+            command, "command").clone();
+        java.util.Objects.requireNonNull(timeout, "timeout");
+        if (payload.length == 0) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "relocation command payload is required"));
+        }
+        if (targetNodeRid.equals(routingId)) {
+            var handler = relocationControlHandler;
+            if (handler == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "local relocation command handler is unavailable"));
+            }
+            return handler.handle(routingId, payload)
+                .thenApply(byte[]::clone);
+        }
+        CompletableFuture<byte[]> completion = new CompletableFuture<>();
+        List<Message> parts = List.of(
+            Message.from(RELOCATION_CONTROL_PACKET.getBytes(
+                StandardCharsets.UTF_8)),
+            Message.from(payload));
+        boolean submitted;
+        try {
+            submitted = requestNode(
+                targetNodeRid,
+                new byte[0],
+                parts,
+                received -> {
+                    try {
+                        if (received.result()
+                                != ZLinkBackendRequestResult.OK
+                            || received.parts().size() != 1) {
+                            completion.completeExceptionally(
+                                new IllegalStateException(
+                                    "remote relocation command failed: "
+                                        + received.result()));
+                            return;
+                        }
+                        completion.complete(
+                            received.parts().getFirst().toByteArray());
+                    } finally {
+                        received.close();
+                    }
+                },
+                timeout);
+        } finally {
+            parts.forEach(Message::close);
+        }
+        if (!submitted) {
+            completion.completeExceptionally(new IllegalStateException(
+                "remote relocation command was not submitted"));
+        }
+        return completion;
+    }
+
+    @Override
     public CompletionStage<ZLinkInternalMeshNode.ActorCreateResponse>
         requestActorCreate(
             RoutingId targetNodeRid,
@@ -1425,7 +1499,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                     "invalid Actor create reply frame count");
             }
             var reply = statefulWire.decodeActorCreateReply(
-                frames.getFirst());
+                frames.getFirst(), meshName);
             if (reply.correlation() != correlation) {
                 throw new IllegalArgumentException(
                     "Actor create correlation mismatch");
@@ -1885,6 +1959,15 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         } catch (RuntimeException invalid) {
             return;
         }
+        if (channelName == null
+            && correlation != null
+            && RELOCATION_CONTROL_PACKET.equals(payload.packetName())) {
+            dispatchRelocationControl(
+                inbound,
+                correlation,
+                payload.payload());
+            return;
+        }
         List<Message> messages = List.of(
             Message.from(payload.packetName().getBytes(StandardCharsets.UTF_8)),
             Message.from(payload.payload()));
@@ -1950,6 +2033,55 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         }
         dispatchEnvelopes.put(envelopeId, dispatch);
         drainApplicationMailbox();
+    }
+
+    private void dispatchRelocationControl(
+        ZLinkJavaRawServicePort.Inbound inbound,
+        long correlation,
+        byte[] command) {
+        ZLinkInternalMeshNode.RelocationControlHandler handler =
+            relocationControlHandler;
+        if (handler == null || command.length == 0) {
+            port.reply(
+                requireStarted(),
+                inbound.source(),
+                inbound.requestSequence(),
+                List.of(wire.encodeReplyHeader(correlation, 105, 2)));
+            return;
+        }
+        CompletionStage<byte[]> completion;
+        try {
+            completion = java.util.Objects.requireNonNull(
+                handler.handle(inbound.source(), command.clone()),
+                "relocation handler returned null");
+        } catch (RuntimeException failure) {
+            completion = CompletableFuture.failedFuture(failure);
+        }
+        AtomicBoolean terminal = new AtomicBoolean();
+        completion.whenComplete((reply, failure) -> {
+            if (!terminal.compareAndSet(false, true)) {
+                return;
+            }
+            if (failure != null || reply == null || reply.length == 0) {
+                port.reply(
+                    requireStarted(),
+                    inbound.source(),
+                    inbound.requestSequence(),
+                    List.of(wire.encodeReplyHeader(correlation, 105, 2)));
+                return;
+            }
+            port.reply(
+                requireStarted(),
+                inbound.source(),
+                inbound.requestSequence(),
+                List.of(
+                    wire.encodeReplyHeader(correlation, 0, 0),
+                    wire.encodeApplicationPayload(
+                        new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                            RELOCATION_CONTROL_PACKET,
+                            "application/octet-stream",
+                            reply.clone()))));
+        });
     }
 
     private void dispatchSpot(

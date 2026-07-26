@@ -16,6 +16,7 @@ import systems.zlink.framework.locations.ZLinkSpotLocation;
 public final class ZLinkLiveLocationRows {
     private final ZLinkOwnerLeaseTracker leaseTracker;
     private final ZLinkObservedLocationGenerations observed;
+    private final java.time.Duration routeCacheMaxAge;
 
     public static ZLinkLiveLocationRows create(
         ZLinkRegisteredLocationStores stores,
@@ -26,14 +27,28 @@ public final class ZLinkLiveLocationRows {
             new ZLinkOwnerLeaseTracker(
                 stores.ownerLeaseStore(),
                 options.pollingInterval()),
-            new ZLinkObservedLocationGenerations());
+            new ZLinkObservedLocationGenerations(),
+            options.routeCacheMaxAge());
     }
 
     ZLinkLiveLocationRows(
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed) {
+        this(
+            leaseTracker,
+            observed,
+            java.time.Duration.ofSeconds(15));
+    }
+
+    ZLinkLiveLocationRows(
+        ZLinkOwnerLeaseTracker leaseTracker,
+        ZLinkObservedLocationGenerations observed,
+        java.time.Duration routeCacheMaxAge) {
         this.leaseTracker = Objects.requireNonNull(leaseTracker, "leaseTracker");
         this.observed = Objects.requireNonNull(observed, "observed");
+        this.routeCacheMaxAge = Objects.requireNonNull(
+            routeCacheMaxAge,
+            "routeCacheMaxAge");
     }
 
     CompletionStage<List<ZLinkPeerLocation>> filterLivePeers(List<ZLinkPeerLocation> rows) {
@@ -62,6 +77,18 @@ public final class ZLinkLiveLocationRows {
 
     CompletionStage<ZLinkRouteLocation> resolveLiveRoute(CompletionStage<ZLinkRouteLocation> rowStage) {
         return resolveLive(rowStage, ZLinkRouteLocation::ownerId, observed::acceptRoute);
+    }
+
+    CompletionStage<java.time.Duration> ownerLeaseRemaining(
+        String ownerId,
+        long ownerLeaseGeneration) {
+        return leaseTracker.remainingAdmissionLifetime(
+            ownerId,
+            ownerLeaseGeneration);
+    }
+
+    java.time.Duration routeCacheMaxAge() {
+        return routeCacheMaxAge;
     }
 
     private <T> CompletionStage<List<T>> filterLive(

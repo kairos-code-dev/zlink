@@ -1,13 +1,10 @@
 package systems.zlink.framework.kotlin
 
 import java.time.Duration
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import kotlin.reflect.KClass
 import systems.zlink.contracts.core.RoutingId
-import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ZLinkActorClient
-import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.actors.ZLinkBoundSession
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkFanoutClient
@@ -19,8 +16,6 @@ import systems.zlink.framework.spots.ZLinkSpotRequestCall
 import systems.zlink.framework.spots.ZLinkSpotSendCall
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionClient
-import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-import systems.zlink.framework.errors.ZLinkFrameworkException
 
 /**
  * Kotlin one-way terminal. Successful completion means local queue admission;
@@ -315,34 +310,18 @@ private class JavaRouteClient(
 
 private class JavaActorClient(
     private val client: ZLinkActorClient,
-    private val directory: ZLinkActorDirectory,
 ) : ZLinkKotlinActorClient {
-    private fun resolve(actorId: String): CompletionStage<ActorRef> =
-        directory.find(actorId).thenCompose { actor ->
-            actor.map { CompletableFuture.completedFuture(it) }
-                .orElseGet {
-                    CompletableFuture.failedFuture(
-                        ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
-                            "actor route was not found: $actorId",
-                        ),
-                    )
-                }
-        }
-
     override fun sendToActor(
         actorId: String,
         message: Any,
     ): ZLinkKotlinMessageSendCall =
         DeferredMessageSendCall(
             submit = { metadata ->
-            resolve(actorId).thenCompose { actor ->
-                val call = metadata.entries.fold(client.sendToActor(actor, message)) {
+                val call = metadata.entries.fold(client.sendToActor(actorId, message)) {
                         configured, entry ->
                     configured.metadata(entry.key, entry.value)
                 }
                 call.submit()
-            }
             },
         )
 
@@ -364,8 +343,8 @@ private class JavaActorClient(
             }
 
             override fun <T> submit(type: Class<T>): CompletionStage<T> =
-                resolve(actorId).thenCompose { actor ->
-                    var requestCall = client.requestToActor(actor, request)
+                client.requestToActor(actorId, request).let { initial ->
+                    var requestCall = initial
                     metadata.forEach { (key, value) ->
                         requestCall = requestCall.metadata(key, value)
                     }
@@ -374,8 +353,8 @@ private class JavaActorClient(
                 }
 
             override fun <T> yield(type: Class<T>): CompletionStage<T> =
-                resolve(actorId).thenCompose { actor ->
-                    var requestCall = client.requestToActor(actor, request)
+                client.requestToActor(actorId, request).let { initial ->
+                    var requestCall = initial
                     metadata.forEach { (key, value) ->
                         requestCall = requestCall.metadata(key, value)
                     }
@@ -424,8 +403,7 @@ fun ZLinkFanoutClient.kotlin(): ZLinkKotlinFanoutClient = JavaFanoutClient(this)
 
 fun ZLinkRouteClient.kotlin(): ZLinkKotlinRouteClient = JavaRouteClient(this)
 
-fun ZLinkActorClient.kotlin(directory: ZLinkActorDirectory): ZLinkKotlinActorClient =
-    JavaActorClient(this, directory)
+fun ZLinkActorClient.kotlin(): ZLinkKotlinActorClient = JavaActorClient(this)
 
 fun ZLinkSessionClient.kotlin(): ZLinkKotlinSessionClient = JavaSessionClient(this)
 

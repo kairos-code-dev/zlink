@@ -21,8 +21,11 @@ internal static class RmC9BackpressureScenario
                 backpressureConsumer,
                 $"rm-c9-slow-{marker}-{index}")));
         ZlinkStreamAssert.Ensure(
-            outcomes.All(outcome => outcome == "Submitted"),
-            "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle.");
+            outcomes.All(outcome => outcome is "Submitted" or "DeadlineExceeded"),
+            "RM-C9 one-way send completed outside the submit/deadline contract.");
+        ZlinkStreamAssert.Ensure(
+            outcomes.Contains("Submitted"),
+            "RM-C9 did not admit any one-way send under pressure.");
 
         // Waiting for more handled messages than either configured HWM proves that the
         // provider is draining work after the burst without exposing send completion.

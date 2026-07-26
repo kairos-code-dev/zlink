@@ -464,9 +464,10 @@ internal sealed class ZLinkSessionActorCoordinator(
                     var requestId = header.Kind == ZlinkStreamMessageKind.Request
                         ? header.RequestSeq
                         : null;
+                    string? replyCapability = null;
                     if (requestId is { } pendingRequestId)
                     {
-                        runtime.TrackRemoteSessionActorRequest(
+                        replyCapability = runtime.TrackRemoteSessionActorRequest(
                             actorRef.ActorId,
                             pendingRequestId.Value,
                             actorRef.BindingToken);
@@ -474,7 +475,12 @@ internal sealed class ZLinkSessionActorCoordinator(
                     }
                     try
                     {
-                        await ForwardToRemoteActorAsync(actorRef, header, payload, cancellationToken)
+                        await ForwardToRemoteActorAsync(
+                                actorRef,
+                                header,
+                                payload,
+                                replyCapability,
+                                cancellationToken)
                             .ConfigureAwait(false);
                     }
                     catch
@@ -512,6 +518,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         ZLinkSessionActor actorRef,
         ZlinkStreamHeader header,
         Message payload,
+        string? replyCapability,
         CancellationToken cancellationToken)
     {
         if (actorRef.Context.RoutingId is not { } sessionRid)
@@ -521,6 +528,18 @@ internal sealed class ZLinkSessionActorCoordinator(
         var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
         var bodyBytes = payload.ToArray();
         var target = route.Ref.ToBackend();
+        var replyRoute = header.Kind == ZlinkStreamMessageKind.Request
+                         && header.RequestSeq is { } requestSeq
+            ? new ZLinkBackendActorRouteContext(
+                OperationId: default,
+                ForwardingHopCount: 0,
+                TargetNodeGeneration: route.TargetNodeGeneration,
+                AuthorityOwnerGeneration: route.AuthorityOwnerGeneration,
+                OwnerLeaseGeneration: route.OwnerLeaseGeneration,
+                ReplyRequestId: requestSeq.Value,
+                ReplyFlags: ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                ReplyCapability: replyCapability)
+            : default;
         await ZLinkRetryingSubmitter.Async(
                 () =>
                 {
@@ -535,7 +554,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                             sessionRid,
                             headerPart,
                             true,
-                            SendFlags.DontWait))
+                            SendFlags.DontWait,
+                            replyRoute))
                         return false;
                     using var bodyPart = Message.From(bodyBytes);
                     return runtime.ForwardActorBoundSessionPart(
@@ -548,7 +568,8 @@ internal sealed class ZLinkSessionActorCoordinator(
                         sessionRid,
                         bodyPart,
                         false,
-                        SendFlags.DontWait);
+                        SendFlags.DontWait,
+                        replyRoute);
                 },
                 runtime.Registration.DefaultRequestTimeout,
                 "Remote actor session relay failed because the relay route was not ready before timeout.",
@@ -572,12 +593,15 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        if (!actorRef.TryGetRoute(out var route))
+        if (!runtime.TryGetSessionActorBinding(
+                actorRef.ActorId,
+                actorRef.BindingToken,
+                out var binding)
+            || !ReferenceEquals(binding.ActorRef, actorRef)
+            || binding.Context.RoutingId is null)
             return ValueTask.CompletedTask;
         return runtime.NotifyActorDisconnectedAsync(
-            route.MeshName,
-            route.Ref,
-            actorRef.BindingToken,
+            binding,
             cancellationToken);
     }
 

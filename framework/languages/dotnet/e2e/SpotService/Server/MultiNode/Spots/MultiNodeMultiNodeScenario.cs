@@ -11,13 +11,12 @@ namespace SpotService.Server.MultiNode.Spots;
 internal sealed class MultiNodeCreateSpotAHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,
-    IZLinkSpotHandleResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
     public async ValueTask<MultiNodeCreateSpotRes> HandleAsync(
         MultiNodeCreateSpotReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -26,8 +25,6 @@ internal sealed class MultiNodeCreateSpotAHandler(
             .Async(cancellationToken);
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
-            locator,
-            SpotServiceNames.MultiSpotNodeA,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -44,13 +41,12 @@ internal sealed class MultiNodeCreateSpotAHandler(
 internal sealed class MultiNodeCreateSpotBHandler(
     IZLinkSpotManager spots,
     IZLinkSpotClient routes,
-    IZLinkSpotHandleResolver locator,
     EvidenceStore evidence)
     : IZLinkRouteRequestHandler<MultiNodeCreateSpotReq, MultiNodeCreateSpotRes>
 {
     public async ValueTask<MultiNodeCreateSpotRes> HandleAsync(
         MultiNodeCreateSpotReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -59,8 +55,6 @@ internal sealed class MultiNodeCreateSpotBHandler(
             .Async(cancellationToken);
         var state = await MultiNodeScenario.RequestStateAsync(
             routes,
-            locator,
-            SpotServiceNames.MultiSpotNodeB,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -78,12 +72,10 @@ internal static class MultiNodeScenario
 {
     public static async Task<StateRes> RequestStateAsync(
         IZLinkSpotClient routes,
-        IZLinkSpotHandleResolver locator,
-        string meshName,
         string spotRid,
         int delta,
         CancellationToken cancellationToken)
-        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(meshName, spotRid, cancellationToken),
+        => await routes.RequestToSpot(spotRid,
                 new StateReq("add", delta))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<StateRes>(cancellationToken);

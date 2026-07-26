@@ -13,10 +13,6 @@ public record ZLinkPlacementCapacityBundle(
                 "capacity bundle slots must not be negative");
         }
         spotType = Objects.requireNonNull(spotType, "spotType");
-        if (actorSlots == 0 && spotSlots == 0 && spotType.isEmpty()) {
-            throw new IllegalArgumentException(
-                "capacity bundle must reserve at least one slot");
-        }
         if (spotType.isPresent() != (spotSlots > 0)) {
             throw new IllegalArgumentException(
                 "spot slots and spot type capacity must be present together");

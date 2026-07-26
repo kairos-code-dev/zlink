@@ -173,10 +173,10 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(SPOT_ID,
-            new ZLinkStoreSpotHandleResolver(addresses).resolveSpotHandle(SPOT_ID)
-                .toCompletableFuture()
-                .get().orElseThrow().spotId());
+        assertTrue(new ZLinkStoreSpotHandleResolver(addresses)
+            .resolveSpotHandle(SPOT_ID)
+            .toCompletableFuture()
+            .get().isEmpty());
     }
 
     @Test
@@ -227,7 +227,7 @@ final class LocationStoreContractTest {
     }
 
     @Test
-    void runtimeQueryUsesConfiguredPageSizeForImplicitFirstPage() throws Exception {
+    void runtimeQueryUsesRequestedPageSize() throws Exception {
         ZLinkInMemoryLocationStore store = newStore();
         ZLinkRegisteredLocationStores stores = ZLinkRegisteredLocationStores.fromUnified(store);
         ZLinkLocationRuntime runtime =
@@ -241,16 +241,14 @@ final class LocationStoreContractTest {
                     .toCompletableFuture()
                     .get();
             }
-            ZLinkLocationOptions options = new ZLinkLocationOptions();
-            options.setListPageSize(2);
             ZLinkLocationRuntimeQueryService query = new ZLinkLocationRuntimeQueryService(
                 stores,
                 runtime,
-                options);
+                new ZLinkLocationOptions());
 
             ZLinkLocationPage<ZLinkSpotLocation> page = query.listSpotLocations(
                     ZLinkSpotLocationFilter.all(),
-                    ZLinkPageRequest.firstPage())
+                    new ZLinkPageRequest(2, null))
                 .toCompletableFuture()
                 .get();
 
@@ -259,7 +257,7 @@ final class LocationStoreContractTest {
 
             ZLinkLocationPage<ZLinkLocationTopologyEntry> topologyFirst = query.listTopology(
                     ZLinkLocationTopologyFilter.all(),
-                    ZLinkPageRequest.firstPage())
+                    new ZLinkPageRequest(2, null))
                 .toCompletableFuture()
                 .get();
             assertEquals(2, topologyFirst.items().size());

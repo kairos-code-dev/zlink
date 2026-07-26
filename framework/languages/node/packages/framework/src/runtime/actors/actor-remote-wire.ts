@@ -71,6 +71,12 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly boundSessionRid?: unknown;
   readonly boundSessionRidHex?: unknown;
   readonly boundSessionBindingGeneration?: unknown;
+  readonly boundSessionPreviousAuthorityOwnerGeneration?: unknown;
+  readonly boundSessionPreviousOwnerLeaseGeneration?: unknown;
+  readonly boundSessionAcceptedHighWater?: unknown;
+  readonly boundSessionRelocationSealId?: unknown;
+  readonly boundSessionAcceptedJournalReference?: unknown;
+  readonly boundSessionAcceptedJournalChecksumCrc32c?: unknown;
   readonly request?: unknown;
   readonly handoffBacklog?: unknown;
   readonly completionOperationHigh?: unknown;
@@ -103,6 +109,12 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly boundSessionRid?: string;
   readonly boundSessionRidHex?: string;
   readonly boundSessionBindingGeneration?: string;
+  readonly boundSessionPreviousAuthorityOwnerGeneration?: string;
+  readonly boundSessionPreviousOwnerLeaseGeneration?: string;
+  readonly boundSessionAcceptedHighWater?: string;
+  readonly boundSessionRelocationSealId?: string;
+  readonly boundSessionAcceptedJournalReference?: string;
+  readonly boundSessionAcceptedJournalChecksumCrc32c?: number;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
   readonly completionOperationHigh?: string;
   readonly completionOperationLow?: string;
@@ -135,6 +147,12 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly boundSessionRid?: string;
   readonly boundSessionRidHex?: string;
   readonly boundSessionBindingGeneration?: string;
+  readonly boundSessionPreviousAuthorityOwnerGeneration?: string;
+  readonly boundSessionPreviousOwnerLeaseGeneration?: string;
+  readonly boundSessionAcceptedHighWater?: string;
+  readonly boundSessionRelocationSealId?: string;
+  readonly boundSessionAcceptedJournalReference?: string;
+  readonly boundSessionAcceptedJournalChecksumCrc32c?: number;
   readonly request?: string;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
   readonly completionOperationHigh?: string;
@@ -214,6 +232,14 @@ export function buildRemoteActorJoinRequestPayload(
       ? undefined
       : encodeRoutingIdHex(boundSessionTarget.sessionRid),
     boundSessionBindingGeneration: boundSessionTarget?.bindingGeneration?.toString(),
+    boundSessionPreviousAuthorityOwnerGeneration:
+      boundSessionTarget?.previousAuthorityOwnerGeneration?.toString(),
+    boundSessionPreviousOwnerLeaseGeneration:
+      boundSessionTarget?.previousOwnerLeaseGeneration?.toString(),
+    boundSessionAcceptedHighWater: boundSessionTarget?.acceptedHighWater?.toString(),
+    boundSessionRelocationSealId: boundSessionTarget?.relocationSealId,
+    boundSessionAcceptedJournalReference: boundSessionTarget?.acceptedJournalReference,
+    boundSessionAcceptedJournalChecksumCrc32c: boundSessionTarget?.acceptedJournalChecksumCrc32c,
     request: options.request === undefined ? undefined : options.request.data().toString('base64')
   };
 }

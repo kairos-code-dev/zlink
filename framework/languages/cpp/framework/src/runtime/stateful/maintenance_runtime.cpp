@@ -18,6 +18,8 @@ constexpr std::array<std::uint8_t, 4> aggregate_envelope_magic{
   'Z', 'L', 'R', 'A'};
 constexpr std::array<std::uint8_t, 4> join_completion_magic{
   'Z', 'L', 'J', '1'};
+constexpr std::array<std::uint8_t, 4> session_journal_magic{
+  'Z', 'L', 'S', 'J'};
 constexpr std::chrono::hours relocation_retention{24};
 constexpr std::size_t max_envelope_bytes = 256u * 1024u * 1024u;
 constexpr std::uint32_t max_pending_records = 4096;
@@ -183,6 +185,78 @@ decode_join_completion (const std::vector<std::uint8_t> &payload)
       static_cast<join_completion_cursor_t> (*cursor)};
 }
 
+std::vector<std::uint8_t> encode_session_journal (
+  const durable_session_journal_record_t &record)
+{
+    if ((record.relocation_id_high == 0
+         && record.relocation_id_low == 0)
+        || record.actor.kind != object_kind_t::actor
+        || record.actor.key.empty ()
+        || record.actor.object_generation == 0
+        || record.actor.authority_owner_generation == 0
+        || record.actor.node_id.empty ()
+        || record.binding_generation == 0)
+        throw std::invalid_argument (
+          "durable Session journal identity is invalid");
+    std::vector<std::uint8_t> output (
+      session_journal_magic.begin (), session_journal_magic.end ());
+    append_u64 (output, record.relocation_id_high);
+    append_u64 (output, record.relocation_id_low);
+    append_u64 (output, record.actor.object_generation);
+    append_u64 (output, record.actor.authority_owner_generation);
+    append_u64 (output, record.binding_generation);
+    append_u64 (output, record.last_accepted_session_sequence);
+    if (!append_text (output, record.actor.key)
+        || !append_text (output, record.actor.mesh_name)
+        || !append_text (output, record.actor.node_id)
+        || !append_bytes (output, record.accepted_journal)
+        || output.size () > max_envelope_bytes)
+        throw std::invalid_argument (
+          "durable Session journal payload is too large");
+    return output;
+}
+
+std::optional<durable_session_journal_record_t>
+decode_session_journal (const std::vector<std::uint8_t> &payload)
+{
+    if (payload.size () < session_journal_magic.size ()
+        || !std::equal (session_journal_magic.begin (),
+                        session_journal_magic.end (),
+                        payload.begin ()))
+        return std::nullopt;
+    std::vector<std::uint8_t> body (
+      payload.begin () + 4, payload.end ());
+    reader_t reader (body);
+    const auto relocation_high = reader.u64 ();
+    const auto relocation_low = reader.u64 ();
+    const auto object_generation = reader.u64 ();
+    const auto authority_generation = reader.u64 ();
+    const auto binding_generation = reader.u64 ();
+    const auto high_water = reader.u64 ();
+    const auto actor_id = reader.text ();
+    const auto mesh_name = reader.text ();
+    const auto node_id = reader.text ();
+    const auto journal = reader.bytes ();
+    if (!relocation_high || !relocation_low
+        || (*relocation_high == 0 && *relocation_low == 0)
+        || !object_generation || *object_generation == 0
+        || !authority_generation || *authority_generation == 0
+        || !binding_generation || *binding_generation == 0
+        || !high_water || !actor_id || actor_id->empty ()
+        || !mesh_name || !node_id || node_id->empty ()
+        || !journal || !reader.done ())
+        return std::nullopt;
+    return durable_session_journal_record_t{
+      *relocation_high,
+      *relocation_low,
+      object_ref_t{object_kind_t::actor, *actor_id,
+                   *object_generation, *authority_generation,
+                   *mesh_name, *node_id},
+      *binding_generation,
+      *high_water,
+      *journal};
+}
+
 } // namespace
 
 durable_join_completion_store_t::durable_join_completion_store_t (
@@ -275,6 +349,47 @@ durable_join_completion_store_t::deliver (
 
 void durable_join_completion_store_t::cleanup (
   const durable_join_completion_root_t &root)
+{
+    _store->remove (root.reference);
+}
+
+durable_session_journal_store_t::durable_session_journal_store_t (
+  std::shared_ptr<relocation_store_port_t> store) :
+    _store (std::move (store))
+{
+    if (!_store)
+        throw std::invalid_argument (
+          "durable Session journal store is required");
+}
+
+durable_session_journal_root_t
+durable_session_journal_store_t::prepare (
+  const durable_session_journal_record_t &record)
+{
+    const auto payload = encode_session_journal (record);
+    const auto checksum = maintenance_runtime_t::crc32c (payload);
+    const auto stored = _store->put (payload, relocation_retention);
+    if (stored.reference.empty ()
+        || stored.checksum_crc32c != checksum)
+        throw std::runtime_error (
+          "durable Session journal store write failed");
+    return {stored.reference, checksum};
+}
+
+std::optional<durable_session_journal_record_t>
+durable_session_journal_store_t::recover (
+  const durable_session_journal_root_t &root) const
+{
+    const auto payload = _store->get (root.reference);
+    if (!payload
+        || maintenance_runtime_t::crc32c (*payload)
+             != root.checksum_crc32c)
+        return std::nullopt;
+    return decode_session_journal (*payload);
+}
+
+void durable_session_journal_store_t::cleanup (
+  const durable_session_journal_root_t &root)
 {
     _store->remove (root.reference);
 }
@@ -1711,6 +1826,7 @@ void public_host_runtime_t::configure_maintenance (
           "maintenance providers must be configured once before host start");
     }
     auto targets = providers.targets;
+    _session_relocations = providers.relocations;
     auto maintenance =
       std::make_unique<stateful::maintenance_runtime_t> (
       _objects, std::move (providers), limits,

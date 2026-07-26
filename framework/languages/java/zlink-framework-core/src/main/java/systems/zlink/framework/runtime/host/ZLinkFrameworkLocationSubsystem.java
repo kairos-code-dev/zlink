@@ -62,7 +62,7 @@ final class ZLinkFrameworkLocationSubsystem {
         ZLinkLocationRuntime locationRuntime = new ZLinkLocationRuntime(
             locationStores,
             registration.locations().options().ownerLeaseTtl(),
-            registration.locations().options().heartbeatInterval());
+            registration.locations().options().ownerLeaseRenewInterval());
         java.util.concurrent.CompletionStage<Void> startup =
             locationRuntime.start(RoutingId.from(locationRuntime.ownerId()));
 
@@ -100,7 +100,6 @@ final class ZLinkFrameworkLocationSubsystem {
         ZLinkStoreLocationResolvers.AddressResolvers locationAddressResolvers =
             new ZLinkStoreLocationResolvers.AddressResolvers(
                 spotMeshNames(registration),
-                registration.locations().options().spotRouterChannels(),
                 storeLocationResolvers);
         ZLinkStoreSpotHandleResolver locationSpotHandleResolver =
             new ZLinkStoreSpotHandleResolver(

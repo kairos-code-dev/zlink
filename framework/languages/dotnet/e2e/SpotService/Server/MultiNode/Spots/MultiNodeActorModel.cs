@@ -55,7 +55,7 @@ internal sealed class ScenarioActor(
         evidence.Add(
             $"spot-only-actor-join-completed|rid={evidence.Rid}|actor={ActorId}"
             + $"|target={pending.TargetSpotId}|accepted={accepted}"
-            + $"|generation={completedActor.Generation}|marker={pending.Marker}");
+            + $"|generation={completedActor.ObjectGeneration}|marker={pending.Marker}");
         return ValueTask.CompletedTask;
     }
 }
@@ -133,9 +133,12 @@ internal sealed class ScenarioUserSpot(
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    public ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        _ = context;
+        cleanupCancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }
@@ -196,8 +199,7 @@ internal sealed class ScenarioAlternateSpot(
 
 internal sealed class SpotOnlyUserSpot(
     IZLinkSpotContext context,
-    EvidenceStore evidence,
-    IZLinkSpotHandleResolver spots) : IZLinkSpot<ScenarioActor>
+    EvidenceStore evidence) : IZLinkSpot<ScenarioActor>
 {
     private int _value;
 
@@ -244,16 +246,12 @@ internal sealed class SpotOnlyUserSpot(
         if (!request.IsEmpty)
         {
             var command = request.Decode<SpotOnlyMeshReq>();
-            var target = await spots.ResolveSpotHandleAsync(
-                             Context.MeshName,
-                             command.TargetSpotRid,
-                             cancellationToken)
-                         ?? throw new InvalidOperationException(
-                             $"Target spot '{command.TargetSpotRid}' has no live location row.");
             var reply = await Context.Outbound
-                .RequestToSpot(target, new StateReq("add", 7))
+                .RequestToSpot(command.TargetSpotRid, new StateReq("add", 7))
                 .Async<StateRes>(cancellationToken);
-            await Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
+            await Context.Outbound.SendToSpot(
+                    command.TargetSpotRid,
+                    new StateMsg($"sm-f6-send-{command.Marker}"))
                 .Async(cancellationToken);
             evidence.Add(
                 $"spot-only-request|rid={evidence.Rid}|source={Context.SpotId}"

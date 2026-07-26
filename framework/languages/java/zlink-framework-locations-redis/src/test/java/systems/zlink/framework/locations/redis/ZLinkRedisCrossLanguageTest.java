@@ -88,7 +88,13 @@ final class ZLinkRedisCrossLanguageTest {
                 .get();
 
             assertNotNull(actor);
-            assertEquals(new ActorRef(RoutingId.from("dotnet-node"), "dotnet-actor", 0), actor.actorRef());
+            assertEquals(
+                new ActorRef(
+                    "dotnet-actor",
+                    1,
+                    "cross",
+                    RoutingId.from("dotnet-node")),
+                actor.actorRef());
             assertEquals(RoutingId.from("dotnet-node"), actor.nodeRid());
             assertEquals("dotnet-owner", actor.ownerId());
 
@@ -153,7 +159,11 @@ final class ZLinkRedisCrossLanguageTest {
         return new ZLinkActorLocation(
             "java-actor",
             "player",
-            new ActorRef(RoutingId.from("java-node"), "java-actor", 0),
+            new ActorRef(
+                "java-actor",
+                1,
+                "cross",
+                RoutingId.from("java-node")),
             RoutingId.from("java-node"),
             ZLinkSpotKind.USER,
             "cross",

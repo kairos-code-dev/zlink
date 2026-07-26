@@ -88,7 +88,16 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     }
 
     const entrySpotId = node.entrySpot().routingId;
-    const boundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+    const currentBoundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+    const boundSessionTarget = currentBoundSessionTarget === undefined
+      ? undefined
+      : {
+          ...currentBoundSessionTarget,
+          previousAuthorityOwnerGeneration:
+            currentBoundSessionTarget.previousAuthorityOwnerGeneration ?? state.locationGeneration,
+          previousOwnerLeaseGeneration:
+            currentBoundSessionTarget.previousOwnerLeaseGeneration ?? state.ownerLeaseGeneration
+        };
     const transferId = randomUUID();
     const admissionRequest = buildRemoteActorJoinRequestPayload({
       actorId: actor.context.actorId,
@@ -128,6 +137,8 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       throw error;
     }
 
+    const committedBoundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+
     const commitRequest = buildRemoteActorJoinRequestPayload({
       actorId: actor.context.actorId,
       actorType,
@@ -138,7 +149,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       targetSpotId: target.spotId,
       routerChannelId: target.routerChannelId,
       sourceSpotId: boundSessionTarget?.spotId ?? entrySpotId,
-      boundSessionTarget,
+      boundSessionTarget: committedBoundSessionTarget,
       phase: REMOTE_ACTOR_JOIN_COMMIT,
       transferId,
       transferAdapterKey: transfer.adapterKey,

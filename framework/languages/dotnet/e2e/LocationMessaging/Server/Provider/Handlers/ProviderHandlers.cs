@@ -14,7 +14,7 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence)
 {
     public async ValueTask<ProfileRes> HandleAsync(
         ProfileReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         if (request.Value == "slow") await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
@@ -34,7 +34,7 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
 {
     public async ValueTask HandleAsync(
         ProfileMsg command,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -50,7 +50,7 @@ internal sealed class PayloadRequestHandler(EvidenceStore evidence)
 {
     public ValueTask<PayloadRes> HandleAsync(
         PayloadReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -67,7 +67,7 @@ internal sealed class RoutePingHandler(EvidenceStore evidence)
 {
     public ValueTask<ScenarioRoutePong> HandleAsync(
         ScenarioRoutePing request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

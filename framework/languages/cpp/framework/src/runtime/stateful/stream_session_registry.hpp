@@ -28,6 +28,8 @@ struct stream_binding_t
     stream_connection_t connection;
     std::uint64_t binding_generation = 0;
     object_ref_t actor;
+    std::uint64_t target_node_generation = 0;
+    std::uint64_t owner_lease_generation = 0;
 
     friend bool operator== (const stream_binding_t &,
                             const stream_binding_t &) = default;
@@ -45,6 +47,21 @@ struct stream_barrier_t
     object_ref_t actor;
 };
 
+struct stream_route_admission_t
+{
+    stateful_error_t error = stateful_error_t::none;
+    std::optional<stream_binding_t> binding;
+    std::uint64_t last_accepted_sequence = 0;
+};
+
+struct stream_route_seal_admission_t
+{
+    stateful_error_t error = stateful_error_t::none;
+    std::optional<stream_binding_t> binding;
+    stream_barrier_t barrier;
+    std::uint64_t last_accepted_sequence = 0;
+};
+
 class stream_session_registry_t
 {
   public:
@@ -57,7 +74,9 @@ class stream_session_registry_t
     bool close (const stream_connection_t &connection);
     std::pair<stateful_error_t, stream_binding_t> bind (
       const stream_connection_t &connection,
-      const object_ref_t &actor);
+      const object_ref_t &actor,
+      std::uint64_t target_node_generation = 0,
+      std::uint64_t owner_lease_generation = 0);
     stateful_error_t unbind (const stream_binding_t &binding);
     std::pair<stateful_error_t, std::optional<stream_dispatch_t>>
     admit_inbound (const stream_binding_t &binding);
@@ -67,10 +86,33 @@ class stream_session_registry_t
     stateful_error_t abort_barrier (const stream_barrier_t &barrier);
     stateful_error_t commit_barrier (
       const stream_barrier_t &barrier, const object_ref_t &target);
+    stream_route_seal_admission_t seal_remote_route (
+      const std::string &connection_id,
+      std::uint64_t binding_generation,
+      const object_ref_t &actor,
+      std::uint64_t target_node_generation,
+      std::uint64_t owner_lease_generation);
+    stream_route_admission_t commit_remote_route (
+      const std::string &connection_id,
+      std::uint64_t binding_generation,
+      const std::string &actor_id,
+      std::uint64_t object_generation,
+      std::uint64_t previous_authority_owner_generation,
+      object_ref_t target,
+      std::uint64_t target_node_generation,
+      std::uint64_t replayed_high_water);
+    stream_route_admission_t acknowledge_remote_abort (
+      const std::string &connection_id,
+      std::uint64_t binding_generation,
+      const std::string &actor_id,
+      std::uint64_t object_generation,
+      std::uint64_t current_authority_owner_generation);
     bool try_seal_all ();
     void release_all () noexcept;
     void force_close_all () noexcept;
     bool is_current (const stream_binding_t &binding) const;
+    std::optional<stream_binding_t> current_binding (
+      const std::string &actor_id) const;
 
   private:
     struct connection_state_t

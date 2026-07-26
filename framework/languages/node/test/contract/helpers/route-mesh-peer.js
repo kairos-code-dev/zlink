@@ -29,7 +29,7 @@ const node = {
   router: {
     routingId: 'node-b',
     bind: options.bind,
-    manualConnections: [options.peer]
+    manualPeerConnections: [{ peerRid: 'node-a', endpoint: options.peer }]
   },
   meshChannels: {
     mesh: { weight: options.mode === 'client-channel' ? 0 : 100 }
@@ -84,7 +84,7 @@ void runtime.start().then(
       type: 'error',
       message: error instanceof Error ? error.stack ?? error.message : String(error)
     });
-    process.exitCode = 1;
+    void runtime.stop().finally(() => process.exit(1));
   }
 );
 

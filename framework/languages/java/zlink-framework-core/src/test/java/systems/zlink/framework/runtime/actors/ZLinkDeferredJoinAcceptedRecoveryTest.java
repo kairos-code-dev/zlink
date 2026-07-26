@@ -49,6 +49,7 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
             () -> recovery.deliver(
                     manifest,
                     actorRef,
+                    "game",
                     ignored -> actor,
                     (actorId, callback) -> {
                         mailboxAdmissions.incrementAndGet();
@@ -60,6 +61,7 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
         recovery.deliver(
                 manifest,
                 actorRef,
+                "game",
                 ignored -> actor,
                 (actorId, callback) -> {
                     mailboxAdmissions.incrementAndGet();
@@ -70,6 +72,7 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
         recovery.deliver(
                 manifest,
                 actorRef,
+                "game",
                 ignored -> actor,
                 (actorId, callback) -> {
                     mailboxAdmissions.incrementAndGet();
@@ -81,7 +84,7 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
         assertEquals(2, mailboxAdmissions.get());
         assertEquals(2, actor.attempts.get());
         assertEquals(operation, actor.accepted.operationId());
-        assertEquals(17, actor.accepted.actor().generation());
+        assertEquals(17, actor.accepted.actor().objectGeneration());
         assertEquals("accepted", actor.accepted.reply().decode(String.class));
         assertEquals(1, manifest.cursor());
     }
@@ -111,6 +114,7 @@ final class ZLinkDeferredJoinAcceptedRecoveryTest {
                         RoutingId.from("target-node"),
                         "actor-a",
                         10),
+                    "game",
                     ignored -> new RecordingActor("actor-a"),
                     (actorId, callback) -> callback.get())
                 .toCompletableFuture()

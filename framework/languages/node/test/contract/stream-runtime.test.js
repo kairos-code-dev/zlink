@@ -18,6 +18,7 @@ const {
   ZLinkActorPacketRelay
 } = require('../../packages/framework/dist/runtime/host/actor-packet-relay');
 const actorPacketWire = require('../../packages/framework/dist/runtime/actors/actor-packet-relay-wire');
+const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 const zlink = require('@zlink-systems/zlink');
 
 test('stream runtime is exported from framework root surface', () => {
@@ -1252,12 +1253,19 @@ test('remote bound session receiver completes a stale best-effort delivery witho
 });
 
 test('routed target push refreshes a bound session to the transferred actor ref before delivery', async () => {
-  const sourceRef = { nodeRid: 'actor-a', actorId: 'actor-transfer', generation: 1n };
+  const sourceRef = {
+    nodeRid: 'actor-a', actorId: 'actor-transfer', generation: 1n,
+    ownershipGeneration: 1n, ownerLeaseGeneration: 3n,
+    bindingGeneration: 7n, acceptedHighWater: 9n
+  };
   const targetRef = {
     nodeRid: 'actor-b',
     actorId: 'actor-transfer',
-    generation: 2n,
-    ownershipGeneration: 2n
+    generation: 1n,
+    ownershipGeneration: 2n,
+    ownerLeaseGeneration: 4n,
+    bindingGeneration: 7n,
+    acceptedHighWater: 9n
   };
   const staleSourceRef = { ...sourceRef, ownershipGeneration: 1n };
   const host = new framework.ZLinkFrameworkRuntimeHost({
@@ -1272,18 +1280,28 @@ test('routed target push refreshes a bound session to the transferred actor ref 
   host.boundSessionRelay.actorPackets.updateRemoteActorPacketTarget = (actorId, target) => {
     packetTargets.push({ actorId, target });
   };
-  host.streamBindingRuntime.refreshActor = async (actorRef) => {
+  host.streamBindingRuntime.commitActorRoute = async (actorRef) => {
     refreshed.push(actorRef);
   };
   host.streamBindingRuntime.rebindActor = async (actorRef) => {
     rebound.push(actorRef);
   };
 
+  await sealSessionRoute(host, 'actor-transfer', 1n, 1n, 7n, 3n, 'seal-transfer');
+
   await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership({
     actorId: 'actor-transfer',
     actorNodeRid: 'actor-b',
-    actorGeneration: '2',
+    actorGeneration: '1',
+    previousActorOwnershipGeneration: '1',
     actorOwnershipGeneration: '2',
+    bindingGeneration: '7',
+    previousOwnerLeaseGeneration: '3',
+    targetOwnerLeaseGeneration: '4',
+    acceptedHighWater: '9',
+    sealId: 'seal-transfer',
+    acceptedJournalReference: 'journal-transfer',
+    acceptedJournalChecksumCrc32c: 1,
     actorPacketTarget: {
       routerChannelId: 'actor.route',
       targetNodeRid: 'actor-b',
@@ -1316,7 +1334,7 @@ test('routed target push refreshes a bound session to the transferred actor ref 
   assert.equal(refreshed.length, 1);
   assert.equal(refreshed[0].actorId, 'actor-transfer');
   assert.equal(String(refreshed[0].nodeRid), 'actor-b');
-  assert.equal(refreshed[0].generation, 2n);
+  assert.equal(refreshed[0].generation, 1n);
   assert.deepEqual(packetTargets[0], {
     actorId: 'actor-transfer',
     target: {
@@ -1333,7 +1351,11 @@ test('routed target push refreshes a bound session to the transferred actor ref 
 });
 
 test('same actor ownership update changes the Spot route without rebinding the active session', async () => {
-  const actorRef = { nodeRid: 'actor-a', actorId: 'actor-local-move', generation: 1n };
+  const actorRef = {
+    nodeRid: 'actor-a', actorId: 'actor-local-move', generation: 1n,
+    ownershipGeneration: 1n, ownerLeaseGeneration: 3n,
+    bindingGeneration: 7n, acceptedHighWater: 9n
+  };
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
@@ -1346,11 +1368,21 @@ test('same actor ownership update changes the Spot route without rebinding the a
     packetTarget = target;
   };
 
+  await sealSessionRoute(host, actorRef.actorId, 1n, 1n, 7n, 3n, 'seal-local-move');
+
   await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership({
     actorId: actorRef.actorId,
     actorNodeRid: actorRef.nodeRid,
     actorGeneration: actorRef.generation.toString(),
+    previousActorOwnershipGeneration: '1',
     actorOwnershipGeneration: '2',
+    bindingGeneration: '7',
+    previousOwnerLeaseGeneration: '3',
+    targetOwnerLeaseGeneration: '4',
+    acceptedHighWater: '9',
+    sealId: 'seal-local-move',
+    acceptedJournalReference: 'journal-local-move',
+    acceptedJournalChecksumCrc32c: 1,
     actorPacketTarget: {
       routerChannelId: 'actor.route',
       targetNodeRid: 'actor-a',
@@ -1393,30 +1425,247 @@ test('internal route refresh preserves object generation while explicit bind can
   assert.equal(replacement.ref.generation, 2n);
 });
 
-test('transferred actor ownership acknowledges the new route before session rebind completes', async () => {
+test('transferred actor ownership ACK waits until the session route replacement completes', async () => {
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
   const context = host.streamBindingRuntime.createSessionContext(recordingStream('session-transfer-ack', 'session-a'));
-  await context.actors.bind({ nodeRid: 'actor-a', actorId: 'actor-transfer-ack', generation: 1n });
+  await context.actors.bind({
+    nodeRid: 'actor-a', actorId: 'actor-transfer-ack', generation: 1n,
+    ownershipGeneration: 1n, ownerLeaseGeneration: 3n,
+    bindingGeneration: 7n, acceptedHighWater: 9n
+  });
   let releaseRefresh;
   const refreshBlocked = new Promise((resolve) => { releaseRefresh = resolve; });
-  host.streamBindingRuntime.refreshActor = async () => { await refreshBlocked; };
+  host.streamBindingRuntime.commitActorRoute = async () => { await refreshBlocked; };
 
-  await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership({
+  await sealSessionRoute(host, 'actor-transfer-ack', 1n, 1n, 7n, 3n, 'seal-ack');
+
+  let settled = false;
+  const pending = host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership({
     actorId: 'actor-transfer-ack',
     actorNodeRid: 'actor-b',
-    actorGeneration: '2',
+    actorGeneration: '1',
+    previousActorOwnershipGeneration: '1',
     actorOwnershipGeneration: '2',
+    bindingGeneration: '7',
+    previousOwnerLeaseGeneration: '3',
+    targetOwnerLeaseGeneration: '4',
+    acceptedHighWater: '9',
+    sealId: 'seal-ack',
+    acceptedJournalReference: 'journal-ack',
+    acceptedJournalChecksumCrc32c: 1,
     actorPacketTarget: {
       routerChannelId: 'actor.route',
       targetNodeRid: 'actor-b',
       spotId: 'zone-ne',
       spotKind: framework.ZLinkSpotKind.User
     }
+  }).then((ack) => {
+    settled = true;
+    return ack;
   });
 
+  await Promise.resolve();
+  assert.equal(settled, false);
+
   releaseRefresh();
+  assert.deepEqual(await pending, {
+    actorId: 'actor-transfer-ack',
+    actorGeneration: '1',
+    actorOwnershipGeneration: '2',
+    bindingGeneration: '7',
+    targetOwnerLeaseGeneration: '4',
+    acceptedHighWater: '9',
+    sealId: 'seal-ack'
+  });
+});
+
+test('command 42 seal is exact and idempotent while command 43 fixes one high-water', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const context = host.streamBindingRuntime.createSessionContext(recordingStream('session-seal', 'session-a'));
+  await context.actors.bind({
+    nodeRid: 'actor-source', actorId: 'actor-seal', generation: 7n,
+    ownershipGeneration: 10n, ownerLeaseGeneration: 20n,
+    bindingGeneration: 17n, acceptedHighWater: 29n
+  });
+
+  const first = await sealSessionRoute(host, 'actor-seal', 7n, 10n, 17n, 20n, 'seal-1');
+  const retry = await sealSessionRoute(host, 'actor-seal', 7n, 10n, 17n, 20n, 'seal-1');
+  assert.deepEqual(first, { actorId: 'actor-seal', sealId: 'seal-1', acceptedHighWater: '29' });
+  assert.deepEqual(retry, first);
+  await assert.rejects(
+    sealSessionRoute(host, 'actor-seal', 7n, 10n, 18n, 20n, 'seal-2'),
+    /sealed by another relocation/
+  );
+  await assert.rejects(
+    host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSeal({
+      packetName: framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
+      actorId: 'actor-seal',
+      actorGeneration: '7',
+      actorOwnershipGeneration: '10',
+      bindingGeneration: '17',
+      ownerLeaseGeneration: '20',
+      sealId: 'other-seal'
+    }),
+    /abort was fenced/
+  );
+  const released = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSeal({
+    packetName: framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
+    actorId: 'actor-seal',
+    actorGeneration: '7',
+    actorOwnershipGeneration: '10',
+    bindingGeneration: '17',
+    ownerLeaseGeneration: '20',
+    sealId: 'seal-1'
+  });
+  const releaseRetry = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSeal({
+    packetName: framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
+    actorId: 'actor-seal',
+    actorGeneration: '7',
+    actorOwnershipGeneration: '10',
+    bindingGeneration: '17',
+    ownerLeaseGeneration: '20',
+    sealId: 'seal-1'
+  });
+  assert.deepEqual(releaseRetry, released);
+  const next = await sealSessionRoute(host, 'actor-seal', 7n, 10n, 17n, 20n, 'seal-2');
+  assert.equal(next.acceptedHighWater, '29');
+});
+
+test('command 44 exact fences reject stale bindings and make an exact retry idempotent', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const context = host.streamBindingRuntime.createSessionContext(recordingStream('session-fence', 'session-a'));
+  await context.actors.bind({
+    nodeRid: 'actor-source', actorId: 'actor-fence', generation: 7n,
+    ownershipGeneration: 10n, ownerLeaseGeneration: 20n,
+    bindingGeneration: 17n, acceptedHighWater: 29n
+  });
+  const payload = {
+    actorId: 'actor-fence',
+    actorNodeRid: 'actor-target',
+    actorGeneration: '7',
+    previousActorOwnershipGeneration: '10',
+    actorOwnershipGeneration: '11',
+    bindingGeneration: '17',
+    previousOwnerLeaseGeneration: '20',
+    targetOwnerLeaseGeneration: '21',
+    acceptedHighWater: '29',
+    sealId: 'seal-fence',
+    acceptedJournalReference: 'journal-fence',
+    acceptedJournalChecksumCrc32c: 1
+  };
+
+  await sealSessionRoute(host, 'actor-fence', 7n, 10n, 17n, 20n, payload.sealId);
+
+  for (const stale of [
+    { previousActorOwnershipGeneration: '9' },
+    { bindingGeneration: '18' },
+    { previousOwnerLeaseGeneration: '19' },
+    { acceptedHighWater: '28' }
+  ]) {
+    await assert.rejects(
+      host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership({ ...payload, ...stale }),
+      /fenced by its binding identity|did not match its command 42 Session seal/
+    );
+    assert.equal(String(host.streamBindingRuntime.find('actor-fence').ref.nodeRid), 'actor-source');
+  }
+
+  const first = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership(payload);
+  const retry = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership(payload);
+  assert.deepEqual(retry, first);
+  assert.equal(String(host.streamBindingRuntime.find('actor-fence').ref.nodeRid), 'actor-target');
+  await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSeal({
+    packetName: framework.ZLINK_REMOTE_BOUND_SESSION_ABORT_SEAL_PACKET,
+    actorId: payload.actorId,
+    actorGeneration: payload.actorGeneration,
+    actorOwnershipGeneration: payload.actorOwnershipGeneration,
+    bindingGeneration: payload.bindingGeneration,
+    ownerLeaseGeneration: payload.targetOwnerLeaseGeneration,
+    sealId: payload.sealId
+  });
+  const restartedTargetRetry = await host.boundSessionRelay.boundSessions
+    .receiveRemoteBoundSessionOwnership(payload);
+  assert.deepEqual(restartedTargetRetry, first);
+});
+
+test('command 44 ownership handler writes command 45 ACK only after route replacement', async () => {
+  let releaseReplacement;
+  const replacementBlocked = new Promise((resolve) => { releaseReplacement = resolve; });
+  const payload = {
+    actorId: 'actor-command-44',
+    actorNodeRid: 'node-target',
+    actorGeneration: '7',
+    previousActorOwnershipGeneration: '10',
+    actorOwnershipGeneration: '11',
+    bindingGeneration: '17',
+    previousOwnerLeaseGeneration: '20',
+    targetOwnerLeaseGeneration: '21',
+    acceptedHighWater: '29',
+    sealId: 'seal-handler',
+    acceptedJournalReference: 'journal-handler',
+    acceptedJournalChecksumCrc32c: 1
+  };
+  const requestParts = channelEnvelope.encodeChannelEnvelopeParts(
+    1,
+    'mesh',
+    framework.ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
+    { packetName: framework.ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET, ...payload },
+    1000
+  ).map(toTestMessagePart);
+  const replyParts = [];
+  let replySubmitted = false;
+  const dispatcher = new framework.ZLinkSpotRoutedBoundSessionDispatch({
+    channelCodecs: () => undefined,
+    routedBoundSessionOwnershipReceiver: async (received) => {
+      assert.equal(received.actorId, payload.actorId);
+      await replacementBlocked;
+      return {
+        actorId: received.actorId,
+        actorGeneration: received.actorGeneration,
+        actorOwnershipGeneration: received.actorOwnershipGeneration,
+        bindingGeneration: received.bindingGeneration,
+        targetOwnerLeaseGeneration: received.targetOwnerLeaseGeneration,
+        acceptedHighWater: received.acceptedHighWater,
+        sealId: received.sealId
+      };
+    }
+  });
+  const dispatching = dispatcher.dispatch({
+    parts: requestParts,
+    requestSeq: 44n,
+    reply() {
+      return {
+        message(part) {
+          replyParts.push(toTestMessagePart(part));
+          return this;
+        },
+        submit() {
+          replySubmitted = true;
+        }
+      };
+    }
+  });
+
+  await Promise.resolve();
+  assert.equal(replySubmitted, false);
+  releaseReplacement();
+  assert.equal(await dispatching, true);
+  assert.equal(replySubmitted, true);
+  const reply = channelEnvelope.decodeChannelEnvelope(replyParts);
+  assert.deepEqual(JSON.parse(reply.payload.toString('utf8')), {
+    actorId: payload.actorId,
+    actorGeneration: payload.actorGeneration,
+    actorOwnershipGeneration: payload.actorOwnershipGeneration,
+    bindingGeneration: payload.bindingGeneration,
+    targetOwnerLeaseGeneration: payload.targetOwnerLeaseGeneration,
+    acceptedHighWater: payload.acceptedHighWater,
+    sealId: payload.sealId
+  });
 });
 
 test('runtime host routed bound session receiver forwards through actor remote target when local stream is absent', async () => {
@@ -3523,6 +3772,37 @@ async function waitForCondition(predicate, label, timeoutMs = 1000) {
     await new Promise((resolve) => setImmediate(resolve));
   }
   assert.fail(`Timed out waiting for ${label}`);
+}
+
+function toTestMessagePart(part) {
+  const payload = Buffer.from(typeof part?.data === 'function' ? part.data() : part);
+  part?.close?.();
+  return {
+    data() {
+      return payload;
+    },
+    close() {}
+  };
+}
+
+async function sealSessionRoute(
+  host,
+  actorId,
+  actorGeneration,
+  actorOwnershipGeneration,
+  bindingGeneration,
+  ownerLeaseGeneration,
+  sealId
+) {
+  return await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionSeal({
+    packetName: framework.ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET,
+    actorId,
+    actorGeneration: actorGeneration.toString(),
+    actorOwnershipGeneration: actorOwnershipGeneration.toString(),
+    bindingGeneration: bindingGeneration.toString(),
+    ownerLeaseGeneration: ownerLeaseGeneration.toString(),
+    sealId
+  });
 }
 
 class FakeStreamSocket {

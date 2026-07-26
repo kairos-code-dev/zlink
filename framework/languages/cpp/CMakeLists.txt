@@ -179,7 +179,6 @@ add_library(zlink_framework STATIC
   framework/src/runtime/handlers/handler_registry.cpp
   framework/src/runtime/dispatch/projection.cpp
   framework/src/runtime/host/app.cpp
-  framework/src/runtime/locations/spot_handle.cpp
   framework/src/runtime/diagnostics/flow_context.cpp
   framework/src/runtime/http/http_listener.cpp
   framework/src/runtime/http/http_request_pipeline.cpp
@@ -1188,6 +1187,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_channel_messaging
     tests/Zlink.Framework.UnitTests/test_cpp_framework_channel_messaging.cpp
     "framework-unit;framework-regression;channel")
+  add_zlink_framework_test(
+    test_cpp_framework_instance_spot_activation
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_instance_spot_activation.cpp
+    "framework-unit;framework-regression;spot;instance-activation")
+  target_link_libraries(test_cpp_framework_instance_spot_activation PRIVATE
+    GTest::gtest_main)
   # The channel messaging test reaches the service wire codec headers, which include the
   # schema-generated constants header (see test_cpp_framework_service_wire_codec above).
   target_include_directories(test_cpp_framework_channel_messaging PRIVATE

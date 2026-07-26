@@ -15,6 +15,7 @@ final class ZLinkActorJoinResults {
         ZLinkMessageSerializer serializer,
         int joinResultCode,
         ZLinkBackendActorRef actor,
+        String meshName,
         List<Message> replyParts) {
         try {
             ZLinkMessage reply = replyParts.isEmpty() || replyParts.get(0).size() == 0
@@ -24,7 +25,7 @@ final class ZLinkActorJoinResults {
                     serializer);
             return joinResultCode == 0
                 ? new ZLinkActorJoinOutcome.Accepted(
-                    ZLinkActorRuntime.toPublicActorRef(actor), reply)
+                    ZLinkActorRuntime.toPublicActorRef(actor, meshName), reply)
                 : new ZLinkActorJoinOutcome.Rejected(reply);
         } finally {
             closeReplyParts(replyParts);

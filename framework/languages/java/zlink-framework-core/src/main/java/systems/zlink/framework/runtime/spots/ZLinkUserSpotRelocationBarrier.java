@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.internal.relocation
@@ -30,6 +31,11 @@ final class ZLinkUserSpotRelocationBarrier {
     }
 
     synchronized Optional<Seal> trySeal() {
+        return trySeal(ignored -> true);
+    }
+
+    synchronized Optional<Seal> trySeal(Predicate<Preview> admission) {
+        java.util.Objects.requireNonNull(admission, "admission");
         if (active != null) {
             return Optional.empty();
         }
@@ -64,11 +70,30 @@ final class ZLinkUserSpotRelocationBarrier {
             context.resumeTimersAfterRelocationAbort();
             return Optional.empty();
         }
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> captured =
+            captureRecords(localSeal.get(), actorSeals);
+        boolean admitted;
+        try {
+            admitted = admission.test(new Preview(
+                timerEnvelope,
+                participantActorIds,
+                captured));
+        } catch (RuntimeException failure) {
+            rollback(localSeal.get(), actorSeals);
+            context.resumeTimersAfterRelocationAbort();
+            throw failure;
+        }
+        if (!admitted) {
+            rollback(localSeal.get(), actorSeals);
+            context.resumeTimersAfterRelocationAbort();
+            return Optional.empty();
+        }
         active = new Seal(
             localSeal.get(),
             timerEnvelope.clone(),
             participantActorIds,
-            java.util.Collections.unmodifiableMap(actorSeals));
+            java.util.Collections.unmodifiableMap(actorSeals),
+            captured);
         return Optional.of(active);
     }
 
@@ -159,23 +184,42 @@ final class ZLinkUserSpotRelocationBarrier {
         }
     }
 
+    private Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
+        captureRecords(
+            ZLinkCompositeRelocationBarrier.Seal localSeal,
+            Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals) {
+        LinkedHashMap<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> result =
+            new LinkedHashMap<>(barrier.captured(localSeal)
+                .orElseThrow(() -> new IllegalStateException(
+                    "User Spot local relocation seal is not active")));
+        actorSeals.forEach((actorId, actorSeal) -> result.put(
+            "actor:" + actorId,
+            actorSeal.captured()));
+        return java.util.Collections.unmodifiableMap(result);
+    }
+
     static final class Seal {
         private final ZLinkCompositeRelocationBarrier.Seal composite;
         private final byte[] timerEnvelope;
         private final List<String> participantActorIds;
         private final Map<
             String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals;
+        private final Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
+            capturedRecords;
 
         private Seal(
             ZLinkCompositeRelocationBarrier.Seal composite,
             byte[] timerEnvelope,
             List<String> participantActorIds,
-            Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals) {
+            Map<String, ZLinkAsyncSerialQueue.RelocationSeal> actorSeals,
+            Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
+                capturedRecords) {
             this.composite = composite;
             this.timerEnvelope = timerEnvelope;
             this.participantActorIds = List.copyOf(
                 participantActorIds);
             this.actorSeals = actorSeals;
+            this.capturedRecords = capturedRecords;
         }
 
         long generation() {
@@ -188,6 +232,26 @@ final class ZLinkUserSpotRelocationBarrier {
 
         List<String> participantActorIds() {
             return participantActorIds;
+        }
+
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>>
+            capturedRecords() {
+            return capturedRecords;
+        }
+    }
+
+    record Preview(
+        byte[] timerEnvelope,
+        List<String> participantActorIds,
+        Map<String, List<ZLinkAsyncSerialQueue.QueuedRecord>> capturedRecords) {
+        Preview {
+            timerEnvelope = timerEnvelope.clone();
+            participantActorIds = List.copyOf(participantActorIds);
+            capturedRecords = Map.copyOf(capturedRecords);
+        }
+
+        @Override public byte[] timerEnvelope() {
+            return timerEnvelope.clone();
         }
     }
 

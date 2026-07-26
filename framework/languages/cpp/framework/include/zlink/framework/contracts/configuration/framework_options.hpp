@@ -1141,7 +1141,7 @@ class zlink_framework_options_t
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "actor transfer forward window must not be negative");
         }
-        _options->actor_transfer_forward_window = window;
+        _options->locations.relocation_forwarding_window = window;
         return *this;
     }
 

@@ -7,6 +7,22 @@ public sealed class RedisAuthorityRelocationTests(
     RedisTestFixture fixture)
 {
     [SkippableFact]
+    public async Task Empty_Authority_Scan_Returns_An_Empty_Page()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore(out _);
+
+        var page = Assert.IsType<ZLinkAuthorityScanResult.Page>(
+            await store.ListAuthoritiesAsync(
+                $"zla1:a:missing-{Guid.NewGuid():N}:",
+                null,
+                10));
+
+        Assert.Empty(page.Value.Items);
+        Assert.Null(page.Value.NextCursor);
+    }
+
+    [SkippableFact]
     public async Task Reserve_Writes_Exact_Hybrid_Authority_And_Schema_Hashes()
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);

@@ -94,8 +94,8 @@ internal static class RmB2ScaleInScenario
         }
         var drained = await stopProviderB;
         ZlinkStreamAssert.Ensure(
-            drained is { Result: "Drained", Reason: null },
-            $"RM-B2 provider did not reach terminal Drained: {drained.Result}/{drained.Reason}.");
+            drained is { Result: "Stopped", Reason: null },
+            $"RM-B2 provider did not reach terminal Stopped: {drained.Result}/{drained.Reason}.");
         ZlinkStreamAssert.Ensure(
             continuingResults.All(result =>
                 result.ProviderRid is "api-a" or "api-b"

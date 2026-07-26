@@ -91,6 +91,11 @@ location_owner_token_t live_owner_token (
 class test_location_store_t : public zlink::framework::location_store_t
 {
   public:
+    void set_authority (std::string key, zlink::framework::authority_snapshot_t snapshot)
+    {
+        authorities.insert_or_assign (std::move (key), std::move (snapshot));
+    }
+
     zlink::framework::task_t<
       zlink::framework::location_write_result_t>
     update_mesh_node (
@@ -159,6 +164,7 @@ class test_location_store_t : public zlink::framework::location_store_t
     zlink::framework::task_t<std::optional<zlink::framework::spot_location_t>>
     resolve_spot (zlink::framework::spot_location_key_t key) override
     {
+        resolve_spot_count.fetch_add (1, std::memory_order_relaxed);
         return _inner.resolve_spot (std::move (key));
     }
 
@@ -186,6 +192,7 @@ class test_location_store_t : public zlink::framework::location_store_t
     zlink::framework::task_t<std::optional<zlink::framework::actor_location_t>>
     resolve_actor (zlink::framework::actor_location_key_t key) override
     {
+        resolve_actor_count.fetch_add (1, std::memory_order_relaxed);
         return _inner.resolve_actor (std::move (key));
     }
 
@@ -268,6 +275,13 @@ class test_location_store_t : public zlink::framework::location_store_t
     read_authority (zlink::framework::authority_key_t key,
                     std::stop_token cancellation = {}) override
     {
+        if (const auto found = authorities.find (key.value); found != authorities.end ()) {
+            auto snapshot = found->second;
+            snapshot.store_now = std::chrono::system_clock::now ();
+            return zlink::framework::task_t<zlink::framework::authority_read_result_t> (
+              zlink::framework::result_t<zlink::framework::authority_read_result_t>::success (
+                zlink::framework::authority_read_result_t{std::move (snapshot)}));
+        }
         return _inner.read_authority (std::move (key), cancellation);
     }
 
@@ -370,9 +384,12 @@ class test_location_store_t : public zlink::framework::location_store_t
     }
 
     std::atomic_size_t abort_count{0};
+    std::atomic_size_t resolve_spot_count{0};
+    std::atomic_size_t resolve_actor_count{0};
     std::atomic_bool force_reserve_conflict{false};
 
   private:
+    std::map<std::string, zlink::framework::authority_snapshot_t> authorities;
     in_memory_location_store_t _inner;
 };
 
@@ -1260,6 +1277,59 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
     EXPECT_EQ ("spot-a", address->spot_id);
 }
 
+TEST (ZLinkFrameworkStoreLocationResolvers, DirectReadyRouteUsesPositiveCacheOnly)
+{
+    test_location_store_t store;
+    (void) claim_test_owner (store, "owner-cache");
+    ASSERT_EQ (location_write_status_t::stored,
+               store.update_spot (spot_location_t{.mesh_name = "mesh-cache",
+                                                  .spot_id = "spot-cache",
+                                                  .node_rid =
+                                                    zlink::routing_id_t::from ("node-cache"),
+                                                  .spot_kind = zlink::spot_kind::user,
+                                                  .owner_id = "owner-cache"},
+                                  location_write_intent_t::new_claim)
+                 .result ().value ().status);
+    const auto owner = live_owner_token (store, "owner-cache");
+    auto authority = zlink::framework::authority_snapshot_t{
+        .store_version = "10",
+        .object_generation = 1,
+        .authority_owner_generation = 1,
+        .owner = owner,
+        .allocation = zlink::framework::placement_allocation_t{
+          .state = zlink::framework::placement_allocation_state_t::active,
+          .object_kind = zlink::framework::placement_object_kind_t::user_spot,
+          .stable_type = "play",
+          .target = zlink::framework::object_creation_target_t{
+            .mesh_name = "mesh-cache",
+            .node_rid = zlink::framework::node_rid_t::from_string ("node-cache"),
+            .node_lifecycle_generation = 1,
+            .owner = owner}}};
+    store.set_authority ("zla1:s:10:spot-cache", authority);
+    location_options_t options;
+    options.route_cache_max_age = std::chrono::seconds (1);
+    store_location_resolvers_t resolvers (store, options);
+
+    ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
+    ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
+    EXPECT_EQ (1u, store.resolve_spot_count.load ());
+
+    authority.store_version = "11";
+    authority.authority_owner_generation = 2;
+    store.set_authority ("zla1:s:10:spot-cache", authority);
+    resolvers.observe_spot_authority_version ("spot-cache", "11", 1, 2);
+    ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
+    EXPECT_EQ (2u, store.resolve_spot_count.load ());
+
+    resolvers.invalidate_all_routes_after_store_recovery ();
+    ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
+    EXPECT_EQ (3u, store.resolve_spot_count.load ());
+
+    EXPECT_FALSE (resolvers.resolve_spot_address ({}, "missing").result ().value ());
+    EXPECT_FALSE (resolvers.resolve_spot_address ({}, "missing").result ().value ());
+    EXPECT_EQ (5u, store.resolve_spot_count.load ());
+}
+
 TEST (ZLinkFrameworkStoreLocationResolvers, AddLocationStoreRegistersUnifiedInstance)
 {
     options_fixture_t fixture;
@@ -1280,7 +1350,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFrameworkUsesConfiguredLocationSt
 
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.add_location_store (store);
-        options.configure_locations ().heartbeat_interval = std::chrono::milliseconds (25);
+        options.configure_locations ().owner_lease_renew_interval = std::chrono::milliseconds (25);
     });
 
     auto provider = app.advanced ().services ().build_provider ();
@@ -1288,7 +1358,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFrameworkUsesConfiguredLocationSt
     EXPECT_EQ (std::chrono::milliseconds (25),
                provider.get_required<zlink::framework::runtime::location_runtime_t> ()
                  .options ()
-                 .heartbeat_interval);
+                 .owner_lease_renew_interval);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithExplicitStores)
@@ -1300,6 +1370,29 @@ TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithE
     options.use_in_memory_location_stores ().add_location_store (store);
 
     EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers, RejectsInvalidRoutingAndRelocationLimitsBeforeApply)
+{
+    {
+        options_fixture_t fixture;
+        auto options = fixture.make_options ();
+        options.configure_locations ().route_cache_max_age = std::chrono::seconds (26);
+        options.configure_locations ().relocation_forwarding_window = std::chrono::seconds (30);
+        EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+    }
+    {
+        options_fixture_t fixture;
+        auto options = fixture.make_options ();
+        options.configure_locations ().max_active_outbound_relocations = 0;
+        EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+    }
+    {
+        options_fixture_t fixture;
+        auto options = fixture.make_options ();
+        options.configure_locations ().owner_lease_renew_interval = std::chrono::seconds (7);
+        EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+    }
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
@@ -1355,7 +1448,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, PendingActorEntrySpotResolvesAsMiss)
     EXPECT_FALSE (address.has_value ());
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossMeshes)
 {
     in_memory_location_store_t store;
     (void) claim_test_owner (store, "owner-a");
@@ -1371,18 +1464,15 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes
         .result ()
         .value ();
     ASSERT_EQ (location_write_status_t::stored, initial_write.status);
-    store_location_resolvers_t resolvers (store);
+    location_options_t options;
+    options.route_cache_max_age = std::chrono::milliseconds::zero ();
+    store_location_resolvers_t resolvers (store, options);
 
     /* No mesh name in the lookup: the rid is searched across every mesh. */
-    const auto handle =
-      resolvers.resolve_spot_handle (zlink::framework::spot_id_t ("spot-b"))
-        .result ()
-        .value ();
-    ASSERT_TRUE (handle.has_value ());
-    EXPECT_EQ ("spot-b", handle->spot_id ());
-    auto handle_state = zlink::framework::detail::spot_handle_access_t::state (*handle);
-    ASSERT_TRUE (handle_state);
-    EXPECT_EQ (41u, handle_state->snapshot ().spot_generation);
+    const auto initial = resolvers.resolve_spot_address ({}, "spot-b").result ().value ();
+    ASSERT_TRUE (initial.has_value ());
+    EXPECT_EQ ("spot-b", initial->spot_id);
+    EXPECT_EQ (41u, initial->spot_generation);
 
     ASSERT_EQ (location_write_status_t::stored,
                store.update_spot (spot_location_t{.mesh_name = "mesh-b",
@@ -1398,17 +1488,16 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes
                  .result ()
                  .value ()
                  .status);
-    ASSERT_TRUE (handle_state->refresh_snapshot ());
-    EXPECT_EQ (42u, handle_state->snapshot ().spot_generation);
+    const auto renewed = resolvers.resolve_spot_address ({}, "spot-b").result ().value ();
+    ASSERT_TRUE (renewed.has_value ());
+    EXPECT_EQ (42u, renewed->spot_generation);
 
     const auto missing =
-      resolvers.resolve_spot_handle (zlink::framework::spot_id_t ("missing"))
-        .result ()
-        .value ();
+      resolvers.resolve_spot_address ({}, "missing").result ().value ();
     EXPECT_FALSE (missing.has_value ());
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
 {
     in_memory_location_store_t store;
     (void) claim_test_owner (store, "owner-a");
@@ -1435,11 +1524,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
     store_location_resolvers_t resolvers (store, {},
       std::make_shared<zlink::framework::runtime::actor_location_observer_t> (), "mesh-b");
 
-    const auto handle = resolvers.resolve_actor_spot_handle ("actor-b").result ().value ();
-    ASSERT_TRUE (handle.has_value ());
-    EXPECT_EQ ("spot-b", handle->spot_id ());
+    const auto address = resolvers.resolve_actor_address ("actor-b").result ().value ();
+    ASSERT_TRUE (address.has_value ());
+    EXPECT_EQ ("spot-b", address->spot_id);
 
-    const auto missing = resolvers.resolve_actor_spot_handle ("nobody").result ().value ();
+    const auto missing = resolvers.resolve_actor_address ("nobody").result ().value ();
     EXPECT_FALSE (missing.has_value ());
 }
 
@@ -1448,8 +1537,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsPendingAndRegressedActorGener
     scripted_actor_location_store_t store;
     auto observer =
       std::make_shared<zlink::framework::runtime::actor_location_observer_t> ();
-    store_location_resolvers_t resolvers (store, {}, observer, "mesh");
     location_options_t options;
+    options.route_cache_max_age = std::chrono::milliseconds::zero ();
+    store_location_resolvers_t resolvers (store, options, observer, "mesh");
     location_runtime_t runtime (store, options, "owner-query");
     store_location_runtime_query_t query (store, runtime, options, observer);
     (void) claim_test_owner (store, "owner");
@@ -1831,7 +1921,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
 {
     auto store = std::make_shared<in_memory_location_store_t> ();
     location_options_t options;
-    options.heartbeat_interval = std::chrono::milliseconds (50);
+    options.owner_lease_renew_interval = std::chrono::milliseconds (50);
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-auto");
     runtime->start (zlink::routing_id_t::from ("node-auto"));
 
@@ -2357,7 +2447,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
 {
     auto store = std::make_shared<in_memory_location_store_t> ();
     location_options_t options;
-    options.heartbeat_interval = std::chrono::milliseconds (50);
+    options.owner_lease_renew_interval = std::chrono::milliseconds (50);
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-route-local");
     runtime->start (zlink::routing_id_t::from ("route-z-local-node"));
 
@@ -2464,7 +2554,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
 {
     auto store = std::make_shared<in_memory_location_store_t> ();
     location_options_t options;
-    options.heartbeat_interval = std::chrono::milliseconds (50);
+    options.owner_lease_renew_interval = std::chrono::milliseconds (50);
 
     auto lower_runtime =
       std::make_shared<location_runtime_t> (*store, options, "owner-route-lower-local");

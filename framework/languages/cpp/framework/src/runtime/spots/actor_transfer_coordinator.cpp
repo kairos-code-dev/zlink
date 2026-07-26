@@ -117,7 +117,7 @@ void actor_transfer_coordinator_t::activate_forwarding (
     // new hop and restarts the window instead of accumulating entries (§10.4-4).
     _forwardings[actor_key] = forwarding_entry_t{
       old_generation, std::move (target_actor), std::move (target_route), evict_at,
-      std::move (transfer_id)};
+      std::move (transfer_id), 0, 0};
 }
 
 bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string &actor_key,
@@ -139,6 +139,51 @@ actor_transfer_coordinator_t::forwarding_target (const std::string &actor_key,
         return std::nullopt;
     }
     return actor_forwarding_target_t{found->second.target_actor, found->second.target_route};
+}
+
+std::optional<actor_forwarding_target_t>
+actor_transfer_coordinator_t::try_acquire_forwarding (
+  const std::string &actor_key,
+  std::uint64_t generation,
+  std::size_t payload_bytes,
+  std::size_t hop_count)
+{
+    constexpr std::size_t max_messages = 1024;
+    constexpr std::size_t max_bytes = 16u * 1024u * 1024u;
+    constexpr std::size_t max_hops = 8;
+    std::lock_guard lock (_mutex);
+    const auto found = _forwardings.find (actor_key);
+    if (found == _forwardings.end ()
+        || found->second.old_generation != generation
+        || found->second.evict_at <= std::chrono::steady_clock::now ()
+        || hop_count >= max_hops
+        || payload_bytes > max_bytes
+        || found->second.in_flight_messages >= max_messages
+        || found->second.in_flight_bytes > max_bytes - payload_bytes) {
+        return std::nullopt;
+    }
+    ++found->second.in_flight_messages;
+    found->second.in_flight_bytes += payload_bytes;
+    return actor_forwarding_target_t{
+      found->second.target_actor, found->second.target_route};
+}
+
+void actor_transfer_coordinator_t::release_forwarding (
+  const std::string &actor_key,
+  std::uint64_t generation,
+  std::size_t payload_bytes) noexcept
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _forwardings.find (actor_key);
+    if (found == _forwardings.end ()
+        || found->second.old_generation != generation)
+        return;
+    if (found->second.in_flight_messages != 0)
+        --found->second.in_flight_messages;
+    found->second.in_flight_bytes =
+      payload_bytes >= found->second.in_flight_bytes
+        ? 0
+        : found->second.in_flight_bytes - payload_bytes;
 }
 
 std::vector<evicted_actor_forwarding_t>

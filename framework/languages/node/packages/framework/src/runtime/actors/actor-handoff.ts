@@ -16,7 +16,10 @@ import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET
 } from './actor-packet-relay-wire';
 
-export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
+export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 30_000;
+const MAX_FORWARDING_HOPS = 8;
+const MAX_FORWARDING_MESSAGES = 1024;
+const MAX_FORWARDING_BYTES = 16 * 1024 * 1024;
 
 export interface ZLinkActorHandoffTarget {
   readonly routerChannelId: string;
@@ -30,10 +33,19 @@ export interface ZLinkActorHandoffPacket {
   readonly header: string;
   readonly payload: string;
   readonly returnResponse: boolean;
+  readonly operationId: string;
+  readonly forwardingHopCount: number;
   readonly remoteBoundSessionTarget?: {
     readonly routerChannelId: string;
     readonly targetNodeRid: string;
     readonly spotId: string;
+    readonly bindingGeneration?: string;
+    readonly previousAuthorityOwnerGeneration?: string;
+    readonly previousOwnerLeaseGeneration?: string;
+    readonly acceptedHighWater?: string;
+    readonly relocationSealId?: string;
+    readonly acceptedJournalReference?: string;
+    readonly acceptedJournalChecksumCrc32c?: number;
   };
   readonly fallbackActorRef?: {
     readonly nodeRid: string;
@@ -60,6 +72,7 @@ interface ActiveHandoff {
   readonly pending: PendingPacket[];
   nextIndex: number;
   snapshotIndex: number;
+  pendingBytes: number;
 }
 
 interface ForwardingEntry {
@@ -69,15 +82,12 @@ interface ForwardingEntry {
   readonly expiresAt: number;
   readonly deadline: ReturnType<typeof setTimeout>;
   tail: Promise<void>;
+  queuedMessages: number;
+  queuedBytes: number;
 }
 
 export interface ZLinkActorHandoffCoordinatorOptions {
   readonly routedTransport: ZLinkActorRoutedJoinTransport;
-  readonly forwardActorPacket?: (
-    actorId: string,
-    actor: ActorRef,
-    packet: ZLinkActorHandoffPacket
-  ) => Promise<unknown>;
   readonly forwardWindowMs?: number;
   readonly requestTimeoutMs?: number;
   readonly onMarker?: (marker: string, actorId: string, index?: number) => void;
@@ -97,6 +107,7 @@ export class ZLinkActorHandoffCoordinator {
   private readonly forwarding = new Map<string, ForwardingEntry>();
   private readonly staleGenerations = new Map<string, Set<bigint>>();
   private readonly forwardWindowMs: number;
+  private nextOperationId = 0n;
 
   constructor(private readonly options: ZLinkActorHandoffCoordinatorOptions) {
     this.forwardWindowMs = options.forwardWindowMs ?? DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS;
@@ -110,7 +121,8 @@ export class ZLinkActorHandoffCoordinator {
       oldGeneration,
       pending: [],
       nextIndex: 0,
-      snapshotIndex: -1
+      snapshotIndex: -1,
+      pendingBytes: 0
     });
   }
 
@@ -137,8 +149,12 @@ export class ZLinkActorHandoffCoordinator {
         parts,
         returnResponse,
         remoteBoundSessionTarget,
-        fallbackActorRef
+        fallbackActorRef,
+        this.allocateOperationId(actorId),
+        forwardedHopCount(fallbackActorRef)
       );
+      this.admitBounded(handoff.pending.length, handoff.pendingBytes, packet);
+      handoff.pendingBytes += packetBytes(packet);
       this.options.onMarker?.('handoff_backlog', actorId, packet.index);
       if (returnResponse) {
         this.reportRequestFrame(actorId, packet);
@@ -186,7 +202,15 @@ export class ZLinkActorHandoffCoordinator {
       this.options.onMarker?.('stale_fail_fast', actorId);
       return Promise.reject(actorLocationStale(actorId));
     }
-    const packet = encodePacket(0, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef);
+    const packet = encodePacket(
+      0,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef,
+      forwardedOperationId(fallbackActorRef) ?? this.allocateOperationId(actorId),
+      forwardedHopCount(fallbackActorRef)
+    );
     this.options.onMarker?.('straggler_forward', actorId);
     return this.enqueueForward(forwarding, actorId, packet);
   }
@@ -291,7 +315,9 @@ export class ZLinkActorHandoffCoordinator {
       targetActorRef,
       expiresAt,
       deadline: undefined as unknown as ReturnType<typeof setTimeout>,
-      tail: Promise.resolve()
+      tail: Promise.resolve(),
+      queuedMessages: 0,
+      queuedBytes: 0
     };
     entry.deadline = setTimeout(() => this.evict(actorId, entry), this.forwardWindowMs);
     entry.deadline.unref();
@@ -312,6 +338,13 @@ export class ZLinkActorHandoffCoordinator {
     actorId: string,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
+    const bytes = packetBytes(packet);
+    this.admitBounded(entry.queuedMessages, entry.queuedBytes, packet);
+    if (packet.forwardingHopCount >= MAX_FORWARDING_HOPS) {
+      return Promise.reject(actorLocationStale(actorId));
+    }
+    entry.queuedMessages++;
+    entry.queuedBytes += bytes;
     let resolve!: (value: unknown) => void;
     let reject!: (reason: unknown) => void;
     const result = new Promise<unknown>((done, fail) => {
@@ -323,9 +356,22 @@ export class ZLinkActorHandoffCoordinator {
         resolve(await this.forward(actorId, entry.target, entry.targetActorRef, packet));
       } catch (error) {
         reject(error);
+      } finally {
+        entry.queuedMessages--;
+        entry.queuedBytes -= bytes;
       }
     });
     return result;
+  }
+
+  private allocateOperationId(actorId: string): string {
+    return `${actorId}:${++this.nextOperationId}`;
+  }
+
+  private admitBounded(messageCount: number, byteCount: number, packet: ZLinkActorHandoffPacket): void {
+    if (messageCount >= MAX_FORWARDING_MESSAGES || byteCount + packetBytes(packet) > MAX_FORWARDING_BYTES) {
+      throw actorLocationStale('forwarding-bound');
+    }
   }
 
   private async forward(
@@ -334,9 +380,6 @@ export class ZLinkActorHandoffCoordinator {
     targetActorRef: ActorRef,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
-    if (this.options.forwardActorPacket !== undefined) {
-      return await this.options.forwardActorPacket(actorId, targetActorRef, packet);
-    }
     const payload = encodeForwardedRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,
@@ -346,7 +389,11 @@ export class ZLinkActorHandoffCoordinator {
       payload: packet.payload,
       actorNodeRid: String(targetActorRef.nodeRid),
       actorGeneration: targetActorRef.generation.toString(),
-      handoffTargetSpotId: String(target.spotId)
+      handoffTargetSpotId: String(target.spotId),
+      operationId: packet.operationId,
+      forwardingHopCount: packet.forwardingHopCount + 1,
+      authorityOwnerGeneration: target.authorityOwnerGeneration?.toString(),
+      ownerLeaseGeneration: target.ownerLeaseGeneration?.toString()
     });
     if (!packet.returnResponse) {
       await this.options.routedTransport.sendToSpot(target, payload, {
@@ -397,7 +444,16 @@ export function decodeHandoffPacket(packet: ZLinkActorHandoffPacket): {
       : {
           routerChannelId: packet.remoteBoundSessionTarget.routerChannelId,
           targetNodeRid: packet.remoteBoundSessionTarget.targetNodeRid,
-          spotId: packet.remoteBoundSessionTarget.spotId
+          spotId: packet.remoteBoundSessionTarget.spotId,
+          bindingGeneration: optionalBigInt(packet.remoteBoundSessionTarget.bindingGeneration),
+          previousAuthorityOwnerGeneration:
+            optionalBigInt(packet.remoteBoundSessionTarget.previousAuthorityOwnerGeneration),
+          previousOwnerLeaseGeneration:
+            optionalBigInt(packet.remoteBoundSessionTarget.previousOwnerLeaseGeneration),
+          acceptedHighWater: optionalBigInt(packet.remoteBoundSessionTarget.acceptedHighWater),
+          relocationSealId: packet.remoteBoundSessionTarget.relocationSealId,
+          acceptedJournalReference: packet.remoteBoundSessionTarget.acceptedJournalReference,
+          acceptedJournalChecksumCrc32c: packet.remoteBoundSessionTarget.acceptedJournalChecksumCrc32c
         },
     fallbackActorRef: packet.fallbackActorRef === undefined
       ? undefined
@@ -449,19 +505,32 @@ function encodePacket(
   parts: readonly Message[],
   returnResponse: boolean,
   remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-  fallbackActorRef?: ActorRef
+  fallbackActorRef?: ActorRef,
+  operationId = '',
+  forwardingHopCount = 0
 ): ZLinkActorHandoffPacket {
   return {
     index,
     header: Buffer.from(parts[0].data()).toString('base64'),
     payload: Buffer.from(parts[1].data()).toString('base64'),
     returnResponse,
+    operationId,
+    forwardingHopCount,
     remoteBoundSessionTarget: remoteBoundSessionTarget === undefined
       ? undefined
       : {
           routerChannelId: remoteBoundSessionTarget.routerChannelId,
           targetNodeRid: String(remoteBoundSessionTarget.targetNodeRid),
-          spotId: String(remoteBoundSessionTarget.spotId)
+          spotId: String(remoteBoundSessionTarget.spotId),
+          bindingGeneration: remoteBoundSessionTarget.bindingGeneration?.toString(),
+          previousAuthorityOwnerGeneration:
+            remoteBoundSessionTarget.previousAuthorityOwnerGeneration?.toString(),
+          previousOwnerLeaseGeneration:
+            remoteBoundSessionTarget.previousOwnerLeaseGeneration?.toString(),
+          acceptedHighWater: remoteBoundSessionTarget.acceptedHighWater?.toString(),
+          relocationSealId: remoteBoundSessionTarget.relocationSealId,
+          acceptedJournalReference: remoteBoundSessionTarget.acceptedJournalReference,
+          acceptedJournalChecksumCrc32c: remoteBoundSessionTarget.acceptedJournalChecksumCrc32c
         },
     fallbackActorRef: fallbackActorRef === undefined
       ? undefined
@@ -471,6 +540,23 @@ function encodePacket(
           generation: fallbackActorRef.generation.toString()
         }
   };
+}
+
+function optionalBigInt(value: string | undefined): bigint | undefined {
+  return value === undefined ? undefined : BigInt(value);
+}
+
+function packetBytes(packet: ZLinkActorHandoffPacket): number {
+  return Buffer.byteLength(packet.header, 'base64') + Buffer.byteLength(packet.payload, 'base64');
+}
+
+function forwardedOperationId(actorRef: ActorRef | undefined): string | undefined {
+  return (actorRef as ActorRef & { handoffOperationId?: string } | undefined)?.handoffOperationId;
+}
+
+function forwardedHopCount(actorRef: ActorRef | undefined): number {
+  return (actorRef as ActorRef & { handoffForwardingHopCount?: number } | undefined)
+    ?.handoffForwardingHopCount ?? 0;
 }
 
 function matchesGeneration(entry: ForwardingEntry, actorRef: ActorRef | undefined): boolean {

@@ -62,6 +62,7 @@ export class ZLinkBoundActorRelaySender {
       throw new Error('Session actor relay requires an active stream dispatch.');
     }
     throwIfAborted(signal);
+    this.routes.accept(actor.actorId, actor.bindingToken);
     const payloadMessage = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
     try {
       if (this.options.relay !== undefined) {

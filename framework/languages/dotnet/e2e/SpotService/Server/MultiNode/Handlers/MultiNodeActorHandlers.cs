@@ -15,7 +15,7 @@ internal sealed class SpotOnlyJoinHandler(EvidenceStore evidence)
     public ValueTask<SpotOnlyJoinRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         SpotOnlyJoinReq request,
         CancellationToken cancellationToken)
     {

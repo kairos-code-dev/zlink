@@ -76,7 +76,10 @@ class ZLinkLocationLifecycleTest {
                 .get();
             CompletionException error = assertThrows(
                 CompletionException.class,
-                () -> lifecycleA.setActorRef("chat", "actor-1", new ActorRef(NODE_A, "actor-1", 1))
+                () -> lifecycleA.setActorRef(
+                    "chat",
+                    "actor-1",
+                    new ActorRef("actor-1", 1, "mesh", NODE_A))
                     .toCompletableFuture()
                     .join());
             ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();

@@ -71,7 +71,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
             String stableType;
             if (spotKind == 2) {
                 kind = Kind.USER;
-                spotId = spot.rid().toString();
+                spotId = spot.text8();
                 stableType = spot.text8();
                 int userState = spot.u8();
                 state = userState == 0 && operationKind == 1
@@ -86,7 +86,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
                 int instanceState = spot.u8();
                 Reader instance = spot.reader(spot.u16());
                 stableType = instance.text8();
-                spotId = instance.rid().toString();
+                spotId = instance.text8();
                 if (!instance.end()) {
                     return Optional.empty();
                 }
@@ -138,7 +138,8 @@ public final class ZLinkServiceAuthorityPayloadCodec {
         RoutingId nodeRid,
         long nodeGeneration) {
         Writer spot = new Writer();
-        spot.rid(RoutingId.from(spotId));
+        spot.text8(systems.zlink.framework.runtime.internal.spots
+            .ZLinkSpotIdValidator.requireValid(spotId));
         spot.text8(stableType);
         spot.u8(switch (state) {
             case CREATING -> 0;
@@ -188,7 +189,8 @@ public final class ZLinkServiceAuthorityPayloadCodec {
         }
         Writer instance = new Writer();
         instance.text8(stableType);
-        instance.rid(RoutingId.from(spotId));
+        instance.text8(systems.zlink.framework.runtime.internal.spots
+            .ZLinkSpotIdValidator.requireValid(spotId));
         Writer spot = new Writer();
         spot.u8(state == State.CREATING ? 1 : 2);
         spot.u16(instance.size());

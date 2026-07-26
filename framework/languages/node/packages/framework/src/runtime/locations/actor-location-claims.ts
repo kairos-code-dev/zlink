@@ -88,6 +88,7 @@ export class ZLinkActorLocationClaims {
       spotGeneration: 0n,
       membershipEpoch: 0n,
       ownerId: '',
+      leaseGeneration: 0n,
       updatedAt: new Date(0)
     };
     const result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.NewClaim);
@@ -157,6 +158,7 @@ export class ZLinkActorLocationClaims {
       spotGeneration,
       membershipEpoch,
       ownerId: '',
+      leaseGeneration: 0n,
       updatedAt: new Date(0)
     };
     let result = await this.runtime.writeActor(row, ZLinkLocationWriteIntent.Takeover);

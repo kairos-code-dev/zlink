@@ -109,6 +109,12 @@ C++ target contract·caller migration, JVM·Node production host 연결 순서�
 합쳐 `V11-R5C`, scaffold zero, 최종 E2E·sample spec, 활성화와 M7 correctness gate로 진행한다.
 M8 cleanup과 M9 package·smoke는 해당 선행 조건을 건너뛰지 않는다.
 
+`.NET` public boundary의 후속 POSD 대안은
+[`dotnet-public-boundary-posd-redesign.ko.md`](dotnet-public-boundary-posd-redesign.ko.md)를 임시 review
+입력으로 사용한다. 이 문서는 현재 exact interface나 구현 완료 증거가 아니며
+`V11-M6-DN-DESIGN-REVIEW`가 package·namespace 경계와 provider primitive 채택 여부를 결정한 뒤 정식
+spec·internals에 흡수하고 제거한다.
+
 ### 0.1 2026-07-25 handoff snapshot
 
 `framework/doc/framework/common/spec/`을 이후 구현의 정식 contract baseline으로 사용한다.

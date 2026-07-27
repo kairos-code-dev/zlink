@@ -134,11 +134,12 @@ test('runtime topology and supporting exact names are declared by their producti
   const redisDeclarations = readTree(path.join(workspaceRoot, 'packages', 'framework-locations-redis', 'dist'));
   const exactInterfaceCatalog = readTree(interfaceSpecRoot);
   const runtimeTypes = [
-    'ZLinkTerminationResult',
-    'ZLinkTerminationOptions',
+    'ZLinkFrameworkRelocationOptions',
+    'ZLinkFrameworkRelocationResult',
+    'ZLinkFrameworkTerminationResult',
+    'ZLinkFrameworkLifecycleOptions',
     'ZLinkInstanceSpotTypeSnapshot',
-    'ZLinkFrameworkRuntimeSnapshot',
-    'ZLinkFrameworkRuntimeEvent',
+    'ZLinkFrameworkRuntimeStatus',
     'ZLinkFrameworkRuntime',
     'ZLinkMeshPeerSnapshot',
     'ZLinkMeshChannelSnapshot',
@@ -172,13 +173,16 @@ test('runtime topology and supporting exact names are declared by their producti
     assert.match(frameworkDeclarations, new RegExp(`\\btype ${name}\\b`));
   }
   const exactRouteMeshNames = [
-    'ZLinkTerminationIntent',
-    'ZLinkTerminationOutcome',
-    'ZLinkTerminationReason',
-    'ZLinkTerminationResult',
-    'ZLinkTerminationOptions',
-    'ZLinkFrameworkRuntimeSnapshot',
-    'ZLinkFrameworkRuntimeEvent',
+    'ZLinkFrameworkRelocationMode',
+    'ZLinkFrameworkRelocationOutcome',
+    'ZLinkFrameworkRelocationReason',
+    'ZLinkFrameworkRelocationOptions',
+    'ZLinkFrameworkRelocationResult',
+    'ZLinkFrameworkTerminationOutcome',
+    'ZLinkFrameworkTerminationReason',
+    'ZLinkFrameworkTerminationResult',
+    'ZLinkFrameworkLifecycleOptions',
+    'ZLinkFrameworkRuntimeStatus',
     'ZLinkFrameworkRuntime',
     'ZLinkMeshNodeState',
     'ZLinkMeshPeerSnapshot',
@@ -195,8 +199,9 @@ test('runtime topology and supporting exact names are declared by their producti
   }
   const routeMeshRuntime = declarationBody(frameworkDeclarations, 'ZLinkRouteMeshRuntime');
   const frameworkRuntime = declarationBody(frameworkDeclarations, 'ZLinkFrameworkRuntime');
-  assert.match(frameworkRuntime, /retire\(options\?: ZLinkTerminationOptions\): Promise<ZLinkTerminationResult>/);
-  assert.match(frameworkRuntime, /shutdown\(options\?: ZLinkTerminationOptions\): Promise<ZLinkTerminationResult>/);
+  assert.match(frameworkRuntime, /readonly status: ZLinkFrameworkRuntimeStatus/);
+  assert.match(frameworkRuntime, /relocate\(options: ZLinkFrameworkRelocationOptions\): Promise<ZLinkFrameworkRelocationResult>/);
+  assert.match(frameworkRuntime, /shutdown\(options\?: ZLinkFrameworkLifecycleOptions\): Promise<ZLinkFrameworkTerminationResult>/);
   assert.match(routeMeshRuntime, /snapshot\(meshName: string\): ZLinkMeshNodeSnapshot/);
   assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkMeshRuntimeEvent>/);
   assert.match(routeMeshRuntime, /isReady\(meshName: string\): boolean/);
@@ -584,7 +589,7 @@ test('framework error kind values and retriable defaults match the shared table'
   }
 });
 
-test('location contract exposes one provider SPI and aggregate operational queries', () => {
+test('location contract exposes only opaque provider primitives and aggregate operational queries', () => {
   const declarations = readTree(declarationsRoot);
   const locationStore = declarationBody(declarations, 'ZLinkLocationStore');
   const runtimeQuery = declarationBody(declarations, 'ZLinkLocationRuntimeQuery');
@@ -594,25 +599,19 @@ test('location contract exposes one provider SPI and aggregate operational queri
   const clientServerDescriptor = declarationBody(declarations, 'ZLinkClientServerServerDescriptor');
 
   assert.doesNotMatch(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends/);
-  for (const operation of [
-    'updateMeshNode', 'removeMeshNode', 'listMeshNodes',
-    'updateClientServer', 'removeClientServer', 'listClientServers',
-    'updateFanoutPublisher', 'removeFanoutPublisher', 'listFanoutPublishers',
-    'claimOwnerLease', 'readOwnerLease', 'renewOwnerLease', 'releaseOwnerLease',
-    'readAuthority', 'compareExchangeAuthority', 'listAuthorities',
-    'readCreationTerminal', 'reserve', 'commit', 'completeCreation', 'abort',
-    'reserveRelocationCapacity', 'abortRelocationCapacity',
-    'prepareAggregate', 'commitAggregate', 'abortAggregate'
-  ]) assert.match(locationStore, new RegExp(`\\b${operation}\\(`));
-  assert.match(
-    locationStore,
-    /getMeshNodeChangeStamp\?\(meshName: string, signal\?: AbortSignal\): Promise<bigint \| undefined>/
-  );
+  for (const operation of ['read', 'write', 'scan']) {
+    assert.match(locationStore, new RegExp(`\\b${operation}\\(`));
+  }
+  assert.match(locationStore, /\bdispose\?\(\): void \| Promise<void>/);
+  for (const removed of [
+    'updateMeshNode', 'listClientServers', 'readAuthority', 'claimOwnerLease',
+    'reserveRelocationCapacity', 'prepareAggregate', 'removeAllByOwner',
+    'getMeshNodeChangeStamp'
+  ]) assert.doesNotMatch(locationStore, new RegExp(`\\b${removed}\\(`));
   assert.match(
     declarations,
     /kind: 'restore';[\s\S]*?payload: Uint8Array;[\s\S]*?expectedOwner: ZLinkLocationOwnerToken/
   );
-  assert.match(locationStore, /removeAllByOwner\(owner: ZLinkLocationOwnerToken, signal\?: AbortSignal\): Promise<bigint>/);
   assert.match(runtimeQuery, /listMeshNodeDescriptors\(/);
   assert.match(runtimeQuery, /listTopology\(/);
   assert.match(runtimeQuery, /listServiceSummaries\(/);

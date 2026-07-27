@@ -10,13 +10,13 @@ internal static class StF1InFlightHandoffOrderScenario
     public static async Task RunAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-inflight-order-{Guid.NewGuid():N}";
-        var spotRid = $"spot-inflight-order-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid, "delay-joined");
+        var spotId = $"spot-inflight-order-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 101);
         var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
 
-        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F1", spotRid));
-        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F1|{actorId}|joined_wait|{spotRid}"]);
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F1", spotId));
+        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F1|{actorId}|joined_wait|{spotId}"]);
         foreach (var marker in new[] { "P1", "P2", "P3" })
             await context.SendRefAsync(context.NodeA, actorId, oldRef, new HandoffPacket("ST-F1", marker));
         await context.WaitRuntimeEvidenceAsync(context.NodeA,
@@ -27,7 +27,7 @@ internal static class StF1InFlightHandoffOrderScenario
                 .Contains($"ST-F1|{actorId}|handoff_packet|", StringComparison.Ordinal)),
             "ST-F1 packet ran on the source node.");
 
-        await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
+        await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F1 transfer was rejected.");
         await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet", ["P1", "P2", "P3"]);
     }

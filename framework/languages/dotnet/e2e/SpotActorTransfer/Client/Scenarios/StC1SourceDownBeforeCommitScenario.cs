@@ -10,13 +10,13 @@ internal static class StC1SourceDownBeforeCommitScenario
     public static async Task RunAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-source-down-before-commit-{Guid.NewGuid():N}";
-        var spotRid = $"spot-source-down-before-commit-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid);
+        var spotId = $"spot-source-down-before-commit-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId);
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 62);
 
-        var joinTask = context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C1", spotRid));
+        var joinTask = context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C1", spotId));
         await context.WaitEvidenceAsync(context.NodeB, [
-            $"ST-C1|{actorId}|admission|spot={spotRid}"
+            $"ST-C1|{actorId}|admission|spot={spotId}"
         ]);
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|62",
@@ -51,7 +51,7 @@ internal static class StC1SourceDownBeforeCommitScenario
             "ST-C1 target should not transfer in without commit.");
         ZlinkStreamAssert.Ensure(
             !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
-                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+                .Contains($"transfer|{actorId}|joined|{spotId}", StringComparison.Ordinal)),
             "ST-C1 target should not join without commit.");
         ZlinkStreamAssert.Ensure(
             !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)

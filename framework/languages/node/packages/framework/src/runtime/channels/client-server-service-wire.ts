@@ -286,7 +286,8 @@ function runtimeStateToWire(value: ZLinkFrameworkRuntimeState): number {
   switch (value) {
     case ZLinkFrameworkRuntimeState.Preparing: return 0;
     case ZLinkFrameworkRuntimeState.Serving: return 1;
-    case ZLinkFrameworkRuntimeState.Retiring:
+    case ZLinkFrameworkRuntimeState.Relocating:
+    case ZLinkFrameworkRuntimeState.Relocated:
     case ZLinkFrameworkRuntimeState.Draining: return 2;
     case ZLinkFrameworkRuntimeState.Stopped: return 3;
     case ZLinkFrameworkRuntimeState.Error: return 4;

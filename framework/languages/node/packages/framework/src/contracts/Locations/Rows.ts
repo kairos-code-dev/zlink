@@ -11,10 +11,11 @@ export enum ZLinkObjectRole {
 export enum ZLinkFrameworkRuntimeState {
   Preparing = 0,
   Serving = 1,
-  Retiring = 2,
-  Draining = 3,
-  Stopped = 4,
-  Error = 5
+  Relocating = 2,
+  Relocated = 3,
+  Draining = 4,
+  Stopped = 5,
+  Error = 6
 }
 export type ZLinkObjectMaintenancePolicyKind = 'disabled' | 'recreate' | 'snapshot';
 

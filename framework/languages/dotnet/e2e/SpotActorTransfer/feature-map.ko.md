@@ -23,8 +23,8 @@
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
 | ST-F3 | 구현 | 같은 session의 `S1,S2,S3,S4` 순서와 다른 session 진행 격리를 묶음 반복 `logs/20260720-042454-2074240`, `logs/20260720-042515-2075011`, `logs/20260720-042523-2076425`에서 검증했다. |
 | ST-F3A | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
-| ST-F4 | 구현 | forwarding window 안의 `straggler_forward`와 window 뒤 `stale_fail_fast`/`ActorLocationStale`를 같은 세 실행에서 검증했다. |
-| ST-F5 | 구현 | node별 단일 next-hop mapping, 축출, stale ref 거부와 최종 target 전달을 같은 세 실행에서 검증했다. |
+| ST-F4 | 전환 대상 | 이전 시나리오는 public Actor client에 old `ActorRef`를 직접 넘겼다. 현 계약에서는 caller가 global Actor ID만 사용하고 transport fixture가 이전 owner route의 delivery를 지연해야 한다. |
+| ST-F5 | 전환 대상 | 이전 시나리오는 old `ActorRef` 직접 주입에 의존했다. Transport fixture로 stale-source delivery와 node별 next-hop mapping 축출을 검증하도록 전환해야 한다. |
 | ST-F6 | 구현 | handoff 중 request의 원래 caller completion 상관관계와 늦은 reply timeout 격리를 같은 세 실행에서 검증했다. |
 | ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
 | ST-G2 | 미구현 | Actor 10,000개 inventory chunk와 typed capacity aggregate all-or-none E2E가 없다. |

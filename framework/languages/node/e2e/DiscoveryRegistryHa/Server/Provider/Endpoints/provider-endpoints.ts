@@ -1,6 +1,7 @@
-import type {
-  ZLinkChannelRuntimeOptions,
-  ZLinkFrameworkRuntime
+import {
+  ZLinkFrameworkRelocationMode,
+  type ZLinkChannelRuntimeOptions,
+  type ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
 import { ChannelNames, type EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -33,7 +34,7 @@ export function createProviderEndpoints(
       handle: async () => {
         runtimeOptions.clientServerChannel(ChannelNames.profile).configureServerSocket().weight = 0;
         evidence.add(`drain-started|rid=${evidence.rid}|weight=0`);
-        const result = await frameworkRuntime.retire({ deadlineMs: 30_000 });
+        const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs: 30_000 });
         evidence.add(`retire-finished|rid=${evidence.rid}|outcome=${result.outcome}|reason=${result.reason}`);
         stop();
         return result;

@@ -1574,7 +1574,8 @@ function runtimeStateName(
   switch (state) {
     case ZLinkFrameworkRuntimeState.Preparing: return 'preparing';
     case ZLinkFrameworkRuntimeState.Serving: return 'serving';
-    case ZLinkFrameworkRuntimeState.Retiring:
+    case ZLinkFrameworkRuntimeState.Relocating:
+    case ZLinkFrameworkRuntimeState.Relocated:
     case ZLinkFrameworkRuntimeState.Draining: return 'retiring';
     case ZLinkFrameworkRuntimeState.Stopped: return 'stopped';
     default: return 'error';

@@ -78,7 +78,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
     public async Task<CreateSpotRes> CreateSpotAsync(
         ZLinkHttpClient client,
-        string spotRid,
+        string spotId,
         string mode = "accept")
     {
         var (targetNodeRid, coordinator) = ReferenceEquals(client, NodeA)
@@ -90,7 +90,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                     : throw new InvalidOperationException(
                         "Spot target must be one of the scenario Actor nodes.");
         return (await coordinator.Post("/spots")
-                   .Body(new CreateSpotReq(spotRid, mode, targetNodeRid))
+                   .Body(new CreateSpotReq(spotId, mode, targetNodeRid))
                    .Async<CreateSpotRes>()).Body
                ?? throw new InvalidOperationException("Create spot response was null.");
     }
@@ -106,9 +106,9 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Create actor response was null.");
     }
 
-    public async Task<GateReleaseRes> ReleaseJoinedGateAsync(ZLinkHttpClient client, string spotRid)
+    public async Task<GateReleaseRes> ReleaseJoinedGateAsync(ZLinkHttpClient client, string spotId)
     {
-        return (await client.Post($"/joined-gates/{spotRid}/release").Async<GateReleaseRes>()).Body
+        return (await client.Post($"/joined-gates/{spotId}/release").Async<GateReleaseRes>()).Body
                ?? throw new InvalidOperationException("Gate release response was null.");
     }
 
@@ -409,11 +409,11 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         int stateVersion)
     {
         var actorId = $"actor-straggler-{scenario}-{Guid.NewGuid():N}";
-        var spotRid = $"spot-straggler-{scenario}-{Guid.NewGuid():N}";
-        await CreateSpotAsync(NodeB, spotRid);
+        var spotId = $"spot-straggler-{scenario}-{Guid.NewGuid():N}";
+        await CreateSpotAsync(NodeB, spotId);
         await CreateActorAsync(NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, stateVersion);
         var oldRef = await GetActorRefAsync(NodeA, actorId);
-        ZlinkStreamAssert.Ensure((await JoinAsync(NodeA, actorId, new JoinTargetReq(scenario, spotRid))).Accepted,
+        ZlinkStreamAssert.Ensure((await JoinAsync(NodeA, actorId, new JoinTargetReq(scenario, spotId))).Accepted,
             $"{scenario} transfer was rejected.");
         return (actorId, oldRef);
     }
@@ -443,10 +443,10 @@ internal sealed record JoinResponse(
     string ActorId,
     bool Accepted,
     string? SourceNodeRid,
-    string? TargetSpotRid,
+    string? TargetSpotId,
     int? StateVersion,
     string? ErrorKind)
 {
     public JoinTargetRes ToJoinTargetRes() => new(
-        Scenario, ActorId, Accepted, SourceNodeRid ?? "", TargetSpotRid ?? "", StateVersion ?? 0);
+        Scenario, ActorId, Accepted, SourceNodeRid ?? "", TargetSpotId ?? "", StateVersion ?? 0);
 }

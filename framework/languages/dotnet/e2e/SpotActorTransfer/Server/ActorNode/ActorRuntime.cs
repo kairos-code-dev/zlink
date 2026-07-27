@@ -41,7 +41,7 @@ namespace SpotActorTransfer.ActorNode
             };
             var pending = _pendingJoins.Count > 0 ? _pendingJoins.Dequeue() : null;
             var scenario = reply?.Scenario ?? pending?.Scenario ?? "unknown";
-            var targetSpotId = reply?.TargetSpotRid ?? pending?.TargetSpotRid ?? string.Empty;
+            var targetSpotId = reply?.TargetSpotId ?? pending?.TargetSpotId ?? string.Empty;
             var kind = completion switch
             {
                 ZLinkActorJoinCompletion.Accepted => "success_reply",
@@ -303,16 +303,16 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             actor.RecordDeferredJoin(request);
-            actor.Context.JoinSpot(request.TargetSpotRid, request)
+            actor.Context.JoinSpot(request.TargetSpotId, request)
                 .Timeout(TimeSpan.FromSeconds(10))
                 .Defer();
-            evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotRid);
+            evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotId);
             return ValueTask.FromResult(new JoinTargetRes(
                 request.Scenario,
                 actor.ActorId,
                 true,
                 evidence.NodeRid,
-                request.TargetSpotRid,
+                request.TargetSpotId,
                 actor.StateVersion));
         }
     }
@@ -323,7 +323,7 @@ namespace SpotActorTransfer.ActorNode
         public async ValueTask<JoinTargetRes> HandleAsync(
             TransferEntrySpot entrySpot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             JoinTargetReq request,
             CancellationToken cancellationToken)
         {
@@ -341,7 +341,7 @@ namespace SpotActorTransfer.ActorNode
         public async ValueTask<JoinTargetRes> HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             JoinTargetReq request,
             CancellationToken cancellationToken)
         {
@@ -359,7 +359,7 @@ namespace SpotActorTransfer.ActorNode
         public async ValueTask<ProbeRes> HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             ProbeReq request,
             CancellationToken cancellationToken)
         {
@@ -388,7 +388,7 @@ namespace SpotActorTransfer.ActorNode
         public ValueTask HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             HandoffPacket message,
             CancellationToken cancellationToken)
         {
@@ -407,7 +407,7 @@ namespace SpotActorTransfer.ActorNode
         public async ValueTask<BoundPushRes> HandleAsync(
             TransferEntrySpot entrySpot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             BoundPushReq request,
             CancellationToken cancellationToken)
         {
@@ -439,7 +439,7 @@ namespace SpotActorTransfer.ActorNode
         public async ValueTask<BoundPushRes> HandleAsync(
             TransferUserSpot spot,
             TransferActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             BoundPushReq request,
             CancellationToken cancellationToken)
         {

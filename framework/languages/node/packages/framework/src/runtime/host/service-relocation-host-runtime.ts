@@ -277,12 +277,21 @@ export class ZLinkHostServiceRelocationRuntime {
     if (errors.length > 1) throw new AggregateError(errors, 'Relocation runtime stop failed.');
   }
 
-  async relocateMesh(meshName: string, signal?: AbortSignal): Promise<void> {
+  async relocateMesh(
+    meshName: string,
+    targetApplicationVersion?: bigint,
+    signal?: AbortSignal
+  ): Promise<void> {
     const spotManager = this.requireSpotManager();
     const actorManager = this.requireActorManager();
     const localNode = this.requireMeshNode(meshName);
     const localStatus = localNode.status();
-    const target = await this.selectTarget(meshName, String(localStatus.routingId), signal);
+    const target = await this.selectTarget(
+      meshName,
+      String(localStatus.routingId),
+      targetApplicationVersion,
+      signal
+    );
     const groupedActorIds = new Set<string>();
 
     for (const activation of spotManager.relocationActivations(meshName)) {
@@ -1463,11 +1472,16 @@ export class ZLinkHostServiceRelocationRuntime {
   private async selectTarget(
     meshName: string,
     localRid: string,
+    targetApplicationVersion?: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkMeshNodeDescriptor> {
     const descriptors = await this.options.liveDescriptors(meshName, signal);
     const target = descriptors
-      .filter(descriptor => String(descriptor.rid) !== localRid && descriptor.state === 1)
+      .filter(descriptor =>
+        String(descriptor.rid) !== localRid
+        && descriptor.state === 1
+        && (targetApplicationVersion === undefined
+          || descriptor.applicationVersion === targetApplicationVersion))
       .sort((left, right) => String(left.rid).localeCompare(String(right.rid))).at(0);
     if (target === undefined) throw new Error(`RouteMesh '${meshName}' has no relocation target.`);
     return target;

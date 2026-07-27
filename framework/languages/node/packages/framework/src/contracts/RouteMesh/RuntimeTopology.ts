@@ -1,18 +1,17 @@
 import type { RoutingId } from '../Common';
 import type { ZLinkFrameworkRuntimeState } from '../Locations';
 
-export enum ZLinkTerminationIntent {
-  Retire = 0,
-  Shutdown = 1
+export enum ZLinkFrameworkRelocationOutcome {
+  Relocated = 0,
+  Blocked = 1
 }
 
-export enum ZLinkTerminationOutcome {
-  Stopped = 0,
-  Blocked = 1,
-  ForceStopped = 2
+export enum ZLinkFrameworkRelocationMode {
+  PlannedMaintenance = 0,
+  RollingUpdate = 1
 }
 
-export enum ZLinkTerminationReason {
+export enum ZLinkFrameworkRelocationReason {
   None = 0,
   TargetUnavailable = 1,
   StoreUnavailable = 2,
@@ -20,18 +19,43 @@ export enum ZLinkTerminationReason {
   StateIncompatible = 4,
   DeadlineExceeded = 5,
   RelocationFailed = 6,
-  TeardownFailed = 7,
-  RuntimeNotReady = 8,
-  ManualTopologyUnsupported = 9
+  RuntimeNotReady = 7,
+  ManualTopologyUnsupported = 8,
+  ShutdownRequested = 9,
+  OperationInProgress = 10
 }
 
-export interface ZLinkTerminationResult {
-  readonly effectiveIntent: ZLinkTerminationIntent;
-  readonly outcome: ZLinkTerminationOutcome;
-  readonly reason: ZLinkTerminationReason;
+export interface ZLinkFrameworkRelocationOptions {
+  readonly mode: ZLinkFrameworkRelocationMode;
+  readonly targetApplicationVersion?: bigint;
+  readonly deadlineMs?: number;
+  readonly signal?: AbortSignal;
 }
 
-export interface ZLinkTerminationOptions {
+export interface ZLinkFrameworkRelocationResult {
+  readonly mode: ZLinkFrameworkRelocationMode;
+  readonly effectiveTargetApplicationVersion: bigint;
+  readonly outcome: ZLinkFrameworkRelocationOutcome;
+  readonly reason: ZLinkFrameworkRelocationReason;
+}
+
+export enum ZLinkFrameworkTerminationOutcome {
+  Stopped = 0,
+  ForceStopped = 1
+}
+
+export enum ZLinkFrameworkTerminationReason {
+  None = 0,
+  DeadlineExceeded = 1,
+  TeardownFailed = 2
+}
+
+export interface ZLinkFrameworkTerminationResult {
+  readonly outcome: ZLinkFrameworkTerminationOutcome;
+  readonly reason: ZLinkFrameworkTerminationReason;
+}
+
+export interface ZLinkFrameworkLifecycleOptions {
   readonly deadlineMs?: number;
   readonly signal?: AbortSignal;
 }
@@ -46,37 +70,22 @@ export interface ZLinkInstanceSpotTypeSnapshot {
   readonly lastActivationOutcome?: string;
 }
 
-export interface ZLinkFrameworkRuntimeSnapshot {
+export interface ZLinkFrameworkRuntimeStatus {
   readonly state: ZLinkFrameworkRuntimeState;
-  readonly effectiveIntent?: ZLinkTerminationIntent;
+  readonly isReady: boolean;
+  readonly acceptingWork: boolean;
   readonly deadline?: Date;
-  readonly workSealed: boolean;
-  readonly blockerReason?: ZLinkTerminationReason;
-  readonly pendingRequestCount: bigint;
-  readonly pendingRelocationCount: bigint;
-  readonly pendingStreamBarrierCount: bigint;
-  readonly terminalResult?: ZLinkTerminationResult;
+  readonly relocationResult?: ZLinkFrameworkRelocationResult;
+  readonly terminationResult?: ZLinkFrameworkTerminationResult;
   readonly sequence: bigint;
   readonly observedAt: Date;
 }
 
-export interface ZLinkFrameworkRuntimeEvent {
-  readonly identifier: 'zlink.runtime.host.termination_changed';
-  readonly sequence: bigint;
-  readonly timestamp: Date;
-  readonly state: ZLinkFrameworkRuntimeState;
-  readonly effectiveIntent?: ZLinkTerminationIntent;
-  readonly outcome?: ZLinkTerminationOutcome;
-  readonly reason?: ZLinkTerminationReason;
-}
-
 export interface ZLinkFrameworkRuntime {
-  readonly state: ZLinkFrameworkRuntimeState;
-  readonly isReady: boolean;
-  snapshot(): ZLinkFrameworkRuntimeSnapshot;
-  observe(capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeEvent>;
-  retire(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult>;
-  shutdown(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult>;
+  readonly status: ZLinkFrameworkRuntimeStatus;
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus>;
+  relocate(options: ZLinkFrameworkRelocationOptions): Promise<ZLinkFrameworkRelocationResult>;
+  shutdown(options?: ZLinkFrameworkLifecycleOptions): Promise<ZLinkFrameworkTerminationResult>;
 }
 
 export type ZLinkClientServerRole = 'client' | 'server' | 'clientAndServer';

@@ -3,9 +3,10 @@ import path from 'node:path';
 import { Injectable, Module, Scope } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
+  ZLinkFrameworkRelocationMode,
   ZLinkMessageFlowLogMode,
   ZLinkPacket,
-  type ZLinkTerminationResult,
+  type ZLinkFrameworkRelocationResult,
   type ZLinkFrameworkRuntime,
   type ZLinkRouteMeshRuntime,
   type ZLinkFanoutClient,
@@ -189,7 +190,7 @@ async function main(): Promise<void> {
   fanoutClient = fanout;
   const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
-  let drainResult: ZLinkTerminationResult | undefined;
+  let drainResult: ZLinkFrameworkRelocationResult | undefined;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -215,7 +216,7 @@ async function main(): Promise<void> {
     {
       method: 'POST', path: '/drain', handle: (body) => {
         const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
-        void frameworkRuntime.retire({ deadlineMs })
+        void frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs })
           .then((result) => { drainResult = result; });
         return { started: true };
       }

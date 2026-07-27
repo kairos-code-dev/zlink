@@ -20,16 +20,17 @@ internal sealed class BindActorSessionHandler(
         _ = dispatch;
         var resolved = request.NodeRid is not null && request.Generation is not null
             ? new ActorRef(
-                RoutingId.From(request.NodeRid),
                 request.ActorId,
-                checked((ulong)request.Generation.Value))
+                checked((ulong)request.Generation.Value),
+                SpotActorTransferNames.Mesh,
+                RoutingId.From(request.NodeRid))
             : await actors.FindAsync(request.ActorId, cancellationToken)
               ?? throw new InvalidOperationException(
                   $"Actor '{request.ActorId}' was not found.");
         _ = await context.Actors.BindOrGetAsync(resolved, cancellationToken).ConfigureAwait(false);
         evidence.Add(request.Scenario, request.ActorId, "session_bound", context.SessionId);
         await context.Client.Reply(new BindActorSessionRes(
-                request.Scenario, resolved.ActorId, resolved.NodeRid.ToString(), checked((long)resolved.Generation)))
+                request.Scenario, resolved.ActorId, resolved.NodeRid.ToString(), checked((long)resolved.ObjectGeneration)))
             .Async(cancellationToken);
     }
 }
@@ -50,7 +51,7 @@ internal sealed class SessionBindingsHandler
                     .Select(actor => new SessionBindingSnapshot(
                         actor.ActorId,
                         actor.Ref.NodeRid.ToString(),
-                        checked((long)actor.Ref.Generation)))
+                        checked((long)actor.Ref.ObjectGeneration)))
                     .OrderBy(static actor => actor.ActorId, StringComparer.Ordinal)
                     .ToArray()))
             .Async(cancellationToken);

@@ -38,10 +38,9 @@ internal static class SessionGatewayHostFactory
                         peer[(separator + 1)..]);
             }
             mesh27.Objects().Client();
-            mesh27.ChannelName(SpotActorTransferNames.Mesh);
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)
-                .EnableActorDispatch(SpotActorTransferNames.Mesh)
+                .EnableActorDispatch()
                 .AddSession<TransferSession>();
         });
         var app = builder.Build();

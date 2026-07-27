@@ -82,7 +82,7 @@ test('Fanout runtime projects publisher readiness and emits the exact event unio
   await events.return();
 });
 
-test('Framework runtime termination surface is concrete and Nest exports topology tokens', async () => {
+test('Framework runtime shutdown surface emits status and Nest exports topology tokens', async () => {
   const host = new internal.ZLinkFrameworkRuntimeHost({
     registration: internal.createFrameworkRegistration()
   });
@@ -90,14 +90,17 @@ test('Framework runtime termination surface is concrete and Nest exports topolog
   const result = await host.shutdown({ deadlineMs: 1000 });
   const event = await events.next();
 
-  assert.equal(result.outcome, framework.ZLinkTerminationOutcome.Stopped);
-  assert.equal(host.snapshot().terminalResult.outcome, framework.ZLinkTerminationOutcome.Stopped);
-  assert.equal(event.value.identifier, 'zlink.runtime.host.termination_changed');
+  assert.equal(result.outcome, framework.ZLinkFrameworkTerminationOutcome.Stopped);
+  assert.equal(
+    host.status.terminationResult.outcome,
+    framework.ZLinkFrameworkTerminationOutcome.Stopped
+  );
+  assert.equal(event.value.state, framework.ZLinkFrameworkRuntimeState.Draining);
   assert.equal(typeof nestjs.ZLINK_CLIENT_SERVER_RUNTIME, 'symbol');
   assert.equal(typeof nestjs.ZLINK_FANOUT_RUNTIME, 'symbol');
 });
 
-test('Retire rejects local manual topology before changing host state and Shutdown remains available', async () => {
+test('Relocate rejects local manual topology before changing host state and Shutdown remains available', async () => {
   const registration = internal.createFrameworkRegistration({
     channels: {
       orders: { client: { manualConnections: ['tcp://127.0.0.1:19001'] } }
@@ -108,20 +111,23 @@ test('Retire rejects local manual topology before changing host state and Shutdo
   // The focused contract test enters the observable Serving state without
   // starting transport resources; the blocker must run before touching them.
   host.runtimeState = framework.ZLinkFrameworkRuntimeState.Serving;
-  assert.deepEqual(await host.retire(), {
-    effectiveIntent: framework.ZLinkTerminationIntent.Retire,
-    outcome: framework.ZLinkTerminationOutcome.Blocked,
-    reason: framework.ZLinkTerminationReason.ManualTopologyUnsupported
+  assert.deepEqual(await host.relocate({
+    mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance
+  }), {
+    mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance,
+    effectiveTargetApplicationVersion: 0n,
+    outcome: framework.ZLinkFrameworkRelocationOutcome.Blocked,
+    reason: framework.ZLinkFrameworkRelocationReason.ManualTopologyUnsupported
   });
-  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Serving);
-  assert.equal(host.snapshot().workSealed, false);
-  assert.equal(host.snapshot().terminalResult, undefined);
+  assert.equal(host.status.state, framework.ZLinkFrameworkRuntimeState.Serving);
+  assert.equal(host.status.acceptingWork, true);
+  assert.equal(host.status.relocationResult, undefined);
 
   const shutdown = await host.shutdown({ deadlineMs: 1000 });
-  assert.equal(shutdown.outcome, framework.ZLinkTerminationOutcome.Stopped);
+  assert.equal(shutdown.outcome, framework.ZLinkFrameworkTerminationOutcome.Stopped);
 });
 
-test('Retire keeps Serving when descriptor publication is reversibly rolled back', async () => {
+test('Relocate keeps Serving when descriptor publication is reversibly rolled back', async () => {
   const host = new internal.ZLinkFrameworkRuntimeHost({
     registration: internal.createFrameworkRegistration()
   });
@@ -131,16 +137,19 @@ test('Retire keeps Serving when descriptor publication is reversibly rolled back
     async prepareHostRetire() { return 'store_unavailable'; }
   };
 
-  assert.deepEqual(await host.retire(), {
-    effectiveIntent: framework.ZLinkTerminationIntent.Retire,
-    outcome: framework.ZLinkTerminationOutcome.Blocked,
-    reason: framework.ZLinkTerminationReason.StoreUnavailable
+  assert.deepEqual(await host.relocate({
+    mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance
+  }), {
+    mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance,
+    effectiveTargetApplicationVersion: 0n,
+    outcome: framework.ZLinkFrameworkRelocationOutcome.Blocked,
+    reason: framework.ZLinkFrameworkRelocationReason.StoreUnavailable
   });
-  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Serving);
-  assert.equal(host.snapshot().terminalResult, undefined);
+  assert.equal(host.status.state, framework.ZLinkFrameworkRuntimeState.Serving);
+  assert.equal(host.status.relocationResult, undefined);
 });
 
-test('Retire force-stops when descriptor rollback cannot be confirmed', async () => {
+test('Relocate reports an irreversible descriptor rollback failure without claiming success', async () => {
   const host = new internal.ZLinkFrameworkRuntimeHost({
     registration: internal.createFrameworkRegistration()
   });
@@ -151,13 +160,15 @@ test('Retire force-stops when descriptor rollback cannot be confirmed', async ()
   };
   host.stop = async () => {};
 
-  const result = await host.retire();
-  assert.equal(result.outcome, framework.ZLinkTerminationOutcome.ForceStopped);
-  assert.equal(result.reason, framework.ZLinkTerminationReason.TeardownFailed);
-  assert.equal(host.state, framework.ZLinkFrameworkRuntimeState.Stopped);
+  const result = await host.relocate({
+    mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance
+  });
+  assert.equal(result.outcome, framework.ZLinkFrameworkRelocationOutcome.Blocked);
+  assert.equal(result.reason, framework.ZLinkFrameworkRelocationReason.RelocationFailed);
+  assert.equal(host.status.state, framework.ZLinkFrameworkRuntimeState.Error);
 });
 
-test('Retire manual topology classification covers every local service registration', () => {
+test('Relocation manual topology classification covers every local service registration', () => {
   const manualRegistrations = [
     { routeChannels: [{ routerChannelId: 'route-a', bind: 'tcp://127.0.0.1:19101', manualConnections: ['tcp://127.0.0.1:19001'] }] },
     { spotNodes: { play: { router: { bind: 'tcp://127.0.0.1:19102', manualConnections: ['tcp://127.0.0.1:19002'] } } } },
@@ -180,4 +191,53 @@ test('Retire manual topology classification covers every local service registrat
     channels: { events: { publisher: { bind: 'tcp://127.0.0.1:19007' } } }
   });
   assert.equal(internal.hasUnsupportedManualTopology(automaticPublisher), false);
+});
+
+test('Relocation requires explicit valid mode and rolling update target version', async () => {
+  const host = new internal.ZLinkFrameworkRuntimeHost({
+    registration: internal.createFrameworkRegistration({ applicationVersion: 3n })
+  });
+  assert.throws(
+    () => host.relocate({}),
+    /mode is required/
+  );
+  assert.throws(
+    () => host.relocate({
+      mode: framework.ZLinkFrameworkRelocationMode.PlannedMaintenance,
+      targetApplicationVersion: 4n
+    }),
+    /cannot define targetApplicationVersion/
+  );
+  assert.throws(
+    () => host.relocate({
+      mode: framework.ZLinkFrameworkRelocationMode.RollingUpdate,
+      targetApplicationVersion: 3n
+    }),
+    /greater than the source version/
+  );
+});
+
+test('Successful relocation leaves infrastructure started until explicit shutdown', async () => {
+  const host = new internal.ZLinkFrameworkRuntimeHost({
+    registration: internal.createFrameworkRegistration({ applicationVersion: 3n })
+  });
+  host.executionState = {};
+  host.runtimeState = framework.ZLinkFrameworkRuntimeState.Serving;
+  host.routeMeshCoordinator = {
+    async prepareHostRetire() { return 'prepared'; },
+    async drainHost() { return { kind: 'drained' }; }
+  };
+
+  const result = await host.relocate({
+    mode: framework.ZLinkFrameworkRelocationMode.RollingUpdate,
+    targetApplicationVersion: 4n
+  });
+  assert.deepEqual(result, {
+    mode: framework.ZLinkFrameworkRelocationMode.RollingUpdate,
+    effectiveTargetApplicationVersion: 4n,
+    outcome: framework.ZLinkFrameworkRelocationOutcome.Relocated,
+    reason: framework.ZLinkFrameworkRelocationReason.None
+  });
+  assert.equal(host.status.state, framework.ZLinkFrameworkRuntimeState.Relocated);
+  assert.equal(host.isStarted, true);
 });

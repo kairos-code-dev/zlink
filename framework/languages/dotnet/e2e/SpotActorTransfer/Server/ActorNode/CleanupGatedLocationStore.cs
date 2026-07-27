@@ -82,8 +82,7 @@ internal sealed class ActorCleanupGateStore(EvidenceStore evidence)
 /// </summary>
 internal sealed class CleanupGatedLocationStore(
     IZLinkLocationStore inner,
-    ActorCleanupGateStore cleanupGates,
-    EvidenceStore evidence) :
+    ActorCleanupGateStore cleanupGates) :
     IZLinkLocationStore,
     IAsyncDisposable
 {
@@ -104,6 +103,42 @@ internal sealed class CleanupGatedLocationStore(
         ZLinkPageRequest page,
         CancellationToken cancellationToken = default) =>
         inner.ListMeshNodesAsync(meshName, page, cancellationToken);
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
+        ZLinkClientServerServerDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        inner.UpdateClientServerAsync(descriptor, intent, cancellationToken);
+
+    public ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
+        ZLinkClientServerServerDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        inner.RemoveClientServerAsync(key, owner, cancellationToken);
+
+    public ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
+        string channelName,
+        ZLinkPageRequest page,
+        CancellationToken cancellationToken = default) =>
+        inner.ListClientServersAsync(channelName, page, cancellationToken);
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateFanoutPublisherAsync(
+        ZLinkFanoutPublisherDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default) =>
+        inner.UpdateFanoutPublisherAsync(descriptor, intent, cancellationToken);
+
+    public ValueTask<ZLinkLocationWriteStatus> RemoveFanoutPublisherAsync(
+        ZLinkFanoutPublisherDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default) =>
+        inner.RemoveFanoutPublisherAsync(key, owner, cancellationToken);
+
+    public ValueTask<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> ListFanoutPublishersAsync(
+        string channelName,
+        ZLinkPageRequest page,
+        CancellationToken cancellationToken = default) =>
+        inner.ListFanoutPublishersAsync(channelName, page, cancellationToken);
 
     public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
         string ownerId,

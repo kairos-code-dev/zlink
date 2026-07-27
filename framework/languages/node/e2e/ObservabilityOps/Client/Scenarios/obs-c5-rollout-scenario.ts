@@ -12,7 +12,7 @@ import {
 } from '../Support/scenario-support.js';
 import { retireCompleted, retireForceStopped, startDrain, waitFor, waitForDrain } from '../Support/observability-support.js';
 import type { ActorRefSnapshotRes } from '../../Shared/messages.js';
-import { ZLinkTerminationReason } from '@zlink-systems/framework';
+import { ZLinkFrameworkRelocationReason } from '@zlink-systems/framework';
 
 export async function runObsC5(): Promise<void> {
   const actorId = unique('obs-c5-actor');
@@ -41,7 +41,7 @@ export async function runObsC5(): Promise<void> {
   const source = await waitForDrain(nodeA, (status) => status.result !== undefined,
     'OBS-C5 zero-target source did not terminate');
   require(retireForceStopped(source)
-    && source.result?.reason === ZLinkTerminationReason.DeadlineExceeded,
+    && source.result?.reason === ZLinkFrameworkRelocationReason.DeadlineExceeded,
     `OBS-C5 zero-target result was ${JSON.stringify(source.result)}.`);
   await post(nodeB, `/spots/${holdRid}/close`, {});
 }

@@ -4,6 +4,7 @@ import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 import type { ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
 import {
+  ZLinkFrameworkRelocationMode,
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   type ZLinkFrameworkRuntime,
@@ -24,7 +25,7 @@ export function createServiceEndpoints(
       method: 'POST',
       path: '/admin/drain',
       handle: async () => {
-        const result = await frameworkRuntime.retire();
+        const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance });
         evidence.add(`admin|rid=${evidence.rid}|action=retire|outcome=${result.outcome}|reason=${result.reason}`);
         return result;
       }

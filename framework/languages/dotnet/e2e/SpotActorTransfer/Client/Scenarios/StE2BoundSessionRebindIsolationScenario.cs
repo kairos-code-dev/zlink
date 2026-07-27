@@ -11,8 +11,8 @@ internal static class StE2BoundSessionRebindIsolationScenario
     public static async Task RunAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-bound-session-rebind-{Guid.NewGuid():N}";
-        var spotRid = $"spot-bound-session-rebind-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid);
+        var spotId = $"spot-bound-session-rebind-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId);
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 92);
         var sourceRef = await context.GetActorRefAsync(context.NodeA, actorId);
         await using var oldSession = await context.ConnectAndBindAsync(context.Options.NodeAStreamEndpoint, "ST-E2", sourceRef);
@@ -23,7 +23,7 @@ internal static class StE2BoundSessionRebindIsolationScenario
         await context.BoundPushAsync(context.NodeA, actorId, new BoundPushReq("ST-E2", "before-rebind-transfer"));
         await beforeTransferPush;
 
-        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E2", spotRid));
+        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E2", spotId));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-E2 join was rejected.");
         var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
         await using var newSession = await context.ConnectAndBindAsync(context.Options.NodeBStreamEndpoint, "ST-E2", targetRef);

@@ -30,10 +30,11 @@ import type {
   ZLinkClientServerRuntime,
   ZLinkFanoutRuntime,
   ZLinkFrameworkRuntime,
-  ZLinkFrameworkRuntimeEvent,
-  ZLinkFrameworkRuntimeSnapshot,
-  ZLinkTerminationOptions,
-  ZLinkTerminationResult,
+  ZLinkFrameworkLifecycleOptions,
+  ZLinkFrameworkRelocationOptions,
+  ZLinkFrameworkRelocationResult,
+  ZLinkFrameworkRuntimeStatus,
+  ZLinkFrameworkTerminationResult,
   ZLinkRouteMeshRuntime
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
@@ -42,10 +43,12 @@ import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkFrameworkRelocationMode,
+  ZLinkFrameworkRelocationOutcome,
+  ZLinkFrameworkRelocationReason,
   ZLinkFrameworkRuntimeState,
-  ZLinkTerminationIntent,
-  ZLinkTerminationOutcome,
-  ZLinkTerminationReason,
+  ZLinkFrameworkTerminationOutcome,
+  ZLinkFrameworkTerminationReason,
   ZLinkMessageFlowLogMode,
   ZLinkSpotCreateState
 } from '../../contracts';
@@ -177,10 +180,12 @@ export class ZLinkFrameworkRuntimeHost implements
   private runtimeState = ZLinkFrameworkRuntimeState.Preparing;
   private runtimeSequence = 0n;
   private runtimeDeadline?: Date;
-  private runtimeIntent?: ZLinkTerminationIntent;
-  private runtimeTerminalResult?: ZLinkTerminationResult;
-  private terminationOperation?: Promise<ZLinkTerminationResult>;
-  private readonly runtimeObservers = new Set<RuntimeEventQueue<ZLinkFrameworkRuntimeEvent>>();
+  private runtimeRelocationResult?: ZLinkFrameworkRelocationResult;
+  private runtimeTerminationResult?: ZLinkFrameworkTerminationResult;
+  private relocationOperation?: Promise<ZLinkFrameworkRelocationResult>;
+  private shutdownOperation?: Promise<ZLinkFrameworkTerminationResult>;
+  private relocationTargetApplicationVersion?: bigint;
+  private readonly runtimeObservers = new Set<RuntimeEventQueue<ZLinkFrameworkRuntimeStatus>>();
   private channelRuntime?: ZLinkChannelRuntimeManager;
   private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
@@ -463,163 +468,203 @@ export class ZLinkFrameworkRuntimeHost implements
     return this.executionState !== undefined;
   }
 
-  get state(): ZLinkFrameworkRuntimeState {
-    return this.runtimeState;
-  }
-
-  get isReady(): boolean {
-    return this.runtimeState === ZLinkFrameworkRuntimeState.Serving;
-  }
-
-  snapshot(): ZLinkFrameworkRuntimeSnapshot {
+  get status(): ZLinkFrameworkRuntimeStatus {
     return {
       state: this.runtimeState,
-      effectiveIntent: this.runtimeIntent,
+      isReady: this.runtimeState === ZLinkFrameworkRuntimeState.Serving,
+      acceptingWork: this.runtimeState === ZLinkFrameworkRuntimeState.Serving,
       deadline: this.runtimeDeadline,
-      workSealed: this.runtimeState === ZLinkFrameworkRuntimeState.Retiring
-        || this.runtimeState === ZLinkFrameworkRuntimeState.Draining
-        || this.runtimeState === ZLinkFrameworkRuntimeState.Stopped,
-      pendingRequestCount: 0n,
-      pendingRelocationCount: 0n,
-      pendingStreamBarrierCount: 0n,
-      terminalResult: this.runtimeTerminalResult,
+      relocationResult: this.runtimeRelocationResult,
+      terminationResult: this.runtimeTerminationResult,
       sequence: this.runtimeSequence,
       observedAt: new Date()
     };
   }
 
-  observe(capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeEvent> {
-    const queue = new RuntimeEventQueue<ZLinkFrameworkRuntimeEvent>(capacity, signal);
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus> {
+    const queue = new RuntimeEventQueue<ZLinkFrameworkRuntimeStatus>(64, signal);
     this.runtimeObservers.add(queue);
     queue.onClose(() => this.runtimeObservers.delete(queue));
     return queue;
   }
 
-  retire(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult> {
-    return this.terminate(ZLinkTerminationIntent.Retire, options);
+  relocate(options: ZLinkFrameworkRelocationOptions): Promise<ZLinkFrameworkRelocationResult> {
+    const effectiveTargetApplicationVersion = validateRelocationOptions(
+      options,
+      this.options.registration.applicationVersion
+    );
+    const deadlineMs = options.deadlineMs ?? 30_000;
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      return Promise.reject(new RangeError('Relocation deadlineMs must be greater than zero.'));
+    }
+    if (this.runtimeRelocationResult?.outcome === ZLinkFrameworkRelocationOutcome.Relocated) {
+      return Promise.resolve(this.runtimeRelocationResult);
+    }
+    if (this.shutdownOperation !== undefined) {
+      return Promise.resolve({
+        mode: options.mode,
+        effectiveTargetApplicationVersion,
+        outcome: ZLinkFrameworkRelocationOutcome.Blocked,
+        reason: ZLinkFrameworkRelocationReason.ShutdownRequested
+      });
+    }
+    if (this.runtimeState !== ZLinkFrameworkRuntimeState.Serving) {
+      return Promise.resolve({
+        mode: options.mode,
+        effectiveTargetApplicationVersion,
+        outcome: ZLinkFrameworkRelocationOutcome.Blocked,
+        reason: this.runtimeState === ZLinkFrameworkRuntimeState.Relocating
+          ? ZLinkFrameworkRelocationReason.OperationInProgress
+          : ZLinkFrameworkRelocationReason.RuntimeNotReady
+      });
+    }
+    if (hasUnsupportedManualTopology(this.options.registration)) {
+      return Promise.resolve({
+        mode: options.mode,
+        effectiveTargetApplicationVersion,
+        outcome: ZLinkFrameworkRelocationOutcome.Blocked,
+        reason: ZLinkFrameworkRelocationReason.ManualTopologyUnsupported
+      });
+    }
+    this.runtimeDeadline = new Date(Date.now() + deadlineMs);
+    this.relocationTargetApplicationVersion = effectiveTargetApplicationVersion;
+    this.relocationOperation ??= this.runRelocation(
+      options.mode,
+      effectiveTargetApplicationVersion,
+      deadlineMs
+    );
+    return waitForRuntimeOperation(this.relocationOperation, options.signal);
   }
 
-  shutdown(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult> {
-    return this.terminate(ZLinkTerminationIntent.Shutdown, options);
-  }
-
-  private terminate(
-    intent: ZLinkTerminationIntent,
-    options: ZLinkTerminationOptions | undefined
-  ): Promise<ZLinkTerminationResult> {
+  shutdown(options?: ZLinkFrameworkLifecycleOptions): Promise<ZLinkFrameworkTerminationResult> {
     const deadlineMs = options?.deadlineMs ?? 30_000;
     if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
-      return Promise.reject(new RangeError('Termination deadlineMs must be greater than zero.'));
+      return Promise.reject(new RangeError('Shutdown deadlineMs must be greater than zero.'));
     }
-    if (intent === ZLinkTerminationIntent.Retire
-      && this.runtimeState === ZLinkFrameworkRuntimeState.Serving
-      && hasUnsupportedManualTopology(this.options.registration)) {
-      return Promise.resolve({
-        effectiveIntent: intent,
-        outcome: ZLinkTerminationOutcome.Blocked,
-        reason: ZLinkTerminationReason.ManualTopologyUnsupported
-      });
-    }
-    this.runtimeIntent ??= intent;
-    this.runtimeDeadline ??= new Date(Date.now() + deadlineMs);
-    this.terminationOperation ??= this.runTermination(this.runtimeIntent, deadlineMs);
-    return waitForRuntimeTermination(this.terminationOperation, options?.signal);
+    this.runtimeDeadline = new Date(Date.now() + deadlineMs);
+    this.shutdownOperation ??= this.runShutdown(deadlineMs);
+    return waitForRuntimeOperation(this.shutdownOperation, options?.signal);
   }
 
-  private async runTermination(
-    intent: ZLinkTerminationIntent,
+  private async runRelocation(
+    mode: ZLinkFrameworkRelocationMode,
+    effectiveTargetApplicationVersion: bigint,
     deadlineMs: number
-  ): Promise<ZLinkTerminationResult> {
+  ): Promise<ZLinkFrameworkRelocationResult> {
     if (!this.isStarted) {
-      return this.completeTermination({
-        effectiveIntent: intent,
-        outcome: ZLinkTerminationOutcome.Stopped,
-        reason: ZLinkTerminationReason.None
-      });
+      return this.completeRelocation(blockedRelocation(
+        mode,
+        effectiveTargetApplicationVersion,
+        ZLinkFrameworkRelocationReason.RuntimeNotReady
+      ));
     }
     try {
-      if (intent === ZLinkTerminationIntent.Retire) {
-        const blocker = await this.preflightAutomaticPeerReadiness(deadlineMs);
-        if (blocker !== undefined) {
-          const result = {
-            effectiveIntent: intent,
-            outcome: ZLinkTerminationOutcome.Blocked,
-            reason: blocker
-          };
-          this.runtimeIntent = undefined;
-          this.runtimeDeadline = undefined;
-          this.terminationOperation = undefined;
-          return result;
-        }
-        const descriptorPreparation =
-          await this.routeMeshCoordinator.prepareHostRetire(deadlineMs);
-        if (descriptorPreparation !== 'prepared') {
-          const result = {
-            effectiveIntent: intent,
-            outcome: ZLinkTerminationOutcome.Blocked,
-            reason: descriptorPreparation === 'deadline_exceeded'
-              ? ZLinkTerminationReason.DeadlineExceeded
-              : ZLinkTerminationReason.StoreUnavailable
-          };
-          this.runtimeIntent = undefined;
-          this.runtimeDeadline = undefined;
-          this.terminationOperation = undefined;
-          return result;
-        }
-        this.setRuntimeState(ZLinkFrameworkRuntimeState.Retiring);
-        const drained = await this.routeMeshCoordinator.drainHost(deadlineMs);
-        if (drained.kind === 'forceStopped') {
-          await this.stop().catch(() => undefined);
-          return this.completeTermination({
-            effectiveIntent: intent,
-            outcome: ZLinkTerminationOutcome.ForceStopped,
-            reason: terminationReason(drained.reason)
-          });
-        }
-      } else {
-        this.setRuntimeState(ZLinkFrameworkRuntimeState.Draining);
+      const blocker = await this.preflightAutomaticPeerReadiness(
+        deadlineMs,
+        effectiveTargetApplicationVersion
+      );
+      if (blocker !== undefined) {
+        return this.resetBlockedRelocation(blockedRelocation(
+          mode,
+          effectiveTargetApplicationVersion,
+          blocker
+        ));
       }
+      const descriptorPreparation = await this.routeMeshCoordinator.prepareHostRetire(deadlineMs);
+      if (descriptorPreparation !== 'prepared') {
+        return this.resetBlockedRelocation(blockedRelocation(
+          mode,
+          effectiveTargetApplicationVersion,
+          descriptorPreparation === 'deadline_exceeded'
+            ? ZLinkFrameworkRelocationReason.DeadlineExceeded
+            : ZLinkFrameworkRelocationReason.StoreUnavailable
+        ));
+      }
+      this.setRuntimeState(ZLinkFrameworkRuntimeState.Relocating);
+      const drained = await this.routeMeshCoordinator.drainHost(deadlineMs);
+      if (drained.kind === 'forceStopped') {
+        return this.completeRelocation(blockedRelocation(
+          mode,
+          effectiveTargetApplicationVersion,
+          relocationReason(drained.reason)
+        ));
+      }
+      await this.publishHostRelocated();
+      return this.completeRelocation({
+        mode,
+        effectiveTargetApplicationVersion,
+        outcome: ZLinkFrameworkRelocationOutcome.Relocated,
+        reason: ZLinkFrameworkRelocationReason.None
+      });
+    } catch (error) {
+      return this.completeRelocation(blockedRelocation(
+        mode,
+        effectiveTargetApplicationVersion,
+        error instanceof Error && /deadline/i.test(error.message)
+          ? ZLinkFrameworkRelocationReason.DeadlineExceeded
+          : ZLinkFrameworkRelocationReason.RelocationFailed
+      ));
+    }
+  }
+
+  private async runShutdown(_deadlineMs: number): Promise<ZLinkFrameworkTerminationResult> {
+    try {
+      if (this.relocationOperation !== undefined
+        && this.runtimeState === ZLinkFrameworkRuntimeState.Relocating) {
+        await this.relocationOperation;
+      }
+      this.setRuntimeState(ZLinkFrameworkRuntimeState.Draining);
       await this.stop();
       return this.completeTermination({
-        effectiveIntent: intent,
-        outcome: ZLinkTerminationOutcome.Stopped,
-        reason: ZLinkTerminationReason.None
+        outcome: ZLinkFrameworkTerminationOutcome.Stopped,
+        reason: ZLinkFrameworkTerminationReason.None
       });
     } catch (error) {
       await this.stop().catch(() => undefined);
       return this.completeTermination({
-        effectiveIntent: intent,
-        outcome: ZLinkTerminationOutcome.ForceStopped,
+        outcome: ZLinkFrameworkTerminationOutcome.ForceStopped,
         reason: error instanceof Error && /deadline/i.test(error.message)
-          ? ZLinkTerminationReason.DeadlineExceeded
-          : ZLinkTerminationReason.TeardownFailed
+          ? ZLinkFrameworkTerminationReason.DeadlineExceeded
+          : ZLinkFrameworkTerminationReason.TeardownFailed
       });
     }
   }
 
-  private completeTermination(result: ZLinkTerminationResult): ZLinkTerminationResult {
-    this.runtimeTerminalResult = result;
-    this.setRuntimeState(ZLinkFrameworkRuntimeState.Stopped, result);
+  private resetBlockedRelocation(
+    result: ZLinkFrameworkRelocationResult
+  ): ZLinkFrameworkRelocationResult {
+    this.runtimeDeadline = undefined;
+    this.relocationTargetApplicationVersion = undefined;
+    this.relocationOperation = undefined;
     return result;
   }
 
-  private setRuntimeState(
-    state: ZLinkFrameworkRuntimeState,
-    result?: ZLinkTerminationResult
-  ): void {
-    if (this.runtimeState === state && result === undefined) return;
+  private completeRelocation(
+    result: ZLinkFrameworkRelocationResult
+  ): ZLinkFrameworkRelocationResult {
+    this.runtimeRelocationResult = result;
+    this.runtimeDeadline = undefined;
+    this.setRuntimeState(result.outcome === ZLinkFrameworkRelocationOutcome.Relocated
+      ? ZLinkFrameworkRuntimeState.Relocated
+      : ZLinkFrameworkRuntimeState.Error);
+    return result;
+  }
+
+  private completeTermination(
+    result: ZLinkFrameworkTerminationResult
+  ): ZLinkFrameworkTerminationResult {
+    this.runtimeTerminationResult = result;
+    this.runtimeDeadline = undefined;
+    this.setRuntimeState(ZLinkFrameworkRuntimeState.Stopped);
+    return result;
+  }
+
+  private setRuntimeState(state: ZLinkFrameworkRuntimeState): void {
+    if (this.runtimeState === state) return;
     this.runtimeState = state;
     this.runtimeSequence += 1n;
-    const event: ZLinkFrameworkRuntimeEvent = {
-      identifier: 'zlink.runtime.host.termination_changed',
-      sequence: this.runtimeSequence,
-      timestamp: new Date(),
-      state,
-      effectiveIntent: this.runtimeIntent,
-      outcome: result?.outcome,
-      reason: result?.reason
-    };
-    for (const observer of this.runtimeObservers) observer.push(event);
+    const status = this.status;
+    for (const observer of this.runtimeObservers) observer.push(status);
     if (state === ZLinkFrameworkRuntimeState.Stopped) {
       for (const observer of this.runtimeObservers) observer.return();
       this.runtimeObservers.clear();
@@ -878,7 +923,7 @@ export class ZLinkFrameworkRuntimeHost implements
     });
     this.meshSubmitters.dispose();
     this.lifecycleSink?.push('framework:stopped');
-    if (this.terminationOperation === undefined) {
+    if (this.shutdownOperation === undefined) {
       this.setRuntimeState(ZLinkFrameworkRuntimeState.Stopped);
     }
   }
@@ -896,7 +941,11 @@ export class ZLinkFrameworkRuntimeHost implements
   }
 
   private async performMeshDrain(meshName: string, signal: AbortSignal): Promise<void> {
-    await this.serviceRelocation.relocateMesh(meshName, signal);
+    await this.serviceRelocation.relocateMesh(
+      meshName,
+      this.relocationTargetApplicationVersion,
+      signal
+    );
     const handedOffActorIds = new Set<string>();
     while (!await this.handoffActorsForDrain(meshName, handedOffActorIds, signal)) {
       await waitForDrainRetry(
@@ -914,7 +963,7 @@ export class ZLinkFrameworkRuntimeHost implements
     signal?: AbortSignal
   ): Promise<void> {
     await this.spotNodeRuntime?.publishMeshNodeState(
-      ZLinkFrameworkRuntimeState.Retiring,
+      ZLinkFrameworkRuntimeState.Relocating,
       signal,
       meshName
     );
@@ -949,17 +998,21 @@ export class ZLinkFrameworkRuntimeHost implements
   }
 
   private async preflightAutomaticPeerReadiness(
-    deadlineMs: number
-  ): Promise<ZLinkTerminationReason | undefined> {
+    deadlineMs: number,
+    targetApplicationVersion: bigint
+  ): Promise<ZLinkFrameworkRelocationReason | undefined> {
     if (this.options.registration.spotNodes.size === 0) return undefined;
     const location = this.locationOwner.currentRuntime;
-    if (location === undefined) return ZLinkTerminationReason.StoreUnavailable;
+    if (location === undefined) return ZLinkFrameworkRelocationReason.StoreUnavailable;
 
     const deadlineAt = Date.now() + deadlineMs;
     let storeUnavailable = false;
     while (Date.now() < deadlineAt) {
       try {
-        if (await this.hasExactAutomaticPeerReadiness(location)) return undefined;
+        if (await this.hasExactAutomaticPeerReadiness(
+          location,
+          targetApplicationVersion
+        )) return undefined;
         storeUnavailable = false;
       } catch {
         storeUnavailable = true;
@@ -974,12 +1027,13 @@ export class ZLinkFrameworkRuntimeHost implements
       ));
     }
     return storeUnavailable
-      ? ZLinkTerminationReason.StoreUnavailable
-      : ZLinkTerminationReason.TargetUnavailable;
+      ? ZLinkFrameworkRelocationReason.StoreUnavailable
+      : ZLinkFrameworkRelocationReason.TargetUnavailable;
   }
 
   private async hasExactAutomaticPeerReadiness(
-    location: Pick<ZLinkLocationRuntime, 'listLiveMeshNodes'>
+    location: Pick<ZLinkLocationRuntime, 'listLiveMeshNodes'>,
+    targetApplicationVersion: bigint
   ): Promise<boolean> {
     for (const [meshName, registration] of this.options.registration.spotNodes) {
       if ((registration.router?.manualConnections?.length ?? 0) > 0
@@ -995,11 +1049,20 @@ export class ZLinkFrameworkRuntimeHost implements
       const peers = node.peers();
       if (!hasExactPeerReadiness(descriptors, {
         ...local,
-        applicationVersion: localDescriptor.applicationVersion,
+        applicationVersion: targetApplicationVersion,
         maintenanceWave: localDescriptor.maintenanceWave
       }, peers)) return false;
     }
     return true;
+  }
+
+  private async publishHostRelocated(): Promise<void> {
+    await Promise.all([...this.options.registration.spotNodes.keys()].map(meshName =>
+      this.spotNodeRuntime?.publishMeshNodeState(
+        ZLinkFrameworkRuntimeState.Relocated,
+        undefined,
+        meshName
+      )));
   }
 
   private async publishHostDraining(signal: AbortSignal): Promise<void> {
@@ -1919,7 +1982,7 @@ export function hasExactPeerReadiness(
       && descriptor.lifecycleGeneration === local.lifecycleGeneration)
     && descriptor.state === ZLinkFrameworkRuntimeState.Serving
     && (local.applicationVersion === undefined
-      || descriptor.applicationVersion >= local.applicationVersion)
+      || descriptor.applicationVersion === local.applicationVersion)
     && (local.maintenanceWave === undefined
       || descriptor.maintenanceWave !== local.maintenanceWave));
   return replacementDescriptors.length > 0
@@ -2041,20 +2104,59 @@ function randomBigIntBelow(exclusiveUpperBound: bigint): bigint {
   }
 }
 
-function terminationReason(reason: string): ZLinkTerminationReason {
+function relocationReason(reason: string): ZLinkFrameworkRelocationReason {
   switch (reason) {
-    case 'deadline_exceeded': return ZLinkTerminationReason.DeadlineExceeded;
-    case 'store_unavailable': return ZLinkTerminationReason.StoreUnavailable;
-    case 'target_unavailable': return ZLinkTerminationReason.TargetUnavailable;
-    case 'transfer_failed': return ZLinkTerminationReason.RelocationFailed;
-    default: return ZLinkTerminationReason.TeardownFailed;
+    case 'deadline_exceeded': return ZLinkFrameworkRelocationReason.DeadlineExceeded;
+    case 'store_unavailable': return ZLinkFrameworkRelocationReason.StoreUnavailable;
+    case 'target_unavailable': return ZLinkFrameworkRelocationReason.TargetUnavailable;
+    default: return ZLinkFrameworkRelocationReason.RelocationFailed;
   }
 }
 
-function waitForRuntimeTermination(
-  operation: Promise<ZLinkTerminationResult>,
+function validateRelocationOptions(
+  options: ZLinkFrameworkRelocationOptions | undefined,
+  sourceApplicationVersion: bigint
+): bigint {
+  if (options === undefined) {
+    throw new TypeError('Relocation mode is required.');
+  }
+  const mode = options.mode as number;
+  if (mode !== ZLinkFrameworkRelocationMode.PlannedMaintenance
+    && mode !== ZLinkFrameworkRelocationMode.RollingUpdate) {
+    throw new TypeError('Relocation mode is required.');
+  }
+  if (options.mode === ZLinkFrameworkRelocationMode.PlannedMaintenance) {
+    if (options.targetApplicationVersion !== undefined) {
+      throw new TypeError(
+        'PlannedMaintenance relocation cannot define targetApplicationVersion.');
+    }
+    return sourceApplicationVersion;
+  }
+  if (typeof options.targetApplicationVersion !== 'bigint'
+    || options.targetApplicationVersion <= sourceApplicationVersion) {
+    throw new TypeError(
+      'RollingUpdate relocation requires a targetApplicationVersion greater than the source version.');
+  }
+  return options.targetApplicationVersion;
+}
+
+function blockedRelocation(
+  mode: ZLinkFrameworkRelocationMode,
+  effectiveTargetApplicationVersion: bigint,
+  reason: ZLinkFrameworkRelocationReason
+): ZLinkFrameworkRelocationResult {
+  return {
+    mode,
+    effectiveTargetApplicationVersion,
+    outcome: ZLinkFrameworkRelocationOutcome.Blocked,
+    reason
+  };
+}
+
+function waitForRuntimeOperation<T>(
+  operation: Promise<T>,
   signal?: AbortSignal
-): Promise<ZLinkTerminationResult> {
+): Promise<T> {
   if (signal === undefined) return operation;
   signal.throwIfAborted();
   return new Promise((resolve, reject) => {

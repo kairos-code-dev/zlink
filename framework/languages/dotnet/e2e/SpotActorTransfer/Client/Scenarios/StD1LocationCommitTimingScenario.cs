@@ -16,56 +16,56 @@ internal static class StD1LocationCommitTimingScenario
     private static async Task RunLocalLocationCommitTimingAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-location-local-{Guid.NewGuid():N}";
-        var spotRid = $"spot-location-local-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeA, spotRid, "delay-joined");
+        var spotId = $"spot-location-local-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeA, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 51);
         var before = await context.GetActorRefAsync(context.NodeA, actorId);
 
-        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D1", spotRid));
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D1", spotId));
         var waitingEvidence = await context.WaitEvidenceAsync(context.NodeA, [
-            $"ST-D1|{actorId}|admission|spot={spotRid}",
-            $"ST-D1|{actorId}|joined_wait|{spotRid}"
+            $"ST-D1|{actorId}|admission|spot={spotId}",
+            $"ST-D1|{actorId}|joined_wait|{spotId}"
         ]);
         ZlinkStreamAssert.Ensure(
             !waitingEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
-                .Contains($"ST-D1|{actorId}|success_reply|{spotRid}", StringComparison.Ordinal)),
+                .Contains($"ST-D1|{actorId}|success_reply|{spotId}", StringComparison.Ordinal)),
             "ST-D1 local join returned success before OnJoinedActorAsync completed.");
         var during = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(
             during.Generation == before.Generation,
             $"ST-D1 local actor generation changed before joined completed. before={before.Generation}, during={during.Generation}");
 
-        await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);
+        await context.ReleaseJoinedGateAsync(context.NodeA, spotId);
         var join = await joinTask;
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-D1 local join was rejected.");
         var after = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(after.Generation >= before.Generation, "ST-D1 local actor generation regressed after commit.");
 
         await context.WaitEvidenceAsync(context.NodeA, [
-            $"ST-D1|{actorId}|joined_released|{spotRid}",
-            $"transfer|{actorId}|joined|{spotRid}:51",
-            $"ST-D1|{actorId}|success_reply|{spotRid}"
+            $"ST-D1|{actorId}|joined_released|{spotId}",
+            $"transfer|{actorId}|joined|{spotId}:51",
+            $"ST-D1|{actorId}|success_reply|{spotId}"
         ]);
     }
 
     private static async Task RunRemoteLocationCommitTimingAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-location-remote-{Guid.NewGuid():N}";
-        var spotRid = $"spot-location-remote-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid, "delay-joined");
+        var spotId = $"spot-location-remote-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 52);
 
-        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D1", spotRid));
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D1", spotId));
         await context.WaitEvidenceAsync(context.NodeB, [
-            $"ST-D1|{actorId}|admission|spot={spotRid}",
-            $"ST-D1|{actorId}|joined_wait|{spotRid}"
+            $"ST-D1|{actorId}|admission|spot={spotId}",
+            $"ST-D1|{actorId}|joined_wait|{spotId}"
         ]);
         var sourceDuring = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(
             sourceDuring.NodeRid == "actor-a",
             $"ST-D1 remote source ref moved before target joined completed. got={sourceDuring.NodeRid}");
 
-        await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
+        await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         var join = await joinTask;
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-D1 remote join was rejected.");
         var targetAfter = await context.GetActorRefAsync(context.NodeB, actorId);
@@ -75,11 +75,11 @@ internal static class StD1LocationCommitTimingScenario
 
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|leave|52",
-            $"ST-D1|{actorId}|success_reply|{spotRid}"
+            $"ST-D1|{actorId}|success_reply|{spotId}"
         ]);
         await context.WaitEvidenceAsync(context.NodeB, [
-            $"ST-D1|{actorId}|joined_released|{spotRid}",
-            $"transfer|{actorId}|joined|{spotRid}:52"
+            $"ST-D1|{actorId}|joined_released|{spotId}",
+            $"transfer|{actorId}|joined|{spotId}:52"
         ]);
     }
 }

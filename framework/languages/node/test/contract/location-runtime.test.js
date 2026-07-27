@@ -796,6 +796,142 @@ test('production repository persists owner lease and MeshNode records through on
   assert.equal((await writer.listMeshNodes('play')).items.length, 0);
 });
 
+test('production repository shares ClientServer and fanout discovery through only opaque Store primitives', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const provider = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  const writer = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const reader = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const claimed = await writer.claimOwnerLease('owner-a', 30_000);
+  assert.equal(claimed.kind, 'claimed');
+
+  const server = {
+    channelName: 'orders',
+    serverRid: rid('server-a'),
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://127.0.0.1:43001',
+    weight: 100,
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'server-a',
+    ownerId: 'owner-a',
+    leaseGeneration: claimed.token.leaseGeneration,
+    updatedAt: now
+  };
+  const publisher = {
+    channelName: 'events',
+    publisherRid: rid('publisher-a'),
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://127.0.0.1:43002',
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'publisher-a',
+    ownerId: 'owner-a',
+    leaseGeneration: claimed.token.leaseGeneration,
+    updatedAt: now
+  };
+
+  assert.equal(
+    (await writer.updateClientServer(
+      server,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    )).status,
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+  assert.equal(
+    (await writer.updateFanoutPublisher(
+      publisher,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    )).status,
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+
+  const observedServers = await reader.listClientServers('orders');
+  const observedPublishers = await reader.listFanoutPublishers('events');
+  assert.equal(observedServers.items.length, 1);
+  assert.equal(String(observedServers.items[0].serverRid), String(server.serverRid));
+  assert.equal(observedPublishers.items.length, 1);
+  assert.equal(String(observedPublishers.items[0].publisherRid), String(publisher.publisherRid));
+
+  const renewed = await reader.updateClientServer(
+    { ...server, descriptorRevision: 2n, weight: 250 },
+    framework.ZLinkLocationWriteIntent.Renew
+  );
+  assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
+  assert.equal((await writer.listClientServers('orders')).items[0].weight, 250);
+
+  assert.equal(await reader.removeAllByOwner(claimed.token), 2n);
+  assert.equal((await writer.listClientServers('orders')).items.length, 0);
+  assert.equal((await writer.listFanoutPublishers('events')).items.length, 0);
+});
+
+test('production repository shares Spot Actor and route ownership through only opaque Store primitives', async () => {
+  const now = new Date(Date.UTC(2026, 6, 3, 0, 0, 0));
+  const provider = new internal.ZLinkInMemoryProviderLocationStore(() => now);
+  const writer = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const reader = new internal.ZLinkLocationStoreRepository(provider, () => now);
+  const claimed = await writer.claimOwnerLease('owner-a', 30_000);
+  assert.equal(claimed.kind, 'claimed');
+
+  const spotRow = {
+    ...spot('owner-a', 'room-1'),
+    leaseGeneration: claimed.token.leaseGeneration
+  };
+  const actorRow = {
+    ...actor('owner-a', 1n),
+    spotId: 'room-1',
+    spotKind: framework.ZLinkSpotKind.User,
+    leaseGeneration: claimed.token.leaseGeneration
+  };
+  const routeRow = {
+    routeKind: internal.ZLinkRouteKind.ActorSession,
+    routeKey: 'actor-1',
+    ownerNodeRid: rid('node-1'),
+    ownerId: 'owner-a',
+    generation: claimed.token.leaseGeneration,
+    value: Buffer.from([0, 1, 127, 255]),
+    updatedAt: now
+  };
+
+  assert.equal(
+    (await writer.updateSpot(
+      spotRow,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    )).status,
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+  assert.equal(
+    (await writer.updateActor(
+      actorRow,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    )).status,
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+  const routeStored = await writer.updateRoute(
+    routeRow,
+    framework.ZLinkLocationWriteIntent.NewClaim
+  );
+  assert.equal(routeStored.status, framework.ZLinkLocationWriteStatus.Stored);
+
+  assert.equal((await reader.resolveSpot({ meshName: 'play', spotId: 'room-1' })).spotType, 'game');
+  assert.equal((await reader.resolveActor({ meshName: 'play', actorId: 'actor-1' })).actorType, 'player');
+  const observedRoute = await reader.resolveRoute({
+    routeKind: internal.ZLinkRouteKind.ActorSession,
+    routeKey: 'actor-1'
+  });
+  assert.deepEqual([...observedRoute.value], [0, 1, 127, 255]);
+  assert.equal((await reader.listSpots({ meshName: 'play' })).items.length, 1);
+  assert.equal((await reader.listActors({ spotId: 'room-1' })).items.length, 1);
+  assert.equal((await reader.listRoutes({ ownerId: 'owner-a' })).items.length, 1);
+
+  assert.equal(await reader.removeAllByOwner(claimed.token), 3n);
+  assert.equal(await writer.resolveSpot({ meshName: 'play', spotId: 'room-1' }), undefined);
+  assert.equal(await writer.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
+  assert.equal(await writer.resolveRoute({
+    routeKind: internal.ZLinkRouteKind.ActorSession,
+    routeKey: 'actor-1'
+  }), undefined);
+});
+
 async function lifecycleNode(store, ownerId, nodeRid, entryMeshName = 'play') {
   const runtime = runtimeFor(store, { ownerId });
   await runtime.start(rid(nodeRid));

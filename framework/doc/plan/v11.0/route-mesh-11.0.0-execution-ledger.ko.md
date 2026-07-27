@@ -109,6 +109,11 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   제거 증거도 symbol·file·artifact 잔여 0으로 통과했다. 다만 공개 Location Store가 정식 exact
   interface의 작은 opaque SPI가 아니라 domain operation을 직접 노출하므로
   `V11-M6-STORE-POSD-DN`과 `.NET` reference 행은 완료로 바꾸지 않는다.
+- `.NET` host lifecycle public source도 exact interface와 일치하지 않는다. Exact contract는
+  `RelocateAsync(options)`와 별도 `ShutdownAsync`, `Relocating → Relocated` 상태,
+  `PlannedMaintenance`·`RollingUpdate` 결과를 요구한다. 현재 source는
+  `RetireAsync(deadline)`와 공통 termination result를 사용하고 relocation 뒤 바로 drain·stop한다.
+  이는 이름만 바꾸는 gap이 아니므로 lifecycle state machine과 contract·unit·E2E를 함께 전환한다.
 - JVM은 Entry Spot standalone Actor를 production relocation control 경로에 연결했다. Hidden target
   restore, source freeze, authority commit, accepted journal replay, source cleanup, steady authority
   normalization과 target admission 개방을 순서대로 수행한다. Relocation 전후 object generation은
@@ -136,6 +141,17 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   설명하던 오류를 바로잡았다. `ST-F3A`·G track·H track의 process gap을 명시했다.
   C++·Java Observability의 이전 drain 기반 C1~C5 결과는 현행 Config 11 PASS가 아니며,
   C1~C5는 `전환 대상`, C6~C11은 `미구현`으로 기록했다.
+- `.NET` SpotActorTransfer는 제거된 handler context, fixed route `ActorRef`,
+  `SpotRid`, MeshNode ChannelName과 Actor dispatch option을 현행 MessageContext,
+  global ActorId, `SpotId`와 object server registration으로 전환했다. Shared와 ActorNode,
+  SessionGateway, Client가 Store POSD 변경 직전 warning 0으로 build됐다. `ST-F4`·`ST-F5`는
+  application이 old ActorRef를 직접 보내던 false coverage였으므로 transport fixture가 stale source
+  delivery를 지연하는 시나리오로 바꾸기 전까지 `전환 대상`이다.
+- Node.js는 opaque Location Store repository를 ClientServer, fanout, Spot·Actor route와 owner cleanup에
+  연결하고 public lifecycle을 `relocate(options)`와 `shutdown(options)`로 분리했다. Exact version
+  filtering과 `Relocated` 상태를 포함하며 typecheck·lint, location·topology 34/34, M6A 9/9,
+  M6B 39/39과 M6C 64/64가 통과했다. Public export 7개, concurrent same-option join,
+  relocation 중 Shutdown의 current-unit barrier와 owner descriptor cleanup 정렬은 남아 있다.
 
 이 checkpoint는 현재 E2E spec의 완료 승인이 아니다. 실제 process scenario와 언어별 feature map이
 일치하고 Codex `gpt-5.6-sol high` 독립 review를 통과한 뒤 `V11-E2E-SPEC-FINAL`을 완료로 바꾼다.

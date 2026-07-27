@@ -411,7 +411,8 @@ function runtimeStateToName(value: ZLinkFrameworkRuntimeState): string {
   switch (value) {
     case ZLinkFrameworkRuntimeState.Preparing: return 'Preparing';
     case ZLinkFrameworkRuntimeState.Serving: return 'Serving';
-    case ZLinkFrameworkRuntimeState.Retiring: return 'Retiring';
+    case ZLinkFrameworkRuntimeState.Relocating: return 'Relocating';
+    case ZLinkFrameworkRuntimeState.Relocated: return 'Relocated';
     case ZLinkFrameworkRuntimeState.Draining: return 'Draining';
     case ZLinkFrameworkRuntimeState.Stopped: return 'Stopped';
     case ZLinkFrameworkRuntimeState.Error: return 'Error';
@@ -424,7 +425,8 @@ function runtimeStateFromName(value: unknown): ZLinkFrameworkRuntimeState {
   switch (stringOf(value)) {
     case 'Preparing': return ZLinkFrameworkRuntimeState.Preparing;
     case 'Serving': return ZLinkFrameworkRuntimeState.Serving;
-    case 'Retiring': return ZLinkFrameworkRuntimeState.Retiring;
+    case 'Relocating': return ZLinkFrameworkRuntimeState.Relocating;
+    case 'Relocated': return ZLinkFrameworkRuntimeState.Relocated;
     case 'Draining': return ZLinkFrameworkRuntimeState.Draining;
     case 'Stopped': return ZLinkFrameworkRuntimeState.Stopped;
     case 'Error': return ZLinkFrameworkRuntimeState.Error;

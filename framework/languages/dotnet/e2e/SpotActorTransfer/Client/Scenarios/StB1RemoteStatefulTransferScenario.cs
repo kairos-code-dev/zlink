@@ -10,11 +10,11 @@ internal static class StB1RemoteStatefulTransferScenario
     public static async Task RunAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-remote-ok-{Guid.NewGuid():N}";
-        var spotRid = $"spot-remote-ok-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid);
+        var spotId = $"spot-remote-ok-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId);
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 21);
 
-        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B1", spotRid));
+        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B1", spotId));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-B1 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B1", "after-transfer"));
@@ -24,11 +24,11 @@ internal static class StB1RemoteStatefulTransferScenario
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|21",
             $"transfer|{actorId}|leave|21",
-            $"ST-B1|{actorId}|success_reply|{spotRid}"
+            $"ST-B1|{actorId}|success_reply|{spotId}"
         ]);
         await context.WaitEvidenceAsync(context.NodeB, [
             $"transfer|{actorId}|transfer_in|21",
-            $"transfer|{actorId}|joined|{spotRid}:21",
+            $"transfer|{actorId}|joined|{spotId}:21",
             $"ST-B1|{actorId}|packet_handler|after-transfer"
         ]);
     }

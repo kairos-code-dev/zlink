@@ -16,13 +16,13 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
     private static async Task RunInFlightRequestCorrelationAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-inflight-req-{Guid.NewGuid():N}";
-        var spotRid = $"spot-inflight-req-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid, "delay-joined");
+        var spotId = $"spot-inflight-req-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 106);
         var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
 
-        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotRid));
-        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotRid}"]);
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotId));
+        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotId}"]);
         var requestTask = context.ProbeRefAsync(
             context.NodeA,
             actorId,
@@ -31,7 +31,7 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             TimeSpan.FromSeconds(5));
         await context.WaitRuntimeEvidenceAsync(context.NodeA,
             $"handoff_backlog actor={actorId} arrival=0");
-        await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
+        await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
 
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
         var response = await requestTask;
@@ -44,13 +44,13 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
     private static async Task RunInFlightRequestTimeoutAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-inflight-req-timeout-{Guid.NewGuid():N}";
-        var spotRid = $"spot-inflight-req-timeout-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid, "delay-joined");
+        var spotId = $"spot-inflight-req-timeout-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 107);
         var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
 
-        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotRid));
-        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotRid}"]);
+        var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotId));
+        await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotId}"]);
         var requestTask = context.ProbeRefAsync(
             context.NodeA,
             actorId,
@@ -61,7 +61,7 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
         ZlinkStreamAssert.Ensure(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
             $"ST-F6 expected normal TimeoutException, got '{timeout.ErrorKind}'.");
 
-        await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
+        await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 timeout transfer was rejected.");
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-F6|{actorId}|packet_handler|late-reply",

@@ -46,8 +46,7 @@ internal static class ActorNodeHostFactory
                 .SetKeyPrefix(options.RedisKeyPrefix));
             framework.AddLocationStore(new CleanupGatedLocationStore(
                 redisStore,
-                cleanupGates,
-                evidence));
+                cleanupGates));
             var locations = framework.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
             locations.RelocationForwardingWindow = TimeSpan.FromSeconds(2);
@@ -105,7 +104,6 @@ internal static class ActorNodeHostFactory
                     SpotActorTransferNames.UserSpotType(options.Rid),
                     null,
                     ZLinkRelocationPolicy<TransferUserSpot>.Disabled);
-            mesh28.ChannelName(SpotActorTransferNames.Mesh);
         });
         return (builder.Build(), options);
     }

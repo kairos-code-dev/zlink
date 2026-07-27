@@ -2,9 +2,10 @@ import path from 'node:path';
 import { Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
+  ZLinkFrameworkRelocationMode,
   ZLinkMessageFlowLogMode,
   type ActorRef,
-  type ZLinkTerminationResult,
+  type ZLinkFrameworkRelocationResult,
   type ZLinkFrameworkRuntime,
   type ZLinkRouteMeshRuntime,
   type ZLinkMessage,
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
   const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
-  let drainResult: ZLinkTerminationResult | undefined;
+  let drainResult: ZLinkFrameworkRelocationResult | undefined;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -150,7 +151,7 @@ async function main(): Promise<void> {
     {
       method: 'POST', path: '/drain', handle: (body) => {
         const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
-        void frameworkRuntime.retire({ deadlineMs })
+        void frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs })
           .then((result) => { drainResult = result; });
         return { started: true };
       }

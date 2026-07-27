@@ -27,12 +27,12 @@ public sealed record ActorCreateRes(
     long Generation);
 
 public sealed record CreateSpotReq(
-    string SpotRid,
+    string SpotId,
     string Mode = "accept",
     string? TargetNodeRid = null);
 
 public sealed record CreateSpotRes(
-    string SpotRid,
+    string SpotId,
     string NodeRid,
     string State);
 
@@ -42,7 +42,7 @@ public sealed record MeshReadyRes(
     string[] ReadySpotTypes);
 
 public sealed record GateReleaseRes(
-    string SpotRid,
+    string SpotId,
     bool Released);
 
 public sealed record CleanupGateArmReq(
@@ -54,7 +54,7 @@ public sealed record CleanupGateRes(
 
 public sealed record JoinTargetReq(
     string Scenario,
-    string TargetSpotRid,
+    string TargetSpotId,
     string ExpectedMode = "accept");
 
 public sealed record JoinTargetRes(
@@ -62,7 +62,7 @@ public sealed record JoinTargetRes(
     string ActorId,
     bool Accepted,
     string SourceNodeRid,
-    string TargetSpotRid,
+    string TargetSpotId,
     int StateVersion);
 
 public sealed record ProbeReq(
@@ -76,7 +76,7 @@ public sealed record HandoffPacket(
 public sealed record ProbeRes(
     string Scenario,
     string ActorId,
-    string SpotRid,
+    string SpotId,
     string NodeRid,
     int StateVersion,
     string Marker);
@@ -124,7 +124,7 @@ public sealed record BoundPushReq(
 public sealed record BoundPushRes(
     string Scenario,
     string ActorId,
-    string SpotRid,
+    string SpotId,
     string NodeRid,
     string Marker,
     int StateVersion);
@@ -132,7 +132,7 @@ public sealed record BoundPushRes(
 public sealed record BoundPushNotify(
     string Scenario,
     string ActorId,
-    string SpotRid,
+    string SpotId,
     string NodeRid,
     string Marker,
     int StateVersion);

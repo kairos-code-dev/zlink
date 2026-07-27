@@ -1,5 +1,6 @@
 import {
   ZLinkFrameworkException,
+  ZLinkFrameworkRelocationMode,
   type ZLinkChannelClient,
   type ZLinkChannelRuntimeOptions,
   type ZLinkFrameworkRuntime,
@@ -97,7 +98,7 @@ export function createProviderEndpoints(
       method: 'POST', path: '/drain',
       handle: async () => {
         runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
-        const result = await frameworkRuntime.retire({ deadlineMs: 30_000 });
+        const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance, deadlineMs: 30_000 });
         stop();
         return result;
       }

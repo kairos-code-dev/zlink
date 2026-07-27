@@ -10,12 +10,12 @@ internal static class StD2StaleSourceReleaseFencingScenario
     public static async Task RunAsync(SpotActorTransferScenarioContext context)
     {
         var actorId = $"actor-stale-release-{Guid.NewGuid():N}";
-        var spotRid = $"spot-stale-release-{Guid.NewGuid():N}";
-        await context.CreateSpotAsync(context.NodeB, spotRid);
+        var spotId = $"spot-stale-release-{Guid.NewGuid():N}";
+        await context.CreateSpotAsync(context.NodeB, spotId);
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 81);
         await context.ArmCleanupGateAsync(context.NodeA, actorId, "ST-D2");
 
-        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D2", spotRid));
+        var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D2", spotId));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-D2 join was rejected.");
         await context.AllowCleanupAttemptAsync(context.NodeA, actorId, "ST-D2");
         await context.WaitEvidenceAsync(context.NodeA, [

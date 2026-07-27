@@ -1,7 +1,10 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
-import type { ZLinkFrameworkRuntime } from '@zlink-systems/framework';
+import {
+  ZLinkFrameworkRelocationMode,
+  type ZLinkFrameworkRuntime
+} from '@zlink-systems/framework';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoPlayModule } from './bingo-play-module';
 import { SampleNames } from '../Configuration/sample-names';
@@ -18,7 +21,7 @@ async function bootstrap(): Promise<void> {
   const shutdown = new AbortController();
   const beginDrain = () => {
     console.log('bingo-drain requested');
-    void frameworkRuntime.retire().then((result) => {
+    void frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance }).then((result) => {
       console.log(`bingo-retire outcome=${result.outcome} reason=${result.reason}`);
       process.removeListener('SIGUSR2', beginDrain);
       process.removeListener('SIGBREAK', beginDrain);

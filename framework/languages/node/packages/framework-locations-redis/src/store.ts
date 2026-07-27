@@ -151,7 +151,7 @@ export class ZLinkRedisLocationStore implements ZLinkLocationStore {
         },
         url: resolved.url ?? resolved.clientOptions?.url
       }) as RedisCommandClient;
-      this.client.on?.('error', () => {});
+      this.client.on('error', () => {});
     }
   }
 
@@ -1176,11 +1176,7 @@ export class ZLinkRedisLocationStore implements ZLinkLocationStore {
       && client !== this.providedClient
       && client.isOpen === true
     ) {
-      if (client.quit !== undefined) {
-        await client.quit();
-      } else {
-        await client.disconnect?.();
-      }
+      await client.quit();
     }
   }
 

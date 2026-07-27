@@ -61,8 +61,8 @@ internal static class ActorNodeEndpoints
                 cancellationToken);
             return Results.Ok(snapshot);
         });
-        app.MapPost("/joined-gates/{spotRid}/release", (string spotRid, JoinedGateStore gates) =>
-            Results.Ok(new GateReleaseRes(spotRid, gates.Release(spotRid))));
+        app.MapPost("/joined-gates/{spotId}/release", (string spotId, JoinedGateStore gates) =>
+            Results.Ok(new GateReleaseRes(spotId, gates.Release(spotId))));
         app.MapPost("/transfer-gates/{actorId}/release", (string actorId, TransferGateStore gates) =>
             Results.Ok(new GateReleaseRes(actorId, gates.Release(actorId))));
         app.MapPost("/cleanup-gates/{actorId}/arm", (
@@ -80,7 +80,7 @@ internal static class ActorNodeEndpoints
                                 ?? throw new InvalidOperationException(
                                     "Create Spot request must select a target node.");
             var result = await spots
-                .GetOrCreate(request.SpotRid, SpotActorTransferNames.UserSpotType(targetNodeRid))
+                .GetOrCreate(request.SpotId, SpotActorTransferNames.UserSpotType(targetNodeRid))
                 .Request(request)
                 .Async(cancellationToken);
             return Results.Ok(new CreateSpotRes(
@@ -97,14 +97,14 @@ internal static class ActorNodeEndpoints
                 _ => throw new InvalidOperationException("Actor creation was rejected.")
             };
             return Results.Ok(new ActorCreateRes(
-                actor.ActorId, request.ActorType, actor.NodeRid.ToString(), checked((long)actor.Generation)));
+                actor.ActorId, request.ActorType, actor.NodeRid.ToString(), checked((long)actor.ObjectGeneration)));
         });
         app.MapGet("/actors/{actorId}/ref", async (string actorId, IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             return Results.Ok(new ActorRefSnapshotRes(
-                actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.Generation)));
+                actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.ObjectGeneration)));
         });
         app.MapPost("/actors/{actorId}/destroy", async (
             string actorId,
@@ -115,7 +115,7 @@ internal static class ActorNodeEndpoints
             var destroyed = await actors.DestroyAsync(actor, cancellationToken);
             return Results.Ok(new ActorDestroyRes(
                 actor.ActorId,
-                checked((long)actor.Generation),
+                checked((long)actor.ObjectGeneration),
                 destroyed));
         });
         app.MapGet("/actors/{actorId}/ref-evidence/{scenario}/{marker}", async (
@@ -128,7 +128,7 @@ internal static class ActorNodeEndpoints
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             var snapshot = new ActorRefSnapshotRes(
-                actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.Generation));
+                actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.ObjectGeneration));
             evidence.Add(scenario, actorId, marker,
                 $"node={snapshot.NodeRid};generation={snapshot.Generation}");
             return Results.Ok(snapshot);
@@ -140,7 +140,7 @@ internal static class ActorNodeEndpoints
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             try
             {
-                var result = await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
+                var result = await actorClient.RequestToActor(actor.ActorId, request)
                     .Timeout(TimeSpan.FromSeconds(10)).Async<JoinTargetRes>(cancellationToken);
                 return Results.Ok(result);
             }
@@ -159,7 +159,7 @@ internal static class ActorNodeEndpoints
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             evidence.Add(request.Scenario, actorId, "probe_submitted", request.Marker);
-            return Results.Ok(await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
+            return Results.Ok(await actorClient.RequestToActor(actor.ActorId, request)
                 .Timeout(TimeSpan.FromSeconds(10)).Async<ProbeRes>(cancellationToken));
         });
         app.MapPost("/actors/{actorId}/probe-ref", async (string actorId, ActorRefProbeReq request,
@@ -167,10 +167,8 @@ internal static class ActorNodeEndpoints
         {
             try
             {
-                var actor = ToActorRef(actorId, request);
                 var response = await actorClient.RequestToActor(
-                        SpotActorTransferNames.Mesh,
-                        actor,
+                        actorId,
                         new ProbeReq(request.Scenario, request.Marker))
                     .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
                     .Async<ProbeRes>(cancellationToken);
@@ -188,7 +186,7 @@ internal static class ActorNodeEndpoints
         app.MapPost("/actors/{actorId}/send-ref", async (string actorId, ActorRefProbeReq request,
             IZLinkActorClient actorClient, CancellationToken cancellationToken) =>
         {
-            await actorClient.SendToActor(SpotActorTransferNames.Mesh, ToActorRef(actorId, request),
+            await actorClient.SendToActor(actorId,
                     new HandoffPacket(request.Scenario, request.Marker))
                 .Async(cancellationToken);
             return Results.Ok();
@@ -197,7 +195,7 @@ internal static class ActorNodeEndpoints
             IZLinkActorManager actors, IZLinkActorClient actorClient, CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
-            return Results.Ok(await actorClient.RequestToActor(SpotActorTransferNames.Mesh, actor, request)
+            return Results.Ok(await actorClient.RequestToActor(actor.ActorId, request)
                 .Timeout(TimeSpan.FromSeconds(10)).Async<BoundPushRes>(cancellationToken));
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
@@ -220,9 +218,6 @@ internal static class ActorNodeEndpoints
         IZLinkActorManager actors, string actorId, CancellationToken cancellationToken) =>
         await actors.FindAsync(actorId, cancellationToken)
         ?? throw new InvalidOperationException($"Actor '{actorId}' was not found.");
-
-    private static ActorRef ToActorRef(string actorId, ActorRefProbeReq request) => new(
-        RoutingId.From(request.NodeRid), actorId, checked((ulong)request.Generation));
 
     private static string EvidenceText(ActorEvidence evidence) =>
         $"{evidence.Scenario}|{evidence.ActorId}|{evidence.Kind}|{evidence.Value}|{evidence.NodeRid}";

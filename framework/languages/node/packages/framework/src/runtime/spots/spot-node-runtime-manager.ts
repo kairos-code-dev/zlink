@@ -211,7 +211,7 @@ export class ZLinkSpotNodeRuntimeManager {
         ?? spotNode.pubSub?.routingId
         ?? `${spotNode.routingIdPrefix ?? spotNodeName}-${randomUUID()}`;
       const bind = spotNode.router?.bind;
-      if (routingId === undefined || bind === undefined) {
+      if (bind === undefined) {
         throw new ZLinkConfigurationException(
           `MeshNode '${spotNodeName}' requires a routing id and ROUTER bind endpoint.`
         );

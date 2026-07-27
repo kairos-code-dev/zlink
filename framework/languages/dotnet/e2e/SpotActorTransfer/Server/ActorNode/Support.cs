@@ -123,18 +123,18 @@ internal sealed class JoinedGateStore
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource> _gates = new(StringComparer.Ordinal);
 
-    public Task WaitAsync(string spotRid, CancellationToken cancellationToken)
+    public Task WaitAsync(string spotId, CancellationToken cancellationToken)
     {
         var gate = _gates.GetOrAdd(
-            spotRid,
+            spotId,
             static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         return gate.Task.WaitAsync(cancellationToken);
     }
 
-    public bool Release(string spotRid)
+    public bool Release(string spotId)
     {
         var gate = _gates.GetOrAdd(
-            spotRid,
+            spotId,
             static _ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         return gate.TrySetResult();
     }

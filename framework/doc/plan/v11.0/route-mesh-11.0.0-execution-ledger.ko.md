@@ -100,6 +100,34 @@ checkpoint는 해당 두 gate를 승인하거나 완료로 바꾸지 않는다.
 mixed-language process relocation을 완료로 판정하지 않는다. 해당 작업은 기존 M6 행과
 `BLK-043`·`BLK-044`에서 계속 관리한다.
 
+### 0.0.5 2026-07-27 M6 runtime·E2E 정합성 checkpoint
+
+현재 commit 기준 revision은 `c719dea69d8a9e99946784fe7c2c202242cec4fb`이다.
+
+- `.NET`은 이 revision으로 새 `M6-RUNTIME` candidate와 result를 만들었다. Compile warning·error 0,
+  public contract 65/65, runtime 1,057/1,057, resource 89/89와 protocol 91/91이 통과했다.
+  제거 증거도 symbol·file·artifact 잔여 0으로 통과했다. 다만 공개 Location Store가 정식 exact
+  interface의 작은 opaque SPI가 아니라 domain operation을 직접 노출하므로
+  `V11-M6-STORE-POSD-DN`과 `.NET` reference 행은 완료로 바꾸지 않는다.
+- JVM은 Entry Spot standalone Actor를 production relocation control 경로에 연결했다. Hidden target
+  restore, source freeze, authority commit, accepted journal replay, source cleanup, steady authority
+  normalization과 target admission 개방을 순서대로 수행한다. Relocation 전후 object generation은
+  유지하고 authority owner generation만 1 증가한다. Java core 591/591과 Kotlin 46/46이 통과했다.
+  Target inbound permit, durable reply ACK, Session route ACK, PerActor timer와 process recovery는
+  `BLK-043`에서 계속 진행한다.
+- 공통 E2E 문서의 상대 link와 이전 계약 용어를 검사했다. 깨진 link와
+  `SpotRid`·`Checkpoint`·`PlacementProfile`·`AffinityKey`·`Retire` 잔여는 0이다. Config 10과
+  Config 11은 현재 relocation·maintenance 계약과 일치한다.
+- 실제 언어별 E2E는 아직 정식 spec과 일치하지 않는다. `.NET` SpotActorTransfer는
+  `ST-F3A`·`ST-G1~G6`·`ST-H1~H5`, ObservabilityOps는 `OBS-C6~C11`, SpotService는
+  `SM-A9~A13`·`SM-B0`·`SM-B0A`·`SM-B10`·`SM-B11`·`SM-G5`가 없다. 일부 source에는 제거된
+  handler context, `SpotRid`, automatic topology의 fixed Node RID와 이전 drain API도 남아 있다.
+  Feature map은 이 항목을 `미구현` 또는 `전환 대상`으로 바로잡았으며, scenario를 삭제하거나
+  assertion을 약화하지 않고 현재 spec에 맞게 구현한다.
+
+이 checkpoint는 현재 E2E spec의 완료 승인이 아니다. 실제 process scenario와 언어별 feature map이
+일치하고 Codex `gpt-5.6-sol high` 독립 review를 통과한 뒤 `V11-E2E-SPEC-FINAL`을 완료로 바꾼다.
+
 ### 0.0.2 2026-07-27 전체 진행 상태 checkpoint
 
 현재 상태 기준 revision은 `f26ff5945b1dde46cacfd632c588cfcdfbdcccd5`다. 아래 수치는 이 revision을

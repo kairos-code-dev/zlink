@@ -12,6 +12,13 @@
 | SM-A6 | 구현 | spot initialize와 explicit close lifecycle marker가 있다. |
 | SM-A7 | 구현 | spot type mismatch marker가 있다. |
 | SM-A8 | 구현 | worker offload marker가 있다. |
+| SM-A9 | 미구현 | User Spot factory·initialize 뒤 Location Store publication barrier와 concurrent caller 합류 E2E가 없다. |
+| SM-A10 | 미구현 | Framework 발급 Entry Spot ID 형식과 lifecycle별 새 ID E2E가 없다. |
+| SM-A11 | 미구현 | 예약된 Entry Spot ID 형식의 caller 지정 거부 E2E가 없다. |
+| SM-A12 | 미구현 | User Spot automatic ID의 첫 collision 즉시 실패 E2E가 없다. |
+| SM-A13 | 미구현 | SpotId UTF-8 string 경계와 legacy binary Spot RID 거부 E2E가 없다. |
+| SM-B0 | 미구현 | explicit type global create와 existing-only find E2E가 없다. |
+| SM-B0A | 미구현 | Actor 생성 승인·거절과 concurrent GetOrCreate terminal result E2E가 없다. |
 | SM-B1 | 구현 | local actor join marker가 있다. |
 | SM-B2 | 구현 | remote actor join marker가 있다. |
 | SM-B3 | 구현 | request message object fidelity marker가 있다. |
@@ -21,6 +28,8 @@
 | SM-B7 | 구현 | Created → Joined → actor packet 순서 marker가 있다. |
 | SM-B8 | 구현 | explicit actor destroy marker가 있다. |
 | SM-B9 | 구현 | `JoinAdmittedUserSpotActorReq`가 local/remote user spot join admission의 허용과 거부를 확인하고, 거부 actor가 user spot에 join되지 않는 evidence를 검증한다. |
+| SM-B10 | 미구현 | Object role과 Location·Relocation Store startup validation E2E가 없다. |
+| SM-B11 | 미구현 | Store-backed Actor publication barrier와 concurrent caller 결과 E2E가 없다. |
 | SM-C1 | 구현 | channel to spot messaging marker가 있다. |
 | SM-C2 | 구현 | spot to channel messaging marker가 있다. |
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
@@ -59,3 +68,8 @@
 | SM-G2 | 구현 | node B 추가 뒤 기존 Spot·actor owner 유지와 신규 Spot·actor의 명시적 node B 배치를 `sm-g2` 실행에서 확인했다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |
 | SM-G4 | 구현 | 다수 bound session에 동시에 push를 보내 각 session이 자기 actor push만 받는지 확인한다. |
+| SM-G5 | 미구현 | node-wide placement weight 범위, weight 0 제외와 장기 분배 비율 E2E가 없다. |
+
+현재 표에서 `미구현`과 `전환 대상`인 행은 `run_e2e.sh all`의 완료 범위에 포함되지 않는다.
+따라서 과거 default-batch 결과를 현행 Config 2 전체 완료 증거로 사용하지 않는다. Runtime M6
+완료 뒤 각 행의 public API 시나리오와 runner registration을 추가하고 전체 selector를 다시 검증한다.

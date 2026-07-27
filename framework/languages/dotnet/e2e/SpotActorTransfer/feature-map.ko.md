@@ -7,10 +7,10 @@
 | ST-A1 | 구현 | local join 승인 순서와 packet handler evidence를 client가 검증한다. |
 | ST-A2 | 구현 | local join 거절 뒤 actor 상태와 handler side effect가 없음을 검증한다. |
 | ST-A3 | 구현 | target joined callback 완료 전 packet dispatch가 시작되지 않음을 검증한다. |
-| ST-B1 | 구현 | remote transfer의 admission, state 복원, joined, reply 순서를 검증한다. |
-| ST-B2 | 구현 | source cleanup 실패 뒤에도 committed target transfer가 성공으로 유지됨을 검증한다. |
-| ST-B3 | 구현 | transfer adapter가 없는 actor의 기본 빈 state transfer를 검증한다. |
-| ST-B4 | 구현 | 빈 state를 명시한 remote transfer를 검증한다. |
+| ST-B1 | 전환 대상 | 기존 remote transfer 시나리오를 relocation admission, immutable payload, authority commit과 target Ready 순서로 전환해야 한다. |
+| ST-B2 | 전환 대상 | source cleanup 실패 뒤 committed relocation을 유지하고 durable cleanup을 재개하는 현재 계약으로 전환해야 한다. |
+| ST-B3 | 전환 대상 | adapter 없는 Actor는 Recreate policy에서만 허용하는 현재 relocation 계약으로 전환해야 한다. |
+| ST-B4 | 전환 대상 | 명시적 empty state를 Snapshot adapter의 정상 payload로 처리하는 현재 relocation 계약으로 전환해야 한다. |
 | ST-C1 | 구현 | target admission 뒤 source process 종료 시 transfer 실패와 복구를 검증한다. |
 | ST-C2 | 구현 | target commit 뒤 source process 종료 시 target actor가 유지됨을 검증한다. |
 | ST-C3 | 구현 | callback 실패와 transfer 실패의 public error 분류를 검증한다. |
@@ -22,15 +22,29 @@
 | ST-F1 | 구현 | handoff 중 도착한 packet의 순서와 target replay를 검증한다. |
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
 | ST-F3 | 구현 | 같은 session의 `S1,S2,S3,S4` 순서와 다른 session 진행 격리를 묶음 반복 `logs/20260720-042454-2074240`, `logs/20260720-042515-2075011`, `logs/20260720-042523-2076425`에서 검증했다. |
+| ST-F3A | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
 | ST-F4 | 구현 | forwarding window 안의 `straggler_forward`와 window 뒤 `stale_fail_fast`/`ActorLocationStale`를 같은 세 실행에서 검증했다. |
 | ST-F5 | 구현 | node별 단일 next-hop mapping, 축출, stale ref 거부와 최종 target 전달을 같은 세 실행에서 검증했다. |
 | ST-F6 | 구현 | handoff 중 request의 원래 caller completion 상관관계와 늦은 reply timeout 격리를 같은 세 실행에서 검증했다. |
+| ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
+| ST-G2 | 미구현 | Actor 10,000개 inventory chunk와 typed capacity aggregate all-or-none E2E가 없다. |
+| ST-G3 | 미구현 | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
+| ST-G4 | 미구현 | 이동 중 stale `ToActor` relay와 target queue 순서를 검증하는 E2E가 없다. |
+| ST-G5 | 미구현 | Entry·PerActor Actor relocation interruption 1초 목표와 초과 시 계속 진행을 검증하는 E2E가 없다. |
+| ST-G6 | 미구현 | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하는 E2E가 없다. |
+| ST-H1 | 미구현 | Deferred Join 등록, immutable request와 Actor queue barrier E2E가 없다. |
+| ST-H2 | 미구현 | Join completion outcome, 128-bit operation ID와 crash recovery E2E가 없다. |
+| ST-H3 | 미구현 | Context identity와 relocation 이후 source fence E2E가 없다. |
+| ST-H4 | 미구현 | 허용 execution context, 중복 등록과 relocation error parity E2E가 없다. |
+| ST-H4A | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
+| ST-H4B | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
+| ST-H5 | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
 
-최신 전체 실행 `logs/20260720-044205-2109114`에서 기본 17개 시나리오와
+이전 전체 실행 `logs/20260720-044205-2109114`는 당시 기본 17개 시나리오와
 별도 process generation을 사용하는 `ST-B2`, `ST-C2`, `ST-C1`이 모두 통과했다.
 `ST-C1`은 공통 스펙에 따라 target의 `pending_admission_expired` marker를
 30초 이내에서 기다리며, 전체 runtime drain을 admission 정리 증거로 대신 사용하지 않는다.
 
-`run_e2e.sh all`은 모든 행을 실행한다. process 종료가 필요한 `ST-B2`, `ST-C1`, `ST-C2`는
-각각 별도 server generation을 시작하며, 나머지 행도 client selector와 evidence marker를 통해
-누락 없이 실행한다.
+현재 `run_e2e.sh all`은 ST-G·ST-H와 ST-F3A를 실행하지 않는다. 따라서 위 과거 실행은
+현행 Config 10 전체 완료 증거가 아니다. Runtime M6 gate가 끝난 뒤 전환 대상 시나리오를 현재
+공개 API로 고치고, 미구현 행을 추가한 다음 전체 selector와 scenario registration을 다시 고정한다.

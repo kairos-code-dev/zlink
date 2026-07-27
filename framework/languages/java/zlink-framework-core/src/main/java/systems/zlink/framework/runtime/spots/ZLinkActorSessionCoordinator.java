@@ -103,6 +103,13 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().actorTypeFor(actor);
     }
 
+    String actorMeshName(String actorId) {
+        return localActor(actorId).orElseThrow(() ->
+            new ZLinkConfigurationException(
+                "local actor is not available: " + actorId))
+            .context().meshName();
+    }
+
     ZLinkBackendActorRef actorRef(String actorId) {
         ZLinkActor actor = localActor(actorId).orElseThrow(() ->
             new ZLinkConfigurationException(

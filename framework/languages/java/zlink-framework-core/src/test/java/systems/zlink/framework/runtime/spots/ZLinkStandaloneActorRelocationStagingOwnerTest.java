@@ -70,6 +70,63 @@ final class ZLinkStandaloneActorRelocationStagingOwnerTest {
     }
 
     @Test
+    void authoritySelectedRootPublishesHiddenActorButKeepsAdmissionClosed() {
+        FakeBackend backend = new FakeBackend();
+        var owner = new ZLinkStandaloneActorRelocationStagingOwner(backend);
+        UUID relocationId = UUID.randomUUID();
+        byte[] root = ZLinkCanonicalActorRelocationEnvelope.encode(
+            relocationId,
+            "actor-a",
+            7,
+            11,
+            true,
+            new byte[] {4, 5},
+            List.of());
+        var staged = owner.stage(request(relocationId, true), root)
+            .toCompletableFuture().join();
+
+        owner.publishAndReplayHidden(staged, root)
+            .toCompletableFuture().join();
+
+        assertTrue(backend.visible);
+        assertFalse(backend.admitted);
+        assertEquals(List.of("prepare", "publish"), backend.operations);
+        owner.openAdmission(staged);
+        assertEquals(List.of("prepare", "publish", "open"), backend.operations);
+    }
+
+    @Test
+    void authoritySelectedRootCannotReplaceCapturedApplicationState() {
+        FakeBackend backend = new FakeBackend();
+        var owner = new ZLinkStandaloneActorRelocationStagingOwner(backend);
+        UUID relocationId = UUID.randomUUID();
+        var staged = owner.stage(
+                request(relocationId, true),
+                ZLinkCanonicalActorRelocationEnvelope.encode(
+                    relocationId,
+                    "actor-a",
+                    7,
+                    11,
+                    true,
+                    new byte[] {4, 5},
+                    List.of()))
+            .toCompletableFuture().join();
+        byte[] changed = ZLinkCanonicalActorRelocationEnvelope.encode(
+            relocationId,
+            "actor-a",
+            7,
+            11,
+            true,
+            new byte[] {9},
+            List.of());
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> owner.publishAndReplayHidden(staged, changed));
+        assertFalse(backend.visible);
+    }
+
+    @Test
     void rootMustMatchActorAuthorityFence() {
         FakeBackend backend = new FakeBackend();
         var owner = new ZLinkStandaloneActorRelocationStagingOwner(backend);

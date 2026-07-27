@@ -10,7 +10,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
-import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
@@ -31,6 +30,7 @@ public final class ZLinkUserSpotRetireRuntime {
     private final ZLinkSpotRuntime spots;
     private final ZLinkActorRuntime actors;
     private final Map<String, Lane> lanes;
+    private final Map<String, ActorLane> actorLanes;
 
     public ZLinkUserSpotRetireRuntime(
         ZLinkSpotRuntime spots,
@@ -52,9 +52,13 @@ public final class ZLinkUserSpotRetireRuntime {
         var permits = new ZLinkRelocationPermitPool(
             Objects.requireNonNull(options, "options"));
         LinkedHashMap<String, Lane> configured = new LinkedHashMap<>();
+        LinkedHashMap<String, ActorLane> configuredActors =
+            new LinkedHashMap<>();
         for (MeshNodeRegistration registration : registrations) {
             ZLinkInternalMeshNode node = nodes.get(registration.meshName());
-            if (node == null || registration.relocatableSpotFactories().isEmpty()) {
+            if (node == null
+                || registration.relocatableSpotFactories().isEmpty()
+                    && registration.relocatableActorFactories().isEmpty()) {
                 continue;
             }
             var staging = new ZLinkUserSpotAggregateStagingOwner(
@@ -93,12 +97,18 @@ public final class ZLinkUserSpotRetireRuntime {
                     () -> false),
                 spots,
                 relocationClient,
-                locations);
+                locations,
+                new ZLinkStandaloneActorRelocationStagingOwner(
+                    node.status().routingId(),
+                    spots.actorSessions(),
+                    adapters,
+                    spots));
             ZLinkSpotRetireControl.install(node, target);
             node.setRelocationReplyRelayHandler(
                 target::relayCanonicalReply);
-            configured.put(registration.meshName(), new Lane(
-                new ZLinkUserSpotRetireSourceBuilder(
+            if (!registration.relocatableSpotFactories().isEmpty()) {
+                configured.put(registration.meshName(), new Lane(
+                    new ZLinkUserSpotRetireSourceBuilder(
                     registration.meshName(),
                     node.status().routingId(),
                     node.status().lifecycleGeneration(),
@@ -112,9 +122,28 @@ public final class ZLinkUserSpotRetireRuntime {
                     registration.relocatableActorFactories(),
                     spots),
                 new ZLinkUserSpotRetireScheduler(coordinator, staging),
-                relocationClient));
+                    relocationClient));
+            }
+            if (!registration.relocatableActorFactories().isEmpty()) {
+                configuredActors.put(
+                    registration.meshName(),
+                    new ActorLane(
+                        new ZLinkStandaloneActorRelocationSourceBuilder(
+                            registration.meshName(),
+                            node.status().routingId(),
+                            node.status().lifecycleGeneration(),
+                            locations,
+                            coordinator,
+                            permits,
+                            spots.actorSessions(),
+                            adapters,
+                            registration.relocatableActorFactories()),
+                        new ZLinkStandaloneActorRelocationScheduler(),
+                        relocationClient));
+            }
         }
         lanes = Map.copyOf(configured);
+        actorLanes = Map.copyOf(configuredActors);
     }
 
     public boolean supportsActiveInventory() {
@@ -125,7 +154,14 @@ public final class ZLinkUserSpotRetireRuntime {
                 return false;
             }
         }
-        return aggregateActors.containsAll(actors.activeActorIds());
+        for (String actorId : actors.activeActorIds()) {
+            if (!aggregateActors.contains(actorId)
+                && !actorLanes.containsKey(
+                    spots.actorSessions().actorMeshName(actorId))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public CompletionStage<Void> relocateAll(Instant deadline) {
@@ -138,6 +174,18 @@ public final class ZLinkUserSpotRetireRuntime {
                 spotId,
                 deadline,
                 cancellation));
+        }
+        java.util.HashSet<String> aggregateActors = new java.util.HashSet<>();
+        for (String spotId : spots.activeUserSpotIds()) {
+            aggregateActors.addAll(spots.actorSessions().actorIdsInSpot(spotId));
+        }
+        for (String actorId : actors.activeActorIds()) {
+            if (!aggregateActors.contains(actorId)) {
+                chain = chain.thenCompose(ignored -> relocateActor(
+                    actorId,
+                    deadline,
+                    cancellation));
+            }
         }
         return chain;
     }
@@ -170,9 +218,40 @@ public final class ZLinkUserSpotRetireRuntime {
             .thenApply(ignored -> null);
     }
 
+    private CompletionStage<Void> relocateActor(
+        String actorId,
+        Instant deadline,
+        ZLinkStoreCancellation cancellation) {
+        String meshName = spots.actorSessions().actorMeshName(actorId);
+        ActorLane lane = actorLanes.get(meshName);
+        if (lane == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                "Entry Spot Actor relocation lane is unavailable: "
+                    + meshName));
+        }
+        Duration timeout = Duration.between(Instant.now(), deadline);
+        if (timeout.isZero() || timeout.isNegative()) {
+            return CompletableFuture.failedFuture(new java.util.concurrent
+                .TimeoutException("Actor relocation deadline elapsed"));
+        }
+        return lane.source().prepare(actorId, cancellation)
+            .thenCompose(source -> lane.scheduler().executeRemote(
+                source,
+                lane.client(),
+                timeout.compareTo(CONTROL_TIMEOUT) < 0
+                    ? timeout : CONTROL_TIMEOUT,
+                cancellation));
+    }
+
     private record Lane(
         ZLinkUserSpotRetireSourceBuilder source,
         ZLinkUserSpotRetireScheduler scheduler,
+        ZLinkSpotRetireControl.Client client) {
+    }
+
+    private record ActorLane(
+        ZLinkStandaloneActorRelocationSourceBuilder source,
+        ZLinkStandaloneActorRelocationScheduler scheduler,
         ZLinkSpotRetireControl.Client client) {
     }
 }

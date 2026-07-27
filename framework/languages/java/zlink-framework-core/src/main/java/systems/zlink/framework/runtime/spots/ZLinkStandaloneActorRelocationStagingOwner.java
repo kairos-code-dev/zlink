@@ -58,10 +58,30 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
     }
 
     CompletionStage<Void> replayHidden(Staged staged) {
+        return replayHidden(staged, staged.decoded());
+    }
+
+    CompletionStage<Void> publishAndReplayHidden(
+        Staged staged,
+        byte[] finalRoot) {
+        requireActive(staged);
+        var decoded = ZLinkCanonicalActorRelocationEnvelope.decode(
+            finalRoot,
+            staged.request().relocationId(),
+            staged.request().actorId(),
+            staged.request().restoreSnapshot());
+        requireStagingPrefix(staged, decoded);
+        return replayHidden(staged, decoded)
+            .thenRun(() -> publish(staged));
+    }
+
+    private CompletionStage<Void> replayHidden(
+        Staged staged,
+        ZLinkCanonicalActorRelocationEnvelope.Decoded decoded) {
         requireActive(staged);
         CompletionStage<Void> chain =
             CompletableFuture.completedFuture(null);
-        for (var queued : staged.decoded().journal()) {
+        for (var queued : decoded.journal()) {
             chain = chain.thenCompose(ignored -> {
                 ZLinkActorAcceptedJournal.Record record =
                     ZLinkActorAcceptedJournal.decode(queued.payload());
@@ -76,6 +96,32 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
             });
         }
         return chain.thenRun(() -> staged.replayed = true);
+    }
+
+    private static void requireStagingPrefix(
+        Staged staged,
+        ZLinkCanonicalActorRelocationEnvelope.Decoded decoded) {
+        var initial = staged.decoded();
+        if (decoded.objectGeneration() != initial.objectGeneration()
+            || decoded.expectedAuthorityOwnerGeneration()
+                != initial.expectedAuthorityOwnerGeneration()
+            || !java.util.Arrays.equals(decoded.state(), initial.state())) {
+            throw new IllegalArgumentException(
+                "authority-selected Actor root differs from staged state");
+        }
+        if (decoded.journal().size() < initial.journal().size()) {
+            throw new IllegalArgumentException(
+                "authority-selected Actor journal removed staged records");
+        }
+        for (int index = 0; index < initial.journal().size(); index++) {
+            var left = initial.journal().get(index);
+            var right = decoded.journal().get(index);
+            if (left.sequence() != right.sequence()
+                || !java.util.Arrays.equals(left.payload(), right.payload())) {
+                throw new IllegalArgumentException(
+                    "authority-selected Actor journal changed its prefix");
+            }
+        }
     }
 
     void publish(Staged staged) {

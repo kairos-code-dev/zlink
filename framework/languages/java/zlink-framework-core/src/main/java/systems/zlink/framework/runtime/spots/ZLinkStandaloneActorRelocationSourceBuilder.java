@@ -159,7 +159,12 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                     admission.target(),
                     relocationId,
                     applicationState,
-                    staged));
+                    staged,
+                    stageRequest(
+                        admission.owned(),
+                        admission.target(),
+                        relocationId,
+                        staged)));
         }).exceptionallyCompose(failure -> {
             actors.abortActorRelocation(
                 admission.owned().actorId(), seal);
@@ -339,6 +344,38 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                 target.ownerId(), target.leaseGeneration()));
     }
 
+    private ZLinkSpotRetireControl.StageRequest stageRequest(
+        Owned actor,
+        ZLinkMeshNodeDescriptor target,
+        UUID relocationId,
+        ZLinkAggregateRelocationCoordinator.StagedRoot staged) {
+        return new ZLinkSpotRetireControl.StageRequest(
+            new ZLinkSpotRetireControl.Fence(relocationId, 1),
+            localNodeRid,
+            localNodeGeneration,
+            actor.snapshot().ownerId(),
+            actor.snapshot().ownerLeaseGeneration(),
+            target.rid(),
+            target.lifecycleGeneration(),
+            target.ownerId(),
+            target.leaseGeneration(),
+            meshName,
+            target.entrySpotId().orElseThrow(),
+            actor.stableType(),
+            false,
+            actor.snapshotPolicy(),
+            staged.stored().reference(),
+            staged.stored().checksumCrc32c(),
+            List.of(new ZLinkSpotRetireControl.ParticipantFence(
+                actor.authorityKey(),
+                1,
+                actor.actorId(),
+                actor.stableType(),
+                actor.snapshotPolicy(),
+                actor.snapshot().objectGeneration(),
+                actor.snapshot().authorityOwnerGeneration())));
+    }
+
     private static boolean hasCapacity(
         ZLinkCapacityUsage usage,
         int required) {
@@ -357,6 +394,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
         private final UUID relocationId;
         private final byte[] state;
         private final ZLinkAggregateRelocationCoordinator.StagedRoot initial;
+        private final ZLinkSpotRetireControl.StageRequest stageRequest;
         private ZLinkAggregateRelocationCoordinator.Prepared prepared;
         private boolean committed;
         private boolean terminal;
@@ -370,7 +408,8 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
             ZLinkMeshNodeDescriptor target,
             UUID relocationId,
             byte[] state,
-            ZLinkAggregateRelocationCoordinator.StagedRoot initial) {
+            ZLinkAggregateRelocationCoordinator.StagedRoot initial,
+            ZLinkSpotRetireControl.StageRequest stageRequest) {
             this.coordinator = coordinator;
             this.actors = actors;
             this.seal = seal;
@@ -380,6 +419,7 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
             this.relocationId = relocationId;
             this.state = state.clone();
             this.initial = initial;
+            this.stageRequest = stageRequest;
         }
 
         ZLinkStandaloneActorRelocationStagingOwner.Request targetRequest() {
@@ -395,6 +435,10 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
 
         ZLinkAggregateRelocationCoordinator.StagedRoot initialRoot() {
             return initial;
+        }
+
+        ZLinkSpotRetireControl.StageRequest stageRequest() {
+            return stageRequest;
         }
 
         synchronized CompletionStage<
@@ -453,14 +497,54 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
             committed = true;
         }
 
+        synchronized CompletionStage<
+            ZLinkAggregateRelocationCoordinator.Published> commitAuthority(
+                ZLinkStoreCancellation cancellation) {
+            if (terminal || committed || prepared == null) {
+                return failed(new IllegalStateException(
+                    "Actor relocation source is not ready for authority commit"));
+            }
+            return coordinator.commit(prepared, cancellation);
+        }
+
+        synchronized CompletionStage<
+            ZLinkAggregateRelocationCoordinator.Published>
+                completeSourceCleanup(
+                    ZLinkAggregateRelocationCoordinator.Published published,
+                    ZLinkStoreCancellation cancellation) {
+            if (!committed || terminal || prepared == null) {
+                return failed(new IllegalStateException(
+                    "Actor relocation source is not committed"));
+            }
+            return coordinator.completeSourceCleanup(
+                published,
+                prepared.request().root(),
+                cancellation);
+        }
+
+        synchronized CompletionStage<Void> discardInitialAfterCommit() {
+            if (!committed || terminal) {
+                return failed(new IllegalStateException(
+                    "Actor relocation source is not committed"));
+            }
+            return coordinator.discardStagedRoot(initial);
+        }
+
+        synchronized void releasePermitAfterCompletion() {
+            if (!committed) {
+                throw new IllegalStateException(
+                    "Actor relocation source is not committed");
+            }
+            finish();
+        }
+
         CompletionStage<Void> cleanupLocal() {
             if (!committed || terminal) {
                 return failed(new IllegalStateException(
                     "Actor relocation source is not committed"));
             }
             return actors.completeRelocationSource(
-                    List.of(owned.actorId()))
-                .thenRun(this::finish);
+                List.of(owned.actorId()));
         }
 
         synchronized CompletionStage<Void> abort() {

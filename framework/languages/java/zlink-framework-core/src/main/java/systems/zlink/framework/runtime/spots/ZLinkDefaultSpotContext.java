@@ -113,7 +113,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "entry",
+        return dispatchQueue.enqueue(
             () -> runApplicationExecution(null, false,
                 () -> host.runEntryDispatch(this, operation)));
     }
@@ -323,9 +323,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return ZLinkSpotQueueMetrics.enqueue(
-            dispatchQueue,
-            "user",
+        return dispatchQueue.enqueue(
             () -> runApplicationExecution(
                 null,
                 sharedSpotGate(),
@@ -338,9 +336,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         Supplier<CompletionStage<Void>> operation) {
         Objects.requireNonNull(actorId, "actorId");
         if (sharedSpotGate()) {
-            return ZLinkSpotQueueMetrics.enqueue(
-                dispatchQueue,
-                "user",
+            return dispatchQueue.enqueue(
                 () -> runApplicationExecution(actorId, true, operation));
         }
         return runApplicationExecution(actorId, false, operation);

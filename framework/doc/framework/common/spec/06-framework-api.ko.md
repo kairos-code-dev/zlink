@@ -1,7 +1,7 @@
 # ZLink Framework API
 
-[스펙 목차](README.ko.md) · [이전: 비동기 실행과 coroutine 정책](04-async-execution-policy.ko.md) ·
-[다음: Channel topology](10-channel-topology.ko.md)
+[스펙 목차](README.ko.md) · [이전: 비동기 실행과 handler turn](05-async-execution-policy.ko.md) · [다음: RouteMesh topology](07-channel-topology.ko.md)
+
 
 ## 1. 목적
 
@@ -41,18 +41,18 @@ Framework root는 process의 host lifecycle과 DI에 한 번 등록한다. Root 
 같은 [ChannelName](01-glossary.ko.md#channelname)을 서로 다른 RouteMesh 또는 ClientServer topology에 등록해도 역할과 관계없이 startup에서
 실패한다.
 Network identity의 공통값과 listener별 override는
-[13 Network listener identity](13-network-listener-identity.ko.md)가 소유한다.
+[13 Network listener identity](10-network-listener-identity.ko.md)가 소유한다.
 
 Root 등록은 process당 Framework runtime singleton 하나를 제공한다. 이 runtime은 host 전체를 대상으로
 mode를 필수로 받는 `Relocate`와 별도의 `Shutdown`을 수행한다. `PlannedMaintenance`는 source와 같은
 application version으로 이전하고, `RollingUpdate`는 caller가 지정한 source보다 큰 exact version으로
 이전한다. MeshName, ChannelName이나 node RID별 drain operation은 제공하지 않는다.
 State, mode별 target 선택, terminal result, 기본 deadline, 반복 호출과 cancellation 계약은
-[54 Host Relocate, Shutdown & Handoff](54-graceful-drain-handoff.ko.md)가 소유한다.
+[54 Host Relocate, Shutdown & Handoff](28-graceful-drain-handoff.ko.md)가 소유한다.
 
 Framework builder는 service liveness interval과 [deadline](01-glossary.ko.md#deadline)을 공개하지 않는다. Service runtime은 공통 profile을
 내부에서 적용하며 orderly disconnect와 half-open 장애를 구분한다. 고정값, service liveness message와 reconnect
-계약은 [55 Transport Liveness](55-transport-liveness.ko.md)가 소유한다.
+계약은 [55 Transport Liveness](29-transport-liveness.ko.md)가 소유한다.
 
 ## 3. RouteMesh 등록
 
@@ -131,7 +131,7 @@ MeshNode builder에는 drain policy나 lifecycle command를 추가하지 않는�
 Framework runtime의 `Relocate`, 일반 종료는 `Shutdown`이 수행한다. Caller는 node 점검에는
 `PlannedMaintenance`, 새 version 배포에는 exact target version을 가진 `RollingUpdate`를 선택한다.
 `Relocating`은 permit을 얻은 relocation unit부터
-진행하면서 나머지 unit의 application 처리를 유지하는 state이고, `Drained`는 모든 stateful object의
+진행하면서 나머지 unit의 application 처리를 유지하는 state이고, `Relocated`는 모든 stateful object의
 relocation을 마쳤지만 host와 infrastructure를 유지하는 state다. `Draining`은 별도로 호출한 `Shutdown`이
 resource를 정리하는 state다. Channel weight 0을 lifecycle state 대신 사용하지 않는다.
 
@@ -191,7 +191,7 @@ Operation별 call object는 해당 기능에 유효한 설정만 제공한다.
 - STREAM 호출은 session identity와 packet correlation을 보존한다.
 
 Server package의 one-way send·publish·명시적 STREAM reply는
-[비동기 실행 정책](04-async-execution-policy.ko.md)의 async-only admission 계약을 따른다. Public call은
+[비동기 실행 정책](05-async-execution-policy.ko.md)의 async-only admission 계약을 따른다. Public call은
 즉시 한 번만 시도하는 동기 terminator를 함께 제공하지 않는다. 별도 stream connector package의 send
 builder는 connector package 계약을 따른다. Request timeout은 reply 대기에만 적용하고 send timeout은
 transport admission 대기에 적용한다.
@@ -271,7 +271,7 @@ non-JSON content-type과 일치하는 codec이 registry에 없으면 payload를 
 
 Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet name, routing, correlation과 handler
 선택은 Framework가 소유한다. Application metadata와 payload ownership은
-[메시지 계약](03-message-model.ko.md)을 따른다. 내부 multipart 구조는 public Framework API에 노출하지
+[메시지 계약](04-message-model.ko.md)을 따른다. 내부 multipart 구조는 public Framework API에 노출하지
 않는다.
 
 언어별 server root와 [Stream Connector](01-glossary.ko.md#stream-connector)의 codec 등록 표면은 다음 exact interface가 소유한다.
@@ -297,7 +297,7 @@ Redis store instance를 만들고 root의 일반 location store 등록 API에 �
 제공하지 않는다.
 
 Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자세한 계약은
-[Redis location store](41-location-store-redis.ko.md)가 소유한다. Process-local in-memory store는
+[Redis location store](22-location-store-redis.ko.md)가 소유한다. Process-local in-memory store는
 한 process 안의 contract test에서만 사용할 수 있다.
 
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
@@ -310,8 +310,8 @@ cross-node relocation은 capture 전에 거부한다.
 Location provider가 owner·relocation authority compare-exchange, generic placement reservation·aggregate commit과
 store clock capability를 제공하지 않거나 required Relocation Store가 없거나 둘 이상이면 socket bind 전에 startup
 configuration error로 실패한다. 두 Store를 함께 등록하거나 Redis 구현을 직접 등록하는 전용 API는 제공하지
-않는다. 공식 Redis Relocation Store와 cross-store 규칙은 [Redis Relocation Store](42-relocation-store-redis.ko.md),
-Store interface와 이동별 사용 조건은 [40 Location runtime](40-location-runtime.ko.md)이 소유한다.
+않는다. 공식 Redis Relocation Store와 cross-store 규칙은 [Redis Relocation Store](23-relocation-store-redis.ko.md),
+Store interface와 이동별 사용 조건은 [40 Location runtime](21-location-runtime.ko.md)이 소유한다.
 
 Location Store interface와 Relocation Store interface는 서로 상속하지 않는다. Root는 각각의 generic Store instance를
 받는 두 registration operation을 독립적으로 제공한다. Actor·Spot별 Store, 두 Store를 한 번에 등록하는 bundle과
@@ -352,21 +352,21 @@ handler 선택 key로 사용하지 않는다. Subscriber별 transport topic filt
 Framework는 fanout liveness에 사용하는 exact topic byte `01 5A 4C 46 31`을 내부용으로 예약한다. Public
 fanout publish에 이 topic을 전달하면 호출 인자 오류다. 이 topic의 beacon은 handler와 application observer에
 전달하지 않는다. Beacon과 publisher별 ready 판정은
-[Transport liveness](55-transport-liveness.ko.md)가 소유한다.
+[Transport liveness](29-transport-liveness.ko.md)가 소유한다.
 
 Manual subscriber builder가 등록한 endpoint 집합은 공통 endpoint 연결 handle로도 제공한다. Application은
 이 handle로 runtime 중 endpoint를 연결하거나 해제하고 현재 manual 연결 목록을 조회할 수 있다. 이 handle은
 [automatic discovery](01-glossary.ko.md#automatic-discovery) 결과를 수정하는 표면이 아니며 같은 channel을 automatic mode로 전환하지 않는다.
 
 Endpoint 없이 등록한 automatic subscriber의 current connection intent와 ready 상태는
-[Runtime monitoring](50-runtime-monitoring.ko.md)의 fanout runtime snapshot과 event로만 관찰한다.
+[Runtime monitoring](24-runtime-monitoring.ko.md)의 fanout runtime snapshot과 event로만 관찰한다.
 Publisher changed event는 publisher entry를, location changed event는 Location snapshot을 필수로 가지며 두
 payload를 nullable field로 섞지 않는다. 이 표면은 읽기 전용이며 endpoint 연결·해제 operation을 제공하지
 않는다. Manual endpoint 연결 handle은 automatic snapshot이나 event의 entry를 변경할 수 없다.
 
 Fanout publish 완료는 local publisher transport가 event를 받아들였다는 뜻이다. Subscriber 수신과 handler
 완료는 확인하지 않는다. 자세한 전달 계약은
-[Channel 메시징](11-channel-messaging.ko.md#6-classic-fanout과의-경계)이 소유한다.
+[Channel 메시징](08-channel-messaging.ko.md#6-classic-fanout과의-경계)이 소유한다.
 
 Classic fanout publish의 공통 입력은 ChannelName, topic과 typed event다. 정확한 언어별 interface는
 topic을 명시하는 호출과 topic을 생략하는 typed 편의 호출을 함께 제공한다. 편의 호출은
@@ -619,7 +619,7 @@ capacity 부족은 admission 오류다. Framework는 이 결과를 이유로 다
 ### 13.2 Dispatch 실패 action owner
 
 Dispatch 실패 observer의 reason, action과 caller 결과 대응은
-[Message Flow Tracing §3](52-message-flow-tracing.ko.md#3-공통-attribute)가 단일 owner다.
+[Message Flow Tracing §3](26-message-flow-tracing.ko.md#3-공통-attribute)가 단일 owner다.
 언어별 exact interface는 그 닫힌 값을 해당 언어의 enum 또는 문자열로 투영하며 값을 추가하거나 줄이지
 않는다.
 

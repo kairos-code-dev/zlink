@@ -9,13 +9,13 @@
 > 이 문서는 **NestJS 위에서 ZLink framework를 어떻게 구성하는가**를 소유한다. 패키지 구조, 배포,
 > 모듈 부트스트랩, DI, lifecycle, 그리고 각 기능의 **등록 표면**이다.
 >
-> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../../11-channel-messaging.ko.md),
-> [spot-messaging](../../../20-spot-messaging.ko.md), [MeshNode](../../../21-mesh-node.ko.md),
-> [stream-session](../../../30-stream-session.ko.md), [actor-model](../../../22-actor-model.ko.md),
-> [session-actor-dispatch](../../../31-session-actor-dispatch.ko.md),
-> [runtime-monitoring](../../../50-runtime-monitoring.ko.md),
-> [location-runtime](../../../40-location-runtime.ko.md),
-> [channel-topology](../../../10-channel-topology.ko.md).
+> **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../../08-channel-messaging.ko.md),
+> [spot-messaging](../../../12-spot-messaging.ko.md), [MeshNode](../../../13-mesh-node.ko.md),
+> [stream-session](../../../19-stream-session.ko.md), [actor-model](../../../14-actor-model.ko.md),
+> [session-actor-dispatch](../../../20-session-actor-dispatch.ko.md),
+> [runtime-monitoring](../../../24-runtime-monitoring.ko.md),
+> [location-runtime](../../../21-location-runtime.ko.md),
+> [channel-topology](../../../07-channel-topology.ko.md).
 >
 > **public 타입과 시그니처는 [인터페이스 목차](interfaces/README.ko.md)가 범주별로 소유한다.**
 > 이 문서는 Node framework의 시스템 구조와 package 경계만 정의하며 사용 예제와 튜토리얼은 포함하지 않는다.
@@ -39,7 +39,7 @@
 - **codec 구현을 core에 섞지 않는다.** JSON은 기본 codec이고, Protobuf·MessagePack은
   extension package로 분리한다. 현재 Node HTTP client는 framework codec registry를
   사용하지 않는다. Codec 공유 범위의 공통 계약은
-  [Framework API §9](../../../05-framework-api.ko.md#9-codec)을 따른다.
+  [Framework API §9](../../../06-framework-api.ko.md#9-codec)을 따른다.
 - **[location store](../../../01-glossary.ko.md#location-store) 구현도 extension이다.** core는 store 계약만 알고 Redis 구현은 별도 package가
   제공한다(§10).
 - **connector는 서버 framework package를 참조하지 않는다.** 반대 방향도 같다.
@@ -191,7 +191,7 @@ lifecycle 참여자는 **framework → monitoring** 순서다.
 ### 5.2 종료 순서
 
 NestJS [shutdown](../../../01-glossary.ko.md#shutdown) hook은 host 단위 `Shutdown`을 사용한다. Rolling maintenance에서 continuity가 필요하면
-operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.relocate(...)`를 호출하고 `Drained` 결과를 확인한 뒤
+operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.relocate(...)`를 호출하고 `Relocated` 결과를 확인한 뒤
 `shutdown(...)`을 호출한다. Relocation이 필요하지 않으면 hook에서 `shutdown(...)`만 호출한다. Hook이
 시작될 때 이미 `Shutdown`이 `Draining`을 시작했다면 새 operation을 만들지 않고 그 shared operation에 합류한다.
 
@@ -226,8 +226,8 @@ backend 어댑터 포트는
 | `enableSubscriber(...)` | 이 channel의 event를 받는다 | 불필요 |
 
 자동·수동 연결, dispatch key와 중복 검사 범위는
-[channel-topology §5](../../../10-channel-topology.ko.md)와
-[channel-messaging](../../../11-channel-messaging.ko.md)이 소유한다.
+[channel-topology §5](../../../07-channel-topology.ko.md)와
+[channel-messaging](../../../08-channel-messaging.ko.md)이 소유한다.
 
 ## 7. Spot·Actor 등록
 
@@ -246,7 +246,7 @@ Spot·Actor factory는 owner MeshNode에 등록한다. [Spot direct](../../../01
 | MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
 중복 등록과 타입 규칙은
-[MeshNode](../../../21-mesh-node.ko.md)와 [spot-messaging](../../../20-spot-messaging.ko.md)이 소유한다.
+[MeshNode](../../../13-mesh-node.ko.md)와 [spot-messaging](../../../12-spot-messaging.ko.md)이 소유한다.
 
 ### 7.1 Entry Spot identity와 membership
 
@@ -259,7 +259,7 @@ Framework는 MeshNode startup에서 Entry Spot의 global Spot ID를 발급한다
 노출하지 않는다.
 
 Spot message의 실패와 Spot 수명 규칙은
-[spot-messaging §6](../../../20-spot-messaging.ko.md#6-실패와-수명)이 소유한다. 수동 outbound
+[spot-messaging §6](../../../12-spot-messaging.ko.md#6-실패와-수명)이 소유한다. 수동 outbound
 peer는 route mesh builder의 `connect(...)`로 지정한다.
 
 ### 7.2 Instance Spot 등록
@@ -289,19 +289,19 @@ Framework 내부에 유지하며 application callback에 전달하지 않는다.
 - **bind endpoint는 반드시 있어야 한다.**
 raw stream의 `write(...)`, `close(...)` 시그니처는
 [Channel과 routing 인터페이스](interfaces/02-channel-messaging.ko.md)가 소유하고, backpressure 의미는
-[stream-session](../../../30-stream-session.ko.md)이 소유한다.
+[stream-session](../../../19-stream-session.ko.md)이 소유한다.
 
 ## 9. Session actor dispatch 등록
 
-계약은 [session-actor-dispatch](../../../31-session-actor-dispatch.ko.md)가 소유한다. Stream node에서 Actor dispatch를
+계약은 [session-actor-dispatch](../../../20-session-actor-dispatch.ko.md)가 소유한다. Stream node에서 Actor dispatch를
 활성화하면 runtime이 global Actor ID와 current [authority](../../../01-glossary.ko.md#authority)로 route를 결정한다. Application은 [MeshName](../../../01-glossary.ko.md#meshname)이나 Spot
 resolver를 추가로 등록하지 않는다. Bound-session push는 current connection에만 적용되는 one-way operation이며
 stale binding을 새 connection으로 retarget하지 않는다.
 
 ## 10. Monitoring · Location 등록
 
-계약은 [runtime-monitoring](../../../50-runtime-monitoring.ko.md)과
-[location-runtime](../../../40-location-runtime.ko.md)이 소유한다.
+계약은 [runtime-monitoring](../../../24-runtime-monitoring.ko.md)과
+[location-runtime](../../../21-location-runtime.ko.md)이 소유한다.
 
 | 대상 | 등록 조건 |
 |---|---|
@@ -317,8 +317,8 @@ Redis store는 `@zlink-systems/framework-locations-redis`가 제공한다(§1).
 ## 11. Startup validation
 
 검증 항목의 정본은
-[channel-messaging §9](../../../11-channel-messaging.ko.md#9-검증-요구)와
-[spot-messaging §8](../../../20-spot-messaging.ko.md)이 소유한다.
+[channel-messaging §9](../../../08-channel-messaging.ko.md#9-검증-요구)와
+[spot-messaging §8](../../../12-spot-messaging.ko.md)이 소유한다.
 
 **Node는 모든 위반을 startup 시점 설정 예외로 던진다.** 설정 실수를 즉시 드러내는 쪽이 기본
 규칙이다.

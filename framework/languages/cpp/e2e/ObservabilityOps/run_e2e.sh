@@ -279,16 +279,10 @@ assert closed and all(
     for m in closed), closed
 net_active = sum(m["value"] for m in active)
 assert net_active == 0, f"active sessions should net to zero after triggers: {net_active}"
-# OBS-B2 subset — spot serial queue depth/wait samples with kind label.
-queue_depth = [m for m in play_b if m["name"] == "zlink.spot.queue.depth"]
-queue_wait = [m for m in play_b if m["name"] == "zlink.spot.queue.wait.duration"]
-assert queue_depth and all(m["tags"].get("kind") in ("user", "entry") for m in queue_depth), queue_depth
-assert queue_wait and queue_wait[0]["kind"] == "histogram" and queue_wait[0]["unit"] == "s", queue_wait
-assert sum(m["value"] for m in queue_depth) == 0, "queue depth should net to zero"
 forbidden = {"correlation_id", "flow_id", "actor_id", "spot_rid"}
 for sample in play_a + play_b + session:
     assert not (forbidden & set(sample["tags"])), f"high-cardinality label: {sample}"
-print("OBS-B(subset) PASS (spot/queue/channel/stream instruments, closed labels)")
+print("OBS-B(subset) PASS (spot/channel/stream instruments, closed labels)")
 PY
   verify_scenario OBS-B1 sessionEvidence "$LOG_DIR/session.metrics.evidence.json"
 fi

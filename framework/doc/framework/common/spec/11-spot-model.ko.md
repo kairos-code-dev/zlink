@@ -1,8 +1,7 @@
 # Spot 모델 — Entry, User, Instance
 
-[스펙 목차](README.ko.md) · [Spot 메시징](20-spot-messaging.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) · [Spot과 Actor membership](23-spot-actor.ko.md) ·
-[Spot 주소 메시징](24-spot-address-messaging.ko.md)
+[스펙 목차](README.ko.md) · [이전: Network listener identity](10-network-listener-identity.ko.md) · [다음: SPOT 메시징](12-spot-messaging.ko.md)
+
 
 ## 1. 범위
 
@@ -12,10 +11,10 @@
 종료와 relocation 계약은 서로 다르다.
 
 이 문서는 “어떤 Spot 종류를 사용해야 하는가?”와 “Entry Spot이 어떤 역할을
-하는가?”에 답한다. Message 전달 방법은 [20 Spot 메시징](20-spot-messaging.ko.md),
-Actor callback의 정확한 순서는 [23 Spot과 Actor membership](23-spot-actor.ko.md),
+하는가?”에 답한다. Message 전달 방법은 [20 Spot 메시징](12-spot-messaging.ko.md),
+Actor callback의 정확한 순서는 [23 Spot과 Actor membership](15-spot-actor.ko.md),
 User·Instance Spot의 생성과 주소 계약은
-[24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 소유한다.
+[24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 소유한다.
 
 ## 2. 세 Spot은 준비되는 시점과 목적이 다르다
 
@@ -43,10 +42,11 @@ Entry Spot은 Object Server와 함께 준비된다. User Spot은 application이 
 | Timer와 outbound call | 지원한다. | 지원한다. | 지원한다. |
 | 기본 application 실행 | Spot handler와 timer는 Spot turn에서 직렬화하고 Actor는 Actor별로 실행한다. | `SpotWide`: Spot·member Actor·timer·lifecycle callback 전체를 직렬화한다. | Direct handler와 timer를 Spot 전체에서 직렬화한다. |
 | Optional 실행 방식 | 제공하지 않는다. | `PerActor`: Actor별, Spot lane별, timer별로 직렬화하며 서로 다른 lane은 동시에 실행할 수 있다. | 제공하지 않는다. |
+| Relocation 경계 | Actor별 current turn 경계를 사용한다. | `SpotWide`는 기본적으로 임의의 안전한 turn 경계를 사용하고, 선택적으로 application이 알린 경계만 사용할 수 있다. `PerActor`는 Actor별 current turn 경계를 사용한다. | 현재 Spot turn 경계를 사용한다. |
 | `Yield` | 지원하지 않는다. | `SpotWide`에서만 지원한다. `PerActor`에서는 지원하지 않는다. | 지원한다. |
 | Logical Multicast subscription | 지원한다. | 지원한다. | 지원하지 않는다. |
 | Application의 명시적 close | Entry Spot context와 manager에 close operation을 제공하지 않는다. | Exact `SpotRef`를 manager `Close`에 전달하거나 local context에서 close한다. | 자신의 handler나 timer context에서 close한다. |
-| Relocation | Entry Spot 자체는 relocation unit이 아니다. Target node startup에서 새 identity로 준비한다. | Spot과 현재 member Actor를 하나의 aggregate로 이동한다. | Actor가 없는 Spot 하나를 relocation unit으로 이동한다. |
+| Relocation | Entry Spot 자체는 이동하지 않는다. Actor를 독립된 relocation unit으로 옮긴다. | `SpotWide`는 Spot과 member Actor 전체를 한 번에 옮긴다. `PerActor`는 Spot state를 옮기지 않고 Actor를 독립적으로 옮긴다. | Actor가 없는 Spot 하나를 relocation unit으로 이동한다. |
 | Host shutdown | Accepted turn을 정리한 뒤 `HostShutdown` reason으로 `OnClosing`을 호출한다. | 같은 shutdown closing 계약을 적용한다. | 같은 shutdown closing 계약을 적용한다. |
 | .NET 구현 type | `IZLinkEntrySpot`, Actor type을 지정하면 `IZLinkEntrySpot<TActor>` | `IZLinkSpot`, Actor type을 지정하면 `IZLinkSpot<TActor>` | `IZLinkInstanceSpot` |
 
@@ -84,6 +84,16 @@ handler, timer callback과 member Actor handler 가운데 하나만 실행한다
 Actor별 작업의 실행 범위를 분리한다. Instance Spot은 Actor membership을 지원하지
 않으므로 Actor queue가 없다.
 
+Entry Spot과 `PerActor` User Spot은 relocation에서도 같은 Actor 단위 모델을 사용한다.
+Spot instance는 handler와 dependency를 제공하는 실행 shell이며 relocation 후 유지할
+application state를 소유하지 않는다. Actor state, Actor queue와 Actor timer만 Actor
+단위로 이전한다. 여러 Actor가 공유해야 하는 state는 application이 Redis, database
+또는 별도 state service처럼 node 밖의 저장소에서 관리한다.
+
+`SpotWide` User Spot은 이 제한을 받지 않는다. Spot과 member Actor가 하나의
+relocation aggregate이므로 Spot field와 Spot timer를 Spot relocation adapter로
+함께 이전할 수 있다.
+
 ### 3.1 Spot 종류별 lifecycle callback
 
 다음 표의 callback 이름은 .NET 표기를 사용한다. 다른 언어는 이름과 비동기 표현이
@@ -102,7 +112,6 @@ Actor별 작업의 실행 범위를 분리한다. Instance Spot은 Actor members
 | `OnLeaveActorAsync` | O¹ | O¹ | X | Membership commit 뒤 Actor가 빠져나간 source Spot에 알린다. Actor 소멸을 뜻하지 않는다. |
 | `OnDisconnectActorAsync` | O¹ | O¹ | X | 해당 Spot에 속한 Actor의 연결 단절을 알린다. |
 | `OnCreateActorAsync` | O¹ | X | X | 새 Actor의 initial Entry Spot membership을 승인하거나 거절하고 optional reply를 반환한다. 일반 join callback과 구분한다. |
-| `OnActorRelocatedAsync` | O¹ | X | X | Host maintenance가 Actor를 다른 node의 Entry Spot에 복원했음을 target Entry Spot에 알린다. |
 
 ¹ Actor type을 지정해 Actor membership을 지원하는 Entry Spot 또는 User Spot에만
 적용한다.
@@ -119,7 +128,7 @@ source의 `OnLeaveActorAsync`를 실행한다. 따라서 User Spot에 있던 Act
 Spot으로 돌아가더라도 Entry Spot의 `OnCreateActorAsync`와 `OnActorJoinAsync`를
 호출하지 않는다. Entry Spot과 User Spot 사이의 양방향 callback 비교와 정확한
 commit 순서는
-[23 Spot과 Actor membership §4](23-spot-actor.ko.md#4-actor-join과-commit-순서)가
+[23 Spot과 Actor membership §4](15-spot-actor.ko.md#4-actor-join과-commit-순서)가
 정의한다.
 
 ### 3.3 Spot instance가 종료될 때 호출하는 callback
@@ -172,7 +181,7 @@ Actor type을 지정한 Entry Spot은 다음 세 상황을 구분한다.
 |---|---|---|
 | 새 Actor의 initial membership | `OnCreateActorAsync`로 승인·거절 → 승인 시 membership·Ready commit | 없음 |
 | Application이 요청한 일반 `JoinEntrySpot` | Admission callback 없이 membership commit → `OnJoinedActorAsync` | Commit 뒤 source Entry Spot 또는 User Spot의 `OnLeaveActorAsync` |
-| Host maintenance의 standalone Actor relocation | Owner·membership commit 뒤 `OnActorRelocatedAsync` | Source Entry Spot의 `OnLeaveActorAsync` |
+| Host maintenance의 standalone Actor relocation | Application membership callback을 호출하지 않는다. | Application membership callback을 호출하지 않는다. |
 
 `OnCreateActorAsync`는 새 Actor를 처음 Entry Spot에 배치할 때만 사용하며 생성 승인
 여부와 optional reply를 반환한다. 거절하면 staging Actor와 reservation을 정리하고
@@ -180,13 +189,13 @@ Ready로 공개하지 않는다. 이미 존재하는 Actor가 User Spot에서 �
 Spot에서 application join으로 이동하는 경우에는 `OnCreateActorAsync`와
 `OnActorJoinAsync`를 호출하지 않는다.
 
-Host `Relocate`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 경우에는
-application join callback을 사용하지 않는다. Framework는 target에서 Actor state를
-복원하고 Actor owner와 target Entry Spot membership을 commit한 뒤 target Entry
-Spot의 `OnActorRelocatedAsync`와 source Entry Spot의 `OnLeaveActorAsync`를 실행한다.
-두 callback과 기존 Entry membership의 durable cleanup이 끝나기 전에는 accepted
-journal을 replay하거나 target Actor dispatch를 열지 않는다.
-Journal replay, 남은 source resource의 durable cleanup과 `Completed`까지 마친 뒤,
+Host `Relocate`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 작업은
+application이 요청한 membership 변경이 아니다. Framework는 target에서 Actor
+state를 복원하고 Actor owner와 target Entry Spot membership을 commit하지만 target의
+`OnJoinedActorAsync`나 source의 `OnLeaveActorAsync`를 호출하지 않는다. Relocation
+전용 application callback도 제공하지 않는다.
+
+Accepted journal replay, 남은 source resource의 durable cleanup과 `Completed`까지 마친 뒤,
 이 Actor가 Session에 bind되어 있으면 Framework는 Session owner가 보관한 해당
 Actor의 현재 전달 경로인 binding route를 target owner로 갱신한다. 같은 Session에 bind된 다른 Actor의
 route와 physical STREAM connection은 바꾸지 않는다. Session owner가 route 갱신을
@@ -195,10 +204,9 @@ packet·push admission을 열지 않는다. Route
 갱신은 같은 `ObjectGeneration`에만 적용하며, 새 incarnation은 application이
 명시적으로 다시 bind해야 한다.
 
-Callback 실패는 이미 완료한 owner와 membership commit을 되돌리지 않는다.
-Framework는 target을 sealed 상태로 유지하고 current relocation fence에서 callback을
-재시도한다. 따라서 두 callback은 at-least-once로 호출될 수 있으며 retry-safe해야
-한다.
+Target admission은 Actor adapter restore, journal·queue·timer 복원, source relay와
+session route 변경이 끝난 뒤 연다. Application은 relocation 사실을 Entry Spot
+lifecycle callback으로 추적하지 않는다.
 
 ### 4.3 Entry Spot 자체는 이동하지 않는다
 
@@ -223,8 +231,10 @@ User Spot은 application이 stable type의 factory를 등록하고 manager를 �
   자신의 Spot queue에서 다른 callback과 직렬화한다.
 - Current Actor membership이 하나라도 남아 있으면 public close는 `false`로 끝나며
   Framework가 member Actor를 숨겨서 이동하거나 제거하지 않는다.
-- Relocation할 때는 User Spot과 seal 시점의 member Actor를 하나의 aggregate로
+- `SpotWide` relocation은 User Spot과 seal 시점의 member Actor를 하나의 aggregate로
   preflight하고 commit한다.
+- `PerActor` relocation은 target에 stateless Spot shell을 준비하고 Spot authority를
+  먼저 옮긴 뒤 member Actor를 독립된 unit으로 옮긴다.
 
 User Spot의 기본 execution mode는 `SpotWide`다. 같은 User Spot의 Spot handler,
 member Actor handler, timer와 lifecycle callback을 전체에서 한 번에 하나만 실행한다.
@@ -236,10 +246,43 @@ MeshNode lifecycle을 시작하기 전에 고정하며 실행 중에는 바꾸�
 continuation은 같은 공통 gate를 다시 얻어 새 turn에서 재개한다. `PerActor`에는
 shared Spot turn이 없으므로 `Yield`를 제공하지 않는다.
 
-Creation request, placement, `SpotRef`와 close의 exact generation 검사는
-[24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정의한다.
+### 5.1 SpotWide relocation 경계
 
-### 5.1 User Spot lifecycle
+[`Spot relocation readiness mode`](01-glossary.ko.md#spot-relocation-readiness-mode)의
+기본값은 `AnyTurnBoundary`다. 이 mode에서는 Framework가 현재 turn이 끝난 안전한
+경계를 선택하므로 application이 별도 준비 신호를 보내지 않는다.
+
+Round·match가 끝난 뒤에만 이동할 수 있는 Spot은 factory 등록에서
+`ApplicationSignaled`를 선택한다. Application은 안전한 turn에서
+`RelocationReady().Defer()`를 등록하고 handler를 끝낸다. `Defer()` 뒤 일반
+Framework operation을 같은 turn에서 시작하면 `InvalidConfiguration`이다.
+
+Framework는 등록한 경계 뒤 일반 application job을 잠시 보류하고 다음 중 하나를
+처리한다.
+
+| 조건 | 처리 owner | Completion outcome |
+|---|---|---|
+| 사용할 relocation이 없음 | 현재 owner | `Continued` |
+| Relocation이 commit 전에 취소됨 | 복원한 source owner | `Continued` |
+| Relocation이 완료됨 | target owner | `Relocated` |
+
+Framework는 현재 owner에서 `OnRelocationReadyCompleted`를 다음 application job보다
+먼저 호출한다. Callback이 완료되면 보류한 message와 timer를 다시 처리한다.
+Application은 다음 round를 이 callback에서 시작할 수 있다.
+
+Callback은 Spot interface의 기본 no-op 구현이다. `ApplicationSignaled`를 선택해도
+override를 강제하지 않는다. 정상 실행에서는 readiness 등록마다 logical completion
+하나를 만든다. Callback 실행 중 process가 종료되면 완료를 확인할 수 없으므로
+recovery에서 같은 completion을 다시 호출할 수 있다. Override는 retry-safe해야 한다.
+
+`AnyTurnBoundary`, `PerActor`, Entry Spot 또는 Instance Spot에서
+`RelocationReady().Defer()`를 호출하면 queue mutation 전에
+`InvalidConfiguration`으로 실패하고 completion callback을 호출하지 않는다.
+
+Creation request, placement, `SpotRef`와 close의 exact generation 검사는
+[24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 정의한다.
+
+### 5.2 User Spot lifecycle
 
 새 User Spot은 factory가 instance를 만든 뒤 `Configure`, `OnCreateAsync`와
 `OnInitializeAsync`를 거쳐 Ready 상태가 된다. `OnCreateAsync`는 creation request를
@@ -253,13 +296,13 @@ Actor membership을 지원하는 User Spot은 일반 join에서 target이면
 알린다. 이 callback들은 User Spot의 선택한 execution mode에 따라 Spot lifecycle
 lane에서 실행한다.
 
-User Spot 전체를 다른 node로 relocation할 때는 Spot과 member Actor의 logical
+`SpotWide` User Spot을 다른 node로 relocation할 때는 Spot과 member Actor의 logical
 membership을 그대로 유지한다. 따라서 member Actor에 대해 Entry Spot 또는 User
-Spot의 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync`,
-`OnActorRelocatedAsync`를 호출하지 않는다. Source User Spot instance를 정리할
-때는 `RelocationOut` 이유로 `OnClosingAsync`를 호출한다.
+Spot의 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync`를 호출하지
+않는다. Source User Spot instance를 정리할 때는 `RelocationOut` 이유로
+`OnClosingAsync`를 호출한다.
 
-Member Actor가 Session에 bind되어 있으면 callback과 accepted journal replay, durable
+Member Actor가 Session에 bind되어 있으면 accepted journal replay, durable
 source cleanup 및 `Completed` 뒤 aggregate에 포함된 각 Actor의 [binding route](01-glossary.ko.md#binding-route)를 target
 owner로 갱신한다. 같은 Session에 bind되어 있지만 이 aggregate에 포함되지 않은
 Actor의 route와 physical STREAM connection은 바꾸지 않는다. 모든 [Binding route 갱신
@@ -267,6 +310,18 @@ ACK](01-glossary.ko.md#binding-route-ack) 전에는 target User Spot과 member A
 session packet·push admission을 열지 않는다. 모든 route 갱신 확인과 steady
 normalization 뒤에만 admission을 연다. Route 갱신은 같은 `ObjectGeneration`에만
 적용하며, 새 incarnation은 application이 명시적으로 다시 bind해야 한다.
+
+`PerActor` relocation에서는 target에 같은 `SpotId`와 `ObjectGeneration`을 사용하는
+private Spot shell을 먼저 준비한다. 이 shell은 Location Store의 Spot authority가
+target으로 바뀌기 전까지 application 요청을 받지 않는다. Authority가 바뀐 뒤 새
+`ToSpot`, Actor Create와 Join은 target이 처리하고, source shell은 아직 source에
+남은 Actor의 기존 작업과 relocation control만 처리한다.
+
+Actor는 bounded concurrency로 각각 이전한다. Actor의 `ObjectGeneration`과 logical
+User Spot membership은 유지하고 Actor owner generation만 바꾼다. Infrastructure
+relocation은 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync` 또는
+`OnDisconnectActorAsync`를 호출하지 않는다. 마지막 Actor와 source에서 이미 수락한
+Spot 작업을 모두 정리한 뒤 source shell에 `RelocationOut`을 전달하고 종료한다.
 
 ## 6. Instance Spot
 
@@ -281,7 +336,7 @@ Spot direct call은 기본적으로 실행 중인 Spot만 찾는다. Missing RID
 Spot을 준비하려면 같은 call에 Instance intent를 명시해야 한다. 일반 message와
 `Find`는 hidden create를 시작하지 않는다. 최초 message를 보존하는 cold activation,
 factory 실행과 Ready barrier는
-[24 Spot 주소 메시징 §4](24-spot-address-messaging.ko.md#4-direct-message로-instance-spot-생성을-허용하는-방법)이
+[24 Spot 주소 메시징 §4](16-spot-address-messaging.ko.md#4-direct-message로-instance-spot-생성을-허용하는-방법)이
 정의한다.
 
 Instance Spot은 application handler나 timer가 자신의 context에서 close할 수 있다.
@@ -398,11 +453,11 @@ public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 
 | 문서 | 소유하는 상세 계약 |
 |---|---|
-| [20 Spot 메시징](20-spot-messaging.ko.md) | Spot direct, Logical Multicast, queue admission과 dispatch |
-| [21 MeshNode](21-mesh-node.ko.md) | Object role, Entry Spot과 factory 등록, placement capability |
-| [23 Spot과 Actor membership](23-spot-actor.ko.md) | Actor 생성, Entry·User Spot membership과 callback·commit 순서 |
-| [24 Spot 주소 메시징](24-spot-address-messaging.ko.md) | User·Instance Spot의 ID, 생성, cold activation, route와 close |
-| [54 Host Relocate, Shutdown과 handoff](54-graceful-drain-handoff.ko.md) | 세 Spot 종류의 shutdown, relocation과 recovery 순서 |
+| [20 Spot 메시징](12-spot-messaging.ko.md) | Spot direct, Logical Multicast, queue admission과 dispatch |
+| [21 MeshNode](13-mesh-node.ko.md) | Object role, Entry Spot과 factory 등록, placement capability |
+| [23 Spot과 Actor membership](15-spot-actor.ko.md) | Actor 생성, Entry·User Spot membership과 callback·commit 순서 |
+| [24 Spot 주소 메시징](16-spot-address-messaging.ko.md) | User·Instance Spot의 ID, 생성, cold activation, route와 close |
+| [54 Host Relocate, Shutdown과 handoff](28-graceful-drain-handoff.ko.md) | 세 Spot 종류의 shutdown, relocation과 recovery 순서 |
 
 ## 9. 검증 요구
 

@@ -1,7 +1,7 @@
 # .NET RouteMesh·MeshNode 공개 인터페이스
 
-[.NET exact interface 목차](README.ko.md) · [공통 topology](../../../../10-channel-topology.ko.md) ·
-[MeshNode](../../../../21-mesh-node.ko.md) · [메시지 모델](../../../../03-message-model.ko.md)
+[.NET exact interface 목차](README.ko.md) · [공통 topology](../../../../07-channel-topology.ko.md) ·
+[MeshNode](../../../../13-mesh-node.ko.md) · [메시지 모델](../../../../04-message-model.ko.md)
 
 ## 1. 범위
 
@@ -110,6 +110,12 @@ public enum ZLinkUserSpotExecutionMode
     PerActor = 1
 }
 
+public enum ZLinkSpotRelocationReadinessMode
+{
+    AnyTurnBoundary = 0,
+    ApplicationSignaled = 1
+}
+
 public sealed record ZLinkActorFactoryOptions
 {
 }
@@ -119,6 +125,8 @@ public sealed record ZLinkUserSpotFactoryOptions
     public int StableTypeLimit { get; init; }
     public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
         = ZLinkUserSpotExecutionMode.SpotWide;
+    public ZLinkSpotRelocationReadinessMode RelocationReadiness { get; init; }
+        = ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
 }
 
 public sealed record ZLinkInstanceSpotFactoryOptions
@@ -296,7 +304,7 @@ lowercase canonical 문자열로 표현한다. Prefix는 ASCII `[A-Za-z0-9._-]` 
 Object Server의 Entry Spot ID에도 같은 prefix를 사용하지만 MeshNode RID와 별도로 생성한 UUID v4를
 붙인다. 형식은 `<prefix>-entry-<lowercase-canonical-uuid-v4>`이며 caller가 fixed Entry Spot ID를 지정하지
 않는다. 이 ID의 전역 충돌과 caller가 지정한 Spot ID의 예약 형식 검증은
-[Spot model](../../../../19-spot-model.ko.md)이 정의한다. Prefix와 생성된 RID·Spot ID를 placement, shard 또는
+[Spot model](../../../../11-spot-model.ko.md)이 정의한다. Prefix와 생성된 RID·Spot ID를 placement, shard 또는
 stable application identity로 해석하지 않는다.
 
 등록한 MeshNode descriptor는 1 MiB 이하여야 한다. [Spot](../../../../01-glossary.ko.md#spot) type과 stateful object capability collection은 각각
@@ -382,6 +390,18 @@ actor-free 계약과 충돌하므로 startup이 실패한다. 두 option은 loca
 factory 등록에서는 `TAdapter`가 `IZLinkActorRelocationAdapter<TActor>`를, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory 등록에서는
 `IZLinkSpotRelocationAdapter<TSpot>`을 구현해야 한다. Factory 대상과 adapter 종류가 맞지 않으면 socket bind 전에
 startup configuration error로 실패한다. `Disabled`와 `Recreate`는 adapter type을 요구하지 않는다.
+
+`ZLinkUserSpotExecutionMode.PerActor`를 선택한 User Spot은
+`ZLinkRelocationPolicy<TSpot>.Recreate()`만 허용한다. `Disabled`나 `Snapshot`을
+함께 등록하면 socket bind 전에 startup configuration error다. PerActor Spot은
+stateless execution shell이며 member Actor의 relocation policy와 adapter가 Actor
+state를 각각 처리한다. 유지해야 하는 shared state와 Spot-level schedule은
+application의 Redis·database·service 같은 외부 저장소에 둔다.
+
+`RelocationReadiness`의 기본값은 `AnyTurnBoundary`다.
+`ApplicationSignaled`는 `SpotWide`에서만 허용한다. `PerActor`와 함께 등록하면
+socket bind 전에 startup configuration error다. Callback은 `IZLinkSpot`의 기본
+no-op 구현을 사용하므로 application override는 필수가 아니다.
 
 expected RID를 생략하면 admission handshake가 remote identity를 결정한다. expected RID를 지정한 경우
 handshake identity가 다르면 연결을 admission하지 않는다. Manual 연결도 자동 discovery 연결과 같은

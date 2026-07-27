@@ -6,8 +6,8 @@
 > code-level 설계 기준이다. 실제 class 이름은 달라도 무방하다.
 >
 > 계약의 정본은
-> [session-actor-dispatch 공통 스펙](../../common/spec/31-session-actor-dispatch.ko.md)과
-> [stage-wrapper-on-spot §3](../../common/spec/25-stage-wrapper-on-spot.ko.md)이 소유한다.
+> [session-actor-dispatch 공통 스펙](../../common/spec/20-session-actor-dispatch.ko.md)과
+> [stage-wrapper-on-spot §3](../../common/spec/17-stage-wrapper-on-spot.ko.md)이 소유한다.
 > **queue의 소유자와 completion 의미는 그 계약을 따라야 한다.**
 
 이 절의 코드는 public API 계약이 아니다. 구현자가 실행 의미를 같은 방식으로

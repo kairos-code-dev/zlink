@@ -14,7 +14,7 @@
 
 이 문서의 모든 코드 조각은 `.NET` exact interface가 정의한 10.0.0 목표 계약을 사용한다.
 현재 source·package와 목표 계약의 차이는
-[구현 차이](../../common/spec/90-implementation-gap.ko.md)가 소유한다. 각 절 끝의 `검증` 줄은 구현을
+[구현 차이](../../common/spec/30-implementation-gap.ko.md)가 소유한다. 각 절 끝의 `검증` 줄은 구현을
 목표 계약에 맞출 때 함께 갱신하고 통과시켜야 할 계약 테스트를 가리킨다.
 
 - **완전성 기준.** 10.0.0 구현이 끝나면
@@ -30,7 +30,7 @@
   인자는 `IZLinkSpotPacketHandler<TSpot, TMessage>`처럼 풀어 적되, 본문 코드는
   실제 구현 형태를 보인다.
 - **비동기 이름 규칙.** 공통 의미는
-  [비동기 실행과 coroutine 정책](../../common/spec/04-async-execution-policy.ko.md)을
+  [비동기 실행과 coroutine 정책](../../common/spec/05-async-execution-policy.ko.md)을
   따른다. `.NET`에서는 `Task`, `ValueTask`, `Task<T>`, `ValueTask<T>`를 반환하는
   공개 호출 종결자가 `Async(...)`로 끝난다. 실행 worker에 작업을 넣는
   `IZLinkWorkerCall<TResult>.Submit(...)`은 이 규칙의 적용 대상이 아니다.
@@ -464,7 +464,7 @@ await publisher.Publish("play-events", "room.events", new RoomEvent("opened")).A
 framework는 위치 event와 주기적 조회로 `SpotHandle`의 내부 주소를 갱신한다. request 도중
 주소가 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송한다. send는 중복 전달 가능성 때문에
 자동 재전송하지 않으며, local 제출 실패는 monitoring 오류 경로에서 관측한다
-([공통 스펙: spot 주소 메시징](../../common/spec/24-spot-address-messaging.ko.md)).
+([공통 스펙: spot 주소 메시징](../../common/spec/16-spot-address-messaging.ko.md)).
 
 | 인터페이스 | 역할 |
 |------------|------|
@@ -698,9 +698,9 @@ ZLinkFrameworkTerminationResult termination =
 ```
 
 Host `Retire`는 별도 MeshNode 정책을 받지 않는다. Current turn을 끝낸 ready unit만 permit을 얻어 seal하며,
-미실행 queue·journal·timer를 target에 복원한다. User Spot과 member Actor는 하나의 aggregate로 relocation하고
-Entry member Actor maintenance는 target `OnActorRelocatedAsync`를 사용한다. `Shutdown`은 새 relocation 없이
-local resource를 bounded cleanup한다.
+미실행 queue·journal·timer를 target에 복원한다. `SpotWide` User Spot은 member Actor와 하나의 aggregate로
+이전하고 Entry·`PerActor` Actor는 각각 이전한다. Infrastructure relocation은 application의 membership
+callback을 호출하지 않는다. `Shutdown`은 새 relocation 없이 local resource를 bounded cleanup한다.
 
 | 계약 | 역할 |
 |------|------|
@@ -730,7 +730,7 @@ await timer.CancelAsync();   // IZLinkTimer
 ## 8. Location — store 등록 · 위치 조회 · 운영 조회
 
 > 사용법은 [10-location](10-location.ko.md), 계약은
-> [공통 스펙](../../common/spec/40-location-runtime.ko.md). 검증 클래스는 `LocationContractTests`.
+> [공통 스펙](../../common/spec/21-location-runtime.ko.md). 검증 클래스는 `LocationContractTests`.
 
 ```csharp
 // Authority와 immutable relocation payload는 별도 public capability로 등록한다.
@@ -778,7 +778,7 @@ CAS가 reference와 checksum을 publish해야 target이 payload를 복원 근거
 
 10.0.0 구현 완료 gate에서는 위 시나리오의 `[ContractExample(...)]` 합집합이
 `Zlink.Framework.Contracts.*`의 public interface 집합과 같은지 검사한다. 현재 source/package가
-아직 목표 계약에 도달하지 않은 차이는 [구현 차이](../../common/spec/90-implementation-gap.ko.md)가 소유한다.
+아직 목표 계약에 도달하지 않은 차이는 [구현 차이](../../common/spec/30-implementation-gap.ko.md)가 소유한다.
 Exact interface를 바꾸면 목표 계약 테스트와 이 카탈로그를 함께 갱신한다.
 
 > client 측 Stream Connector(`Systems.Zlink.Stream.Connector`)의 `Zlink*` 타입은

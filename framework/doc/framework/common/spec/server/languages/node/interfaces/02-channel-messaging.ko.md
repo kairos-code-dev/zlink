@@ -40,7 +40,6 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
     onCreateActor?(
         actor: TActor,
         createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse>;
-    onActorRelocated?(actor: TActor): Promise<void>;
 }
 
 export interface ZLinkEntrySpotActorRequestHandler<
@@ -98,23 +97,20 @@ Entry Spot ID는 Framework가 MeshNode startup에서 발급한다. 애플리케�
 lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 직접 전달되며 Entry Spot callback을
 경유하지 않는다.
 
-`onActorRelocated?(actor)`는 default no-op이 가능한 maintenance 전용 async Entry Spot callback이다. Maintenance가
-Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter `restore(...)`를 먼저 완료하고 Recreate는
-payload restore 없이 factory materialization을 완료한다. Accepted journal은 checksum, 순서와 fence만 검증해
-application handler가 실행하지 않는 target staging queue에 준비한 뒤 Prepared CAS와 Location
-authority·Entry [membership](../../../../01-glossary.ko.md#membership) commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
-`onLeaveActor(...)`를 완료하고 accepted journal을 replay하며 logical timer를 복원한 다음 old Entry membership과 나머지 source resource를 durable하게 cleanup한다.
-Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
-두 callback과 replay, old Entry membership을 포함한 source cleanup, Completed CAS, route ACK와
-steady normalization을 모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
-중 하나가 throw하거나 rejected Promise로 끝나도 [authority](../../../../01-glossary.ko.md#authority)를 source로 rollback하지 않고 target을 sealed 상태로
-유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수 있으므로 retry-safe해야 한다.
+Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
+`restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory
+materialization을 완료한다. Accepted journal은 checksum, 순서와 fence를 검증하여
+target staging queue에 준비한 뒤 Prepared CAS와 Location authority·Entry
+[membership](../../../../01-glossary.ko.md#membership) commit을 수행한다. Journal,
+queue·Actor timer 복원, old Entry membership과 source resource cleanup, Completed
+CAS, route ACK와 steady normalization을 모두 완료한 뒤 Actor dispatch admission을
+연다.
 
-일반 same-node·remote User·Entry Spot join은 기존 admission·joined callback과 source leave callback을 사용하며
-`onActorRelocated(...)`를 호출하지 않는다. Maintenance relocation에서는 target의 일반 join callback을 호출하지 않지만
-실제 source Entry membership을 끝내므로 source `onLeaveActor(...)`는 commit 뒤 호출한다. Whole User Spot aggregate
-relocation에서는 membership이 유지되므로 member Actor에 대한 Entry Spot 또는 User Spot membership callback을
-모두 호출하지 않는다. Disabled operation에서도 `onActorRelocated(...)`를 호출하지 않는다.
+Infrastructure relocation은 target joined, source leave 또는 별도 relocation
+callback을 호출하지 않는다. 일반 same-node·remote User·Entry Spot join만 기존
+admission·joined callback과 source leave callback을 사용한다. `SpotWide` User Spot
+aggregate와 `PerActor` User Spot의 Actor relocation도 membership callback을
+호출하지 않는다.
 
 `ZLinkFanoutClient.publish(...)`는 typed event의 packet name을 topic으로 사용하는 호출과
 [topic](../../../../01-glossary.ko.md#topic)을 명시하는 호출을 함께 제공한다.
@@ -169,7 +165,7 @@ Monitoring 등록 타입과 `ZLinkMonitoringOptions`의 exact declaration은
 
 Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언어에서 사용하는 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 계기 이름 카탈로그는 다음 여섯 값이며, 이름·종류·단위와 attribute 제한은
-[runtime-metrics](../../../../51-runtime-metrics.ko.md)가 소유한다.
+[runtime-metrics](../../../../25-runtime-metrics.ko.md)가 소유한다.
 
 - `zlink.instance_spot.activations`
 - `zlink.instance_spot.activation.duration`

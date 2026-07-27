@@ -1,6 +1,6 @@
 # Java Channel messaging 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Channel messaging](../../../../11-channel-messaging.ko.md)
+[인터페이스 목차](README.ko.md) · [Channel messaging](../../../../08-channel-messaging.ko.md)
 
 ChannelName은 process 안의 송신 경로를 선택한다. RouteMesh·ClientServer·fanout builder와 typed handler,
 client call의 정확한 payload type은 공통 계약의 역할 구분을 Java generic으로 투영한다. One-way operation은

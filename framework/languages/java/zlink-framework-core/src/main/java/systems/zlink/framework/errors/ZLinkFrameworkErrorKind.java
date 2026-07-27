@@ -54,7 +54,7 @@ public enum ZLinkFrameworkErrorKind {
 
     /**
      * Default retry classification fixed by the public error kind table in
-     * {@code framework/doc/framework/common/spec/05-framework-api.ko.md} §13. Retry policy stays
+     * {@code framework/doc/framework/common/spec/06-framework-api.ko.md} §13. Retry policy stays
      * with the kind so callers never need a per-surface table.
      */
     public boolean retriable() {

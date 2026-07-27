@@ -274,7 +274,7 @@ builder.Services.AddZLinkFramework(options =>
   framework는 OTel에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
   (작성법은 바로 아래 "observer로 흐름 이벤트 받기").
 - 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/server/languages/dotnet/01-system-structure.ko.md), 공통 의미는
-  [공통 스펙 메시지 흐름 추적](../../common/spec/52-message-flow-tracing.ko.md) 참고.
+  [공통 스펙 메시지 흐름 추적](../../common/spec/26-message-flow-tracing.ko.md) 참고.
 
 > **샘플에서 보기 — 전 샘플.** [Bingo](../../common/sample/bingo/README.ko.md) ·
 > [TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
@@ -360,7 +360,7 @@ relay되고, spot이 actor를 호출하고, actor가 다른 channel로 send를 �
   callback(`Timer`), 앱이 시작한 호출(`Application`), lifecycle callback(`Lifecycle`).
 - 같은 `FlowId`로 여러 `CorrelationId`가 지나갈 수 있다. "요청 하나"를 볼 때는
   `corr=`, "업무 흐름 하나"를 볼 때는 flow id로 grep 한다.
-- 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../common/spec/53-flow-correlation.ko.md)가
+- 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../common/spec/27-flow-correlation.ko.md)가
   다룬다.
 
 ## 6. 더 보기

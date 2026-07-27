@@ -2,7 +2,7 @@
 
 [Framework 공통 내부 구조](README.ko.md) ·
 [Topology configuration](../spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md) ·
-[Location Store](../spec/40-location-runtime.ko.md)
+[Location Store](../spec/21-location-runtime.ko.md)
 
 이 문서는 automatic discovery를 사용하는 MeshNode의 RID 생성과 descriptor owner claim을 구현하는 내부
 순서를 설명한다. Application이 호출하거나 외부 provider가 추가로 구현하는 interface는 정의하지 않는다.

@@ -143,7 +143,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 
 ## Spot 실행 turn과 terminator 샘플 기준
 
-**모든 샘플은 세 terminator를 같은 기준으로 고른다**([04 §1.1](../spec/04-async-execution-policy.ko.md)).
+**모든 샘플은 세 terminator를 같은 기준으로 고른다**([04 §1.1](../spec/05-async-execution-policy.ko.md)).
 
 | terminator | 실행 줄 | 언제 |
 |---|---|---|
@@ -168,7 +168,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | 자기 entry spot이 소유한 actor 표를 읽고 만들고 등록한다 | `async` |
 | TicTacToe | game join이 게임 상태 흐름으로 바로 이어진다 | `async` |
 
-**worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/04-async-execution-policy.ko.md),
+**worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/05-async-execution-policy.ko.md),
 [12 §3](../spec/http-client/12-http-client.ko.md)). 외부 HTTP·레거시 API는 HTTP client의 terminator를 직접 쓰고,
 DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기는 `RunIoWorker(...)`로 감싼다. CPU
 작업은 `RunCpuWorker(...)`로 넘긴다.
@@ -205,7 +205,7 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   lifecycle이 끊긴 framework 구현을 수정한다. 이 금지는 언어별 sample 전체에 적용하며,
   위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다.
 - **자동 등록이 기본이다.** framework가 handler를 스캔하고 등록할 수 있는 언어에서는 별도 등록
-  호출 없이 handler를 자동 등록한다([05 §8](../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)). 샘플마다 handler
+  호출 없이 handler를 자동 등록한다([05 §8](../spec/06-framework-api.ko.md#8-handler-등록과-dispatch)). 샘플마다 handler
   목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가 누락을 client 시나리오가
   늦게 발견하게 된다.
 - **절대 규칙: TicTacToe만 수동 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께

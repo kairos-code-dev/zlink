@@ -1,12 +1,13 @@
 # Node.js stateful maintenance runtime
 
 [Node.js 문서](../README.ko.md) · [Runtime lifecycle](runtime-lifecycle.ko.md) ·
-[Location Runtime 계약](../../common/spec/40-location-runtime.ko.md) ·
-[Host 종료 계약](../../common/spec/54-graceful-drain-handoff.ko.md)
+[Location Runtime 계약](../../common/spec/21-location-runtime.ko.md) ·
+[Host 종료 계약](../../common/spec/28-graceful-drain-handoff.ko.md)
 
 ## 1. 목적
 
-이 문서는 Node.js service runtime이 Actor·User Spot aggregate·Instance Spot owner 변경을 Location Store의
+이 문서는 Node.js service runtime이 Entry·`PerActor` Actor, `SpotWide` User Spot aggregate와 Instance Spot
+owner 변경을 Location Store의
 opaque CAS와 Relocation Store 위에서 구현하는 내부 구조를 설명한다. Application adapter는 opaque bytes만
 capture·restore하며 authority key, Store version, relocation reference와 wire frame을 알지 않는다.
 
@@ -46,11 +47,19 @@ write를 모두 stale 결과로 끝낸다.
 
 ## 4. Phase driver
 
-Host `Retire`는 standalone Actor, Instance Spot과 User Spot aggregate queue에 infrastructure notification을
-예약한다. Notification이 turn boundary에 도달하면 현재 실행 중인 turn만 source에서 완료한다. Process
+Host `Retire`는 Entry·`PerActor` Actor, Instance Spot과 `SpotWide` User Spot aggregate queue에
+infrastructure notification을 예약한다. `PerActor` User Spot은 target private shell과 Spot authority를
+먼저 전환한 뒤 Actor를 각각 예약한다. Notification이 turn boundary에 도달하면 현재 실행 중인 turn만
+source에서 완료한다. Process
 outbound·target inbound unit, 필요한 `Capture`·`Restore` callback과 deterministic encoded upper-bound byte
 permit을 모두 얻은 unit만 source admission을 reversible하게 seal한다. Permit을 얻지 못하면 notification을
 다시 예약하고 application message와 timer를 계속 처리한다.
+
+`application_signaled` SpotWide unit은 target과 permit을 먼저 준비한 뒤
+`relocationReady().defer()`의 queue barrier를 기다린다. 준비된 relocation이 없으면
+source에서 `continued`, precommit abort도 source에서 `continued`, commit과 target
+restore가 끝나면 target에서 `relocated` callback marker를 실행한다. Callback marker가
+끝나기 전에는 frozen queue, relay와 새 direct queue를 application handler에 열지 않는다.
 
 `Preparing`은 permit을 가진 source seal과 accepted queue boundary를 함께 기록한다. `Captured`는 optional
 application state, 실행하지 않은 message, accepted journal과 logical timer registration·pending tick을 immutable
@@ -59,10 +68,9 @@ factory·restore와 journal validation·staging을 끝낸다. 이 세 phase에�
 recovery하거나 `Aborted`로 끝낼 수 있다.
 
 `Committed`에서 owner와 membership fence가 target으로 바뀐다. 이후 source owner로 rollback하지 않는다.
-Target은 commit 뒤 필요한 lifecycle callback을 실행한다. Entry Spot standalone Actor maintenance는 target
-`OnActorRelocated`, source `OnLeaveActor` 완료 또는 durable source cleanup 뒤 accepted journal을 replay한다.
-일반 application join만 target `OnJoinedActor`를 사용한다. User Spot aggregate는 membership이 유지되므로
-member Actor의 join·leave·relocation callback을 호출하지 않는다.
+Infrastructure relocation은 application의 join·leave callback을 실행하지 않는다. Entry·`PerActor` Actor는
+accepted journal·queue·Actor timer와 source relay를 복원한다. 일반 application join만 membership callback을
+사용한다. `SpotWide` User Spot aggregate도 membership callback을 호출하지 않는다.
 
 `Activated`는 callback과 replay가 끝났지만 admission은 sealed인 상태다. `Cleaning`에서 남은 source scope와
 participant state를 정리한다. `Completed` CAS, bound STREAM route ACK와 steady normalization을 모두 끝낸 뒤에만
@@ -127,6 +135,7 @@ timer를 만들고 pending tick을 frozen queue ordering boundary에 맞춰 복�
 - Target replacement가 이전 reservation과 activation completion을 generation으로 fence한다.
 - Relocation delete가 missing이어도 cleanup은 성공으로 끝난다.
 - Current turn만 source에서 끝나고 frozen queue·journal·timer는 target에서 순서를 보존해 복원된다.
-- User Spot과 member Actor가 하나의 aggregate permit·root·commit generation을 사용한다.
-- Entry maintenance는 `OnActorRelocated`, source leave cleanup, journal replay 순서를 지키고 일반 join만
-  `OnJoinedActor`를 사용한다.
+- `SpotWide` User Spot과 member Actor가 하나의 aggregate permit·root·commit generation을 사용한다.
+- Entry·`PerActor` Actor maintenance는 application membership callback 없이 queue·timer·relay를 복원한다.
+- `PerActor` Spot authority 전환 뒤 `ToSpot`과 Actor별 `ToActor` route가 분리되고 stale source route가
+  operation identity와 reply correlation을 유지해 relay된다.

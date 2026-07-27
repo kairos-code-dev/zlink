@@ -7,8 +7,8 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
-[인터페이스 목차](README.ko.md) · [Actor model](../../../../22-actor-model.ko.md) ·
-[Spot·Actor membership](../../../../23-spot-actor.ko.md)
+[인터페이스 목차](README.ko.md) · [Actor model](../../../../14-actor-model.ko.md) ·
+[Spot·Actor membership](../../../../15-spot-actor.ko.md)
 
 이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Actor 관련 정확한 TypeScript declaration을 고정한다.
@@ -186,8 +186,8 @@ Session binding은 `ActorRef.actorId + objectGeneration`의 exact incarnation을
 않는다. Disconnect는 binding만 해제하며 Actor와 Spot membership은 유지한다.
 
 Public trace category는 `actor-relocation`다. 의미와 검증 기준은
-[Actor model](../../../../22-actor-model.ko.md), [Spot·Actor membership](../../../../23-spot-actor.ko.md),
-[Session Actor dispatch](../../../../31-session-actor-dispatch.ko.md)가 소유한다.
+[Actor model](../../../../14-actor-model.ko.md), [Spot·Actor membership](../../../../15-spot-actor.ko.md),
+[Session Actor dispatch](../../../../20-session-actor-dispatch.ko.md)가 소유한다.
 
 Actor request에 선언된 `yield(...)`는 현재 Actor handler가 `SpotWide` User Spot의 shared execution
 gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면 operation을

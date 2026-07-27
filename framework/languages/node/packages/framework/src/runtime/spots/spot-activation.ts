@@ -155,11 +155,7 @@ export class ZLinkSpotActivationLifecycle {
     authorityOwnerGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActivation> {
-    const serial = new ZLinkSpotSerialExecutor(
-      this.options.metrics,
-      objectKind === 'user_spot' ? 'user' : 'instance',
-      true
-    );
+    const serial = new ZLinkSpotSerialExecutor(true);
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
     applySpotHandlerRegistrations(
@@ -273,7 +269,7 @@ export class ZLinkSpotActivationLifecycle {
     objectGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActivation> {
-    const serial = new ZLinkSpotSerialExecutor(this.options.metrics, 'instance', true);
+    const serial = new ZLinkSpotSerialExecutor(true);
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
     const instanceHandlers = new DefaultZLinkInstanceSpotHandlerRegistry(handlers);
@@ -404,8 +400,6 @@ export class ZLinkSpotActivationLifecycle {
     const executionMode = this.options.userSpotExecutionMode?.(meshName, spotType)
       ?? ZLinkUserSpotExecutionMode.SpotWide;
     const serial = new ZLinkSpotSerialExecutor(
-      this.options.metrics,
-      'user',
       executionMode === ZLinkUserSpotExecutionMode.SpotWide
     );
     const timerSerials = new Map<string, ZLinkSpotSerialExecutor>();
@@ -426,11 +420,7 @@ export class ZLinkSpotActivationLifecycle {
         }
         let timerSerial = timerSerials.get(name);
         if (timerSerial === undefined) {
-          timerSerial = new ZLinkSpotSerialExecutor(
-            this.options.metrics,
-            'user',
-            false
-          );
+          timerSerial = new ZLinkSpotSerialExecutor(false);
           timerSerials.set(name, timerSerial);
         }
         return timerSerial;

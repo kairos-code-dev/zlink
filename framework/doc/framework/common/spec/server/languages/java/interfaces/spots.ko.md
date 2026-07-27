@@ -7,7 +7,7 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
-[인터페이스 목차](README.ko.md) · [Spot 공통 계약](../../../../20-spot-messaging.ko.md)
+[인터페이스 목차](README.ko.md) · [Spot 공통 계약](../../../../12-spot-messaging.ko.md)
 
 이 문서는 Java에서 Spot identity, lifecycle, messaging, manager와 relocation adapter를 표현하는 공개
 인터페이스를 고정한다. 일반 message는 global SpotId로 대상을 지정하고, 특정 incarnation을 닫는
@@ -38,6 +38,42 @@ public enum ZLinkSpotCloseReason {
 public record ZLinkSpotClosingContext(
     ZLinkSpotCloseReason reason,
     Instant deadline) {}
+
+public enum ZLinkSpotRelocationReadyOutcome {
+    CONTINUED(0), RELOCATED(1);
+    private final int value;
+    ZLinkSpotRelocationReadyOutcome(int value) { this.value = value; }
+    public int value() { return value; }
+}
+
+public record ZLinkSpotRelocationReadyCompletion(
+    ZLinkSpotRelocationReadyOutcome outcome) {}
+
+public interface ZLinkSpotRelocationReadyCall {
+    void defer();
+}
+
+public interface ZLinkSpot<TActor extends ZLinkActor>
+    extends ZLinkUserSpotActorLifecycle<TActor> {
+    ZLinkSpotContext context();
+    default void configure() {}
+    default CompletionStage<ZLinkSpotCreateResponse> onCreate(
+        ZLinkMessage request) {
+        return CompletableFuture.completedFuture(
+            ZLinkSpotCreateResponse.accept());
+    }
+    default CompletionStage<Void> onInitialize() {
+        return CompletableFuture.completedFuture(null);
+    }
+    default CompletionStage<Void> onClosing(
+        ZLinkSpotClosingContext context) {
+        return CompletableFuture.completedFuture(null);
+    }
+    default CompletionStage<Void> onRelocationReadyCompleted(
+        ZLinkSpotRelocationReadyCompletion completion) {
+        return CompletableFuture.completedFuture(null);
+    }
+}
 
 public interface ZLinkInstanceSpot {
     ZLinkInstanceSpotContext context();
@@ -79,6 +115,25 @@ public interface ZLinkSpotRelocationAdapter<TSpot> {
         TSpot spot, byte[] state, ZLinkRelocationCancellation cancellation);
 }
 
+public interface ZLinkSpotContext {
+    String meshName();
+    String spotId();
+    long objectGeneration();
+    RoutingId nodeRid();
+    ZLinkSpotHandlerRegistry handlers();
+    ZLinkSpotOutbound outbound();
+    <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work);
+    ZLinkSpotRelocationReadyCall relocationReady();
+    CompletionStage<Void> leaveActor(ZLinkActor actor);
+    CompletionStage<Boolean> close();
+    CompletionStage<ZLinkTimer> addTimer(
+        String name,
+        Duration period,
+        Class<?> handlerType,
+        ZLinkTimerOptions options);
+}
+
 public interface ZLinkEntrySpot<TActor extends ZLinkActor>
     extends ZLinkSpotActorMembershipLifecycle<TActor> {
     ZLinkEntrySpotContext context();
@@ -90,9 +145,6 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor>
     }
     default CompletionStage<Void> onClosing(
         ZLinkSpotClosingContext context) {
-        return CompletableFuture.completedFuture(null);
-    }
-    default CompletionStage<Void> onActorRelocated(TActor actor) {
         return CompletableFuture.completedFuture(null);
     }
 }
@@ -165,19 +217,35 @@ precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`, [
 `Blocked/DeadlineExceeded`다. Stale attempt cancellation은 terminal result를 commit하지 못한다. Capture와
 restore는 at-least-once이고 stale target attempt와 겹칠 수 있으므로 retry-safe해야 한다.
 
-Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter restore, Location authority·membership
-commit, target Entry Spot의 `onActorRelocated(actor)`와 source Entry Spot의 `onLeaveActor(actor)`, accepted journal
-replay·logical timer 복원, old Entry [membership](../../../../01-glossary.ko.md#membership)의 durable source cleanup,
-`Completed` CAS, bound-session route switch·ACK, steady normalization, application dispatch 개방 순서로 진행한다. Source
-process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다. 어느
-callback이 exception으로 끝나도 commit을 rollback하거나 source owner를
-복원하지 않고 target을 sealed 상태로 유지한 채 같은 relocation fence에서 retry한다. 따라서 두 callback은
-at-least-once와 retry-safe 계약을 따른다.
+Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter restore, Location
+authority·membership commit, accepted journal·queue·Actor timer 복원, old Entry
+[membership](../../../../01-glossary.ko.md#membership)의 durable source cleanup,
+`Completed` CAS, bound-session route switch·ACK, steady normalization, application
+dispatch 개방 순서로 진행한다. Infrastructure relocation은 target
+`onJoinedActor(...)`, source `onLeaveActor(...)` 또는 relocation 전용 application
+callback을 호출하지 않는다.
 
-`onActorRelocated`는 maintenance relocation 전용 callback이다. 일반 same-node·remote join은 기존 `onActorJoin`과
-`onJoinedActor`를 사용하고 `onActorRelocated`를 호출하지 않는다. Maintenance relocation에서는 target의 일반 join
-callback을 호출하지 않는다. Whole User Spot aggregate relocation에서는 member Actor에 대한
-Entry/User Spot membership callback을 호출하지 않는다.
+`PerActor` User Spot도 같은 Actor 단위 relocation을 사용한다. Spot policy는
+`Recreate`만 허용하고 Spot adapter를 등록하지 않는다. Spot authority 전환 뒤
+`ToSpot`·Create·Join은 target, `ToActor`는 Actor별 current owner를 사용한다.
+Spot field와 Spot-level schedule은 이전하지 않는다. 유지해야 하는 shared state와
+schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다.
+Target runtime-private shell은 같은 public Spot ID와 object generation을 사용하며
+authority 전환 전에는 public lookup에 노출하지 않는다. Stale source route는 operation
+identity, generation, deadline, correlation과 reply route를 보존해 relay한다. Actor
+queue seal부터 target admission까지 1초는 운영 목표이며 초과해도 relocation을
+취소하거나 rollback하지 않는다.
+
+`relocationReady().defer()`는 `SPOT_WIDE`와 `APPLICATION_SIGNALED`을 함께 등록한
+Spot turn에서만 유효하다. Framework는 이동하지 않았거나 commit 전에 abort했으면
+source에서 `CONTINUED`, 이동했으면 target에서 `RELOCATED` completion을
+`onRelocationReadyCompleted(...)`에 전달한다. 기본 method는 no-op이다. Callback
+완료 전에는 보류한 application message와 timer를 실행하지 않는다.
+
+기본 `ANY_TURN_BOUNDARY`, `PER_ACTOR`, Entry·Instance Spot, Spot turn 밖과 같은
+turn의 중복 `defer()`는 queue mutation 전에 `INVALID_CONFIGURATION`으로 실패한다.
+`defer()` 뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서
+callback이 다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 
 ### Instance Spot cold activation과 첫 message
 
@@ -319,6 +387,20 @@ public final class systems.zlink.framework.spots.ZLinkSpotClosingContext extends
   public systems.zlink.framework.spots.ZLinkSpotCloseReason reason();
   public java.time.Instant deadline();
 }
+public final class systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome extends java.lang.Enum<systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome> {
+  public static final systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome CONTINUED;
+  public static final systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome RELOCATED;
+  public static systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome[] values();
+  public static systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion extends java.lang.Record {
+  public systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion(systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome);
+  public systems.zlink.framework.spots.ZLinkSpotRelocationReadyOutcome outcome();
+}
+public interface systems.zlink.framework.spots.ZLinkSpotRelocationReadyCall {
+  public abstract void defer();
+}
 public interface systems.zlink.framework.spots.ZLinkInstanceSpot {
   public abstract systems.zlink.framework.spots.ZLinkInstanceSpotContext context();
   public default void configure();
@@ -350,7 +432,6 @@ public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends sys
   public default java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
   public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkActorCreateResponse> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> onActorRelocated(TActor);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
   public abstract java.util.concurrent.CompletionStage<TReply> handle(TEntrySpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest);
@@ -379,6 +460,7 @@ public interface systems.zlink.framework.spots.ZLinkSpot<TActor extends systems.
   public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResponse> onCreate(systems.zlink.framework.messaging.ZLinkMessage);
   public default java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> onRelocationReadyCompleted(systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion);
 }
 public final class systems.zlink.framework.spots.ZLinkSpotActorJoinResponse extends java.lang.Record {
   public systems.zlink.framework.spots.ZLinkSpotActorJoinResponse(boolean, systems.zlink.framework.messaging.ZLinkMessage);
@@ -426,6 +508,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotContext {
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public default systems.zlink.framework.spots.ZLinkSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
+  public abstract systems.zlink.framework.spots.ZLinkSpotRelocationReadyCall relocationReady();
   public default <T> systems.zlink.framework.spots.ZLinkWorkerCall<T> runCpuWorker(systems.zlink.framework.spots.ZLinkWorkerTask<T>);
   public default <T> systems.zlink.framework.spots.ZLinkWorkerCall<T> runIoWorker(systems.zlink.framework.spots.ZLinkIoWorkerTask<T>);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> leaveActor(systems.zlink.framework.actors.ZLinkActor);

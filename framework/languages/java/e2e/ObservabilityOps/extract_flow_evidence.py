@@ -145,15 +145,6 @@ if SELECTOR in ("all", "OBS-B1"):
 
 if SELECTOR in ("all", "OBS-B2"):
     metrics = load_metrics("play-a-metrics.json", "play-b-metrics.json")
-    live = load_metrics("play-a-metrics-b2-live.json")
-    for live_row in live:
-        if live_row["name"] != "zlink.spot.queue.depth":
-            continue
-        for index, row in enumerate(metrics):
-            if row["name"] == live_row["name"] and row.get("tags") == live_row.get("tags"):
-                if live_row.get("value", 0) > row.get("value", 0):
-                    metrics[index] = live_row
-                break
     require([row for row in metrics if row["name"] == "zlink.actor.transfers"], "OBS-B2 actor transfer meter missing")
     write_path = OUT_DIR / "OBS-B2.json"
     write_path.write_text(json.dumps({"scenario": "OBS-B2", "metrics": metrics}, indent=2) + "\n", encoding="utf-8")

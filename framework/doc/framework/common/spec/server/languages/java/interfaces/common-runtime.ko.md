@@ -1,6 +1,6 @@
 # Java 공통 runtime 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Host relocation과 종료 계약](../../../../54-graceful-drain-handoff.ko.md)
+[인터페이스 목차](README.ko.md) · [Host relocation과 종료 계약](../../../../28-graceful-drain-handoff.ko.md)
 
 이 문서는 Java에서 host의 실행 상태, object relocation, 종료 요청과 공통 비동기 operation을 표현하는 공개 타입을
 고정한다. 공통 문서가 동작을 정의하며, 아래 선언은 Java에서 사용하는 타입과 member의 정확한 형태를
@@ -8,7 +8,7 @@
 
 ```java
 public enum ZLinkFrameworkRuntimeState {
-    PREPARING(0), SERVING(1), RELOCATING(2), DRAINED(3),
+    PREPARING(0), SERVING(1), RELOCATING(2), RELOCATED(3),
     DRAINING(4), STOPPED(5), ERROR(6);
     private final int wireValue;
     ZLinkFrameworkRuntimeState(int wireValue) { this.wireValue = wireValue; }
@@ -16,7 +16,7 @@ public enum ZLinkFrameworkRuntimeState {
 }
 
 public enum ZLinkFrameworkRelocationOutcome {
-    DRAINED(0), BLOCKED(1);
+    RELOCATED(0), BLOCKED(1);
     private final int wireValue;
     ZLinkFrameworkRelocationOutcome(int wireValue) { this.wireValue = wireValue; }
     public int wireValue() { return wireValue; }
@@ -100,7 +100,7 @@ public final class ZLinkFrameworkRuntime
 ```
 
 `relocate(options)`는 신규 application admission과 placement를 닫고 현재 object를 compatible target으로
-이전한다. 성공하면 `DRAINED` 상태가 되며 host process와 infrastructure connection은 유지한다. User Spot은 [Spot](../../../../01-glossary.ko.md#spot)과 current
+이전한다. 성공하면 `RELOCATED` 상태가 되며 host process와 infrastructure connection은 유지한다. User Spot은 [Spot](../../../../01-glossary.ko.md#spot)과 current
 member Actor 전체를 하나의 aggregate로 옮긴다. Participant 총수에 고정 상한을 두지 않는다.
 Aggregate participant 하나라도 `Disabled`이면
 `Blocked/RelocationDisabled`, target·capacity·reservation을 확보할 수 없으면 `Blocked/TargetUnavailable`,
@@ -157,14 +157,14 @@ maintenance이면 source version, rolling update이면 요청한 target version�
 모든 target을 `Prepared`로 만들고 relocation commit을 publish하기 전에 deadline이 먼저 끝나면 relocation
 reference와 reservation을 durable abort 순서로 정리하고 source authority와 admission을 복원한 뒤
 `Blocked/DeadlineExceeded`를 반환한다. Commit 뒤에는 source로 rollback하지 않으며 target recovery가
-완료되어 `DRAINED`가 될 때까지 같은 shared relocation operation이 조정한다.
+완료되어 `RELOCATED`가 될 때까지 같은 shared relocation operation이 조정한다.
 
 `ZLinkFrameworkRuntime`은 RouteMesh, ClientServer와 automatic fanout의 monitoring view를 각각 하나씩
 소유한다. 세 accessor는 runtime 수명 동안 같은 객체를 반환하며 호출할 때 새 adapter를 만들지 않는다.
 Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환한 객체와 reference identity가 같다.
 
 Spring starter는 `ZLinkFrameworkRuntime` bean을 제공한다. 운영 maintenance endpoint는
-`relocate(options)` 결과가 `DRAINED`일 때 `shutdown()`을 호출한다. Relocation 없이 종료하려면
+`relocate(options)` 결과가 `RELOCATED`일 때 `shutdown()`을 호출한다. Relocation 없이 종료하려면
 `shutdown()`만 호출한다. 별도 drain facade와 MeshName을 받는 partial operation은 없다.
 
 ## Exact public member `javap` inventory
@@ -176,14 +176,14 @@ public final class systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeSta
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState PREPARING;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState SERVING;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState RELOCATING;
-  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState DRAINED;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState RELOCATED;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState DRAINING;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState STOPPED;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState ERROR;
   public int wireValue();
 }
 public final class systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOutcome extends java.lang.Enum<systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOutcome> {
-  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOutcome DRAINED;
+  public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOutcome RELOCATED;
   public static final systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOutcome BLOCKED;
   public int wireValue();
 }

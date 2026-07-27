@@ -930,35 +930,6 @@ bool spot_context_state_t::try_post_serial_async (
         });
         return true;
     }
-    /* zlink.spot.queue.* (runtime-metrics §4.2): the enqueue timestamp is
-     * taken only when a metric subscriber exists (§7.2 gate). */
-    if (node && node->monitoring) {
-        runtime::runtime_metrics_t metrics (node->monitoring);
-        if (metrics.enabled ()) {
-            const auto enqueued_at = std::chrono::steady_clock::now ();
-            const std::string kind =
-              node->snapshot.entry_spot_name && *node->snapshot.entry_spot_name == spot_name
-                ? "entry"
-                : "user";
-            metrics.updown ("zlink.spot.queue.depth", "{item}", 1, {{"kind", kind}});
-            auto inner = std::move (work);
-            work = [metrics, enqueued_at, kind,
-                    inner = std::move (inner)] (auto complete) mutable {
-                metrics.updown ("zlink.spot.queue.depth", "{item}", -1, {{"kind", kind}});
-                metrics.histogram (
-                  "zlink.spot.queue.wait.duration", "s",
-                  std::chrono::duration<double> (std::chrono::steady_clock::now () - enqueued_at)
-                    .count (),
-                  {{"kind", kind}});
-                inner (std::move (complete));
-            };
-            const auto posted = serial_queue->try_post_async (std::move (name), std::move (work));
-            if (!posted) {
-                metrics.updown ("zlink.spot.queue.depth", "{item}", -1, {{"kind", kind}});
-            }
-            return posted;
-        }
-    }
     return serial_queue->try_post_async (std::move (name), std::move (work));
 }
 

@@ -7,7 +7,7 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
-[인터페이스 목차](README.ko.md) · [Actor 공통 계약](../../../../22-actor-model.ko.md)
+[인터페이스 목차](README.ko.md) · [Actor 공통 계약](../../../../14-actor-model.ko.md)
 
 이 문서는 Java에서 Actor factory, context, messaging, manager와 relocation adapter를 표현하는 공개
 인터페이스를 고정한다. 일반 message는 ActorId로 대상을 지정하고, 특정 incarnation을 변경하는
@@ -114,19 +114,20 @@ Source는 connection-bound one-way를 포함해 admission한 모든 connection-b
 `BLOCKED/DEADLINE_EXCEEDED`로 끝낸다. Durable abort와 source normalization이 끝나기 전에 source admission을
 열지 않는다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
 
-Standalone relocation의 Actor는 source Entry Spot member여야 한다. User Spot member Actor는 standalone relocation으로
-분리하지 않고 Spot과 current member 전체를 하나의 aggregate로 함께 옮긴다. User Spot membership 자체는 relocation
-blocker가 아니며 participant 하나라도 `Disabled`이거나 호환 target을 확보할 수 없을 때만 aggregate 전체를
-차단한다. `Disabled` participant는 `BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
+Entry Spot과 `PerActor` User Spot의 Actor는 독립된 relocation unit이다. `SpotWide`
+User Spot member Actor만 Spot과 current member 전체를 하나의 aggregate로 함께
+옮긴다. User Spot membership 자체는 relocation blocker가 아니며 participant 하나라도
+`Disabled`이거나 호환 target을 확보할 수 없을 때만 해당 Actor unit 또는
+`SpotWide` aggregate를 차단한다. `Disabled` participant는
+`BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
 `BLOCKED/TARGET_UNAVAILABLE`, application version·type·[Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter capability 불일치는
-`BLOCKED/STATE_INCOMPATIBLE`다. Standalone Actor는 target factory와 restore를 끝내고 accepted journal을
+`BLOCKED/STATE_INCOMPATIBLE`다. Actor unit은 target factory와 restore를 끝내고 accepted journal을
 application handler가 실행하지 않은 staging queue로 준비한 뒤 `NEW_OWNER` CAS를 수행한다. 이 CAS는
-owner, authority owner generation과 current [Spot](../../../../01-glossary.ko.md#spot)을 target Entry identity로
-원자적으로 바꾼다. Commit 뒤 target `onActorRelocated`와 source `onLeaveActor`를 호출하고 old Entry [membership](../../../../01-glossary.ko.md#membership)의
-journal을 replay한 뒤 old Entry membership을 포함한 source resource를 durable하게 cleanup하고 dispatch를 개방한다. Callback 실패는 commit을 rollback하거나 source
-owner를 복원하지 않으며 callback을 retry한다.
-Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해 target recovery가 계속된다.
-Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이 순서를 제어하는 public phase API는 없다.
+owner, authority owner generation과 current [Spot](../../../../01-glossary.ko.md#spot)을
+target execution shell로 원자적으로 바꾼다. Infrastructure relocation은 application
+membership callback을 호출하지 않는다. Journal·queue·Actor timer replay, source
+relay와 durable cleanup을 끝낸 뒤 dispatch를 개방한다. 이 순서를 제어하는 public
+phase API는 없다.
 
 새 distributed Actor를 만들 때 Framework는 owner가 될 target 하나를 선택하고, 그 target에서
 `CREATING` authority와 pending capacity를 하나의 reservation으로 함께 확보한다. Reservation을 확보한

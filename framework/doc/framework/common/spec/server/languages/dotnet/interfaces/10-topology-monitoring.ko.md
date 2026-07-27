@@ -1,8 +1,8 @@
 # .NET topology와 host monitoring 공개 인터페이스
 
 [.NET exact interface 목차](README.ko.md) ·
-[Runtime monitoring](../../../../50-runtime-monitoring.ko.md) ·
-[Host Relocate, Shutdown & Handoff](../../../../54-graceful-drain-handoff.ko.md)
+[Runtime monitoring](../../../../24-runtime-monitoring.ko.md) ·
+[Host Relocate, Shutdown & Handoff](../../../../28-graceful-drain-handoff.ko.md)
 
 ## 1. 범위
 
@@ -16,9 +16,9 @@ admission·claim·reservation 단계와 Location Store record는 public interfac
 
 ## 2. Host lifecycle
 
-`Relocating`, `Drained`와 `Draining`은 application에 미치는 영향이 다르므로 별도 상태로 제공한다.
+`Relocating`, `Relocated`와 `Draining`은 application에 미치는 영향이 다르므로 별도 상태로 제공한다.
 `Relocating`에서는 새 placement와 application admission을 받지 않고 현재 object를 다른 node로 이전한다.
-`Drained`에서는 이전이 완료되었지만 host infrastructure를 유지한다. `Draining`에서는 relocation 없이
+`Relocated`에서는 이전이 완료되었지만 host infrastructure를 유지한다. `Draining`에서는 relocation 없이
 남아 있는 application 처리와 resource를 정리한다.
 
 ```csharp
@@ -27,7 +27,7 @@ public enum ZLinkFrameworkRuntimeState
     Preparing = 0,
     Serving = 1,
     Relocating = 2,
-    Drained = 3,
+    Relocated = 3,
     Draining = 4,
     Stopped = 5,
     Error = 6
@@ -35,7 +35,7 @@ public enum ZLinkFrameworkRuntimeState
 
 public enum ZLinkFrameworkRelocationOutcome
 {
-    Drained = 0,
+    Relocated = 0,
     Blocked = 1
 }
 
@@ -139,13 +139,13 @@ Snapshot adapter와 capacity가 호환되는 target만 사용한다. Source에 `
 요청한 version의 eligible target이 없으면 deadline까지 descriptor와 Core ready 상태의 수렴을 기다린 뒤
 `Blocked/TargetUnavailable`을 반환한다.
 
-모든 object의 이전이 끝나면 `Drained`를 반환하고 host는 `Drained`가 된다.
+모든 object의 이전이 끝나면 `Relocated`를 반환하고 host는 `Relocated`가 된다.
 이 상태에서는 새 application operation을 받지 않지만 infrastructure와 연결은 유지한다. 이전을 안전하게
 시작하거나 완료할 수 없으면 `Blocked`를 반환한다. Framework는 아직 commit하지 않은 변경을 정리하고
 host가 계속 처리할 local object가 있으면 `Serving`으로 복귀한다.
 
 `ShutdownAsync(...)`는 relocation을 시작하지 않는다. `Serving`에서 호출하면 남은 application 처리와
-resource를 정리하고, `Drained`에서 호출하면 infrastructure와 연결만 정리한다. 두 경우 모두 종료를
+resource를 정리하고, `Relocated`에서 호출하면 infrastructure와 연결만 정리한다. 두 경우 모두 종료를
 완료하면 `Stopped`가 된다. `deadline == null`이면 각 operation의 기본값은 30초다.
 
 `ShutdownAsync(...)`가 `Relocating` 중 호출되면 현재 atomic relocation unit의 terminal 결과까지만
@@ -160,12 +160,16 @@ shutdown operation은 source에 남은 object와 resource를 정리한다.
 
 ## 3. 공통 topology 상태
 
+Host state는 process 전체의 lifecycle을 나타낸다. `ZLinkTopologyState`는 `MeshName` 또는
+`ChannelName`으로 등록한 topology 하나의 가용성을 나타낸다. Host가 `Serving`이어도 특정
+topology에 ready peer나 target이 없으면 그 topology만 `Degraded`일 수 있다.
+
 Topology status는 사용자가 readiness와 장애 범위를 판단할 수 있는 닫힌 상태만 제공한다.
-`ZLinkOperationalReason`은 application이 설정을 확인하거나 잠시 후 다시 관찰할지를 결정하는 데 사용한다.
+`ZLinkTopologyReason`은 application이 설정을 확인하거나 잠시 후 다시 관찰할지를 결정하는 데 사용한다.
 세부 transport 또는 Store 오류는 .NET logging과 tracing에 기록한다.
 
 ```csharp
-public enum ZLinkOperationalState
+public enum ZLinkTopologyState
 {
     Starting = 0,
     Ready = 1,
@@ -175,7 +179,7 @@ public enum ZLinkOperationalState
     Failed = 5
 }
 
-public enum ZLinkOperationalReason
+public enum ZLinkTopologyReason
 {
     RuntimeNotReady = 0,
     NoReadyPeer = 1,
@@ -202,7 +206,7 @@ public sealed record ZLinkChannelStatus(
 public sealed record ZLinkPeerStatus(
     RoutingId NodeRid,
     ZLinkPeerState State,
-    ZLinkOperationalReason? UnavailableReason);
+    ZLinkTopologyReason? UnavailableReason);
 ```
 
 `NodeRid`는 MeshNode의 transport identity이며 peer를 log와 deployment 정보에 대응시키는 데 사용한다.
@@ -219,11 +223,11 @@ public sealed record ZLinkPlacementStatus(
     bool IsAvailable,
     int ActiveActorCount,
     int ActiveSpotCount,
-    ZLinkOperationalReason? UnavailableReason);
+    ZLinkTopologyReason? UnavailableReason);
 
 public sealed record ZLinkRouteMeshStatus(
     string MeshName,
-    ZLinkOperationalState State,
+    ZLinkTopologyState State,
     bool IsReady,
     int ReadyPeerCount,
     IReadOnlyList<ZLinkChannelStatus> Channels,
@@ -267,12 +271,12 @@ public sealed record ZLinkClientServerTargetStatus(
     RoutingId NodeRid,
     int Weight,
     ZLinkPeerState State,
-    ZLinkOperationalReason? UnavailableReason);
+    ZLinkTopologyReason? UnavailableReason);
 
 public sealed record ZLinkClientServerStatus(
     string ChannelName,
     ZLinkClientServerRole LocalRole,
-    ZLinkOperationalState State,
+    ZLinkTopologyState State,
     bool IsReady,
     int ReadyTargetCount,
     IReadOnlyList<ZLinkClientServerTargetStatus> Targets,
@@ -301,7 +305,7 @@ Fanout runtime status는 automatic subscriber가 현재 사용할 수 있는 pub
 ```csharp
 public sealed record ZLinkFanoutStatus(
     string ChannelName,
-    ZLinkOperationalState State,
+    ZLinkTopologyState State,
     bool IsReady,
     int ReadyPublisherCount,
     IReadOnlyList<ZLinkPeerStatus> Publishers,

@@ -579,7 +579,7 @@ for (const [id, kind, acceptanceIntent, activationStage] of plannedAdds) {
     || id.includes('redis-stores')
     || id.includes('location-participant-digest');
   const specOwner = storeRelated
-    ? 'framework/doc/framework/common/spec/42-relocation-store-redis.ko.md'
+    ? 'framework/doc/framework/common/spec/23-relocation-store-redis.ko.md'
     : kind.startsWith('sample')
       ? 'framework/doc/framework/common/sample/README.ko.md'
       : 'framework/doc/framework/common/e2e/README.ko.md';

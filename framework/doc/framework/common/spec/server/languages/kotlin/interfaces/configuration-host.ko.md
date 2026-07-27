@@ -1,7 +1,7 @@
 # Kotlin 구성과 host 공개 인터페이스
 
 [인터페이스 목차](README.ko.md) · [Java 구성](../../java/interfaces/configuration-host.ko.md) ·
-[MeshNode 공통 계약](../../../../21-mesh-node.ko.md)
+[MeshNode 공통 계약](../../../../13-mesh-node.ko.md)
 
 Kotlin application은 Java builder를 직접 사용한다. Kotlin DSL은 receiver와 reified type으로 실제 중복을
 줄이는 경우에만 제공하며 Java contract에 없는 역할, factory default, allocation provider를 만들지 않는다.

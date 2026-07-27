@@ -38,6 +38,20 @@ public readonly record struct ZLinkSpotClosingContext(
     ZLinkSpotCloseReason Reason,
     DateTimeOffset Deadline);
 
+public enum ZLinkSpotRelocationReadyOutcome
+{
+    Continued = 0,
+    Relocated = 1
+}
+
+public readonly record struct ZLinkSpotRelocationReadyCompletion(
+    ZLinkSpotRelocationReadyOutcome Outcome);
+
+public interface IZLinkSpotRelocationReadyCall
+{
+    void Defer();
+}
+
 public interface IZLinkSpot
 {
     IZLinkSpotContext Context { get; }
@@ -62,6 +76,14 @@ public interface IZLinkSpot
         ZLinkSpotClosingContext context,
         CancellationToken cleanupCancellationToken)
     {
+        return ValueTask.CompletedTask;
+    }
+
+    ValueTask OnRelocationReadyCompletedAsync(
+        ZLinkSpotRelocationReadyCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        // Application이 round 경계 후속 처리가 필요할 때만 override한다.
         return ValueTask.CompletedTask;
     }
 }
@@ -158,6 +180,8 @@ public interface IZLinkSpotContext : IZLinkSpotCommonContext
 {
     IZLinkSpotHandlerRegistry Handlers { get; }
 
+    IZLinkSpotRelocationReadyCall RelocationReady();
+
     ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
@@ -248,14 +272,6 @@ public interface IZLinkEntrySpot<TActor>
     {
         // 기본 lifecycle은 Actor 생성을 승인한다.
         return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
-    }
-
-    ValueTask OnActorRelocatedAsync(
-        TActor actor,
-        CancellationToken cancellationToken)
-    {
-        // 이동 뒤 별도 처리가 필요하지 않은 Entry Spot은 기본 구현을 사용한다.
-        return ValueTask.CompletedTask;
     }
 }
 
@@ -349,23 +365,44 @@ deadline 때문에 callback을 취소하면 `DeadlineExceeded`로 분류한다. 
 exactly-once로 실행한다고 보장하지 않는다.
 
 Maintenance가 Actor를 다른 node의 Entry Spot에 복원하면 Actor adapter restore를 먼저 완료하고 Location authority와
-Entry [membership](../../../../01-glossary.ko.md#membership)을 commit한다. Target Entry Spot의 `OnActorRelocatedAsync(...)`와 source Entry Spot의
-`OnLeaveActorAsync(...)`를 완료한 뒤 accepted journal을 replay하고 logical timer를 복원한다. 이어서 old Entry
-membership을 포함한 source resource cleanup, `Completed` CAS, bound-session route switch·ACK와 steady
-normalization을 마친 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
-authority를 source로 rollback하지 않고 target을 sealed 상태로 유지한 채 재시도한다.
-Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신하므로
-target recovery를 막지 않는다.
+Entry [membership](../../../../01-glossary.ko.md#membership)을 commit한다. 이 작업은
+application membership 변경이 아니므로 target `OnJoinedActorAsync(...)`, source
+`OnLeaveActorAsync(...)`와 relocation 전용 callback을 호출하지 않는다. Accepted
+journal·queue·Actor timer 복원, source relay, `Completed` CAS, bound-session route
+switch·ACK와 steady normalization을 마친 뒤에만 Actor dispatch admission을 연다.
 User Spot으로 향하는 일반 application join은 target의 `OnActorJoinAsync(...)`,
 membership commit, target의 `OnJoinedActorAsync(...)` 순서를 유지한다. Entry Spot
 복귀는 admission callback 없이 membership을 commit한 뒤 target Entry Spot의
 `OnJoinedActorAsync(...)`를 호출한다.
-Whole User Spot aggregate move는 membership callback을 호출하지 않는다. `OnActorRelocatedAsync(...)`를 포함한 lifecycle callback은 at-least-once 호출될 수 있으므로
+`SpotWide` User Spot aggregate move와 `PerActor` User Spot의 Actor relocation도
+application membership callback을 호출하지 않는다.
+
+`PerActor` User Spot은 `Recreate` Spot policy만 허용하고 Spot relocation adapter를
+등록하지 않는다. Spot field와 Spot-level application timer는 relocation 대상이
+아니다. Target Spot authority를 먼저 전환한 뒤 Actor를 독립적으로 이전하며
+`ToSpot`·Create·Join은 Spot authority, `ToActor`는 Actor별 current owner를 사용한다.
+Target runtime-private shell은 같은 public SpotId와 ObjectGeneration을 사용하며 authority
+전환 전에는 public lookup에 노출하지 않는다. Stale source route는 operation identity,
+generation, deadline, correlation과 reply route를 보존해 relay한다. Actor queue seal부터
+target admission까지 1초는 운영 목표이며 초과해도 relocation을 취소하거나 rollback하지 않는다.
+
+`RelocationReady().Defer()`는 `SpotWide` factory가
+`ApplicationSignaled` readiness mode를 선택한 Spot turn에서만 유효하다. `Defer()`는
+현재 handler가 끝난 뒤 다음 application turn 앞에 relocation 경계를 등록한다.
+Framework는 이동하지 않았거나 commit 전에 abort했으면 source에서 `Continued`,
+이동했으면 target에서 `Relocated` completion을
+`OnRelocationReadyCompletedAsync(...)`에 전달한다. 기본 구현은 no-op이다.
+Callback 완료 전에는 보류한 message와 timer를 실행하지 않는다.
+
+기본 `AnyTurnBoundary`, `PerActor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
+중복 `Defer()`는 queue mutation 전에 `ZLinkFrameworkErrorKind.InvalidConfiguration`
+오류로 끝난다. `Defer()` 뒤 같은 turn에서 다른 Framework operation을 시작해도
+같은 오류다. Callback은 process recovery에서 다시 실행될 수 있으므로 override는
 retry-safe해야 한다.
 
 Spot과 Actor의 current location 조회는 manager가 global ID로 수행한다. Public resolver와 runtime handle은
 제공하지 않는다. owner route와 generation 갱신 규칙은
-[Spot 주소 메시징](../../../../24-spot-address-messaging.ko.md)을 따른다.
+[Spot 주소 메시징](../../../../16-spot-address-messaging.ko.md)을 따른다.
 
 Spot handler signatures는 다음과 같다.
 

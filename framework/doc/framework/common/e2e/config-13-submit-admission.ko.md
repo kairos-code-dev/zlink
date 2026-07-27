@@ -11,10 +11,10 @@ One-way send·publish·reply가 operation family의 admission boundary에 제출
 수락하지 못하면 정해진 send timeout 안에서 writable 상태를 기다리고, Logical Multicast는 bounded executor
 direct handoff 뒤 Framework service runtime이 확정한 target snapshot을 한 번 처리한다. 이 config는 새 public
 API의 근거가 아니다. 공개 계약은
-[async 실행 정책](../spec/04-async-execution-policy.ko.md),
-[Framework API](../spec/05-framework-api.ko.md),
-[Channel messaging](../spec/11-channel-messaging.ko.md),
-[Spot messaging](../spec/20-spot-messaging.ko.md)이 소유한다.
+[async 실행 정책](../spec/05-async-execution-policy.ko.md),
+[Framework API](../spec/06-framework-api.ko.md),
+[Channel messaging](../spec/08-channel-messaging.ko.md),
+[Spot messaging](../spec/12-spot-messaging.ko.md)이 소유한다.
 
 ## 1. 목적과 범위
 

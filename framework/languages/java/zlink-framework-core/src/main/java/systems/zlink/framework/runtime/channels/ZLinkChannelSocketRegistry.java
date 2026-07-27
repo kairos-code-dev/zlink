@@ -163,7 +163,7 @@ final class ZLinkChannelSocketRegistry {
 
     /**
      * Waits for a ClientServer send target to become selectable, as
-     * {@code framework/doc/framework/common/spec/11-channel-messaging.ko.md} §3.2 requires when the
+     * {@code framework/doc/framework/common/spec/08-channel-messaging.ko.md} §3.2 requires when the
      * ready candidate set is still empty at call time. The wait observes admission that is already
      * in flight; it never starts or restarts one, so no connection is opened here.
      *

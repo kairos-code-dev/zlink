@@ -1,7 +1,7 @@
 # Session Actor dispatch
 
-[공통 스펙 목차](README.ko.md) · [STREAM 서버 session](30-stream-session.ko.md) ·
-[Actor 모델](22-actor-model.ko.md) · [Spot과 Actor membership](23-spot-actor.ko.md)
+[스펙 목차](README.ko.md) · [이전: STREAM 서버 session](19-stream-session.ko.md) · [다음: Location runtime](21-location-runtime.ko.md)
+
 
 ## 1. 이 문서가 정의하는 범위
 

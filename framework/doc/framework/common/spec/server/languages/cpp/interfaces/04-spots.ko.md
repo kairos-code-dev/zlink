@@ -90,6 +90,22 @@ struct spot_actor_join_response_t;
 struct actor_create_response_t;
 struct spot_create_response_t;
 
+enum class spot_relocation_ready_outcome_t : std::uint8_t {
+    continued = 0,
+    relocated = 1,
+};
+
+struct spot_relocation_ready_completion_t {
+    spot_relocation_ready_outcome_t outcome;
+};
+
+class spot_relocation_ready_call_t {
+public:
+    spot_relocation_ready_call_t(spot_relocation_ready_call_t &&) noexcept;
+    spot_relocation_ready_call_t(const spot_relocation_ready_call_t &) = delete;
+    void defer();
+};
+
 template <typename TActor>
 class spot_t {
 public:
@@ -105,6 +121,8 @@ public:
     virtual task_t<void> on_closing(
       const spot_closing_context_t &context,
       std::stop_token cleanup_cancellation);
+    virtual task_t<void> on_relocation_ready_completed(
+      const spot_relocation_ready_completion_t &completion);
     virtual task_t<spot_actor_join_response_t> on_actor_join(
       std::string_view actor_id,
       const message_t &request) = 0;
@@ -129,7 +147,6 @@ public:
     virtual task_t<actor_create_response_t> on_create_actor(
       TActor &actor,
       const message_t &create_request);
-    virtual task_t<void> on_actor_relocated(TActor &actor);
     virtual task_t<spot_actor_join_response_t> on_actor_join(
       std::string_view actor_id,
       const message_t &request) = 0;
@@ -194,6 +211,7 @@ public:
     spot_context_t &operator=(const spot_context_t &) = delete;
 
     spot_handler_registry_t handlers();
+    spot_relocation_ready_call_t relocation_ready();
 
     template <typename TActor>
     task_t<void> leave_actor(TActor &actor);
@@ -382,7 +400,7 @@ unlimited이면 service wire의 `uint32` 표현 한계에서 envelope overhead�
 수신 대기 상한을 따로 두지 않는다. HWM은 0 이상이어야 한다.
 
 Spot Actor Join / Relocation 관련 interface도 이 문서에 기록된 정식 계약이며,
-그 동작 의미는 [공통 스펙](../../../../23-spot-actor.ko.md)을 따른다. 구현이나 contract test가
+그 동작 의미는 [공통 스펙](../../../../15-spot-actor.ko.md)을 따른다. 구현이나 contract test가
 이 시그니처와 다르면 계약 불일치로 처리한다.
 `join_entry_spot(...)`은 target node RID를 받지 않으며 Framework가 현재 eligible Entry Spot을 선택한다.
 
@@ -396,7 +414,7 @@ Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 `entry_spot_context_t::destroy_actor(...)`는 Entry Spot에서만 호출한다. user Spot에 있는 Actor는
 먼저 `leave_actor(...)` 또는 Entry Spot join을 완료해야 한다. Destroy는 [membership](../../../../01-glossary.ko.md#membership) 이동이 아니므로
 `on_leave_actor`를 다시 호출하지 않으며, 같은 Actor instance의 중복 destroy는 lifecycle callback을
-추가로 실행하지 않고 성공으로 끝난다. 전체 순서는 [Actor model §6](../../../../22-actor-model.ko.md#6-actor-lifecycle)을
+추가로 실행하지 않고 성공으로 끝난다. 전체 순서는 [Actor model §6](../../../../14-actor-model.ko.md#6-actor-lifecycle)을
 따른다.
 
 Actor와 User·Instance Spot의 cross-node materialization 동작은 factory 등록에 연결한
@@ -494,14 +512,17 @@ message는 한 번만 queue에 들어간다. Authority와 일치하지 않는 lo
 Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
 갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
-User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이 있다는 이유만으로
-host relocation을 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와
-`instance_spot_context_t::close()`는 context가 보유한 exact current SpotRef를 사용한다.
+`SpotWide` User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이
+있다는 이유만으로 host relocation을 차단하지 않으며 aggregate owner와 membership을 한 commit에서
+전환한다. `PerActor` User Spot은 Spot authority를 먼저 전환하고 Actor를 각각 이전한다.
+`spot_context_t::close()`와 `instance_spot_context_t::close()`는 context가 보유한 exact current
+SpotRef를 사용한다.
 
 일반 User Spot close는 active Actor membership이 하나라도 있으면 `false`로 끝나고 admission과 authority를
 유지한다. Caller가 member Actor의 leave 또는 destroy를 완료한 뒤에만 close할 수 있으며, Framework가 close를
-위해 Actor를 숨겨서 이동하거나 제거하지 않는다. Host relocation은 close와 다르게 User Spot과 current
+위해 Actor를 숨겨서 이동하거나 제거하지 않는다. Host relocation에서 `SpotWide` User Spot은 current
 member Actor 전체를 하나의 aggregate로 이전하며 participant 총수에 고정 상한을 두지 않는다.
+`PerActor` User Spot은 stateless shell만 새 target에 다시 만들고 Actor를 독립된 unit으로 이전한다.
 
 Instance Spot factory는 actor-free lifecycle만 구현한다. Source runtime은 Instance Spot marker가 있는 direct
 call에서만 missing RID의 [activation envelope](../../../../01-glossary.ko.md#activation-envelope)를 target에 보낸다. Target runtime은 envelope를 근거로 자신을
@@ -627,25 +648,39 @@ actor type과 source/target Spot 및 node 정보는 framework 내부 routing과 
 accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 `on_actor_joined(TActor&)`를 호출한다. accepted가 `false`이면 actor 위치를 바꾸지 않고
     post-joined callback도 호출하지 않는다. Commit 이후 결과는 callback 이름으로 구분한다.
-`entry_spot_t<TActor>::on_actor_relocated(TActor&)`는 기본 no-op implementation을 가진 maintenance 전용 async
-callback이다. Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
-`restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory materialization을 완료한다. 그 다음
-Location authority·Entry membership commit, target `on_actor_relocated(...)`와 source `on_leave_actor(...)` 완료,
-Actor accepted journal replay·logical timer 복원, old Entry membership을 포함한 durable source cleanup,
-`Completed` CAS, bound-session route switch·ACK, steady normalization과 dispatch admission 순서로 실행한다.
-Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
-Journal은 commit 전에 검증해 staging queue에만
-준비하고 application handler를 실행하지 않는다. 두 callback 중 하나가 실패해도 authority를 source로 rollback하지 않고
-target을 sealed 상태로 유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수
-있으므로 retry-safe해야 한다. Replay 뒤 `Cleaning` phase가 처리하는 나머지 source resource cleanup은 old Entry
-membership gate와 구분한다.
+Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
+`restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory
+materialization을 완료한다. 그 다음 Location authority·Entry membership commit,
+Actor accepted journal·queue·Actor timer 복원, old Entry membership을 포함한 durable
+source cleanup, `Completed` CAS, bound-session route switch·ACK, steady
+normalization과 dispatch admission 순서로 실행한다. Infrastructure relocation은
+target joined, source leave 또는 별도 relocation callback을 호출하지 않는다.
 
-일반 same-node·remote User·Entry Spot join은 기존 `on_actor_join(...)`·`on_actor_joined(...)`와 source
-`on_leave_actor(...)` 계약을 사용하며 `on_actor_relocated(...)`를 호출하지 않는다. Maintenance relocation에서는 target의
-일반 join callback을 호출하지 않지만 실제 source Entry membership을 끝내므로 source `on_leave_actor(...)`는
-commit 뒤 호출한다. Whole User Spot aggregate relocation에서는 membership이 유지되므로 member Actor에 대한 Entry
-Spot 또는 User Spot membership callback을 모두 호출하지 않는다. Disabled operation에서도
-`on_actor_relocated(...)`를 호출하지 않는다.
+일반 same-node·remote User·Entry Spot join만 기존 `on_actor_join(...)`,
+`on_actor_joined(...)`와 source `on_leave_actor(...)` 계약을 사용한다. `SpotWide`
+User Spot aggregate와 `PerActor` User Spot의 Actor relocation에서는 member Actor의
+membership callback을 호출하지 않는다. `PerActor` Spot policy는 `Recreate`만
+허용하고 Spot adapter를 등록하지 않는다. Spot field와 Spot-level schedule은
+이전하지 않는다. 유지해야 하는 shared state와 schedule은 application의
+Redis·database·service 같은 외부 저장소에 둔다.
+Target runtime-private shell은 같은 public Spot ID와 object generation을 사용하며
+Spot authority 전에는 public lookup에 노출하지 않는다. Authority 전환 뒤 `ToSpot`,
+Create와 Join은 target, `ToActor`는 Actor별 current owner를 사용한다. Stale source
+route는 operation identity, generation, deadline, correlation과 reply route를 보존해
+relay한다. Actor queue seal부터 target admission까지 1초는 운영 목표이며 초과해도
+relocation을 취소하거나 rollback하지 않는다.
+
+`spot_context_t::relocation_ready().defer()`는 `spot_wide`와
+`application_signaled`을 함께 등록한 Spot turn에서만 유효하다. Framework는 이동하지
+않았거나 commit 전에 abort했으면 source에서 `continued`, 이동했으면 target에서
+`relocated` completion을 `on_relocation_ready_completed(...)`에 전달한다. 기본
+virtual 구현은 no-op이다. Callback 완료 전에는 보류한 application message와 timer를
+실행하지 않는다.
+
+기본 `any_turn_boundary`, `per_actor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
+중복 `defer()`는 queue mutation 전에 `invalid_configuration`으로 실패한다.
+`defer()` 뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서
+callback이 다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 actor packet member는 containing Spot에 선언하며 mutable Actor, `message_context_t`, DTO 순서로 받는다.
 호출 대상인 containing Spot은 member function의 `this`다. actor disconnected callback도 같은 concrete
 Actor reference를 받는다.
@@ -668,7 +703,7 @@ key와 공백만 있는 key는 의미가 모호하므로 두 방향의 allowlist
 Spot의 직렬 실행 queue에 제출된다. Entry Spot timer도
 서로 다른 Entry Spot instance를 전역 직렬화하지 않는다.
 
-Timer backend 선택은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md#5-spot-timer)을 따른다.
+Timer backend 선택은 [비동기 실행 정책](../../../../05-async-execution-policy.ko.md#5-spot-timer)을 따른다.
 `timer_tick_t`는 공통 timer dispatch metadata만 제공한다.
 
 ActorGateway session relay의 public 표면은 `session_actor_manager_t`, `session_actor_t`,
@@ -769,7 +804,7 @@ public:
 };
 ```
 
-timer 등록 검증은 [stage-wrapper §4.1](../../../../25-stage-wrapper-on-spot.ko.md)이 소유한다.
+timer 등록 검증은 [stage-wrapper §4.1](../../../../17-stage-wrapper-on-spot.ko.md)이 소유한다.
 
 Framework timer는 owner Actor·Spot에 속한 logical registration이다. Cross-node relocation에서는 timer 이름,
 handler type, period, `timer_options_t`, scheduling cursor와 seal 시점의 pending tick을 relocation payload에
@@ -829,8 +864,8 @@ Spot incarnation이 없으면 manager `Close`는 `false`, 다른 generation이�
 ## 5. Public trace category
 
 이 문서의 declaration은 public trace의 `spot-instance`와 `actor-relocation` category에 속한다. 공통 의미는
-[Spot address와 messaging](../../../../24-spot-address-messaging.ko.md)과
-[Spot·Actor membership](../../../../23-spot-actor.ko.md)이 소유한다.
+[Spot address와 messaging](../../../../16-spot-address-messaging.ko.md)과
+[Spot·Actor membership](../../../../15-spot-actor.ko.md)이 소유한다.
 
-**lifecycle callback의 호출 순서는 [MeshNode §7](../../../../21-mesh-node.ko.md)가 소유한다** —
+**lifecycle callback의 호출 순서는 [MeshNode §7](../../../../13-mesh-node.ko.md)가 소유한다** —
 handler 구성 → 생성 callback → **수락된 경우에만** 초기화 → 종료는 한 번.

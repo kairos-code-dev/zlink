@@ -160,7 +160,7 @@ current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부
 
 - 절차: spot handler가 무거운 CPU 작업을 `Context.RunCpuWorker(...)`로 offload하고 `.Yield(...)`로 기다린 뒤, 결과를 받아 spot 상태에 반영한다. 같은 시간대에 그 spot/노드로 다른 request도 보낸다.
 - 검증: worker가 spot 직렬 스레드 밖(bounded worker pool)에서 실행된다. `.Yield(...)`가 turn을 반납하므로 그동안 같은 spot의 다른 처리가 진행되고, worker 결과는 spot 직렬 컨텍스트로 돌아와 상태에 안전히 반영된다(경합 없음).
-- 세부 동작: **worker 축(어느 스레드에서 실행되는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../spec/04-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
+- 세부 동작: **worker 축(어느 스레드에서 실행되는가)과 turn 축(같은 spot이 진행하는가)은 별개다** ([04 §1.2](../spec/05-async-execution-policy.ko.md)). `.Async(...)`로 기다리면 같은 offload라도 turn은 유지된다 — 그 대비는 [config-8 TD-C4](config-8-execution-turn.ko.md)가 소유한다.
 - 세부 동작: spot 직렬성 유지 + 무거운 작업 offload.
 
 #### SM-A9 Store-backed User Spot publication barrier
@@ -605,7 +605,7 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
   Actor reply로 original STREAM correlation을 한 번 완료하고, 각 Actor push는 같은 session으로 relay되어
   client가 Actor별로 구분해 받는다. **Relay 대상 선택은 application 책임이다.** Framework는 `actor-id`
   metadata를 자동 해석하지 않으며, session이 대상을 찾지 못하면 application이 relay를 호출하지 않고
-  current dispatch에 실패를 반환한다([31 §3](../spec/31-session-actor-dispatch.ko.md#3-inbound-dispatch와-reply)).
+  current dispatch에 실패를 반환한다([31 §3](../spec/20-session-actor-dispatch.ko.md#3-inbound-dispatch와-reply)).
 - 세부 동작: 다중 Actor bind, explicit target 선택과 dispatch-context relay.
 
 #### SM-D4A rebind와 stale binding 격리

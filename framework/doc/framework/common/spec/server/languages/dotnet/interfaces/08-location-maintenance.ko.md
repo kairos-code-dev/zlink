@@ -1,6 +1,6 @@
 # .NET Location 설정과 운영 공개 인터페이스
 
-[.NET exact interface 목차](README.ko.md) · [Location runtime](../../../../40-location-runtime.ko.md) ·
+[.NET exact interface 목차](README.ko.md) · [Location runtime](../../../../21-location-runtime.ko.md) ·
 [Provider SPI](08-authority-relocation.ko.md) · [Host monitoring](10-topology-monitoring.ko.md)
 
 ## 1. 범위
@@ -158,7 +158,7 @@ Page size는 `1..1000`이고 continuation token은 해당 query가 발급한 opa
 ## 4. Host maintenance
 
 Host maintenance는 `IZLinkFrameworkRuntime.RelocateAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
-`RelocateAsync(...)`는 가능한 workload를 다른 owner로 이전하고 `Drained` 상태에서 완료한다.
+`RelocateAsync(...)`는 가능한 workload를 다른 owner로 이전하고 `Relocated` 상태에서 완료한다.
 `PlannedMaintenance`는 source와 같은 application version으로만 이전하며 target version을 받지 않는다.
 `RollingUpdate`는 source보다 큰 target version을 필수로 받고 그 version과 정확히 일치하는 node로만
 이전한다. 두 mode 모두 version, maintenance wave, capability, capacity, placement weight 순서로

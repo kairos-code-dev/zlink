@@ -1,7 +1,7 @@
 # ZLink Framework 상호작용 모델
 
-[스펙 목차](README.ko.md) · [이전: 개요](01-overview.ko.md) ·
-[다음: 메시지 모델](03-message-model.ko.md)
+[스펙 목차](README.ko.md) · [이전: ZLink Framework 개요](02-overview.ko.md) · [다음: Framework 메시지 계약](04-message-model.ko.md)
+
 
 ## 1. 목적
 

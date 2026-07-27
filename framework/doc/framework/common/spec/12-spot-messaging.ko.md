@@ -1,11 +1,7 @@
 # SPOT 메시징
 
-[스펙 목차](README.ko.md) ·
-[Spot 모델](19-spot-model.ko.md) ·
-[Channel 메시징](11-channel-messaging.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) ·
-[Spot 주소 메시징](24-spot-address-messaging.ko.md) ·
-[용어집](01-glossary.ko.md)
+[스펙 목차](README.ko.md) · [이전: Spot 모델 — Entry, User, Instance](11-spot-model.ko.md) · [다음: MeshNode](13-mesh-node.ko.md)
+
 
 ## 1. 범위
 
@@ -35,13 +31,13 @@ Channel에 참여한 node마다 message를 한 번 보내고, 각 node가 자신
 다음 내용은 다른 문서가 정의한다.
 
 - MeshNode의 물리 연결:
-  [21 MeshNode](21-mesh-node.ko.md)
+  [21 MeshNode](13-mesh-node.ko.md)
 - Spot을 식별하고 생성하며 Instance Spot을 새로 준비하는 과정:
-  [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)
+  [24 Spot 주소 메시징](16-spot-address-messaging.ko.md)
 - Payload와 metadata:
-  [03 메시지 모델](03-message-model.ko.md)
+  [03 메시지 모델](04-message-model.ko.md)
 - Callback의 비동기 실행:
-  [04 비동기 실행 정책](04-async-execution-policy.ko.md)
+  [04 비동기 실행 정책](05-async-execution-policy.ko.md)
 
 ### 1.1 공통 동작을 .NET API로 표현한 예시
 
@@ -249,7 +245,7 @@ Application은 다음 내부 값을 지정하지 않는다.
 Instance Spot을 따로 생성하는 operation은 제공하지 않는다.
 
 Spot을 식별하고 생성하며 새 instance를 준비하는 과정의 자세한 계약은
-[24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정의한다.
+[24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 정의한다.
 
 ### 2.4 Classic fanout과의 경계
 
@@ -467,7 +463,7 @@ Ready Spot에 보내는 일반 direct send는 source의 송신 경로가 message
 Send timeout까지 수락하지 못하면 `DeadlineExceeded`, Spot이나 route가 없으면
 operation-specific not-found 오류, runtime이 종료 중이면 `RuntimeShutdown`으로 실패한다.
 Cancellation과 caller process에서 발생한 오류의 자세한 경계는
-[04 비동기 실행 정책 §1.3](04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
+[04 비동기 실행 정책 §1.3](05-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
 
 Cold activation이 필요한 submit도 선택한 target으로 보내는 송신 경로가 activation
 envelope를 수락하면 완료한다. Target이 생성 권한을 확보하고 factory를 실행하여
@@ -495,7 +491,7 @@ Target runtime은 현재 authority가 가리키는 Spot이 이 node에 없으면
 - 호출자는 owner RID, endpoint 또는 내부 통신용 route 정보를 만들지 않는다.
 - Spot direct request가 실패해도 다른 Spot으로 자동 재전송하지 않는다.
 - Owner 변경, route cache와 오래된 owner route를 처리하는 방법은
-  [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정의한다.
+  [24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 정의한다.
 
 Application은 실패 결과를 받은 뒤 같은 Spot ID나 다른 Spot ID로 새 request를 시작할
 수 있다. 새 request는 Framework의 자동 재전송이 아니라 별도 operation이다. 이전
@@ -828,7 +824,7 @@ handler·control callback과 queue 순서대로 실행한다. `SpotWide` User Sp
 Spot lane과 분리한다. Actor가 처리할 업무 message는 control claim에 넣지 않는다.
 
 Control 작업의 범위와 Actor control claim과의 실행 순서는
-[22 Actor 모델 §4](22-actor-model.ko.md#4-spot이-처리하는-actor-control)가
+[22 Actor 모델 §4](14-actor-model.ko.md#4-spot이-처리하는-actor-control)가
 정의한다.
 
 ### 5.3 Spot application queue에 들어가는 작업
@@ -860,7 +856,7 @@ Member Actor가 `Yield`한 경우에는 User Spot execution gate만 반환하고
 실행할 수 있지만 같은 Actor의 다음 job은 현재 continuation이 끝날 때까지 시작하지 않는다.
 
 자세한 실행 규칙은
-[Async 실행 정책 §1.1](04-async-execution-policy.ko.md#11-submit-async와-yield)을
+[Async 실행 정책 §1.1](05-async-execution-policy.ko.md#11-submit-async와-yield)을
 따른다.
 
 Actor 업무 payload는 Spot application queue나 Spot callback을 거치지 않는다.
@@ -868,7 +864,7 @@ Actor queue에 직접 제출한다.
 
 Actor가 Spot 상태를 변경해야 하면 명시적인 Spot 호출을 제출해야 한다. Actor
 payload와 membership control의 경계는
-[22 Actor 모델](22-actor-model.ko.md)이 정의한다.
+[22 Actor 모델](14-actor-model.ko.md)이 정의한다.
 
 ### 5.5 Application callback과 분리하여 처리하는 작업
 
@@ -910,16 +906,16 @@ subscription은 Logical Multicast가 현재 node에서 message를 전달할 Spot
 제외한다.
 
 One-way와 request가 완료되는 조건은
-[04 비동기 실행 정책](04-async-execution-policy.ko.md)이 정의한다.
+[04 비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 Spot을 종료할 때 전체 처리 순서는
-[54 Graceful Drain](54-graceful-drain-handoff.ko.md)이 정의한다.
+[54 Graceful Drain](28-graceful-drain-handoff.ko.md)이 정의한다.
 
 ## 7. Metadata와 관측
 
 ### 7.1 Metadata
 
 Spot direct와 Logical Multicast는
-[03 메시지 모델](03-message-model.ko.md)이 정의한 변경할 수 없는 metadata
+[03 메시지 모델](04-message-model.ko.md)이 정의한 변경할 수 없는 metadata
 snapshot을 사용한다. Metadata를 누가 보유하는지, 허용하는 크기와 reply 규칙은 이
 문서에서 다시 정의하지 않는다.
 

@@ -64,7 +64,7 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 ### 1.1 표면 선택 기준
 
 이 샘플의 교육 목표다. "여러 노드에 무언가를 한다"가 상황마다 다른 표면을 요구한다.
-선택 기준은 [channel topology spec §2·5](../../spec/10-channel-topology.ko.md)을 따른다.
+선택 기준은 [channel topology spec §2·5](../../spec/07-channel-topology.ko.md)을 따른다.
 
 | 하려는 일 | 쓰는 것 | 다른 것으로 안 되는 이유 |
 |---|---|---|

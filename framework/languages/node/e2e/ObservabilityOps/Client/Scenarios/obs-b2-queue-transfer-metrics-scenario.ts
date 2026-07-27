@@ -1,4 +1,4 @@
-// OBS-B2: SPOT 큐·actor 이동 계기 시나리오를 검증한다.
+// OBS-B2: Actor 이동 계기 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,
@@ -27,7 +27,4 @@ export async function runObsB2(): Promise<void> {
   require(metric(source, 'zlink.actor.transfers').value >= 1, 'OBS-B2 transfer counter mismatch.');
   metric(source, 'zlink.actor.transfer.duration');
   metric(source, 'zlink.actor.transfer.pending_requests.count');
-  const target = await metrics(nodeB);
-  metric(target, 'zlink.spot.queue.wait.duration', (value) => value.tags.kind === 'user');
-  metric(target, 'zlink.spot.queue.depth', (value) => value.tags.kind === 'user');
 }

@@ -1,10 +1,7 @@
 # Network listener identity
 
-[스펙 목차](README.ko.md) ·
-[Channel topology](10-channel-topology.ko.md) ·
-[ClientServer Channel](12-client-server-channel.ko.md) ·
-[Location runtime](40-location-runtime.ko.md) ·
-[용어집](01-glossary.ko.md)
+[스펙 목차](README.ko.md) · [이전: ClientServer Channel](09-client-server-channel.ko.md) · [다음: Spot 모델 — Entry, User, Instance](11-spot-model.ko.md)
+
 
 ## 1. 범위
 

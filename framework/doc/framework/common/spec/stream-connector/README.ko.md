@@ -11,8 +11,8 @@ session 동작은 Framework 공통 계약을 따른다.
 | [32 Stream Connector](32-stream-connector.ko.md) | Framework가 보장하는 실행 환경, transport, wire, lifecycle과 배포 산출물을 정의한다. |
 
 이 디렉토리는 server 쪽 public interface를 정의하지 않는다. Connector가 연결하는 server session은
-[server/30 STREAM 서버 세션](../30-stream-session.ko.md)과
-[server/31 Session Actor Dispatch](../31-session-actor-dispatch.ko.md)가 소유한다.
+[server/30 STREAM 서버 세션](../19-stream-session.ko.md)과
+[server/31 Session Actor Dispatch](../20-session-actor-dispatch.ko.md)가 소유한다.
 
 ## 언어별 public API
 

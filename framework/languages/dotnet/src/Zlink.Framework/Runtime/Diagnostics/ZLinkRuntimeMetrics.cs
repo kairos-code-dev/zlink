@@ -23,10 +23,6 @@ internal static class ZLinkRuntimeMetrics
 
     private static readonly UpDownCounter<long> SpotCount =
         Meter.CreateUpDownCounter<long>("zlink.spot.count", "{spot}");
-    private static readonly UpDownCounter<long> SpotQueueDepth =
-        Meter.CreateUpDownCounter<long>("zlink.spot.queue.depth", "{item}");
-    private static readonly Histogram<double> SpotQueueWaitDuration =
-        Meter.CreateHistogram<double>("zlink.spot.queue.wait.duration", "s");
     private static readonly Histogram<double> SpotTimerTickLateness =
         Meter.CreateHistogram<double>("zlink.spot.timer.tick.lateness", "s");
     private static readonly Counter<long> SpotCreated =
@@ -36,8 +32,6 @@ internal static class ZLinkRuntimeMetrics
 
     private static readonly UpDownCounter<long> ActorCount =
         Meter.CreateUpDownCounter<long>("zlink.actor.count", "{actor}");
-    private static readonly UpDownCounter<long> ActorMailboxDepth =
-        Meter.CreateUpDownCounter<long>("zlink.actor.mailbox.depth", "{item}");
     private static readonly Counter<long> RelocationStarted =
         Meter.CreateCounter<long>("zlink.relocation.started", "{relocation}");
     private static readonly Counter<long> RelocationCompleted =
@@ -144,21 +138,6 @@ internal static class ZLinkRuntimeMetrics
         SafeAdd(SpotClosed, 1, "kind", kind);
     }
 
-    public static long RecordSpotQueueEnqueued(string kind)
-    {
-        SafeAdd(SpotQueueDepth, 1, "kind", kind);
-        return StartTimestamp(SpotQueueWaitDuration);
-    }
-
-    public static void RecordSpotQueueStarted(string kind, long startedTimestamp)
-    {
-        SafeAdd(SpotQueueDepth, -1, "kind", kind);
-        RecordElapsed(SpotQueueWaitDuration, startedTimestamp, "kind", kind);
-    }
-
-    public static void RecordSpotQueueRemoved(string kind) =>
-        SafeAdd(SpotQueueDepth, -1, "kind", kind);
-
     public static void RecordTimerLateness(TimeSpan lateness)
     {
         if (!SpotTimerTickLateness.Enabled) return;
@@ -167,9 +146,6 @@ internal static class ZLinkRuntimeMetrics
 
     public static void RecordActorCreated() => SafeAdd(ActorCount, 1);
     public static void RecordActorClosed() => SafeAdd(ActorCount, -1);
-    public static void RecordActorMailboxEnqueued() => SafeAdd(ActorMailboxDepth, 1);
-    public static void RecordActorMailboxStarted() => SafeAdd(ActorMailboxDepth, -1);
-
     public static ZLinkRelocationMetricOperation CreateRelocation(
         string meshName,
         ZLinkRelocationMetricObjectKind objectKind,

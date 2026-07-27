@@ -24,7 +24,7 @@
  *   - The C++ exact interface spec
  *     framework/doc/framework/common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md
  *     declares route_client_t with no route_channel_builder_t anywhere, and
- *     framework/doc/framework/common/spec/11-channel-messaging.ko.md §1 and §3.1 define
+ *     framework/doc/framework/common/spec/08-channel-messaging.ko.md §1 and §3.1 define
  *     Node direct in terms of MeshName plus MeshNode RID. No document under
  *     framework/doc/framework/common/spec/ mentions a RouteChannel at all.
  *

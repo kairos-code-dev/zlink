@@ -1,7 +1,7 @@
 # Framework 메시지 계약
 
-[스펙 목차](README.ko.md) · [상호작용 모델](02-interaction-model.ko.md) ·
-[비동기 실행](04-async-execution-policy.ko.md)
+[스펙 목차](README.ko.md) · [이전: ZLink Framework 상호작용 모델](03-interaction-model.ko.md) · [다음: 비동기 실행과 handler turn](05-async-execution-policy.ko.md)
+
 
 이 문서는 ZLink Framework 11.0.0의 typed 메시지, application metadata, 응답과 오류 계약을 정의한다.
 대상 독자는 framework 공개 계약과 언어별 service runtime을 구현하는 개발자다. Framework envelope와 내부
@@ -115,7 +115,7 @@ Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Frame
 
 Framework가 새 request를 만드는 경우에는 원본 metadata를 자동 복사하지 않는다. 호출자가 현재 handler의
 metadata를 명시적으로 넘긴 경우에만 새 outbound snapshot에 포함한다. 자동 전파가 필요한 trace 정보는
-[메시지 흐름 상관관계](53-flow-correlation.ko.md)가 별도 framework field로 관리한다.
+[메시지 흐름 상관관계](27-flow-correlation.ko.md)가 별도 framework field로 관리한다.
 
 ## 5. Ownership과 크기 제한
 
@@ -134,4 +134,4 @@ content store에 고정한다. Ready 또는 fenced failure 뒤에는 해당 atte
 
 payload 최대 크기는 대상 transport의 `MaxMessageSize`를 따른다. 전체 message가 제한을 넘으면 일부 part를
 전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 target별 제출과 결과 집계는
-[Spot 메시징](20-spot-messaging.ko.md)이 정의한다.
+[Spot 메시징](12-spot-messaging.ko.md)이 정의한다.

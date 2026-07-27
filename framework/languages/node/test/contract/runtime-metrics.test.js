@@ -210,27 +210,6 @@ test('RMETRIC channel fanout receive omits unregistered dynamic topic labels', a
   assert.equal(received.attributes, undefined);
 });
 
-test('RMETRIC-008 actor mailbox records queued depth while work waits', async () => {
-  const { provider, records } = collector();
-  const metrics = new framework.ZLinkRuntimeMetrics(provider);
-  const mailboxes = new framework.ZLinkActorDispatchMailboxSet(metrics);
-  let release;
-  const blocked = new Promise((resolve) => { release = resolve; });
-  const first = mailboxes.submit('actor-1', () => blocked);
-  const second = mailboxes.submit('actor-1', async () => {});
-
-  assert.deepEqual(
-    records.filter((record) => record.name === 'zlink.actor.mailbox.depth').map((record) => record.value),
-    [1, 1]
-  );
-  release();
-  await Promise.all([first, second]);
-  assert.deepEqual(
-    records.filter((record) => record.name === 'zlink.actor.mailbox.depth').map((record) => record.value),
-    [1, 1, -1, -1]
-  );
-});
-
 test('RMETRIC-009 channel drops use normalized closed labels when tracing is off', async () => {
   const { provider, records } = collector();
   const metrics = new framework.ZLinkRuntimeMetrics(provider);
@@ -310,13 +289,13 @@ test('OBS-B2/B3 runtime metric catalog keeps stable instrument kinds and low-car
     'zlink.drain.actors.handed_off', 'zlink.drain.rooms.drained', 'zlink.drain.forced'
   ]) metrics.count(name, 1, { outcome: 'success' });
   for (const name of [
-    'zlink.stream.connections.active', 'zlink.spot.count', 'zlink.spot.queue.depth',
-    'zlink.actor.count', 'zlink.actor.mailbox.depth', 'zlink.channel.request.inflight',
+    'zlink.stream.connections.active', 'zlink.spot.count',
+    'zlink.actor.count', 'zlink.channel.request.inflight',
     'zlink.location.peers', 'zlink.drain.state'
   ]) metrics.change(name, 1, { state: 'serving' });
   for (const name of [
     'zlink.stream.handshake.duration', 'zlink.stream.session.bind.duration',
-    'zlink.spot.queue.wait.duration', 'zlink.spot.timer.tick.lateness',
+    'zlink.spot.timer.tick.lateness',
     'zlink.actor.transfer.duration', 'zlink.channel.request.duration',
     'zlink.location.owner_lease.renew.lateness', 'zlink.drain.duration'
   ]) metrics.duration(name, 0.001);

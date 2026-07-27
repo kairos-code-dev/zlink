@@ -48,7 +48,7 @@ public static class ServiceCollectionExtensions
 Host startup은 구성 검증과 public listener 준비가 완료되어 application callback을 받을 수 있을 때
 정상 완료한다. Application callback은 handler와 owner queue가 준비된 뒤에만 실행한다. Hosting stop은
 `IZLinkFrameworkRuntime.ShutdownAsync(...)`를 호출한다. Application이 logical continuity를 요구하면 stop 전에
-`RelocateAsync(...)`의 `Drained` 결과를 확인한 뒤 `ShutdownAsync(...)`를 호출한다.
+`RelocateAsync(...)`의 `Relocated` 결과를 확인한 뒤 `ShutdownAsync(...)`를 호출한다.
 
 Application version을 유지하는 계획 점검에서는 `PlannedMaintenance`를 사용한다. 이 mode는 source와
 version이 정확히 같은 node만 target으로 선택한다. 준비한 새 version으로 전환할 때는

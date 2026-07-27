@@ -183,8 +183,8 @@ struct dispatch_options_t {
 };
 ```
 
-의미는 [메시지 흐름 추적](../../../../52-message-flow-tracing.ko.md)과
-[흐름 상관관계](../../../../53-flow-correlation.ko.md)가 소유한다.
+의미는 [메시지 흐름 추적](../../../../26-message-flow-tracing.ko.md)과
+[흐름 상관관계](../../../../27-flow-correlation.ko.md)가 소유한다.
 
 ## 3. Health
 
@@ -377,7 +377,7 @@ Application은 `monitoring_builder_t::on<TEvent>(...)`으로 Framework가 발행
 관찰한다. 임의 runtime event를 주입하는 publisher는 공개하지 않는다. Event 생성과 발행은
 Framework runtime의 내부 책임이다.
 
-**source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../../../50-runtime-monitoring.ko.md)가
+**source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../../../24-runtime-monitoring.ko.md)가
 소유한다.** Spot 상태·peer·subject 목록은 별도 polling source로 공개하지 않고
 `route_mesh_runtime_t`의 snapshot과 event로 관찰한다. Spot timer failure handler는 별도 Spot source
 등록 없이 받을 수 있으며, **timer 실행을 계속하는 실패**와 **timer가 중단된 실패**를 구분한다.
@@ -424,4 +424,4 @@ public:
 };
 ```
 
-계기 카탈로그는 [runtime-metrics](../../../../51-runtime-metrics.ko.md)가 소유한다.
+계기 카탈로그는 [runtime-metrics](../../../../25-runtime-metrics.ko.md)가 소유한다.

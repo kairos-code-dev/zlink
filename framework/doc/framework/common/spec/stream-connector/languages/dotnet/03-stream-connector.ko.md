@@ -265,7 +265,7 @@ callback 안에서 시작한 후속 operation은 **현재 inbound flow를 재사
 flow를 정리한다.**
 
 wire 표현은 [공통 스펙 §4.2](../../32-stream-connector.ko.md)와
-[flow-correlation](../../../53-flow-correlation.ko.md)이 소유한다.
+[flow-correlation](../../../27-flow-correlation.ko.md)이 소유한다.
 
 ## 13. Metric
 

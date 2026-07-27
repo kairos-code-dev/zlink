@@ -14,11 +14,7 @@ export class ZLinkSpotSerialExecutor {
   private executionBarrier: ZLinkExecutionBarrier | undefined;
   activeTurnId = 0;
 
-  constructor(
-    private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
-    private readonly kind: 'entry' | 'user' | 'instance' = 'user',
-    private readonly yieldAllowed = true
-  ) {}
+  constructor(private readonly yieldAllowed = true) {}
 
   get isExecuting(): boolean {
     return this.depth > 0;
@@ -71,12 +67,9 @@ export class ZLinkSpotSerialExecutor {
     operation: () => Promise<T> | T,
     resumeExistingClaim: boolean
   ): Promise<T> {
-    const queuedAt = process.hrtime.bigint();
-    this.metrics?.change('zlink.spot.queue.depth', 1, { kind: this.kind });
     const result = new Promise<T>((resolve, reject) => {
       void this.scheduleQueuedTurn(
         operation,
-        queuedAt,
         resolve,
         reject,
         resumeExistingClaim
@@ -87,7 +80,6 @@ export class ZLinkSpotSerialExecutor {
 
   private async scheduleQueuedTurn<T>(
     operation: () => Promise<T> | T,
-    queuedAt: bigint,
     resolve: (value: T) => void,
     reject: (reason: unknown) => void,
     resumeExistingClaim: boolean
@@ -98,30 +90,22 @@ export class ZLinkSpotSerialExecutor {
         barrierClaim = await this.executionBarrier?.enter();
       }
     } catch (error) {
-      this.metrics?.change('zlink.spot.queue.depth', -1, { kind: this.kind });
       reject(error);
       return;
     }
     const gate = this.tail.then(
-      () => this.startQueuedTurn(operation, queuedAt, resolve, reject, barrierClaim),
-      () => this.startQueuedTurn(operation, queuedAt, resolve, reject, barrierClaim)
+      () => this.startQueuedTurn(operation, resolve, reject, barrierClaim),
+      () => this.startQueuedTurn(operation, resolve, reject, barrierClaim)
     );
     this.tail = gate.catch(() => undefined);
   }
 
   private startQueuedTurn<T>(
     operation: () => Promise<T> | T,
-    queuedAt: bigint,
     resolve: (value: T) => void,
     reject: (reason: unknown) => void,
     barrierClaim: ZLinkExecutionBarrierClaim | undefined
   ): Promise<void> {
-    this.metrics?.change('zlink.spot.queue.depth', -1, { kind: this.kind });
-    this.metrics?.duration(
-      'zlink.spot.queue.wait.duration',
-      Number(process.hrtime.bigint() - queuedAt) / 1e9,
-      { kind: this.kind }
-    );
     return this.runTurn(operation, resolve, reject, barrierClaim);
   }
 

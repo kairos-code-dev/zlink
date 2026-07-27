@@ -4,9 +4,9 @@
 `framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
 
 [내부 구조 목차](README.ko.md) · [Runtime architecture](service-runtime-architecture.ko.md) ·
-[Location runtime](../spec/40-location-runtime.ko.md) ·
-[Redis Relocation Store](../spec/42-relocation-store-redis.ko.md) ·
-[Transport liveness](../spec/55-transport-liveness.ko.md)
+[Location runtime](../spec/21-location-runtime.ko.md) ·
+[Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
+[Transport liveness](../spec/29-transport-liveness.ko.md)
 
 ## 1. Schema와 생성 경계
 

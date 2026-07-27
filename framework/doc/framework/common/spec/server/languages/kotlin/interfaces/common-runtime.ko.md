@@ -8,7 +8,7 @@ outcome·reason·result와 `ZLinkFrameworkRuntime`을 그대로 사용한다. �
 runtime facade를 추가하지 않는다. 별도 drain facade와 MeshName을 받는 partial termination member는 없으며,
 Kotlin은 Java host의 `Relocate`와 `Shutdown`을 그대로 사용한다.
 Host가 continuity preflight를 통과해 relocation unit을 준비하는 동안에는 Java enum의 `RELOCATING(2)`를
-관측하며, relocation이 완료되면 `DRAINED(3)`으로 전환한다. `shutdown()`을 시작하면
+관측하며, relocation이 완료되면 `RELOCATED(3)`으로 전환한다. `shutdown()`을 시작하면
 `DRAINING(4)`으로 전환한다.
 
 ## Kotlin source signature
@@ -41,7 +41,7 @@ Kotlin은 이 규칙을 축약하는 default mode나 별도 target 선택 extens
 
 Java와 같이 모든 target을 `Prepared`로 만들고 relocation commit을 publish하기 전 deadline은 durable abort와
 source normalization 뒤 `Blocked/DeadlineExceeded`다. Commit 뒤에는 source로 rollback하지 않으며
-target recovery가 끝나면 `Drained`를 반환한다. `RELOCATING`에서 `shutdown()`을 호출하면 실행 중인 atomic
+target recovery가 끝나면 `Relocated`를 반환한다. `RELOCATING`에서 `shutdown()`을 호출하면 실행 중인 atomic
 unit만 끝내고 relocation waiter는 `Blocked/ShutdownRequested`를 받는다. Kotlin enum이나 result를 추가하지 않는다.
 
 ```kotlin

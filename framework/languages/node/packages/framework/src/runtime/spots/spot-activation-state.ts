@@ -77,7 +77,6 @@ export class ZLinkSpotActivation {
   private readonly departedActorIds = new Set<string>();
   private readonly externalActorCount: () => number;
   private readonly closeWhenReady?: (reason: ZLinkSpotCloseReason) => void;
-  private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
   private closeRequested = false;
   private drainCloseRequested = false;
   private drainCloseReason = ZLinkSpotCloseReason.HostShutdown;
@@ -95,14 +94,13 @@ export class ZLinkSpotActivation {
     if (typeof options.timers.setExecutionBarrier === 'function') {
       options.timers.setExecutionBarrier(this.executionBarrier);
     }
-    this.actorClaims = new ZLinkActorDispatchMailboxSet(options.metrics);
+    this.actorClaims = new ZLinkActorDispatchMailboxSet();
     this.timers = options.timers;
     this.actorHandlers = options.actorHandlers;
     this.handlers = options.handlers;
     this.externalActorCount = options.externalActorCount ?? (() => 0);
     this.nativeSpot = options.nativeSpot;
     this.closeWhenReady = options.closeWhenReady;
-    this.metrics = options.metrics;
     this.actorDispatch = options.actorDispatch;
   }
 
@@ -229,7 +227,7 @@ export class ZLinkSpotActivation {
     }
     let serial = this.actorSerials.get(actorId);
     if (serial === undefined) {
-      serial = new ZLinkSpotSerialExecutor(this.metrics, 'user', false);
+      serial = new ZLinkSpotSerialExecutor(false);
       serial.setExecutionBarrier(this.executionBarrier);
       this.actorSerials.set(actorId, serial);
     }

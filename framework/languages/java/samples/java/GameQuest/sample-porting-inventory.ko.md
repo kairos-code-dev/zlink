@@ -19,7 +19,7 @@
 ## 남은 확인 사항
 
 GameplayStateStore 기반 reset 보정, event delta fold, Redis replay, 실제 process 재시작 gate, player owner Spot, one-way owner notify와 scale-out concurrency는 닫혔다. framework session actor binding 같은 남은
-차이는 `framework/doc/framework/common/spec/90-implementation-gap.ko.md`에서 계속 추적한다.
+차이는 `framework/doc/framework/common/spec/30-implementation-gap.ko.md`에서 계속 추적한다.
 
 ## 검증
 

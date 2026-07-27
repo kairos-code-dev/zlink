@@ -262,8 +262,8 @@ framework가 actor lifecycle의 특정 시점마다 그 Spot의 **콜백 메서�
 `JoinSpot`으로 actor가 한 Spot에서 다른 Spot으로 옮길 때, 대상 Spot이 **같은 MeshNode**에
 있느냐 **다른 MeshNode**에 있느냐로 동작이 갈린다. Host `Retire`도 같은 relocation factory와 Snapshot
 adapter를 사용하지만 membership lifecycle은 application join과 다르다. Source Entry Spot의 Actor를 target
-Entry Spot에 복원할 때는 target `OnActorRelocatedAsync`와 source `OnLeaveActorAsync`를 사용하고
-`OnActorJoinAsync`·`OnJoinedActorAsync`를 호출하지 않는다([12-operations §2](12-operations.ko.md)).
+Entry Spot에 복원할 때는 membership callback을 호출하지 않는다. Framework가 Actor state, queue, timer,
+source relay와 session route를 함께 이전한다([12-operations §2](12-operations.ko.md)).
 
 **① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
 
@@ -373,6 +373,45 @@ public sealed class PlayerActorRelocationAdapter
     private sealed record PlayerRelocationState(string DisplayName, string RoomId);
 }
 ```
+
+### SpotWide round 경계에서 relocation 허용
+
+Framework가 모든 안전한 turn 경계를 사용할 수 있으면 기본
+`AnyTurnBoundary`를 그대로 사용한다. FPS match처럼 round 사이에서만 이동해야
+하면 factory에 `ApplicationSignaled`를 지정한다.
+
+```csharp
+new ZLinkUserSpotFactoryOptions
+{
+    ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
+    RelocationReadiness =
+        ZLinkSpotRelocationReadinessMode.ApplicationSignaled
+};
+```
+
+Round 종료 handler는 다음 round를 직접 시작하지 않고 현재 turn 뒤 경계를
+Framework에 등록한다.
+
+```csharp
+public ValueTask OnRoundCompletedAsync(RoundCompleted message)
+{
+    Context.RelocationReady().Defer(); // 현재 turn 뒤에서 이동 여부를 결정하게 한다.
+    return ValueTask.CompletedTask;    // 다음 round는 completion callback에서 시작한다.
+}
+
+public ValueTask OnRelocationReadyCompletedAsync(
+    ZLinkSpotRelocationReadyCompletion completion,
+    CancellationToken cancellationToken)
+{
+    StartNextRound(); // Source에 남거나 target으로 이동한 현재 owner에서 실행된다.
+    return ValueTask.CompletedTask;
+}
+```
+
+Relocation 요청이 없거나 commit 전에 취소되면 source에서 `Continued`, target으로
+이동하면 target에서 `Relocated` callback을 호출한다. 두 경우 모두 callback이
+끝난 뒤 일반 message와 timer를 다시 처리한다. Callback이 필요하지 않은 Spot은
+기본 no-op 구현을 그대로 사용한다.
 
 Source와 target의 adapter는 같은 객체 인스턴스가 아니다. 각 node의 DI container가 자기 adapter를 만들고,
 node 사이에는 Framework가 복사한 byte sequence만 전달된다. 따라서 같은 actor type을 호스팅하는 모든

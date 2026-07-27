@@ -1,6 +1,6 @@
 # Java 구성과 host 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Transport liveness](../../../../55-transport-liveness.ko.md)
+[인터페이스 목차](README.ko.md) · [Transport liveness](../../../../29-transport-liveness.ko.md)
 
 이 문서는 Java application이 Mesh, Channel role, handler와 Framework host를 구성할 때 사용하는 공개
 인터페이스를 고정한다. Application은 아래 builder로 구성을 선언하고, Framework는 host를 시작할 때
@@ -121,13 +121,32 @@ public enum ZLinkUserSpotExecutionMode {
     public int value() { return value; }
 }
 
+public enum ZLinkSpotRelocationReadinessMode {
+    ANY_TURN_BOUNDARY(0), APPLICATION_SIGNALED(1);
+    private final int value;
+    ZLinkSpotRelocationReadinessMode(int value) { this.value = value; }
+    public int value() { return value; }
+}
+
 public record ZLinkActorFactoryOptions() {}
 
 public record ZLinkUserSpotFactoryOptions(
     int stableTypeLimit,
-    ZLinkUserSpotExecutionMode executionMode) {
+    ZLinkUserSpotExecutionMode executionMode,
+    ZLinkSpotRelocationReadinessMode relocationReadiness) {
     public ZLinkUserSpotFactoryOptions(int stableTypeLimit) {
-        this(stableTypeLimit, ZLinkUserSpotExecutionMode.SPOT_WIDE);
+        this(
+            stableTypeLimit,
+            ZLinkUserSpotExecutionMode.SPOT_WIDE,
+            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
+    }
+    public ZLinkUserSpotFactoryOptions(
+        int stableTypeLimit,
+        ZLinkUserSpotExecutionMode executionMode) {
+        this(
+            stableTypeLimit,
+            executionMode,
+            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
     }
 }
 
@@ -202,6 +221,16 @@ Object role을 생략하면 `None`이다. `client()`는 global object operation�
 Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 같은 Spot
 type의 `ZLinkSpotRelocationAdapter`가 필요하다. `Disabled`와 `Recreate`에는 adapter class를 연결하지 않는다.
 Type mismatch는 startup configuration error이며 application traffic을 받기 전에 끝난다.
+
+`ZLinkUserSpotExecutionMode.PER_ACTOR`는 `ZLinkRelocationPolicy.recreate()`만
+허용한다. `disabled()`나 `snapshot(...)`을 함께 등록하면 startup configuration
+error다. PerActor Spot은 stateless execution shell이며 Actor policy와 adapter가
+Actor state를 각각 처리한다.
+
+`relocationReadiness`의 기본값은 `ANY_TURN_BOUNDARY`다.
+`APPLICATION_SIGNALED`는 `SPOT_WIDE`에서만 허용하며 `PER_ACTOR`와 함께 등록하면
+socket bind 전에 startup configuration error다. Spot callback은 default no-op
+method이므로 application override는 필수가 아니다.
 
 Node placement weight는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과 runtime 변경에서
 configuration error다. Node capacity 기본값은 active 10,000, pending 128이다.
@@ -588,14 +617,23 @@ public final class systems.zlink.framework.configuration.ZLinkUserSpotExecutionM
   public static systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode valueOf(java.lang.String);
   public int value();
 }
+public final class systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode> {
+  public static final systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode ANY_TURN_BOUNDARY;
+  public static final systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode APPLICATION_SIGNALED;
+  public static systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode[] values();
+  public static systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode valueOf(java.lang.String);
+  public int value();
+}
 public final class systems.zlink.framework.configuration.ZLinkActorFactoryOptions extends java.lang.Record {
   public systems.zlink.framework.configuration.ZLinkActorFactoryOptions();
 }
 public final class systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode, systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode);
   public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
   public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int);
   public int stableTypeLimit();
   public systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode executionMode();
+  public systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode relocationReadiness();
 }
 public final class systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
   public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(int);

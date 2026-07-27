@@ -1,7 +1,7 @@
 # Stage wrapper on Spot
 
-[공통 스펙 목차](README.ko.md) · [Spot 메시징](20-spot-messaging.ko.md) ·
-[Actor 모델](22-actor-model.ko.md) · [Spot 주소 메시징](24-spot-address-messaging.ko.md)
+[스펙 목차](README.ko.md) · [이전: Spot 주소 메시징](16-spot-address-messaging.ko.md) · [다음: Spot·Actor routing](18-object-routing.ko.md)
+
 
 ## 1. 이 문서가 정의하는 범위
 
@@ -49,7 +49,7 @@ timer lane은 동시에 실행될 수 있으므로 application이 공유 Stage s
 책임진다.
 
 Callback이 비동기 작업을 기다리는 동안 turn을 유지하거나 반납하는 의미는
-[비동기 실행 정책](04-async-execution-policy.ko.md)이 정한다. Wrapper는
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정한다. Wrapper는
 별도 scheduler나 lock 규칙으로 그 계약을 바꾸지 않는다.
 
 request reply continuation이 Spot 상태를 바꾸면 원래
@@ -72,7 +72,7 @@ Framework는 Actor의 join, leave, relocation과 lifecycle notification을 업�
 message와 분리된 전용 queue에서 처리한다. 이 queue에서는 Actor의 일반 업무
 handler를 실행하지 않으며, 업무 payload를 lifecycle callback으로 바꾸지도 않는다.
 자세한 Actor queue와 lifecycle 처리 계약은
-[22 Actor 모델](22-actor-model.ko.md)이 소유한다.
+[22 Actor 모델](14-actor-model.ko.md)이 소유한다.
 
 ## 5. Timer
 
@@ -120,7 +120,7 @@ domain 생성 payload를 전달하고 생성 callback 안에서 초기 Stage sta
 Actor join은 Framework의 lifecycle 전용 queue에서 Stage membership 정책을
 검사한다. Join이 성공하면 Actor의 현재 Spot 위치와 Stage가 소유한 member state를
 함께 갱신한다. 동시 변경을 하나로 확정하는 방법과 relocation 중 message 수락
-경계는 [23 Spot Actor](23-spot-actor.ko.md)가 소유한다.
+경계는 [23 Spot Actor](15-spot-actor.ko.md)가 소유한다.
 
 Stage 전체 알림은 다음 중 의미에 맞는 경로를 사용한다.
 
@@ -135,7 +135,7 @@ Logical Multicast를 Stage member 목록의 durable source로 사용하지 않�
 외부 service는 domain key에서 global [Spot ID](01-glossary.ko.md#spot-id)를 얻어 Stage Spot에 메시지를 보낸다. Exact incarnation을
 종료하거나 운영 정보로 표시할 때는 manager lookup이 반환한 `SpotRef`를 사용한다. Owner RID와 endpoint는
 wrapper 상태에 저장하지 않는다. 위치 갱신과 stale route의 의미는
-[24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
+[24 Spot 주소 메시징](16-spot-address-messaging.ko.md)이 정한다.
 
 Stage 종료는 신규 application admission과 신규 join을 닫고, 이미 수락한 Spot turn과 membership 정리를
 drain deadline 안에서 완료한다. 종료 뒤의 timer, [subscription](01-glossary.ko.md#subscription)과 direct 메시지는 Stage callback을 새로
@@ -143,7 +143,7 @@ drain deadline 안에서 완료한다. 종료 뒤의 timer, [subscription](01-gl
 
 ## 8. Metadata와 관측
 
-Stage wrapper는 [메시지 모델](03-message-model.ko.md)의 immutable metadata
+Stage wrapper는 [메시지 모델](04-message-model.ko.md)의 immutable metadata
 snapshot을 handler에 그대로 제공하고 transport frame이나 storage ownership을
 해석하지 않는다.
 

@@ -62,12 +62,12 @@ const isKotlinSourcePackageMember = member => member.language === 'kotlin'
 
 export const closedCatchAllExpectations = {
   'public-boundary-internal-surface-cleanup': {
-    count: 1210,
-    identitySetSha256: 'b7f2cd99978227ee8f1b1aa8a2484ca921b6427e7d3e6cf6338a8756eee4f43e',
+    count: 1661,
+    identitySetSha256: '4a5cd92944fa57411b4ba3dc04ff5b925cc29ecb0b6a0e99c1d2d48051895bd3',
   },
   'kotlin-reviewed-contract-set': {
-    count: 125,
-    identitySetSha256: 'ec8a4bee3ec6bc20269750b0d8bc7546fb087fe7d37702cdce356145876266d7',
+    count: 126,
+    identitySetSha256: 'cb73a1e0bc3970a015f6c1e92e6a058af1e06556af85193be0b346d56642ae6b',
   },
   'node-reviewed-contract-set': {
     count: 58,
@@ -76,9 +76,9 @@ export const closedCatchAllExpectations = {
 };
 
 export const sourceJvmParityExpectation = {
-  groups: 47,
-  recoveredPairs: 47,
-  identitySetSha256: '815e2f19e34852f31e7ba725e6644dc0030e1612ebfdda64a857e57ed2599d96',
+  groups: 48,
+  recoveredPairs: 48,
+  identitySetSha256: '2dc995b16bbea555d030fe1643b534134213642205e98bc203d94aa5393f0dcc',
 };
 
 const rules = [
@@ -118,6 +118,14 @@ const rules = [
         || (/zlinkentryspot$/u.test(owner) && name === 'context');
     },
     decisions: ['CA-D75'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'infrastructure-relocation-callback-removal',
+    matches: (_value, member) =>
+      /^(?:onactorrelocated(?:async|suspending)?|on_actor_relocated)$/u
+        .test(normalizedMemberName(member)),
+    decisions: ['CA-D40'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {

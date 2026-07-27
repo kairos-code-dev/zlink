@@ -41,7 +41,7 @@ function activation(
 }
 
 test('SpotWide Yield releases the Spot gate but retains the Actor claim', async () => {
-  const serial = new ZLinkSpotSerialExecutor(undefined, 'user', true);
+  const serial = new ZLinkSpotSerialExecutor(true);
   const state = activation(serial, ZLinkUserSpotExecutionMode.SpotWide);
   const response = deferred<string>();
   const events: string[] = [];
@@ -78,7 +78,7 @@ test('SpotWide Yield releases the Spot gate but retains the Actor claim', async 
 });
 
 test('PerActor keeps Actor continuations ordered while Actor and Spot lanes run independently', async () => {
-  const spotSerial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+  const spotSerial = new ZLinkSpotSerialExecutor(false);
   const state = activation(spotSerial, ZLinkUserSpotExecutionMode.PerActor);
   const response = deferred<string>();
   const events: string[] = [];
@@ -129,7 +129,7 @@ test('Yield rejects outside an allowed gate before worker admission', async () =
   );
   assert.equal(scheduled, 0);
 
-  const perActorSerial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+  const perActorSerial = new ZLinkSpotSerialExecutor(false);
   await perActorSerial.execute(() => {
     const call = new DefaultZLinkWorkerCall(
       perActorSerial,
@@ -147,7 +147,7 @@ test('Yield rejects outside an allowed gate before worker admission', async () =
 });
 
 test('PerActor timer registrations select an independent lane per timer name', async () => {
-  const spotSerial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+  const spotSerial = new ZLinkSpotSerialExecutor(false);
   const timerSerials = new Map<string, ZLinkSpotSerialExecutor>();
   const registry = new ZLinkSpotTimerRegistry(
     undefined,
@@ -155,7 +155,7 @@ test('PerActor timer registrations select an independent lane per timer name', a
     (name) => {
       let serial = timerSerials.get(name);
       if (serial === undefined) {
-        serial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+        serial = new ZLinkSpotSerialExecutor(false);
         timerSerials.set(name, serial);
       }
       return serial;

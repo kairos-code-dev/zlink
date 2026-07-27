@@ -114,19 +114,19 @@ if (JSON.stringify(terminationOwnerPolicy.members)
 }
 
 const expectedHostLifecycleContract = {
-  formal_path: 'framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md',
+  formal_path: 'framework/doc/framework/common/spec/28-graceful-drain-handoff.ko.md',
   e2e_path: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
   states: [
     { name: 'Preparing', wire_value: 0 },
     { name: 'Serving', wire_value: 1 },
     { name: 'Relocating', wire_value: 2 },
-    { name: 'Drained', wire_value: 3 },
+    { name: 'Relocated', wire_value: 3 },
     { name: 'Draining', wire_value: 4 },
     { name: 'Stopped', wire_value: 5 },
     { name: 'Error', wire_value: 6 },
   ],
   relocation_outcomes: [
-    { name: 'Drained', wire_value: 0, reasons: ['None'] },
+    { name: 'Relocated', wire_value: 0, reasons: ['None'] },
     { name: 'Blocked', wire_value: 1, reasons: [
       'TargetUnavailable', 'StoreUnavailable', 'RelocationDisabled', 'StateIncompatible',
       'DeadlineExceeded', 'RelocationFailed', 'RuntimeNotReady', 'ManualTopologyUnsupported',

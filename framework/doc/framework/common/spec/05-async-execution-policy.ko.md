@@ -1,7 +1,7 @@
 # 비동기 실행과 handler turn
 
-[스펙 목차](README.ko.md) · [메시지 계약](03-message-model.ko.md) ·
-[Framework API](05-framework-api.ko.md)
+[스펙 목차](README.ko.md) · [이전: Framework 메시지 계약](04-message-model.ko.md) · [다음: ZLink Framework API](06-framework-api.ko.md)
+
 
 이 문서는 ZLink Framework 11.0.0의 submit, request completion, handler 직렬 실행, timeout,
 cancellation과 timer 계약을 정의한다. 대상 독자는 언어별 비동기 API와 scheduler adapter를 구현하는

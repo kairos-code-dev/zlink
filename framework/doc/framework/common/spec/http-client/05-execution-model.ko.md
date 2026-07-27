@@ -4,7 +4,7 @@
 >
 > Terminator와 Spot 실행 문맥 결합은
 > [12 HTTP client §3](12-http-client.ko.md)과
-> [04 비동기 실행 정책 §1.1](../04-async-execution-policy.ko.md)이 소유한다. 아래
+> [04 비동기 실행 정책 §1.1](../05-async-execution-policy.ko.md)이 소유한다. 아래
 > §5.1은 호출 형태를 이해하기 위한 요약이다. 이 문서는 §5.2부터 HTTP 전송의
 > non-blocking 근거, cancellation과 timeout 경계를 정의한다.
 
@@ -38,7 +38,7 @@ Spot 실행 줄의 **새 turn**으로 들어간다
 **Terminator 이름은 framework 관용을 따른다.** .NET은 `Async(...)`, Kotlin wrapper는
 `await(...)`, Java·C++는 `submit(...)`을 사용한다. Node HTTP typed response와 callback은 TypeScript
 상속 signature 충돌을 피하기 위해 `async(...)`를 유지하고 raw response는 `submitRaw()`를 사용한다
-([04 §2](../04-async-execution-policy.ko.md)).
+([04 §2](../05-async-execution-policy.ko.md)).
 
 ## 5.2 외부 HTTP 대기와 Spot 실행 줄
 
@@ -82,7 +82,7 @@ cpp의 `coroutines(resume_scheduler)` / `framework_resume_scheduler_t`가 이 se
 ## 5.4 blocking terminator를 두지 않는다
 
 **완료 값을 동기로 언래핑하는 public terminator를 만들지 않는다.** 같은 의미의 blocking 대안
-terminator는 계약 위반이다([04 §2](../04-async-execution-policy.ko.md)).
+terminator는 계약 위반이다([04 §2](../05-async-execution-policy.ko.md)).
 
 - 금지 대상: cpp `fetch()`/`.result()`, dotnet `Fetch<T>()`, java `fetch()`/`.join()`/`.get()`.
 - 테스트나 CLI에서 동기로 기다려야 하면 **호출자가** 언어 관용으로 감싼다

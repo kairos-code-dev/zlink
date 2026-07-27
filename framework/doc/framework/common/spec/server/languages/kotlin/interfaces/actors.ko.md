@@ -8,7 +8,7 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Java Actor](../../java/interfaces/actors.ko.md) ·
-[Actor 공통 계약](../../../../22-actor-model.ko.md)
+[Actor 공통 계약](../../../../14-actor-model.ko.md)
 
 Kotlin은 Java의 global Actor identity와 fluent operation을 그대로 사용한다. `ActorId`는 Location Store
 transaction domain 전체에서 유일하며 UTF-8 encoded 크기는 1..255 bytes다. 대소문자를 구분하고

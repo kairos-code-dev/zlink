@@ -7,7 +7,7 @@
 User Spot, Instance Spot과 Actor handler가 request, actor join과 worker 완료를 기다릴 때
 **실행 lane의 권한을 어떻게 다루는지**를 실제 배포 구성에서 검증한다.
 
-**핵심 계약은 하나다** — [04 §1.1](../spec/04-async-execution-policy.ko.md).
+**핵심 계약은 하나다** — [04 §1.1](../spec/05-async-execution-policy.ko.md).
 
 | terminator | 실행 줄 |
 |---|---|
@@ -36,7 +36,7 @@ Instance Spot 밖에서 공통 call type의 `Yield`를 호출하면 operation을
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 쓰는 공유 Redis. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록한다. |
-| play 노드 | 2 (`play-a`, `play-b`) | Location Store를 등록한 Object Server. Entry Spot, `SpotWide`와 `PerActor` stable User Spot type, stable Actor type의 factory를 제공한다. Factory는 명시적 `Disabled` policy를 사용하고 placement weight `100`, Actor limit `128`, Spot limit `32`, activation concurrency `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
+| play 노드 | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, `SpotWide`와 `PerActor` stable User Spot type, stable Actor type의 factory를 제공한다. `PerActor` Spot factory는 `Recreate`, 이 config에서 이동하지 않는 나머지 factory는 `Disabled` policy를 사용한다. Placement weight `100`, Actor limit `128`, Spot limit `32`, activation concurrency `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | ChannelName request를 받아 지정한 시간 뒤 reply한다. handler가 기다릴 **framework request** 역할이다. |
 | **external API** | 1 (`ext-api`) | **framework 밖의 순수 HTTP 서버.** 지정한 시간 뒤 JSON을 돌려준다. framework HTTP client가 호출할 **외부·레거시 API** 역할이다. zlink channel이 아니다. |
 | session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor·Spot address로 play 노드에 시나리오 packet을 relay하며 factory와 placement target은 제공하지 않는다. |
@@ -321,7 +321,7 @@ terminator가 정하는가.
 - 검증: handler terminal 전에는 target admission·Location CAS·source/target lifecycle evidence가 없다.
   이후 evidence 순서는 `target OnActorJoin → location CAS commit → target OnJoinedActor →
   source OnLeaveActor → Actor OnJoinCompleted(Accepted)`다
-  ([23 §4](../spec/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
+  ([23 §4](../spec/15-spot-actor.ko.md#4-join-의미와-commit-순서)).
   Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
   막히지 않는다. 같은 Entry Actor에 뒤이어 제출한 packet은 join job의 terminal 완료 전에는 시작하지
   않으며, 두 job의 handler 실행 구간은 겹치지 않는다.

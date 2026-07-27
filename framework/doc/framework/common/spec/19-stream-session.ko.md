@@ -1,7 +1,7 @@
 # STREAM 서버 session
 
-[공통 스펙 목차](README.ko.md) · [Stage wrapper on Spot](25-stage-wrapper-on-spot.ko.md) ·
-[Session Actor Dispatch](31-session-actor-dispatch.ko.md)
+[스펙 목차](README.ko.md) · [이전: Spot·Actor routing](18-object-routing.ko.md) · [다음: Session Actor dispatch](20-session-actor-dispatch.ko.md)
+
 
 이 문서는 ZLink Framework 11.0.0의 서버 쪽 STREAM session(연결 하나를 수락한 때부터
 닫을 때까지 packet 처리와 request correlation을 유지하는 실행 단위) 공개 계약을 정의한다. 대상 독자는 서버 session
@@ -52,7 +52,7 @@ Transport가 packet을 받는 callback에서는 application session callback을 
 
 Handler filter pipeline은 ChannelName dispatch에만 적용한다. Node direct, Spot, Actor와
 [STREAM session dispatch](01-glossary.ko.md#stream-session)에는 적용하지 않는다
-([Framework API §8](05-framework-api.ko.md#8-handler-등록과-dispatch)).
+([Framework API §8](06-framework-api.ko.md#8-handler-등록과-dispatch)).
 
 - Session callback은 packet name, metadata와 request 정보를 담은 dispatch context와
   payload를 받는다.
@@ -71,7 +71,7 @@ Session이 만드는 `Response`와 `Error`는 원본 request의 request sequence
 - typed reply의 decode 타입은 client가 호출 시 지정한 타입이다. 이름으로 고르지 않는다.
 - `Error`도 같은 sequence로 되돌린다.
 
-전체 규칙은 [메시지 모델](03-message-model.ko.md)의 reply correlation 계약이
+전체 규칙은 [메시지 모델](04-message-model.ko.md)의 reply correlation 계약이
 정의한다.
 
 ## 4. recv loop를 기본 표면에서 빼는 이유
@@ -115,7 +115,7 @@ Session 오류 callback은 monitor에서 관찰 가능한 transport 오류를 se
 축으로만 제한한다.
 
 세션이 닫힐 때의 종료 사유는 [Stream Connector §6.3](stream-connector/32-stream-connector.ko.md#63-종료-사유)의 닫힌 집합과
-정합하며, 계기는 [runtime-metrics §4](51-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
+정합하며, 계기는 [runtime-metrics §4](25-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
 
 ## 7. 등록 모델
 
@@ -187,11 +187,11 @@ Client 쪽 transport 선택은 endpoint scheme이 결정한다
 ## 8. Session에서 actor로
 
 session이 받은 packet을 actor로 넘기는 계약은
-[session-actor-dispatch](31-session-actor-dispatch.ko.md)가 소유한다.
+[session-actor-dispatch](20-session-actor-dispatch.ko.md)가 소유한다.
 
 Session callback은 [Spot](01-glossary.ko.md#spot) 상태를 직접 변경하지 않는다. Actor dispatch나 Spot 호출을
 제출하는 데까지만 처리한다
-([Stage wrapper on Spot §3](25-stage-wrapper-on-spot.ko.md#3-spot-turn-보존)).
+([Stage wrapper on Spot §3](17-stage-wrapper-on-spot.ko.md#3-spot-turn-보존)).
 
 Actor가 다른 MeshNode에 있어도 physical STREAM socket과 session object는 현재
 session owner에 유지된다. Framework는 bind control, Actor ingress와 Actor push만
@@ -200,7 +200,7 @@ RID, binding generation(같은 session [owner](01-glossary.ko.md#owner) process 
 authority fence와 command 24·36·38의 codec을 노출하지 않는다. Session을 닫을 때는
 current [binding generation](01-glossary.ko.md#binding-generation)의 tombstone을 제출하므로
 이전 bind에서 늦게 도착한 close가 새 binding을 해제하지 못한다. Command별 정확한
-전달 계약은 [Session–Actor dispatch §4](31-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)가
+전달 계약은 [Session–Actor dispatch §4](20-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)가
 정의한다.
 
 Physical disconnect 때 Framework는 current binding snapshot의 모든 Actor에 저장 route로 자동 통지한다.

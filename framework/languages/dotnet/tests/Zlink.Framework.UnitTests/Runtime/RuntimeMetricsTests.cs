@@ -30,13 +30,10 @@ public sealed class RuntimeMetricsTests
             ["zlink.stream.inbound.bytes"] = (typeof(Counter<>), "By"),
             ["zlink.stream.outbound.bytes"] = (typeof(Counter<>), "By"),
             ["zlink.spot.count"] = (typeof(UpDownCounter<>), "{spot}"),
-            ["zlink.spot.queue.depth"] = (typeof(UpDownCounter<>), "{item}"),
-            ["zlink.spot.queue.wait.duration"] = (typeof(Histogram<>), "s"),
             ["zlink.spot.timer.tick.lateness"] = (typeof(Histogram<>), "s"),
             ["zlink.spot.created"] = (typeof(Counter<>), "{spot}"),
             ["zlink.spot.closed"] = (typeof(Counter<>), "{spot}"),
             ["zlink.actor.count"] = (typeof(UpDownCounter<>), "{actor}"),
-            ["zlink.actor.mailbox.depth"] = (typeof(UpDownCounter<>), "{item}"),
             ["zlink.relocation.started"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.completed"] = (typeof(Counter<>), "{relocation}"),
             ["zlink.relocation.duration"] = (typeof(Histogram<>), "s"),
@@ -71,6 +68,12 @@ public sealed class RuntimeMetricsTests
         }
 
         Assert.DoesNotContain(instruments, instrument => instrument.Name == "zlink.fanout.dropped");
+        Assert.DoesNotContain(
+            instruments,
+            instrument => instrument.Name is
+                "zlink.spot.queue.depth"
+                or "zlink.spot.queue.wait.duration"
+                or "zlink.actor.mailbox.depth");
         Assert.DoesNotContain(
             instruments,
             instrument => instrument.Name.StartsWith(
@@ -118,88 +121,6 @@ public sealed class RuntimeMetricsTests
             ZLinkRuntimeMetrics.RecordLocationStoreError();
 
         Assert.Equal(allocatedBefore, GC.GetAllocatedBytesForCurrentThread());
-    }
-
-    [Fact]
-    public async Task Spot_Queue_Records_Depth_Wait_And_Kind()
-    {
-        var depth = new List<(long Value, string? Kind)>();
-        var waits = new List<(double Value, string? Kind)>();
-        using var listener = new MeterListener
-        {
-            InstrumentPublished = (instrument, owner) =>
-            {
-                if (instrument.Meter.Name == ZLinkMeters.Framework
-                    && instrument.Name is "zlink.spot.queue.depth" or "zlink.spot.queue.wait.duration")
-                    owner.EnableMeasurementEvents(instrument);
-            }
-        };
-        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-        {
-            if (instrument.Name != "zlink.spot.queue.depth") return;
-            lock (depth) depth.Add((value, Tag(tags, "kind")));
-        });
-        listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
-        {
-            if (instrument.Name != "zlink.spot.queue.wait.duration") return;
-            lock (waits) waits.Add((value, Tag(tags, "kind")));
-        });
-        listener.Start();
-
-        var errorSink = new ZLinkRuntimeErrorSink();
-        await using var queue = new ZLinkSerialExecutionQueue(
-            new ZLinkRuntimeTaskRunner(errorSink, CancellationToken.None, new object()),
-            errorSink,
-            CancellationToken.None,
-            spotMetricKind: "user");
-        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var first = await queue.PostAsync(
-            async _ =>
-            {
-                firstStarted.TrySetResult();
-                await releaseFirst.Task.ConfigureAwait(false);
-            },
-            CancellationToken.None);
-        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var second = await queue.PostAsync(
-            _ =>
-            {
-                secondStarted.TrySetResult();
-                return ValueTask.CompletedTask;
-            },
-            CancellationToken.None);
-        releaseFirst.TrySetResult();
-        await Task.WhenAll(first.Completion, second.Completion).WaitAsync(TimeSpan.FromSeconds(5));
-
-        Assert.Equal(0, depth.Sum(sample => sample.Value));
-        Assert.All(depth, sample => Assert.Equal("user", sample.Kind));
-        Assert.Equal(2, waits.Count);
-        Assert.All(waits, sample =>
-        {
-            Assert.True(sample.Value >= 0);
-            Assert.Equal("user", sample.Kind);
-        });
-    }
-
-    [Fact]
-    public void Spot_Queue_Wait_Samples_Support_A_Reader_Computed_P99()
-    {
-        var waits = new List<double>();
-        using var listener = Listen<double>("zlink.spot.queue.wait.duration", (_, value, _) => waits.Add(value));
-
-        for (var index = 0; index < 100; index++)
-        {
-            var started = ZLinkRuntimeMetrics.RecordSpotQueueEnqueued("user");
-            ZLinkRuntimeMetrics.RecordSpotQueueStarted("user", started);
-        }
-
-        var ordered = waits.Order().ToArray();
-        var p99 = ordered[(int)Math.Ceiling(ordered.Length * 0.99d) - 1];
-        Assert.Equal(100, ordered.Length);
-        Assert.True(p99 >= 0);
     }
 
     [Fact]

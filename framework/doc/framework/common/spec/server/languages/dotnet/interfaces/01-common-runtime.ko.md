@@ -99,7 +99,7 @@ Publish가 시작된 뒤에는 선택한 target 집합에 대한 제출을 끝�
 마지막 값이 전송된다. Reply는 request metadata를 자동 복사하지 않는다.
 
 Worker call의 `Submit`, `Async`와 `Yield`는
-[비동기 실행 정책 §1.2](../../../../04-async-execution-policy.ko.md#12-worker-offload)의 완료 의미를 따른다.
+[비동기 실행 정책 §1.2](../../../../05-async-execution-policy.ko.md#12-worker-offload)의 완료 의미를 따른다.
 Worker option은 host가 시작되기 전에만 설정할 수 있다.
 
 `Yield` terminal은 `RequestToChannel`, `RequestToSpot`, `RequestToActor`, `RunIoWorker`, `RunCpuWorker`와

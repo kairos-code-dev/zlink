@@ -108,7 +108,7 @@ interface ZLinkEntrySpotActivationOptions {
 }
 
 export class ZLinkEntrySpotActivation {
-  private readonly serial = new ZLinkSpotSerialExecutor(undefined, 'entry', false);
+  private readonly serial = new ZLinkSpotSerialExecutor(false);
   private readonly actorPacketMailboxes: ZLinkActorDispatchMailboxSet;
   private readonly timers: ZLinkSpotTimerRegistry;
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
@@ -125,7 +125,7 @@ export class ZLinkEntrySpotActivation {
   readonly context: ZLinkEntrySpotContext;
 
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
-    this.actorPacketMailboxes = new ZLinkActorDispatchMailboxSet(options.metrics);
+    this.actorPacketMailboxes = new ZLinkActorDispatchMailboxSet();
     // Entry Spot lifecycle, timers and detached continuations use this serial
     // executor. Actor packets use the target actor mailbox.
     this.outbound = new DefaultZLinkSpotOutbound(

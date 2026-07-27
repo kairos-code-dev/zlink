@@ -1,6 +1,7 @@
 # Framework 언어별 구현 차이
 
-[스펙 목차](README.ko.md) | [이전: Graceful Drain & Handoff 수명주기 계약](54-graceful-drain-handoff.ko.md)
+[스펙 목차](README.ko.md) · [이전: Transport 연결 상태 확인](29-transport-liveness.ko.md)
+
 
 이 문서는 정식 public contract가 아니다. 공통 스펙과 언어별 스펙을 기준으로 현재
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
@@ -129,7 +130,7 @@ client로 규정하고 terminator·turn seam·서버 등록 표면을 고정한�
 
 ### 12.23 C++·Java/Kotlin worker cancellation 부재
 
-**C++와 Java/Kotlin 미충족.** [04 §1.2](04-async-execution-policy.ko.md)는 worker를 CPU worker와
+**C++와 Java/Kotlin 미충족.** [04 §1.2](05-async-execution-policy.ko.md)는 worker를 CPU worker와
 I/O worker로 나누고, 둘 다 `async`·`yield` terminator와 cancellation 신호를 갖도록 규정한다.
 두 구현 모두 worker 분리와 terminator는 제공한다. C++ callback은 `std::stop_token`을 받지 않고,
 Java/Kotlin의 `ZLinkWorkerTask.run()`과 `ZLinkIoWorkerTask.run()`도 cancellation 인자를 받지 않아 timeout,
@@ -142,7 +143,7 @@ caller cancellation과 shutdown을 실행 중인 작업에 전달할 수 없다.
 
 ### 12.24 전 언어 actor join commit 순서
 
-**전 언어 미충족.** [23 §4](23-spot-actor.ko.md#4-actor-join과-commit-순서)는 admission accept 뒤 location
+**전 언어 미충족.** [23 §4](15-spot-actor.ko.md#4-actor-join과-commit-순서)는 admission accept 뒤 location
 authority가 expected Actor ObjectGeneration과 current Spot authority를 비교해 owner와 membership을 하나의
 CAS로 먼저 commit하도록 고정한다. CAS가 성공한 뒤에는 target `OnJoinedActor`, source `OnLeaveActor`를
 차례로 실행한다.
@@ -207,7 +208,7 @@ ChannelName을 등록하면 startup에서 거부하는 contract test를 추가�
 
 ### 12.27 Java/Kotlin·C++ Actor location의 Spot generation 미구현
 
-[Location Runtime §2](40-location-runtime.ko.md#2-같은-id의-재생성과-owner-변경을-구분하는-값)과 다섯 언어 exact interface는 Actor location에
+[Location Runtime §2](21-location-runtime.ko.md#2-같은-id의-재생성과-owner-변경을-구분하는-값)과 다섯 언어 exact interface는 Actor location에
 현재 Spot의 [lifecycle generation](01-glossary.ko.md#lifecycle-generation)을 보존한다. 같은 [Spot ID](01-glossary.ko.md#spot-id)가 종료 뒤 다시 사용되면 이 값으로 낮은
 generation의 membership과 새 membership을 구분한다.
 
@@ -224,7 +225,7 @@ contract test로 고정해야 한다.
 
 ### 12.28 전 언어 STREAM Actor dispatch의 global authority 연결 미구현
 
-[Session Actor Dispatch §2·§9](31-session-actor-dispatch.ko.md)는 `EnableActorDispatch()`가
+[Session Actor Dispatch §2·§9](20-session-actor-dispatch.ko.md)는 `EnableActorDispatch()`가
 MeshName을 받지 않고 global Actor authority를 사용하도록 고정한다. 같은 process에 Object Mesh가 여러 개
 있어도 startup 오류가 아니며, resolve한 ActorRef의 MeshName으로 current owner MeshNode를 선택한다.
 
@@ -247,8 +248,8 @@ MeshNode를 공유하지 않으며 session Actor bind·dispatch는 resolve한 `A
 
 ### 12.29 전 언어 durable authority와 Relocation Store 연결 미구현
 
-[Spot Actor §7](23-spot-actor.ko.md#7-실패와-recovery)과
-[Location Store provider §4](41-location-store-redis.ko.md#4-conditional-atomic-batch)는 current owner와
+[Spot Actor §7](15-spot-actor.ko.md#7-실패와-recovery)과
+[Location Store provider §4](22-location-store-redis.ko.md#4-conditional-atomic-batch)는 current owner와
 relocation state를 표현하는 private record를 같은 atomic batch에서 전이하고, process 종료 뒤 successor가
 immutable relocation root와 replay cursor로 처리를 이어 가도록 요구한다.
 
@@ -286,7 +287,7 @@ Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recover
 
 ### 12.31 Java/Kotlin·Node·C++ relocation metric outcome 미구현
 
-[Runtime Metrics §4](51-runtime-metrics.ko.md#4-object와-stream)는
+[Runtime Metrics §4](25-runtime-metrics.ko.md#4-object와-stream)는
 `zlink.relocation.completed`와 `zlink.relocation.duration`에 `mesh_name`, `object_kind`, `policy`와 닫힌
 `outcome=completed|aborted|recovered|failed|shutdown`을 기록하도록 고정한다. Duration은 prepare부터
 terminal phase까지의 시간이며 Location commit만으로 성공을 기록하지 않는다.
@@ -304,7 +305,7 @@ activation·abort·timeout·[shutdown](01-glossary.ko.md#shutdown)의 각 termin
 
 ### 12.32 전 언어 수신 content-type 검증 결함
 
-[Framework API §9](05-framework-api.ko.md#9-codec)은 송신 업무 타입에 맞는 extension이 없으면
+[Framework API §9](06-framework-api.ko.md#9-codec)은 송신 업무 타입에 맞는 extension이 없으면
 JSON을 선택하지만, 수신 envelope가 명시한 non-JSON content-type과 일치하는 codec이 없으면 JSON으로
 다시 해석하지 않고 `PayloadDecodeFailed`로 완료하도록 고정한다. 송신 기본값은 수신 wire 선언을
 무시하는 허가가 아니다.
@@ -328,7 +329,7 @@ JSON을 선택하지만, 수신 envelope가 명시한 non-JSON content-type과 �
 
 ### 12.33 Java/Kotlin·Node·C++ RouteMesh·MeshNode 통합 표면 차이
 
-[Framework API §3](05-framework-api.ko.md#3-routemesh-등록)과 다섯 언어 exact interface는 물리
+[Framework API §3](06-framework-api.ko.md#3-routemesh-등록)과 다섯 언어 exact interface는 물리
 MeshName 하나를 `AddRouteMesh`·`addRouteMesh`·`add_route_mesh`로 등록하고 반환된 MeshNode builder가
 ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 소유하도록 고정한다. Production
 구성은 공식 [location store](01-glossary.ko.md#location-store)를 사용하며 in-memory store 선택 helper를 공개 표면에 두지 않는다.
@@ -344,8 +345,8 @@ ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 �
 
 ### 12.34 C++ ActorRef 필드 집합 불일치
 
-[상호작용 모델 §7](02-interaction-model.ko.md#7-spot과-actor)과
-[Actor 모델 §2](22-actor-model.ko.md#2-actor-identity와-서로-독립적인-상태)는 `ActorRef`를 논리
+[상호작용 모델 §7](03-interaction-model.ko.md#7-spot과-actor)과
+[Actor 모델 §2](14-actor-model.ko.md#2-actor-identity와-서로-독립적인-상태)는 `ActorRef`를 논리
 `ActorId`, `ObjectGeneration`, 현재 `MeshName`과 owner `NodeRid` 네 값으로 고정한다. endpoint,
 내부 frame, location row와 Actor type은 참조에 포함하지 않는다. 별도의 public snapshot type도
 제공하지 않는다.
@@ -359,7 +360,7 @@ Actor handler 선택에 필요한 Actor type은 Actor manager와 runtime registr
 
 ### 12.35 C++ Actor lifetime 중 generation 변경
 
-**C++ 미충족.** [Spot과 Actor membership §1](23-spot-actor.ko.md#1-identity와-authority)은 Actor
+**C++ 미충족.** [Spot과 Actor membership §1](15-spot-actor.ko.md#1-identity와-authority)은 Actor
 generation을 생성 성공 시 해당 Actor lifetime의 값으로 확정하며 destroy까지 변경하지 않도록 고정한다.
 같은 MeshNode의 Spot 이동과 다른 MeshNode로의 relocation은 source와 target에서 같은 Actor generation을
 사용하고, 성공한 location commit에서 current Spot authority만 바뀌어야 한다.
@@ -397,7 +398,7 @@ consumer contract test가 exact interface와 일치해야 한다.
 ### 12.37 .NET IZLinkRouteMeshRuntime snapshot의 Core 미노출 필드
 
 **.NET 부분 충족.** [.NET topology monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)과
-[Runtime monitoring](50-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
+[Runtime monitoring](24-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
 set, channel별 ready member 수, drain seal 상태와 pending relocation·STREAM barrier 수를 요구한다.
 
 현재 .NET `IZLinkRouteMeshRuntime` 구현은 exact interface와 event stream(polling 파생)을
@@ -413,7 +414,7 @@ set, channel별 ready member 수, drain seal 상태와 pending relocation·STREA
 ### 12.38 Java/Kotlin ZLinkRouteMeshRuntime snapshot의 Core 미노출 필드
 
 **Java/Kotlin 부분 충족.** [Java monitoring exact interface](server/languages/java/interfaces/monitoring.ko.md)와
-[Runtime monitoring](50-runtime-monitoring.ko.md)은 MeshNode snapshot, bounded observer별 event
+[Runtime monitoring](24-runtime-monitoring.ko.md)은 MeshNode snapshot, bounded observer별 event
 stream과 MeshName 단위 drain 표면을 요구한다.
 
 Java의 `ZLinkRouteMeshRuntime`은 exact snapshot·event·drain 타입과 Spring DI 등록을 제공하고, Java
@@ -514,11 +515,13 @@ lease 만료·drain·재게시 reconcile과 manual publisher/subscriber의 store
 
 ### 12.41 전 언어 host maintenance production 경로 미완성
 
-정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Relocate`는 standalone Actor, Instance Spot과
-User Spot aggregate queue에 infrastructure notification을 예약하고, 현재 turn을 끝낸 ready unit부터 bounded
-sliding relocation을 수행한다. Permit을 모두 얻기 전에는 queue를 seal하지 않는다. Seal 시점에 실행하지 않은
-message, accepted journal, logical timer registration과 pending tick은 Relocation Store에 저장해 target에서
-복원한다. `Shutdown`만 새 relocation 없이 local resource를 bounded cleanup한다.
+정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Relocate`는 Entry
+Spot Actor, `PerActor` User Spot의 Actor, Instance Spot과 `SpotWide` User Spot
+aggregate에 infrastructure notification을 예약하고 현재 turn을 끝낸 ready unit부터
+bounded relocation을 수행한다. Permit을 모두 얻기 전에는 queue를 seal하지 않는다.
+Seal 시점에 실행하지 않은 message, accepted journal과 대상별 timer 정보는 Relocation
+Store에 저장해 target에서 복원한다. `Shutdown`만 새 relocation 없이 local resource를
+bounded cleanup한다.
 
 현재 source·package 차이는 다음과 같다.
 
@@ -535,16 +538,30 @@ message, accepted journal, logical timer registration과 pending tick은 Relocat
   replay, source cleanup과 completion ACK가 하나의 production scheduler 경로로 끝까지 연결되지 않았다.
 - Java/Kotlin에는 별도 `ZLinkDrainControl` 공개 표면이 남아 있어 host runtime이 termination intent와 terminal
   result를 소유하는 목표 계약과 다르다.
-- Entry Spot standalone Actor maintenance는 target `OnActorRelocated`, source `OnLeaveActor`, durable source
-  cleanup과 journal replay의 exact 순서를 process 장애 recovery까지 검증해야 한다. 일반 application join의
-  `OnJoinedActor`를 maintenance 완료 callback으로 사용하면 안 된다.
-- User Spot과 member Actor는 하나의 aggregate permit·root·commit generation으로 이전해야 하며 유지되는
-  membership에 join·leave·relocation callback을 호출하지 않아야 한다.
+- 기존 구현의 Entry Spot standalone Actor maintenance에는 target relocation
+  callback과 source leave callback이 남아 있다. 두 callback과 대응 public method를
+  제거하고 Actor adapter, queue·timer, source relay와 session route만 Framework가
+  이전해야 한다.
+- `SpotWide` User Spot과 member Actor는 하나의 aggregate permit·root·commit
+  generation으로 이전해야 한다.
+- `PerActor` User Spot은 `Recreate` shell과 Actor별 owner를 사용해야 한다. 현재
+  runtime은 Spot authority를 먼저 target으로 바꾸고 `ToSpot`·Create·Join을 target,
+  `ToActor`를 Actor별 current owner로 분리하는 transient split state와 relay barrier를
+  구현하지 않았다.
+- Actor queue seal부터 target admission까지 1초 목표를 측정하는 metric과 warning이
+  없으며, 초과를 failure나 rollback 조건으로 사용하지 않는 검증도 없다.
+- `SpotWide`의 `AnyTurnBoundary`·`ApplicationSignaled` option,
+  `RelocationReady().Defer()` queue barrier와 source `Continued`·target `Relocated`
+  default no-op callback이 다섯 runtime production scheduler에 연결되지 않았다.
+  Invalid mode·context·duplicate call의 mutation 전 오류와 callback recovery cursor도
+  구현해야 한다.
 
 각 언어는 계약 밖 drain 표면과 runtime 분기를 제거하고 host maintenance barrier, object coordinator,
 Relocation Store와 execution queue를 연결해야 한다. Contract test와 Config 5 `RL-F10~F14`,
 Config 11 `OBS-C3`는 느린 current turn 격리, permit-before-seal, frozen queue·journal·timer 복원, hold relay,
-Entry callback 순서, User Spot aggregate commit, precommit source 복원, bounded force stop과 terminal result
+Entry·PerActor Actor callback 부재와 owner relay, `SpotWide` aggregate commit,
+application-signaled safe point와 callback ordering, 1초 interruption 측정,
+precommit source 복원, bounded force stop과 terminal result
 한 번을 검증해야 한다.
 
 ### 12.42 네 runtime의 canonical relocation service wire 미연결
@@ -570,7 +587,7 @@ canonical frame을 감싸는 두 번째 application packet protocol을 추가해
 
 ### 12.43 전 언어 one-way async-only admission 계약 미적용
 
-[비동기 실행 정책 §1.3](04-async-execution-policy.ko.md#13-one-way-submit)은 Framework public one-way call을
+[비동기 실행 정책 §1.3](05-async-execution-policy.ko.md#13-one-way-submit)은 Framework public one-way call을
 결과값 없는 비동기 terminator 하나로 고정한다. Queue가 일시적으로 가득 차면 operation family가 소유한
 유한한 send timeout까지 기다리고, 그 안에 수락하지 못하면 `DeadlineExceeded` exception으로 완료해야 한다.
 
@@ -767,6 +784,17 @@ relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap�
 5. Actor 10,000개를 포함한 User Spot relocation에서 CAS 전 부분 visibility가 없고
    CAS 뒤 전체가 target으로 전환되는지 process E2E로 검증한다.
 
+### 12.51 Host·topology 상태 이름 미적용
+
+목표 계약은 relocation 완료 상태와 결과를 `Relocated`로 표현한다. `Draining`은
+`Shutdown`이 이미 수락한 작업과 resource를 정리하는 동안에만 사용한다. Topology
+하나의 가용성은 host lifecycle과 분리된 `TopologyState`·`TopologyReason`으로
+표현한다.
+
+현재 네 runtime의 public source는 이전 `Retiring`·termination 통합 계약을 사용하거나
+topology별 상태를 서로 다른 snapshot으로 제공한다. 다섯 언어 public type, runtime
+전이, metric label과 contract test를 새 exact interface에 맞춘 뒤 이 차이를 닫는다.
+
 ## 13. 샘플 계약 차이
 
 [공통 샘플 규약](../sample/README.ko.md)과 개별 sample 문서를 기준으로 남아 있는 차이는
@@ -784,9 +812,9 @@ relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap�
 | 중복 | 어디 | 누가 이겨야 하나 |
 |------|------|------------------|
 | Kotlin **connector coroutine·`Flow` 표면** | server exact interface에서는 제거했으며 `stream-connector/languages/kotlin/` 이관이 남아 있다 | connector package exact interface를 별도로 고정한다 |
-| connector **wire header 필드**를 서버 관측 문서가 함께 정의한다 | `52-message-flow-tracing.ko.md`, `53-flow-correlation.ko.md` | **[32](stream-connector/32-stream-connector.ko.md)가 wire를 소유**한다. 52/53은 추적 **의미**만 갖고 wire는 32를 참조한다 |
-| `session-closing` **인코딩과 client 디코딩**을 서버 drain 문서가 함께 정의한다 | `54-graceful-drain-handoff.ko.md` | **32가 wire와 connector 동작을 소유**한다. 54는 **언제·왜 보내는가**만 갖는다 |
-| connector **메트릭**(`zlink.stream.reconnects`)을 서버 메트릭 문서가 정의한다 | `51-runtime-metrics.ko.md` | connector가 emit하는 신호는 **32**로 옮긴다. 51은 서버가 emit하는 것만 갖는다 |
+| connector **wire header 필드**를 서버 관측 문서가 함께 정의한다 | `26-message-flow-tracing.ko.md`, `27-flow-correlation.ko.md` | **[32](stream-connector/32-stream-connector.ko.md)가 wire를 소유**한다. 52/53은 추적 **의미**만 갖고 wire는 32를 참조한다 |
+| `session-closing` **인코딩과 client 디코딩**을 서버 drain 문서가 함께 정의한다 | `28-graceful-drain-handoff.ko.md` | **32가 wire와 connector 동작을 소유**한다. 54는 **언제·왜 보내는가**만 갖는다 |
+| connector **메트릭**(`zlink.stream.reconnects`)을 서버 메트릭 문서가 정의한다 | `25-runtime-metrics.ko.md` | connector가 emit하는 신호는 **32**로 옮긴다. 51은 서버가 emit하는 것만 갖는다 |
 
 **판정 기준은 "누가 그 바이트를 만드는가"다.** connector가 생성·인코딩하는 것은 32가 소유하고,
 서버가 관측·해석하는 의미만 5x가 갖는다. 지금은 두 문서가 같은 header layout을 각각 적고 있어,
@@ -816,14 +844,14 @@ sample과 E2E가 검증하는지 직접 대조해 확인한 현재 차이를 기
 
 | ID | 목표 계약과 실제 차이 | 대상 |
 |---|---|---|
-| **IMP-X2** | [50 §5](50-runtime-monitoring.ko.md#5-structured-log)는 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 요구한다. Java와 C++는 이 location store 상태 log source를 게시하지 않는다 | Java · C++ |
-| **IMP-X5** | [52 §3](52-message-flow-tracing.ko.md)은 관측자를 로그 모드와 독립적으로 호출하도록 요구한다. Java·Node·C++는 관측자를 로그 모드에 연결해 `off`일 때 event를 전달하지 않는다 | Java · Node · C++ |
-| **IMP-X6** | [53 §4.2](53-flow-correlation.ko.md)의 `origin=lifecycle`을 생성하지 않아 drain이 유발한 트래픽과 application 트래픽을 구분할 수 없다 | Java · Node · C++ |
-| **IMP-X8** | [10 §5.2](10-channel-topology.ko.md)는 수동 endpoint를 지정한 역할의 automatic reconcile을 중단하도록 요구한다. Java는 store의 다른 peer도 연결하고 round-robin 대상으로 사용한다 | Java |
-| **IMP-X12** | [21 §close](21-mesh-node.ko.md)는 actor가 남은 user Spot의 종료를 실패로 끝내도록 요구한다. Java의 check-then-act 경합은 actor가 존재하는 Spot을 종료해 actor location row가 제거된 Spot을 가리킬 수 있다 | Java |
+| **IMP-X2** | [50 §5](24-runtime-monitoring.ko.md#5-structured-log)는 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 요구한다. Java와 C++는 이 location store 상태 log source를 게시하지 않는다 | Java · C++ |
+| **IMP-X5** | [52 §4.1](26-message-flow-tracing.ko.md#41-실행-중에-기록-수준-변경)은 `off`에서 level read와 branch 외의 trace 전용 작업을 금지하고 public observer·event DTO를 제공하지 않는다. 네 runtime source에는 observer·event DTO가 public으로 남아 있으며, 실행 중 `off` 전환 뒤 event·flow context·telemetry queue item을 만들지 않는 allocation·queue contract test가 완성되지 않았다 | .NET · Java · Node · C++ |
+| **IMP-X6** | [53 §4](27-flow-correlation.ko.md#4-flow를-만드는-시점)의 `origin=lifecycle`을 생성하지 않아 drain이 유발한 트래픽과 application 트래픽을 구분할 수 없다 | Java · Node · C++ |
+| **IMP-X8** | [10 §5.2](07-channel-topology.ko.md)는 수동 endpoint를 지정한 역할의 automatic reconcile을 중단하도록 요구한다. Java는 store의 다른 peer도 연결하고 round-robin 대상으로 사용한다 | Java |
+| **IMP-X12** | [21 §close](13-mesh-node.ko.md)는 actor가 남은 user Spot의 종료를 실패로 끝내도록 요구한다. Java의 check-then-act 경합은 actor가 존재하는 Spot을 종료해 actor location row가 제거된 Spot을 가리킬 수 있다 | Java |
 | **IMP-X14** | C++는 `listPageSize`를 읽지 않아 기본 1000개 단위 page 대신 목록 전체를 한 번에 읽는다 | C++ |
 | **IMP-X16** | Java는 `includeNativeDiagnostics`를 검증하지만 runtime에 적용하지 않는다 | Java |
-| **IMP-X17** | [54 §4~5](54-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)는 manual service topology가 하나라도 있으면 `Relocate`를 `Blocked/ManualTopologyUnsupported`로 차단하고, 각 automatic RouteMesh에 source 자신을 제외한 non-draining replacement가 최소 하나 있으며 exact RID·lifecycle generation이 source Core peer table에서 admitted·ready가 된 뒤에만 `Relocating`을 게시하도록 요구한다. Empty·source-only·all-draining snapshot은 `TargetUnavailable`이다. .NET은 local manual registration blocker, exact descriptor/Core peer fence, `Relocating` publication rollback과 Green `Ready` → old `Relocating` → relocation → old `Draining`·barrier → descriptor·owner lease release → disconnect 순서를 구현했으며 minimum replacement gate 보강을 진행 중이다. Node.js는 같은 local manual registration blocker, minimum replacement와 exact peer readiness gate, cleanup ordering을 구현했다. Multi-Mesh `Relocating` descriptor publication은 host state 변경 전에 수행하며 일부 write 또는 응답 유실이 발생하면 시도한 모든 descriptor를 `Serving`으로 되돌린다. Rollback까지 확인되면 `Blocked/StoreUnavailable`, 확인할 수 없으면 안전하게 `ForceStopped/TeardownFailed`로 끝낸다. Build와 focused topology·drain contract 38/38이 통과했다. Java·Kotlin·C++ runtime과 실제 process rolling E2E에는 같은 gate와 cleanup ordering이 남아 있다. | .NET · Java · Kotlin · C++ · process E2E |
+| **IMP-X17** | [54 §4~5](28-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)는 manual service topology가 하나라도 있으면 `Relocate`를 `Blocked/ManualTopologyUnsupported`로 차단하고, 각 automatic RouteMesh에 source 자신을 제외한 non-draining replacement가 최소 하나 있으며 exact RID·lifecycle generation이 source Core peer table에서 admitted·ready가 된 뒤에만 `Relocating`을 게시하도록 요구한다. Empty·source-only·all-draining snapshot은 `TargetUnavailable`이다. .NET은 local manual registration blocker, exact descriptor/Core peer fence, `Relocating` publication rollback과 Green `Ready` → old `Relocating` → relocation → old `Draining`·barrier → descriptor·owner lease release → disconnect 순서를 구현했으며 minimum replacement gate 보강을 진행 중이다. Node.js는 같은 local manual registration blocker, minimum replacement와 exact peer readiness gate, cleanup ordering을 구현했다. Multi-Mesh `Relocating` descriptor publication은 host state 변경 전에 수행하며 일부 write 또는 응답 유실이 발생하면 시도한 모든 descriptor를 `Serving`으로 되돌린다. Rollback까지 확인되면 `Blocked/StoreUnavailable`, 확인할 수 없으면 안전하게 `ForceStopped/TeardownFailed`로 끝낸다. Build와 focused topology·drain contract 38/38이 통과했다. Java·Kotlin·C++ runtime과 실제 process rolling E2E에는 같은 gate와 cleanup ordering이 남아 있다. | .NET · Java · Kotlin · C++ · process E2E |
 
 ### 15.4 E2E gate 검증력 차이
 
@@ -833,7 +861,7 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 | 대상 | 목표 | 실제 차이 |
 |---|---|---|
 | Node `DiscoveryRegistryHa` location probe | location runtime이 관측한 role과 state를 client가 검증한다 | probe가 `serviceRole=Router`, `state=Ready`를 직접 만들어 반환하므로 runtime이 잘못된 값을 내도 client assertion이 성공할 수 있다 |
-| C++ `ObservabilityOps` `OBS-A2` | [52 §3](52-message-flow-tracing.ko.md#3-공통-attribute)의 dispatch error field와 닫힌 값을 검증한다 | runner가 공통 field인 `outcome=failed` 대신 C++ 전용 `phase=error`를 요구해 계약과 다른 구현을 통과 조건으로 고정한다 |
+| C++ `ObservabilityOps` `OBS-A2` | [52 §3](26-message-flow-tracing.ko.md#3-공통-attribute)의 dispatch error field와 닫힌 값을 검증한다 | runner가 공통 field인 `outcome=failed` 대신 C++ 전용 `phase=error`를 요구해 계약과 다른 구현을 통과 조건으로 고정한다 |
 
 각 gate는 다음 조건을 만족해야 gap 제거 증거가 된다.
 
@@ -844,8 +872,8 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 
 ### 15.5 Deferred Actor Join, Context composition과 MessageContext 차이
 
-[Actor model](22-actor-model.ko.md), [Spot·Actor membership](23-spot-actor.ko.md)과
-[비동기 실행 정책](04-async-execution-policy.ko.md)은 목표 계약을 먼저 고정한다.
+[Actor model](14-actor-model.ko.md), [Spot·Actor membership](15-spot-actor.ko.md)과
+[비동기 실행 정책](05-async-execution-policy.ko.md)은 목표 계약을 먼저 고정한다.
 Runtime에는 handler-scoped `Defer`와 기본 barrier가 들어갔지만 아래 production
 연결과 cross-language 검증이 남아 있다. 정식 interface가 존재한다는 사실만으로
 구현이 완료되었다고 판단하면 안 된다.
@@ -867,7 +895,7 @@ manifest, contract test와 E2E를 함께 바꿔야 한다. Kotlin은 Java의 동
 
 ### 15.6 Session–Actor binding route와 disconnect 차이
 
-[31](31-session-actor-dispatch.ko.md)은 Bind 뒤 Actor별 exact route를 저장하고 relay·request relay·
+[31](20-session-actor-dispatch.ko.md)은 Bind 뒤 Actor별 exact route를 저장하고 relay·request relay·
 disconnect마다 Location Store를 조회하지 않으며, physical disconnect 때 current binding 전체에 자동
 all-settled 통지를 수행하도록 요구한다.
 

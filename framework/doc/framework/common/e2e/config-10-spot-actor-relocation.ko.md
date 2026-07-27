@@ -5,9 +5,10 @@
 # Config 10 — Spot actor join/relocation 배포
 
 actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 MeshNode의 user Spot으로 relocation될 때
-[Spot Actor Join / Relocation 공통 스펙](../spec/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
-검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, leave, relocation, joined,
-authority commit, bound session route, failure cleanup이 같은 순서와 의미로 관찰되는지 본다.
+[Spot Actor Join / Relocation 공통 스펙](../spec/15-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
+검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, application join·leave,
+infrastructure relocation, authority commit, bound session route와 failure cleanup이 계약한 순서로
+관찰되는지 본다.
 
 이 문서는 e2e 시나리오 정의만 둔다. 언어별 구현은 public framework API와 역할 server endpoint로
 작성해야 한다. 현재 언어별 구현이 공통 스펙의 목표 공개 계약을 아직 제공하지 못하면 skip으로 완료
@@ -29,9 +30,10 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
 - 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. admission accept 뒤
   durable Actor authority row는 CAS commit 시점부터 target owner를 가리킨다. Remote relocation의 target
-  factory·`Restore`·journal staging은 commit 전에 끝난다. Commit 뒤 callback과 journal replay, durable source
-  cleanup, `Completed`, route ACK와 steady normalization을 모두 끝낸 뒤에만 target을 `Ready`로 공개하고
-  admission과 성공 reply를 연다. 같은 node join에는 이 relocation phase와 Relocation Store를 적용하지 않는다.
+  factory·`Restore`·journal staging은 commit 전에 끝난다. Infrastructure relocation은 application의
+  join·leave callback을 호출하지 않는다. Commit 뒤 journal replay, durable source cleanup, `Completed`,
+  route ACK와 steady normalization을 모두 끝낸 뒤에만 target Actor admission을 연다. 같은 node join에는
+  이 relocation phase와 Relocation Store를 적용하지 않는다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -48,7 +50,7 @@ actor 노드는 아래 evidence를 공통으로 남긴다.
 
 - actor ID, actor type, actor generation 또는 ref snapshot, source/target Spot ID, source/target node RID.
 - callback order marker: `admission`, `source_sealed`, `capture`, `target_factory`, `restore`, `journal_staged`,
-  `prepared`, `authority_committed`, `joined`, `journal_replayed`, `leave`, `source_cleanup`, `completed`,
+  `prepared`, `authority_committed`, `journal_replayed`, `source_cleanup`, `completed`,
   `route_ack`, `steady_normalized`, `ready`, `admission_open`, `success_reply`.
 - accepted-work marker: `journal_accepted`(seal 전에 수락), `journal_staged`(target queue 준비),
   `journal_replayed`(commit 뒤 replay), `moving_rejected`(seal 뒤 `ActorMoving`),
@@ -353,8 +355,8 @@ completion barrier를 끝내는가.
 
 ### Track F — accepted journal과 stale-route forwarding
 
-[Actor model §3·§8](../spec/22-actor-model.ko.md)과
-[Spot Actor §4·§8](../spec/23-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
+[Actor model §3·§8](../spec/14-actor-model.ko.md)과
+[Spot Actor §4·§8](../spec/15-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
 accepted journal로 고정한다. Seal 뒤 새 operation은 `ActorMoving`으로 끝나며 journal이나 forwarding queue에
 숨겨서 보관하지 않는다. Commit 뒤 이전 owner route로 늦게 도착한 stale operation만 bounded forwarding
 대상이다. 모든 시나리오는 operation ID와 accepted sequence로 수락, staging, replay와 terminal 결과를 대조한다.
@@ -450,7 +452,7 @@ seal·route ACK가 Actor binding route를 바꾸지 못하는가.
 우선순위: `P1`
 
 **검증 질문:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가
-([Spot Actor §8](../spec/23-spot-actor.ko.md#8-route-forwarding)).
+([Spot Actor §8](../spec/15-spot-actor.ko.md#8-route-forwarding)).
 
 - 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote relocation한 뒤 window 경과를 bounded wait로
   두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
@@ -469,8 +471,8 @@ seal·route ACK가 Actor binding route를 바꾸지 못하는가.
 
 **검증 질문:** seal 전에 수락한 lease-backed request가 replay된 뒤 original reply route로 correlate되고,
 timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되는가
-([Actor model §8](../spec/22-actor-model.ko.md#8-실패와-관측),
-[Flow Correlation §7](../spec/53-flow-correlation.ko.md#7-reply와-failure)).
+([Actor model §8](../spec/14-actor-model.ko.md#8-실패와-관측),
+[Flow Correlation §7](../spec/27-flow-correlation.ko.md#7-reply와-failure)).
 
 - 절차: 세 부분으로 실행한다. (a) 충분히 긴 timeout의 lease-backed request를 source가 수락한 직후 handler
   실행 전에 remote relocation을 시작한다. (b) 같은 accepted-before-seal 흐름에서 caller timeout을 Ready보다
@@ -490,12 +492,13 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 
 - 절차: `SpotWide` User Spot member Actor가 request `Yield` 상태이고 다른 Actor·Spot handler·timer가
   실행 중일 때 host `Relocate`를 시작한다. 별도 반복에서는 `PerActor` User Spot의 여러 Actor lane,
-  Spot lane과 서로 다른 timer lane을 동시에 실행한다.
-- 검증: 새 application admission과 membership 변경을 먼저 seal하지만 yielded continuation과 이미
-  실행 중인 모든 lane이 안전한 turn 경계에 도달하기 전에는 `Capture`와 relocation payload publication을
-  시작하지 않는다. Barrier는 Actor claim, Spot gate와 timer lane generation을 모두 포함한다. Abort하면
-  같은 generation의 seal만 풀고 기존 queue·timer 순서를 유지한다.
-- 세부 동작: execution mode별 all-lane quiescence.
+  Spot lane과 서로 다른 Actor timer lane을 동시에 실행한다.
+- 검증: `SpotWide`는 새 application admission과 membership 변경을 먼저 seal하고, yielded continuation과
+  이미 실행 중인 모든 lane이 안전한 turn 경계에 도달한 뒤 Spot 전체를 하나의 aggregate로 Capture한다.
+  `PerActor`는 Spot 전체 lane을 한 번에 정지하지 않는다. 각 Actor는 현재 turn 하나를 끝낸 뒤 자기 queue,
+  accepted journal과 timer만 seal하고 독립적으로 이전한다. Spot-level application state나 timer를
+  Relocation Store에 넣으면 실패다.
+- 세부 동작: SpotWide aggregate barrier와 PerActor Actor-unit barrier.
 
 #### ST-G2 User Spot aggregate capacity all-or-none
 
@@ -512,6 +515,70 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   bundle을 함께 전환해야 한다. CAS 전에는 Actor 하나도 target owner로 보이면 안 되고
   CAS 뒤에는 10,000개 모두 target owner로 조회되어야 한다.
 - 세부 동작: 큰 participant inventory 준비와 aggregate root의 atomic publication.
+
+#### ST-G3 PerActor Spot authority 선전환과 Actor별 route
+
+우선순위: `P0`
+
+- 절차: Actor 100개가 있는 `PerActor` User Spot을 준비한다. 일부 Actor의 현재 turn을 지연한 상태에서
+  host `Relocate`를 시작한다. Target에는 같은 public Spot ID와 ObjectGeneration을 사용하는 runtime-private
+  Spot shell을 만들고, Spot authority를 바꾸기 전후에 `ToSpot`, 새 Actor Create·Join과 기존 Actor
+  `ToActor`를 반복한다.
+- 검증: Target shell은 Spot authority CAS 전에는 public lookup과 messaging 대상으로 보이지 않는다.
+  임시 public Spot ID를 만들거나 public Spot ID를 rename하지 않는다. Spot authority CAS 뒤 새 `ToSpot`,
+  Create와 Join은 target으로 간다. 아직 이전하지 않은 Actor의 `ToActor`는 source로 가고, 이전한 Actor의
+  `ToActor`는 target으로 간다. Actor는 준비되는 순서대로 독립적으로 이전하며 모든 Actor가 끝날 때까지
+  source와 target에 나뉘어 존재할 수 있다. 마지막 Actor와 relay가 끝난 뒤 source shell을 제거한다.
+- 세부 동작: public Spot identity 유지, authority-first shell 전환, Actor별 owner lookup.
+
+#### ST-G4 이동 중 ToActor relay와 target queue 순서
+
+우선순위: `P0`
+
+- 절차: Actor queue에 실행 전 job과 accepted journal을 넣고 Actor relocation을 시작한다. Authority가
+  바뀌는 경계에 old source route로 request와 send를 주입하고, 동시에 target owner를 새로 조회한
+  request도 제출한다.
+- 검증: Source는 stale message를 버리거나 handler에 다시 제출하지 않고 current target으로 relay한다.
+  Relay는 operation ID, ObjectGeneration, absolute deadline, request correlation과 reply route를 그대로
+  유지한다. Target 처리 순서는 이전된 실행 전 queue·accepted journal, source ingress hold와 relay 완료,
+  새 target direct queue 순서다. Request reply는 원래 caller에 한 번만 전달된다.
+- 세부 동작: stale route forwarding, request correlation 보존과 target admission order.
+
+#### ST-G5 Entry·PerActor Actor relocation interruption 목표
+
+우선순위: `P0`
+
+- 절차: 작은 payload Actor와 의도적으로 Restore를 1초 넘게 지연하는 Actor를 Entry Spot과 `PerActor`
+  User Spot에서 각각 이전한다. Actor queue seal 시각과 target admission 개방 시각을 기록한다.
+- 검증: 작은 payload의 interruption은 정상 환경에서 1초 이내다. 1초를 넘긴 반복도 relocation을
+  취소하거나 source로 rollback하지 않고 안전한 terminal까지 계속한다. 초과는
+  `zlink.actor.relocation.interruption` 측정값과 warning evidence에 기록하지만 relocation failure로
+  집계하지 않는다. Host deadline이 끝나면 새 unit은 시작하지 않고 이미 시작한 unit은 safe terminal까지
+  진행한다. Infrastructure relocation 동안 Entry·PerActor Spot의 join·leave callback은 0건이다.
+- 세부 동작: Actor-unit 서비스 중단 시간 SLO와 host deadline 분리.
+
+#### ST-G6 SpotWide application-signaled relocation 경계
+
+우선순위: `P0`
+
+- 절차: 같은 Spot type을 기본 `AnyTurnBoundary`와 `ApplicationSignaled` readiness
+  mode로 각각 등록한다. ApplicationSignaled Spot은 round 종료 handler에서
+  `RelocationReady().Defer()`를 호출하고 completion callback에서 다음 round marker를
+  기록한다. (a) relocation 요청 없음, (b) precommit abort, (c) target relocation
+  성공, (d) callback을 override하지 않은 기본 no-op을 각각 실행한다.
+- 검증: (a)와 (b)는 source에서 `Continued`, (c)는 target에서 `Relocated` callback을
+  호출한다. 네 반복 모두 callback 또는 기본 no-op completion 뒤에만 보류한 일반
+  message와 timer를 실행한다. Callback 전에 다음 round marker나 일반 handler가
+  실행되면 실패다. Callback 실행 중 target process를 한 번 종료한 반복에서는 같은
+  logical boundary가 recovery될 수 있으므로 application의 round ID guard가 중복
+  side effect를 막아야 한다.
+- 오류 검증: `AnyTurnBoundary`, `PerActor`, Entry Spot, Instance Spot, Spot turn 밖과
+  같은 turn의 두 번째 `Defer()`는 queue·timer·relocation state를 바꾸기 전에
+  `InvalidConfiguration`으로 끝난다. `Defer()` 뒤 같은 turn에서 다른 Framework
+  operation을 시작해도 같은 오류다. Invalid 호출에는 completion callback이 0건이어야
+  한다.
+- 세부 동작: application safe-point barrier, source·target completion owner, default
+  no-op callback과 retry-safe recovery.
 
 ### Track H — deferred Join과 Context 계약
 
@@ -625,8 +692,10 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 - Track F의 `P0` 시나리오(ST-F1~F3, ST-F3A)는 네 runtime lane과 다섯 public 언어 표현에서 같은 순서 의미로
   통과해야 한다. `P1`(ST-F4~F6)은 지원 범위를 ledger에 기록하되 formal contract에 포함된 기능의 구현 gap을
   completion으로 처리하지 않는다.
-- Track G의 `P0` 시나리오는 `SpotWide`와 `PerActor`를 모두 사용하고 yielded continuation, timer lane과
-  typed aggregate capacity를 public evidence로 검증해야 한다.
+- Track G의 `P0` 시나리오는 SpotWide aggregate와 PerActor Actor-unit 이전을 모두 사용한다. Public Spot ID,
+  authority 전환, Actor별 route·relay, queue·timer 순서, 1초 interruption 목표와 typed capacity를 public
+  evidence로 검증해야 한다. SpotWide의 기본 turn 경계와 application-signaled
+  completion callback도 source·target·abort 반복에서 검증해야 한다.
 - Track H의 `P0` 시나리오는 deferred barrier, completion, Context identity·fencing과 error-kind parity를
   다섯 언어에서 검증해야 한다.
 - callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로

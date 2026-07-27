@@ -1,10 +1,7 @@
 # ClientServer Channel
 
-[스펙 목차](README.ko.md) ·
-[Channel 메시징](11-channel-messaging.ko.md) ·
-[Network listener identity](13-network-listener-identity.ko.md) ·
-[Location runtime](40-location-runtime.ko.md) ·
-[용어집](01-glossary.ko.md)
+[스펙 목차](README.ko.md) · [이전: Channel 메시징](08-channel-messaging.ko.md) · [다음: Network listener identity](10-network-listener-identity.ko.md)
+
 
 ## 1. 범위
 
@@ -37,7 +34,7 @@ Actor를 대상으로 새로운 호출을 시작할 수 있다. 이 호출은 Cl
 자동 중계한 것이 아니라 application이 선택한 별도 operation이다.
 
 Channel caller가 지정하는 논리 주소와 호출 완료 의미는
-[Channel 메시징](11-channel-messaging.ko.md)이 정의한다.
+[Channel 메시징](08-channel-messaging.ko.md)이 정의한다.
 
 ## 2. .NET API 예시를 읽는 기준
 

@@ -10,7 +10,7 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 조건과 evidence marker는 다섯 언어에서 같은 의미로 유지한다.
 
 이 문서는 e2e 시나리오 정의만 둔다. actor client의 공개 계약은
-[Actor 모델 §5](../spec/22-actor-model.ko.md#5-메시징)을 기준으로 하며 여기서 다시 정의하지 않는다.
+[Actor 모델 §5](../spec/14-actor-model.ko.md#5-메시징)을 기준으로 하며 여기서 다시 정의하지 않는다.
 언어별 구현은 public API만 사용하고, 내부 helper나 raw frame 조작으로 이 config를 통과시키면 안 된다.
 
 ## 1. 목적과 범위
@@ -25,7 +25,7 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
   `RouteNotConnected`로 분류한다. Resolve 뒤 generation이 바뀐 operation은 새 incarnation으로 retarget하지 않는다.
 - 계약 근거: Actor direct 메시징은 session binding을 만들거나 바꾸지 않으며, request reply는 bound
   session이 아니라 caller에게 반환된다. Actor queue 인계와 request completion은
-  [Actor 모델 §5](../spec/22-actor-model.ko.md#5-메시징)의 공개 계약을 따른다.
+  [Actor 모델 §5](../spec/14-actor-model.ko.md#5-메시징)의 공개 계약을 따른다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 

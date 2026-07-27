@@ -1,9 +1,7 @@
 # MeshNode
 
-[공통 스펙 목차](README.ko.md) · [Spot 모델](19-spot-model.ko.md) ·
-[Channel topology](10-channel-topology.ko.md) ·
-[Spot 메시징](20-spot-messaging.ko.md) · [Actor 모델](22-actor-model.ko.md) ·
-[.NET 정식 인터페이스](server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
+[스펙 목차](README.ko.md) · [이전: SPOT 메시징](12-spot-messaging.ko.md) · [다음: Actor 모델](14-actor-model.ko.md)
+
 
 ## 1. 이 문서가 정의하는 범위
 
@@ -61,7 +59,7 @@ Framework가 listener 종류에 맞는 기본 prefix를 사용한다.
 | Full RID | `prefix-<lowercase-canonical-uuid-v4>` 형식이며 UTF-8로 encode한 크기는 255 bytes 이하다. |
 
 Core binary RID, Framework prefix, Entry Spot과 caller-provided RID를 함께 다루는 전체 규칙은
-[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)이 정의한다.
+[시스템 전체 Routing ID 정책](10-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)이 정의한다.
 
 Prefix와 UUID를 object placement, shard 또는 재시작 뒤에도 유지되는 application
 identity로 해석하지 않는다.
@@ -276,7 +274,7 @@ generation의 connection을 target selection에 포함한다.
 
 Automatic RouteMesh에서는 RID가 더 작은 MeshNode만 connect를 시작한다. Manual
 양방향 connect 또는 automatic 연결 경합으로 중복 후보가 생기면
-[RouteMesh의 중복 peer 연결 규칙](10-channel-topology.ko.md#51-automatic은-rid가-더-작은-meshnode만-연결을-시작한다)에
+[RouteMesh의 중복 peer 연결 규칙](07-channel-topology.ko.md#51-automatic은-rid가-더-작은-meshnode만-연결을-시작한다)에
 따라 [ready](01-glossary.ko.md#ready) connection 하나만 유지한다.
 
 ### 7.2 Channel weight 갱신
@@ -346,7 +344,7 @@ reference를 확보하여 Spot queue에 넣는다.
 
 이미 reservation을 끝낸 create, accepted message, completion과 relocation barrier는
 정해진 deadline과 fence에 따라 terminal 상태까지 진행한다. 전체 종료와 handoff
-순서는 [Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)이 정의한다.
+순서는 [Host relocation와 shutdown](28-graceful-drain-handoff.ko.md)이 정의한다.
 
 `Shutdown`은 새 relocation을 시작하지 않는다. `Relocate`는 등록한 relocation policy에
 따라 Actor, User Spot aggregate와 Instance Spot을 이전한다.
@@ -365,7 +363,7 @@ Runtime snapshot과 event는 다음 정보를 제공한다.
 - Drain state
 
 RID와 endpoint는 진단 정보로만 사용하며 metric label로 사용하지 않는다. 세부 계약은
-[Runtime monitoring](50-runtime-monitoring.ko.md)이 정의한다.
+[Runtime monitoring](24-runtime-monitoring.ko.md)이 정의한다.
 
 ## 10. 구현 및 contract test 검증 요구
 

@@ -170,14 +170,14 @@ export enum ZLinkFrameworkRuntimeState {
   Preparing = 0,
   Serving = 1,
   Relocating = 2,
-  Drained = 3,
+  Relocated = 3,
   Draining = 4,
   Stopped = 5,
   Error = 6
 }
 
 export enum ZLinkFrameworkRelocationOutcome {
-  Drained = 0,
+  Relocated = 0,
   Blocked = 1
 }
 
@@ -254,8 +254,8 @@ export interface ZLinkFrameworkRuntime {
 }
 ```
 
-`relocate(options)`가 성공하면 runtime은 `Drained` 상태가 되고 process와 infrastructure connection은 유지된다.
-호출자는 결과가 `Drained`인지 확인한 뒤 `shutdown()`을 호출할 수 있으며, relocation이 필요하지 않으면
+`relocate(options)`가 성공하면 runtime은 `Relocated` 상태가 되고 process와 infrastructure connection은 유지된다.
+호출자는 결과가 `Relocated`인지 확인한 뒤 `shutdown()`을 호출할 수 있으며, relocation이 필요하지 않으면
 `shutdown()`만 호출한다. `Relocating`에서 `shutdown()`을 호출하면 실행 중인 atomic relocation unit만
 terminal 상태까지 확정하고 나머지 relocation을 중단한다. 이때 relocation waiter는
 `Blocked/ShutdownRequested`를 받는다.

@@ -41,9 +41,15 @@ export declare enum ZLinkUserSpotExecutionMode {
     PerActor = "per_actor"
 }
 
+export declare enum ZLinkSpotRelocationReadinessMode {
+    AnyTurnBoundary = "any_turn_boundary",
+    ApplicationSignaled = "application_signaled"
+}
+
 export interface ZLinkUserSpotFactoryOptions {
     readonly stableTypeLimit?: number;
     readonly executionMode?: ZLinkUserSpotExecutionMode;
+    readonly relocationReadiness?: ZLinkSpotRelocationReadinessMode;
 }
 
 export interface ZLinkInstanceSpotFactoryOptions {
@@ -284,6 +290,22 @@ Disabled·Recreate는 유지한다. [Snapshot](../../../../01-glossary.ko.md#rel
 종류나 instance type이 다르면 socket bind 전에 configuration error로 실패한다. 별도 adapter registry와
 operation별 adapter는 제공하지 않는다.
 
+`ZLinkUserSpotExecutionMode.PerActor`는 `Recreate` Spot policy만 허용한다.
+`Disabled`나 `Snapshot`을 함께 등록하면 socket bind 전에
+`InvalidConfiguration`이다. PerActor Spot은 stateless execution shell이며 Actor
+policy와 adapter가 Actor state를 각각 처리한다. 유지해야 하는 shared state와
+Spot-level schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다.
+Target runtime-private shell은 같은 public Spot ID와 object generation을 사용하며
+Spot authority 전에는 public lookup에 노출하지 않는다. Authority 전환 뒤 `ToSpot`,
+Create와 Join은 target, `ToActor`는 Actor별 current owner를 사용한다. Stale source
+route는 operation identity, generation, deadline, correlation과 reply route를 보존해
+relay한다. Actor queue seal부터 target admission까지 1초는 운영 목표이며 초과해도
+relocation을 취소하거나 rollback하지 않는다.
+
+`relocationReadiness`를 생략하면 `AnyTurnBoundary`다. `ApplicationSignaled`는
+`SpotWide`에서만 허용하며 `PerActor`와 함께 등록하면 socket bind 전에
+`InvalidConfiguration`이다. Spot callback은 optional이며 없으면 no-op으로 처리한다.
+
 Adapter는 application state를 `Uint8Array` opaque bytes로만 주고받으며 typed state, 별도 contract identifier와
 message wrapper를 사용하지 않는다. Framework는 Snapshot policy의 cross-node materialization에서만 adapter를
 호출한다. Maintenance 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant에는
@@ -292,9 +314,10 @@ adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출�
 `capture(...)` 전에 거부한다. Recreate policy도 application payload를 capture·restore하지 않는다.
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
-실행하지 않는다. Standalone Actor는 [owner](../../../../01-glossary.ko.md#owner) commit 뒤 Entry Spot callback과 old Entry [membership](../../../../01-glossary.ko.md#membership)의 durable
-callback을 완료한 다음 journal replay를 실행하고 old Entry membership을 포함한 source resource를 durable하게
-cleanup한다. `"activated"`에 도달해도
+실행하지 않는다. Standalone Actor는 [owner](../../../../01-glossary.ko.md#owner) commit 뒤 journal replay와
+old Entry [membership](../../../../01-glossary.ko.md#membership)을 포함한 source resource cleanup을
+완료한다. Infrastructure relocation은 Entry Spot의 join·leave callback을 호출하지 않는다.
+`"activated"`에 도달해도
 application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
 cleanup이 terminal 상태에 도달하고 authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고
 relocation fence를 해제한다.
@@ -326,10 +349,11 @@ capture failure는 durable abort 뒤 reversible seal을 해제하고 target rest
 CAS, recovery transport와 teardown failure는 adapter failure가 아니며 해당
 phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분류한다.
 
-Standalone Actor maintenance는 authority·Entry membership commit 뒤 target `onActorRelocated`와 source
-`onLeaveActor`를 호출하고 accepted journal을 replay하며 logical timer를 복원한 다음 old Entry membership을 포함한 source resource를 durable하게 cleanup한다.
-Target dispatch는 이 순서가 끝날 때까지 닫는다. Source process가 종료되면 exact source fence의 durable cleanup
-terminal이 source callback 완료를 대신해 target recovery가 계속된다.
+Entry Spot과 `PerActor` User Spot의 Actor maintenance는 application membership
+callback을 호출하지 않는다. Authority·membership commit, accepted
+journal·queue·Actor timer 복원, source relay, durable cleanup과 route ACK를 끝낸
+뒤 target dispatch를 연다. `PerActor` Spot policy는 `Recreate`만 허용하고 Spot
+adapter를 등록하지 않는다.
 
 Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
 relocation ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와

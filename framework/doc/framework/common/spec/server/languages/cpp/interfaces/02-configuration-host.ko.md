@@ -5,7 +5,7 @@
 ## 1. Host maintenance
 
 Host lifecycle operation은 `relocate()`와 `shutdown()`으로 나눈다. `relocate()`는 현재 object를 선택한
-운영 목적에 맞는 node로 이전하고 host를 `drained` 상태로 유지한다. Application은 relocation 결과를 확인한
+운영 목적에 맞는 node로 이전하고 host를 `relocated` 상태로 유지한다. Application은 relocation 결과를 확인한
 뒤 필요할 때 `shutdown()`을 호출한다. Relocation이 필요하지 않으면 `shutdown()`만 호출할 수 있다.
 
 Application은 `relocate()`를 호출할 때 목적을 반드시 지정한다. `planned_maintenance`는 같은 application
@@ -24,14 +24,14 @@ enum class framework_runtime_state_t {
     preparing = 0,
     serving = 1,
     relocating = 2,
-    drained = 3,
+    relocated = 3,
     draining = 4,
     stopped = 5,
     error = 6
 };
 
 enum class relocation_outcome_t {
-    drained = 0,
+    relocated = 0,
     blocked = 1
 };
 
@@ -101,7 +101,7 @@ operation에 합류하며 같은 terminal result를 받는다. Mode, target appl
 요청한 유효한 option을 반영한다.
 
 `relocate()`는 continuity preflight가 실패하면 admission과 state를 바꾸지 않고 `blocked`를 반환한다.
-성공하면 `drained/none`을 반환하며 host process와 infrastructure connection은 유지한다. `shutdown()`은
+성공하면 `relocated/none`을 반환하며 host process와 infrastructure connection은 유지한다. `shutdown()`은
 `blocked`를 반환하지 않는다.
 
 두 mode 모두 candidate를 다음 순서로 좁힌다.
@@ -128,19 +128,19 @@ source의 Core peer table에서 descriptor와 같은 RID·lifecycle generation�
 deadline이 끝난 결과다. Connection-bound work와 bound-session request가 pre-`Captured` [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal
 drain되지 않은 경우도 `relocation_disabled`가 아니라 이 결과를 사용한다. Framework는 relocation reference와
 reservation을 정리하고 reversible seal을 해제한 뒤 host state와 admission을 복원한다. 모든 target이
-`Prepared`이고 `Relocating` publication이 성공하면 모든 relocation unit을 완료하고 `drained`로 전환한다.
+`Prepared`이고 `Relocating` publication이 성공하면 모든 relocation unit을 완료하고 `relocated`로 전환한다.
 
 `relocating` 중 `shutdown()`이 시작되면 현재 atomic relocation unit을 terminal 상태로 확정한 뒤 나머지
 relocation을 중단한다. Relocation waiter는 `blocked/shutdown_requested`를 받고, host는 `draining`으로
-전환하여 종료를 계속한다. 이미 `drained`인 host에서 `shutdown()`을 호출하면 남은 connection과 resource만
+전환하여 종료를 계속한다. 이미 `relocated`인 host에서 `shutdown()`을 호출하면 남은 connection과 resource만
 정리한다. `serving`에서 호출하면 relocation 없이 `draining`으로 전환한다.
 
 `relocation_result_t`와 `termination_result_t`의 유효한 조합은 다음과 같다. Caller는 relocation 결과가
-`drained/none`일 때만 모든 object의 이전이 끝났다고 판단한다.
+`relocated/none`일 때만 모든 object의 이전이 끝났다고 판단한다.
 
 | Result | Reason |
 |---|---|
-| `drained` | `none` |
+| `relocated` | `none` |
 | `blocked` | `target_unavailable`, `store_unavailable`, `relocation_disabled`, `state_incompatible`, `deadline_exceeded`, `relocation_failed`, `runtime_not_ready`, `manual_topology_unsupported`, `shutdown_requested`, `operation_in_progress` |
 | `stopped` | `none` |
 | `force_stopped` | `deadline_exceeded`, `teardown_failed` |
@@ -964,7 +964,7 @@ tracing hook은 공통 message-flow tracing 계약의 observer와 runtime contro
 
 `add_runtime_metrics()`가 활성화한 provider는 Instance activation에 대해 다음 여섯 이름을 byte 단위로
 그대로 사용한다. 종류, 단위, label과 닫힌 outcome 값은
-[Runtime metrics §4](../../../../51-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
+[Runtime metrics §4](../../../../25-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
 
 - `zlink.instance_spot.activations`
 - `zlink.instance_spot.activation.duration`
@@ -1076,7 +1076,7 @@ public:
 ```
 
 - **middleware는 `before`/`after` 쌍이다.** `next` delegate 방식이 아니다 —
-  [handler filter](../../../../05-framework-api.ko.md)와 모양이 다르다.
+  [handler filter](../../../../06-framework-api.ko.md)와 모양이 다르다.
 - **middleware 인스턴스는 `create_instance`로 만들고 DI provider를 함께 받는다.**
 
 ## 7. Transport
@@ -1115,7 +1115,7 @@ configuration 등록 표면이 소유한다.
 - RouteMesh ChannelName과 classic fanout channel은 서로 다른 namespace와 socket 계약이다.
 - Spot·Actor 등록은 owner `mesh_node_builder_t`에 둔다.
 
-drain 중 claim 진행의 의미는 [Graceful Drain §5](../../../../54-graceful-drain-handoff.ko.md)가 소유한다.
+drain 중 claim 진행의 의미는 [Graceful Drain §5](../../../../28-graceful-drain-handoff.ko.md)가 소유한다.
 
 ## 9. Configuration 조회
 

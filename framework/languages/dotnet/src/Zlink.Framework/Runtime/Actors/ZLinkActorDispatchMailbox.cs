@@ -40,7 +40,6 @@ internal sealed class ZLinkActorDispatchMailbox
             if (countAsPendingMessage)
             {
                 _pendingMessages++;
-                ZLinkRuntimeMetrics.RecordActorMailboxEnqueued();
             }
             if (countAsPendingRequest) _pendingRequests++;
             return AwaitTurnAsync(waiter);
@@ -97,7 +96,6 @@ internal sealed class ZLinkActorDispatchMailbox
                     if (next.CountsAsPendingMessage)
                     {
                         _pendingMessages--;
-                        ZLinkRuntimeMetrics.RecordActorMailboxStarted();
                     }
                     if (next.CountsAsPendingRequest) _pendingRequests--;
                     if (!next.IsCanceled)

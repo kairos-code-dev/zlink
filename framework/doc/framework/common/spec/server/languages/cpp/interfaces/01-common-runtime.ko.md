@@ -255,7 +255,7 @@ SPOT과 STREAM의 backpressure는 public **call object, timeout, result error ki
 message storage는 Framework 내부에 유지한다. **reply를 바꾸려면 `next()` 결과 대신 새
 `message_t`를 반환한다.**
 
-filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../05-framework-api.ko.md)이
+filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../06-framework-api.ko.md)이
 소유한다.
 
 ### 6.3 Public surface 경계
@@ -294,7 +294,7 @@ logical timer registration과 callback metadata만 사용한다.
 Dispatch 실패는 별도 event type을 만들지 않고 [Monitoring §2](08-monitoring.ko.md#2-메시지-흐름-관측)의
 `message_flow_event_t`로
 표현한다. `surface`, `message_kind`, `reason`, `action`의 닫힌 값과 조건부 field 규칙은
-[메시지 흐름 추적 §3~§4](../../../../52-message-flow-tracing.ko.md)이 소유한다.
+[메시지 흐름 추적 §3~§4](../../../../26-message-flow-tracing.ko.md)이 소유한다.
 
 ### 7.2 Dispatch 실행 정책
 
@@ -331,7 +331,7 @@ public:
 ```
 
 **worker는 spot·session 실행 문맥 밖에서 실행하는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
-규칙은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
+규칙은 [비동기 실행 정책](../../../../05-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
 host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
 않는 terminal이고 `submit()`은 현재 turn을 유지하며 결과를 기다린다. `yield()`는 `SpotWide` User Spot
 또는 Instance Spot의 shared turn에서만 그 turn을 반환하고 결과를 기다린다. 다른 실행 문맥에서는
@@ -346,8 +346,8 @@ worker를 제출하거나 turn을 반환하지 않고 `invalid_configuration`으
 
 
 같은 Spot의 dispatch 직렬화와 `yield()` 허용 범위는
-[stage-wrapper §3](../../../../25-stage-wrapper-on-spot.ko.md)과
-[비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다.
+[stage-wrapper §3](../../../../17-stage-wrapper-on-spot.ko.md)과
+[비동기 실행 정책](../../../../05-async-execution-policy.ko.md)이 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

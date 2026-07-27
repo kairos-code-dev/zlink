@@ -4,8 +4,8 @@
 
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
 
-> 정식 계약은 공통 스펙 [런타임 메트릭](../../common/spec/51-runtime-metrics.ko.md)과
-> [Graceful Drain & Handoff](../../common/spec/54-graceful-drain-handoff.ko.md)가 다룬다.
+> 정식 계약은 공통 스펙 [런타임 메트릭](../../common/spec/25-runtime-metrics.ko.md)과
+> [Graceful Drain & Handoff](../../common/spec/28-graceful-drain-handoff.ko.md)가 다룬다.
 > `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
@@ -50,8 +50,8 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 - 대시보드와 exporter 선택은 앱 몫이다. framework는 내장 scrape 서버를 두지 않는다.
 
 계기 카탈로그는 다음과 같다. MeshNode, object·STREAM, location·fanout 계기의 라벨·단위·종류는
-[Runtime Metrics §§3~5](../../common/spec/51-runtime-metrics.ko.md)가 정하고, drain 계기는
-[Graceful Drain §9](../../common/spec/54-graceful-drain-handoff.ko.md#9-observability-identifiers)가 정한다.
+[Runtime Metrics §§3~5](../../common/spec/25-runtime-metrics.ko.md)가 정하고, drain 계기는
+[Host Relocate와 Shutdown §13](../../common/spec/28-graceful-drain-handoff.ko.md#13-관측-정보)이 정한다.
 
 | 계기 | 무엇을 재나 |
 |---|---|
@@ -59,11 +59,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.stream.connections.opened` | 누적 STREAM 연결 시작 수 |
 | `zlink.stream.connections.closed` | 누적 STREAM 연결 종료 수 |
 | `zlink.spot.count` | 활성 spot 수 |
-| `zlink.spot.queue.depth` | Spot application queue의 pending work 수 |
-| `zlink.spot.queue.wait.duration` | Spot work admission부터 turn 시작까지의 시간 |
 | `zlink.actor.count` | 활성 Actor 수 |
-| `zlink.actor.queue.depth` | Actor application queue의 pending payload 수 |
-| `zlink.actor.queue.wait.duration` | Actor payload admission부터 turn 시작까지의 시간 |
 | `zlink.relocation.started` | Actor·User·Instance Spot relocation 시작 누계 |
 | `zlink.relocation.completed` | relocation terminal 결과 누계 |
 | `zlink.relocation.duration` | prepare부터 terminal phase까지의 시간 |
@@ -79,19 +75,14 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.mesh_node.peers.connected` | transport가 연결된 peer 수 |
 | `zlink.mesh_node.peers.ready` | admission과 handler readiness를 통과한 peer 수 |
 | `zlink.mesh_node.channels.ready_members` | ChannelName select-one에 사용할 수 있는 member 수 |
-| `zlink.mesh_node.channel.selections` | ChannelName select-one 결과 누계 |
+| `zlink.mesh_node.channel.selection_failures` | Select-one에 사용할 member가 없었던 횟수 |
 | `zlink.mesh_node.requests.inflight` | reply를 기다리는 request 수 |
 | `zlink.mesh_node.request.duration` | request submit부터 terminal completion까지의 시간 |
 | `zlink.mesh_node.request.timeouts` | request timeout 누계 |
 | `zlink.mesh_node.messages.dropped` | Framework가 원인을 확인한 one-way drop 누계 |
-| `zlink.mesh_node.claim.queue.depth` | owner application·infrastructure pending work 수 |
-| `zlink.mesh_node.claim.active` | 현재 실행 중인 claim 수 |
-| `zlink.mesh_node.claim.wait.duration` | ready부터 claim 획득까지의 시간 |
-| `zlink.mesh_node.turn.duration` | application turn 실행 시간 |
 | `zlink.fanout.published` | classic fanout publish 누계 |
 | `zlink.fanout.received` | classic fanout receive 누계 |
 | `zlink.fanout.dropped` | Framework가 원인을 확인한 classic fanout drop 누계 |
-| `zlink.location.records` | 유효한 descriptor·Spot·Actor record 수 |
 | `zlink.location.store.errors` | Redis read·write·lease failure 누계 |
 | `zlink.location.owner_lease.renew.failures` | owner lease 갱신 실패 누계 |
 | `zlink.location.owner_lease.renew.lateness` | 예정 시각 대비 owner lease 갱신 지연 |
@@ -117,9 +108,9 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 4. Seal 시점에 실행하지 않은 message, accepted journal, logical timer registration·pending tick과 optional
    Snapshot bytes를 immutable relocation root에 저장한다. Target factory·`Restore`와 journal staging은
    owner·membership commit 전에 끝낸다.
-5. User Spot과 member Actor는 하나의 aggregate commit으로 owner·membership을 함께 바꾼다. Standalone Entry
-   member Actor는 commit 뒤 target Entry Spot `OnActorRelocatedAsync`, source `OnLeaveActorAsync` 완료 또는
-   durable source cleanup, journal replay 순서로 진행한다. 일반 join의 `OnJoinedActorAsync`는 사용하지 않는다.
+5. `SpotWide` User Spot과 member Actor는 하나의 aggregate commit으로 owner·membership을 함께 바꾼다.
+   Entry Spot과 `PerActor` User Spot의 Actor는 각각 이전한다. Infrastructure relocation은 application의
+   join·leave callback을 호출하지 않는다.
 6. Frozen queue·timer를 target에 복원하고 seal 뒤 source hold를 target으로 relay한다. Source cleanup,
    `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
 7. 모든 unit이 source dispatch에서 분리되면 `Draining`으로 전환하고 topology resource를 bounded cleanup한다.

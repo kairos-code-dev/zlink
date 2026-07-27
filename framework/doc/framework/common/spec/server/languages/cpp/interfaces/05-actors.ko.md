@@ -7,8 +7,8 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
-[C++ exact interface 목차](README.ko.md) · [Actor model](../../../../22-actor-model.ko.md) ·
-[Spot·Actor membership](../../../../23-spot-actor.ko.md)
+[C++ exact interface 목차](README.ko.md) · [Actor model](../../../../14-actor-model.ko.md) ·
+[Spot·Actor membership](../../../../15-spot-actor.ko.md)
 
 ## 1. Identity와 maintenance policy
 
@@ -313,8 +313,8 @@ generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Fram
 ## 5. Public trace category
 
 이 문서의 declaration은 public trace의 `actor-relocation` category에 속한다. 공통 의미는
-[Actor model](../../../../22-actor-model.ko.md), [Spot·Actor membership](../../../../23-spot-actor.ko.md)과
-[Session Actor dispatch](../../../../31-session-actor-dispatch.ko.md)가 소유한다.
+[Actor model](../../../../14-actor-model.ko.md), [Spot·Actor membership](../../../../15-spot-actor.ko.md)과
+[Session Actor dispatch](../../../../20-session-actor-dispatch.ko.md)가 소유한다.
 
 이 문서에 선언된 `yield()`와 `yield_message()`는 현재 Actor handler가 `SpotWide` User Spot의 shared
 execution gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면

@@ -374,12 +374,6 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A2 ]]; then
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B2 ]]; then
   run_client OBS-B2 "" "" 90s "${log_dir}/b2-client.stdout.log" "${log_dir}/b2-client.stderr.log"
-  run_client OBS-B2-QUEUE "" "" 90s "${log_dir}/b2-queue.stdout.log" "${log_dir}/b2-queue.stderr.log" &
-  b2_queue_pid="$!"
-  wait_metric_value_on_either_node "${PLAY_A_HTTP}" "${PLAY_B_HTTP}" \
-    zlink.spot.queue.depth kind user 1 "${log_dir}/play-a-metrics-b2-live.json"
-  kill -TERM "${b2_queue_pid}" >/dev/null 2>&1 || true
-  wait "${b2_queue_pid}" || true
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A3 ]]; then
   kill -TERM "${session_pid}"

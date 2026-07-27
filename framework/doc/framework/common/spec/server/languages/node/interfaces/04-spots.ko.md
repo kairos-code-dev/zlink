@@ -7,8 +7,8 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
-[인터페이스 목차](README.ko.md) · [Spot address와 messaging](../../../../24-spot-address-messaging.ko.md) ·
-[Spot·Actor membership](../../../../23-spot-actor.ko.md)
+[인터페이스 목차](README.ko.md) · [Spot address와 messaging](../../../../16-spot-address-messaging.ko.md) ·
+[Spot·Actor membership](../../../../15-spot-actor.ko.md)
 
 이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Spot 관련 정확한 TypeScript declaration을 고정한다.
@@ -43,6 +43,19 @@ export interface ZLinkSpotClosingContext {
     readonly deadline: Date;
 }
 
+export declare enum ZLinkSpotRelocationReadyOutcome {
+    Continued = 0,
+    Relocated = 1
+}
+
+export interface ZLinkSpotRelocationReadyCompletion {
+    readonly outcome: ZLinkSpotRelocationReadyOutcome;
+}
+
+export interface ZLinkSpotRelocationReadyCall {
+    defer(): void;
+}
+
 export interface ZLinkSpotAcceptRejectResponse {
     readonly accepted: boolean;
     readonly reply?: unknown;
@@ -74,6 +87,8 @@ export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor>
     onClosing?(
         context: ZLinkSpotClosingContext,
         cleanupSignal: AbortSignal): Promise<void>;
+    onRelocationReadyCompleted?(
+        completion: ZLinkSpotRelocationReadyCompletion): Promise<void>;
 }
 
 export interface ZLinkInstanceSpot {
@@ -106,6 +121,7 @@ export interface ZLinkSpotContext<
     TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>>
     extends ZLinkSpotCommonContext<TSpot> {
     readonly handlers: ZLinkSpotHandlerRegistry;
+    relocationReady(): ZLinkSpotRelocationReadyCall;
     leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
     close(signal?: AbortSignal): Promise<boolean>;
 }
@@ -127,6 +143,17 @@ Spot lifecycle에서 사용하는 위치만 고정한다.
 Actor별 closing callback은 제공하지 않는다. Host Shutdown은 Actor membership과 local instance가 유효한
 상태에서 callback을 실행하고 fulfillment 뒤 scope와 authority를 정리한다. Standalone Actor relocation은 Entry
 Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
+
+`relocationReady().defer()`는 `SpotWide`와 `ApplicationSignaled`를 함께 등록한
+Spot turn에서만 유효하다. Framework는 이동하지 않았거나 commit 전에 abort했으면
+source에서 `Continued`, 이동했으면 target에서 `Relocated` completion을 optional
+`onRelocationReadyCompleted(...)`에 전달한다. Callback이 없으면 no-op으로 완료한다.
+Callback 완료 전에는 보류한 application message와 timer를 실행하지 않는다.
+
+기본 `AnyTurnBoundary`, `PerActor`, Entry·Instance Spot, Spot turn 밖과 같은 turn의
+중복 `defer()`는 queue mutation 전에 `InvalidConfiguration`으로 실패한다. `defer()`
+뒤 같은 turn의 다른 Framework operation도 같은 오류다. Recovery에서 callback이
+다시 실행될 수 있으므로 구현한 callback은 retry-safe해야 한다.
 
 ## 2. Handler와 outbound
 
@@ -337,8 +364,8 @@ logical timer registration을 복원하므로 application이 timer를 다시 등
 완료하고 target Ready 전에는 복원한 tick을 실행하지 않는다.
 
 Public trace category는 `spot-instance`, `actor-relocation`다. 의미와 검증 기준은
-[Spot address와 messaging](../../../../24-spot-address-messaging.ko.md)과
-[Spot·Actor membership](../../../../23-spot-actor.ko.md)이 소유한다.
+[Spot address와 messaging](../../../../16-spot-address-messaging.ko.md)과
+[Spot·Actor membership](../../../../15-spot-actor.ko.md)이 소유한다.
 
 이 문서에 선언된 `yield(...)`는 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 유효하다.
 Entry Spot과 `PerActor` User Spot에서 호출하면 operation을 제출하거나 turn을 반환하지 않고

@@ -44,7 +44,7 @@ export class ZLinkChannelOutboundOperations {
   /**
    * Try-style fast-fail counterpart of {@link send}. It reports the current selection instead of
    * waiting, so the bounded readiness wait that
-   * `framework/doc/framework/common/spec/11-channel-messaging.ko.md` §3.2 puts on a call belongs to
+   * `framework/doc/framework/common/spec/08-channel-messaging.ko.md` §3.2 puts on a call belongs to
    * the asynchronous {@link send} the public `sendToChannel` path uses, not here.
    */
   trySend(

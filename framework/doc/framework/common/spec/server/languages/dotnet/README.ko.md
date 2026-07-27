@@ -41,7 +41,7 @@ Stream connector client는 별도 package이며
 
 .NET 비동기 operation은 시그니처에 `CancellationToken`이 있을 때만 명시적 취소를 받는다. Token이 없는
 메서드에 취소 인자가 있다고 해석하지 않는다. 취소 후의 terminal 결과는
-[비동기 실행 정책](../../../04-async-execution-policy.ko.md)을 따른다.
+[비동기 실행 정책](../../../05-async-execution-policy.ko.md)을 따른다.
 
 ## 검증
 

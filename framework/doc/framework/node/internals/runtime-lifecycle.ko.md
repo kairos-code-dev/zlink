@@ -1,7 +1,7 @@
 # Node.js service runtime lifecycle
 
 [Node.js 문서](../README.ko.md) · [공개 인터페이스](../../common/spec/server/languages/node/interfaces/README.ko.md) ·
-[Host 종료 계약](../../common/spec/54-graceful-drain-handoff.ko.md) ·
+[Host 종료 계약](../../common/spec/28-graceful-drain-handoff.ko.md) ·
 [Stateful maintenance 내부 구조](stateful-maintenance-runtime.ko.md)
 
 ## 1. 목적

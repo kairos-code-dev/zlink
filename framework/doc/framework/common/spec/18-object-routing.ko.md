@@ -1,10 +1,7 @@
 # Spot·Actor routing
 
-[공통 스펙 목차](README.ko.md) · [상호작용 모델](02-interaction-model.ko.md) ·
-[Spot 메시징](20-spot-messaging.ko.md) · [Actor 모델](22-actor-model.ko.md) ·
-[Spot 주소 메시징](24-spot-address-messaging.ko.md) ·
-[Session–Actor dispatch](31-session-actor-dispatch.ko.md) ·
-[Location runtime](40-location-runtime.ko.md)
+[스펙 목차](README.ko.md) · [이전: Stage wrapper on Spot](17-stage-wrapper-on-spot.ko.md) · [다음: STREAM 서버 session](19-stream-session.ko.md)
+
 
 ## 1. 어떤 message가 어느 route를 사용하는가
 
@@ -137,6 +134,24 @@ relocation부터 적용한다.
 Relay는 original operation ID, `ObjectGeneration`, payload와 reply route를
 보존한다. Mapping이 없거나 만료됐거나 generation mismatch, loop 또는 bound
 초과가 발생하면 typed stale-route 오류로 끝난다.
+
+`PerActor` User Spot relocation 중 `ToActor`는 Spot authority가 아니라 Actor별
+current owner route를 사용한다. Spot authority가 target으로 바뀌어도 아직 source에
+남은 Actor는 source route를 유지한다. Actor owner CAS가 성공하면 이전 owner는
+같은 Actor mapping으로 target에 relay한다.
+
+Actor queue를 seal하기 전에 수락한 작업은 이전 queue와 accepted journal에
+포함한다. Seal 뒤 source에 도착한 작업은 ingress hold에 보관한다. Target은 다음
+순서를 지킨 뒤 Actor admission을 연다.
+
+1. 이전 queue와 accepted journal을 복원한다.
+2. Source ingress hold를 original operation identity와 reply route로 받는다.
+3. Source의 relay 완료를 확인한다.
+4. Owner CAS 뒤 target에 직접 도착해 대기 중인 작업을 받는다.
+
+따라서 Actor가 전송 도중 이전되어도 caller가 새 route를 선택하거나 operation을
+다시 만들 필요가 없다. Request deadline과 correlation, one-way operation identity,
+ActorId와 ObjectGeneration을 relay 전후에 유지한다.
 
 Framework는 실패한 현재 operation을 Location Store에서 찾은 새 owner에게 자동으로
 다시 제출하지 않는다. 다음 call만 cache 또는 Location Store에서 current owner를
@@ -305,7 +320,7 @@ original reply route와 correlation을 보존한다. Operation ID는 중복 작�
 Framework는 reply route를 복원할 수 있는 request의 handler·decode failure를
 구조화된 error reply로 완료한다. Reply route를 복원할 수 없다고 해서 requester의
 Spot·Actor ID나 새 owner를 Location Store에서 찾아 우회하지 않는다. 해당 failure는
-[상호작용 모델](02-interaction-model.ko.md#10-handler-실패)이 정한 drop과 log,
+[상호작용 모델](03-interaction-model.ko.md#10-handler-실패)이 정한 drop과 log,
 metric, observer event 계약을 따른다.
 
 Route 오류, timeout, cancellation이나 실행 여부가 불명확한 failure 뒤에도 같은
@@ -327,6 +342,9 @@ timeout, cancellation 또는 shutdown 가운데 먼저 확정된 terminal 결과
   검증하며 새 incarnation으로 retarget하지 않는다.
 - Stale-route relay가 committed mapping만 사용하고 Store를 읽지 않으며 operation
   ID, generation, payload와 reply route를 보존한다.
+- `PerActor` User Spot relocation에서 `ToSpot`은 Spot authority, `ToActor`는 Actor별
+  current owner를 사용하며 source hold, relay 완료와 target direct queue 순서를
+  보존한다.
 - Failed operation을 fresh owner에게 자동 재제출하지 않고 다음 call만 current
   authority를 다시 resolve한다.
 - Bind가 caller의 exact `ActorRef` 위치를 최초 route로 사용하고 검증된 route만

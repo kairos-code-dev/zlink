@@ -4,9 +4,9 @@
 `framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
 
 [내부 구조 목차](README.ko.md) · [Service wire protocol](service-wire-protocol.ko.md) ·
-[Location runtime](../spec/40-location-runtime.ko.md) ·
-[Redis Relocation Store](../spec/42-relocation-store-redis.ko.md) ·
-[Host 종료 계약](../spec/54-graceful-drain-handoff.ko.md)
+[Location runtime](../spec/21-location-runtime.ko.md) ·
+[Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
+[Host 종료 계약](../spec/28-graceful-drain-handoff.ko.md)
 
 ## 1. 목적과 책임 경계
 
@@ -42,11 +42,25 @@ infrastructure operation을 inventory한다. Target eligibility와 Relocation St
 deadline이 끝나면 reservation을 정리하고 `Blocked`를 반환한다. Host state와 application admission은 그대로다.
 
 Preflight가 성공하면 host를 `Retiring`으로 게시하고 새 placement·membership·inbound relocation target을 닫는다.
-Coordinator는 User Spot aggregate, standalone Actor와 Instance Spot queue에 infrastructure intent notification을
-예약한다. Application callback이나 public readiness API는 없다. Notification을 처리한 turn 경계에서 outbound,
+Coordinator는 `SpotWide` User Spot aggregate, Entry·`PerActor` Actor와 Instance Spot queue에
+infrastructure intent notification을 예약한다. `PerActor` User Spot은 target의 runtime-private shell과
+Spot authority를 먼저 전환하고 Actor를 개별 unit으로 예약한다. Application callback이나 public readiness
+API는 없다. Notification을 처리한 turn 경계에서 outbound,
 target inbound, 필요한 `Capture`·`Restore` callback, participant별 64 MiB capture 상한과 Framework-owned
 section의 deterministic encoded upper bound로 계산한 payload byte permit을 nonblocking으로 모두 얻은 unit만
 reversible하게 seal한다. Permit을 얻지 못하면 notification을 다시 예약하고 application turn을 계속 처리한다.
+
+`SpotWide`의 readiness mode가 `ApplicationSignaled`이면 coordinator는 preflight,
+target과 permit 준비를 마친 뒤 application boundary marker를 기다린다.
+`relocationReady().defer()`는 active turn 뒤 barrier marker를 queue head에 넣는다.
+준비된 relocation이 없으면 source callback marker로 바꾸고, 준비된 relocation이
+있으면 seal과 relocation을 수행한다. Precommit abort는 source callback marker,
+commit 성공은 target callback marker를 만든다. Marker callback을 먼저 완료한 뒤
+frozen queue, relay와 새 direct queue를 연다.
+
+Callback은 기본 no-op이지만 process failure에서 다시 실행될 수 있다. Coordinator는
+stable boundary sequence와 terminal cursor로 완료를 기록하며 application side
+effect의 exactly-once는 보장하지 않는다.
 
 모든 unit이 source dispatch에서 분리된 뒤 host를 `Draining`으로 전환한다. 첫 relocation commit 전 failure는 모든
 tentative 작업을 abort하고 `Serving`을 복원할 수 있다. 첫 commit 뒤 deadline이나 relocation failure는 bounded
@@ -160,8 +174,9 @@ Process gate의 기본값은 active outbound·inbound unit 각각 64, concurrent
 payload in-flight 256 MiB다. 세 gate는 독립적이며 모두 queue seal 전에 예약한다. Payload permit은 각
 participant의 capture 상한과 Framework-owned queue·journal·timer·manifest의 deterministic encoded upper bound를
 합쳐 all-or-nothing으로 얻는다. `Capture` 뒤 actual encoded size가 작으면 reservation을 줄인다. 하나라도 즉시
-얻지 못하면 seal하지 않는다. 단일 User Spot aggregate의 upper bound가 256 MiB를 넘으면 payload window가 빈
-상태에서만 oversized aggregate 하나로 진행한다. Standalone Actor와 Instance Spot unit은 gate 안에서만 admit한다.
+얻지 못하면 seal하지 않는다. 단일 `SpotWide` User Spot aggregate의 upper bound가 256 MiB를 넘으면 payload
+window가 빈 상태에서만 oversized aggregate 하나로 진행한다. Entry·`PerActor` Actor와 Instance Spot unit은
+gate 안에서만 admit한다.
 
 Reversible seal이 participant별 accepted boundary를 고정하면 source lifetime별로 work를 분류한다.
 
@@ -220,9 +235,10 @@ Stable `RelocationId`는 relocation root, journal과 terminal completion을 묶�
 replacement는 exact reservation handshake 뒤 target attempt, target owner lease와 reservation만 바꾼다. Old target의
 late callback은 current attempt와 authority read를 통과하지 못한다.
 
-## 8. Aggregate membership과 session barrier
+## 8. SpotWide aggregate, PerActor route와 session barrier
 
-User Spot과 member Actor를 함께 이동할 때 non-zero 128-bit aggregate ID와 exact participant inventory를 사용한다.
+`SpotWide` User Spot과 member Actor를 함께 이동할 때 non-zero 128-bit aggregate ID와 exact participant
+inventory를 사용한다.
 Participant 총수에는 1,024개 상한을 두지 않는다. Framework는 최대 1,024개·encoded
 1 MiB의 immutable leaf chunk와 필요한 index chunk로 inventory tree를 만든다. User
 Spot이 있다는 이유만으로 Relocate를 차단하지 않는다. 모든 factory의 명시적
@@ -238,20 +254,24 @@ Target reservation은 Spot과 member Actor의 global identity, ObjectGeneration�
 membership visibility를 원자적으로 전환한다. Target은 commit 전에 factory·restore와
 journal validation·staging을 끝낸다.
 
-Source Entry Spot의 standalone Actor를 maintenance relocation한 경우 commit 뒤 target Entry Spot의
-`OnActorRelocated`를 먼저 실행하고 source Entry Spot의 `OnLeaveActor`를 이어서 실행한다. Source process가
-callback을 실행할 수 없으면 같은 fence의 durable terminal이 그 완료를 대신한다. Lifecycle gate가 끝나면
-target이 accepted message·journal을 replay하고 logical timer를 복원한다. 그 뒤 old Entry membership과 남은 source resource를
-durable하게 cleanup한다. Application이
-요청한 일반 same-node·cross-node join은 maintenance callback을 호출하지 않고 target `OnJoinedActor`를 사용한다.
+Entry Spot Actor maintenance는 application membership callback을 호출하지 않는다. Target이 accepted
+message·journal과 Actor timer를 복원하고, old Entry membership과 남은 source resource를 durable하게
+cleanup한다. Application이 요청한 일반 same-node·cross-node join만 join·joined·leave callback을 사용한다.
 
-Whole User Spot aggregate는 membership을 유지하므로 member Actor에 대해 target `OnJoinedActor`·
-`OnActorRelocated`나 source `OnLeaveActor`를 호출하지 않는다. Aggregate commit 뒤 lifecycle membership callback
-없이 accepted message·journal을 replay하고 logical timer를 복원한 뒤 source resource를 durable하게 cleanup한다.
+`SpotWide` User Spot aggregate는 membership을 유지하므로 member Actor의 membership callback을 호출하지
+않는다. Aggregate commit 뒤 accepted message·journal을 replay하고 logical timer를 복원한 뒤 source
+resource를 durable하게 cleanup한다.
 Timer scheduler는 새 native handle을
 만들고 pending tick을 frozen ordering boundary에 넣는다. Application `Restore`는 Framework timer를 다시
 등록하지 않는다. 이후 `Cleaning` phase는 old Entry membership, source scope와 participant state를 하나의
 fenced durable cleanup으로 정리한다.
+
+`PerActor` User Spot은 target에 같은 public SpotId와 ObjectGeneration의 runtime-private shell을 준비한다.
+Spot authority CAS 전에는 이 shell을 public lookup이나 message 대상으로 공개하지 않는다. CAS 뒤
+`ToSpot`·Create·Join은 target을 사용하고 `ToActor`는 각 Actor의 current owner를 사용한다. Source에 도착한
+stale Actor message는 operation identity, ObjectGeneration, deadline, correlation과 reply route를 유지해
+target으로 relay한다. Actor는 current turn이 끝난 순서대로 queue·journal·Actor timer와 함께 이전하며
+Spot field와 Spot-level application timer는 이전하지 않는다.
 
 Physical STREAM connection은 이동하지 않는다. Session owner는 ingress를 reversible하게 seal하고 high-water를
 source에 전달한다. Target restore가 끝나도 route를 즉시 바꾸지 않는다. Owner·membership commit 뒤 필요한
@@ -335,9 +355,9 @@ deadline을 연장하지 않는다.
 - `Captured` CAS 전 crash에서 relocation replay를 시작하지 않는다.
 - Target replacement가 stable RelocationId와 relocation root를 바꾸지 않는다.
 - Actor owner와 target Entry Spot membership이 같은 commit에서 바뀐다.
-- Maintenance Entry relocation은 target `OnActorRelocated`, source `OnLeaveActor` 완료 또는 durable source
-  cleanup, journal replay 순서를 지키며 일반 join의 `OnJoinedActor`와 구분된다.
-- Whole User Spot aggregate는 유지되는 Actor membership에 join·leave·relocation callback을 호출하지 않는다.
+- Infrastructure relocation은 Entry·User Spot의 membership callback을 호출하지 않는다.
+- `SpotWide` User Spot aggregate는 하나의 commit을 사용하고, `PerActor` User Spot은 Spot authority를 먼저
+  바꾼 뒤 Actor별 current owner와 stale-route relay를 사용한다.
 - `Activated`부터 route ACK·steady normalization 전까지 target admission이 닫혀 있다.
 - Request terminal completion과 relay ACK가 같은 durable identity로 한 번만 수렴한다.
 - Preflight와 첫 commit 전 failure는 admission을 복원하고, 첫 commit 뒤 failure는 `ForceStopped`로 끝난다.

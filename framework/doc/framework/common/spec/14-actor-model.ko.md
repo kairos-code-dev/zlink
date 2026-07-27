@@ -1,8 +1,7 @@
 # Actor 모델
 
-[공통 스펙 목차](README.ko.md) · [MeshNode](21-mesh-node.ko.md) ·
-[Spot Actor](23-spot-actor.ko.md) ·
-[Session Actor Dispatch](31-session-actor-dispatch.ko.md)
+[스펙 목차](README.ko.md) · [이전: MeshNode](13-mesh-node.ko.md) · [다음: Spot과 Actor membership](15-spot-actor.ko.md)
+
 
 ## 1. 이 문서가 정의하는 범위
 
@@ -17,11 +16,11 @@ payload는 Actor 자신의 queue에 제출한다. Queue에 들어온 handler를 
 
 | 관련 계약 | 정의하는 문서 |
 |---|---|
-| [MeshNode](01-glossary.ko.md#meshnode) route와 peer admission | [MeshNode](21-mesh-node.ko.md) |
-| [Spot](01-glossary.ko.md#spot) [membership](01-glossary.ko.md#membership) transaction과 relocation | [Spot Actor](23-spot-actor.ko.md) |
-| STREAM session 연동 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) |
-| Payload와 metadata | [메시지 모델](03-message-model.ko.md) |
-| Callback 실행과 completion | [비동기 실행 정책](04-async-execution-policy.ko.md) |
+| [MeshNode](01-glossary.ko.md#meshnode) route와 peer admission | [MeshNode](13-mesh-node.ko.md) |
+| [Spot](01-glossary.ko.md#spot) [membership](01-glossary.ko.md#membership) transaction과 relocation | [Spot Actor](15-spot-actor.ko.md) |
+| STREAM session 연동 | [Session Actor Dispatch](20-session-actor-dispatch.ko.md) |
+| Payload와 metadata | [메시지 모델](04-message-model.ko.md) |
+| Callback 실행과 completion | [비동기 실행 정책](05-async-execution-policy.ko.md) |
 
 ## 2. Actor identity와 서로 독립적인 상태
 
@@ -95,7 +94,7 @@ Actor가 Entry Spot이나 user Spot에 있거나 remote MeshNode에 있어도 �
 - Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.
 
 User Spot execution mode와 `Yield` continuation의 실행 규칙은
-[비동기 실행 정책](04-async-execution-policy.ko.md#11-submit-async와-yield)이
+[비동기 실행 정책](05-async-execution-policy.ko.md#11-submit-async와-yield)이
 정의한다.
 
 ### 3.1 Deferred Join barrier
@@ -192,7 +191,7 @@ Framework는 이 lifecycle 작업을 target Spot의 전용 queue에 넣는다. �
 
 Actor가 소유한 상태를 바꾸는 lifecycle 작업도 Actor의 전용 queue에서 하나씩
 실행한다. Actor와 Spot 양쪽 상태를 함께 바꾸는 순서와 오래된 owner의 변경을
-거부하는 규칙은 [Spot Actor](23-spot-actor.ko.md)가 정의한다.
+거부하는 규칙은 [Spot Actor](15-spot-actor.ko.md)가 정의한다.
 
 ## 5. Actor 메시징
 
@@ -499,7 +498,7 @@ Actor 생성을 시작하지 않으며 별도의 Actor directory도 제공하지
 ### 6.7 Spot 이동
 
 Actor를 user Spot으로 옮기는 join·leave·relocation은
-[Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다.
+[Spot Actor](15-spot-actor.ko.md)의 fencing과 barrier를 따른다.
 
 이동 중에 수락한 payload를 이전 Spot callback으로 보내지 않는다. Payload는 Actor
 queue에서 순서를 유지한다.
@@ -511,7 +510,7 @@ Actor 종료는 새로운 payload admission을 닫고 session binding과 locatio
 현재 Spot에서 자동 leave하지 않는다.
 
 Lifecycle 종료를 허용하는 정확한 상태와 transaction은
-[Spot Actor](23-spot-actor.ko.md)가 정의한다.
+[Spot Actor](15-spot-actor.ko.md)가 정의한다.
 
 Actor destroy는 exact `ActorRef`를 받는다. Actor가 user Spot에 있으면 먼저 leave
 또는 Entry Spot join을 완료해야 한다.
@@ -549,7 +548,7 @@ membership은 route와 lifecycle 검증에 사용할 수 있지만 payload를 Sp
 보내는 근거로 사용하지 않는다.
 
 Bind, rebind, disconnect와 request correlation은
-[Session Actor Dispatch](31-session-actor-dispatch.ko.md)가 정의한다.
+[Session Actor Dispatch](20-session-actor-dispatch.ko.md)가 정의한다.
 
 ## 8. 실패와 관측
 

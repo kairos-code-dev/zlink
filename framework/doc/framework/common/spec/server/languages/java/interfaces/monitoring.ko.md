@@ -1,6 +1,6 @@
 # Java monitoring 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [Runtime monitoring](../../../../50-runtime-monitoring.ko.md)
+[인터페이스 목차](README.ko.md) · [Runtime monitoring](../../../../24-runtime-monitoring.ko.md)
 
 Monitoring DTO는 Framework lifecycle state와 공통 wire 값을 사용한다. Raw monitor handle, native event enum,
 socket address와 connection ID는 bounded diagnostic에 필요한 범위 밖으로 노출하지 않는다.

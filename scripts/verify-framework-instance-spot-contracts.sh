@@ -37,7 +37,7 @@ const normalized = source => source.replace(/\s+/gu, ' ').trim();
 
 const formalFixtures = [
   {
-    path: 'framework/doc/framework/common/spec/05-framework-api.ko.md',
+    path: 'framework/doc/framework/common/spec/06-framework-api.ko.md',
     required: [
       'actor-free Instance Spot factory',
       'Instance Spot은 actor-free lifecycle을 사용하며 Actor handler, Actor membership과 Logical Multicast subscription을 등록할 수 없다.',
@@ -52,7 +52,7 @@ const formalFixtures = [
     ],
   },
   {
-    path: 'framework/doc/framework/common/spec/20-spot-messaging.ko.md',
+    path: 'framework/doc/framework/common/spec/12-spot-messaging.ko.md',
     required: [
       '### 3.2 Instance Spot이 없을 때 새로 준비하기',
       'Spot direct call에 `Instance intent`',
@@ -64,7 +64,7 @@ const formalFixtures = [
     ],
   },
   {
-    path: 'framework/doc/framework/common/spec/24-spot-address-messaging.ko.md',
+    path: 'framework/doc/framework/common/spec/16-spot-address-messaging.ko.md',
     required: [
       '`SpotHandle`, 별도 resolver handle과 `InstanceSpotAddress`는 제공하지 않는다.',
       '## 3. User Spot Create와 GetOrCreate',
@@ -78,7 +78,7 @@ const formalFixtures = [
     ],
   },
   {
-    path: 'framework/doc/framework/common/spec/23-spot-actor.ko.md',
+    path: 'framework/doc/framework/common/spec/15-spot-actor.ko.md',
     required: [
       'Spot의 terminal lifecycle callback은 `OnClosing(ClosingContext)`이다.',
       '| 0 | `ExplicitClose` |',
@@ -90,7 +90,7 @@ const formalFixtures = [
     ],
   },
   {
-    path: 'framework/doc/framework/common/spec/40-location-runtime.ko.md',
+    path: 'framework/doc/framework/common/spec/21-location-runtime.ko.md',
     required: [
       'Actor와 User Spot은 Manager의 명시적인 `Create` 또는 `GetOrCreate`로 생성한다.',
       'User Spot의 `Create`는 Framework가 lowercase canonical UUID v4 string SpotId를 발급하고,',

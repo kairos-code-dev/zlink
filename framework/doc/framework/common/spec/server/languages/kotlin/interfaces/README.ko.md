@@ -23,7 +23,9 @@ facade나 상태 type을 중복해서 정의하지 않는다.
 Actor·Spot Snapshot adapter도 Java `ZLinkActorRelocationAdapter`와 `ZLinkSpotRelocationAdapter`가 정본이다. Kotlin은
 `byte[]`를 `ByteArray`로 투영하고 `CompletionStage` completion을 그대로 사용하며 별도 state DTO,
 state contract ID, suspending adapter와 reified [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy를 정의하지 않는다. Entry Spot의 coroutine
-lifecycle class만 Java default `onActorRelocated`를 `onActorRelocatedSuspending`으로 bridge한다.
+lifecycle class는 infrastructure membership relocation callback을 추가하지 않는다.
+`SpotWide` application-signaled 경계의 completion만
+`onRelocationReadyCompletedSuspending(...)` 기본 no-op bridge로 제공한다.
 
 Channel extension은 process-local ChannelName만 받으며 MeshName과 [ChannelName](../../../../01-glossary.ko.md#channelname)을 함께 받는 선택 overload를
 추가하지 않는다. Host `Relocate`·`Shutdown`은 Java의 relocation mode·options·result type을 그대로

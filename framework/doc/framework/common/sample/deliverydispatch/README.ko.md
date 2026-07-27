@@ -240,7 +240,7 @@ courier별 session route는 별도 gateway나 registry가 아니라 해당 couri
 보낸다. 어느 CourierMeshNode에서 actor를 materialize할지는 framework의 capacity와 node weight,
 Location Store가 결정한다. application request와 설정에는 owner NodeRid가 없으며, 전송할 때도
 physical node를 먼저 선택하지 않는다
-([10 §5](../../spec/10-channel-topology.ko.md), [24 §3](../../spec/24-spot-address-messaging.ko.md)).
+([10 §5](../../spec/07-channel-topology.ko.md), [24 §3](../../spec/16-spot-address-messaging.ko.md)).
 `CourierEntrySpot`은 actor 생성과 session bind를 framework 경로에 연결하지만, 호출자에게 owner
 node 선택 책임을 노출하지 않는다.
 
@@ -256,7 +256,7 @@ stream client가 다시 연결될 때 두 역할의 경로가 다르다.
 handle이 주소 snapshot과 갱신 시점을 소유하고, stale 실패 시 **framework가** handle을 갱신해
 request를 한 번 재전송한다(one-way send는 중복 전달 위험이 있어 재전송하지 않는다).
 실패 분류와 재시도 의미는
-[spot 주소 메시징 스펙](../../spec/24-spot-address-messaging.ko.md)을 따른다.
+[spot 주소 메시징 스펙](../../spec/16-spot-address-messaging.ko.md)을 따른다.
 
 ### 6.1 Entry Spot 대기 규칙
 
@@ -265,13 +265,13 @@ spot도 하나의 실행 줄이므로, 여기서 handler가 `async`로 오래 �
 actor의 생성·join·bind가 전부 막힌다.**
 
 그래서 entry spot handler에는 규칙이 하나 있다 —
-**그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
+**그 대기가 이 spot의 공유 상태와 관련이 있는가**([04 §1.1](../../spec/05-async-execution-policy.ko.md)).
 
 | entry spot handler의 대기 | terminator |
 |---|---|
 | 이 entry spot이 소유한 actor 표를 읽고 → 만들고 → 등록한다 | **`async`** — turn을 유지해야 "없다"는 판정이 등록 시점까지 유효하다 |
 | **다른 channel·spot·actor·session의 I/O**를 기다린다(그 결과가 이 spot의 상태 판단과 무관하다) | **`yield`** — 그 왕복 때문에 이 노드로 들어오려는 다른 actor의 입장이 막히면 안 된다 |
-| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | **`RunIoWorker(...).Yield()`** ([04 §1.2](../../spec/04-async-execution-policy.ko.md)) |
+| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | **`RunIoWorker(...).Yield()`** ([04 §1.2](../../spec/05-async-execution-policy.ko.md)) |
 | 외부 HTTP·레거시 API | **HTTP client의 `.Yield()`** — worker로 감싸지 않는다([12 §3.1](../../spec/http-client/12-http-client.ko.md)) |
 
 **`yield` 앞뒤로 같은 mutable state를 이어서 판단하지 않는다.** yield 중에 다른 메시지가 먼저

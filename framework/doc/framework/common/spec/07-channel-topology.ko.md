@@ -1,9 +1,7 @@
 # RouteMesh topology
 
-[스펙 목차](README.ko.md) ·
-[Channel 메시징](11-channel-messaging.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) ·
-[용어집](01-glossary.ko.md)
+[스펙 목차](README.ko.md) · [이전: ZLink Framework API](06-framework-api.ko.md) · [다음: Channel 메시징](08-channel-messaging.ko.md)
+
 
 ## 1. 범위
 
@@ -359,7 +357,7 @@ capability를 나타낸다. Server A부터 D까지는 모두 select-one 후보�
 등록이 새로운 socket을 만들지는 않는다.
 
 [Logical Multicast](01-glossary.ko.md#logical-multicast)는 같은 조건의 remote Server membership을 모두 선택하며
-[20 Spot 메시징](20-spot-messaging.ko.md)이 별도로 정의한다.
+[20 Spot 메시징](12-spot-messaging.ko.md)이 별도로 정의한다.
 
 ### 4.3 실행 중 바꿀 수 있는 값
 
@@ -511,7 +509,7 @@ handoff에는 사용할 수 없다. Framework가 replacement endpoint를 모든 
 배포하고 실제 연결 준비를 확인할 수 없기 때문이다. Host가 사용하는 service topology에
 manual connection이 하나라도 있으면 `Relocate`는 state와 admission을 바꾸기 전에
 `Blocked/ManualTopologyUnsupported`로 끝난다. Automatic rolling replacement의 연결 순서는
-[Host Relocate와 Shutdown](54-graceful-drain-handoff.ko.md#5-mode별-exact-target-선택)이
+[Host Relocate와 Shutdown](28-graceful-drain-handoff.ko.md#5-mode에-맞는-target을-선택한다)이
 정의한다.
 
 Manual peer 연결과 Spot·Actor 위치 조회는 다른 기능이다. 분산 [Spot](01-glossary.ko.md#spot)·Actor 주소나
@@ -544,7 +542,7 @@ Server를 선택하여 send나 request를 시작할 수 있다.
 
 Drain을 시작한 MeshNode는 새로운 ChannelName 선택과 Logical Multicast remote
 target에서 제외한다. 이미 제출한 작업과 RID direct의 종료 규칙은
-[Graceful drain](54-graceful-drain-handoff.ko.md)이 정의한다.
+[Graceful drain](28-graceful-drain-handoff.ko.md)이 정의한다.
 
 ## 8. ROUTER가 받을 수 있는 message 크기
 
@@ -608,7 +606,7 @@ PUB/SUB message에는 source connection identity가 없으므로 socket을 공�
 activity와 timeout이 어느 publisher의 것인지 구분할 수 없기 때문이다.
 
 Fanout 연결의 ready와 liveness는
-[Transport liveness](55-transport-liveness.ko.md)가 정의한다.
+[Transport liveness](29-transport-liveness.ko.md)가 정의한다.
 
 ## 10. 검증 요구
 

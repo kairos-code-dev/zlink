@@ -1,9 +1,7 @@
 # Spot 주소 메시징
 
-[공통 스펙 목차](README.ko.md) · [Spot 모델](19-spot-model.ko.md) ·
-[Spot 메시징](20-spot-messaging.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) · [Spot과 Actor membership](23-spot-actor.ko.md) ·
-[Location runtime](40-location-runtime.ko.md)
+[스펙 목차](README.ko.md) · [이전: Spot과 Actor membership](15-spot-actor.ko.md) · [다음: Stage wrapper on Spot](17-stage-wrapper-on-spot.ko.md)
+
 
 ## 1. 이 문서가 정의하는 범위
 
@@ -375,8 +373,14 @@ operation ID, generation, payload와 reply route를 보존한다. Mapping 없음
 bound 초과는 stale-route 오류로 끝난다. Failed application operation을 Store에서 찾은 owner에게 다시
 제출하지 않으며 다음 call만 fresh resolve를 수행한다.
 
-User Spot aggregate relocation은 Spot과 member Actor의 mapping을 같은 aggregate commit에서 설치한다. 개별
-participant mapping을 commit 전에 current route로 공개하지 않는다.
+`SpotWide` User Spot relocation은 Spot과 member Actor의 mapping을 같은 aggregate
+commit에서 설치한다. 개별 participant mapping을 commit 전에 current route로
+공개하지 않는다.
+
+`PerActor` User Spot relocation은 Spot mapping과 Actor mapping을 분리한다. Spot
+authority commit 뒤 `ToSpot`, Actor Create와 Join은 target으로 보낸다. 아직
+source에 남은 Actor의 `ToActor` route는 해당 Actor의 current owner를 계속 가리킨다.
+Actor가 이전될 때마다 Actor별 source→target mapping을 설치한다.
 
 Relocation unit을 seal한 뒤 source route로 도착한 ingress는 bounded hold에 넣고 application handler를 실행하지
 않는다. Owner commit 전 abort에서는 source queue에 arrival order로 복원하고, commit 뒤에는 stale-route mapping과
@@ -426,11 +430,20 @@ generation과 moving conflict는 typed failure다. Source는 current ref를 다�
 default는 제공하지 않는다. [Snapshot](01-glossary.ko.md#relocation-policy)은 Spot type에 맞는 `SpotRelocationAdapter`를 요구한다. Adapter는
 application이 형식과 version을 관리하는 opaque byte sequence를 capture·restore한다.
 
+`PerActor` User Spot은 `Recreate`만 허용하고 Spot adapter를 사용하지 않는다.
+Target Spot shell은 같은 public SpotId와 ObjectGeneration을 유지하지만 Location
+Store authority가 target으로 바뀌기 전까지 resolver와 application handler에
+노출하지 않는다. 임시 public SpotId를 만들거나 생성 뒤 SpotId를 바꾸지 않는다.
+
 Source seal, durable capture, target reservation·factory·restore, authority commit과 admission 순서는
-[23 Spot과 Actor membership](23-spot-actor.ko.md)이 정한다. Commit 전 failure는 source를 유지하고 commit 뒤에는
+[23 Spot과 Actor membership](15-spot-actor.ko.md)이 정한다. Commit 전 failure는 source를 유지하고 commit 뒤에는
 target recovery만 계속한다. Seal 시점의 실행하지 않은 message, accepted journal과 timer logical
 registration·pending tick은 relocation payload에 포함하며 target Framework가 timer를 자동 복원한다. Application은
-`Restore`에서 Framework timer를 다시 등록하지 않는다. Original send·request를 maintenance target에 자동 재제출하지
+`Restore`에서 Framework timer를 다시 등록하지 않는다. 이 queue·timer 규칙은
+`SpotWide`와 Instance Spot에 적용한다. `PerActor`에서는 Actor queue와 Actor timer만
+Actor와 함께 이전하고 Spot-level application timer는 이전하지 않는다.
+
+Original send·request를 maintenance target에 새 operation으로 자동 재제출하지
 않지만 seal 뒤 source ingress hold는 commit된 mapping으로 relay한다.
 
 ## 9. 실패와 관측

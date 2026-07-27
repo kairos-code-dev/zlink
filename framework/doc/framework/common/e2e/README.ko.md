@@ -305,7 +305,7 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 - `AddZLinkFramework` 설정과 Store 등록은 `*HostFactory.cs`에서 바로 보이게 작성한다.
   Location capability는 `AddLocationStore(instance)`, Relocation capability는
   `AddRelocationStore(instance)`로 각각 등록한다. Redis 전용 또는 두 capability를 묶는 등록 함수는
-  사용하지 않는다([05 §10](../spec/05-framework-api.ko.md#10-location-store와-relocation-store)).
+  사용하지 않는다([05 §10](../spec/06-framework-api.ko.md#10-location-store와-relocation-store)).
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
 - `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
@@ -500,7 +500,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이·장애 중 관측, 다중 source 격리, Actor·Spot·Spot stable type별 active·reserved·limit과 activation concurrency 관측 |
 | [Config 8 — 실행 turn과 terminator](config-8-execution-turn.ko.md) | location store + play 노드 2 + delay service 2 + **external API 1** + session gateway 2 | `SpotWide` Actor claim+Spot gate 이중 claim, `PerActor` Actor·Spot·timer lane, request·worker로 제한한 `Yield`, submit 전 execution-context·same-gate 검증, CPU/IO worker 분리, join orchestration, timeout·cancellation·shutdown과 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
-| [Config 10 — Spot actor join/relocation](config-10-spot-actor-relocation.ko.md) | location store + relocation store + Object Server actor 노드 2 + Object Client session gateway 2 + relocation controller | Local join과 remote relocation 순서, accepted journal·route barrier, yielded continuation과 `PerActor` lane을 포함한 relocation quiescence, User Spot aggregate의 Spot 1+Actor N typed capacity all-or-none, stale-route forwarding과 bound session fence |
+| [Config 10 — Spot actor join/relocation](config-10-spot-actor-relocation.ko.md) | location store + relocation store + Object Server actor 노드 2 + Object Client session gateway 2 + relocation controller | Local join, SpotWide aggregate와 application-signaled round 경계, Entry·PerActor Actor-unit 이전, public Spot ID 유지와 authority 선전환, Actor별 current-owner route·stale relay, queue·timer 순서, 1초 interruption 목표와 bound session fence |
 | [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + relocation store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), `Relocate`·`Shutdown`, 무중단 patch, 동일 version 점검, eligible target blocker, Spot closing과 bounded teardown |
 | [Config 12 — Channel egress routing](config-12-channel-egress-routing.ko.md) | location store + Session + Play + API 2 + 별도 ClientServer service 2 | ChannelName 단일 주소, RouteMesh·ClientServer 역할과 local egress 선택, 다른 MeshNode `ToChannel`, 다른 egress의 request completion, Spot `async`·`yield`, ClientServer signed `0..10000` weight의 범위·기본값·runtime revision·overflow-safe selection, Shutdown·restart, 중복 이름·target 없음 오류, 자동 port와 advertised host, 단방향 ClientServer send |
 | [Config 13 — One-way submit admission](config-13-submit-admission.ko.md) | location store + RouteMesh·ClientServer·Spot·Actor target + fanout + bound session·server STREAM + receiver gate | 결과 데이터 없는 one-way 비동기 완료, 즉시·지연 admission, timeout·cancellation·shutdown terminal 경쟁, target·route 예외, zero-target 정상 완료, Logical Multicast 고정 snapshot의 target별 단일 attempt와 publish 전용 monitoring 부재, rollback·자동 재시도 금지, session·STREAM ordering·reply token과 제거된 result type 회귀 |
@@ -602,7 +602,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 모든 e2e는 **파일 로깅과 메시지 흐름 추적을 반드시 켜고** 작성·디버깅한다. ad-hoc `printf`나
 콘솔 스크롤로 때우지 않는다. 트레이싱은 "메시지가 도착했나 / 핸들러로 갔나 / 응답이 나갔나"를
 표준 기능으로 찍어 주므로, 테스트를 만들면서 1차 디버깅 도구로 쓴다.
-(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/52-message-flow-tracing.ko.md))
+(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/26-message-flow-tracing.ko.md))
 
 ### 6.1 모든 로그를 파일로 (`log/` 폴더)
 

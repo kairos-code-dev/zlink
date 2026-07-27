@@ -1,7 +1,7 @@
 # C++ channel messaging exact interface
 
-[C++ exact interface 목차](README.ko.md) · [MeshNode](../../../../21-mesh-node.ko.md) ·
-[Framework API](../../../../05-framework-api.ko.md)
+[C++ exact interface 목차](README.ko.md) · [MeshNode](../../../../13-mesh-node.ko.md) ·
+[Framework API](../../../../06-framework-api.ko.md)
 
 ## 1. RouteMesh 등록
 
@@ -104,6 +104,11 @@ enum class user_spot_execution_mode_t {
     per_actor = 1
 };
 
+enum class spot_relocation_readiness_mode_t {
+    any_turn_boundary = 0,
+    application_signaled = 1
+};
+
 class mesh_node_builder_t {
 public:
     mesh_channel_builder_t channel(std::string channel_name);
@@ -150,7 +155,9 @@ public:
       relocation_policy_t<TSpot> relocation,
       spot_placement_options_t placement,
       user_spot_execution_mode_t execution_mode =
-        user_spot_execution_mode_t::spot_wide);
+        user_spot_execution_mode_t::spot_wide,
+      spot_relocation_readiness_mode_t relocation_readiness =
+        spot_relocation_readiness_mode_t::any_turn_boundary);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
@@ -486,7 +493,7 @@ capacity와 activation concurrency를 같은 counter나 option으로 합치지 �
 
 Descriptor capacity는 candidate filter에만 사용한다. Framework는 선택한 node에서 Location Store의 typed
 bundle reservation을 원자적으로 얻은 뒤에만 factory를 실행한다. Actor는 Actor slot 하나, Spot은 Spot 전체
-slot 하나와 해당 stable type slot 하나를 예약한다. User Spot과 member Actor `N`개의 aggregate relocation은
+slot 하나와 해당 stable type slot 하나를 예약한다. `SpotWide` User Spot과 member Actor `N`개의 aggregate relocation은
 Spot total 1개, 해당 Spot stable type 1개와 Actor total `N`개를 all-or-none으로 예약한다. 모든 후보의
 reservation이 capacity 때문에 실패하면 `placement_capacity_exhausted`로 완료하고 application factory나
 handler를 호출하지 않는다.
@@ -494,6 +501,16 @@ Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)
 overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류와 adapter 종류 또는 instance type이
 일치하지 않으면 socket bind 전에 configuration error로 실패한다.
+
+`user_spot_execution_mode_t::per_actor`는 recreate Spot policy만 허용한다. Disabled나
+Snapshot Spot policy를 함께 등록하면 socket bind 전에 configuration error다.
+PerActor Spot은 stateless execution shell이며 Actor policy와
+`actor_relocation_adapter_t<TActor>`가 Actor state를 각각 처리한다.
+
+`relocation_readiness`의 기본값은 `any_turn_boundary`다.
+`application_signaled`는 `spot_wide`에서만 허용하며 `per_actor`와 함께 등록하면
+socket bind 전에 configuration error다. Spot callback은 기본 no-op virtual
+member이므로 application override는 필수가 아니다.
 
 Factory와 Entry Spot member는 Object role `server`에서만 유효하다. 단일 C++ builder가 이 member를 함께
 노출하더라도 `none` 또는 `client` role에 factory를 등록한 조합은 socket bind 전에 configuration error로 실패한다.
@@ -617,7 +634,7 @@ endpoint를 하나의 immutable identity로 보존한다. `fanout_location_chang
 0개여도 store degraded·recovered 상태를 전달한다. `std::variant`의 두 대안은 서로의 payload를 optional
 field로 섞지 않는다. 각 variant의 `identifier()`는 `static constexpr event_identifier`를 반환하므로 호출자가
 identifier를 바꿀 수 없다. `state`와 event identifier는
-[Runtime monitoring](../../../../50-runtime-monitoring.ko.md)의 lowercase identifier를 그대로 사용한다. 이 runtime은
+[Runtime monitoring](../../../../24-runtime-monitoring.ko.md)의 lowercase identifier를 그대로 사용한다. 이 runtime은
 읽기 전용이며 `subscriber_connections()`의 manual endpoint 집합을 변경하지 않는다. Manual subscriber로만
 등록한 ChannelName을 조회하면 configuration error다.
 

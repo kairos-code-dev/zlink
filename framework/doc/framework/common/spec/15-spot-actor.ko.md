@@ -1,10 +1,7 @@
 # Spot과 Actor membership
 
-[공통 스펙 목차](README.ko.md) · [Spot 모델](19-spot-model.ko.md) ·
-[Actor 모델](22-actor-model.ko.md) ·
-[Spot 주소 메시징](24-spot-address-messaging.ko.md) ·
-[Session Actor Dispatch](31-session-actor-dispatch.ko.md) ·
-[Location runtime](40-location-runtime.ko.md)
+[스펙 목차](README.ko.md) · [이전: Actor 모델](14-actor-model.ko.md) · [다음: Spot 주소 메시징](16-spot-address-messaging.ko.md)
+
 
 이 문서는 ZLink Framework 11.0.0에서 Actor 생성, Spot membership, relocation,
 여러 object를 함께 이동하는 aggregate relocation과 recovery를 정의한다.
@@ -166,7 +163,7 @@ initial Entry Spot membership과 Ready barrier를 같은 lifecycle에서 완료�
 ## 3. Entry Spot과 User Spot의 Actor membership
 
 세 Spot 종류의 생성 방식과 기능 차이, Entry Spot의 전체 역할은
-[19 Spot 모델](19-spot-model.ko.md)이 정의한다. 이 절은 Entry·User Spot이 Actor
+[19 Spot 모델](11-spot-model.ko.md)이 정의한다. 이 절은 Entry·User Spot이 Actor
 membership을 처리하는 순서만 정의한다.
 
 Entry Spot의 Actor는 Actor별 execution gate를 사용한다. User Spot의 기본
@@ -475,15 +472,15 @@ operation identity와 `ObjectGeneration`을 보존해 target으로 전달한다.
 
 Application이 요청한 User Spot join은 target admission callback, commit 뒤 target joined와 source leave
 notification을 사용한다. User Spot에서 Entry Spot으로 복귀하면 target admission callback 없이 commit하고
-target Entry Spot의 joined와 source User Spot의 leave notification을 호출한다. 두 일반 join 모두 물리적으로
-Actor를 복원했다는 이유로 maintenance 전용 `OnActorRelocated` callback을 추가로 호출하지 않는다.
+target Entry Spot의 joined와 source User Spot의 leave notification을 호출한다. 이 callback은 application이
+요청한 logical membership 변경에만 사용한다.
 
 Entry Spot 자체는 relocation participant가 아니다. Host `Relocate`로 source Entry Spot의 Actor가 target node의
-Entry Spot으로 이동하면 Framework는 target Actor의 `Restore`를 끝내고 owner·membership을 commit한 뒤
-target Entry Spot의 `OnActorRelocated` callback과 source Entry Spot의 `OnLeaveActor` callback을 호출한다. 두 callback이
-완료될 때까지 target Actor dispatch를 열지 않는다. 어느 callback이 실패해도 commit을 되돌리지 않고 current
-relocation fence에서 재시도한다. Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해
-target recovery가 계속된다. 정확한 callback 이름과 비동기 표현은 언어별 exact interface가 정한다.
+Entry Spot으로 이동하면 Framework는 Actor adapter로 state를 복원하고 owner·membership,
+queue, timer와 session route를 이전한다. Infrastructure relocation은 target의
+`OnJoinedActor`와 source의 `OnLeaveActor`를 호출하지 않으며 relocation 전용
+application callback도 제공하지 않는다. Target Actor dispatch는 journal·queue·timer
+복원과 이전 owner message relay가 끝난 뒤 연다.
 
 Spot의 terminal lifecycle callback은 `OnClosing(ClosingContext)`이다. Actor는 항상 Entry
 또는 User Spot에 속하므로 Actor별 closing callback을 제공하지 않는다. `ClosingContext`는 다음 닫힌 reason과
@@ -495,8 +492,9 @@ operation의 absolute deadline을 제공한다.
 | 1 | `HostShutdown` | Relocation 없이 host `Shutdown`이 local Entry·User·Instance Spot을 정리한다. |
 | 2 | `RelocationOut` | User·Instance Spot owner commit 뒤 source local instance를 정리한다. |
 
-Standalone Actor 이동은 Entry Spot 자체를 닫지 않으므로 Entry Spot의 `OnClosing`을 호출하지 않는다. 기존 target
-`OnActorRelocated`와 source `OnLeaveActor`만 사용한다. User Spot에 Actor membership이 남아 explicit close가 거부되면
+Standalone Actor 이동은 Entry Spot 자체를 닫지 않으므로 Entry Spot의 `OnClosing`을
+호출하지 않는다. Infrastructure relocation에서는 Actor membership callback도
+호출하지 않는다. User Spot에 Actor membership이 남아 explicit close가 거부되면
 `OnClosing`을 호출하지 않는다. Host `Shutdown`에서는 accepted handler와 timer turn을 terminal 상태로 만든 뒤,
 Actor membership과 local instance가 아직 유효한 상태에서 Spot `OnClosing`을 호출한다. Callback 완료 뒤 Actor·Spot
 scope를 dispose하고 Location authority와 resource를 정리한다.
@@ -519,10 +517,14 @@ Actor·User Spot·Instance Spot의 [Object Server](01-glossary.ko.md#object-clie
 | `Recreate` | Target factory를 실행하고 Framework queue·timer 정보는 유지하지만 application state payload는 전달하지 않는다. 새 application 객체를 만들더라도 같은 logical incarnation이므로 `ObjectGeneration`을 유지한다. |
 | `Snapshot` | Handler가 정상적으로 끝난 경계의 application state를 object 종류에 맞는 relocation adapter로 opaque byte sequence에 capture하고 target에 복원한다. Framework queue·timer 정보도 함께 유지한다. |
 
-Actor는 `ActorRelocationAdapter`, User·Instance Spot은 `SpotRelocationAdapter`를 사용한다. 두 adapter의
-operation 이름은 `Capture`와 `Restore`다. `Capture`는 source instance를 받아 byte sequence를 반환하고,
-`Restore`는 target factory가 만든 instance와 byte sequence를 받아 상태를 적용한다. Instance를
-반환하지 않는다.
+Actor는 `ActorRelocationAdapter`를 사용한다. `SpotWide` User Spot과 Instance Spot은
+`SpotRelocationAdapter`를 사용한다. `PerActor` User Spot의 Spot shell은 application
+state를 이전하지 않으므로 `Recreate` policy만 허용하며 Spot adapter를 등록하면
+startup configuration error다.
+
+두 adapter의 operation 이름은 `Capture`와 `Restore`다. `Capture`는 source
+instance를 받아 byte sequence를 반환하고, `Restore`는 target factory가 만든
+instance와 byte sequence를 받아 상태를 적용한다. Instance를 반환하지 않는다.
 
 Application은 byte format, version, compatibility와 migration을 관리한다. Framework는 state contract ID,
 generic state type, serialization profile과 message codec을 relocation adapter 계약에 추가하지 않는다. Relocation
@@ -581,9 +583,9 @@ flowchart LR
     CAS --> Visible["Spot과 모든 Actor가<br/>새 owner를 사용한다"]
 ```
 
-User Spot에 속한 Actor의 현재 owner는 User Spot aggregate authority를 따른다. Actor별
-membership record는 해당 aggregate를 가리키며 relocation 때 owner를 하나씩 공개하지
-않는다.
+`SpotWide` User Spot에 속한 Actor의 current owner는 User Spot aggregate authority를
+따른다. Actor별 membership record는 해당 aggregate를 가리키며 relocation 때 owner를
+하나씩 공개하지 않는다.
 
 1. Spot queue turn 경계에서 aggregate의 active unit, callback과 예상 payload byte permit을 모두 얻은 뒤 source
    User Spot의 join·leave와 모든 participant admission을 reversible하게 seal한다.
@@ -599,14 +601,41 @@ membership record는 해당 aggregate를 가리키며 relocation 때 owner를 �
    route와 physical STREAM connection은 유지한다. 모든 routed ACK와 steady normalization 뒤 전체
    packet·push admission을 연다.
 
-4번의 restore는 5번 aggregate commit 전에 끝나야 한다. User Spot aggregate는 logical membership을 그대로
-이동하므로 target에서 `OnJoinedActor`·`OnActorRelocated`를 호출하거나 source에서 `OnLeaveActor`를 호출하지
-않는다. Spot·Actor adapter의 restore와 Spot lifecycle callback만 target admission 전에 끝낸다.
+4번의 restore는 5번 aggregate commit 전에 끝나야 한다. `SpotWide` User Spot
+aggregate는 logical membership을 그대로 이동하므로 member Actor에 대한 application
+membership callback을 호출하지 않는다. Spot·Actor adapter의 restore와 Spot
+lifecycle callback만 target admission 전에 끝낸다.
 
 Commit 전 새 inventory tree와 target staging은 resolver에 보이지 않는다. Participant
 하나라도 commit 전에 실패하면 target staging을 폐기하고 aggregate 전체 source 상태를
 유지한다. Commit 뒤에는 일부 participant만 source로 되돌리지 않고 같은 aggregate
 identity, inventory root와 relocation root로 전체 target recovery를 계속한다.
+
+`PerActor` User Spot은 aggregate owner 변경을 사용하지 않는다. Framework는 target에
+runtime-private Spot shell을 준비하고 Spot queue의 현재 turn과 진행 중인
+Create·Join을 끝낸 뒤 Location Store의 Spot authority를 target으로 CAS한다. Public
+SpotId와 ObjectGeneration은 바꾸지 않으며 임시 public SpotId를 만들거나 target
+activation 뒤 SpotId를 다시 지정하지 않는다.
+
+Spot authority commit 뒤 새 `ToSpot`, Actor Create와 Join은 target으로 보낸다.
+Source shell은 이미 source에 남은 Actor의 handler와 relocation control만 실행한다.
+각 Actor는 독립된 relocation unit이며 Actor queue를 seal한 뒤 state, 실행하지 않은
+queue, accepted journal, timer와 session binding route를 target으로 옮긴다. Actor별
+owner CAS가 성공하면 이전 owner로 도착한 message를 같은 operation identity,
+ObjectGeneration, deadline, request correlation과 reply route로 target에 relay한다.
+
+마지막 Actor가 target owner가 되고 source가 이미 수락한 Spot 작업과 relay를 모두
+끝내면 source shell을 `RelocationOut`으로 닫는다. Relocation 중에는 일부 Actor가
+source에 있고 일부가 target에 있을 수 있다. 이 분산 상태는 같은 relocation
+operation에서만 허용하며 steady 상태에서는 Spot authority와 모든 member Actor
+owner가 같아야 한다.
+
+`SpotWide` User Spot이 application-signaled relocation 경계를 사용하면
+`RelocationReady().Defer()`가 현재 turn 뒤에 Framework-owned barrier를 등록한다.
+Framework는 이동 여부를 확정한 current owner에서 Spot의 기본 no-op
+`OnRelocationReadyCompleted` callback을 호출한다. 이 callback은 Actor membership
+변경 callback이 아니며 member Actor에 전달하지 않는다. Callback을 override한
+application은 다음 round나 match를 여기서 시작할 수 있다.
 
 ## 7. 실패와 recovery
 

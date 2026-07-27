@@ -1,7 +1,7 @@
 # ZLink Framework 개요
 
-[스펙 목차](README.ko.md) · [이전: 공개 계약 관리](00-public-contract-governance.ko.md) ·
-[다음: 상호작용 모델](02-interaction-model.ko.md)
+[스펙 목차](README.ko.md) · [이전: Framework 메시징 용어집](01-glossary.ko.md) · [다음: ZLink Framework 상호작용 모델](03-interaction-model.ko.md)
+
 
 ## 1. 한 줄 정의
 
@@ -94,7 +94,7 @@ manual이라는 이유로 message path나 handler 의미가 달라지지 않는�
 [ClientServer Channel](01-glossary.ko.md#clientserver-channel)은 client가 업무 호출을 시작하고 server가 handler와 request reply를 제공하는 별도
 service 연결이다. Node direct, Spot, Actor와 Logical Multicast가 필요하지 않은 단방향 service 경계에
 사용한다. 자세한 역할과 발견 계약은
-[12 ClientServer Channel](12-client-server-channel.ko.md)이 소유한다.
+[12 ClientServer Channel](09-client-server-channel.ko.md)이 소유한다.
 
 ## 7. Framework가 숨기는 것
 

@@ -129,8 +129,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
                 _stopSource.Token,
                 _runtime.ExecutionOwner),
             errorSink,
-            _stopSource.Token,
-            spotMetricKind: "entry");
+            _stopSource.Token);
     }
 
     public ValueTask DisposeAsync()

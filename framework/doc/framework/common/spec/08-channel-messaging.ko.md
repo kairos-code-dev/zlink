@@ -1,10 +1,7 @@
 # Channel 메시징
 
-[스펙 목차](README.ko.md) ·
-[Channel topology](10-channel-topology.ko.md) ·
-[ClientServer Channel](12-client-server-channel.ko.md) ·
-[MeshNode](21-mesh-node.ko.md) ·
-[용어집](01-glossary.ko.md)
+[스펙 목차](README.ko.md) · [이전: RouteMesh topology](07-channel-topology.ko.md) · [다음: ClientServer Channel](09-client-server-channel.ko.md)
+
 
 ## 1. 범위
 
@@ -21,9 +18,9 @@ ChannelName으로 Server 하나를 선택하는 Channel 메시징의 공통 계�
 ChannelName은 socket이나 endpoint 이름이 아니다. 현재 process에 등록된 RouteMesh
 또는 ClientServer 송신 경로 하나를 찾기 위한 논리 주소다.
 
-물리 연결과 [membership](01-glossary.ko.md#membership)은 [Channel topology](10-channel-topology.ko.md), payload와
-metadata는 [메시지 모델](03-message-model.ko.md), 완료와 실행 순서는
-[비동기 실행 정책](04-async-execution-policy.ko.md)이 정의한다.
+물리 연결과 [membership](01-glossary.ko.md#membership)은 [Channel topology](07-channel-topology.ko.md), payload와
+metadata는 [메시지 모델](04-message-model.ko.md), 완료와 실행 순서는
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 
 ## 2. 공통 동작을 .NET API로 표현한 예시
 
@@ -127,7 +124,7 @@ timeout, correlation과 reply 처리를 생략하는 local transport 우회 경�
 
 이 local 후보 규칙은 ClientServer 경로에만 적용한다. RouteMesh 경로에서는 보내는
 MeshNode 자신이 같은 ChannelName의 Server role을 등록했더라도 후보에 들어가지
-않는다. RouteMesh 후보는 [10 Channel topology](10-channel-topology.ko.md) §4.2가
+않는다. RouteMesh 후보는 [10 Channel topology](07-channel-topology.ko.md) §4.2가
 descriptor에 게시하는 Server membership이고, 그 set은 remote target이 될 수 있는
 membership만 나타내기 때문이다. 선택된 target에는 같은 문서 §4.2.1의 기존 RouteMesh
 peer 연결로 보내며 Channel 등록은 새 socket을 만들지 않는데, MeshNode는 자기 자신과
@@ -202,7 +199,7 @@ request는 이전 request의 자동 재전송이 아니라 별도 operation이�
 이전 target이 이미 업무를 실행했을 가능성을 고려하여 중복 실행을 처리해야 한다.
 
 One-way send의 수락 시점과 request의 최종 완료 조건은
-[비동기 실행 정책](04-async-execution-policy.ko.md)이 정의한다.
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 
 ## 5. Handler를 찾고 실행하는 방법
 
@@ -339,10 +336,10 @@ Subscriber는 이 topic의 신호를 application event로 처리하지 않는다
 application message의 전달 흐름을 기록하는 message-flow 관측에도 게시하지 않는다.
 이 [liveness beacon](01-glossary.ko.md#liveness와-liveness-beacon)의 byte 형식과 연결이
 끊어졌다고 판단하는 시간 기준은
-[Transport liveness](55-transport-liveness.ko.md)가 정의한다.
+[Transport liveness](29-transport-liveness.ko.md)가 정의한다.
 
 Spot의 Channel 범위 [Logical Multicast](01-glossary.ko.md#logical-multicast)는
-[20 Spot 메시징](20-spot-messaging.ko.md)이 정의한다.
+[20 Spot 메시징](12-spot-messaging.ko.md)이 정의한다.
 
 ### 6.2 Classic fanout의 interface와 사용 예
 
@@ -437,7 +434,7 @@ ClientServer client가 제출한 request와 일치하지 않는 server message�
 Transport library의 내부 result를 public call에 직접 노출하지 않는다.
 
 전체 종료 순서는
-[Graceful drain](54-graceful-drain-handoff.ko.md)이 정의한다.
+[Graceful drain](28-graceful-drain-handoff.ko.md)이 정의한다.
 
 ## 8. Metadata와 관측
 
@@ -516,7 +513,7 @@ metadata와 별도인 Framework field다.
 Metadata는 message와 논리적으로 함께 전달되지만, packet 내부의 frame 배치와
 encoding 방식은 공개 계약이 아니다. Application은 metadata frame을 직접 만들거나
 해석하지 않는다. 세부 ownership과 전달 규칙은
-[메시지 모델](03-message-model.ko.md)이 정의한다.
+[메시지 모델](04-message-model.ko.md)이 정의한다.
 
 정확한 .NET signature는
 [.NET common runtime interface](server/languages/dotnet/interfaces/01-common-runtime.ko.md)와

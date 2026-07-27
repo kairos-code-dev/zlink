@@ -10,19 +10,15 @@ internal sealed class ZLinkSerialWorkItem
 
     public ZLinkSerialWorkItem(
         Func<CancellationToken, ValueTask> callback,
-        long metricEnqueuedTimestamp = 0,
         ZLinkAcceptedWorkRecord? acceptedRecord = null,
         Action? relocationRelease = null)
     {
         _callback = callback;
-        MetricEnqueuedTimestamp = metricEnqueuedTimestamp;
         AcceptedRecord = acceptedRecord;
         _relocationRelease = relocationRelease;
     }
 
     public Task Completion => _completion.Task;
-
-    public long MetricEnqueuedTimestamp { get; }
 
     public ZLinkAcceptedWorkRecord? AcceptedRecord { get; }
 

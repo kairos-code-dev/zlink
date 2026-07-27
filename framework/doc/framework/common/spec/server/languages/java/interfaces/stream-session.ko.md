@@ -1,6 +1,6 @@
 # Java STREAM session 공개 인터페이스
 
-[인터페이스 목차](README.ko.md) · [STREAM session](../../../../30-stream-session.ko.md)
+[인터페이스 목차](README.ko.md) · [STREAM session](../../../../19-stream-session.ko.md)
 
 STREAM session, Actor binding과 relay는 JVM Framework runtime이 소유한다. Application에는 session lifecycle,
 typed packet·push와 Actor binding 결과만 공개하며 transport frame과 binding 구현은 노출하지 않는다.

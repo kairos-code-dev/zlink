@@ -1,7 +1,7 @@
 # Location Store provider SPI와 공식 Redis 구현
 
-[공통 스펙 목차](README.ko.md) · [Location runtime](40-location-runtime.ko.md) ·
-[Relocation Store provider SPI](42-relocation-store-redis.ko.md)
+[스펙 목차](README.ko.md) · [이전: Location runtime](21-location-runtime.ko.md) · [다음: Relocation Store provider SPI와 공식 Redis 구현](23-relocation-store-redis.ko.md)
+
 
 ## 1. 범위와 독자
 
@@ -11,7 +11,7 @@ Framework가 만든 opaque key와 bytes를 저장한다. 여러 key의 조건 �
 
 Provider가 Actor·Spot authority, owner lease, placement reservation, aggregate commit과 relocation phase의
 의미를 알아야 하는 것은 아니다. Framework가 이 SPI를 사용해 해당 상태를 구성하는 방법과 Store 등록 조건은
-[Location runtime](40-location-runtime.ko.md)이 소유한다. 이 문서는 그 동작을 반복하지 않는다.
+[Location runtime](21-location-runtime.ko.md)이 소유한다. 이 문서는 그 동작을 반복하지 않는다.
 
 Application은 이 SPI의 operation을 직접 호출하지 않는다. Provider package만 SPI를 구현하며 Framework가
 등록된 instance를 사용한다.
@@ -58,7 +58,7 @@ public interface IZLinkLocationStore
 [Kotlin](server/languages/kotlin/interfaces/location-maintenance.ko.md),
 [Node.js](server/languages/node/interfaces/08-location-maintenance.ko.md)와
 [C++](server/languages/cpp/interfaces/07-location-store.ko.md) exact interface를 따른다.
-두 Store의 등록 예제는 [Location runtime](40-location-runtime.ko.md#13-등록-조건과-수명)에만 둔다.
+두 Store의 등록 예제는 [Location runtime](21-location-runtime.ko.md#13-등록-조건과-수명)에만 둔다.
 
 ## 3. Key, value, version과 clock
 
@@ -138,7 +138,7 @@ Input bytes는 asynchronous operation이 끝날 때까지 변경되지 않아야
 ## 7. 등록, 수명과 공식 Redis provider
 
 Provider instance의 등록 조건과 Framework root의 소유권은
-[Location runtime의 Store 등록](40-location-runtime.ko.md#1-범위와-책임)을 따른다. Framework가 instance
+[Location runtime의 Store 등록](21-location-runtime.ko.md#1-범위와-책임)을 따른다. Framework가 instance
 수명을 소유하는 구성에서는 Store를 사용하는 runtime과 background operation이 모두 끝난 뒤 정확히 한 번
 dispose한다. 여러 Store가 물리 connection을 공유할 때 중복 dispose를 막는 책임은 provider 구현에 있다.
 

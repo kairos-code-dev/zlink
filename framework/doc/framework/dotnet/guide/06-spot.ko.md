@@ -805,7 +805,7 @@ spot **안**(spot↔spot)에서는 `RequestToSpot(spotHandle, …)`. 같은 mesh
 대상 spot의 **`SpotHandle`은 한 번 조회해서 보관한다.** `IZLinkSpotManager.ResolveAsync(...)`로
 spot RID를 논리적 handle로 바꾸면 framework가 내부 주소를 갱신한다. request 중 주소가
 무효화되면 안전한 경우에 한해 한 번 갱신하고 재전송하며, send는 중복 전달을 피하려고 재전송하지 않는다
-([공통 스펙: spot 주소 메시징](../../common/spec/24-spot-address-messaging.ko.md)).
+([공통 스펙: spot 주소 메시징](../../common/spec/16-spot-address-messaging.ko.md)).
 
 ```csharp
 // ① 상호작용을 시작할 때 한 번 — MeshName과 spot RID로 SpotHandle 조회
@@ -961,7 +961,7 @@ membership 정책, broadcast 정책, 입장/권한, `stageId -> 주소` 조회�
   mesh가 모르는 node면 `RequestTargetNotFound`, node는 알지만 연결 수렴이 한계를
   넘으면 `RouteNotConnected`, node에 닿았는데 spot이 없으면 `SpotRouteNotFound`.
   **timeout은 재전송하지 않는다.** send는 best-effort라 재전송 없이 다음 전송부터 새
-  주소를 쓴다. 전체 계약은 [공통 스펙 spot 주소 메시징 §4](../../common/spec/24-spot-address-messaging.ko.md).
+  주소를 쓴다. 전체 계약은 [공통 스펙 spot 주소 메시징 §4](../../common/spec/16-spot-address-messaging.ko.md).
 
 ## 8. 더 보기
 

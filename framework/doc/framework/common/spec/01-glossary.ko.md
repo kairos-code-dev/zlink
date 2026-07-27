@@ -1,10 +1,13 @@
 # Framework 메시징 용어집
 
+[스펙 목차](README.ko.md) · [이전: Framework 공개 계약 관리](00-public-contract-governance.ko.md) · [다음: ZLink Framework 개요](02-overview.ko.md)
+
+
 > 이 문서는 `framework/doc/framework/common/spec/`의 공개 계약을 이해하는 데 필요한
 > 공통 domain term, 상태와 결과 이름을 설명한다.
 
-[스펙 작성 가이드](00-spec-writing-guide.ko.md) ·
-[Spot 메시징](20-spot-messaging.ko.md)
+[스펙 작성 가이드](../../../../../doc/principal/documentation/00-spec-writing-guide.ko.md) ·
+[Spot 메시징](12-spot-messaging.ko.md)
 
 ## 표와 .NET 코드 예제를 읽는 방법
 
@@ -99,7 +102,7 @@ Descriptor가 MeshNode와 exact Entry Spot ID의 관계를 기록하며 applicat
 User·Instance Spot ID를 지정하면 Store와 factory를 실행하기 전에 `InvalidConfiguration`으로 거부한다.
 
 세 종류의 기능, Actor membership, close와 relocation 차이는
-[Spot 모델](19-spot-model.ko.md)이 정의한다.
+[Spot 모델](11-spot-model.ko.md)이 정의한다.
 
 <a id="actor-membership"></a>
 ### Actor membership
@@ -120,11 +123,38 @@ User Spot 안에서 Spot handler, member Actor handler와 timer callback이 어�
 
 | Mode | 실행 단위 | 동시에 실행할 수 있는 범위 | `Yield` |
 |---|---|---|---|
-| `SpotWide` | User Spot 전체가 shared execution gate 하나를 사용한다. | 같은 User Spot의 Spot handler, member Actor handler, timer와 lifecycle callback을 한 번에 하나만 실행한다. | Shared turn을 반환할 수 있다. |
-| `PerActor` | Spot lane, Actor별 lane과 timer별 lane을 분리한다. | 서로 다른 lane은 동시에 실행할 수 있다. 같은 Actor와 같은 timer 안에서는 순서를 유지한다. | Shared Spot turn이 없으므로 사용할 수 없다. |
+| `SpotWide` | User Spot 전체가 shared execution gate 하나를 사용한다. | 같은 User Spot의 Spot handler, member Actor handler, timer와 lifecycle callback을 한 번에 하나만 실행한다. Relocation은 Spot과 member Actor 전체를 하나의 aggregate로 옮긴다. | Shared turn을 반환할 수 있다. |
+| `PerActor` | Spot lane, Actor별 lane과 timer별 lane을 분리한다. | 서로 다른 lane은 동시에 실행할 수 있다. 같은 Actor와 같은 timer 안에서는 순서를 유지한다. Relocation은 Spot state를 옮기지 않고 Actor를 독립적으로 옮긴다. | Shared Spot turn이 없으므로 사용할 수 없다. |
 
 `SpotWide`가 기본값이다. Mode는 User Spot stable type을 등록할 때 고정하며 같은 MeshNode lifecycle 도중
 변경하지 않는다. Entry Spot과 Instance Spot에는 이 옵션을 적용하지 않는다.
+
+`PerActor` User Spot의 Spot instance는 handler와 dependency를 제공하지만 relocation
+후 유지할 application state를 소유하지 않는다. 유지해야 하는 shared state와
+Spot-level schedule은 application이 node 밖의 저장소에서 관리한다. Target에서는
+같은 SpotId와 ObjectGeneration으로 Spot instance를 다시 만들고 Actor state,
+Actor queue와 Actor timer만 Actor별로 이전한다.
+
+<a id="spot-relocation-readiness-mode"></a>
+### Spot relocation readiness mode
+
+`SpotWide` User Spot이 어느 turn 경계에서 relocation을 시작할 수 있는지 정하는
+startup 등록 옵션이다.
+
+| Mode | 의미 |
+|---|---|
+| `AnyTurnBoundary` | Framework가 일반적인 안전한 turn 경계를 선택한다. 기본값이다. |
+| `ApplicationSignaled` | Application이 현재 turn 뒤가 안전하다고 `RelocationReady().Defer()`로 알린 경계만 사용한다. |
+
+`ApplicationSignaled`에서 `Defer()`는 relocation을 요청하지 않는다. 현재 host에
+준비된 relocation이 있으면 그 경계를 사용하고, 없으면 같은 owner에서 계속한다.
+두 경우 모두 Framework는 다음 application job보다 먼저
+`OnRelocationReadyCompleted` callback을 호출한다.
+
+Callback은 언어별 Spot interface에 기본 no-op 구현으로 제공한다. Application은
+round나 match의 다음 단계를 callback에서 시작해야 할 때만 구현한다.
+`AnyTurnBoundary`, `PerActor`, Entry Spot과 Instance Spot에서 `Defer()`를 호출하면
+queue를 바꾸기 전에 `InvalidConfiguration`으로 실패한다.
 
 <a id="meshnode"></a>
 ### MeshNode
@@ -324,6 +354,17 @@ Spot 생성과 초기화, Location Store 기록이 끝나 application message를
 | .NET 표기 | 기능별 state enum·snapshot의 `Ready` 값으로 표현하며 공통 단일 `Ready` type은 없다. |
 | 공개 구성 | Listener·transport admission 또는 object 생성·초기화처럼 기능별 serving 조건이 모두 끝난 상태다. |
 | 수명 | Drain, disconnect, relocation, close나 fencing이 시작되면 새 admission의 Ready 상태에서 제외된다. |
+
+<a id="admission-seal"></a>
+### Admission seal
+
+Framework가 정한 범위에서 새 application 작업을 더 이상 받지 않도록 전환하는
+동작이다. 이미 수락한 handler, reply와 복구 작업은 해당 operation의 deadline까지
+계속 처리할 수 있다.
+
+Host shutdown에서는 host 전체에 적용한다. Actor·Spot relocation에서는 이동 대상
+하나의 message, timer와 아직 시작하지 않은 continuation에 적용한다. Admission
+seal은 이미 실행 중인 callback을 강제로 취소한다는 뜻이 아니다.
 
 <a id="owner-route"></a>
 ### Owner route
@@ -633,7 +674,7 @@ Target이 Spot을 새로 준비하거나 current owner로 request를 전달해�
 유지한다. Handler가 별도로 시작한 downstream request에는 원래 request와 다른 값을
 사용한다.
 
-전체 생성·전파 계약은 [Flow correlation](53-flow-correlation.ko.md)을 따른다.
+전체 생성·전파 계약은 [Flow correlation](27-flow-correlation.ko.md)을 따른다.
 
 <a id="deadline"></a>
 ### Deadline
@@ -1040,13 +1081,23 @@ Mode가 정한 exact version을 먼저 적용하고 그 뒤 capability, policy, 
 placement weight를 평가한다. 요청한 version과 다른 node는 더 높은 version이어도 target이
 아니다.
 
+<a id="maintenance-wave"></a>
+### Maintenance wave
+
+같은 점검 작업에서 함께 종료하지 않아야 하는 host 묶음을 구분하는 application
+설정값이다. Source와 target의 maintenance wave가 같으면 해당 target을 relocation
+후보에서 제외한다.
+
+값을 설정하지 않으면 이 제외 규칙을 사용하지 않는다. Framework는 설정된 문자열
+전체를 대소문자를 구분하여 비교한다.
+
 <a id="drain"></a>
 ### Drain과 draining
 
 Drain은 host를 종료하기 위해 새로운 application 작업의 수락을 닫고, 이미 수락한
 작업과 infrastructure resource를 정해진 시간 안에 정리하는 과정이다. 이 과정이
 진행 중인 상태를 `draining` 또는 `drain 중`이라고 한다. Stateful object를 다른
-host로 이전하는 relocation은 별도 operation이며 성공하면 host가 `Drained`가 된다.
+host로 이전하는 relocation은 별도 operation이며 성공하면 host가 `Relocated`가 된다.
 
 Drain을 시작했다고 해서 기존 connection을 즉시 끊거나 이미 수락한 작업을 바로
 취소하지 않는다. 어떤 신규 작업을 차단하고 기존 작업을 언제까지 처리하는지는
@@ -1746,7 +1797,7 @@ Framework가 lifecycle마다 새 값을 만들고 manual topology에서는 명�
 | 수명 | MeshNode lifecycle 동안 바뀌지 않는다. Replacement lifecycle은 endpoint가 같아도 새 Automatic RID를 사용한다. |
 
 Transport RID와 Spot ID의 발급 형식과 namespace 경계는
-[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)을 따른다.
+[시스템 전체 Routing ID 정책](10-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)을 따른다.
 
 <a id="routing-id-prefix"></a>
 ### Routing ID prefix

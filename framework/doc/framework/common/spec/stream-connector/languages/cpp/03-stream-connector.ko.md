@@ -212,7 +212,7 @@ Connector가 시작한 outbound operation은 별도 public option 없이 UUIDv7 
 Inbound callback에서 시작한 후속 operation은 현재 inbound flow를 재사용하고, callback이 끝나면
 connector runtime이 current flow context를 정리한다. wire 형식과 비동기 context 경계는
 [공통 Stream Connector §4.2](../../32-stream-connector.ko.md)와
-[Flow Correlation §6](../../../53-flow-correlation.ko.md#6-async-작업과-execution-context)이 소유한다.
+[Flow Correlation §6](../../../27-flow-correlation.ko.md#6-async-작업과-execution-context)이 소유한다.
 
 ## 6. options
 

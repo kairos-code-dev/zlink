@@ -157,7 +157,7 @@ connector의 JSON codec은 기본값이다. MessagePack이나 Protobuf가 필요
 extension을 등록하고, 같은 extension 인스턴스를 connector typed payload codec으로도 사용한다.
 custom codec도 같은 방식으로 `IZLinkCodecExtension`과 stream payload codec 구현을 함께 제공한다.
 server framework 쪽 등록(`Codecs.Use(...)`)과 대칭이며, 두 표면의 전체 목록은
-[framework-api §9](../../common/spec/05-framework-api.ko.md#9-codec) 표를 본다.
+[framework-api §9](../../common/spec/06-framework-api.ko.md#9-codec) 표를 본다.
 
 ### 연결과 dispatch
 
@@ -325,7 +325,7 @@ Endpoint = new Uri("wss://game.example.com:443"),
 수신 handler와 lifecycle 이벤트가 Unity 메인 스레드에서 실행된다.
 
 비동기 실행과 coroutine adapter의 의미는
-[framework 공통 정책](../../common/spec/04-async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../common/spec/05-async-execution-policy.ko.md)을 따른다.
 Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 기반 비동기 API다.
 코루틴 중심 프로젝트는 application helper에서 awaitable 호출을 감싼다. 자세한 예제는
 [Unity Stream Connector 가이드](../stream-connector/02-unity.ko.md).

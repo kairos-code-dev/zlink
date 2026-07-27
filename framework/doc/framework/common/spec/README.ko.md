@@ -6,61 +6,61 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 
 ## 작성 기준과 공통 용어
 
-- [스펙 작성 가이드](00-spec-writing-guide.ko.md)
-- [Framework 메시징 용어집](01-glossary.ko.md)
+- [스펙 작성 가이드](../../../../../doc/principal/documentation/00-spec-writing-guide.ko.md)
+- [00 공개 계약 관리](00-public-contract-governance.ko.md)
+- [01 Framework 메시징 용어집](01-glossary.ko.md)
 
 ## 기반 계약
 
-- [00 공개 계약 관리](00-public-contract-governance.ko.md)
-- [01 Framework 개요](01-overview.ko.md)
-- [02 상호작용 모델](02-interaction-model.ko.md)
-- [03 메시지 모델](03-message-model.ko.md)
-- [04 비동기 실행 정책](04-async-execution-policy.ko.md)
-- [05 Framework API](05-framework-api.ko.md)
+- [02 Framework 개요](02-overview.ko.md)
+- [03 상호작용 모델](03-interaction-model.ko.md)
+- [04 메시지 모델](04-message-model.ko.md)
+- [05 비동기 실행 정책](05-async-execution-policy.ko.md)
+- [06 Framework API](06-framework-api.ko.md)
 
-`90-implementation-gap.ko.md`는 공개 계약이 아니다. 언어별 구현과 목표 계약의
+`30-implementation-gap.ko.md`는 공개 계약이 아니다. 언어별 구현과 목표 계약의
 차이를 기록하는 진행 문서이며, 현재 구현을 공통 계약으로 바꾸는 근거로 사용하지
 않는다.
 
-- [90 언어별 구현 차이](90-implementation-gap.ko.md)
+- [30 언어별 구현 차이](30-implementation-gap.ko.md)
 
 ## Channel과 network
 
-- [10 RouteMesh topology](10-channel-topology.ko.md)
-- [11 Channel 메시징](11-channel-messaging.ko.md)
-- [12 ClientServer Channel](12-client-server-channel.ko.md)
-- [13 Network listener identity](13-network-listener-identity.ko.md)
+- [07 RouteMesh topology](07-channel-topology.ko.md)
+- [08 Channel 메시징](08-channel-messaging.ko.md)
+- [09 ClientServer Channel](09-client-server-channel.ko.md)
+- [10 Network listener identity](10-network-listener-identity.ko.md)
 
 ## Object 메시징
 
-- [19 Spot 모델](19-spot-model.ko.md)
-- [20 Spot 메시징](20-spot-messaging.ko.md)
-- [21 MeshNode](21-mesh-node.ko.md)
-- [22 Actor 모델](22-actor-model.ko.md)
-- [23 Spot과 Actor membership](23-spot-actor.ko.md)
-- [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)
-- [25 Stage wrapper on Spot](25-stage-wrapper-on-spot.ko.md)
-- [26 Spot·Actor routing](26-object-routing.ko.md)
+- [11 Spot 모델](11-spot-model.ko.md)
+- [12 Spot 메시징](12-spot-messaging.ko.md)
+- [13 MeshNode](13-mesh-node.ko.md)
+- [14 Actor 모델](14-actor-model.ko.md)
+- [15 Spot과 Actor membership](15-spot-actor.ko.md)
+- [16 Spot 주소 메시징](16-spot-address-messaging.ko.md)
+- [17 Stage wrapper on Spot](17-stage-wrapper-on-spot.ko.md)
+- [18 Spot·Actor routing](18-object-routing.ko.md)
 
 ## STREAM과 session
 
-- [30 STREAM 서버 session](30-stream-session.ko.md)
-- [31 Session Actor dispatch](31-session-actor-dispatch.ko.md)
+- [19 STREAM 서버 session](19-stream-session.ko.md)
+- [20 Session Actor dispatch](20-session-actor-dispatch.ko.md)
 
 ## Location Store와 relocation
 
-- [40 Location runtime](40-location-runtime.ko.md) — Framework가 object 위치, authority와 두 Store를 사용하는 순서를 정의한다.
-- [41 Location Store provider SPI와 공식 Redis 구현](41-location-store-redis.ko.md) — Provider가 구현할 atomic key/value와 scan 계약을 정의한다.
-- [42 Relocation Store provider SPI와 공식 Redis 구현](42-relocation-store-redis.ko.md) — Provider가 구현할 immutable payload 저장 계약을 정의한다.
+- [21 Location runtime](21-location-runtime.ko.md) — Framework가 object 위치, authority와 두 Store를 사용하는 순서를 정의한다.
+- [22 Location Store provider SPI와 공식 Redis 구현](22-location-store-redis.ko.md) — Provider가 구현할 atomic key/value와 scan 계약을 정의한다.
+- [23 Relocation Store provider SPI와 공식 Redis 구현](23-relocation-store-redis.ko.md) — Provider가 구현할 immutable payload 저장 계약을 정의한다.
 
 ## 관측과 종료
 
-- [50 Runtime 상태와 운영 진단](50-runtime-monitoring.ko.md) — Application이 읽는 health, topology status와 structured log를 정의한다.
-- [51 Runtime metric 이름과 label](51-runtime-metrics.ko.md) — Metric 이름, 단위와 bounded label만 정의한다.
-- [52 Message flow tracing](52-message-flow-tracing.ko.md) — Message 한 건의 phase, outcome과 trace attribute를 정의한다.
-- [53 Request correlation과 causal flow](53-flow-correlation.ko.md) — Correlation ID와 flow ID의 생성·전파를 정의한다.
-- [54 Host Relocate와 Shutdown](54-graceful-drain-handoff.ko.md) — 두 relocation mode와 종료 lifecycle을 정의한다.
-- [55 Transport liveness](55-transport-liveness.ko.md)
+- [24 Runtime 상태와 운영 진단](24-runtime-monitoring.ko.md) — Application이 읽는 health, topology status와 structured log를 정의한다.
+- [25 Runtime metric 이름과 label](25-runtime-metrics.ko.md) — Metric 이름, 단위와 bounded label만 정의한다.
+- [26 Message flow tracing](26-message-flow-tracing.ko.md) — Message 한 건의 phase, outcome과 trace attribute를 정의한다.
+- [27 Request correlation과 causal flow](27-flow-correlation.ko.md) — Correlation ID와 flow ID의 생성·전파를 정의한다.
+- [28 Host Relocate와 Shutdown](28-graceful-drain-handoff.ko.md) — 두 relocation mode와 종료 lifecycle을 정의한다.
+- [29 Transport liveness](29-transport-liveness.ko.md)
 
 ## Server 언어별 exact interface
 

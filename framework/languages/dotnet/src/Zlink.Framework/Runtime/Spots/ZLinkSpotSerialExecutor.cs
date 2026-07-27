@@ -42,16 +42,15 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             _errorSink,
             _stopToken,
             _executionOwner);
-        _queue = CreateQueue(countMetrics: true);
+        _queue = CreateQueue();
     }
 
-    private ZLinkSerialExecutionQueue CreateQueue(bool countMetrics)
+    private ZLinkSerialExecutionQueue CreateQueue()
     {
         return new ZLinkSerialExecutionQueue(
             _taskRunner,
             _errorSink,
-            _stopToken,
-            spotMetricKind: countMetrics ? "user" : null);
+            _stopToken);
     }
 
     private static bool AlwaysDisabled() => false;
@@ -598,7 +597,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         lock (_laneGate)
         {
             if (lanes.TryGetValue(key, out var lane)) return lane;
-            lane = CreateQueue(countMetrics: false);
+            lane = CreateQueue();
             lanes.Add(key, lane);
             return lane;
         }

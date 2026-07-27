@@ -41,7 +41,7 @@ function activation(
 
 test('lifecycle seal waits for a yielded Promise continuation and holds later Spot turns', async () => {
   const barrier = new ZLinkExecutionBarrier();
-  const serial = new ZLinkSpotSerialExecutor(undefined, 'user', true);
+  const serial = new ZLinkSpotSerialExecutor(true);
   serial.setExecutionBarrier(barrier);
   const response = deferred();
   const started = deferred();
@@ -83,12 +83,12 @@ test('lifecycle seal waits for a yielded Promise continuation and holds later Sp
 });
 
 test('PerActor lifecycle barrier quiesces Actor, Spot, and timer lanes together', async () => {
-  const spotSerial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+  const spotSerial = new ZLinkSpotSerialExecutor(false);
   const timerSerials = new Map<string, ZLinkSpotSerialExecutor>();
   const timers = new ZLinkSpotTimerRegistry(undefined, () => false, (name) => {
     let serial = timerSerials.get(name);
     if (serial === undefined) {
-      serial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+      serial = new ZLinkSpotSerialExecutor(false);
       timerSerials.set(name, serial);
     }
     return serial;
@@ -144,7 +144,7 @@ test('PerActor lifecycle barrier quiesces Actor, Spot, and timer lanes together'
 });
 
 test('Spot close invokes lifecycle cleanup only after its execution seal is quiescent', async () => {
-  const serial = new ZLinkSpotSerialExecutor(undefined, 'user', true);
+  const serial = new ZLinkSpotSerialExecutor(true);
   const timers = new ZLinkSpotTimerRegistry();
   const events: string[] = [];
   const activeDone = deferred();
@@ -202,7 +202,7 @@ test('Spot close invokes lifecycle cleanup only after its execution seal is quie
 });
 
 test('relocation abort restores only its exact barrier generation', async () => {
-  const serial = new ZLinkSpotSerialExecutor(undefined, 'user', false);
+  const serial = new ZLinkSpotSerialExecutor(false);
   const timers = new ZLinkSpotTimerRegistry();
   const state = activation(serial, timers, ZLinkUserSpotExecutionMode.PerActor);
 

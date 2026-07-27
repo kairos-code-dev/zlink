@@ -53,7 +53,7 @@ OS 소켓을 열 수 있는 언어가 없기 때문이다.
 | [TypeScript 공개 계약](../framework/common/spec/stream-connector/languages/typescript/03-stream-connector.ko.md) | TypeScript public 타입과 시그니처, browser package root |
 
 가이드와 계약이 어긋나면 **계약이 기준이다**. 차이는
-[구현 차이](../framework/common/spec/90-implementation-gap.ko.md)에 기록하고 구현이 계약을 따르게 한다.
+[구현 차이](../framework/common/spec/30-implementation-gap.ko.md)에 기록하고 구현이 계약을 따르게 한다.
 
 ## 구현 상태
 

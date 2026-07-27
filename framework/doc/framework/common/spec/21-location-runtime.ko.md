@@ -1,8 +1,7 @@
 # Location runtime
 
-[공통 스펙 목차](README.ko.md) · [Spot 주소 메시징](24-spot-address-messaging.ko.md) ·
-[Redis Location Store](41-location-store-redis.ko.md) · [Redis Relocation Store](42-relocation-store-redis.ko.md) ·
-[Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)
+[스펙 목차](README.ko.md) · [이전: Session Actor dispatch](20-session-actor-dispatch.ko.md) · [다음: Location Store provider SPI와 공식 Redis 구현](22-location-store-redis.ko.md)
+
 
 ## 1. 범위와 책임
 
@@ -29,8 +28,8 @@ call 없이 최초 message로 만드는 Spot은
 보관하는 저장소는 Relocation Store라고 한다.
 
 저장소 구현자가 제공해야 하는 정확한 함수는
-[Location Store provider](41-location-store-redis.ko.md)와
-[Relocation Store provider](42-relocation-store-redis.ko.md) 문서가 정의한다. 이
+[Location Store provider](22-location-store-redis.ko.md)와
+[Relocation Store provider](23-relocation-store-redis.ko.md) 문서가 정의한다. 이
 문서는 Framework가 두 Store를 사용하는 순서와 실패했을 때 유지해야 하는 상태를
 설명한다.
 
@@ -76,7 +75,7 @@ generation, membership과 relocation 때 적용할 변경 정보를 기록한다
 generation은 같은 ID로 다시 만든 object나 이전 owner의 늦은 요청을 구분하는 세대
 번호다. Actor state나 message payload는 넣지 않는다. 실제 application state·queue·
 완료되지 않은 작업 기록은
-[Relocation Store](42-relocation-store-redis.ko.md#3-reference-payload와-tree-bound)에
+[Relocation Store](23-relocation-store-redis.ko.md#3-reference와-저장-크기)에
 별도로 저장한다.
 
 예를 들어 User Spot에 Actor가 10,000개 있으면 약 10개의 목록 페이지를 만든다.
@@ -693,11 +692,12 @@ stable type별 목록도 페이지로 읽을 수 있다. 이 결과는 운영 �
 
 ## 7. Actor 또는 User Spot을 다른 node로 옮긴다
 
-이 절은 Actor 하나 또는 User Spot과 그 Actor 전체를 source node에서 멈추고 target
-node에 복원하는 순서를 정의한다. Runtime이 종료를 진행하여 새 작업을 받지 않는
+이 절은 Entry Spot Actor, `PerActor` User Spot의 Actor, `SpotWide` User Spot
+aggregate를 source node에서 target node로 옮기는 순서를 정의한다. Runtime이 종료를
+진행하여 새 작업을 받지 않는
 상태를 [`Shutdown`](01-glossary.ko.md#shutdown)이라고 한다. Host 전체의 target
 선택과 `Relocate`, `Shutdown` 완료 조건은
-[Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)이 정의한다.
+[Host relocation와 shutdown](28-graceful-drain-handoff.ko.md)이 정의한다.
 
 Framework는 이동 대상 하나마다 다음 순서를 지킨다.
 
@@ -730,7 +730,8 @@ Location Store의 object별 위치 record는 최대 1 MiB다. 큰 목록과 실�
 |---|---|
 | Object별 위치 record | Source와 target, 현재 단계, application version, 복원 데이터 위치와 확인값, 완료 수 |
 | Location Store의 이동 대상 목록 | 정렬된 object ID, generation, membership과 이동할 때 적용할 변경 |
-| User Spot 전체 이동 record | Owner, 전체 변경 세대, 전체 항목 수, 목록 시작 위치와 내용 확인값 |
+| `SpotWide` User Spot 전체 이동 record | Owner, 전체 변경 세대, 전체 항목 수, 목록 시작 위치와 내용 확인값 |
+| `PerActor` User Spot 이동 record | Spot authority source·target, relocation operation ID, 전체 Actor 수와 source·target Actor 수 |
 | Relocation Store | Application state, 미완료 작업, reply payload와 object별 완료 결과 |
 
 Relocation Store의 목록은 payload를 찾는 데 사용한다. 어떤 Actor가 User Spot에
@@ -751,7 +752,7 @@ target의 host 실행 세대, owner 정보와 필요한 공간을 모두 고정�
 시간이 지났다는 이유만으로 공간을 반환하지 않는다. Location Store의 정확한
 record를 확인한 복구 작업만 계속하거나 취소할 수 있다.
 
-User Spot 전체를 옮길 때는 두 종류의 Store 변경만 허용한다.
+`SpotWide` User Spot 전체를 옮길 때는 두 종류의 Store 변경만 허용한다.
 
 | 변경 목적 | 허용 내용 |
 |---|---|
@@ -762,10 +763,22 @@ User Spot 전체를 옮길 때는 두 종류의 Store 변경만 허용한다.
 바꾸지 않는다. 준비에 성공하면 `(AggregateId, AggregateGeneration)`과 `Prepared`
 상태를 기록한다. 같은 요청은 `AlreadyPrepared`, 다른 요청은 `Conflict`다.
 
-마지막 변경은 이동 대상 목록의 시작 위치, 전체 항목 수와 내용 확인값을 다시
+`SpotWide`의 마지막 변경은 이동 대상 목록의 시작 위치, 전체 항목 수와 내용 확인값을 다시
 검사한다. Owner를 바꾸는 경우 확보한 target 공간을 사용 중으로 전환한다. 이 한 번의
 CAS가 성공해야 User Spot과 모든 Actor가 새 owner를 따른다. 취소할 때는 User Spot
 전체용으로 확보한 공간만 반환한다.
+
+`PerActor` User Spot은 Spot authority와 Actor owner를 분리해 바꾼다. Target에
+runtime-private Spot shell과 수용 공간을 준비한 뒤 Spot queue의 current turn과
+진행 중인 Create·Join을 끝낸다. 그다음 같은 public SpotId와 ObjectGeneration을
+유지한 채 Spot authority만 target으로 CAS한다. 이 CAS 뒤 새 `ToSpot`, Create와
+Join은 target이 처리한다.
+
+Member Actor는 각자 현재 owner를 유지한다. Framework는 source에 남은 Actor를
+독립된 relocation unit으로 준비하고 Actor별 owner CAS를 실행한다. Location Store는
+relocation operation ID와 source·target Actor 수를 함께 갱신하여 합계가 전체
+membership 수와 같은지 확인한다. 마지막 Actor와 source relay가 끝나야 PerActor
+User Spot relocation을 `Completed`로 기록한다.
 
 ### 7.2 단계마다 어느 node가 owner인지
 
@@ -784,27 +797,32 @@ User Spot membership을 바꾸지 않는 Actor 이동은 `NewOwner` CAS 한 번�
 |---|---|
 | Actor 하나의 host relocation | Actor owner와 `AuthorityOwnerGeneration`. Entry Spot member라면 source와 target Entry membership도 바꾼다. |
 | Cross-node `JoinSpot`·`JoinEntrySpot` | Actor owner, source·target membership, 수용 공간과 전체 변경 세대 |
-| User Spot host relocation | Spot과 모든 member Actor의 owner, membership과 수용 공간 |
+| `SpotWide` User Spot host relocation | Spot과 모든 member Actor의 owner, membership과 수용 공간 |
+| `PerActor` User Spot authority 전환 | Spot owner와 generation, target Spot 수용 공간, relocation operation ID |
+| `PerActor` member Actor 이전 | Actor owner와 generation, source·target Actor 수, Actor 수용 공간 |
 
 Relocation은 `ObjectGeneration`을 유지하고 `AuthorityOwnerGeneration`만 증가시킨다.
-Owner 변경이 완료되기 전에는 일부 object만 target owner로 조회되지 않는다.
+`SpotWide` owner 변경이 완료되기 전에는 일부 object만 target owner로 조회되지
+않는다. `PerActor` relocation에서는 Spot authority 전환 뒤 Actor별 current owner를
+조회하므로 일부 Actor가 source에 있고 일부가 target에 있는 상태를 허용한다. 이
+상태는 해당 relocation operation 안에서만 유효하다.
 
-User Spot의 이동 대상 수에는 고정 상한을 두지 않는다. §1.2에서 설명한 것처럼 목록
+`SpotWide` User Spot의 이동 대상 수에는 고정 상한을 두지 않는다. §1.2에서 설명한 것처럼 목록
 한 페이지에는 최대 1,024개와 최대 1 MiB 제한을 적용하고, 페이지가 많으면 상위
 목록을 만든다. Actor 하나라도 relocation policy, adapter 또는 target 지원 조건을
 만족하지 못하면 state를 저장하기 전에 User Spot 전체 이동을 거부한다.
 
 Target factory와 `Restore`는 `Prepared`를 기록하기 전에 끝낸다. Callback과 queue의
 정확한 순서는
-[Host relocation](54-graceful-drain-handoff.ko.md#8-unit-하나를-이전하는-순서)이
+[Host relocation](28-graceful-drain-handoff.ko.md#8-unit-하나를-이전하는-순서)이
 정의한다.
 
 ### 7.3 저장한 복원 데이터가 공식 데이터가 되는 시점
 
 Queue 중지, 동시 이동 수, payload 구성, timer와 Session 처리는
-[Host relocation §§7~9](54-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)이
+[Host relocation §§7~9](28-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)이
 정의한다. Payload 크기, 분할과 보관 기한은
-[Relocation Store](42-relocation-store-redis.ko.md#3-reference-payload와-tree-bound)가
+[Relocation Store](23-relocation-store-redis.ko.md#3-reference와-저장-크기)가
 정의한다. 이 절은 Location Store가 어느 데이터를 복원 근거로 인정하는지만
 정의한다.
 
@@ -872,6 +890,12 @@ Target은 다음 조건을 모두 만족한 뒤에만 `Ready`가 된다.
 
 Resolver는 이동용 payload 위치가 남아 있는 object를 `Ready`로 반환하지 않는다.
 
+`PerActor` User Spot의 target shell은 Spot authority CAS, source Spot queue relay와
+target Spot admission 준비가 끝나면 `ToSpot`, Create와 Join에 대해 Ready가 된다.
+Member Actor 전체의 이전을 기다리지 않는다. Actor direct resolve는 각 Actor의
+current owner와 Ready 상태를 사용하며 아직 source에 있는 Actor를 target으로
+추측하지 않는다.
+
 ### 7.5 Source가 바뀐 뒤 끝난 request를 처리한다
 
 | 값 | 용도 |
@@ -925,8 +949,8 @@ Owner를 바꾸기 전에 취소할 때는 다음 순서를 지킨다.
 
 Framework가 Store 요청의 결과를 받지 못하면 성공이나 실패를 추측하지 않는다.
 같은 key와 처음 읽은 version으로 Store를 다시 확인한다. Provider 함수의 정확한
-반환값과 입력 제한은 [Location Store](41-location-store-redis.ko.md)와
-[Relocation Store](42-relocation-store-redis.ko.md)가 정의한다.
+반환값과 입력 제한은 [Location Store](22-location-store-redis.ko.md)와
+[Relocation Store](23-relocation-store-redis.ko.md)가 정의한다.
 
 `StoreFailureGrace` 동안에는 마지막으로 완전히 읽은 descriptor 목록을 유지한다.
 이미 설정된 transport connection의 연결 상태 판단은 계속하지만 새 outbound
@@ -964,7 +988,7 @@ Location Store가 가리키는 payload가 일시적으로 보이지 않으면 �
 ## 9. Host가 종료될 때 Store record를 정리한다
 
 Host 명령의 상태와 최종 결과는
-[Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)이 정의한다. 이 절은
+[Host relocation와 shutdown](28-graceful-drain-handoff.ko.md)이 정의한다. 이 절은
 Location runtime이 Store record와 process 내부 resource를 정리하는 순서만 정의한다.
 
 Framework는 같은 시점의 목록 읽기로 descriptor와 owner lease 삭제 후보를 찾는다.
@@ -1005,5 +1029,5 @@ Deadline을 넘으면 `ForceStopped` 결과를 한 번만 완료한다. Timer, S
 | Store 장애 | 유예 시간에는 새 discovery connection만 막으며 owner deadline은 연장하지 않는다. 결과를 받지 못한 Store 요청은 같은 key와 version으로 다시 확인한다. |
 
 Permit, queue, timer, Session handoff와 host 최종 결과 검증은
-[Host relocation contract test](54-graceful-drain-handoff.ko.md#14-contract-test-검증-요구)가
+[Host relocation contract test](28-graceful-drain-handoff.ko.md#14-contract-test-검증-요구)가
 정의한다.

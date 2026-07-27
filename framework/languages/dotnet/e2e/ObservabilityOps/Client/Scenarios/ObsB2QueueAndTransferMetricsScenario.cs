@@ -1,4 +1,4 @@
-// Verifies OBS-B2 Queue And Transfer Metrics behavior.
+// Verifies OBS-B2 Actor Transfer Metrics behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -19,26 +19,12 @@ internal static class ObsB2QueueAndTransferMetricsScenario
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await connector.Request(new JoinRoomReq(sourceRoom)).Async<JoinRoomRes>();
 
-        var queued = Enumerable.Range(0, 12)
-            .Select(index => connector.Request(new GameActionReq($"obs-b2-load-{index}", 20))
-                .Async<GameActionRes>().AsTask())
-            .ToArray();
-        await Task.WhenAll(queued);
-
         var moved = await connector.Request(new JoinRoomReq(targetRoom)).Async<JoinRoomRes>();
         ZlinkStreamAssert.Ensure(moved.NodeRid == "play-b", "OBS-B2 actor did not transfer to play-b.");
-        var queueDepth = await WaitMetricAsync(context, "zlink.spot.queue.depth", 0,
-            new Dictionary<string, string> { ["kind"] = "user" });
-        var queueWait = await WaitMetricAsync(context, "zlink.spot.queue.wait.duration", 0,
-            new Dictionary<string, string> { ["kind"] = "user" });
         var transfers = await WaitMetricAsync(context, "zlink.actor.transfers", 1);
         var transferDuration = await WaitMetricAsync(context, "zlink.actor.transfer.duration", 0);
         var pending = await WaitMetricAsync(context, "zlink.actor.transfer.pending_requests.count", 0);
 
-        ZlinkStreamAssert.Ensure(queueDepth.Any(sample => sample.Count > 0),
-            "OBS-B2 queue depth metric was not recorded.");
-        ZlinkStreamAssert.Ensure(queueWait.Any(sample => sample.Count > 0 && sample.Max >= 0),
-            "OBS-B2 queue wait histogram was not recorded.");
         ZlinkStreamAssert.Ensure(transfers.Any(sample => sample.Value >= 1),
             "OBS-B2 transfer counter did not increase.");
         ZlinkStreamAssert.Ensure(transferDuration.Any(sample => sample.Count > 0),

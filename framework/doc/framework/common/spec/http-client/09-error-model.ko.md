@@ -17,7 +17,7 @@ HTTP client는 자체 예외 계층을 만들지 않고 framework 공용 에러 
 - **timeout 실패는 프로그램적으로 식별 가능해야 하고 retriable이어야 한다.**
   다만 timeout 전용 공통 kind를 새로 만들지 않는다. `.NET`·Java·Kotlin·Node는 기존
   `requestFailed` kind, retriable 표식과 언어별 원인 예외를 함께 사용하고, cpp는 언어 고유 timeout
-  경계를 사용한다([05 §13](../05-framework-api.ko.md#13-오류-kind)).
+  경계를 사용한다([05 §13](../06-framework-api.ko.md#13-오류-kind)).
 - `isRetriable`은 [6장 §6.2](06-redirect-retry-cookie.ko.md)의 재시도 대상
   판정과 일치해야 한다.
 

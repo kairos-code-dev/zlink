@@ -127,10 +127,10 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
   table에 green RID와 lifecycle generation이 아직 `Ready`가 아닌 동안 old host가 `Serving`과 application
   admission을 유지하는지 확인한 뒤 gate를 해제한다. Rolling 경로는 새 version provider 하나를 새 RID로
   시작해 exact peer `Ready`와 실제 request 성공을 확인한 뒤 old provider 하나를 같은 rolling update
-  option으로 `Relocate`하고 `Drained` 결과 뒤 `Shutdown`으로 종료하며, 같은 순서를 old provider가
+  option으로 `Relocate`하고 `Relocated` 결과 뒤 `Shutdown`으로 종료하며, 같은 순서를 old provider가
   없어질 때까지 반복한다. Blue-green 경로는 green set 전체를
   시작해 모든 MeshNode descriptor와 각 provider의 request evidence를 확인한 뒤 blue set의 host를 하나씩
-  같은 rolling update option으로 `Relocate`한다. 각 `Relocate`는 exact new version의 `Drained/None`을
+  같은 rolling update option으로 `Relocate`한다. 각 `Relocate`는 exact new version의 `Relocated/None`을
   확인한 뒤 `Shutdown`을 호출해 terminal `Stopped/None`을 확인하고, 다음 old provider를 내리기 전에 하나 이상의
   serving new provider가 남아 있는지 runtime query로 확인한다.
 - 검증: 전환 구간의 모든 request가 설정한 timeout 안에 정상 reply로 끝나고 pending이 남지 않는다.
@@ -220,7 +220,7 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 > 해당 membership만 제외한다. `Relocate`와 `Shutdown`의 admission seal은 MeshNode를 신규 자동 선택에서
 > 제외할 뿐 아니라 node-local 신규
 > application admission도 seal하므로, 호출자가 target을 직접 지정해 우회할 수 없다
-> ([54 §4~6](../spec/54-graceful-drain-handoff.ko.md#4-relocate-진행-순서)). 이 시나리오는 channel
+> ([54 §7~9](../spec/28-graceful-drain-handoff.ko.md#7-relocation-unit과-실행량-제한)). 이 시나리오는 channel
 > request의 weight 축만 검증하며 Actor·Spot `Relocate`·`Shutdown` 동작은 Config 11이 담당한다.
 
 #### RL-B5 ChannelName weight 변경 중 in-flight 완료
@@ -582,30 +582,32 @@ monitor callback이 남지 않는가.
   유지한다. Seal 뒤 timeout만 `ForceStopped/DeadlineExceeded`이며 bounded teardown을 수행한다. 두 결과가 같은
   reason을 사용하더라도 outcome과 state transition을 바꾸어 해석하지 않는다.
 
-#### RL-F10 Relocate Actor와 User Spot aggregate 이전
+#### RL-F10 Entry Actor와 SpotWide User Spot 이전
 
 우선순위: `P0`
 
 - 절차: 첫 반복은 `Snapshot` policy와 Actor RelocationAdapter를 등록한 Actor를 source Entry Spot에 둔 뒤 host
   `PlannedMaintenance` relocation을 실행한다. Target offer와 Prepared
   evidence에 target node의 initialized Entry Spot identity를 기록하고 NewOwner CAS 전후 authority를 관찰한다.
-  두 번째 반복은 `Snapshot` policy와 Spot RelocationAdapter를 등록한 User Spot에 `Snapshot` Actor를 join한
+  두 번째 반복은 `SpotWide` 실행 모델, `Snapshot` policy와 Spot RelocationAdapter를 등록한 User Spot에
+  `Snapshot` Actor를 join한
   상태로 `PlannedMaintenance` mode의 `Relocate`를 호출한다. 두 target은 같은 stable type capability,
   adapter capability와 aggregate 전체를
   수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
   target Entry Spot ID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
-  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Commit 뒤 evidence 순서는 target Entry
-  Spot `OnActorRelocated` → source Entry Spot `OnLeaveActor` 완료와 old Entry membership의 durable cleanup →
-  accepted journal replay다. Source process 종료 반복에서는 fenced durable source cleanup terminal이
-  `OnLeaveActor` 완료를 대신한 뒤에만 replay를 시작한다. Maintenance 반복에서 target `OnJoinedActor` 또는
-  `OnActorJoin`이 한 번이라도 호출되거나 source lifecycle gate보다 journal replay가 먼저 시작되면 실패다.
+  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Infrastructure relocation은
+  application의 membership 변경이 아니므로 target Entry Spot의 join·relocation callback과 source Entry
+  Spot의 leave callback을 호출하지 않는다. Source membership의 durable cleanup 뒤 accepted journal을
+  replay한다. Source process 종료 반복에서도 fenced durable source cleanup terminal 뒤에만 replay를 시작한다.
+  Maintenance 반복에서 target `OnActorJoin`·`OnJoinedActor` 또는 source `OnLeaveActor`가 한 번이라도 호출되거나
+  source cleanup보다 journal replay가 먼저 시작되면 실패다.
   이 `Restore` 검증은 `Snapshot` participant에만 적용하며 RL-F10에 `Recreate` 반복을 섞지 않는다.
   Callback·replay·cleanup은 current attempt에서 retry-safe하며 source cleanup 뒤 `Completed`, bound-session
   route ACK와 steady normalization 전까지 admission을 닫는다. User Spot member가 있는
   반복은 Spot과 current member Actor 전체의 Snapshot payload와 accepted journal을 하나의 immutable relocation
   root에 저장하고 membership을 유지한 채 owner·membership aggregate commit에 성공한다. User Spot aggregate는
-  Actor `OnActorJoin`·`OnJoinedActor`·`OnActorRelocated`·`OnLeaveActor` evidence가 모두 0건이어야 하며 aggregate
+  Actor `OnActorJoin`·`OnJoinedActor`·`OnLeaveActor` evidence가 모두 0건이어야 하며 aggregate
   journal은 commit 뒤에 replay한다. 일반 join용 `OnJoinedActor`를 maintenance 완료 신호로 사용하면 실패다.
   `RelocationDisabled` blocker가 필요하면 이 성공 반복을 바꾸지 않고 별도의 `Disabled` participant fixture로
   preflight abort와 source authority 보존을 검증한다.

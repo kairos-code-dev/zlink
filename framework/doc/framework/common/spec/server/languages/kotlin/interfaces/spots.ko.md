@@ -8,7 +8,7 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 변경하지 않는다.
 
 [인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
-[Spot 공통 계약](../../../../23-spot-actor.ko.md)
+[Spot 공통 계약](../../../../15-spot-actor.ko.md)
 
 Location Store가 Spot의 current owner와 lifecycle state를 확정해 보관하는 정보를 authority라 한다.
 Authority가 Missing이고 caller가 Instance intent를 지정했을 때 새 Instance Spot을 준비하는 과정을
@@ -174,6 +174,9 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     protected open suspend fun onClosingSuspending(
         context: ZLinkSpotClosingContext,
     )
+    protected open suspend fun onRelocationReadyCompletedSuspending(
+        completion: ZLinkSpotRelocationReadyCompletion,
+    )
     protected abstract suspend fun onActorJoinSuspending(
         actorId: String,
         request: ZLinkMessage,
@@ -198,7 +201,6 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
     protected open suspend fun onDisconnectActorSuspending(actor: TActor)
-    protected open suspend fun onActorRelocatedSuspending(actor: TActor)
 }
 
 abstract class ZLinkSuspendingInstanceSpot : ZLinkInstanceSpot {
@@ -294,7 +296,6 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot<TA
   public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
-  public final java.util.concurrent.CompletionStage<java.lang.Void> onActorRelocated(TActor);
 }
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor extends systems.zlink.framework.actors.ZLinkActor> implements systems.zlink.framework.spots.ZLinkSpot<TActor> {
   public systems.zlink.framework.kotlin.ZLinkSuspendingSpot();
@@ -303,6 +304,7 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor 
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResponse> onCreate(systems.zlink.framework.messaging.ZLinkMessage);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onRelocationReadyCompleted(systems.zlink.framework.spots.ZLinkSpotRelocationReadyCompletion);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
@@ -355,18 +357,17 @@ route client와 manager는 fluent option과 single-use state를 보존하는 전
 `SpotMoving`으로 처리하며 User Spot만 대상으로 한다. Instance Spot의 self-close는 Java
 `ZLinkInstanceSpotContext.close()`를 그대로 사용한다.
 
-`onActorRelocatedSuspending(actor)`는 Java `ZLinkEntrySpot.onActorRelocated(actor)`의 coroutine bridge이며 별도 lifecycle
-API가 아니다. Maintenance target은 Actor adapter restore, Location commit, 이 callback과 source Entry Spot의
-`onLeaveActorSuspending(actor)`, accepted journal replay·logical timer 복원, old Entry membership을 포함한 durable
-source cleanup, `Completed` CAS, bound-session route switch·ACK, steady normalization과 dispatch 개방 순서로
-처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
-callback 완료를 대신한다. 어느 callback의 exception도 commit을 rollback하지
-않고 target을 sealed 상태로 유지한 채 retry한다. User Spot application join만
+Maintenance target은 Actor adapter restore, Location commit, accepted
+journal·queue·Actor timer 복원, old Entry membership을 포함한 durable source
+cleanup, `Completed` CAS, bound-session route switch·ACK, steady normalization과
+dispatch 개방 순서로 처리한다. Infrastructure relocation은
+`onJoinedActorSuspending`, `onLeaveActorSuspending` 또는 별도 relocation callback을
+호출하지 않는다. User Spot application join만
 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용한다. 새 Actor의 첫 생성은
 `onCreateActorSuspending`의 승인과 선택적 reply만 사용하며 join/joined callback을 호출하지 않는다.
 User Spot에서 Entry Spot으로 돌아갈 때는 target의 `onJoinedActorSuspending`과 source의
-`onLeaveActorSuspending`을 호출한다. Maintenance relocation에서는 target의 `onActorRelocatedSuspending`과
-source의 `onLeaveActorSuspending`만 호출한다. Whole User Spot aggregate에서는 member의 Entry/User Spot
+`onLeaveActorSuspending`을 호출한다. `SpotWide` User Spot aggregate와 `PerActor`
+User Spot의 Actor relocation에서는 member의 Entry/User Spot
 [membership](../../../../01-glossary.ko.md#membership) callback을 모두 호출하지 않는다.
 
 User Spot factory mode의 기본값은 `SPOT_WIDE`다. 이 mode에서 suspending Spot·Actor·timer·lifecycle callback은
@@ -374,9 +375,29 @@ User Spot factory mode의 기본값은 `SPOT_WIDE`다. 이 mode에서 suspending
 Request·worker·Actor·Spot create wrapper의 `yield()`만 gate를 반환하고 terminal completion 뒤 같은 gate를
 다시 얻어 coroutine continuation을 실행한다. `PER_ACTOR`에서는 Actor별 lane, Spot direct·lifecycle lane과 timer별 lane이
 독립적이며 suspension은 해당 lane permit만 유지한다. 서로 다른 Actor와 서로 다른 timer는 동시에 실행할 수
-있다. Close·relocation·snapshot은 새 admission을 seal하고 모든 coroutine continuation을 포함한 active lane이
-안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier 실패는 같은 generation의 seal 전체를
-abort하고 application admission을 정확히 복원한다.
+있다. `SPOT_WIDE`의 Close·relocation·snapshot은 새 admission을 seal하고 모든 coroutine continuation을
+포함한 active lane이 안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier 실패는 같은
+generation의 seal 전체를 abort하고 application admission을 정확히 복원한다.
+
+`PER_ACTOR` User Spot은 `ZLinkRelocationPolicy.recreate()`만 허용한다. Spot adapter,
+Spot field와 Spot-level application timer는 relocation 대상이 아니다. 유지해야 하는 공유 state와
+schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다. Framework는 target에 같은
+public Spot ID와 ObjectGeneration의 stateless shell을 준비하고 Spot authority를 먼저 바꾼다. 각 Actor는
+자기 current turn을 끝낸 순서대로 queue·accepted journal·Actor timer와 함께 독립적으로 이전한다.
+Target shell은 authority 전에는 public lookup에 노출하지 않는다. Stale source route는 operation identity,
+generation, deadline, correlation과 reply route를 보존해 relay한다. Actor queue seal부터 target
+admission까지 1초는 운영 목표이며 초과해도 relocation을 취소하거나 rollback하지 않는다.
+
+Java `ZLinkUserSpotFactoryOptions.relocationReadiness`를 생략하면
+`ANY_TURN_BOUNDARY`다. `APPLICATION_SIGNALED`은 `SPOT_WIDE`에서만 허용한다.
+이 mode의 Spot turn에서는 `context.relocationReady().defer()`로 현재 turn 뒤의
+경계를 등록한다. Framework는 source의 `CONTINUED` 또는 target의 `RELOCATED`
+completion을 `onRelocationReadyCompletedSuspending(...)`에 전달하며 기본 구현은
+no-op이다. Callback 완료 전에는 보류한 message와 timer를 실행하지 않는다.
+
+기본 mode, `PER_ACTOR`, Entry·Instance Spot, Spot turn 밖과 같은 turn의 중복
+`defer()`는 queue mutation 전에 `INVALID_CONFIGURATION`이다. Recovery에서 callback이
+다시 실행될 수 있으므로 override는 retry-safe해야 한다.
 
 Yield는 Channel·Spot·Actor request, I/O·CPU worker와 Actor·Spot create/get-or-create에만 제공한다.
 Entry Spot·Entry Actor·`PER_ACTOR`·Node·

@@ -71,7 +71,7 @@ Manual endpoint 회귀는 별도 process 집합과 prefix를 사용하며 manual
   기록되지 않는다. Packet name을 topic이나 payload field로 다시 분류하지 않는다.
 - 세부 동작: classic fanout handler namespace는 packet name으로 구분하며 transport topic filter를 공개
   API로 제공하지 않는다
-  ([Framework API §11](../spec/05-framework-api.ko.md#11-classic-fanout)). Logical Multicast의
+  ([Framework API §11](../spec/06-framework-api.ko.md#11-classic-fanout)). Logical Multicast의
   ChannelName·topic subscription과 혼합하지 않는다.
 
 #### PS-A3 late subscriber
@@ -371,7 +371,7 @@ subscriber 종료 뒤 남지 않는가.
 
 - 절차: subscriber에 handler가 없는 **packet name**으로 발행한다. Classic fanout handler namespace는
   packet name으로 구분한다
-  ([Framework API §11](../spec/05-framework-api.ko.md#11-classic-fanout)).
+  ([Framework API §11](../spec/06-framework-api.ko.md#11-classic-fanout)).
 - 검증: 해당 publish는 subscriber dispatch에서 drop되고, **subscriber** observer evidence에 reason
   `no_handler`/action `drop` marker가 남는다. Publisher의 bounded submit terminal completion은 local
   transport admission만 나타내므로 publisher 측에는 dispatch marker가 없다. 다른 정상 message 전달은

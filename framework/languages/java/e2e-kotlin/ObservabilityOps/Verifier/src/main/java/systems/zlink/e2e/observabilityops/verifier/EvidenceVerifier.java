@@ -115,8 +115,6 @@ public final class EvidenceVerifier {
 
     private static void verifyB2(JsonNode root) {
         JsonNode metrics = metrics(root);
-        metricWithTag(metrics, "zlink.spot.queue.depth", "kind", "user", 1);
-        metricWithTag(metrics, "zlink.spot.queue.wait.duration", "kind", "user", 1);
         metric(metrics, "zlink.actor.transfers", "counter", "{transfer}", 1);
         metric(metrics, "zlink.actor.transfer.duration", "histogram", "s", 1);
         JsonNode pending = metric(metrics,

@@ -6,11 +6,12 @@
 > 목표는 정확한 계약을 처음 읽는 개발자도 이해할 수 있게 설명하는 것이다. 정해진
 > 문서 모양을 만드는 것이 목표가 아니다.
 
-[Framework 공개 계약 관리](00-public-contract-governance.ko.md) ·
-[용어집](01-glossary.ko.md) ·
-[문서 설명 원칙](../../../../../doc/principal/documentation/documentation-principles.ko.md) ·
-[작성 예시: Spot 모델](19-spot-model.ko.md) ·
-[작성 예시: Spot 메시징](20-spot-messaging.ko.md)
+[Framework spec 목차](../../../framework/doc/framework/common/spec/README.ko.md) ·
+[공개 계약 관리](../../../framework/doc/framework/common/spec/00-public-contract-governance.ko.md) ·
+[용어집](../../../framework/doc/framework/common/spec/01-glossary.ko.md) ·
+[문서 설명 원칙](documentation-principles.ko.md) ·
+[작성 예시: Spot 모델](../../../framework/doc/framework/common/spec/11-spot-model.ko.md) ·
+[작성 예시: Spot 메시징](../../../framework/doc/framework/common/spec/12-spot-messaging.ko.md)
 
 ## 1. 완료 결과
 
@@ -45,7 +46,7 @@ AI는 다음 순서를 지킨다. 문장을 먼저 생성한 뒤 계약을 추�
 
 1. 수정 대상 문서가 소유하는 공개 계약 범위를 확인한다.
 2. 관련 공통 스펙과 언어별 exact interface를 확인한다.
-3. [용어집](01-glossary.ko.md)에서 사용할 용어의 정의를 확인한다.
+3. [용어집](../../../framework/doc/framework/common/spec/01-glossary.ko.md)에서 사용할 용어의 정의를 확인한다.
 4. 구현, E2E와 이전 문서는 누락을 찾는 증거로만 사용한다.
 5. 서로 다른 자료가 충돌하면 임의로 합치지 않고 정식 계약의 소유 문서를 확인한다.
 
@@ -151,7 +152,7 @@ AI는 다음 순서를 지킨다. 문장을 먼저 생성한 뒤 계약을 추�
 
 ### 3.2 Glossary 정의와 첫 링크
 
-[용어집](01-glossary.ko.md)은 여러 스펙이 공유하는 용어 정의의 기준이다.
+[용어집](../../../framework/doc/framework/common/spec/01-glossary.ko.md)은 여러 스펙이 공유하는 용어 정의의 기준이다.
 
 각 문서에서 glossary 용어를 처음 사용할 때는 다음 두 조건을 함께 만족한다.
 
@@ -160,7 +161,7 @@ AI는 다음 순서를 지킨다. 문장을 먼저 생성한 뒤 계약을 추�
 
 ```markdown
 실행 중인 Instance Spot이 없을 때 새 Spot을 만들고 초기화하는 과정을
-[cold activation](01-glossary.ko.md#cold-activation)이라고 한다.
+[cold activation](../../../framework/doc/framework/common/spec/01-glossary.ko.md#cold-activation)이라고 한다.
 ```
 
 문서에서 한 번만 사용하는 용어도 링크한다. 이후 같은 용어에는 링크를 반복하지

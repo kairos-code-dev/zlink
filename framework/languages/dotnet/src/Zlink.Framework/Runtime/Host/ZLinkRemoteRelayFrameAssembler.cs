@@ -81,7 +81,7 @@ internal sealed class ZLinkRemoteRelayFrameAssembler : IDisposable
                 return false;
 
             // A failed terminal submit can be retried in either form used by
-            // the runtime: the straggler forwarder resubmits only its terminal
+            // the runtime: the Message Follow worker resubmits only its terminal
             // part, while the session coordinator resubmits the full frame.
             // A new non-terminal part starts that full-frame retry and replaces
             // the retained prefix so retry policy does not leak to either caller.

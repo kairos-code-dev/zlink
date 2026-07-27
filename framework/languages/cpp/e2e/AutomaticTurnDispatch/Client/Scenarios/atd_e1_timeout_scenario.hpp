@@ -14,21 +14,21 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 std::string run_atd_e1_timeout_scenario (TConnector &connector)
 {
-    const auto spot_rid = unique_id ("await-timeout");
+    const auto spot_id = unique_id ("await-timeout");
     auto spot =
-      connector.request (ensure_spot_req_t{.spot_rid = spot_rid})
+      connector.request (ensure_spot_req_t{.spot_id = spot_id})
         .packet_name (ensure_spot_req_t::packet_name)
         .timeout (std::chrono::milliseconds (30000))
         .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (spot), "ATD-E1 ensure spot failed");
-    ensure (spot.value ().spot_rid == spot_rid, "ATD-E1 ensure spot reply mismatch");
+    ensure (spot.value ().spot_id == spot_id, "ATD-E1 ensure spot reply mismatch");
 
     const auto request_id = unique_id ("ATD-E1");
     connector.send (await_timeout_msg_t{.request_id = request_id,
                                         .delay_ms = 700,
                                         .timeout_ms = 100})
         .packet_name (await_timeout_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
 
     auto timeout_evidence =
@@ -49,7 +49,7 @@ std::string run_atd_e1_timeout_scenario (TConnector &connector)
 
     connector.send (probe_msg_t{.request_id = request_id, .marker = "timeout-probe"})
         .packet_name (probe_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
 
     auto probe_evidence =

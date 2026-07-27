@@ -5,6 +5,7 @@ export interface ZLinkRedisLocationOptions {
   readonly client?: RedisClientType;
   readonly clientOptions?: RedisClientOptions;
   readonly keyPrefix: string;
+  readonly operationTimeoutMs?: number;
 }
 
 export interface ZLinkRedisRelocationOptions {
@@ -12,4 +13,5 @@ export interface ZLinkRedisRelocationOptions {
   readonly client?: RedisClientType;
   readonly clientOptions?: RedisClientOptions;
   readonly keyPrefix: string;
+  readonly operationTimeoutMs?: number;
 }

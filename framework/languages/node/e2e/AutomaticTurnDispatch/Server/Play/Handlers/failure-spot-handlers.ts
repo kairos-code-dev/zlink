@@ -14,7 +14,7 @@ export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitP
     void context;
     const terminator = request.terminator ?? 'async';
     this.evidence.add(
-      `timeout-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `timeout-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|handler=spot`
     );
     try {
@@ -24,19 +24,19 @@ export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitP
         .timeout(request.timeoutMs);
       this.evidence.add(
         `timeout-${terminator}-${terminator === 'yield' ? 'released' : 'held'}|rid=${this.evidence.rid}`
-        + `|spot=${spot.context.spotRid}`
+        + `|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|handler=spot`
       );
       if (terminator === 'yield') await call.yield<DelayRes>();
       else await call.submit<DelayRes>();
       this.evidence.add(
-        `timeout-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timeout-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|handler=spot`
       );
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'Error';
       this.evidence.add(
-        `timeout-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timeout-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|error=${errorName}|handler=spot`
       );
     }
@@ -52,7 +52,7 @@ export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitPr
     void context;
     const terminator = request.terminator ?? 'async';
     this.evidence.add(
-      `cancel-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `cancel-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|handler=spot`
     );
     const controller = new AbortController();
@@ -64,19 +64,19 @@ export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitPr
         .timeout(5000);
       this.evidence.add(
         `cancel-${terminator}-${terminator === 'yield' ? 'released' : 'held'}|rid=${this.evidence.rid}`
-        + `|spot=${spot.context.spotRid}`
+        + `|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|handler=spot`
       );
       if (terminator === 'yield') await call.yield<DelayRes>(controller.signal);
       else await call.submit<DelayRes>(controller.signal);
       this.evidence.add(
-        `cancel-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `cancel-await-unexpected-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|handler=spot`
       );
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'Error';
       this.evidence.add(
-        `cancel-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `cancel-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|error=${errorName}|handler=spot`
       );
     } finally {

@@ -59,7 +59,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.31 | Java/Kotlin, Node, C++ | Actor relocation metric이 `mesh_name`, 닫힌 `outcome`과 실패 terminal을 기록하지 않는다 |
 | §12.32 | 전 언어 | 알 수 없는 non-JSON content-type을 decode 전에 거부하지 않는다 |
 | §12.33 | Java/Kotlin, Node, C++ | [MeshName](01-glossary.ko.md#meshname) 중심 [RouteMesh](01-glossary.ko.md#routemesh)·MeshNode 등록 표면이 package·sample·E2E까지 일관되게 적용되지 않았고 분리 builder나 production in-memory location helper가 남아 있다 |
-| §12.34 | `.NET`, C++ | ActorRef의 공통 세 필드 밖 공개 상태가 남아 있다 |
+| §12.34 | Node.js, C++ | ActorRef가 공통 네 필드와 일치하지 않거나 별도 snapshot 변환 표면이 남아 있다 |
 | §12.35 | C++ | Actor generation이 하나의 lifetime 안에서 join마다 증가한다 |
 | §12.36 | C++ | `Relocate`·`Shutdown`, terminal result, factory-attached relocation policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
 | §12.37 | `.NET` | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다 |
@@ -72,6 +72,11 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.44 | 전 언어 | Instance Spot exact public surface, opaque [authority](01-glossary.ko.md#authority) CAS 기반 cold activation과 네 언어 runtime의 actor-free lifecycle·fencing·recovery가 완성되지 않았다 |
 | §12.45 | `.NET`, Java/Kotlin, C++ | User Spot aggregate relocation은 command 30 source accept 뒤 participant 전체의 typed capacity bundle으로 aggregate prepare를 한 번 실행하고, target factory·Restore 뒤 같은 aggregate fence를 commit해야 한다. Standalone relocation capacity fence와 뒤늦은 aggregate prepare를 함께 사용하면 capacity를 이중 예약하므로 금지한다 |
 | §12.49 | 전 언어 | Host relocation mode와 exact application-version target 선택이 구현되지 않았다. 현재 runtime은 `PlannedMaintenance`와 `RollingUpdate`를 구분하지 않으며 언어별 target filter에도 차이가 있다 |
+| §12.52 | 전 언어 | `Message Follow`의 Actor·Spot 전체 조합과 relocation payload·대량 처리·서비스 연속성 process E2E가 없다. `.NET`은 Actor·Spot route를 구현했지만 전체 matrix를 검증하지 않았고, Java/Kotlin·Node.js·C++는 Spot route 구현도 남아 있다 |
+| §12.53 | 전 언어 E2E | 정식 public contract는 `SpotId` 문자열을 사용하지만 기존 process fixture와 application DTO에 `SpotRid`·`spotRid`·`spot_rid` 이름과 RoutingId 변환이 남아 있다 |
+| §12.54 | `.NET`, Java/Kotlin, Node.js E2E | 여러 fixture가 제거된 handler context, Spot handle resolver, 이전 builder와 rich Store 표면을 사용해 현재 framework source와 compile되지 않는다 |
+| §12.56 | `.NET` | Opaque Store adapter의 process-local authority 문제는 해결했다. Redis package에 사용되지 않는 rich domain repository·Lua·key codec이 남아 있어 제거해야 한다 |
+| §12.57 | Java/Kotlin | Global Actor ID request가 remote owner route를 resolve한 뒤에도 local-only dispatch에서 실패한다 |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -343,7 +348,7 @@ ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 �
 - C++ source·package의 `zlink_framework_options_t::add_route_mesh(mesh_name)`은 목표 계약대로
   `mesh_node_builder_t`를 반환하지만 `spot_mesh_builder_t`와 `connect_peer_pub`도 공개 표면에 남아 있다.
 
-### 12.34 C++ ActorRef 필드 집합 불일치
+### 12.34 Node.js·C++ ActorRef 필드 집합 불일치
 
 [상호작용 모델 §7](03-interaction-model.ko.md#7-spot과-actor)과
 [Actor 모델 §2](14-actor-model.ko.md#2-actor-identity와-서로-독립적인-상태)는 `ActorRef`를 논리
@@ -353,10 +358,14 @@ ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 �
 
 C++ `actor_ref_t`는 `actor_type` 필드와 accessor를 추가로 노출하고,
 `actor_ref_snapshot_t::to_actor_ref(actor_type)` 호출자가 snapshot에 없는 type을 다시 주입해야 한다.
+Node.js `ActorRef`는 `nodeRid`, `actorId`, `generation`만 제공한다. `meshName`이 없고
+`ObjectGeneration`도 `generation`이라는 이전 이름을 사용한다. 별도
+`ZLinkActorRefSnapshot`과 양방향 변환 함수도 공개한다.
 
-C++은 `actor_ref_t`를 네 target field로 맞추고 `actor_ref_snapshot_t`를 public 표면에서 제거해야 한다.
-Actor handler 선택에 필요한 Actor type은 Actor manager와 runtime registry가 소유하며 application의
-참조 복원 호출자에게 전달하지 않는다. `.NET`은 이미 target field와 snapshot 제거 계약에 맞는다.
+C++과 Node.js는 ActorRef를 네 target field로 맞추고 별도 snapshot type과 변환 함수를 public
+표면에서 제거해야 한다. Actor handler 선택에 필요한 Actor type은 Actor manager와 runtime registry가
+소유하며 application의 참조 복원 호출자에게 전달하지 않는다. `.NET`과 Java는 target field 계약에
+맞는다.
 
 ### 12.35 C++ Actor lifetime 중 generation 변경
 
@@ -672,8 +681,8 @@ Framework의 현재 차이는 다음과 같다.
   runtime은 provider의 authority capability를 startup에서 검사해야 하며 MeshNode descriptor에 Instance type,
   relocation policy와 application version capability를 게시해야 한다.
 - Source의 eligible-node selection과 first-message activation envelope, target-owned generic reservation,
-  Ready-visible ordering, factory 실패 cleanup, lease-derived local admission deadline, bounded stale-route
-  forwarding과 Relocate·close 순서가 구현되어 있지 않다. Source가 target transport 전에 Instance owner claim을
+  Ready-visible ordering, factory 실패 cleanup, lease-derived local admission deadline, bounded Message Follow와
+  Relocate·close 순서가 구현되어 있지 않다. Source가 target transport 전에 Instance owner claim을
   만드는 현재 구현은 목표 계약이 아니며 target CAS winner만 factory를 실행하도록 교체해야 한다.
 - Activation outcome·duration, pending budget, claim conflict·takeover metric과 `surface=instance_spot` message-flow
   drop 관측이 언어별 runtime에 연결되어 있지 않다.
@@ -803,6 +812,206 @@ C++ public source와 host runtime은 `Relocating`·`Relocated` 상태와 분리�
 `Relocate`·`Shutdown` operation을 사용한다. Java·Kotlin·Node.js public source와
 runtime 전이, metric label과 contract test를 exact interface에 맞춘 뒤 나머지
 차이를 닫는다.
+
+### 12.52 Message Follow와 relocation workload 검증 미구현
+
+[Config 10 Track I](../e2e/config-10-spot-actor-relocation.ko.md)는
+실제 payload 크기, 대량 relocation, 서비스 연속성과 `Message Follow`를 하나의
+운영 workload에서 검증한다.
+
+`.NET` runner에는 `ST-I1`, `ST-I4`, `ST-I5`, `ST-I6`의 실제 scenario와 selector를
+연결했다. I1은 deterministic Actor state의 Capture byte와 opaque Relocation Store
+blob의 size·read-back checksum을 비교하고 expected application·encoded Capture·restore
+byte SHA도 대조한다. 각 profile은 Store 측정을 reset한 격리 실행이다.
+
+I4~I6에는 public global Actor ID와 operation ID별 transport delivery gate를 연결했다.
+Gate는 resolver가 commit 전에 선택한 delivery를 실제 submit 직전에 멈춘다. Relocation
+뒤 fresh owner를 다시 찾는 호출로 대체되지 않는다. Caller와 HTTP DTO에는 owner RID,
+ObjectGeneration과 Message Follow hop을 노출하지 않는다.
+
+I4는 source 처리 baseline과 commit 뒤 one-way·request만 연결했다. Baseline은 source handler가
+끝난 뒤 relocation을 시작하므로 seal 직전 `MF-AO-QUEUE` 증거가 아니다. `MF-AO-QUEUE`,
+host relocation의 commit 전 hold, Spot 네 조합과 PerActor split는 남아 있다. I5는 Actor request correlation
+역순 release, expiry와 Message Follow 중 original absolute deadline을 연결했다.
+Duplicate, 이전 generation, loop, 8-hop과 record·byte bound 및 Spot 조합은 남아 있다. I6은 Actor의 두 번 relocation과
+delayed request, source·중간 route cleanup만 연결했다. 세 번째 relocation, one-way,
+recovery와 Spot 조합은 아직 없다.
+
+이 scenario는 fixture 값을 성공 결과로 만들지 않는다. Public opaque Store 위에
+provider-backed authority repository를 연결했고 Redis와 in-memory parity test가 통과했다.
+2026-07-27 process 재실행은 이전 `Conflict(Missing)`을 지나 User Spot·Actor 생성과
+admission 승인까지 진행했다. Reservation 기반 Actor creation commit의 authority snapshot을
+local ownership coordinator에 연결하고 Actor publish를 그 뒤로 옮겨 첫 deferred Join의
+`ActorRouteNotFound`도 수정했다. `ST-A1` process는 통과했지만 Track I 네 scenario는 각각의
+남은 matrix와 process 검증을 끝내지 않아 완료 증거가 아니다.
+
+추가 재실행에서는 fixture 자체의 배치 오류를 확인했다. `ST-B1`은
+`logs/20260727-225502-168874`에서 Actor와 User Spot이 같은 node에 배치되어 실제 relocation이
+일어나지 않았고 `transfer_out` 증거가 없어서 실패했다. `ST-I5`도
+`logs/20260727-225133-156186`에서 deferred Join 요청의 접수 응답만 확인한 뒤 delivery gate를
+해제했다. 실제 Join completion은 `RequestFailed`였고 지연 request는 source Entry Spot에서
+handler를 찾지 못했다. 두 결과는 Message Follow 실패 증거가 아니라, node별 stable type과
+`TargetNodeRid`에 의존한 fixture 및 deferred completion 대기 누락이다.
+
+이 fixture는 세 node의 동일 stable type, caller 비지정 create와 public node-wide placement
+weight로 고쳤다. Deferred Join endpoint도 접수 응답 대신 completion callback을 기다린다.
+`ST-A1`은 `logs/20260727-230711-505861`에서 통과했다. Remote `ST-B1`은 Actor를 actor-a,
+Spot을 actor-b에 배치한 뒤 실제 completion이 `RequestFailed`로 끝났다
+(`logs/20260727-230926-521014`). 배치 fixture 차이는 해소됐고 remote Join runtime gap이 남았다.
+
+I1에는 Actor 외에 Instance Spot과 `SpotWide`의 `small`·`normal`·`large`·`boundary`
+adapter, opaque Store 총 byte·checksum과 process peak RSS 측정을 추가했다. 아직 다음
+process blocker가 남아 있어 `all`에 포함하지 않는다.
+
+- `logs/20260727-230114-301824`: Actor remote Join 뒤 target `ProbeReq` handler를 찾지 못했다.
+- `logs/20260727-230242-334194`: Instance Spot remote activation이 `SpotCreateFailed`로 끝났다.
+- `logs/20260727-230343-373526`: SpotWide 네 profile의 자동 배치 뒤
+  `RelocateAsync(PlannedMaintenance)`가 300초 안에 terminal을 반환하지 않았다.
+
+Queue·journal·timer profile, permit contention과 320 MiB·5-participant aggregate도 아직
+process scenario에 연결하지 않았다. Empty optional `SourceSpotId`를 absent로 encode하지 못한
+wire 오류는 수정했지만, 위 activation과 relocation blocker가 남아 있으므로 I1 완료 증거가 아니다.
+
+`ST-I2`와 `ST-I3`은 scenario 이름을 등록하지 않았다. .NET production host lifecycle은
+mode/options를 받는 `RelocateAsync(...)`와 별도 `ShutdownAsync(...)`를 DI에서 제공한다.
+Relocation 성공 뒤에는 infrastructure를 종료하지 않고 `Relocated` 상태를 유지한다.
+Public contract 67/67과 lifecycle focused unit test 40/40이 통과했다.
+
+Target scheduler는 mode가 정한 exact application version을 Actor·Spot preflight와 실제
+relocation에 동일하게 적용한다. `PlannedMaintenance`는 source와 같은 version,
+`RollingUpdate`는 caller가 지정한 더 높은 exact version만 선택하며 `>=` fallback을
+허용하지 않는다. 대상이 없으면 deadline까지 재조회한 뒤 `Blocked/TargetUnavailable`로
+끝난다. Focused relocation test 159/159와 전체 .NET Unit test 1,073/1,073이 통과했다.
+다만 이 구현 증거만으로 ST-I2와 ST-I3을 완료로 판정하지 않는다.
+개별 Actor Join을 10,000번 호출해서 Actor·Instance Spot·SpotWide host relocation과
+service continuity를 검증한 것처럼 처리하지 않는다. Exact target selection을 사용하는
+host workload와 control traffic을 실제로 함께 실행해야 한다.
+
+Java/Kotlin·Node.js·C++ runner에는 `ST-I1~ST-I6`이 없다. `.NET` runtime은 Actor와
+Spot의 이전 route를 일정 기간 current owner로 전달한다. Java/Kotlin·Node.js·C++의
+focused 구현은 Actor route만 처리하며 Spot route 연결이 남아 있다. 어느 언어도 다음
+계약 전체를 process E2E로 검증하지 않았다.
+
+Java/Kotlin·Node.js·C++의 공식 `all` selector는 이전 route를 caller가 직접 지정하는
+전환 대상 `ST-F4/F5`도 실행한다. 시나리오를 삭제하거나 assertion을 약화하지 않는다.
+각 언어가 public global Actor ID의 resolve 뒤 delivery를 transport에서 지연하는 fixture로
+전환할 때까지 해당 실행 결과는 현행 `ST-F4/F5` 완료 증거가 아니다.
+
+Production code 대조 결과도 다음 차이가 남아 있다.
+
+| Runtime | Actor Message Follow | Spot Message Follow | Track I에서 남은 핵심 차이 |
+|---|---|---|---|
+| Java/Kotlin | generation과 1,024-record·16 MiB 제한을 검사하지만 relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop, durable multi-hop recovery와 payload·bulk process 증거가 없다 |
+| Node.js | operation ID·correlation·hop·bound 일부를 보존하지만 relay request에 기본 timeout을 다시 적용한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | late reply 폐기, loop, recovery와 payload·bulk process 증거가 없다 |
+| C++ | coordinator에 expiry·generation·hop·bound 코드가 있지만 production caller가 없고 Actor client는 Location Store에서 fresh owner를 다시 찾아 재시도한다 | 없음 | committed route만 사용하는 전달, original operation·deadline·correlation 보존과 payload·bulk process 증거가 없다 |
+
+따라서 세 runtime의 component code나 F6 결과를 Actor·Spot 전체 Message Follow 또는
+Track I 완료 증거로 사용하지 않는다.
+
+`.NET`의 Spot request runtime은 absolute deadline을 wire와 inbound record에 보존하고
+Message Follow hop마다 남은 시간만 전달하도록 수정했다. 만료된 ingress는 handler queue
+전에 `TimedOut`으로 끝내며 late reply를 폐기한다. Focused runtime·relocation·Message Follow
+test는 통과했지만, 실제 process에서 relay 중 deadline을 넘기는 `MF-DEADLINE` 반복은 아직 없다.
+
+- Actor와 Spot의 one-way·request를 authority commit 전후에 각각 보낸다.
+- operation identity, generation, deadline, correlation과 reply route를 유지한다.
+- 기간 만료, duplicate, loop와 8-hop 제한을 검증한다.
+- Message Follow route 하나가 대기하는 message 1,024개와 encoded metadata 16 MiB 제한을 검증한다.
+- 같은 object가 연속으로 이동하는 multi-hop route를 검증하고 사용이 끝난 route를 제거한다.
+- 실제 encoded Actor·Spot payload와 relocation 중 control traffic의 성공률·latency를 측정한다.
+
+Message Follow marker 이름도 같은 의미로 사용해야 한다.
+
+- route 등록: `message_follow_registered`
+- current owner 전달: `message_follow_relay`
+- route 제거: `message_follow_route_removed`
+- 기간 만료: `message_follow_expired`
+- generation·hop·bound 거부: `message_follow_rejected`
+
+`.NET` Actor·Spot과 Node.js Actor는 이 이름을 사용한다. Java/Kotlin production
+Actor 경로는 route 등록 marker만 제공하며 relay·제거·만료·거부 marker가 없다.
+C++ Actor 경로는 등록·relay·제거·만료 marker를 제공하지만 거부 marker가 없다.
+Java/Kotlin·Node.js·C++에는 Spot Message Follow 자체가 없다.
+
+언어별 `SpotActorTransfer` feature map에는 실제 구현 범위와 runtime blocker를
+구분해 기록한다. Runtime marker나 단위 test만으로 process E2E 완료로 판정하지 않는다.
+
+### 12.53 E2E fixture의 SpotRid 잔여
+
+정식 계약에서 Spot의 논리 주소는 UTF-8 문자열 `SpotId`다. `RoutingId`는 MeshNode의
+`NodeRid`에만 사용한다.
+
+네 언어의 production framework source는 `SpotId`를 사용하지만, 여러 E2E fixture와
+application DTO가 이전 `SpotRid` 이름을 유지한다. 일부 Java E2E는 이 값을 다시
+`RoutingId`로 변환하므로 이름만 오래된 문제가 아니라 현재 public API와도 맞지 않는다.
+
+모든 E2E fixture는 다음 기준으로 바꾼다.
+
+- Spot 주소 field와 local variable은 언어 관례에 맞는 `SpotId` 이름을 사용한다.
+- Spot ID를 `RoutingId`로 변환하지 않는다.
+- Node의 transport identity만 `NodeRid`와 `RoutingId`를 사용한다.
+- HTTP evidence DTO의 wire field도 `spotId`, `sourceSpotId`, `targetSpotId`로 통일한다.
+- 변경한 fixture는 해당 언어의 현재 framework source project를 참조해 다시 build한다.
+
+### 12.54 E2E fixture의 제거된 public API 사용
+
+현재 framework source를 직접 참조해 build하면 다음 차이가 드러난다.
+
+| 대상 | 확인 결과 | 주요 원인 |
+|---|---:|---|
+| `.NET 전체 solution` | Linux build 260 errors | Sample과 다른 E2E에 제거된 `ActorRefSnapshot`, 이전 drain API·handler context·Spot manager terminal이 남아 있고 일부 consumer project가 provider abstraction reference를 포함하지 않는다 |
+| `.NET AutomaticTurnDispatch` | 5개 project compile 통과, process TD-A2 실패 | User Spot `GetOrCreate`에서 reservation이 달라졌다는 runtime 오류 |
+| `.NET SpotActorTransfer` | 4개 project compile 통과, current fixture `ST-A1` 통과, remote `ST-B1` 실패 | 동일 stable type·caller 비지정 배치와 deferred completion wait는 전환했다. Remote Join completion이 `RequestFailed`로 끝나는 runtime gap이 남았다 |
+| Java SpotActorTransfer | 현재 Client·Shared·ActorNode compile 통과 | 제거된 route-bearing `ActorRef` 제출은 제거했지만 `ST-F4/F5` transport delivery-delay fixture는 아직 없다 |
+| Kotlin SpotActorTransfer | Client·Shared·JavaClient·ActorNode compile 통과, process ST-A1 실패 | Actor가 다른 owner에 배치되면 public global Actor ID request가 `actor is not local`로 실패하는 Java runtime cross-node routing 차이가 있다 |
+| Node.js E2E | 47개 project 중 42개 실패 | 제거된 `SpotHandle`·handler context·Actor join context, 이전 builder·rich Store 표면과 공통 `rootDir` 설정 |
+
+각 fixture는 정식 exact interface의 `MessageContext`, global `SpotId`, 현재 builder와
+opaque Store 등록 표면을 사용해야 한다. 기존 scenario를 삭제하거나 assertion을 줄여
+compile만 통과시키면 gap이 닫힌 것으로 보지 않는다.
+
+`.NET` SpotActorTransfer의 이전 `probe-ref`·`send-ref` fixture도 제거했다. HTTP endpoint는
+call을 제출할 process만 선택한다. Framework call은 public global Actor ID만 받으며 owner
+RID와 ObjectGeneration을 application payload로 전달하지 않는다. Bounded route cache가 있는
+process에서 제출한 call로 stale source delivery를 만든다. Public Store authority gap 때문에
+이 fixture의 process 검증은 아직 완료되지 않았다.
+
+`ST-F4/F5`는 application이 이전 owner의 `ActorRef`를 직접 지정하는 방식으로 검증하면 안 된다.
+Public API로 global Actor ID에 operation을 제출한 뒤, resolver가 선택한 transport delivery를
+fixture가 지연해야 한다. 이 fixture가 없으면 endpoint를 global Actor ID 호출로 바꿔 PASS를
+만들지 않고 `전환 대상`으로 유지한다.
+
+### 12.56 .NET Redis package의 중복 domain repository
+
+`.NET`의 public Location Store SPI는 opaque `Read`, 조건부 batch `Write`와 bounded `Scan`만
+노출한다. Framework가 authority record와 transaction 조건을 private 형식으로 구성해 이 SPI에
+저장해야 한다.
+
+`ZLinkProviderLocationRepository`는 더 이상 in-memory repository를 상속하지 않는다.
+Framework private repository가 owner lease, descriptor, authority, creation terminal,
+relocation capacity와 aggregate operation을 opaque Store의 조건부 batch로 처리한다.
+두 repository가 같은 Redis prefix를 사용하는 creation·relocation CAS test와
+`AutomaticTurnDispatch TD-A2` process E2E도 통과했다.
+
+Redis package에는 이전 internal `IZLinkLocationRepository` 직접 구현과 domain-specific
+Lua·key codec도 남아 있다. Runtime registration은 이 구현을 사용하지 않고 opaque SPI를
+Framework repository로 감싸지만, 같은 authority 지식이 Framework와 Redis package에 중복된다.
+이 dead implementation과 Hybrid 물리 schema를 직접 검사하는 test를 제거하고, opaque provider와
+Framework private repository의 contract test로 대체해야 이 항목을 닫을 수 있다.
+
+### 12.57 Java runtime의 cross-node Actor messaging 미연결
+
+Actor caller는 global Actor ID만 전달한다. Framework는 Location Store에서 current owner를 찾고,
+다른 node에 있으면 일반 RouteMesh transport로 request 또는 one-way를 보내야 한다.
+
+현재 Kotlin `SpotActorTransfer ST-A1`은 public API와 automatic placement로 Actor를 `actor-b`
+process에 만든다. 이후 `actor-a` process에서 같은 global Actor ID로 request하면 Java runtime이
+remote route를 사용하지 않고 `actor is not local`로 실패한다. Kotlin wrapper의 signature 문제가
+아니며 Java runtime의 public Actor client dispatch 연결이 빠진 것이다.
+
+특정 Node RID에 Actor를 강제로 배치하거나 old `ActorRef`, raw route와 test-only local registry로
+우회하면 안 된다. Java runtime에서 global ID resolve, exact owner fence, remote submission과 reply
+correlation을 연결하고 Java·Kotlin 양쪽 process E2E로 검증해야 한다.
 
 ## 13. 샘플 계약 차이
 

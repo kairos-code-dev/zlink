@@ -373,11 +373,11 @@ class create_spot_handler_t
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
         const auto created = _spots.create_spot (spot_channel);
-        const auto spot_rid = std::string (created.spot_rid.value ());
-        _evidence.add ("spot-create|rid=" + _evidence.rid () + "|spot_rid="
-                       + spot_rid);
+        const auto spot_id = created.spot_id;
+        _evidence.add ("spot-create|rid=" + _evidence.rid () + "|spot_id="
+                       + spot_id);
         zlink::framework::http_response_t response;
-        response.body = nlohmann::json{{"spotRid", spot_rid}, {"state", "created"}}.dump ();
+        response.body = nlohmann::json{{"spotId", spot_id}, {"state", "created"}}.dump ();
         return response;
     }
 
@@ -401,13 +401,13 @@ class create_subject_handler_t
     zlink::framework::http_response_t
     handle (const zlink::framework::http_request_t &request)
     {
-        const auto spot_rid = request.query_values.at ("spotRid");
+        const auto spot_id = request.query_values.at ("spotId");
         (void) _spots.get_or_create_spot (
           monitoring_subject_spot,
-          zlink::framework::spot_rid_t::from_string (spot_rid));
+          (spot_id));
         zlink::framework::http_response_t response;
         response.body =
-          nlohmann::json{{"status", "created"}, {"spotRid", spot_rid}}.dump ();
+          nlohmann::json{{"status", "created"}, {"spotId", spot_id}}.dump ();
         return response;
     }
 
@@ -430,15 +430,15 @@ class close_subject_handler_t
     zlink::framework::http_response_t
     handle (const zlink::framework::http_request_t &request)
     {
-        const auto spot_rid = request.query_values.at ("spotRid");
+        const auto spot_id = request.query_values.at ("spotId");
         const auto closed =
           _spots.close_spot (
-            zlink::framework::spot_rid_t::from_string (spot_rid))
+            (spot_id))
             .result ();
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json{{"status", closed ? "closed" : "not-found"},
-                         {"spotRid", spot_rid}}
+                         {"spotId", spot_id}}
             .dump ();
         return response;
     }

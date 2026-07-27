@@ -1,0 +1,141 @@
+using SpotActorTransfer.Client.Support;
+using SpotActorTransfer.Shared;
+using Zlink.HttpClient;
+
+namespace SpotActorTransfer.Client.Scenarios;
+
+internal static class StI5MessageFollowSafetyScenario
+{
+    public static async Task RunAsync(
+        SpotActorTransferScenarioContext context)
+    {
+        var scenario = "ST-I5";
+        var actorId =
+            $"actor-message-follow-safety-{Guid.NewGuid():N}";
+        var spotId =
+            $"spot-message-follow-safety-{Guid.NewGuid():N}";
+        var created = await context.CreateActorAsync(
+            context.NodeA,
+            actorId,
+            SpotActorTransferNames.ActorTypeStateful,
+            stateVersion: 505,
+            applicationStateBytes: 4 * 1024);
+        var source = context.NodeForRid(created.NodeRid);
+        var (target, targetPrefix) =
+            context.OtherActorNode(created.NodeRid);
+        await context.CreateSpotAsync(target, spotId);
+
+        var correlationA = Guid.NewGuid().ToString("N");
+        var correlationB = Guid.NewGuid().ToString("N");
+        var expiredOperation = Guid.NewGuid().ToString("N");
+        var deadlineOperation = Guid.NewGuid().ToString("N");
+        await context.ArmTransportDeliveryAsync(
+            source, correlationA, actorId, "Request");
+        await context.ArmTransportDeliveryAsync(
+            source, correlationB, actorId, "Request");
+        await context.ArmTransportDeliveryAsync(
+            source, expiredOperation, actorId, "Request");
+        await context.ArmTransportDeliveryAsync(
+            source, deadlineOperation, actorId, "Request");
+
+        var first = context.ProbeFromNodeAsync(
+            source,
+            actorId,
+            new ProbeReq(scenario, "correlation-a"),
+            TimeSpan.FromSeconds(15),
+            correlationA);
+        var second = context.ProbeFromNodeAsync(
+            source,
+            actorId,
+            new ProbeReq(scenario, "correlation-b"),
+            TimeSpan.FromSeconds(15),
+            correlationB);
+        var expired = context.ProbeFromNodeAsync(
+            source,
+            actorId,
+            new ProbeReq(scenario, "expired"),
+            TimeSpan.FromSeconds(15),
+            expiredOperation);
+        var deadline = context.ProbeFromNodeAsync(
+            source,
+            actorId,
+            new ProbeReq(scenario, "deadline"),
+            TimeSpan.FromSeconds(5),
+            deadlineOperation);
+        await context.WaitTransportDeliveryAsync(source, correlationA);
+        await context.WaitTransportDeliveryAsync(source, correlationB);
+        await context.WaitTransportDeliveryAsync(source, expiredOperation);
+        await context.WaitTransportDeliveryAsync(source, deadlineOperation);
+
+        ZlinkStreamAssert.Ensure(
+            (await context.JoinAsync(
+                source,
+                actorId,
+                new JoinTargetReq(scenario, spotId))).Accepted,
+            $"{scenario} relocation was rejected.");
+
+        await context.ReleaseTransportDeliveryAsync(source, correlationB);
+        await context.ReleaseTransportDeliveryAsync(source, correlationA);
+        await context.ReleaseTransportDeliveryAsync(
+            source, deadlineOperation);
+        var replies = await Task.WhenAll(first, second);
+        ZlinkStreamAssert.Ensure(
+            replies[0].Succeeded
+            && replies[1].Succeeded
+            && replies[0].Reply?.Marker == "correlation-a"
+            && replies[1].Reply?.Marker == "correlation-b"
+            && replies.All(result =>
+                result.Reply is not null
+                &&
+                SpotActorTransferScenarioContext.IsNode(
+                    result.Reply.NodeRid,
+                    targetPrefix)),
+            $"{scenario} request correlation crossed between followed calls.");
+
+        var deadlineResult = await deadline;
+        ZlinkStreamAssert.Ensure(
+            !deadlineResult.Succeeded
+            && deadlineResult.ErrorKind is
+                "Timeout" or "TimeoutException" or "RequestFailed",
+            $"{scenario} followed request extended its original deadline: "
+            + deadlineResult.ErrorKind);
+        await context.WaitRuntimeEvidenceAsync(
+            source,
+            $"message_follow_relay actor={actorId}");
+        var deadlineEvidence = await context.WaitEvidenceAsync(
+            target,
+            [$"{scenario}|{actorId}|packet_handler|deadline"]);
+        ZlinkStreamAssert.Ensure(
+            deadlineEvidence.Count(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == "deadline") == 1,
+            $"{scenario} deadline request did not enter Message Follow exactly once.");
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        ZlinkStreamAssert.Ensure(
+            !(await context.GetEvidenceAsync(target)).Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "late_reply_created"
+                && item.Value == "deadline"),
+            $"{scenario} delivered a reply after the original deadline.");
+
+        await context.WaitRuntimeEvidenceAsync(
+            source,
+            $"message_follow_route_removed actor={actorId} entries=0");
+        await context.ReleaseTransportDeliveryAsync(
+            source, expiredOperation);
+        var expiredResult = await expired;
+        ZlinkStreamAssert.Ensure(
+            !expiredResult.Succeeded
+            && expiredResult.ErrorKind == "ActorLocationStale",
+            $"{scenario} expired delivery was not rejected as stale: "
+            + expiredResult.ErrorKind);
+
+        // MF-DUP, MF-GEN, MF-LOOP, MF-HOP and MF-BOUND remain partial. They
+        // require controlled duplicate delivery or additional committed
+        // generations; this gate deliberately does not mutate or synthesize
+        // private routes.
+    }
+}

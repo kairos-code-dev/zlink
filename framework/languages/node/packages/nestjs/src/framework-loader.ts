@@ -92,7 +92,7 @@ interface FrameworkIntegrationModule {
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): void;
   validateActorTransferTimeout(timeoutMs: number): number;
-  validateActorTransferForwardWindow(timeoutMs: number): number;
+  validateMessageFollowDuration(timeoutMs: number): number;
   validateRoutingIdPrefix(prefix: string): string;
   registerEntrySpot(
     options: { entrySpotType?: Type<ZLinkEntrySpot> },

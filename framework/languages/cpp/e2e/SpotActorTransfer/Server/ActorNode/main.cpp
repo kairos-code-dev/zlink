@@ -84,14 +84,15 @@ class evidence_store_t
         }
         static const std::set<std::string> transfer_markers{
           "commit_request", "location_committed", "commit_ack", "source_cleanup",
-          "pending_admission_expired", "forwarding_entry", "mapping_evicted",
-          "straggler_forward", "stale_fail_fast", "handoff_backlog",
+          "pending_admission_expired", "message_follow_registered",
+          "message_follow_route_removed", "message_follow_relay", "message_follow_expired",
+          "handoff_backlog",
           "backlog_enqueued", "handoff_request_frame", "backlog_request_frame"};
         if (!transfer_markers.contains (*event.packet_name)) {
             return;
         }
         auto value = *event.correlation_id;
-        if (*event.packet_name == "forwarding_entry" && event.channel_name) {
+        if (*event.packet_name == "message_follow_registered" && event.channel_name) {
             value = *event.channel_name;
             if (event.spot_id) {
                 value += ":" + *event.spot_id;
@@ -281,7 +282,7 @@ class transfer_actor_t final : public fw::actor_t
                   accepted->reply
                     ->decode<e2e::join_target_res_t> ();
                 scenario = reply.scenario;
-                target_spot = reply.target_spot_rid;
+                target_spot = reply.target_spot_id;
             }
             g_evidence->add (
               scenario, actor_id, "location_committed",
@@ -402,9 +403,9 @@ class transfer_actor_adapter_t : public fw::actor_transfer_adapter_t<transfer_ac
 e2e::join_target_res_t make_join_reply (const std::string &scenario,
                                         const std::string &actor_id,
                                         bool accepted,
-                                        const std::string &target_spot_rid)
+                                        const std::string &target_spot_id)
 {
-    return e2e::join_target_res_t{scenario, actor_id, accepted, std::string{}, target_spot_rid, 0,
+    return e2e::join_target_res_t{scenario, actor_id, accepted, std::string{}, target_spot_id, 0,
                                   std::string{}};
 }
 
@@ -472,14 +473,14 @@ class transfer_entry_spot_t : public fw::entry_spot_t
     {
         auto context = actor.context ();
         context
-          .join_spot (request.target_spot_rid, request)
+          .join_spot (request.target_spot_id, request)
           .timeout (std::chrono::seconds (10))
           .defer ();
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
                                          true,
                                          g_evidence->node_rid (),
-                                         request.target_spot_rid,
+                                         request.target_spot_id,
                                          actor.state_version,
                                          "deferred"};
     }
@@ -606,14 +607,14 @@ class transfer_user_spot_t : public fw::spot_t
     {
         auto context = actor.context ();
         context
-          .join_spot (request.target_spot_rid, request)
+          .join_spot (request.target_spot_id, request)
           .timeout (std::chrono::seconds (10))
           .defer ();
         co_return e2e::join_target_res_t{request.scenario,
                                          actor.actor_id,
                                          true,
                                          g_evidence->node_rid (),
-                                         request.target_spot_rid,
+                                         request.target_spot_id,
                                          actor.state_version,
                                          "deferred"};
     }
@@ -815,9 +816,9 @@ class joined_gate_release_handler_t
 
     fw::http_response_t handle (const fw::http_request_t &request)
     {
-        const auto spot_rid = route_value (request, "spotRid");
+        const auto spot_id = route_value (request, "spotId");
         return json_response (
-          nlohmann::json (e2e::gate_release_res_t{spot_rid, _gates.release (spot_rid)}));
+          nlohmann::json (e2e::gate_release_res_t{spot_id, _gates.release (spot_id)}));
     }
 
   private:
@@ -861,13 +862,13 @@ class create_spot_handler_t
         const auto request = parse_body (http_request).get<e2e::create_spot_req_t> ();
         const auto created = co_await _spots
           .get_or_create (
-            request.spot_rid,
+            request.spot_id,
             "transfer-user")
           .creation_request (request)
           .submit ();
         co_return json_response (nlohmann::json (
           e2e::create_spot_res_t{
-            request.spot_rid,
+            request.spot_id,
             std::string (created.spot.node_rid ().value ()),
             created.state
                 == fw::spot_create_state_t::existing
@@ -1028,7 +1029,7 @@ class join_actor_handler_t
                             .submit<e2e::join_target_res_t> ();
             _evidence.add (request.scenario, actor_id,
                            result.accepted ? "success_reply" : "reject_reply",
-                           request.target_spot_rid);
+                           request.target_spot_id);
             co_return json_response (nlohmann::json (result));
         }
         catch (const fw::framework_exception_t &error) {
@@ -1036,7 +1037,7 @@ class join_actor_handler_t
               request.scenario, actor_id, "join_failed",
               error_kind_name (error) + ":" + error.what ());
             co_return json_response (nlohmann::json (e2e::join_target_res_t{
-              request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
+              request.scenario, actor_id, false, std::string{}, request.target_spot_id, 0,
               error_kind_name (error)}));
         }
         catch (const std::exception &error) {
@@ -1045,7 +1046,7 @@ class join_actor_handler_t
              * an escaped exception close the transport without a response. */
             _evidence.add (request.scenario, actor_id, "join_failed", error.what ());
             co_return json_response (nlohmann::json (e2e::join_target_res_t{
-              request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
+              request.scenario, actor_id, false, std::string{}, request.target_spot_id, 0,
               error.what ()}));
         }
     }
@@ -1237,7 +1238,7 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
           .set_message_flow_observer (
             [] (const fw::message_flow_event_t &event) { g_evidence->add_flow (event); });
 
-        framework.set_actor_transfer_forward_window (std::chrono::seconds (3));
+        framework.set_message_follow_duration (std::chrono::seconds (3));
         framework.add_location_store (
           std::make_shared<fw::locations::redis::redis_location_store_t> (
             fw::locations::redis::redis_location_options_t{.connection_string = redis_endpoint,
@@ -1321,7 +1322,7 @@ int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
           .map_post<evidence_wait_handler_t> ("/evidence/wait");
         if (host_role == transfer_host_role_t::actor_node) {
             framework.http ()
-              .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotRid}/release")
+              .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotId}/release")
               .map_post<transfer_gate_release_handler_t> ("/transfer-gates/{actorId}/release")
               .map_post<create_spot_handler_t> ("/spots")
               .map_post<create_actor_handler_t> ("/actors")

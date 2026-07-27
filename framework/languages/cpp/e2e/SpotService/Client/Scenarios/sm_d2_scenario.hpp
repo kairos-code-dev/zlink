@@ -55,7 +55,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
               << " type=" << join_reply.actor.actor_type
               << " actor=" << join_reply.actor.actor_id
               << " generation=" << join_reply.actor.generation
-              << " spot=" << join_reply.spot_rid << '\n';
+              << " spot=" << join_reply.spot_id << '\n';
 
     zlink::stream_connector::connector_options_t options;
     options.endpoint = session_stream_endpoint;

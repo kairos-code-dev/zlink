@@ -396,7 +396,7 @@ std::vector<std::uint8_t> encode_spot_message_header (
   const spot_route_fence_t &target,
   wire_operation_id_t operation,
   std::optional<std::uint64_t> correlation,
-  std::uint8_t forwarding_hop_count)
+  std::uint8_t message_follow_hop_count)
 {
     if (kind != command::spotSend && kind != command::spotRequest) {
         throw service_wire_error_t ("command is not a Spot message");
@@ -404,7 +404,7 @@ std::vector<std::uint8_t> encode_spot_message_header (
     if ((operation.high == 0 && operation.low == 0)
         || (kind == command::spotRequest) != correlation.has_value ()
         || (correlation && *correlation == 0)
-        || forwarding_hop_count > 8
+        || message_follow_hop_count > 8
         || target.object_generation == 0
         || target.target_node_generation == 0
         || target.authority_owner_generation == 0) {
@@ -416,7 +416,7 @@ std::vector<std::uint8_t> encode_spot_message_header (
         append_u64 (result, *correlation);
     append_u64 (result, operation.high);
     append_u64 (result, operation.low);
-    result.push_back (forwarding_hop_count);
+    result.push_back (message_follow_hop_count);
     append_text8 (result, source_spot_id, "source SpotId");
     append_text8 (result, target.spot_id, "target SpotId");
     append_u64 (result, target.object_generation);
@@ -449,11 +449,11 @@ spot_message_header_t decode_spot_message_header (
     const wire_operation_id_t operation{
       read_u64 (bytes, offset), read_u64 (bytes, offset)};
     if (offset >= bytes.size ())
-        throw service_wire_error_t ("missing Spot forwarding hop count");
-    const auto forwarding_hop_count = bytes[offset++];
+        throw service_wire_error_t ("missing Spot Message Follow hop count");
+    const auto message_follow_hop_count = bytes[offset++];
     spot_message_header_t result;
     result.operation = operation;
-    result.forwarding_hop_count = forwarding_hop_count;
+    result.message_follow_hop_count = message_follow_hop_count;
     result.correlation = correlation;
     result.source_spot_id =
       read_text8 (bytes, offset, "source SpotId");
@@ -465,7 +465,7 @@ spot_message_header_t decode_spot_message_header (
     result.target.target_node_generation = read_u64 (bytes, offset);
     result.target.authority_owner_generation = read_u64 (bytes, offset);
     if ((result.operation.high == 0 && result.operation.low == 0)
-        || result.forwarding_hop_count > 8
+        || result.message_follow_hop_count > 8
         || result.target.object_generation == 0
         || result.target.target_node_generation == 0
         || result.target.authority_owner_generation == 0
@@ -482,7 +482,7 @@ std::vector<std::uint8_t> encode_actor_message_header (
   const actor_route_fence_t &target,
   wire_operation_id_t operation,
   std::optional<std::uint64_t> correlation,
-  std::uint8_t forwarding_hop_count)
+  std::uint8_t message_follow_hop_count)
 {
     if (kind != command::actorSend && kind != command::actorRequest) {
         throw service_wire_error_t ("command is not an Actor message");
@@ -490,7 +490,7 @@ std::vector<std::uint8_t> encode_actor_message_header (
     if ((operation.high == 0 && operation.low == 0)
         || (kind == command::actorRequest) != correlation.has_value ()
         || (correlation && *correlation == 0)
-        || forwarding_hop_count > 8
+        || message_follow_hop_count > 8
         || target.object_generation == 0
         || target.target_node_generation == 0
         || target.authority_owner_generation == 0) {
@@ -502,7 +502,7 @@ std::vector<std::uint8_t> encode_actor_message_header (
         append_u64 (result, *correlation);
     append_u64 (result, operation.high);
     append_u64 (result, operation.low);
-    result.push_back (forwarding_hop_count);
+    result.push_back (message_follow_hop_count);
     if (source_actor) {
         append_text8 (result, source_actor->first, "source Actor ID");
         if (source_actor->second == 0) {
@@ -544,11 +544,11 @@ actor_message_header_t decode_actor_message_header (
     const wire_operation_id_t operation{
       read_u64 (bytes, offset), read_u64 (bytes, offset)};
     if (offset >= bytes.size ())
-        throw service_wire_error_t ("missing Actor forwarding hop count");
-    const auto forwarding_hop_count = bytes[offset++];
+        throw service_wire_error_t ("missing Actor Message Follow hop count");
+    const auto message_follow_hop_count = bytes[offset++];
     actor_message_header_t result;
     result.operation = operation;
-    result.forwarding_hop_count = forwarding_hop_count;
+    result.message_follow_hop_count = message_follow_hop_count;
     result.correlation = correlation;
     if (offset >= bytes.size ()) {
         throw service_wire_error_t ("truncated source Actor");
@@ -573,7 +573,7 @@ actor_message_header_t decode_actor_message_header (
     result.target.target_node_generation = read_u64 (bytes, offset);
     result.target.authority_owner_generation = read_u64 (bytes, offset);
     if ((result.operation.high == 0 && result.operation.low == 0)
-        || result.forwarding_hop_count > 8
+        || result.message_follow_hop_count > 8
         || result.target.object_generation == 0
         || result.target.target_node_generation == 0
         || result.target.authority_owner_generation == 0

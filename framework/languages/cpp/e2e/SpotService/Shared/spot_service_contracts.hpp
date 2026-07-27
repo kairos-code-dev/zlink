@@ -35,7 +35,7 @@ inline std::string owner_node_rid_for_key (const std::string &key)
     return "play-a";
 }
 
-inline std::string user_spot_rid_for_key (const std::string &key)
+inline std::string user_spot_id_for_key (const std::string &key)
 {
     return "user:" + owner_node_rid_for_key (key) + ":" + key;
 }
@@ -71,7 +71,7 @@ struct join_req_t
 
 struct join_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string owner_node_rid;
     std::string actor_id;
     std::string display_name;
@@ -132,7 +132,7 @@ struct actor_ping_res_t
 {
     std::string actor_id;
     std::string node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string value;
     int seen = 0;
 };
@@ -141,7 +141,7 @@ struct spot_state_route_req_t
 {
     std::string key;
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     state_req_t state;
 };
 
@@ -161,21 +161,21 @@ struct stage_timer_start_msg_t
 
 struct spot_stage_probe_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     int delta = 0;
 };
 
 struct spot_stage_timer_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     int period_ms = 0;
 };
 
 struct state_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string owner_node_rid;
     int value = 0;
     int sequence = 0;
@@ -183,13 +183,13 @@ struct state_res_t
 
 struct multi_node_create_spot_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     int delta = 0;
 };
 
 struct multi_node_create_spot_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string node_rid;
     std::string state;
     int value = 0;
@@ -198,13 +198,13 @@ struct multi_node_create_spot_res_t
 struct multi_node_state_route_req_t
 {
     static constexpr const char *packet_name = "MultiNodeStateReq";
-    std::string spot_rid;
+    std::string spot_id;
     int delta = 0;
 };
 
 struct join_admitted_user_spot_actor_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string actor_id;
     bool allow = false;
     std::string reason;
@@ -212,7 +212,7 @@ struct join_admitted_user_spot_actor_req_t
 
 struct join_admitted_user_spot_actor_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string actor_id;
     bool accepted = false;
     std::uint64_t generation = 0;
@@ -372,13 +372,13 @@ struct outbound_res_t
 struct spot_outbound_route_req_t
 {
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
 };
 
 struct spot_outbound_route_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     bool accepted = false;
 };
@@ -398,21 +398,21 @@ struct spot_worker_req_t
 struct spot_worker_start_req_t
 {
     static constexpr const char *packet_name = "WorkerStartReq";
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     int delay_ms = 0;
 };
 
 struct spot_worker_start_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string owner_node_rid;
     std::string marker;
 };
 
 struct spot_worker_complete_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
 };
 
@@ -434,26 +434,26 @@ struct direct_spot_req_t
 struct direct_spot_route_req_t
 {
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string value;
     std::string source_actor_id = "sm-a3-client";
 };
 
 struct create_spot_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
 };
 
 struct create_spot_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string owner_node_rid;
     bool created = false;
 };
 
 struct direct_spot_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string owner_node_rid;
     std::string value;
 };
@@ -468,7 +468,7 @@ struct direct_spot_msg_t
 struct spot_state_command_route_req_t
 {
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
 };
 
@@ -479,7 +479,7 @@ struct spot_state_command_route_res_t
 
 struct spot_publish_route_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
 };
 
@@ -497,7 +497,7 @@ struct slow_spot_req_t
 struct spot_slow_route_req_t
 {
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string value;
     int timeout_ms = 0;
 };
@@ -523,7 +523,7 @@ struct unhandled_spot_msg_t : unhandled_spot_req_t
 struct spot_missing_route_req_t
 {
     std::string target_node_rid;
-    std::string spot_rid;
+    std::string spot_id;
     std::string value;
 };
 
@@ -535,23 +535,23 @@ struct spot_missing_route_res_t
 
 struct spot_missing_handler_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
 };
 
 struct spot_missing_command_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
 };
 
 struct spot_missing_target_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
 };
 
 struct spot_missing_target_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     bool failed = false;
 };
 
@@ -573,9 +573,9 @@ struct spot_to_spot_res_t
 struct spot_to_spot_route_req_t
 {
     std::string source_node_rid;
-    std::string source_spot_rid;
+    std::string source_spot_id;
     std::string target_node_rid;
-    std::string target_spot_rid;
+    std::string target_spot_id;
     std::string marker;
 };
 
@@ -599,22 +599,22 @@ struct spot_to_spot_negative_req_t : spot_to_spot_route_req_t
 
 struct spot_to_spot_route_res_t
 {
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     std::string target_value;
 };
 
 struct spot_to_spot_timeout_route_res_t
 {
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     bool failed = false;
 };
 
 struct spot_to_spot_negative_route_res_t
 {
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     bool request_failed = false;
 };
 
@@ -638,7 +638,7 @@ struct lifecycle_req_t
 
 struct lifecycle_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     bool created = false;
     bool closed = false;
 };
@@ -650,7 +650,7 @@ struct close_spot_req_t
 
 struct close_spot_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     bool closed = false;
 };
 
@@ -662,7 +662,7 @@ struct idle_close_msg_t
 
 struct spot_idle_close_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     int period_ms = 0;
 };
@@ -676,7 +676,7 @@ struct overrun_timer_msg_t
 
 struct spot_overrun_start_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     std::string policy;
     int period_ms = 0;
@@ -756,29 +756,29 @@ struct actor_push_notify_t
 
 struct spot_only_mesh_req_t
 {
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     std::string marker;
 };
 
 struct spot_only_mesh_res_t
 {
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     int target_value = 0;
     std::string marker;
 };
 
 struct spot_only_join_req_t
 {
-    std::string target_spot_rid;
+    std::string target_spot_id;
     std::string actor_id;
     std::string marker;
 };
 
 struct spot_only_join_res_t
 {
-    std::string target_spot_rid;
+    std::string target_spot_id;
     std::string actor_id;
     bool accepted = false;
     std::string marker;
@@ -789,7 +789,7 @@ struct evidence_entry_t
     std::string marker;
     std::string node_rid;
     std::string actor_id;
-    std::string spot_rid;
+    std::string spot_id;
     std::string value;
 };
 
@@ -801,7 +801,7 @@ struct evidence_snapshot_t
 
 struct spot_stage_timer_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     bool started = false;
     evidence_snapshot_t evidence;
@@ -809,7 +809,7 @@ struct spot_stage_timer_res_t
 
 struct spot_worker_complete_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     bool completed = false;
     evidence_snapshot_t evidence;
@@ -817,7 +817,7 @@ struct spot_worker_complete_res_t
 
 struct spot_idle_close_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     bool closed = false;
     evidence_snapshot_t evidence;
@@ -825,7 +825,7 @@ struct spot_idle_close_res_t
 
 struct spot_overrun_start_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string name;
     bool started = false;
     evidence_snapshot_t evidence;
@@ -834,7 +834,7 @@ struct spot_overrun_start_res_t
 struct spot_publish_observe_res_t
 {
     std::string operation;
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     bool received = false;
     evidence_snapshot_t evidence;
@@ -842,14 +842,14 @@ struct spot_publish_observe_res_t
 
 struct spot_missing_handler_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     bool failed = false;
     evidence_snapshot_t evidence;
 };
 
 struct spot_missing_command_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     bool sent = false;
     evidence_snapshot_t evidence;
@@ -919,7 +919,7 @@ inline void from_json (const nlohmann::json &json, join_req_t &value)
 
 inline void to_json (nlohmann::json &json, const join_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"owner_node_rid", value.owner_node_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"owner_node_rid", value.owner_node_rid},
                           {"actor_id", value.actor_id}, {"display_name", value.display_name},
                           {"level", value.level},       {"tags", value.tags},
                           {"actor", value.actor}};
@@ -927,7 +927,7 @@ inline void to_json (nlohmann::json &json, const join_res_t &value)
 
 inline void from_json (const nlohmann::json &json, join_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("display_name").get_to (value.display_name);
@@ -1027,7 +1027,7 @@ inline void to_json (nlohmann::json &json, const actor_ping_res_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id},
                           {"node_rid", value.node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"value", value.value},
                           {"seen", value.seen}};
 }
@@ -1036,7 +1036,7 @@ inline void from_json (const nlohmann::json &json, actor_ping_res_t &value)
 {
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("node_rid").get_to (value.node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("value").get_to (value.value);
     json.at ("seen").get_to (value.seen);
 }
@@ -1045,7 +1045,7 @@ inline void to_json (nlohmann::json &json, const spot_state_route_req_t &value)
 {
     json = nlohmann::json{{"key", value.key},
                           {"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"state", value.state}};
 }
 
@@ -1057,8 +1057,8 @@ inline void from_json (const nlohmann::json &json, spot_state_route_req_t &value
     if (json.contains ("target_node_rid")) {
         json.at ("target_node_rid").get_to (value.target_node_rid);
     }
-    if (json.contains ("spot_rid")) {
-        json.at ("spot_rid").get_to (value.spot_rid);
+    if (json.contains ("spot_id")) {
+        json.at ("spot_id").get_to (value.spot_id);
     }
     if (json.contains ("state")) {
         json.at ("state").get_to (value.state);
@@ -1097,12 +1097,12 @@ inline void from_json (const nlohmann::json &json, stage_timer_start_msg_t &valu
 inline void to_json (nlohmann::json &json, const spot_stage_probe_req_t &value)
 {
     json = nlohmann::json{
-      {"spot_rid", value.spot_rid}, {"marker", value.marker}, {"delta", value.delta}};
+      {"spot_id", value.spot_id}, {"marker", value.marker}, {"delta", value.delta}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_stage_probe_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("delta").get_to (value.delta);
 }
@@ -1110,19 +1110,19 @@ inline void from_json (const nlohmann::json &json, spot_stage_probe_req_t &value
 inline void to_json (nlohmann::json &json, const spot_stage_timer_req_t &value)
 {
     json = nlohmann::json{
-      {"spot_rid", value.spot_rid}, {"name", value.name}, {"period_ms", value.period_ms}};
+      {"spot_id", value.spot_id}, {"name", value.name}, {"period_ms", value.period_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_stage_timer_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("period_ms").get_to (value.period_ms);
 }
 
 inline void to_json (nlohmann::json &json, const state_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"owner_node_rid", value.owner_node_rid},
                           {"value", value.value},
                           {"sequence", value.sequence}};
@@ -1130,7 +1130,7 @@ inline void to_json (nlohmann::json &json, const state_res_t &value)
 
 inline void from_json (const nlohmann::json &json, state_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("value").get_to (value.value);
     json.at ("sequence").get_to (value.sequence);
@@ -1138,18 +1138,18 @@ inline void from_json (const nlohmann::json &json, state_res_t &value)
 
 inline void to_json (nlohmann::json &json, const multi_node_create_spot_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"delta", value.delta}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"delta", value.delta}};
 }
 
 inline void from_json (const nlohmann::json &json, multi_node_create_spot_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("delta").get_to (value.delta);
 }
 
 inline void to_json (nlohmann::json &json, const multi_node_create_spot_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"node_rid", value.node_rid},
                           {"state", value.state},
                           {"value", value.value}};
@@ -1157,7 +1157,7 @@ inline void to_json (nlohmann::json &json, const multi_node_create_spot_res_t &v
 
 inline void from_json (const nlohmann::json &json, multi_node_create_spot_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("node_rid").get_to (value.node_rid);
     json.at ("state").get_to (value.state);
     json.at ("value").get_to (value.value);
@@ -1165,18 +1165,18 @@ inline void from_json (const nlohmann::json &json, multi_node_create_spot_res_t 
 
 inline void to_json (nlohmann::json &json, const multi_node_state_route_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"delta", value.delta}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"delta", value.delta}};
 }
 
 inline void from_json (const nlohmann::json &json, multi_node_state_route_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("delta").get_to (value.delta);
 }
 
 inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"actor_id", value.actor_id},
                           {"allow", value.allow},
                           {"reason", value.reason}};
@@ -1184,7 +1184,7 @@ inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_r
 
 inline void from_json (const nlohmann::json &json, join_admitted_user_spot_actor_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("allow").get_to (value.allow);
     json.at ("reason").get_to (value.reason);
@@ -1192,7 +1192,7 @@ inline void from_json (const nlohmann::json &json, join_admitted_user_spot_actor
 
 inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"actor_id", value.actor_id},
                           {"accepted", value.accepted},
                           {"generation", value.generation},
@@ -1201,7 +1201,7 @@ inline void to_json (nlohmann::json &json, const join_admitted_user_spot_actor_r
 
 inline void from_json (const nlohmann::json &json, join_admitted_user_spot_actor_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("accepted").get_to (value.accepted);
     if (json.contains ("generation")) {
@@ -1492,27 +1492,27 @@ inline void from_json (const nlohmann::json &json, outbound_res_t &value)
 inline void to_json (nlohmann::json &json, const spot_outbound_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_outbound_route_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_outbound_route_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"marker", value.marker},
                           {"accepted", value.accepted}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_outbound_route_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("accepted").get_to (value.accepted);
 }
@@ -1541,40 +1541,40 @@ inline void from_json (const nlohmann::json &json, spot_worker_req_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_worker_start_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"marker", value.marker},
                           {"delay_ms", value.delay_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_worker_start_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("delay_ms").get_to (value.delay_ms);
 }
 
 inline void to_json (nlohmann::json &json, const spot_worker_start_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"owner_node_rid", value.owner_node_rid},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_worker_start_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_worker_complete_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"marker", value.marker}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_worker_complete_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
@@ -1608,7 +1608,7 @@ inline void from_json (const nlohmann::json &json, direct_spot_req_t &value)
 inline void to_json (nlohmann::json &json, const direct_spot_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"value", value.value},
                           {"source_actor_id", value.source_actor_id}};
 }
@@ -1616,7 +1616,7 @@ inline void to_json (nlohmann::json &json, const direct_spot_route_req_t &value)
 inline void from_json (const nlohmann::json &json, direct_spot_route_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("value").get_to (value.value);
     if (json.contains ("source_actor_id")) {
         json.at ("source_actor_id").get_to (value.source_actor_id);
@@ -1625,38 +1625,38 @@ inline void from_json (const nlohmann::json &json, direct_spot_route_req_t &valu
 
 inline void to_json (nlohmann::json &json, const create_spot_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}};
+    json = nlohmann::json{{"spot_id", value.spot_id}};
 }
 
 inline void from_json (const nlohmann::json &json, create_spot_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
 }
 
 inline void to_json (nlohmann::json &json, const create_spot_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"owner_node_rid", value.owner_node_rid},
                           {"created", value.created}};
 }
 
 inline void from_json (const nlohmann::json &json, create_spot_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("created").get_to (value.created);
 }
 
 inline void to_json (nlohmann::json &json, const direct_spot_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"owner_node_rid", value.owner_node_rid},
                           {"value", value.value}};
 }
 
 inline void from_json (const nlohmann::json &json, direct_spot_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("owner_node_rid").get_to (value.owner_node_rid);
     json.at ("value").get_to (value.value);
 }
@@ -1675,14 +1675,14 @@ inline void from_json (const nlohmann::json &json, direct_spot_msg_t &value)
 inline void to_json (nlohmann::json &json, const spot_state_command_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_state_command_route_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
@@ -1698,12 +1698,12 @@ inline void from_json (const nlohmann::json &json, spot_state_command_route_res_
 
 inline void to_json (nlohmann::json &json, const spot_publish_route_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"marker", value.marker}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_publish_route_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
@@ -1730,7 +1730,7 @@ inline void from_json (const nlohmann::json &json, slow_spot_req_t &value)
 inline void to_json (nlohmann::json &json, const spot_slow_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"value", value.value},
                           {"timeout_ms", value.timeout_ms}};
 }
@@ -1738,7 +1738,7 @@ inline void to_json (nlohmann::json &json, const spot_slow_route_req_t &value)
 inline void from_json (const nlohmann::json &json, spot_slow_route_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("value").get_to (value.value);
     json.at ("timeout_ms").get_to (value.timeout_ms);
 }
@@ -1776,14 +1776,14 @@ inline void from_json (const nlohmann::json &json, unhandled_spot_msg_t &value)
 inline void to_json (nlohmann::json &json, const spot_missing_route_req_t &value)
 {
     json = nlohmann::json{{"target_node_rid", value.target_node_rid},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"value", value.value}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_route_req_t &value)
 {
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("value").get_to (value.value);
 }
 
@@ -1801,43 +1801,43 @@ inline void from_json (const nlohmann::json &json, spot_missing_route_res_t &val
 
 inline void to_json (nlohmann::json &json, const spot_missing_handler_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}};
+    json = nlohmann::json{{"spot_id", value.spot_id}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_handler_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
 }
 
 inline void to_json (nlohmann::json &json, const spot_missing_command_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"marker", value.marker}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_command_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_missing_target_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}};
+    json = nlohmann::json{{"spot_id", value.spot_id}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_target_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
 }
 
 inline void to_json (nlohmann::json &json, const spot_missing_target_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"failed", value.failed}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"failed", value.failed}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_target_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("failed").get_to (value.failed);
 }
 
@@ -1873,18 +1873,18 @@ inline void from_json (const nlohmann::json &json, spot_to_spot_res_t &value)
 inline void to_json (nlohmann::json &json, const spot_to_spot_route_req_t &value)
 {
     json = nlohmann::json{{"source_node_rid", value.source_node_rid},
-                          {"source_spot_rid", value.source_spot_rid},
+                          {"source_spot_id", value.source_spot_id},
                           {"target_node_rid", value.target_node_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+                          {"target_spot_id", value.target_spot_id},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_to_spot_route_req_t &value)
 {
     json.at ("source_node_rid").get_to (value.source_node_rid);
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
     json.at ("target_node_rid").get_to (value.target_node_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
@@ -1920,43 +1920,43 @@ inline void from_json (const nlohmann::json &json, spot_to_spot_negative_req_t &
 
 inline void to_json (nlohmann::json &json, const spot_to_spot_route_res_t &value)
 {
-    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"source_spot_id", value.source_spot_id},
+                          {"target_spot_id", value.target_spot_id},
                           {"target_value", value.target_value}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_to_spot_route_res_t &value)
 {
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("target_value").get_to (value.target_value);
 }
 
 inline void to_json (nlohmann::json &json, const spot_to_spot_timeout_route_res_t &value)
 {
-    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"source_spot_id", value.source_spot_id},
+                          {"target_spot_id", value.target_spot_id},
                           {"failed", value.failed}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_to_spot_timeout_route_res_t &value)
 {
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("failed").get_to (value.failed);
 }
 
 inline void to_json (nlohmann::json &json, const spot_to_spot_negative_route_res_t &value)
 {
-    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"source_spot_id", value.source_spot_id},
+                          {"target_spot_id", value.target_spot_id},
                           {"request_failed", value.request_failed}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_to_spot_negative_route_res_t &value)
 {
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("request_failed").get_to (value.request_failed);
 }
 
@@ -1999,12 +1999,12 @@ inline void from_json (const nlohmann::json &json, lifecycle_req_t &value)
 inline void to_json (nlohmann::json &json, const lifecycle_res_t &value)
 {
     json = nlohmann::json{
-      {"spot_rid", value.spot_rid}, {"created", value.created}, {"closed", value.closed}};
+      {"spot_id", value.spot_id}, {"created", value.created}, {"closed", value.closed}};
 }
 
 inline void from_json (const nlohmann::json &json, lifecycle_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("created").get_to (value.created);
     json.at ("closed").get_to (value.closed);
 }
@@ -2021,12 +2021,12 @@ inline void from_json (const nlohmann::json &json, close_spot_req_t &value)
 
 inline void to_json (nlohmann::json &json, const close_spot_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid}, {"closed", value.closed}};
+    json = nlohmann::json{{"spot_id", value.spot_id}, {"closed", value.closed}};
 }
 
 inline void from_json (const nlohmann::json &json, close_spot_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("closed").get_to (value.closed);
 }
 
@@ -2044,12 +2044,12 @@ inline void from_json (const nlohmann::json &json, idle_close_msg_t &value)
 inline void to_json (nlohmann::json &json, const spot_idle_close_req_t &value)
 {
     json = nlohmann::json{
-      {"spot_rid", value.spot_rid}, {"name", value.name}, {"period_ms", value.period_ms}};
+      {"spot_id", value.spot_id}, {"name", value.name}, {"period_ms", value.period_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_idle_close_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("period_ms").get_to (value.period_ms);
 }
@@ -2069,7 +2069,7 @@ inline void from_json (const nlohmann::json &json, overrun_timer_msg_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_overrun_start_req_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"name", value.name},
                           {"policy", value.policy},
                           {"period_ms", value.period_ms}};
@@ -2077,7 +2077,7 @@ inline void to_json (nlohmann::json &json, const spot_overrun_start_req_t &value
 
 inline void from_json (const nlohmann::json &json, spot_overrun_start_req_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("policy").get_to (value.policy);
     json.at ("period_ms").get_to (value.period_ms);
@@ -2253,51 +2253,51 @@ inline void from_json (const nlohmann::json &json, actor_push_notify_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_only_mesh_req_t &value)
 {
-    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"source_spot_id", value.source_spot_id},
+                          {"target_spot_id", value.target_spot_id},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_only_mesh_req_t &value)
 {
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_only_mesh_res_t &value)
 {
-    json = nlohmann::json{{"source_spot_rid", value.source_spot_rid},
-                          {"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"source_spot_id", value.source_spot_id},
+                          {"target_spot_id", value.target_spot_id},
                           {"target_value", value.target_value},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_only_mesh_res_t &value)
 {
-    json.at ("source_spot_rid").get_to (value.source_spot_rid);
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("source_spot_id").get_to (value.source_spot_id);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("target_value").get_to (value.target_value);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_only_join_req_t &value)
 {
-    json = nlohmann::json{{"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"target_spot_id", value.target_spot_id},
                           {"actor_id", value.actor_id},
                           {"marker", value.marker}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_only_join_req_t &value)
 {
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("marker").get_to (value.marker);
 }
 
 inline void to_json (nlohmann::json &json, const spot_only_join_res_t &value)
 {
-    json = nlohmann::json{{"target_spot_rid", value.target_spot_rid},
+    json = nlohmann::json{{"target_spot_id", value.target_spot_id},
                           {"actor_id", value.actor_id},
                           {"accepted", value.accepted},
                           {"marker", value.marker}};
@@ -2305,7 +2305,7 @@ inline void to_json (nlohmann::json &json, const spot_only_join_res_t &value)
 
 inline void from_json (const nlohmann::json &json, spot_only_join_res_t &value)
 {
-    json.at ("target_spot_rid").get_to (value.target_spot_rid);
+    json.at ("target_spot_id").get_to (value.target_spot_id);
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("accepted").get_to (value.accepted);
     json.at ("marker").get_to (value.marker);
@@ -2316,7 +2316,7 @@ inline void to_json (nlohmann::json &json, const evidence_entry_t &value)
     json = nlohmann::json{{"marker", value.marker},
                           {"node_rid", value.node_rid},
                           {"actor_id", value.actor_id},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"value", value.value}};
 }
 
@@ -2325,7 +2325,7 @@ inline void from_json (const nlohmann::json &json, evidence_entry_t &value)
     json.at ("marker").get_to (value.marker);
     json.at ("node_rid").get_to (value.node_rid);
     json.at ("actor_id").get_to (value.actor_id);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("value").get_to (value.value);
 }
 
@@ -2342,7 +2342,7 @@ inline void from_json (const nlohmann::json &json, evidence_snapshot_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_stage_timer_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"name", value.name},
                           {"started", value.started},
                           {"evidence", value.evidence}};
@@ -2350,7 +2350,7 @@ inline void to_json (nlohmann::json &json, const spot_stage_timer_res_t &value)
 
 inline void from_json (const nlohmann::json &json, spot_stage_timer_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("started").get_to (value.started);
     json.at ("evidence").get_to (value.evidence);
@@ -2358,7 +2358,7 @@ inline void from_json (const nlohmann::json &json, spot_stage_timer_res_t &value
 
 inline void to_json (nlohmann::json &json, const spot_worker_complete_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"marker", value.marker},
                           {"completed", value.completed},
                           {"evidence", value.evidence}};
@@ -2366,7 +2366,7 @@ inline void to_json (nlohmann::json &json, const spot_worker_complete_res_t &val
 
 inline void from_json (const nlohmann::json &json, spot_worker_complete_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("completed").get_to (value.completed);
     json.at ("evidence").get_to (value.evidence);
@@ -2374,7 +2374,7 @@ inline void from_json (const nlohmann::json &json, spot_worker_complete_res_t &v
 
 inline void to_json (nlohmann::json &json, const spot_idle_close_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"name", value.name},
                           {"closed", value.closed},
                           {"evidence", value.evidence}};
@@ -2382,7 +2382,7 @@ inline void to_json (nlohmann::json &json, const spot_idle_close_res_t &value)
 
 inline void from_json (const nlohmann::json &json, spot_idle_close_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("closed").get_to (value.closed);
     json.at ("evidence").get_to (value.evidence);
@@ -2390,7 +2390,7 @@ inline void from_json (const nlohmann::json &json, spot_idle_close_res_t &value)
 
 inline void to_json (nlohmann::json &json, const spot_overrun_start_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"name", value.name},
                           {"started", value.started},
                           {"evidence", value.evidence}};
@@ -2398,7 +2398,7 @@ inline void to_json (nlohmann::json &json, const spot_overrun_start_res_t &value
 
 inline void from_json (const nlohmann::json &json, spot_overrun_start_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("name").get_to (value.name);
     json.at ("started").get_to (value.started);
     json.at ("evidence").get_to (value.evidence);
@@ -2407,7 +2407,7 @@ inline void from_json (const nlohmann::json &json, spot_overrun_start_res_t &val
 inline void to_json (nlohmann::json &json, const spot_publish_observe_res_t &value)
 {
     json = nlohmann::json{{"operation", value.operation},
-                          {"spot_rid", value.spot_rid},
+                          {"spot_id", value.spot_id},
                           {"marker", value.marker},
                           {"received", value.received},
                           {"evidence", value.evidence}};
@@ -2416,7 +2416,7 @@ inline void to_json (nlohmann::json &json, const spot_publish_observe_res_t &val
 inline void from_json (const nlohmann::json &json, spot_publish_observe_res_t &value)
 {
     json.at ("operation").get_to (value.operation);
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("received").get_to (value.received);
     json.at ("evidence").get_to (value.evidence);
@@ -2425,19 +2425,19 @@ inline void from_json (const nlohmann::json &json, spot_publish_observe_res_t &v
 inline void to_json (nlohmann::json &json, const spot_missing_handler_res_t &value)
 {
     json = nlohmann::json{
-      {"spot_rid", value.spot_rid}, {"failed", value.failed}, {"evidence", value.evidence}};
+      {"spot_id", value.spot_id}, {"failed", value.failed}, {"evidence", value.evidence}};
 }
 
 inline void from_json (const nlohmann::json &json, spot_missing_handler_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("failed").get_to (value.failed);
     json.at ("evidence").get_to (value.evidence);
 }
 
 inline void to_json (nlohmann::json &json, const spot_missing_command_res_t &value)
 {
-    json = nlohmann::json{{"spot_rid", value.spot_rid},
+    json = nlohmann::json{{"spot_id", value.spot_id},
                           {"marker", value.marker},
                           {"sent", value.sent},
                           {"evidence", value.evidence}};
@@ -2445,7 +2445,7 @@ inline void to_json (nlohmann::json &json, const spot_missing_command_res_t &val
 
 inline void from_json (const nlohmann::json &json, spot_missing_command_res_t &value)
 {
-    json.at ("spot_rid").get_to (value.spot_rid);
+    json.at ("spot_id").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("sent").get_to (value.sent);
     json.at ("evidence").get_to (value.evidence);

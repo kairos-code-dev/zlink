@@ -103,7 +103,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
     private final ZLinkActorTransferRegistry actorTransfers;
     private final Duration defaultRequestTimeout;
-    private final Duration actorTransferForwardWindow;
+    private final Duration messageFollowDuration;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkHandlerActivator handlerFactory;
     private final ZLinkStreamCodec defaultStreamCodec;
@@ -220,7 +220,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public boolean drainComplete() {
         for (ActorEntry entry : actorRegistry.entries()) {
             if (entry.context().moving()
-                || handoff.forwardingSource(entry.actor().context().actorId()).isEmpty()) {
+                || handoff.messageFollowSource(entry.actor().context().actorId()).isEmpty()) {
                 return false;
             }
         }
@@ -401,7 +401,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
-        Duration actorTransferForwardWindow,
+        Duration messageFollowDuration,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator handlerFactory,
         ZLinkStreamCodec defaultStreamCodec,
@@ -425,9 +425,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.meshName = spotNode.routingId().toString();
         this.factories = Map.copyOf(factories);
         this.defaultRequestTimeout = defaultRequestTimeout;
-        this.actorTransferForwardWindow = actorTransferForwardWindow == null
+        this.messageFollowDuration = messageFollowDuration == null
             ? Duration.ofSeconds(5)
-            : actorTransferForwardWindow;
+            : messageFollowDuration;
         this.serializer = serializer;
         this.handlerFactory = handlerFactory;
         this.actorTransfers = new ZLinkActorTransferRegistry(
@@ -443,7 +443,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         Map<String, Class<? extends ZLinkActorFactory>> factories,
         Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
         Duration defaultRequestTimeout,
-        Duration actorTransferForwardWindow,
+        Duration messageFollowDuration,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator handlerFactory,
         ZLinkStreamCodec defaultStreamCodec) {
@@ -452,7 +452,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             factories,
             transferAdapters,
             defaultRequestTimeout,
-            actorTransferForwardWindow,
+            messageFollowDuration,
             serializer,
             handlerFactory,
             defaultStreamCodec,
@@ -794,7 +794,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         requireActorId(actorId);
         Class<? extends ZLinkActorFactory> factoryType = requireFactory(actorType);
         ZLinkBackendActorRef reentryActorRef = preparedActorRef == null
-            ? detachForwardingProxyForReentry(actorId)
+            ? detachMessageFollowProxyForReentry(actorId)
             : preparedActorRef;
         if (actorRegistry.contains(actorId)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -934,21 +934,21 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return discardPreparedBackend(prepared.actorRef, prepared.context);
     }
 
-    private synchronized ZLinkBackendActorRef detachForwardingProxyForReentry(String actorId) {
-        ZLinkActorTransferHandoff.ForwardingSource forwarding =
-            handoff.forwardingSource(actorId).orElse(null);
+    private synchronized ZLinkBackendActorRef detachMessageFollowProxyForReentry(String actorId) {
+        ZLinkActorTransferHandoff.MessageFollowSource followSource =
+            handoff.messageFollowSource(actorId).orElse(null);
         ZLinkActor oldActor = actorRegistry.actor(actorId);
-        if (forwarding == null || oldActor == null) {
+        if (followSource == null || oldActor == null) {
             return null;
         }
         DefaultActorContext oldContext = actorRegistry.context(oldActor);
-        if (oldContext == null || !forwarding.targetActorRef().equals(oldContext.actorRef())) {
+        if (oldContext == null || !followSource.targetActorRef().equals(oldContext.actorRef())) {
             return null;
         }
         actorRegistry.remove(actorId, oldActor);
         dispatches.remove(actorId);
-        return handoff.takeForwardingSource(actorId)
-            .map(ZLinkActorTransferHandoff.ForwardingSource::sourceActorRef)
+        return handoff.takeMessageFollowSource(actorId)
+            .map(ZLinkActorTransferHandoff.MessageFollowSource::sourceActorRef)
             .orElse(null);
     }
 
@@ -1164,55 +1164,55 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         locations.abandonActor(actor.context().actorId());
     }
 
-    void retainForwardingSource(
+    void retainMessageFollowSource(
         ZLinkActor actor,
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef) {
         handoff.retain(
-            actor.context().actorId(), sourceActorRef, targetActorRef, actorTransferForwardWindow,
-            this::retireForwardingSource);
-        traceRetainedForwardingSource(actor, sourceActorRef);
+            actor.context().actorId(), sourceActorRef, targetActorRef, messageFollowDuration,
+            this::removeMessageFollowSource);
+        traceRetainedMessageFollowSource(actor, sourceActorRef);
     }
 
-    void retainForwardingSource(
+    void retainMessageFollowSource(
         ZLinkActor actor,
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef,
         SpotTransportAddress targetAddress) {
         handoff.retain(
             actor.context().actorId(), sourceActorRef, targetActorRef,
-            targetAddress, actorTransferForwardWindow,
-            this::retireForwardingSource);
-        traceRetainedForwardingSource(actor, sourceActorRef);
+            targetAddress, messageFollowDuration,
+            this::removeMessageFollowSource);
+        traceRetainedMessageFollowSource(actor, sourceActorRef);
     }
 
-    private void traceRetainedForwardingSource(
+    private void traceRetainedMessageFollowSource(
         ZLinkActor actor,
         ZLinkBackendActorRef sourceActorRef) {
-        // Keep the actor context as a forwarding proxy while the old native actor
-        // reference can still receive packets. EntrySpot dispatch uses its rebound
-        // target reference to relay those packets to the new owner.
+        // Keep the actor context as a Message Follow proxy while the old native
+        // actor reference can still receive packets. EntrySpot dispatch uses its
+        // rebound target reference to relay those packets to the new owner.
         traceActorTransferMarker(
-            "source_cleanup",
+            "message_follow_registered",
             actor.context().actorId(),
             Long.toUnsignedString(sourceActorRef.generation()));
     }
 
-    int forwardingSourceCount() {
-        return handoff.forwardingSourceCount();
+    int messageFollowSourceCount() {
+        return handoff.messageFollowSourceCount();
     }
 
-    private void retireForwardingSource(
-        ZLinkActorTransferHandoff.ForwardingSource source) {
-        cleanupForwardingNativeSource(source.sourceActorRef());
+    private void removeMessageFollowSource(
+        ZLinkActorTransferHandoff.MessageFollowSource source) {
+        cleanupMessageFollowNativeSource(source.sourceActorRef());
     }
 
-    private void cleanupForwardingNativeSource(ZLinkBackendActorRef sourceActorRef) {
+    private void cleanupMessageFollowNativeSource(ZLinkBackendActorRef sourceActorRef) {
         spotNode.destroyActor(sourceActorRef, defaultRequestTimeout)
             .whenComplete((ignored, error) -> {
                 if (error != null && !ZLinkActorSubmitFaults.requestNotFound(error)) {
                     ZLinkActorRetryScheduler.scheduleRoute(
-                        () -> cleanupForwardingNativeSource(sourceActorRef));
+                        () -> cleanupMessageFollowNativeSource(sourceActorRef));
                 }
             });
     }
@@ -1844,18 +1844,18 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor Spot is not routable: " + spotId));
         }
-        ZLinkActorTransferHandoff.ForwardingSource forwarding =
-            handoff.forwardingSource(actorRef.actorId()).orElse(null);
-        if (forwarding != null) {
-            if (forwarding.targetAddress() == null) {
+        ZLinkActorTransferHandoff.MessageFollowSource followSource =
+            handoff.messageFollowSource(actorRef.actorId()).orElse(null);
+        if (followSource != null) {
+            if (followSource.targetAddress() == null) {
                 return CompletableFuture.failedFuture(
                     new ZLinkConfigurationException(
-                        "committed forwarding route has no target address"));
+                        "committed Message Follow route has no target address"));
             }
-            return handoff.forward(
+            return handoff.follow(
                 actorRef.actorId(), actorRef.generation(), payload.size(),
                 () -> dispatchRemoteJoinedActor(
-                    actorRef, header, payload, forwarding.targetAddress()));
+                    actorRef, header, payload, followSource.targetAddress()));
         }
         return resolveHandle(spotId)
             .thenCompose(remoteAddressResolver::resolve)

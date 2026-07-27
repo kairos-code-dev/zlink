@@ -272,6 +272,7 @@ public sealed class StatefulServiceRuntimeTests
         var nodeRid = RoutingId.From("wire-node");
         const string spotId = "wire-spot";
         const string sourceSpotId = "wire-source";
+        const ulong deadlineUnixMs = 4_102_444_800_123;
         var spot = ZLinkServiceWireCodec.EncodeSpot(
             ServiceWireConstants.Command.SpotRequest,
             9,
@@ -284,7 +285,8 @@ public sealed class StatefulServiceRuntimeTests
             12,
             13,
             hasMetadata: true,
-            forwardingHopCount: 2);
+            messageFollowHopCount: 2,
+            deadlineUnixMs: deadlineUnixMs);
         Assert.True(ZLinkServiceWireCodec.TryDecodeStateful(
             spot,
             "play",
@@ -297,7 +299,22 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(spotId, spotRecord.TargetSpotId);
         Assert.Equal(10UL, spotRecord.TargetSpotGeneration);
         Assert.Equal(13UL, spotRecord.OwnerLeaseGeneration);
-        Assert.Equal<byte>(2, spotRecord.ForwardingHopCount);
+        Assert.Equal<byte>(2, spotRecord.MessageFollowHopCount);
+        Assert.Equal(deadlineUnixMs, spotRecord.DeadlineUnixMs);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeSpot(
+                ServiceWireConstants.Command.SpotRequest,
+                9,
+                new MeshOperationId(7, 8),
+                sourceSpotId,
+                spotId,
+                10,
+                nodeRid,
+                11,
+                12,
+                13,
+                hasMetadata: false,
+                deadlineUnixMs: 0));
 
         var actor = new ActorRef("wire-actor", 13, "play", nodeRid);
         var actorBytes = ZLinkServiceWireCodec.EncodeActor(
@@ -1343,7 +1360,7 @@ public sealed class StatefulServiceRuntimeTests
                 source.Status().AdmittedPeerCount == 1
                 && target.Node.MeshStatus().AdmittedPeerCount == 1);
 
-            var store = Assert.IsAssignableFrom<IZLinkLocationStore>(
+            var store = Assert.IsAssignableFrom<IZLinkLocationRepository>(
                 runtime.Registration.Locations.ResolveStore());
             var owner = locations.OwnerToken;
             var targetGeneration = target.Node.MeshStatus().LifecycleGeneration;
@@ -2690,7 +2707,7 @@ public sealed class StatefulServiceRuntimeTests
 
     private sealed record ProductionCreateReply(string Value);
 
-    private sealed class TestRelocationStore : IZLinkRelocationStore
+    private sealed class TestRelocationStore : IZLinkRelocationRepository
     {
         private readonly Dictionary<string, byte[]> _payloads =
             new(StringComparer.Ordinal);

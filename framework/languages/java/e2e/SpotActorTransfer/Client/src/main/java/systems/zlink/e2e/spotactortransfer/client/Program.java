@@ -86,8 +86,8 @@ public final class Program implements AutoCloseable {
             case "ST-F1" -> inFlightHandoffOrder();
             case "ST-F2" -> directDoesNotOvertake();
             case "ST-F3" -> boundSessionCrossMoveOrder();
-            case "ST-F4" -> stragglerWindow();
-            case "ST-F5" -> forwardingMappingEviction();
+            case "ST-F4" -> messageFollowDuration();
+            case "ST-F5" -> messageFollowRouteRemoval();
             case "ST-F6" -> inFlightRequestReplyCorrelationAndTimeout();
             default -> throw new IllegalArgumentException("unsupported scenario: " + scenario);
         }
@@ -151,13 +151,13 @@ public final class Program implements AutoCloseable {
         require("actor-b".equals(probe.nodeRid()), "ST-B1 target owner is not actor-b");
         require(probe.stateVersion() == 21, "ST-B1 state was not restored");
         waitFor(actorId, "location_committed", Duration.ofSeconds(3));
-        waitFor(actorId, "source_cleanup", Duration.ofSeconds(3));
+        waitFor(actorId, "message_follow_registered", Duration.ofSeconds(3));
         assertNodeOrder(actorId, "actor-a", List.of(
             "transfer_out", "leave", "commit_ack", "location_visible", "success_reply"));
         assertNodeOrder(actorId, "actor-b", List.of(
             "admission", "transfer_in", "joined"));
         assertCorrelatedTransferMarkers(actorId, List.of(
-            "commit_request", "location_committed", "source_cleanup", "commit_ack"));
+            "commit_request", "location_committed", "message_follow_registered", "commit_ack"));
     }
 
     private void inFlightHandoffOrder() throws Exception {
@@ -239,24 +239,29 @@ public final class Program implements AutoCloseable {
         }
     }
 
-    private void stragglerWindow() throws Exception {
+    private void messageFollowDuration() throws Exception {
         HandoffFixture fixture = completeSimpleTransfer("ST-F4");
-        sendAtRef(nodeA, fixture.actorId(), fixture.sourceRef(), "ST-F4", "within-window");
-        waitFor(fixture.actorId(), "straggler_send", Duration.ofSeconds(5));
+        sendAtRef(
+            nodeA,
+            fixture.actorId(),
+            fixture.sourceRef(),
+            "ST-F4",
+            "within-message-follow-duration");
+        waitFor(fixture.actorId(), "message_follow_send", Duration.ofSeconds(5));
         Thread.sleep(2_500);
         require(probeAtRefFails(nodeA, fixture.actorId(), fixture.sourceRef(), "ST-F4"),
-            "ST-F4 stale ref did not fail after forwarding window");
+            "ST-F4 stale ref did not fail after the Message Follow duration");
         List<Contracts.Evidence> observed = evidence();
-        require(hasKind(observed, fixture.actorId(), "straggler_forward"),
-            "ST-F4 source forward evidence is missing");
+        require(hasKind(observed, fixture.actorId(), "message_follow_relay"),
+            "ST-F4 source Message Follow evidence is missing");
         require(observed.stream().anyMatch(entry ->
                 fixture.actorId().equals(entry.actorId())
-                    && "stale_fail_fast".equals(entry.kind())
+                    && "message_follow_rejected".equals(entry.kind())
                     && "ACTOR_LOCATION_STALE".equals(entry.value())),
             "ST-F4 stale ref was not classified as ACTOR_LOCATION_STALE");
     }
 
-    private void forwardingMappingEviction() throws Exception {
+    private void messageFollowRouteRemoval() throws Exception {
         String actorId = id("actor-st-f5");
         String spotB = id("spot-st-f5-b");
         String spotC = id("spot-st-f5-c");
@@ -269,19 +274,24 @@ public final class Program implements AutoCloseable {
         JsonNode sourceBRef = get(nodeB + "/actors/" + actorId + "/ref", JsonNode.class);
         require(join(nodeB, actorId, "ST-F5", spotC, "accept").accepted(),
             "ST-F5 chained transfer failed");
-        sendAtRef(nodeA, actorId, sourceARef, "ST-F5", "chained-window");
-        waitFor(actorId, "straggler_send", Duration.ofSeconds(5));
+        sendAtRef(
+            nodeA,
+            actorId,
+            sourceARef,
+            "ST-F5",
+            "chained-message-follow");
+        waitFor(actorId, "message_follow_send", Duration.ofSeconds(5));
         Contracts.ProbeRes finalOwner = probe(nodeC, actorId, "ST-F5", "final-owner");
         require("actor-c".equals(finalOwner.nodeRid()),
-            "ST-F5 chained forwarding did not reach the final target");
+            "ST-F5 chained Message Follow did not reach the final target");
         Thread.sleep(2_500);
         require(probeAtRefFails(nodeA, actorId, sourceARef, "ST-F5"),
-            "ST-F5 node A mapping was retained");
+            "ST-F5 node A Message Follow route was retained");
         require(probeAtRefFails(nodeB, actorId, sourceBRef, "ST-F5"),
-            "ST-F5 node B mapping was retained");
+            "ST-F5 node B Message Follow route was retained");
         require(evidence().stream().filter(entry ->
-                actorId.equals(entry.actorId()) && "mapping_evicted".equals(entry.kind())).count() >= 2,
-            "ST-F5 did not observe both source mapping evictions");
+                actorId.equals(entry.actorId()) && "message_follow_route_removed".equals(entry.kind())).count() >= 2,
+            "ST-F5 did not observe both Message Follow route removals");
     }
 
     private void inFlightRequestReplyCorrelationAndTimeout() throws Exception {
@@ -366,13 +376,13 @@ public final class Program implements AutoCloseable {
         Contracts.ProbeRes probe = probe(nodeB, actorId, "ST-B4", "after-empty-state");
         require(probe.stateVersion() == 41, "ST-B4 domain state was not loaded");
         waitFor(actorId, "location_committed", Duration.ofSeconds(3));
-        waitFor(actorId, "source_cleanup", Duration.ofSeconds(3));
+        waitFor(actorId, "message_follow_registered", Duration.ofSeconds(3));
         assertNodeOrder(actorId, "actor-a", List.of(
             "transfer_out_empty", "leave", "commit_ack", "success_reply"));
         assertNodeOrder(actorId, "actor-b", List.of(
             "admission", "transfer_in_empty", "joined", "domain_state_loaded"));
         assertCorrelatedTransferMarkers(actorId, List.of(
-            "commit_request", "location_committed", "source_cleanup", "commit_ack"));
+            "commit_request", "location_committed", "message_follow_registered", "commit_ack"));
     }
 
     private void sourceDownBeforeCommit() throws Exception {
@@ -663,7 +673,8 @@ public final class Program implements AutoCloseable {
         JsonNode actorRef,
         String scenario) {
         try {
-            probeAtRef(node, actorId, actorRef, scenario, "after-window");
+            probeAtRef(
+                node, actorId, actorRef, scenario, "after-message-follow-duration");
             return false;
         } catch (Exception expected) {
             return true;
@@ -681,7 +692,7 @@ public final class Program implements AutoCloseable {
             new Contracts.SendAtRefReq(
                 actorRef.path("nodeRid").asText(),
                 actorRef.path("generation").asLong(),
-                new Contracts.StragglerSendReq(scenario, marker)),
+                new Contracts.MessageFollowSendReq(scenario, marker)),
             JsonNode.class);
     }
 
@@ -691,7 +702,8 @@ public final class Program implements AutoCloseable {
         JsonNode actorRef,
         String scenario) {
         try {
-            sendAtRef(node, actorId, actorRef, scenario, "after-window");
+            sendAtRef(
+                node, actorId, actorRef, scenario, "after-message-follow-duration");
             return false;
         } catch (Exception expected) {
             return true;

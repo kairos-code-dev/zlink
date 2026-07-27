@@ -4,7 +4,8 @@ import type {
   RequestResult,
   SubmitResult
 } from '@zlink-systems/zlink';
-import type { ActorRef, RoutingId } from '../../contracts';
+import type { RoutingId } from '../../contracts';
+import type { ServiceActorRef } from './service-stateful-registry';
 
 export interface MeshOperationId {
   readonly high: bigint;
@@ -79,7 +80,7 @@ export const ActorTransferPhase = Object.freeze({
 } as const);
 
 export interface ActorLocation {
-  readonly actor: ActorRef;
+  readonly actor: ServiceActorRef;
   readonly spotId: RoutingId | null;
   readonly spotGeneration: bigint;
   readonly membershipEpoch: bigint;
@@ -88,8 +89,8 @@ export interface ActorLocation {
 export interface ActorControlPayload {
   readonly kind: 'actorControl';
   readonly lifecycleKind: number;
-  readonly previousActor: ActorRef | null;
-  readonly currentActor: ActorRef | null;
+  readonly previousActor: ServiceActorRef | null;
+  readonly currentActor: ServiceActorRef | null;
   readonly previousSpotId: RoutingId | null;
   readonly currentSpotId: RoutingId | null;
   readonly previousSpotGeneration: bigint;
@@ -102,7 +103,7 @@ export interface ActorControlPayload {
 export interface ActorJoinCompletionPayload {
   readonly kind: 'actorJoinCompletion';
   readonly joinResult: number;
-  readonly actor: ActorRef | null;
+  readonly actor: ServiceActorRef | null;
   readonly location: ActorLocation;
 }
 
@@ -116,7 +117,7 @@ export interface SendReadyPayload {
   readonly destinationKind: number;
   readonly targetNodeRid: RoutingId | null;
   readonly targetSpotId: RoutingId | null;
-  readonly targetActor: ActorRef | null;
+  readonly targetActor: ServiceActorRef | null;
   readonly channelName: string | null;
 }
 
@@ -125,7 +126,7 @@ export interface ActorTransferControlPayload {
   readonly phase: number;
   readonly role: number;
   readonly transferId: ActorTransferId;
-  readonly actor: ActorRef | null;
+  readonly actor: ServiceActorRef | null;
   readonly membershipEpoch: bigint;
   readonly finalSequence: bigint;
   readonly resultCode: number;
@@ -134,7 +135,7 @@ export interface ActorTransferControlPayload {
 
 export interface ActorBindingControlPayload {
   readonly kind: 'actorBinding';
-  readonly actor: ActorRef;
+  readonly actor: ServiceActorRef;
   readonly bindingGeneration: bigint;
   readonly sessionNodeRid: RoutingId;
   readonly sessionRid: RoutingId;
@@ -152,7 +153,7 @@ export interface ReadyRecord {
   readonly ownerKind: number;
   readonly domain: number;
   readonly spotId: RoutingId | null;
-  readonly actor: ActorRef | null;
+  readonly actor: ServiceActorRef | null;
 }
 
 export interface ReceiveRequirements {
@@ -167,7 +168,7 @@ export interface ReceiveRecord {
   readonly sourceNodeRid: RoutingId | null;
   readonly sourceSpotId: RoutingId | null;
   readonly sourceBindingGeneration: bigint;
-  readonly sourceActor: ActorRef | null;
+  readonly sourceActor: ServiceActorRef | null;
   readonly operationId: MeshOperationId;
   readonly operationKind: number;
   readonly channelName: string | null;
@@ -258,22 +259,22 @@ export interface StreamSessionService {
   close(): void;
   status(): StreamSessionStatus;
   lookupActor(targetNodeRid: RoutingId, actorId: string, timeoutMs?: number): MeshOperationId;
-  bindActor(sessionRid: RoutingId, actor: ActorRef, timeoutMs?: number): MeshOperationId;
+  bindActor(sessionRid: RoutingId, actor: ServiceActorRef, timeoutMs?: number): MeshOperationId;
   unbindActor(
     sessionRid: RoutingId,
-    actor: ActorRef,
+    actor: ServiceActorRef,
     expectedBindingGeneration: bigint,
     timeoutMs?: number
   ): MeshOperationId;
   bindings(sessionRid: RoutingId): ReadonlyArray<{
     readonly sessionRid: RoutingId;
-    readonly actor: ActorRef;
+    readonly actor: ServiceActorRef;
     readonly bindingGeneration: bigint;
     readonly membershipEpoch: bigint;
   }>;
   sendToActor(
     sessionRid: RoutingId,
-    actor: ActorRef,
+    actor: ServiceActorRef,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number }
   ): SubmitResult;

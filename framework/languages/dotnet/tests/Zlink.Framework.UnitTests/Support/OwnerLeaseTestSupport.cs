@@ -3,7 +3,7 @@ namespace Zlink.Framework.UnitTests;
 internal static class OwnerLeaseTestSupport
 {
     internal static async ValueTask<ZLinkLocationOwnerToken> ClaimLiveOwnerAsync(
-        this IZLinkLocationStore store,
+        this IZLinkLocationRepository store,
         string ownerId,
         TimeSpan leaseTtl)
     {
@@ -16,7 +16,7 @@ internal static class OwnerLeaseTestSupport
     }
 
     internal static async ValueTask<ZLinkLocationOwnerToken> RenewLiveOwnerAsync(
-        this IZLinkLocationStore store,
+        this IZLinkLocationRepository store,
         string ownerId,
         TimeSpan leaseTtl)
     {

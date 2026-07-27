@@ -5,7 +5,7 @@ umask 077
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 
-# The ST-F markers (handoff_backlog, straggler_forward, ...) are runtime
+# The ST-F markers (handoff_backlog, message_follow_relay, ...) are runtime
 # diagnostics behind this gate; the runner asserts them, so it owns the gate.
 
 if [[ "$#" -eq 0 ]]; then
@@ -113,12 +113,7 @@ start_node() {
     --router-endpoint "$router" \
     --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
-    --log-dir "$LOG_DIR" \
-    --route-peer "actor-a=$NODE_A_ROUTER" \
-    --route-peer "actor-b=$NODE_B_ROUTER" \
-    --route-peer "actor-c=$NODE_C_ROUTER" \
-    --route-peer "session-a=$SESSION_A_ROUTER" \
-    --route-peer "session-b=$SESSION_B_ROUTER"
+    --log-dir "$LOG_DIR"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -134,12 +129,7 @@ start_session_gateway() {
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
     --stream-endpoint "$stream" \
-    --evidence-file "$LOG_DIR/${rid}.evidence.log" \
-    --route-peer "actor-a=$NODE_A_ROUTER" \
-    --route-peer "actor-b=$NODE_B_ROUTER" \
-    --route-peer "actor-c=$NODE_C_ROUTER" \
-    --route-peer "session-a=$SESSION_A_ROUTER" \
-    --route-peer "session-b=$SESSION_B_ROUTER"
+    --evidence-file "$LOG_DIR/${rid}.evidence.log"
   setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -217,7 +207,7 @@ wait_health "$SESSION_B_URL" session-b
 : >"$LOG_DIR/client.stderr.log"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F4,ST-F5,ST-F6"
+  run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F6"
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
@@ -285,16 +275,15 @@ fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F2"* ]]; then
   require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
 fi
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
-  require_runtime_marker straggler_forward
-  require_runtime_marker stale_fail_fast
+if [[ "$SCENARIO" == *"ST-F4"* ]]; then
+  require_runtime_marker message_follow_relay
+  require_runtime_marker message_follow_expired
 fi
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F5"* ]]; then
-  require_runtime_marker mapping_evicted
-  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-a target=actor-b entries=1' "$LOG_DIR"/actor-a.*.log
-  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-b target=actor-c entries=1' "$LOG_DIR"/actor-b.*.log
-  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-a.*.log
-  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-b.*.log
+if [[ "$SCENARIO" == *"ST-F5"* ]]; then
+  require_runtime_marker message_follow_registered
+  require_runtime_marker message_follow_relay
+  require_runtime_marker message_follow_route_removed
+  require_runtime_marker message_follow_expired
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
   grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.*.log

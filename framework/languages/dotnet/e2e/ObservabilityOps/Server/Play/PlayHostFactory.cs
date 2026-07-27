@@ -42,7 +42,7 @@ internal static class PlayHostFactory
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
             var locations = framework.ConfigureLocations();
             locations.RouteCacheMaxAge = TimeSpan.Zero;
-            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
+            locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
             locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             locations.PollingInterval = TimeSpan.FromMilliseconds(250);

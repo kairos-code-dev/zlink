@@ -55,7 +55,7 @@ public sealed class ActorHandoffTests
             flags: 0,
             new ZLinkBackendActorRouteContext(
                 new MeshOperationId(31, 29),
-                ForwardingHopCount: 0,
+                MessageFollowHopCount: 0,
                 TargetNodeGeneration: 37,
                 AuthorityOwnerGeneration: 41,
                 OwnerLeaseGeneration: 43,
@@ -93,7 +93,7 @@ public sealed class ActorHandoffTests
             flags: 1,
             new ZLinkBackendActorRouteContext(
                 new MeshOperationId(59, 29),
-                ForwardingHopCount: 0,
+                MessageFollowHopCount: 0,
                 TargetNodeGeneration: 37,
                 AuthorityOwnerGeneration: 41,
                 OwnerLeaseGeneration: 43,
@@ -391,7 +391,7 @@ public sealed class ActorHandoffTests
 
         handoff.BeginCapture();
         Assert.Equal(ZLinkActorHandoffCaptureResult.Captured, handoff.TryCapture(frame));
-        _ = handoff.CutoverCaptureToForwarding(
+        _ = handoff.CutoverCaptureToMessageFollow(
             committedFrameCount: 0,
             ActorRef("node-a", 1),
             ActorRef("node-b", 1),
@@ -457,7 +457,7 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
-    public void StragglerForwardThenFailFast_UsesBoundedWindow()
+    public void MessageFollowThenReject_UsesBoundedDuration()
     {
         var time = new ManualTimeProvider();
         var state = new ZLinkActorRuntimeState("actor-1", time);
@@ -466,21 +466,21 @@ public sealed class ActorHandoffTests
         state.BindNativeActorRef(target);
         state.Handoff.BeginCapture();
         _ = Cutover(state, 0, source, target);
-        state.Handoff.CommitForwardingCutover(TimeSpan.FromMilliseconds(50));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromMilliseconds(50));
 
         Assert.Equal(
-            ZLinkActorFrameRoute.Forward,
-            state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out var forwarded));
-        Assert.Equal(target, forwarded);
+            ZLinkActorFrameRoute.MessageFollow,
+            state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out var followed));
+        Assert.Equal(target, followed);
 
         time.Advance(TimeSpan.FromMilliseconds(150));
         Assert.Equal(
-            ZLinkActorFrameRoute.Stale,
+            ZLinkActorFrameRoute.MessageFollowExpired,
             state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out _));
     }
 
     [Fact]
-    public void ForwardingMappingEviction_ReplacesTheNodeActorEntry()
+    public void MessageFollowRouteRemoval_ReplacesTheNodeActorEntry()
     {
         var state = new ZLinkActorRuntimeState("actor-1");
         var firstSource = ActorRef("node-a", 1);
@@ -491,19 +491,19 @@ public sealed class ActorHandoffTests
 
         state.Handoff.BeginCapture();
         _ = Cutover(state, 0, firstSource, firstTarget);
-        state.Handoff.CommitForwardingCutover(TimeSpan.FromSeconds(1));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
         state.Handoff.CompleteSourceMigration();
         state.Handoff.BeginCapture();
         _ = Cutover(state, 0, nextSource, nextTarget);
-        state.Handoff.CommitForwardingCutover(TimeSpan.FromSeconds(1));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
 
         Assert.Equal(
             ZLinkActorFrameRoute.Stale,
             state.Handoff.ResolveFrameRoute(state.NativeActorRef, firstSource, out _));
         Assert.Equal(
-            ZLinkActorFrameRoute.Forward,
-            state.Handoff.ResolveFrameRoute(state.NativeActorRef, nextSource, out var forwarded));
-        Assert.Equal(nextTarget, forwarded);
+            ZLinkActorFrameRoute.MessageFollow,
+            state.Handoff.ResolveFrameRoute(state.NativeActorRef, nextSource, out var followed));
+        Assert.Equal(nextTarget, followed);
     }
 
     [Fact]
@@ -526,7 +526,7 @@ public sealed class ActorHandoffTests
             sessionOwnerNodeGeneration: 1);
         state.Handoff.BeginCapture();
         _ = Cutover(state, 0, source, target);
-        state.Handoff.CommitForwardingCutover(TimeSpan.FromSeconds(1));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
 
         state.RetireMigratedActorInstance(source);
 
@@ -799,7 +799,7 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
-    public void SourceCutover_AtomicallyStopsCaptureAndStartsForwarding()
+    public void SourceCutover_AtomicallyStopsCaptureAndStartsMessageFollow()
     {
         var state = new ZLinkActorRuntimeState("actor-1");
         var source = ActorRef("node-a", 1);
@@ -817,9 +817,9 @@ public sealed class ActorHandoffTests
             ZLinkActorHandoffCaptureResult.NotSealed,
             state.Handoff.TryCapture(frame));
         Assert.Equal(
-            ZLinkActorFrameRoute.Forward,
-            state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out var forwarded));
-        Assert.Equal(target, forwarded);
+            ZLinkActorFrameRoute.MessageFollow,
+            state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out var followed));
+        Assert.Equal(target, followed);
     }
 
     [Fact]
@@ -853,7 +853,7 @@ public sealed class ActorHandoffTests
             var captured = await capture;
             var trailing = await cutover;
             Assert.Equal(
-                ZLinkActorFrameRoute.Forward,
+                ZLinkActorFrameRoute.MessageFollow,
                 state.Handoff.ResolveFrameRoute(source, source, out _));
             Assert.Equal(
                 captured == ZLinkActorHandoffCaptureResult.Captured ? 1 : 0,
@@ -1578,7 +1578,7 @@ public sealed class ActorHandoffTests
             flags,
             new ZLinkBackendActorRouteContext(
                 new MeshOperationId(11, requestId),
-                ForwardingHopCount: 1,
+                MessageFollowHopCount: 1,
                 TargetNodeGeneration: 13,
                 AuthorityOwnerGeneration: 17,
                 OwnerLeaseGeneration: 19,
@@ -1630,7 +1630,7 @@ public sealed class ActorHandoffTests
         int committedFrameCount,
         ZLinkBackendActorRef source,
         ZLinkBackendActorRef target)
-        => state.Handoff.CutoverCaptureToForwarding(
+        => state.Handoff.CutoverCaptureToMessageFollow(
             committedFrameCount,
             source,
             target,

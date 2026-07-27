@@ -41,12 +41,12 @@ struct sm_e4_policy_evidence_t
 
 inline sm_e4_policy_evidence_t
 sm_e4_collect_policy_evidence (const evidence_snapshot_t &snapshot,
-                               const std::string &spot_rid,
+                               const std::string &spot_id,
                                const std::string &name)
 {
     sm_e4_policy_evidence_t evidence;
     for (const auto &entry : snapshot.entries) {
-        if (entry.marker != "SpotTimerOverrun" || entry.spot_rid != spot_rid
+        if (entry.marker != "SpotTimerOverrun" || entry.spot_id != spot_id
             || entry.value.rfind (name + "|", 0) != 0) {
             continue;
         }
@@ -63,7 +63,7 @@ sm_e4_collect_policy_evidence (const evidence_snapshot_t &snapshot,
 }
 
 inline evidence_snapshot_t sm_e4_wait_for_evidence (zlink::http_client::client_t &play_a,
-                                                    const std::string &spot_rid,
+                                                    const std::string &spot_id,
                                                     const std::string &name)
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
@@ -80,7 +80,7 @@ inline evidence_snapshot_t sm_e4_wait_for_evidence (zlink::http_client::client_t
         }
 
         auto snapshot = nlohmann::json::parse (raw.value ().body).get<evidence_snapshot_t> ();
-        if (sm_e4_collect_policy_evidence (snapshot, spot_rid, name).count >= 3) {
+        if (sm_e4_collect_policy_evidence (snapshot, spot_id, name).count >= 3) {
             return snapshot;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
@@ -98,7 +98,7 @@ inline void run_sm_e4_scenario (const std::string &play_http_endpoint)
     struct policy_case_t
     {
         std::string policy;
-        std::string spot_rid;
+        std::string spot_id;
         std::string name;
     };
 
@@ -119,7 +119,7 @@ inline void run_sm_e4_scenario (const std::string &play_http_endpoint)
     for (const auto &item : cases) {
         auto started =
           play_a.post ("/spot/overrun/start")
-            .body (spot_overrun_start_req_t{.spot_rid = item.spot_rid,
+            .body (spot_overrun_start_req_t{.spot_id = item.spot_id,
                                             .name = item.name,
                                             .policy = item.policy,
                                             .period_ms = 25})
@@ -137,13 +137,13 @@ inline void run_sm_e4_scenario (const std::string &play_http_endpoint)
 
         const auto reply =
           nlohmann::json::parse (started.value ().body).get<spot_overrun_start_res_t> ();
-        if (!reply.started || reply.spot_rid != item.spot_rid || reply.name != item.name) {
+        if (!reply.started || reply.spot_id != item.spot_id || reply.name != item.name) {
             throw std::runtime_error ("SM-E4 overrun start reply mismatch");
         }
 
-        const auto snapshot = sm_e4_wait_for_evidence (play_a, item.spot_rid, item.name);
+        const auto snapshot = sm_e4_wait_for_evidence (play_a, item.spot_id, item.name);
         const auto evidence =
-          sm_e4_collect_policy_evidence (snapshot, item.spot_rid, item.name);
+          sm_e4_collect_policy_evidence (snapshot, item.spot_id, item.name);
         if (item.policy == "SkipLateTicks") {
             skip_late_ticks_skipped = evidence.any_skipped;
         } else if (item.policy == "CatchUpBounded") {

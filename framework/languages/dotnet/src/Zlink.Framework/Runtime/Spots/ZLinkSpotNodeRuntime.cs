@@ -128,7 +128,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                     canonicalStartup.Descriptor.LifecycleGeneration,
                     frameworkRegistration.DefaultRequestTimeout,
                     relocationStore:
-                        frameworkRegistration.Locations.RelocationStoreInstance
+                        frameworkRegistration.Locations.ResolveRelocationStore()
                         ?? throw new ZLinkConfigurationException(
                             "Relocation Store is not registered."),
                     targetRuntime:
@@ -167,7 +167,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (registration.InstanceSpotFactories.Count > 0
             && frameworkRegistration.Locations.ResolveStore()
                 is { } instanceLocationStore
-            && frameworkRegistration.Locations.RelocationStoreInstance
+            && frameworkRegistration.Locations.ResolveRelocationStore()
                 is { } relocationStore
             && locationLifecycle is not null)
         {
@@ -828,10 +828,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     internal async ValueTask<ZLinkSpotDrainResult> TryDrainSpotsAsync(
         bool relocate,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         if (relocate)
-            return await _spots.TryRelocateForRetireAsync(cancellationToken)
+            return await _spots.TryRelocateForRetireAsync(
+                    selection,
+                    cancellationToken)
                 .ConfigureAwait(false);
         return new ZLinkSpotDrainResult(
             await _spots.TryDrainAsync(cancellationToken).ConfigureAwait(false),

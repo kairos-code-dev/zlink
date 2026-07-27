@@ -10,7 +10,7 @@ internal sealed record ZLinkSpotRelocationApplicationState(
 
 internal sealed partial class ZLinkSpotActivation
 {
-    private ZLinkCommittedSpotForwarding? _committedForwarding;
+    private ZLinkSpotMessageFollow? _messageFollow;
 
     internal object RuntimeExecutionOwner => _runtime.ExecutionOwner;
 
@@ -182,28 +182,28 @@ internal sealed partial class ZLinkSpotActivation
                             continue;
                         }
 
-                        switch (TryForwardCommittedRoute(received))
+                        switch (TryMessageFollow(received))
                         {
-                            case ZLinkCommittedSpotForwardingResult.Forwarded:
+                            case ZLinkSpotMessageFollowResult.Followed:
                                 continue;
-                            case ZLinkCommittedSpotForwardingResult.StaleRejected:
+                            case ZLinkSpotMessageFollowResult.StaleRejected:
                                 ZLinkSpotActivationDispatcher
-                                    .RejectApplicationRouteForStaleForwarding(
+                                    .RejectApplicationRouteForStaleMessageFollow(
                                         received,
                                         ChannelName);
                                 continue;
-                            case ZLinkCommittedSpotForwardingResult.Full:
+                            case ZLinkSpotMessageFollowResult.Full:
                                 ZLinkSpotActivationDispatcher
                                     .RejectApplicationRouteForRelocation(
                                         received,
                                         ChannelName);
                                 continue;
-                            case ZLinkCommittedSpotForwardingResult.NotApplicable:
+                            case ZLinkSpotMessageFollowResult.NotApplicable:
                                 QueueApplicationRouteSerialized(received);
                                 break;
                             default:
                                 throw new InvalidOperationException(
-                                    "Unknown committed Spot forwarding result.");
+                                    "Unknown Spot Message Follow result.");
                         }
                     }
                 },
@@ -903,20 +903,20 @@ internal sealed partial class ZLinkSpotActivation
                 $"Actor '{actorId}' source session route seal was not restored.");
     }
 
-    internal void BeginCommittedForwarding(
+    internal void BeginMessageFollow(
         RoutingId targetNodeRid,
         ulong targetNodeGeneration,
         ulong sourceAuthorityOwnerGeneration,
         ulong targetAuthorityOwnerGeneration,
         ZLinkLocationOwnerToken targetOwner)
     {
-        var window = _runtime.Registration.Locations.Options
-            .RelocationForwardingWindow;
-        if (window <= TimeSpan.Zero)
+        var duration = _runtime.Registration.Locations.Options
+            .MessageFollowDuration;
+        if (duration <= TimeSpan.Zero)
             return;
         Volatile.Write(
-            ref _committedForwarding,
-            new ZLinkCommittedSpotForwarding(
+            ref _messageFollow,
+            new ZLinkSpotMessageFollow(
                 targetNodeRid,
                 ObjectGeneration,
                 SourceNodeLifecycleGeneration,
@@ -925,56 +925,63 @@ internal sealed partial class ZLinkSpotActivation
                 targetAuthorityOwnerGeneration,
                 SourceOwnerToken,
                 targetOwner,
-                DateTimeOffset.UtcNow + window));
+                DateTimeOffset.UtcNow + duration));
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"message_follow_registered spot={SpotId} generation={ObjectGeneration}");
     }
 
-    internal TimeSpan CommittedForwardingRemaining
+    internal TimeSpan MessageFollowRemaining
     {
         get
         {
-            var forwarding = Volatile.Read(ref _committedForwarding);
-            return forwarding is null
+            var messageFollow = Volatile.Read(ref _messageFollow);
+            return messageFollow is null
                 ? TimeSpan.Zero
-                : forwarding.ExpiresAt - DateTimeOffset.UtcNow;
+                : messageFollow.ExpiresAt - DateTimeOffset.UtcNow;
         }
     }
 
-    private ZLinkCommittedSpotForwardingResult TryForwardCommittedRoute(
+    private ZLinkSpotMessageFollowResult TryMessageFollow(
         ZLinkBackendRouteReceived received)
     {
-        var forwarding = Volatile.Read(ref _committedForwarding);
-        if (forwarding is null)
-            return ZLinkCommittedSpotForwardingResult.NotApplicable;
+        var messageFollow = Volatile.Read(ref _messageFollow);
+        if (messageFollow is null)
+            return ZLinkSpotMessageFollowResult.NotApplicable;
+        var now = DateTimeOffset.UtcNow;
         var currentSourceOwner =
             _runtime.LocationLifecycle?.OwnerToken;
-        if (!forwarding.MatchesSourceRoute(
+        if (!messageFollow.MatchesSourceRoute(
                 received,
                 ObjectGeneration,
                 currentSourceOwner,
-                DateTimeOffset.UtcNow))
+                now))
         {
             _ = Interlocked.CompareExchange(
-                ref _committedForwarding,
+                ref _messageFollow,
                 null,
-                forwarding);
-            return ZLinkCommittedSpotForwardingResult.StaleRejected;
+                messageFollow);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                messageFollow.ExpiresAt <= now
+                    ? $"message_follow_expired spot={SpotId} generation={ObjectGeneration}"
+                    : $"message_follow_rejected spot={SpotId} generation={ObjectGeneration}");
+            return ZLinkSpotMessageFollowResult.StaleRejected;
         }
         ReadOnlyMemory<byte> metadata;
         long bytes;
         try
         {
             metadata = ZLinkMeshMetadataCodec.Encode(received.Metadata);
-            bytes = ZLinkServiceWireCodec.MeasureForwardedSpotEncodedBytes(
+            bytes = ZLinkServiceWireCodec.MeasureSpotMessageFollowEncodedBytes(
                 received.CanReply,
                 received.OperationId,
                 SpotId,
                 SpotId,
                 ObjectGeneration,
-                forwarding.TargetNodeRid,
-                forwarding.TargetNodeGeneration,
-                forwarding.TargetAuthorityOwnerGeneration,
-                checked((ulong)forwarding.TargetOwner.LeaseGeneration),
-                checked((byte)(received.ForwardingHopCount + 1)),
+                messageFollow.TargetNodeRid,
+                messageFollow.TargetNodeGeneration,
+                messageFollow.TargetAuthorityOwnerGeneration,
+                checked((ulong)messageFollow.TargetOwner.LeaseGeneration),
+                checked((byte)(received.MessageFollowHopCount + 1)),
                 received.Parts,
                 metadata);
         }
@@ -983,68 +990,82 @@ internal sealed partial class ZLinkSpotActivation
             received.Dispose();
             throw;
         }
-        if (!forwarding.TryAcquire(bytes, out var lease))
-            return ZLinkCommittedSpotForwardingResult.Full;
+        if (!messageFollow.TryAcquire(bytes, out var lease))
+            return ZLinkSpotMessageFollowResult.Full;
         lease = lease
                 ?? throw new InvalidOperationException(
-                    "Committed Spot forwarding admission did not return a lease.");
+                    "Spot Message Follow admission did not return a lease.");
         if (!received.CanReply)
         {
             try
             {
-                if (NativeSpot is not IZLinkBackendCommittedSpotForwarder relay)
+                if (NativeSpot is not IZLinkBackendSpotMessageFollower relay)
                     throw new InvalidOperationException(
-                        "The Spot backend does not support committed forwarding.");
-                _ = relay.ForwardSendToSpot(
-                    forwarding.TargetNodeRid,
+                        "The Spot backend does not support Message Follow.");
+                _ = relay.MessageFollowSendToSpot(
+                    messageFollow.TargetNodeRid,
                     SpotId,
                     ObjectGeneration,
                     received.OperationId,
-                    forwarding.TargetNodeGeneration,
-                    forwarding.TargetAuthorityOwnerGeneration,
-                    checked((ulong)forwarding.TargetOwner.LeaseGeneration),
-                    checked((byte)(received.ForwardingHopCount + 1)),
+                    messageFollow.TargetNodeGeneration,
+                    messageFollow.TargetAuthorityOwnerGeneration,
+                    checked((ulong)messageFollow.TargetOwner.LeaseGeneration),
+                    checked((byte)(received.MessageFollowHopCount + 1)),
                     received.Parts,
                     SendFlags.DontWait,
                     metadata);
                 received.Dispose();
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"message_follow_relay spot={SpotId} generation={ObjectGeneration}");
             }
             finally
             {
                 lease.Dispose();
             }
-            return ZLinkCommittedSpotForwardingResult.Forwarded;
+            return ZLinkSpotMessageFollowResult.Followed;
         }
 
-        if (NativeSpot is not IZLinkBackendCommittedSpotForwarder requestRelay)
+        if (NativeSpot is not IZLinkBackendSpotMessageFollower requestRelay)
         {
             lease.Dispose();
-            return ZLinkCommittedSpotForwardingResult.StaleRejected;
+            return ZLinkSpotMessageFollowResult.StaleRejected;
         }
-        return SubmitCommittedSpotForwardingRequest(
+        var remainingTimeout = RemainingRequestTimeout(received, DateTimeOffset.UtcNow);
+        if (remainingTimeout == TimeSpan.Zero)
+        {
+            lease.Dispose();
+            received.Dispose();
+            return ZLinkSpotMessageFollowResult.Followed;
+        }
+        var followed = SubmitSpotMessageFollowRequest(
             received,
             lease,
-            callback => requestRelay.ForwardRequestToSpot(
-                forwarding.TargetNodeRid,
+            callback => requestRelay.MessageFollowRequestToSpot(
+                messageFollow.TargetNodeRid,
                 SpotId,
                 ObjectGeneration,
                 received.OperationId,
-                forwarding.TargetNodeGeneration,
-                forwarding.TargetAuthorityOwnerGeneration,
-                checked((ulong)forwarding.TargetOwner.LeaseGeneration),
-                checked((byte)(received.ForwardingHopCount + 1)),
+                messageFollow.TargetNodeGeneration,
+                messageFollow.TargetAuthorityOwnerGeneration,
+                checked((ulong)messageFollow.TargetOwner.LeaseGeneration),
+                checked((byte)(received.MessageFollowHopCount + 1)),
+                received.DeadlineUnixMs,
                 received.Parts,
                 callback,
                 SendFlags.DontWait,
-                timeout: null,
-                metadata))
-            ? ZLinkCommittedSpotForwardingResult.Forwarded
-            : ZLinkCommittedSpotForwardingResult.Full;
+                timeout: remainingTimeout,
+                metadata: metadata))
+            ? ZLinkSpotMessageFollowResult.Followed
+            : ZLinkSpotMessageFollowResult.Full;
+        if (followed == ZLinkSpotMessageFollowResult.Followed)
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"message_follow_relay spot={SpotId} generation={ObjectGeneration}");
+        return followed;
     }
 
-    internal static bool SubmitCommittedSpotForwardingRequest(
+    internal static bool SubmitSpotMessageFollowRequest(
         ZLinkBackendRouteReceived received,
-        ZLinkCommittedSpotForwarding.AdmissionLease admission,
+        ZLinkSpotMessageFollow.AdmissionLease admission,
         Func<RequestCallback, bool> submit)
     {
         ArgumentNullException.ThrowIfNull(received);
@@ -1056,7 +1077,10 @@ internal sealed partial class ZLinkSpotActivation
             {
                 try
                 {
-                    if (result == RequestResult.Ok)
+                    if (result == RequestResult.Ok
+                        && RemainingRequestTimeout(
+                            received,
+                            DateTimeOffset.UtcNow) != TimeSpan.Zero)
                         _ = received.Reply(parts, SendFlags.None);
                 }
                 finally
@@ -1076,6 +1100,20 @@ internal sealed partial class ZLinkSpotActivation
             admission.Dispose();
             throw;
         }
+    }
+
+    internal static TimeSpan? RemainingRequestTimeout(
+        ZLinkBackendRouteReceived received,
+        DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(received);
+        if (received.DeadlineUnixMs == 0)
+            return null;
+        var remainingMilliseconds = checked((long)received.DeadlineUnixMs)
+                                    - now.ToUnixTimeMilliseconds();
+        return remainingMilliseconds <= 0
+            ? TimeSpan.Zero
+            : TimeSpan.FromMilliseconds(remainingMilliseconds);
     }
 
     internal bool TrySealRelocation(out ZLinkSpotRelocationSeal seal)
@@ -1216,7 +1254,7 @@ internal sealed partial class ZLinkSpotActivation
                 authorityOwnerGeneration:
                     journal.AuthorityOwnerGeneration,
                 ownerLeaseGeneration: journal.OwnerLeaseGeneration,
-                forwardingHopCount: journal.ForwardingHopCount,
+                messageFollowHopCount: journal.MessageFollowHopCount,
                 sourceNodeGeneration: journal.SourceNodeGeneration);
             try
             {

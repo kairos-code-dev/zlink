@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
@@ -91,21 +91,32 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
 
     public async ValueTask<ZLinkSpotRetireReservation?> TryReserveAsync(
         ZLinkSpotRetireInventory inventory,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken) =>
-        await ResolveReservationAsync(inventory, null, cancellationToken)
+        await ResolveReservationAsync(
+                inventory,
+                null,
+                selection,
+                cancellationToken)
             .ConfigureAwait(false);
 
     public async ValueTask<ZLinkSpotRetireReservation?>
         TryReserveForPreflightAsync(
             ZLinkSpotRetireInventory inventory,
             ZLinkRetirePreflightPlan plan,
+            ZLinkRelocationTargetSelection selection,
             CancellationToken cancellationToken) =>
-        await ResolveReservationAsync(inventory, plan, cancellationToken)
+        await ResolveReservationAsync(
+                inventory,
+                plan,
+                selection,
+                cancellationToken)
             .ConfigureAwait(false);
 
     private async ValueTask<ZLinkSpotRetireReservation?> ResolveReservationAsync(
         ZLinkSpotRetireInventory inventory,
         ZLinkRetirePreflightPlan? plan,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         if (services.GetService<IZLinkMeshNodeLocationResolver>() is not { } resolver)
@@ -133,6 +144,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 && candidate.State == ZLinkFrameworkRuntimeState.Serving
                 && candidate.ObjectRole == ZLinkMeshNodeObjectRole.Server
                 && candidate.PlacementWeight > 0
+                && selection.Matches(candidate)
                 && IsCompatibleTarget(candidate, registration, inventory, kind))
             .OrderBy(static candidate => candidate.Rid.ToHex(), StringComparer.Ordinal)
             .ToArray();
@@ -157,8 +169,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         ZLinkSpotRetireInventory inventory,
         ZLinkPlacementObjectKind spotKind)
     {
-        if (candidate.ApplicationVersion < source.ApplicationVersion
-            || source.MaintenanceWave is { } sourceWave
+        if (source.MaintenanceWave is { } sourceWave
             && StringComparer.Ordinal.Equals(
                 sourceWave,
                 candidate.MaintenanceWave)
@@ -383,7 +394,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             if (DateTimeOffset.UtcNow >= deadline)
             {
                 var relocationStore = registration.Locations
-                    .RelocationStoreInstance
+                    .ResolveRelocationStore()
                     ?? throw new ZLinkConfigurationException(
                         "Relocation Store is not registered.");
                 var exact = await new ZLinkRelocationStartupRecovery(
@@ -767,7 +778,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 registration.Locations.ResolveStore()
                 ?? throw new ZLinkConfigurationException(
                     "Location Store is not registered."),
-                registration.Locations.RelocationStoreInstance
+                registration.Locations.ResolveRelocationStore()
                 ?? throw new ZLinkConfigurationException(
                     "Relocation Store is not registered."))
             .CompleteSourceCleanupAsync(
@@ -987,7 +998,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         if (records.Count > 1_024)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestRejected,
-                "A SPOT relocation forwarding queue cannot exceed 1,024 messages.");
+                "A Spot relocation held-ingress queue cannot exceed 1,024 messages.");
         long bytes = 0;
         ulong previous = 0;
         foreach (var record in records)
@@ -995,13 +1006,13 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             if (record.AcceptedSequence == 0
                 || record.AcceptedSequence <= previous)
                 throw new InvalidDataException(
-                    "Forwarded SPOT ingress sequences must be strictly increasing.");
+                    "Held Spot ingress sequences must be strictly increasing.");
             previous = record.AcceptedSequence;
             bytes = checked(bytes + record.Payload.LongLength);
             if (bytes > 16L * 1024 * 1024)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestRejected,
-                    "A SPOT relocation forwarding queue cannot exceed 16 MiB.");
+                    "A Spot relocation held-ingress queue cannot exceed 16 MiB.");
         }
     }
 
@@ -1060,7 +1071,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var root = prepare.Root
             ?? throw new InvalidDataException(
                 "Canonical SPOT relocation requires an immutable root.");
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         var tree = await ZLinkRelocationTreeStore.ReadAsync(
@@ -1125,7 +1136,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var root = prepare.Root
             ?? throw new InvalidDataException(
                 "Canonical SPOT relocation requires an immutable root.");
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         var tree = await ZLinkRelocationTreeStore.ReadAsync(
@@ -1180,7 +1191,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     requireCompleted: true),
                 _ => false
             };
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Relocation Store is not registered.");
         var tree = await ZLinkRelocationTreeStore.ReadAsync(
@@ -1465,7 +1476,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     registration.Locations.ResolveStore()
                     ?? throw new ZLinkConfigurationException(
                         "Location Store is not registered."),
-                    registration.Locations.RelocationStoreInstance
+                    registration.Locations.ResolveRelocationStore()
                     ?? throw new ZLinkConfigurationException(
                         "Relocation Store is not registered."))
                 .CommitAsync(preparedAggregate, cancellationToken)
@@ -1517,7 +1528,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                              ?? throw new ZLinkConfigurationException(
                                  "Location Store is not registered.");
         var relocationStore =
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         var stagedSpot = stage.Envelope.Participants.Single(
@@ -1626,7 +1637,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             ?? throw new ZLinkConfigurationException(
                 "Location Store is not registered.");
         var relocationStore =
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         await new ZLinkAggregateRelocationCoordinator(
@@ -2016,7 +2027,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         CancellationToken cancellationToken)
     {
         var relocationStore =
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         await ZLinkRelocationTreeStore.DeleteTreeAsync(
@@ -2194,7 +2205,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                              ?? throw new ZLinkConfigurationException(
                                  "Location Store is not registered.");
         var relocationStore =
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered.");
         var candidate = await new ZLinkRelocationStartupRecovery(

@@ -3,10 +3,10 @@ import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActo
 
 export async function runStF1(): Promise<void> {
   const actorId = unique('actor-handoff-gate-f1');
-  const spotRid = unique('spot-handoff-order');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('spot-handoff-order');
+  await createSpot(nodeB, spotId);
   await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 101);
-  const join = joinActor(nodeA, actorId, { scenario: 'ST-F1', targetSpotRid: spotRid });
+  const join = joinActor(nodeA, actorId, { scenario: 'ST-F1', targetSpotId: spotId });
   await waitEvidence(nodeA, [`ST-F1|${actorId}|before_commit_gate|101`]);
   for (const marker of ['P1', 'P2', 'P3']) await sendHandoff(nodeA, actorId, 'ST-F1', marker);
   await post(nodeA, `/transfer-gates/${actorId}/release`, {});

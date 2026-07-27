@@ -5,14 +5,14 @@ import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA7(options: ClientOptions): Promise<void> {
-  const spotRid = `spot-sm-a7-${Date.now().toString(36)}`;
+  const spotId = `spot-sm-a7-${Date.now().toString(36)}`;
   const mismatch = await postJson<SpotTypeMismatchRes>(options.playAUrl, '/spot/type-mismatch', {
-    spotRid
+    spotId
   } satisfies SpotTypeMismatchReq);
   ensure(mismatch.failed, 'SM-A7 expected SpotTypeMismatch.');
   ensure(mismatch.errorKind === 'SpotTypeMismatch', 'SM-A7 error kind mismatch.');
 
-  const expected = `spot-type-mismatch|rid=play-a|spot=${mismatch.spotRid}|kind=SpotTypeMismatch`;
+  const expected = `spot-type-mismatch|rid=play-a|spot=${mismatch.spotId}|kind=SpotTypeMismatch`;
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: [expected],
     timeoutMilliseconds: 10000

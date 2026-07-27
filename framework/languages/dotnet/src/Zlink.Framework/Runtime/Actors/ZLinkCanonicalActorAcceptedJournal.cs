@@ -166,7 +166,7 @@ internal static class ZLinkCanonicalActorAcceptedJournal
         Bytes8(stream, frame.SourceSessionRid);
         U64(stream, frame.RequestId);
         U32(stream, frame.Flags);
-        stream.WriteByte(frame.RouteContext.ForwardingHopCount);
+        stream.WriteByte(frame.RouteContext.MessageFollowHopCount);
         U32(stream, frame.RouteContext.ReplyFlags);
         OptionalText8(stream, frame.RouteContext.ReplyCapability);
         Bytes32(stream, frame.Header);

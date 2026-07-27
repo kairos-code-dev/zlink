@@ -9,7 +9,7 @@ internal sealed class ZLinkActorHandoffState(
     ZLinkBoundedIngressAdmission? sourceHoldAdmission = null)
 {
     private readonly object _gate = new();
-    private readonly object _forwardGate = new();
+    private readonly object _messageFollowGate = new();
     private readonly List<ZLinkActorHandoffFrame> _frames = [];
     private readonly List<ZLinkActorHandoffFrame> _sourceHoldFrames = [];
     private readonly ZLinkBoundedIngressAdmission _sourceIngressAdmission =
@@ -18,8 +18,8 @@ internal sealed class ZLinkActorHandoffState(
         sourceHoldAdmission ?? new ZLinkBoundedIngressAdmission();
     private ZLinkBoundedIngressAdmission _targetIngressAdmission =
         targetIngressAdmission ?? new ZLinkBoundedIngressAdmission();
-    private CancellationTokenSource? _forwardingExpiry;
-    private ZLinkActorForwardingMapping? _forwarding;
+    private CancellationTokenSource? _messageFollowExpiry;
+    private ZLinkActorMessageFollowRoute? _messageFollowRoute;
     private ZLinkBackendActorRef? _staleSourceActor;
     private string? _handoffId;
     private ZLinkRemoteActorJoinRequest? _joinRequest;
@@ -42,7 +42,7 @@ internal sealed class ZLinkActorHandoffState(
             if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                 or ZLinkActorSourceHandoffPhase.CutoverPending
                 or ZLinkActorSourceHandoffPhase.AbortRestoring
-                or ZLinkActorSourceHandoffPhase.ForwardingCommitted
+                or ZLinkActorSourceHandoffPhase.MessageFollowCommitted
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.Replaying
                     or ZLinkActorTargetHandoffPhase.Quarantined)
@@ -78,7 +78,7 @@ internal sealed class ZLinkActorHandoffState(
                 return _sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                     or ZLinkActorSourceHandoffPhase.CutoverPending
                     or ZLinkActorSourceHandoffPhase.AbortRestoring
-                    or ZLinkActorSourceHandoffPhase.ForwardingCommitted;
+                    or ZLinkActorSourceHandoffPhase.MessageFollowCommitted;
         }
     }
 
@@ -98,7 +98,7 @@ internal sealed class ZLinkActorHandoffState(
                 return _sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                            or ZLinkActorSourceHandoffPhase.CutoverPending
                            or ZLinkActorSourceHandoffPhase.AbortRestoring
-                           or ZLinkActorSourceHandoffPhase.ForwardingCommitted
+                           or ZLinkActorSourceHandoffPhase.MessageFollowCommitted
                        || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                            or ZLinkActorTargetHandoffPhase.AuthorityCommitted
                            or ZLinkActorTargetHandoffPhase.NotifyingJoined
@@ -114,7 +114,7 @@ internal sealed class ZLinkActorHandoffState(
         lock (_gate)
         {
             if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.CutoverPending
-                or ZLinkActorSourceHandoffPhase.ForwardingCommitted))
+                or ZLinkActorSourceHandoffPhase.MessageFollowCommitted))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' does not have a source migration to complete.");
             _sourcePhase = ZLinkActorSourceHandoffPhase.Retired;
@@ -131,7 +131,7 @@ internal sealed class ZLinkActorHandoffState(
         {
             if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.Capturing
                 or ZLinkActorSourceHandoffPhase.CutoverPending
-                or ZLinkActorSourceHandoffPhase.ForwardingCommitted))
+                or ZLinkActorSourceHandoffPhase.MessageFollowCommitted))
                 return Task.CompletedTask;
             completion = (_sourceCompletion ??= new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously)).Task;
@@ -234,7 +234,7 @@ internal sealed class ZLinkActorHandoffState(
         {
             if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                 or ZLinkActorSourceHandoffPhase.CutoverPending
-                or ZLinkActorSourceHandoffPhase.ForwardingCommitted)
+                or ZLinkActorSourceHandoffPhase.MessageFollowCommitted)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot import while its source handoff is active.");
             if (string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
@@ -303,7 +303,7 @@ internal sealed class ZLinkActorHandoffState(
                 return;
             if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                     or ZLinkActorSourceHandoffPhase.CutoverPending
-                    or ZLinkActorSourceHandoffPhase.ForwardingCommitted
+                    or ZLinkActorSourceHandoffPhase.MessageFollowCommitted
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
                     or ZLinkActorTargetHandoffPhase.NotifyingJoined
@@ -602,7 +602,7 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
-    public IReadOnlyList<ZLinkActorHandoffFrame> CutoverCaptureToForwarding(
+    public IReadOnlyList<ZLinkActorHandoffFrame> CutoverCaptureToMessageFollow(
         int committedFrameCount,
         ZLinkBackendActorRef sourceActor,
         ZLinkBackendActorRef targetActor,
@@ -624,8 +624,8 @@ internal sealed class ZLinkActorHandoffState(
             || targetOwnerLeaseGeneration == 0)
             throw new ArgumentOutOfRangeException(
                 nameof(targetAuthorityOwnerGeneration),
-                "Actor forwarding requires an exact committed source-to-target authority fence.");
-        lock (_forwardGate)
+                "Actor Message Follow requires an exact committed source-to-target authority fence.");
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -641,9 +641,9 @@ internal sealed class ZLinkActorHandoffState(
                             != _sourceCommittedFrameCount)))
                     throw new ArgumentOutOfRangeException(nameof(committedFrameCount));
 
-                _forwardingExpiry?.Cancel();
-                _forwardingExpiry = null;
-                _forwarding = new ZLinkActorForwardingMapping(
+                _messageFollowExpiry?.Cancel();
+                _messageFollowExpiry = null;
+                _messageFollowRoute = new ZLinkActorMessageFollowRoute(
                     sourceActor,
                     targetActor,
                     targetMeshName,
@@ -653,14 +653,14 @@ internal sealed class ZLinkActorHandoffState(
                     targetAuthorityOwnerGeneration,
                     sourceOwnerLeaseGeneration,
                     targetOwnerLeaseGeneration,
-                    new ZLinkActorForwardingWindow(timeProvider));
+                    new ZLinkActorMessageFollowLease(timeProvider));
                 _staleSourceActor = sourceActor;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.CutoverPending;
                 _sourceCaptureSealed = true;
                 _sourceIngressAdmission.ReleaseAll();
                 _sourceHoldAdmission.ReleaseAll();
                 diagnostic?.Invoke(
-                    $"mapping_installed actor={actorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
+                    $"message_follow_registered actor={actorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
                 return _frames
                     .Skip(Math.Min(committedFrameCount, _frames.Count))
                     .Concat(_sourceHoldFrames.Skip(_sourceCommittedHoldCount))
@@ -670,32 +670,32 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
-    public void CommitForwardingCutover(TimeSpan window)
+    public void CommitMessageFollow(TimeSpan duration)
     {
         CancellationTokenSource expiry;
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
                 if (_sourcePhase != ZLinkActorSourceHandoffPhase.CutoverPending
-                    || _forwarding is not { } forwarding)
+                    || _messageFollowRoute is not { } messageFollowRoute)
                     throw new InvalidOperationException(
-                        $"Actor '{actorId}' does not have a pending forwarding cutover.");
+                        $"Actor '{actorId}' does not have a pending Message Follow commit.");
 
                 _sourceIngressAdmission.ReleaseAll();
                 _sourceHoldAdmission.ReleaseAll();
                 _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
                 _sourceHoldFrames.Clear();
-                _sourcePhase = ZLinkActorSourceHandoffPhase.ForwardingCommitted;
+                _sourcePhase = ZLinkActorSourceHandoffPhase.MessageFollowCommitted;
                 _sourceCaptureSealed = true;
                 expiry = new CancellationTokenSource();
-                _forwardingExpiry = expiry;
-                forwarding.Lease.Commit(window);
+                _messageFollowExpiry = expiry;
+                messageFollowRoute.Lease.Commit(duration);
             }
         }
 
-        _ = EvictForwardingMappingAsync(window, expiry);
+        _ = RemoveMessageFollowRouteAfterDelayAsync(duration, expiry);
     }
 
     public IReadOnlyList<ZLinkActorHandoffFrame> PrepareImportedReplay(
@@ -820,7 +820,7 @@ internal sealed class ZLinkActorHandoffState(
 
     internal IReadOnlyList<ZLinkActorHandoffFrame> BeginAbortCaptureRestore()
     {
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -843,7 +843,7 @@ internal sealed class ZLinkActorHandoffState(
 
     internal void AcknowledgeAbortRestoreEnqueued(long arrivalIndex)
     {
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -890,7 +890,7 @@ internal sealed class ZLinkActorHandoffState(
     internal void CompleteAbortCaptureRestore()
     {
         TaskCompletionSource? completion;
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -915,7 +915,7 @@ internal sealed class ZLinkActorHandoffState(
                 _staleSourceActor = null;
                 completion = _sourceCompletion;
                 _sourceCompletion = null;
-                ClearForwardingMappingLocked();
+                ClearMessageFollowRouteLocked();
                 completion?.TrySetResult();
             }
         }
@@ -935,16 +935,16 @@ internal sealed class ZLinkActorHandoffState(
     public ZLinkActorFrameRoute RouteFrame(
         ZLinkBackendActorRef? currentActor,
         ZLinkBackendActorRef frameActor,
-        out ZLinkActorForwardingMapping? forwarding)
+        out ZLinkActorMessageFollowRoute? messageFollowRoute)
     {
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
                 var targetActor = default(ZLinkBackendActorRef);
                 var route = ResolveFrameRouteLocked(currentActor, frameActor, out targetActor);
-                forwarding = route == ZLinkActorFrameRoute.Forward
-                    ? _forwarding
+                messageFollowRoute = route == ZLinkActorFrameRoute.MessageFollow
+                    ? _messageFollowRoute
                     : null;
                 return route;
             }
@@ -953,7 +953,7 @@ internal sealed class ZLinkActorHandoffState(
 
     public void Reset()
     {
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -975,7 +975,7 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceCompletion?.TrySetResult();
                 _sourceCompletion = null;
                 _staleSourceActor = null;
-                ClearForwardingMappingLocked();
+                ClearMessageFollowRouteLocked();
             }
         }
     }
@@ -984,7 +984,7 @@ internal sealed class ZLinkActorHandoffState(
     {
         ArgumentNullException.ThrowIfNull(failure);
         TaskCompletionSource<ZLinkRemoteActorJoinReply>? preparation;
-        lock (_forwardGate)
+        lock (_messageFollowGate)
         {
             lock (_gate)
             {
@@ -1007,7 +1007,7 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceCompletion?.TrySetException(failure);
                 _sourceCompletion = null;
                 _staleSourceActor = null;
-                ClearForwardingMappingLocked();
+                ClearMessageFollowRouteLocked();
             }
         }
 
@@ -1022,24 +1022,26 @@ internal sealed class ZLinkActorHandoffState(
         targetActor = currentActor ?? frameActor;
         if (_targetPhase == ZLinkActorTargetHandoffPhase.Quarantined)
             return ZLinkActorFrameRoute.Stale;
-        if (_forwarding is { } forwarding)
+        if (_messageFollowRoute is { } messageFollowRoute)
         {
-            if (!forwarding.Lease.IsActive)
+            if (!messageFollowRoute.Lease.IsActive)
             {
-                ClearForwardingMappingLocked();
+                ClearMessageFollowRouteLocked();
             }
-            else if (forwarding.SourceActor.NodeRid == frameActor.NodeRid
-                     && forwarding.SourceActor.Generation == frameActor.Generation)
+            else if (messageFollowRoute.SourceActor.NodeRid == frameActor.NodeRid
+                     && messageFollowRoute.SourceActor.Generation == frameActor.Generation)
             {
-                targetActor = forwarding.TargetActor;
-                return ZLinkActorFrameRoute.Forward;
+                targetActor = messageFollowRoute.TargetActor;
+                return ZLinkActorFrameRoute.MessageFollow;
             }
         }
 
         if (_staleSourceActor is { } stale
             && stale.NodeRid == frameActor.NodeRid
             && stale.Generation == frameActor.Generation)
-            return ZLinkActorFrameRoute.Stale;
+            return _sourcePhase == ZLinkActorSourceHandoffPhase.MessageFollowCommitted
+                ? ZLinkActorFrameRoute.MessageFollowExpired
+                : ZLinkActorFrameRoute.Stale;
 
         if (targetActor.NodeRid == frameActor.NodeRid
             && targetActor.Generation == frameActor.Generation)
@@ -1048,21 +1050,21 @@ internal sealed class ZLinkActorHandoffState(
         return ZLinkActorFrameRoute.Stale;
     }
 
-    private async Task EvictForwardingMappingAsync(
-        TimeSpan window,
+    private async Task RemoveMessageFollowRouteAfterDelayAsync(
+        TimeSpan duration,
         CancellationTokenSource expiry)
     {
         try
         {
-            await Task.Delay(window, timeProvider, expiry.Token).ConfigureAwait(false);
-            lock (_forwardGate)
+            await Task.Delay(duration, timeProvider, expiry.Token).ConfigureAwait(false);
+            lock (_messageFollowGate)
             {
                 lock (_gate)
                 {
-                    if (!ReferenceEquals(_forwardingExpiry, expiry)) return;
+                    if (!ReferenceEquals(_messageFollowExpiry, expiry)) return;
 
-                    ClearForwardingMappingLocked();
-                    diagnostic?.Invoke($"mapping_evicted actor={actorId} entries=0");
+                    ClearMessageFollowRouteLocked();
+                    diagnostic?.Invoke($"message_follow_route_removed actor={actorId} entries=0");
                 }
             }
         }
@@ -1075,17 +1077,17 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
-    private void ClearForwardingMappingLocked()
+    private void ClearMessageFollowRouteLocked()
     {
-        _forwarding?.Lease.Cancel();
-        _forwarding = null;
-        var expiry = _forwardingExpiry;
-        _forwardingExpiry = null;
+        _messageFollowRoute?.Lease.Cancel();
+        _messageFollowRoute = null;
+        var expiry = _messageFollowExpiry;
+        _messageFollowExpiry = null;
         expiry?.Cancel();
     }
 }
 
-internal readonly record struct ZLinkActorForwardingMapping(
+internal readonly record struct ZLinkActorMessageFollowRoute(
     ZLinkBackendActorRef SourceActor,
     ZLinkBackendActorRef TargetActor,
     string TargetMeshName,
@@ -1095,14 +1097,14 @@ internal readonly record struct ZLinkActorForwardingMapping(
     ulong TargetAuthorityOwnerGeneration,
     ulong SourceOwnerLeaseGeneration,
     ulong TargetOwnerLeaseGeneration,
-    ZLinkActorForwardingWindow Lease);
+    ZLinkActorMessageFollowLease Lease);
 
-internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
+internal sealed class ZLinkActorMessageFollowLease(TimeProvider timeProvider)
 {
     private readonly object _gate = new();
-    private ZLinkActorForwardingWindowPhase _phase;
+    private ZLinkActorMessageFollowLeasePhase _phase;
     private long _committedAt;
-    private TimeSpan _window;
+    private TimeSpan _duration;
 
     public bool IsActive
     {
@@ -1112,9 +1114,9 @@ internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
             {
                 return _phase switch
                 {
-                    ZLinkActorForwardingWindowPhase.Pending => true,
-                    ZLinkActorForwardingWindowPhase.Committed =>
-                        timeProvider.GetElapsedTime(_committedAt) < _window,
+                    ZLinkActorMessageFollowLeasePhase.Pending => true,
+                    ZLinkActorMessageFollowLeasePhase.Committed =>
+                        timeProvider.GetElapsedTime(_committedAt) < _duration,
                     _ => false
                 };
             }
@@ -1126,30 +1128,30 @@ internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
         get
         {
             lock (_gate)
-                return _phase == ZLinkActorForwardingWindowPhase.Committed
-                       && timeProvider.GetElapsedTime(_committedAt) < _window;
+                return _phase == ZLinkActorMessageFollowLeasePhase.Committed
+                       && timeProvider.GetElapsedTime(_committedAt) < _duration;
         }
     }
 
-    public void Commit(TimeSpan window)
+    public void Commit(TimeSpan duration)
     {
         lock (_gate)
         {
-            if (_phase != ZLinkActorForwardingWindowPhase.Pending)
-                throw new InvalidOperationException("Actor forwarding lease is not pending.");
+            if (_phase != ZLinkActorMessageFollowLeasePhase.Pending)
+                throw new InvalidOperationException("Actor Message Follow lease is not pending.");
             _committedAt = timeProvider.GetTimestamp();
-            _window = window;
-            _phase = ZLinkActorForwardingWindowPhase.Committed;
+            _duration = duration;
+            _phase = ZLinkActorMessageFollowLeasePhase.Committed;
         }
     }
 
     public void Cancel()
     {
-        lock (_gate) _phase = ZLinkActorForwardingWindowPhase.Cancelled;
+        lock (_gate) _phase = ZLinkActorMessageFollowLeasePhase.Cancelled;
     }
 }
 
-internal enum ZLinkActorForwardingWindowPhase
+internal enum ZLinkActorMessageFollowLeasePhase
 {
     Pending,
     Committed,
@@ -1162,7 +1164,7 @@ internal enum ZLinkActorSourceHandoffPhase
     Capturing,
     CutoverPending,
     AbortRestoring,
-    ForwardingCommitted,
+    MessageFollowCommitted,
     Retired
 }
 

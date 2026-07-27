@@ -253,13 +253,13 @@ export class SpotActorJoinAwaitHandler
 }
 
 interface ActorEvidenceTarget {
-  readonly spotRid: unknown;
+  readonly spotId: unknown;
   readonly nodeRid: unknown;
 }
 
 function actorEvidenceTarget(evidence: EvidenceStore, actor: AwaitActor): ActorEvidenceTarget {
   return {
-    spotRid: actor.context.spotRid ?? evidence.rid,
+    spotId: actor.context.spotId ?? evidence.rid,
     nodeRid: evidence.rid
   };
 }
@@ -274,7 +274,7 @@ async function recordActorAwaitEvidence(
   const terminator = request.terminator ?? 'async';
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-await-started|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-await-started|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   const call = channels
@@ -282,7 +282,7 @@ async function recordActorAwaitEvidence(
       new DelayReq(request.requestId, request.delayMs, `actor-${actor.actorId}`))
     .timeout(5000);
   evidence.add(
-    `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (terminator === 'yield') {
@@ -291,11 +291,11 @@ async function recordActorAwaitEvidence(
     await call.submit<DelayRes>();
   }
   evidence.add(
-    `actor-await-resumed|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-await-resumed|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   evidence.add(
-    `actor-await-completed|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-await-completed|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
 }
@@ -309,16 +309,16 @@ async function recordActorJoinEvidence(
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-join-started|rid=${evidence.rid}|spot=${target.spotRid}`
-    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
+    `actor-join-started|rid=${evidence.rid}|spot=${target.spotId}`
+    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotId}`
   );
   const joined = await actor.context
-    .joinSpot(request.targetSpotRid, new DelayReq(request.requestId, 0, 'join'))
+    .joinSpot(request.targetSpotId, new DelayReq(request.requestId, 0, 'join'))
     .submit<DelayRes>();
   evidence.add(
-    `${completedMarker}|rid=${evidence.rid}|spot=${target.spotRid}`
+    `${completedMarker}|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
-    + `|target=${request.targetSpotRid}|accepted=${joined.status === 'accepted'}`
+    + `|target=${request.targetSpotId}|accepted=${joined.status === 'accepted'}`
   );
 }
 
@@ -332,7 +332,7 @@ async function recordActorPushAwaitEvidence(
 ): Promise<void> {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-push-await-started|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-push-await-started|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   const call = channels
@@ -340,7 +340,7 @@ async function recordActorPushAwaitEvidence(
       new DelayReq(request.requestId, request.delayMs, `actor-push-${actor.actorId}`))
     .timeout(5000);
   evidence.add(
-    `actor-push-await-released|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-push-await-released|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   if (useAwait) {
@@ -349,7 +349,7 @@ async function recordActorPushAwaitEvidence(
     await call.submit<DelayRes>();
   }
   evidence.add(
-    `actor-push-await-resumed|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-push-await-resumed|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
   actor.context.boundSession
@@ -361,7 +361,7 @@ async function recordActorPushAwaitEvidence(
     ))
     .submit();
   evidence.add(
-    `actor-push-await-completed|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-push-await-completed|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
 }
@@ -374,12 +374,12 @@ function recordActorFastEvidence(
 ): void {
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
-    `actor-fast-started|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-fast-started|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
     + `|marker=${request.marker}|handler=actor`
   );
   evidence.add(
-    `actor-fast-completed|rid=${evidence.rid}|spot=${target.spotRid}`
+    `actor-fast-completed|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
     + `|marker=${request.marker}|handler=actor`
   );
@@ -396,7 +396,7 @@ function actorReply(
     scenarioId,
     requestId,
     actorId: actor.actorId,
-    spotRid: String(target.spotRid),
+    spotId: String(target.spotId),
     nodeRid: String(target.nodeRid),
     marker
   };

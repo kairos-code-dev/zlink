@@ -3,12 +3,12 @@ import { SpotActorTransferNames, nodeA, createSpot, createActor, joinActor, prob
 
 export async function runStA2(): Promise<void> {
   const actorId = unique('actor-local-reject');
-  const spotRid = unique('spot-local-reject');
-  await createSpot(nodeA, spotRid, 'reject');
+  const spotId = unique('spot-local-reject');
+  await createSpot(nodeA, spotId, 'reject');
   await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 12);
-  const join = await joinActor(nodeA, actorId, { scenario: 'ST-A2', targetSpotRid: spotRid, expectedMode: 'reject' });
+  const join = await joinActor(nodeA, actorId, { scenario: 'ST-A2', targetSpotId: spotId, expectedMode: 'reject' });
   require(!join.accepted, 'ST-A2 join should be rejected.');
-  const entries = await waitEvidence(nodeA, [`ST-A2|${actorId}|admission|spot=${spotRid}`]);
+  const entries = await waitEvidence(nodeA, [`ST-A2|${actorId}|admission|spot=${spotId}`]);
   require(!has(entries, actorId, 'leave'), 'ST-A2 source leave side effect exists.');
   require(!has(entries, actorId, 'joined'), 'ST-A2 target joined side effect exists.');
   const actorRef = await getRef(nodeA, actorId);

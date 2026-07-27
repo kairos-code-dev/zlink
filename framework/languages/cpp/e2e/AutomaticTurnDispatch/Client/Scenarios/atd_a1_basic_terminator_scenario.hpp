@@ -15,13 +15,13 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 
 template <typename TConnector>
 std::string run_atd_a1_basic_terminator_scenario (TConnector &connector,
-                                                 const std::string &spot_rid)
+                                                 const std::string &spot_id)
 {
     const auto request_id = unique_id ("ATD-A1");
     auto hold = std::async (std::launch::async, [&] {
         return connector.request (hold_req_t{.request_id = request_id, .delay_ms = 350})
           .packet_name (hold_req_t::packet_name)
-          .metadata (spot_rid_metadata, spot_rid)
+          .metadata (spot_id_metadata, spot_id)
           .timeout (std::chrono::milliseconds (10000))
           .template submit<automatic_turn_dispatch_res_t> ();
     });
@@ -29,7 +29,7 @@ std::string run_atd_a1_basic_terminator_scenario (TConnector &connector,
     auto hold_probe =
       connector.request (probe_req_t{.request_id = request_id, .marker = "hold-probe"})
         .packet_name (probe_req_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .timeout (std::chrono::milliseconds (10000))
         .template submit<automatic_turn_dispatch_res_t> ();
     ensure (static_cast<bool> (hold_probe), "ATD-A1 ProbeMsg send failed");

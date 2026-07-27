@@ -13,12 +13,13 @@ internal static class StF1InFlightHandoffOrderScenario
         var spotId = $"spot-inflight-order-{Guid.NewGuid():N}";
         await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 101);
-        var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
-
         var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F1", spotId));
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F1|{actorId}|joined_wait|{spotId}"]);
         foreach (var marker in new[] { "P1", "P2", "P3" })
-            await context.SendRefAsync(context.NodeA, actorId, oldRef, new HandoffPacket("ST-F1", marker));
+            await context.SendFromNodeAsync(
+                context.NodeA,
+                actorId,
+                new HandoffPacket("ST-F1", marker));
         await context.WaitRuntimeEvidenceAsync(context.NodeA,
             $"handoff_backlog actor={actorId} arrival=2");
         var sourceEvidence = await context.GetEvidenceAsync(context.NodeA);

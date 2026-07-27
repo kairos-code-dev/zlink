@@ -47,12 +47,12 @@ export class SpotToSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSp
         spotServicePacket(SpotMsg, { marker: `sm-c3-publish-${request.marker}` }))
       .submit();
     this.evidence.add(
-      `spot-to-spot|rid=${this.evidence.rid}|source=${spot.context.spotRid}`
-      + `|target=${request.targetSpotRid}|value=${reply.value}`
+      `spot-to-spot|rid=${this.evidence.rid}|source=${spot.context.spotId}`
+      + `|target=${request.targetSpotId}|value=${reply.value}`
     );
     return {
-      sourceSpotRid: String(spot.context.spotRid),
-      targetSpotRid: request.targetSpotRid,
+      sourceSpotId: String(spot.context.spotId),
+      targetSpotId: request.targetSpotId,
       targetValue: reply.value
     };
   }
@@ -81,12 +81,12 @@ export class SpotToSpotTimeoutHandler
       failed = true;
     }
     this.evidence.add(
-      `spot-to-spot-timeout|rid=${this.evidence.rid}|source=${spot.context.spotRid}`
-      + `|target=${request.targetSpotRid}|failed=${failed ? 'True' : 'False'}`
+      `spot-to-spot-timeout|rid=${this.evidence.rid}|source=${spot.context.spotId}`
+      + `|target=${request.targetSpotId}|failed=${failed ? 'True' : 'False'}`
     );
     return {
-      sourceSpotRid: String(spot.context.spotRid),
-      targetSpotRid: request.targetSpotRid,
+      sourceSpotId: String(spot.context.spotId),
+      targetSpotId: request.targetSpotId,
       failed
     };
   }
@@ -119,12 +119,12 @@ export class SpotToSpotNegativeHandler
         spotServicePacket(MissingSpotMsg, { marker: `missing-${request.marker}` }))
       .submit();
     this.evidence.add(
-      `spot-to-spot-negative|rid=${this.evidence.rid}|source=${spot.context.spotRid}`
-      + `|target=${request.targetSpotRid}|requestFailed=${requestFailed ? 'True' : 'False'}`
+      `spot-to-spot-negative|rid=${this.evidence.rid}|source=${spot.context.spotId}`
+      + `|target=${request.targetSpotId}|requestFailed=${requestFailed ? 'True' : 'False'}`
     );
     return {
-      sourceSpotRid: String(spot.context.spotRid),
-      targetSpotRid: request.targetSpotRid,
+      sourceSpotId: String(spot.context.spotId),
+      targetSpotId: request.targetSpotId,
       requestFailed
     };
   }

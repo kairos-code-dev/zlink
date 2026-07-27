@@ -17,15 +17,15 @@ import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson, postJsonWithin } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
-const existingSpotRid = 'spot-sm-g2-existing';
+const existingSpotId = 'spot-sm-g2-existing';
 const existingActorId = 'actor-sm-g2-existing';
-const newSpotRid = 'spot-sm-g2-new';
+const newSpotId = 'spot-sm-g2-new';
 const newActorId = 'actor-sm-g2-new';
 
 export async function prepareSmG2(options: ClientOptions): Promise<void> {
-  const created = await createLocalSpot(options.multiAUrl, existingSpotRid);
-  const joined = await joinActor(options.multiAUrl, existingSpotRid, existingActorId, 'before-scale-out');
-  const state = await requestState(options.multiAUrl, existingSpotRid, 1);
+  const created = await createLocalSpot(options.multiAUrl, existingSpotId);
+  const joined = await joinActor(options.multiAUrl, existingSpotId, existingActorId, 'before-scale-out');
+  const state = await requestState(options.multiAUrl, existingSpotId, 1);
 
   ensure(created.nodeRid === SpotServiceNames.multiSpotNodeA, 'SM-G2 existing Spot owner was not node A.');
   ensure(joined.accepted, 'SM-G2 existing actor JoinReq was rejected.');
@@ -50,7 +50,7 @@ export async function verifySmG2(options: ClientOptions): Promise<void> {
     'SM-G2 node B peer, actor capability, or Entry Spot handle was not ready.'
   );
 
-  const existingOwner = await requestState(options.multiAUrl, existingSpotRid, 1);
+  const existingOwner = await requestState(options.multiAUrl, existingSpotId, 1);
   const existingActor = await probeActor(options.multiAUrl, existingActorId, 'after-scale-out');
   ensure(
     existingOwner.nodeRid === SpotServiceNames.multiSpotNodeA,
@@ -61,23 +61,23 @@ export async function verifySmG2(options: ClientOptions): Promise<void> {
     'SM-G2 scale-out moved the existing actor owner away from node A.'
   );
 
-  const created = await createLocalSpot(options.multiBUrl, newSpotRid);
-  const newOwner = await joinActor(options.multiBUrl, newSpotRid, newActorId, 'new-node');
-  const newState = await requestState(options.multiAUrl, newSpotRid, 1);
+  const created = await createLocalSpot(options.multiBUrl, newSpotId);
+  const newOwner = await joinActor(options.multiBUrl, newSpotId, newActorId, 'new-node');
+  const newState = await requestState(options.multiAUrl, newSpotId, 1);
   ensure(created.nodeRid === SpotServiceNames.multiSpotNodeB, 'SM-G2 new Spot was not created locally on node B.');
   ensure(newOwner.accepted, 'SM-G2 selected node B Entry Spot rejected the new actor JoinReq.');
   ensure(newState.nodeRid === SpotServiceNames.multiSpotNodeB, 'SM-G2 new Spot request reached the wrong owner.');
 
   const [nodeAEvidence, nodeBEvidence] = await Promise.all([
     waitForEvidence(options.multiAUrl, [
-      `scale-out-actor-probe|rid=${SpotServiceNames.multiSpotNodeA}|spot=${existingSpotRid}`
+      `scale-out-actor-probe|rid=${SpotServiceNames.multiSpotNodeA}|spot=${existingSpotId}`
         + `|actor=${existingActorId}|marker=after-scale-out`,
-      `spot-state-request|rid=${SpotServiceNames.multiSpotNodeA}|spot=${existingSpotRid}|value=2`
+      `spot-state-request|rid=${SpotServiceNames.multiSpotNodeA}|spot=${existingSpotId}|value=2`
     ]),
     waitForEvidence(options.multiBUrl, [
       `entry-created|rid=${SpotServiceNames.multiSpotNodeB}|actor=${newActorId}`,
       `spot-only-actor-join|rid=${SpotServiceNames.multiSpotNodeB}|actor=${newActorId}`,
-      `spot-state-request|rid=${SpotServiceNames.multiSpotNodeB}|spot=${newSpotRid}|value=1`
+      `spot-state-request|rid=${SpotServiceNames.multiSpotNodeB}|spot=${newSpotId}|value=1`
     ])
   ]);
   ensure(
@@ -88,28 +88,28 @@ export async function verifySmG2(options: ClientOptions): Promise<void> {
   console.log('scenario SM-G2 verify passed');
 }
 
-async function createLocalSpot(url: string, spotRid: string): Promise<CreateSpotRes> {
+async function createLocalSpot(url: string, spotId: string): Promise<CreateSpotRes> {
   return await postJson<CreateSpotRes>(url, '/spot/create-user-local', {
-    spotRid
+    spotId
   } satisfies CreateSpotReq);
 }
 
 async function joinActor(
   url: string,
-  targetSpotRid: string,
+  targetSpotId: string,
   actorId: string,
   marker: string
 ): Promise<SpotOnlyJoinRes> {
   return await postJson<SpotOnlyJoinRes>(url, '/actor/spot-only-join', {
-    targetSpotRid,
+    targetSpotId,
     actorId,
     marker
   } satisfies SpotOnlyJoinReq);
 }
 
-async function requestState(url: string, spotRid: string, delta: number): Promise<StateRes> {
+async function requestState(url: string, spotId: string, delta: number): Promise<StateRes> {
   return await postJson<StateRes>(url, '/spot/state/request', {
-    spotRid,
+    spotId,
     delta
   } satisfies MultiNodeStateRouteReq);
 }

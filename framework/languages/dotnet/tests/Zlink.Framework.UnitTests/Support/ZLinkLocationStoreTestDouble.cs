@@ -2,7 +2,7 @@ using Zlink.Framework.Contracts.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
-internal abstract class ZLinkLocationStoreTestDouble : IZLinkLocationStore
+internal abstract class ZLinkLocationStoreTestDouble : IZLinkLocationRepository
 {
     public virtual ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,

@@ -11,25 +11,25 @@ import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA3(options: ClientOptions): Promise<void> {
-  const spotRid = `spot-sm-a3-${Date.now()}`;
+  const spotId = `spot-sm-a3-${Date.now()}`;
   const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-    spotRid
+    spotId
   } satisfies CreateSpotReq);
   ensure(
-    created.spotRid === spotRid && created.nodeRid === 'play-a',
+    created.spotId === spotId && created.nodeRid === 'play-a',
     'SM-A3 routed spot was not created on play-a.'
   );
 
   const routeReply = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
-    spotRid,
+    spotId,
     operation: 'add',
     delta: 1
   } satisfies SpotStateRouteReq);
-  ensure(routeReply.spotRid === spotRid, 'SM-A3 route reached the wrong spot.');
+  ensure(routeReply.spotId === spotId, 'SM-A3 route reached the wrong spot.');
   ensure(routeReply.nodeRid === 'play-a', 'SM-A3 route reached the wrong node.');
   ensure(routeReply.value === 1, 'SM-A3 state reply mismatch.');
 
-  const expectedPlayAEvidence = [`spot-state-request|rid=play-a|spot=${spotRid}|value=1`];
+  const expectedPlayAEvidence = [`spot-state-request|rid=play-a|spot=${spotId}|value=1`];
   const playAEvidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedPlayAEvidence,
     timeoutMilliseconds: 10000
@@ -44,7 +44,7 @@ export async function runSmA3(options: ClientOptions): Promise<void> {
     timeoutMilliseconds: 100
   } satisfies EvidenceWaitReq);
   ensure(
-    playBEvidence.every((line) => !line.includes(`spot-state-request|rid=play-b|spot=${spotRid}`)),
+    playBEvidence.every((line) => !line.includes(`spot-state-request|rid=play-b|spot=${spotId}`)),
     'SM-A3 route resolver leaked the spot request to play-b.'
   );
 

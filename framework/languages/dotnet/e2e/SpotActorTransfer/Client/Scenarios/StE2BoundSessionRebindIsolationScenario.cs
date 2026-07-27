@@ -37,7 +37,7 @@ internal static class StE2BoundSessionRebindIsolationScenario
             .Async().AsTask();
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-E2", "after-rebind"));
         var notify = await newPush;
-        ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-E2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(pushReply.NodeRid, "actor-b"), $"ST-E2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
         ZlinkStreamAssert.Ensure(notify.Payload.Marker == "after-rebind", "ST-E2 new bound session notify marker mismatch.");
         await oldPush;
     }

@@ -36,7 +36,7 @@
       "routeMeshes": ["game"],
       "channels": {},
       "clientServer": {
-        "workflow.command": "server"
+        "workflow.command": "client_and_server"
       }
     },
     "audit": {

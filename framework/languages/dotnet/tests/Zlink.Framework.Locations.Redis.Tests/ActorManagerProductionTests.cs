@@ -10,6 +10,7 @@ using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Host;
 using Zlink.Framework.Runtime.Locations;
 
@@ -124,7 +125,7 @@ public sealed class ActorManagerProductionTests
             service.GetType().Name == "ZLinkFrameworkHostedService");
 
     private static ServiceProvider BuildServer(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         string endpoint)
     {
         var services = new ServiceCollection();
@@ -145,7 +146,7 @@ public sealed class ActorManagerProductionTests
     }
 
     private static ServiceProvider BuildClient(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         string endpoint)
     {
         var services = new ServiceCollection();
@@ -168,7 +169,7 @@ public sealed class ActorManagerProductionTests
     }
 
     private static async Task PublishServerDescriptorAsync(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ZLinkFrameworkRuntime runtime,
         RoutingId rid,
         string endpoint)
@@ -272,19 +273,19 @@ public sealed class ActorManagerProductionTests
 
     private class CapacityRaceLocationStore : DispatchProxy
     {
-        private IZLinkLocationStore _inner = null!;
+        private IZLinkLocationRepository _inner = null!;
         private int _actorReserveAttempts;
 
         public int ActorReserveAttempts => Volatile.Read(
             ref _actorReserveAttempts);
 
         public static (
-            IZLinkLocationStore Store,
+            IZLinkLocationRepository Store,
             CapacityRaceLocationStore Control) Create(
-            IZLinkLocationStore inner)
+            IZLinkLocationRepository inner)
         {
             var contract = DispatchProxy.Create<
-                IZLinkLocationStore,
+                IZLinkLocationRepository,
                 CapacityRaceLocationStore>();
             var proxy = (CapacityRaceLocationStore)(object)contract;
             proxy._inner = inner;
@@ -296,7 +297,7 @@ public sealed class ActorManagerProductionTests
             object?[]? args)
         {
             ArgumentNullException.ThrowIfNull(targetMethod);
-            if (targetMethod.Name == nameof(IZLinkLocationStore.ReserveAsync)
+            if (targetMethod.Name == nameof(IZLinkLocationRepository.ReserveAsync)
                 && args is { Length: > 0 }
                 && args[0] is ZLinkObjectReservationRequest
                 {

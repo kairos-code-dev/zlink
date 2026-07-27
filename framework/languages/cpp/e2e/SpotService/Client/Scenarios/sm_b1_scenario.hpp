@@ -40,7 +40,7 @@ inline void run_sm_b1_scenario (const std::string &play_http_endpoint)
                                   + joined.value ().body);
     }
     const auto reply = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
-    if (reply.owner_node_rid != "play-a" || reply.spot_rid != "user:play-a:sm-b1-local"
+    if (reply.owner_node_rid != "play-a" || reply.spot_id != "user:play-a:sm-b1-local"
         || reply.actor.actor_id != actor_id || reply.actor.node_rid != "play-a") {
         throw std::runtime_error ("SM-B1 local join reply mismatch");
     }
@@ -61,7 +61,7 @@ inline void run_sm_b1_scenario (const std::string &play_http_endpoint)
                                   + state.value ().body);
     }
     const auto state_reply = nlohmann::json::parse (state.value ().body).get<state_res_t> ();
-    if (state_reply.owner_node_rid != "play-a" || state_reply.spot_rid != reply.spot_rid
+    if (state_reply.owner_node_rid != "play-a" || state_reply.spot_id != reply.spot_id
         || state_reply.value != 1 || state_reply.sequence != 1) {
         throw std::runtime_error ("SM-B1 local actor request mismatch");
     }

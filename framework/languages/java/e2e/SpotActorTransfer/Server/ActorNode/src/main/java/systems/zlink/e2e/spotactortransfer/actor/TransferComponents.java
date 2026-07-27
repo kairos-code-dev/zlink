@@ -289,7 +289,7 @@ public final class TransferComponents {
             context.handlers().addHandler(UserJoinTargetHandler.class);
             context.handlers().addHandler(ProbeHandler.class);
             context.handlers().addHandler(BoundPushHandler.class);
-            context.handlers().addHandler(StragglerSendHandler.class);
+            context.handlers().addHandler(MessageFollowSendHandler.class);
         }
 
         @Override
@@ -463,13 +463,13 @@ public final class TransferComponents {
         }
     }
 
-    public static final class StragglerSendHandler implements systems.zlink.framework.spots.ZLinkSpotActorSendHandler<
+    public static final class MessageFollowSendHandler implements systems.zlink.framework.spots.ZLinkSpotActorSendHandler<
         TransferUserSpot,
         TransferActor,
-        Contracts.StragglerSendReq> {
+        Contracts.MessageFollowSendReq> {
         private final EvidenceStore evidence;
 
-        public StragglerSendHandler(EvidenceStore evidence) {
+        public MessageFollowSendHandler(EvidenceStore evidence) {
             this.evidence = evidence;
         }
 
@@ -478,8 +478,9 @@ public final class TransferComponents {
             TransferUserSpot spot,
             TransferActor actor,
             ZLinkMessageContext context,
-            Contracts.StragglerSendReq request) {
-            evidence.add(request.scenario(), actor.actorId(), "straggler_send", request.marker());
+            Contracts.MessageFollowSendReq request) {
+            evidence.add(
+                request.scenario(), actor.actorId(), "message_follow_send", request.marker());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -567,7 +568,7 @@ public final class TransferComponents {
                 evidence.add(request.scenario(), request.actorId(), "session_bound", context.sessionId());
                 context.client().reply(new Contracts.BindSessionRes(
                     request.scenario(), request.actorId(), bound.ref().nodeRid().toString(),
-                    bound.ref().generation())).submit();
+                    bound.ref().objectGeneration())).submit();
                 return null;
             });
         }

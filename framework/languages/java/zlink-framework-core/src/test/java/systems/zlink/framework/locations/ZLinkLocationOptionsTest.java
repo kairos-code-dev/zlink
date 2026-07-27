@@ -14,7 +14,7 @@ final class ZLinkLocationOptionsTest {
         assertEquals(Duration.ofSeconds(15), options.routeCacheMaxAge());
         assertEquals(
             Duration.ofSeconds(30),
-            options.relocationForwardingWindow());
+            options.messageFollowDuration());
         assertEquals(64, options.maxActiveOutboundRelocations());
         assertEquals(64, options.maxActiveInboundRelocations());
         assertEquals(8, options.maxConcurrentRelocationCaptures());
@@ -36,7 +36,7 @@ final class ZLinkLocationOptionsTest {
                 .setRouteCacheMaxAge(Duration.ofSeconds(26)));
         assertThrows(
             IllegalArgumentException.class,
-            () -> options.setRelocationForwardingWindow(
+            () -> options.setMessageFollowDuration(
                 Duration.ofSeconds(-1)));
     }
 

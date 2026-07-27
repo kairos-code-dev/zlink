@@ -11,8 +11,9 @@ var ZLinkFrameworkRuntimeState;
 (function (ZLinkFrameworkRuntimeState) {
     ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Preparing"] = 0] = "Preparing";
     ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Serving"] = 1] = "Serving";
-    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Retiring"] = 2] = "Retiring";
-    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Draining"] = 3] = "Draining";
-    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Stopped"] = 4] = "Stopped";
-    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Error"] = 5] = "Error";
+    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Relocating"] = 2] = "Relocating";
+    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Relocated"] = 3] = "Relocated";
+    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Draining"] = 4] = "Draining";
+    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Stopped"] = 5] = "Stopped";
+    ZLinkFrameworkRuntimeState[ZLinkFrameworkRuntimeState["Error"] = 6] = "Error";
 })(ZLinkFrameworkRuntimeState || (exports.ZLinkFrameworkRuntimeState = ZLinkFrameworkRuntimeState = {}));

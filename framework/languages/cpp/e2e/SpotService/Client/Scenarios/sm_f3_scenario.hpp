@@ -38,7 +38,7 @@ inline void run_sm_f3_scenario (const std::string &play_http_endpoint,
     auto raw =
       play_b.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = remote_spot,
+                                       .spot_id = remote_spot,
                                        .value = "route-mixed",
                                        .source_actor_id = "external-client"})
         .submit_raw ()

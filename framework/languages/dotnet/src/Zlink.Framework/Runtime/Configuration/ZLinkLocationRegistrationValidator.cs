@@ -9,7 +9,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ValidateOwnerLeaseTimes(locations.Options);
         ValidateRelocationLimits(locations.Options);
         ValidateObjectRoutingTimes(locations.Options);
-        if (locations.StoreInstance is not null && locations.UseInMemoryStores)
+        if (locations.HasExplicitStore && locations.UseInMemoryStores)
         {
             throw new ZLinkConfigurationException(
                 "AddLocationStore registers every store role at once and cannot be combined with "
@@ -57,17 +57,17 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateObjectRoutingTimes(ZLinkLocationOptions options)
     {
         if (options.RouteCacheMaxAge < TimeSpan.Zero
-            || options.RelocationForwardingWindow < TimeSpan.Zero)
+            || options.MessageFollowDuration < TimeSpan.Zero)
             throw new ZLinkConfigurationException(
-                "RouteCacheMaxAge and RelocationForwardingWindow must be greater than or equal to zero.");
+                "RouteCacheMaxAge and MessageFollowDuration must be greater than or equal to zero.");
 
         if (options.RouteCacheMaxAge > TimeSpan.Zero
-            && options.RelocationForwardingWindow > TimeSpan.Zero
+            && options.MessageFollowDuration > TimeSpan.Zero
             && options.RouteCacheMaxAge
-               > options.RelocationForwardingWindow - TimeSpan.FromSeconds(5))
+               > options.MessageFollowDuration - TimeSpan.FromSeconds(5))
             throw new ZLinkConfigurationException(
                 "RouteCacheMaxAge must be at least five seconds shorter than "
-                + "RelocationForwardingWindow when both values are enabled.");
+                + "MessageFollowDuration when both values are enabled.");
     }
 
 }

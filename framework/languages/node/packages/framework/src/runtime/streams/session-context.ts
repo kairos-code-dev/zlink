@@ -389,10 +389,11 @@ export class DefaultZLinkSessionActor implements ZLinkSessionActor {
     if (ref.actorId !== this.actorId) {
       throw new Error(`Cannot change session actor id from '${this.actorId}' to '${ref.actorId}'.`);
     }
-    if (BigInt(ref.generation) !== BigInt(this.currentRef.generation)) {
+    if (BigInt(ref.objectGeneration) !== BigInt(this.currentRef.objectGeneration)) {
       throw new Error(
         `Cannot change session actor '${this.actorId}' object generation `
-          + `from ${String(this.currentRef.generation)} to ${String(ref.generation)}.`
+          + `from ${String(this.currentRef.objectGeneration)} `
+          + `to ${String(ref.objectGeneration)}.`
       );
     }
     this.currentRef = ref;

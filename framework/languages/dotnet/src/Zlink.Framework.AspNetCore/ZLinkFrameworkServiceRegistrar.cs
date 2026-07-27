@@ -136,12 +136,12 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
                 () => provider.GetRequiredService<ZLinkFrameworkRuntime>().Flow.CaptureEnabled,
                 provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
-        services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(static provider =>
+        services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(provider =>
             new ZLinkFrameworkMaintenanceRuntime(
                 provider.GetRequiredService<ZLinkDrainCoordinator>(),
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PreflightRetireAsync,
                 provider.GetRequiredService<ZLinkFrameworkRuntime>().PublishRetiringAsync,
-                provider.GetRequiredService<ZLinkFrameworkRuntime>().GetDrainRemainderCounts));
+                registration.ApplicationVersion));
         services.TryAddSingleton<IZLinkFrameworkRuntime>(static provider =>
             provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
         services.TryAddSingleton<IZLinkRuntimeTerminalFailureSink>(static provider =>
@@ -311,19 +311,26 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(locations.Options);
         if (locations.StoreInstance is { } store)
         {
-            services.AddSingleton(new ZLinkLocationStoreInstanceOwner(store));
+            services.AddSingleton(new ZLinkLocationStoreInstanceOwner(
+                store,
+                locations.RelocationStoreInstance));
             services.AddSingleton<IHostedService>(static provider =>
                 provider.GetRequiredService<ZLinkLocationStoreInstanceOwner>());
             services.AddSingleton<IZLinkLocationStore>(store);
-            if (store is IZLinkLocationWatchStore watch)
-                services.AddSingleton(watch);
+            if (locations.RelocationStoreInstance is { } relocationStore)
+                services.AddSingleton<IZLinkRelocationStore>(relocationStore);
+            services.AddSingleton(locations.ResolveStore()!);
         }
         else if (locations.UseInMemoryStores)
         {
             services.AddSingleton(
                 (ZLinkInMemoryLocationStore)locations.ResolveStore()!);
-            services.AddSingleton<IZLinkLocationStore>(
+            services.AddSingleton<IZLinkLocationRepository>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+        }
+        else if (locations.ResolveStore() is { } repository)
+        {
+            services.AddSingleton(repository);
         }
         else
         {
@@ -332,14 +339,14 @@ internal static class ZLinkFrameworkServiceRegistrar
 
         services.AddSingleton<ZLinkLocationStoreHealth>();
         services.AddSingleton(static provider => new ZLinkOwnerLeaseTracker(
-            provider.GetRequiredService<IZLinkLocationStore>(),
+            provider.GetRequiredService<IZLinkLocationRepository>(),
             provider.GetRequiredService<ZLinkLocationOptions>(),
             health: provider.GetRequiredService<ZLinkLocationStoreHealth>()));
         // One observed-generation guard per runtime, shared by every read
         // surface, so no read path ever rolls the view backwards.
         services.AddSingleton<ZLinkObservedLocationGenerations>();
         services.AddSingleton(static provider => new ZLinkStoreLocationResolvers(
-            provider.GetRequiredService<IZLinkLocationStore>(),
+            provider.GetRequiredService<IZLinkLocationRepository>(),
             provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
             provider.GetRequiredService<ZLinkObservedLocationGenerations>(),
             health: provider.GetRequiredService<ZLinkLocationStoreHealth>(),
@@ -360,7 +367,7 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkSpotHandleWatchHost>());
         services.AddSingleton(static provider => new ZLinkLocationRuntime(
             provider.GetRequiredService<ZLinkLocationOptions>(),
-            provider.GetRequiredService<IZLinkLocationStore>(),
+            provider.GetRequiredService<IZLinkLocationRepository>(),
             observed: provider.GetRequiredService<ZLinkObservedLocationGenerations>()));
         // Every mesh namespace this host can advertise or dial under; the
         // operational query enumerates these when no mesh filter is given.
@@ -373,7 +380,7 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkLocationRuntimeQuery>(
             provider => new ZLinkLocationRuntimeQueryService(
                 provider.GetRequiredService<ZLinkLocationOptions>(),
-                provider.GetRequiredService<IZLinkLocationStore>(),
+                provider.GetRequiredService<IZLinkLocationRepository>(),
                 registeredMeshNames,
                 provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
                 provider.GetRequiredService<ZLinkLocationRuntime>(),
@@ -397,7 +404,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkLocationOptions>(),
                 provider.GetService<IZLinkLocationWatchStore>(),
                 leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
-                store: provider.GetRequiredService<IZLinkLocationStore>());
+                store: provider.GetRequiredService<IZLinkLocationRepository>());
             // The store owner enforces this dependency even when host startup
             // fails and the DI container starts disposing services concurrently.
             owner?.RegisterBeforeStoreDispose(host);
@@ -410,7 +417,9 @@ internal static class ZLinkFrameworkServiceRegistrar
 
 }
 
-internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
+internal sealed class ZLinkLocationStoreInstanceOwner(
+    IZLinkLocationStore store,
+    IZLinkRelocationStore? relocationStore = null)
     : IHostedService, IAsyncDisposable
 {
     private readonly object _disposeGate = new();
@@ -418,6 +427,11 @@ internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
     private Task? _disposeTask;
 
     public IZLinkLocationStore Store { get; } = store;
+
+    private IReadOnlyList<object> Stores { get; } =
+        relocationStore is null || ReferenceEquals(store, relocationStore)
+            ? [store]
+            : [store, relocationStore];
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -466,16 +480,19 @@ internal sealed class ZLinkLocationStoreInstanceOwner(IZLinkLocationStore store)
             }
         }
 
-        try
+        foreach (var storeInstance in Stores)
         {
-            if (Store is IAsyncDisposable asyncDisposable)
-                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-            else if (Store is IDisposable disposable)
-                disposable.Dispose();
-        }
-        catch (Exception exception)
-        {
-            (failures ??= []).Add(exception);
+            try
+            {
+                if (storeInstance is IAsyncDisposable asyncDisposable)
+                    await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                else if (storeInstance is IDisposable disposable)
+                    disposable.Dispose();
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
         }
 
         if (failures is { Count: 1 })

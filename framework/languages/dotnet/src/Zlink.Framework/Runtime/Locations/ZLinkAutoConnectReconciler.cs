@@ -189,7 +189,7 @@ internal sealed class ZLinkAutoConnectReconciler
     internal async ValueTask<bool> MarkRetiringAsync(
         CancellationToken cancellationToken = default)
         => await PublishLocalMutationAsync(
-            row => row with { State = ZLinkFrameworkRuntimeState.Retiring },
+            row => row with { State = ZLinkFrameworkRuntimeState.Relocating },
             cancellationToken).ConfigureAwait(false);
 
     internal async ValueTask<bool> MarkServingAsync(
@@ -395,7 +395,7 @@ internal sealed class ZLinkAutoConnectReconciler
             .Select(static row => new ZLinkRouteMeshPeerIdentity(
                 row.Rid!,
                 row.LifecycleGeneration,
-                row.State is ZLinkFrameworkRuntimeState.Retiring
+                row.State is ZLinkFrameworkRuntimeState.Relocating
                     or ZLinkFrameworkRuntimeState.Draining))
             .ToArray();
         if (_retainRemovedMembers)

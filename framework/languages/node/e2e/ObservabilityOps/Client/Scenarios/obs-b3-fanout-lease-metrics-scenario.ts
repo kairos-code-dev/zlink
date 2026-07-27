@@ -18,7 +18,7 @@ export async function runObsB3(): Promise<void> {
     (values) => values.some((value) => value.name === 'zlink.location.owner_lease.renew.lateness'),
     'OBS-B3 owner lease lateness metric missing');
   const all = [...published, ...received, ...lease];
-  const forbidden = ['correlation_id', 'flow_id', 'actor_id', 'spot_rid'];
+  const forbidden = ['correlation_id', 'flow_id', 'actor_id', 'spot_id'];
   require(all.every((value) => forbidden.every((label) => !(label in value.tags))),
     'OBS-B3 emitted a high-cardinality metric label.');
   require(!all.some((value) => value.name === 'zlink.fanout.dropped' && value.value === 0),

@@ -62,7 +62,7 @@ export function createMultiNodeEndpoints(
       path: '/spot/create-local',
       handle: (body) => {
         const request = body as MultiNodeCreateSpotReq;
-        return createLocalMultiNodeSpot(spots, evidence, evidence.rid, request.spotRid);
+        return createLocalMultiNodeSpot(spots, evidence, evidence.rid, request.spotId);
       }
     },
     {
@@ -73,11 +73,11 @@ export function createMultiNodeEndpoints(
         const created = await spots.getOrCreate(
           SpotServiceNames.spotOnlyMesh,
           SpotOnlyUserSpot,
-          request.spotRid
+          request.spotId
         );
-        evidence.add(`create-user-spot|rid=${evidence.rid}|spot=${created.spotRid}|state=${created.state}`);
+        evidence.add(`create-user-spot|rid=${evidence.rid}|spot=${created.spotId}|state=${created.state}`);
         return {
-          spotRid: String(created.spotRid),
+          spotId: String(created.spotId),
           nodeRid: evidence.rid,
           state: String(created.state)
         } satisfies CreateSpotRes;
@@ -91,16 +91,16 @@ export function createMultiNodeEndpoints(
         await spots.getOrCreate(
           SpotServiceNames.spotOnlyMesh,
           SpotOnlyUserSpot,
-          request.sourceSpotRid,
+          request.sourceSpotId,
           request
         );
         const snapshot = await evidence.waitUntil((entries) =>
           entries.some((entry) =>
-            entry.includes(`spot-only-request|rid=${evidence.rid}|source=${request.sourceSpotRid}|target=${request.targetSpotRid}`)
+            entry.includes(`spot-only-request|rid=${evidence.rid}|source=${request.sourceSpotId}|target=${request.targetSpotId}`)
             && entry.includes(`|marker=${request.marker}`)), 10000);
         return {
-          sourceSpotRid: request.sourceSpotRid,
-          targetSpotRid: request.targetSpotRid,
+          sourceSpotId: request.sourceSpotId,
+          targetSpotId: request.targetSpotId,
           targetValue: extractSpotOnlyValue(snapshot, request),
           marker: request.marker
         } satisfies SpotOnlyMeshRes;
@@ -112,7 +112,7 @@ export function createMultiNodeEndpoints(
       handle: async (body) => {
         const bodyRequest = body as SpotOnlyJoinReq;
         const request = new SpotOnlyJoinReq(
-          bodyRequest.targetSpotRid,
+          bodyRequest.targetSpotId,
           bodyRequest.actorId,
           bodyRequest.marker
         );
@@ -128,7 +128,7 @@ export function createMultiNodeEndpoints(
           .submit<SpotOnlyJoinRes>();
         await evidence.waitUntil((entries) =>
           entries.some((entry) =>
-            entry.includes(`spot-only-actor-join|rid=${evidence.rid}|actor=${request.actorId}|target=${request.targetSpotRid}`)
+            entry.includes(`spot-only-actor-join|rid=${evidence.rid}|actor=${request.actorId}|target=${request.targetSpotId}`)
             && entry.includes(`|marker=${request.marker}`)), 10000);
         return result;
       }
@@ -159,7 +159,7 @@ export function createMultiNodeEndpoints(
           outbound,
           spotRefs,
           actorMeshName,
-          request.spotRid,
+          request.spotId,
           request.delta
         );
       }
@@ -215,8 +215,8 @@ async function waitForScaleOutReadiness(
 
 function extractSpotOnlyValue(evidence: readonly string[], request: SpotOnlyMeshReq): number {
   const entry = [...evidence].reverse().find((line) =>
-    line.includes(`source=${request.sourceSpotRid}`)
-    && line.includes(`target=${request.targetSpotRid}`)
+    line.includes(`source=${request.sourceSpotId}`)
+    && line.includes(`target=${request.targetSpotId}`)
     && line.includes(`marker=${request.marker}`));
   const match = entry?.match(/\|value=(\d+)/);
   return match == null ? 0 : Number(match[1]);

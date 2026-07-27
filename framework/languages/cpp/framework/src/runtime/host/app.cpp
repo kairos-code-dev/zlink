@@ -797,8 +797,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             registration->spot_state->dispatch = options.configure_dispatch ();
             registration->spot_state->monitoring = monitoring_state;
             detail::spot_node_runtime_t spot_runtime (registration->spot_state);
-            spot_runtime.set_actor_transfer_forward_window (
-              options.location_options ().relocation_forwarding_window);
+            spot_runtime.set_message_follow_duration (
+              options.location_options ().message_follow_duration);
             if (_state->services.contains (
                   std::type_index (typeid (
                     runtime::stateful::relocation_store_port_t)))) {
@@ -826,7 +826,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             if (application_mesh_registration != mesh_node_registrations.end ()) {
                 auto application_mesh = detail::mesh_node_runtime_t::from (
                   _state->zlink, (*application_mesh_registration)->mesh_name);
-                spot_runtime.on_actor_packet_forward (
+                spot_runtime.on_actor_message_follow (
                   [application_mesh] (
                     const actor_ref_t &actor,
                     const runtime::messaging::envelope_header_t &header,

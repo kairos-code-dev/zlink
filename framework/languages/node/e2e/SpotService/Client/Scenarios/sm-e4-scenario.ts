@@ -18,17 +18,17 @@ export async function runSmE4(options: ClientOptions): Promise<void> {
     policySpots.set(policy, `spot-sm-e4-${policy.toLowerCase()}-${Date.now().toString(36)}`);
   }
 
-  for (const spotRid of policySpots.values()) {
+  for (const spotId of policySpots.values()) {
     const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-      spotRid
+      spotId
     } satisfies CreateSpotReq);
-    ensure(created.spotRid === spotRid, 'SM-E4 timer spot was not created.');
+    ensure(created.spotId === spotId, 'SM-E4 timer spot was not created.');
     ensure(created.nodeRid === 'play-a', 'SM-E4 timer spot was created on the wrong node.');
   }
 
-  for (const [policy, spotRid] of policySpots) {
+  for (const [policy, spotId] of policySpots) {
     const started = await postJson<SpotOverrunStartRes>(options.playAUrl, '/spot/overrun/start', {
-      spotRid,
+      spotId,
       name: `sm-e4-${policy}`,
       policy,
       periodMs: 25
@@ -36,15 +36,15 @@ export async function runSmE4(options: ClientOptions): Promise<void> {
     ensure(started.started, `SM-E4 ${policy} overrun timer did not start.`);
   }
 
-  const markers = [...policySpots].map(([policy, spotRid]) =>
-    `timer-overrun|rid=play-a|spot=${spotRid}|name=sm-e4-${policy}`);
+  const markers = [...policySpots].map(([policy, spotId]) =>
+    `timer-overrun|rid=play-a|spot=${spotId}|name=sm-e4-${policy}`);
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: markers,
     timeoutMilliseconds: 15000
   } satisfies EvidenceWaitReq);
   ensure(
-    [...policySpots].every(([policy, spotRid]) =>
-      evidence.filter((line) => line.includes(`timer-overrun|rid=play-a|spot=${spotRid}|name=sm-e4-${policy}`)).length >= 3),
+    [...policySpots].every(([policy, spotId]) =>
+      evidence.filter((line) => line.includes(`timer-overrun|rid=play-a|spot=${spotId}|name=sm-e4-${policy}`)).length >= 3),
     'SM-E4 timer overrun evidence missing or incomplete.'
   );
 

@@ -29,12 +29,12 @@ class ensure_spot_handler_t
                                 const zlink::framework::route_handler_context_t &)
     {
         try {
-            const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+            const auto rid = (request.spot_id);
             const auto created = _spots.get_or_create_spot (probe_spot_name, rid);
             _evidence.add ("spot-ensured|rid=" + _evidence.node_rid + "|spot="
-                           + std::string (created.spot_rid.value ()) + "|request="
-                           + request.spot_rid);
-            return {.spot_rid = std::string (created.spot_rid.value ()),
+                           + created.spot_id + "|request="
+                           + request.spot_id);
+            return {.spot_id = created.spot_id,
                     .node_rid = _evidence.node_rid};
         }
         catch (const zlink::framework::framework_exception_t &) {
@@ -73,11 +73,11 @@ class bind_await_actors_handler_t
       const bind_await_actors_req_t &request,
       const zlink::framework::route_handler_context_t &)
     {
-        const auto spot_rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
-        (void) _spots.get_or_create_spot (probe_spot_name, spot_rid);
-        _evidence.add ("bind-start|rid=" + _evidence.node_rid + "|spot=" + request.spot_rid
+        const auto spot_id = (request.spot_id);
+        (void) _spots.get_or_create_spot (probe_spot_name, spot_id);
+        _evidence.add ("bind-start|rid=" + _evidence.node_rid + "|spot=" + request.spot_id
                        + "|actors=" + std::to_string (request.actor_ids.size ()));
-        bind_await_actors_res_t reply{.spot_rid = request.spot_rid};
+        bind_await_actors_res_t reply{.spot_id = request.spot_id};
         for (const auto &actor_id : request.actor_ids) {
             auto actor = _actors.get_or_create (actor_type, actor_id);
             if (!actor) {
@@ -94,7 +94,7 @@ class bind_await_actors_handler_t
             auto joined =
               bound.value ()
                 .context ()
-                .join_spot (spot_rid,
+                .join_spot (spot_id,
                             delay_req_t{.request_id = "bind-" + actor_id,
                                         .delay_ms = 0,
                                         .marker = "bind"})
@@ -115,7 +115,7 @@ class bind_await_actors_handler_t
             }
             auto actor_ref = joined_accepted->actor;
             _evidence.add ("bind-actor|rid=" + _evidence.node_rid + "|spot="
-                           + request.spot_rid + "|actor=" + actor_id + "|generation="
+                           + request.spot_id + "|actor=" + actor_id + "|generation="
                            + std::to_string (actor_ref.generation ()));
             reply.actors.push_back (
               {.actor_id = actor_id,

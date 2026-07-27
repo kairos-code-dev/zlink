@@ -3,11 +3,11 @@ import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActo
 
 export async function runStC1(): Promise<void> {
   const actorId = unique('actor-source-down-before-commit');
-  const spotRid = unique('spot-source-down-before-commit');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('spot-source-down-before-commit');
+  await createSpot(nodeB, spotId);
   await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 62);
-  const join = joinActor(nodeA, actorId, { scenario: 'ST-C1', targetSpotRid: spotRid }).catch(() => undefined);
-  await waitEvidence(nodeB, [`ST-C1|${actorId}|admission|spot=${spotRid}`]);
+  const join = joinActor(nodeA, actorId, { scenario: 'ST-C1', targetSpotId: spotId }).catch(() => undefined);
+  await waitEvidence(nodeB, [`ST-C1|${actorId}|admission|spot=${spotId}`]);
   await post(nodeA, '/crash', {});
   await delay(100);
   await post(nodeB, `/transfer-gates/${actorId}/release`, {});

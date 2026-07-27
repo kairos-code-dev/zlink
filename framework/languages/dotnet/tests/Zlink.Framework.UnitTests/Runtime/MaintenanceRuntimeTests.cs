@@ -1,556 +1,191 @@
-using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.AspNetCore;
-using Zlink.Framework.Runtime.Configuration;
-using Zlink.Framework.Runtime.Host;
-using Zlink.Framework.Runtime.Locations;
-using Zlink.Framework.Runtime.Service;
 
 namespace Zlink.Framework.UnitTests;
 
 public sealed class MaintenanceRuntimeTests
 {
     [Fact]
-    public void Manual_topology_reason_and_registration_gate_are_frozen()
+    public async Task Planned_maintenance_relocates_without_stopping_the_host()
     {
-        Assert.Equal(9, (int)ZLinkFrameworkTerminationReason.ManualTopologyUnsupported);
-        var routeMesh = new ZLinkFrameworkRegistration();
-        routeMesh.SpotNodes.Add(
-            "play",
-            new ZLinkSpotNodeRegistration
+        using var fixture = Create(sourceApplicationVersion: 7);
+        fixture.Runtime.MarkServing();
+        fixture.Executor.Complete.TrySetResult(null);
+
+        var result = await fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+        });
+
+        Assert.Equal(ZLinkFrameworkRelocationOutcome.Relocated, result.Outcome);
+        Assert.Equal(7, result.TargetApplicationVersion);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Relocated, fixture.Runtime.Status.State);
+        Assert.Null(fixture.Runtime.Status.TerminationResult);
+        Assert.Equal(ZLinkFrameworkLifecycleIntent.Relocate, fixture.Executor.Intent);
+    }
+
+    [Fact]
+    public async Task Shutdown_is_a_separate_operation_after_relocation()
+    {
+        using var fixture = Create(sourceApplicationVersion: 7);
+        fixture.Runtime.MarkServing();
+        fixture.Executor.Complete.TrySetResult(null);
+        await fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+        });
+
+        var result = await fixture.Runtime.ShutdownAsync();
+
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.Status.State);
+        Assert.Equal(2, fixture.Executor.ExecuteCount);
+        Assert.Equal(ZLinkFrameworkLifecycleIntent.Shutdown, fixture.Executor.Intent);
+    }
+
+    [Fact]
+    public async Task Rolling_update_requires_a_newer_exact_target_version()
+    {
+        using var fixture = Create(sourceApplicationVersion: 7);
+        fixture.Runtime.MarkServing();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
             {
-                SpotNodeName = "play",
-                Router = new ZLinkSpotRouterCapabilityRegistration
-                {
-                    AcquisitionMode = ZLinkPeerAcquisitionMode.Manual
-                }
+                Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
+                TargetApplicationVersion = 7
+            }).AsTask());
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
+            {
+                Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance,
+                TargetApplicationVersion = 8
+            }).AsTask());
+    }
+
+    [Fact]
+    public async Task Preflight_blocker_keeps_the_host_serving()
+    {
+        using var fixture = Create(
+            static (_, _, _) => ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(
+                ZLinkFrameworkRelocationReason.TargetUnavailable));
+        fixture.Runtime.MarkServing();
+
+        var result = await fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
+        {
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+        });
+
+        Assert.Equal(ZLinkFrameworkRelocationOutcome.Blocked, result.Outcome);
+        Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.Status.State);
+        Assert.Null(fixture.Runtime.Status.RelocationResult);
+    }
+
+    [Theory]
+    [InlineData(ZLinkFrameworkRelocationMode.PlannedMaintenance, null, 7L)]
+    [InlineData(ZLinkFrameworkRelocationMode.RollingUpdate, 9L, 9L)]
+    public async Task Preflight_receives_mode_and_exact_effective_target_version(
+        ZLinkFrameworkRelocationMode mode,
+        long? requestedVersion,
+        long expectedVersion)
+    {
+        ZLinkFrameworkRelocationMode? observedMode = null;
+        long? observedVersion = null;
+        using var fixture = Create(
+            (candidateMode, candidateVersion, _) =>
+            {
+                observedMode = candidateMode;
+                observedVersion = candidateVersion;
+                return ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(
+                    ZLinkFrameworkRelocationReason.TargetUnavailable);
+            },
+            sourceApplicationVersion: 7);
+        fixture.Runtime.MarkServing();
+
+        var result = await fixture.Runtime.RelocateAsync(
+            new ZLinkFrameworkRelocationOptions
+            {
+                Mode = mode,
+                TargetApplicationVersion = requestedVersion
             });
 
-        Assert.True(ZLinkFrameworkRuntime.HasUnsupportedManualTopology(routeMesh));
+        Assert.Equal(mode, observedMode);
+        Assert.Equal(expectedVersion, observedVersion);
+        Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
+    }
 
-        var clientServer = new ZLinkFrameworkRegistration();
-        clientServer.Channels.Add("orders", new ZLinkChannelRegistration
+    [Theory]
+    [InlineData(ZLinkFrameworkRelocationMode.PlannedMaintenance, 7, 6, false)]
+    [InlineData(ZLinkFrameworkRelocationMode.PlannedMaintenance, 7, 7, true)]
+    [InlineData(ZLinkFrameworkRelocationMode.PlannedMaintenance, 7, 8, false)]
+    [InlineData(ZLinkFrameworkRelocationMode.RollingUpdate, 9, 8, false)]
+    [InlineData(ZLinkFrameworkRelocationMode.RollingUpdate, 9, 9, true)]
+    [InlineData(ZLinkFrameworkRelocationMode.RollingUpdate, 9, 10, false)]
+    public void Target_selection_never_uses_lower_or_higher_version_fallback(
+        ZLinkFrameworkRelocationMode mode,
+        long exactTargetVersion,
+        long candidateVersion,
+        bool expected)
+    {
+        var selection = new ZLinkRelocationTargetSelection(
+            mode,
+            exactTargetVersion);
+
+        Assert.Equal(expected, selection.Matches(candidateVersion));
+    }
+
+    [Fact]
+    public async Task Relocate_before_serving_is_blocked_but_shutdown_is_allowed()
+    {
+        using var fixture = Create();
+        fixture.Executor.Complete.TrySetResult(null);
+
+        var blocked = await fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
         {
-            ChannelName = "orders",
-            Client = new ZLinkChannelClientCapabilityRegistration
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
+        });
+        var stopped = await fixture.Runtime.ShutdownAsync();
+
+        Assert.Equal(ZLinkFrameworkRelocationReason.RuntimeNotReady, blocked.Reason);
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, stopped.Outcome);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.Status.State);
+    }
+
+    [Fact]
+    public async Task Observe_reports_the_latest_relocated_status()
+    {
+        using var fixture = Create();
+        fixture.Runtime.MarkServing();
+        var observed = new List<ZLinkFrameworkRuntimeStatus>();
+        using var stop = new CancellationTokenSource();
+        var observer = Task.Run(async () =>
+        {
+            await foreach (var status in fixture.Runtime.ObserveAsync(stop.Token))
             {
-                AcquisitionMode = ZLinkPeerAcquisitionMode.Manual
+                observed.Add(status);
+                if (status.State == ZLinkFrameworkRuntimeState.Relocated)
+                    break;
             }
         });
-        Assert.True(ZLinkFrameworkRuntime.HasUnsupportedManualTopology(clientServer));
 
-        var subscriber = new ZLinkFrameworkRegistration();
-        subscriber.Channels.Add("events", new ZLinkChannelRegistration
+        fixture.Executor.Complete.TrySetResult(null);
+        await fixture.Runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
         {
-            ChannelName = "events",
-            Subscriber = new ZLinkChannelSubscriberCapabilityRegistration
-            {
-                AcquisitionMode = ZLinkPeerAcquisitionMode.Manual
-            }
+            Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
         });
-        Assert.True(ZLinkFrameworkRuntime.HasUnsupportedManualTopology(subscriber));
+        await observer.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var storelessPublisher = new ZLinkFrameworkRegistration();
-        storelessPublisher.Channels.Add("events", new ZLinkChannelRegistration
-        {
-            ChannelName = "events",
-            Publisher = new ZLinkChannelPublisherCapabilityRegistration()
-        });
-        Assert.True(ZLinkFrameworkRuntime.HasUnsupportedManualTopology(storelessPublisher));
-
-        Assert.False(ZLinkFrameworkRuntime.HasUnsupportedManualTopology(
-            new ZLinkFrameworkRegistration()));
-    }
-
-    [Fact]
-    public void Automatic_peer_readiness_requires_exact_generation_and_admitted_state()
-    {
-        var rid = RoutingId.From("replacement");
-        var local = RoutingId.From("local");
-        ZLinkRouteMeshPeerIdentity[] descriptors = [new(rid, 7, Draining: false)];
-        MeshNodePeer[] stale =
-        [
-            new(1, MeshPeerSource.Discovery, MeshPeerState.Admitted, rid, 6, 1,
-                "tcp://127.0.0.1:1", 0, 0, 0)
-        ];
-        IReadOnlySet<RoutingId> localNodes = new HashSet<RoutingId> { local };
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(descriptors, stale, localNodes));
-
-        MeshNodePeer[] exact =
-        [
-            stale[0] with { LifecycleGeneration = 7 }
-        ];
-        Assert.True(ZLinkFrameworkRuntime.HasExactPeerReadiness(descriptors, exact, localNodes));
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(
-            descriptors,
-            [exact[0] with { State = MeshPeerState.Connecting }],
-            localNodes));
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(
-            [descriptors[0] with { Draining = true }],
-            Array.Empty<MeshNodePeer>(),
-            localNodes));
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(
-            Array.Empty<ZLinkRouteMeshPeerIdentity>(),
-            Array.Empty<MeshNodePeer>(),
-            localNodes));
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(
-            [new ZLinkRouteMeshPeerIdentity(local, 7, Draining: false)],
-            [exact[0] with { RoutingId = local }],
-            localNodes));
-        var secondLocal = RoutingId.From("local-2");
-        Assert.False(ZLinkFrameworkRuntime.HasExactPeerReadiness(
-            [
-                new ZLinkRouteMeshPeerIdentity(local, 7, Draining: false),
-                new ZLinkRouteMeshPeerIdentity(secondLocal, 7, Draining: false)
-            ],
-            [
-                exact[0] with { RoutingId = local },
-                exact[0] with { RoutingId = secondLocal }
-            ],
-            new HashSet<RoutingId> { local, secondLocal }));
-    }
-
-    [Fact]
-    public void Retire_target_compatibility_requires_version_wave_type_and_headroom()
-    {
-        var source = new ZLinkFrameworkRegistration
-        {
-            ApplicationVersion = 5,
-            MaintenanceWave = "blue"
-        };
-        ZLinkObjectCapability[] required =
-        [
-            new(
-                ZLinkPlacementObjectKind.UserSpot,
-                "room",
-                ZLinkObjectMaintenancePolicyKind.Snapshot,
-                HasSnapshotAdapter: true,
-                Limit: 10),
-            new(
-                ZLinkPlacementObjectKind.Actor,
-                "player",
-                ZLinkObjectMaintenancePolicyKind.Recreate,
-                HasSnapshotAdapter: false,
-                Limit: 0)
-        ];
-        var inventory = new ZLinkSpotRetireInventory(
-            "mesh",
-            RoutingId.From("source"),
-            1,
-            new ZLinkLocationOwnerToken("source-owner", 1),
-            "spot",
-            "room",
-            typeof(object),
-            InstanceSpot: false,
-            ObjectGeneration: 1,
-            ActorIds: ["actor"],
-            RequiredCapabilities: required);
-        var target = new ZLinkMeshNodeDescriptor(
-            "mesh",
-            RoutingId.From("target"),
-            2,
-            1,
-            "tcp://127.0.0.1:1",
-            new Dictionary<string, int>(),
-            "plain",
-            "target-owner",
-            2,
-            DateTimeOffset.UtcNow)
-        {
-            ApplicationVersion = 6,
-            MaintenanceWave = "green",
-            State = ZLinkFrameworkRuntimeState.Serving,
-            ObjectRole = ZLinkMeshNodeObjectRole.Server,
-            PlacementWeight = 100,
-            ObjectCapabilities = required,
-            Capacity = new ZLinkPlacementCapacity(
-                new ZLinkPopulationCapacity(1, 0, 3),
-                new ZLinkPopulationCapacity(1, 0, 3),
-                [new ZLinkSpotTypeCapacity(
-                    ZLinkPlacementObjectKind.UserSpot,
-                    "room",
-                    1,
-                    0,
-                    3)]),
-            ActivationConcurrency = new ZLinkActivationConcurrency(1, 3)
-        };
-
-        Assert.True(ZLinkSpotRetireTargetRuntime.IsCompatibleTarget(
-            target,
-            source,
-            inventory,
-            ZLinkPlacementObjectKind.UserSpot));
-        Assert.False(ZLinkSpotRetireTargetRuntime.IsCompatibleTarget(
-            target with { ApplicationVersion = 4 }, source, inventory,
-            ZLinkPlacementObjectKind.UserSpot));
-        Assert.False(ZLinkSpotRetireTargetRuntime.IsCompatibleTarget(
-            target with { MaintenanceWave = "blue" }, source, inventory,
-            ZLinkPlacementObjectKind.UserSpot));
-        Assert.False(ZLinkSpotRetireTargetRuntime.IsCompatibleTarget(
-            target with { ObjectCapabilities = required[..1] }, source, inventory,
-            ZLinkPlacementObjectKind.UserSpot));
-        Assert.False(ZLinkSpotRetireTargetRuntime.IsCompatibleTarget(
-            target with
-            {
-                Capacity = target.Capacity with
-                {
-                    Actors = new ZLinkPopulationCapacity(2, 0, 2)
-                }
-            }, source, inventory, ZLinkPlacementObjectKind.UserSpot));
-        Assert.True(ZLinkSpotRetireTargetRuntime.HasHeadroom(
-            new ZLinkPopulationCapacity(100, 100, 0),
-            1));
-
-        var plan = new ZLinkRetirePreflightPlan();
-        var oneActor = new ZLinkCapacityVector(1, 0, null);
-        var boundedTarget = target with
-        {
-            Capacity = target.Capacity with
-            {
-                Actors = new ZLinkPopulationCapacity(1, 0, 3)
-            },
-            ActivationConcurrency = new ZLinkActivationConcurrency(0, 2)
-        };
-        Assert.True(plan.TryReserve(boundedTarget, oneActor));
-        Assert.True(plan.TryReserve(boundedTarget, oneActor));
-        Assert.False(plan.TryReserve(boundedTarget, oneActor));
-    }
-
-    [Fact]
-    public async Task Shutdown_bypasses_retire_topology_preflight()
-    {
-        var preflightCalls = 0;
-        using var fixture = Create(_ =>
-        {
-            Interlocked.Increment(ref preflightCalls);
-            return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(
-                ZLinkFrameworkTerminationReason.ManualTopologyUnsupported);
-        });
-        fixture.Runtime.MarkServing();
-        fixture.Executor.Complete.TrySetResult(null);
-
-        var result = await fixture.Runtime.ShutdownAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
-        Assert.Equal(0, preflightCalls);
-    }
-
-    [Fact]
-    public async Task Retire_remains_retiring_until_relocation_detaches()
-    {
-        using var fixture = Create();
-        fixture.Runtime.MarkServing();
-
-        var retire = fixture.Runtime.RetireAsync().AsTask();
-        await fixture.Executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
-
-        Assert.Equal(ZLinkFrameworkRuntimeState.Retiring, fixture.Runtime.State);
-        Assert.False(fixture.Runtime.Snapshot().WorkSealed);
-        Assert.True(fixture.Drain.IsReady);
-
-        fixture.Executor.Complete.TrySetResult(null);
-        await retire;
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.State);
-        Assert.False(fixture.Drain.IsReady);
-    }
-
-    [Fact]
-    public async Task Retire_publishes_descriptor_after_preflight_and_blocks_on_store_failure()
-    {
-        var sequence = new List<string>();
-        using var fixture = Create(
-            _ =>
-            {
-                sequence.Add("preflight");
-                return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(null);
-            },
-            _ =>
-            {
-                sequence.Add("publish-retiring");
-                return ValueTask.FromResult(false);
-            });
-        fixture.Runtime.MarkServing();
-
-        var result = await fixture.Runtime.RetireAsync();
-
-        Assert.Equal(["preflight", "publish-retiring"], sequence);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Blocked, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.StoreUnavailable, result.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.State);
-        Assert.True(fixture.Drain.IsReady);
-        Assert.Equal(0, fixture.Executor.ExecuteCount);
-    }
-
-    [Fact]
-    public async Task RetiringRollbackFailureSealsAndForceStopsAfterTeardown()
-    {
-        using var fixture = Create(
-            publishRetiring: _ => ValueTask.FromException<bool>(
-                new ZLinkRetiringPublicationRollbackException(
-                    [new InvalidOperationException("rollback not confirmed")])));
-        fixture.Runtime.MarkServing();
-
-        var result = await fixture.Runtime.RetireAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Retire, result.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.ForceStopped, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.TeardownFailed, result.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.State);
-        Assert.False(fixture.Drain.IsReady);
-        Assert.Equal(0, fixture.Executor.ExecuteCount);
-    }
-
-    [Fact]
-    public async Task Exact_peer_snapshot_deadline_is_blocked_as_target_unavailable()
-    {
-        using var fixture = Create(async cancellationToken =>
-        {
-            var ready = await ZLinkFrameworkRuntime.WaitForExactPeerReadinessAsync(
-                static () => false,
-                TimeSpan.FromMilliseconds(1),
-                cancellationToken);
-            return ready ? null : ZLinkFrameworkTerminationReason.TargetUnavailable;
-        });
-        fixture.Runtime.MarkServing();
-
-        var result = await fixture.Runtime.RetireAsync(TimeSpan.FromMilliseconds(20));
-
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Blocked, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.TargetUnavailable, result.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.State);
-    }
-
-    [Fact]
-    public async Task Framework_Registration_Exposes_Host_Wide_Maintenance_Runtime()
-    {
-        var registrations = new ServiceCollection();
-        registrations.AddZLinkFramework(_ => { });
-        await using var services = registrations.BuildServiceProvider();
-
-        var runtime = services.GetRequiredService<IZLinkFrameworkRuntime>();
-        var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(1));
-
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, result.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, runtime.State);
-    }
-
-    [Fact]
-    public async Task Retire_Preflight_Block_Does_Not_Seal_And_Can_Retry()
-    {
-        var attempts = 0;
-        using var fixture = Create(
-            _ => ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(
-                Interlocked.Increment(ref attempts) == 1
-                    ? ZLinkFrameworkTerminationReason.TargetUnavailable
-                    : null));
-        fixture.Runtime.MarkServing();
-
-        var blocked = await fixture.Runtime.RetireAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Blocked, blocked.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.TargetUnavailable, blocked.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.State);
-        Assert.False(fixture.Runtime.Snapshot().WorkSealed);
-        Assert.Equal(0, fixture.Executor.ExecuteCount);
-
-        fixture.Executor.Complete.TrySetResult(null);
-        var completed = await fixture.Runtime.RetireAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Retire, completed.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, completed.Outcome);
-        Assert.Equal(1, fixture.Executor.ExecuteCount);
-        Assert.Equal(
-            ZLinkFrameworkTerminationIntent.Retire,
-            fixture.Executor.Intent);
-    }
-
-    [Fact]
-    public async Task Shutdown_During_Preflight_Wins_The_Maintenance_Barrier()
-    {
-        var preflight = new TaskCompletionSource<ZLinkFrameworkTerminationReason?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var fixture = Create(
-            cancellationToken => new ValueTask<ZLinkFrameworkTerminationReason?>(
-                preflight.Task.WaitAsync(cancellationToken)));
-        fixture.Runtime.MarkServing();
-
-        var retire = fixture.Runtime.RetireAsync().AsTask();
-        var shutdown = fixture.Runtime.ShutdownAsync().AsTask();
-        preflight.TrySetResult(null);
-        fixture.Executor.Complete.TrySetResult(null);
-
-        var first = await retire;
-        var second = await shutdown;
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, first.EffectiveIntent);
-        Assert.Equal(first, second);
-        Assert.Equal(1, fixture.Executor.ExecuteCount);
-        Assert.Equal(
-            ZLinkFrameworkTerminationIntent.Shutdown,
-            fixture.Executor.Intent);
-    }
-
-    [Fact]
-    public async Task Shutdown_During_Retiring_Publication_Wins_Before_Publication_Commits()
-    {
-        var publicationStarted = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var fixture = Create(
-            publishRetiring: async cancellationToken =>
-            {
-                publicationStarted.TrySetResult();
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                return true;
-            });
-        fixture.Runtime.MarkServing();
-
-        var retire = fixture.Runtime.RetireAsync().AsTask();
-        await publicationStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        var shutdown = fixture.Runtime.ShutdownAsync().AsTask();
-        fixture.Executor.Complete.TrySetResult(null);
-
-        var first = await retire;
-        var second = await shutdown;
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, first.EffectiveIntent);
-        Assert.Equal(first, second);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, first.Outcome);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.State);
-        Assert.Equal(1, fixture.Executor.ExecuteCount);
-        Assert.Equal(
-            ZLinkFrameworkTerminationIntent.Shutdown,
-            fixture.Executor.Intent);
-    }
-
-    [Fact]
-    public async Task Shutdown_After_Retiring_Publication_Joins_Retire()
-    {
-        using var fixture = Create();
-        fixture.Runtime.MarkServing();
-
-        var retire = fixture.Runtime.RetireAsync().AsTask();
-        await fixture.Executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        var shutdown = fixture.Runtime.ShutdownAsync().AsTask();
-        fixture.Executor.Complete.TrySetResult(null);
-
-        var first = await retire;
-        var second = await shutdown;
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Retire, first.EffectiveIntent);
-        Assert.Equal(first, second);
-    }
-
-    [Fact]
-    public async Task Caller_Cancellation_Ends_Only_That_Waiter()
-    {
-        using var fixture = Create();
-        fixture.Runtime.MarkServing();
-        var shared = fixture.Runtime.ShutdownAsync().AsTask();
-        using var waiterCancellation = new CancellationTokenSource();
-        var canceledWaiter = fixture.Runtime.ShutdownAsync(
-            cancellationToken: waiterCancellation.Token).AsTask();
-
-        waiterCancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledWaiter);
-        Assert.False(shared.IsCompleted);
-
-        fixture.Executor.Complete.TrySetResult(null);
-        var result = await shared;
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
-    }
-
-    [Fact]
-    public async Task Shutdown_Force_Stop_Has_One_Terminal_Result()
-    {
-        using var fixture = Create();
-        fixture.Executor.Complete.TrySetResult(ZLinkDrainForceReason.DeadlineExceeded);
-
-        var result = await fixture.Runtime.ShutdownAsync();
-        var repeated = await fixture.Runtime.RetireAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, result.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.ForceStopped, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.DeadlineExceeded, result.Reason);
-        Assert.Equal(result, repeated);
-        Assert.Equal(result, fixture.Runtime.Snapshot().TerminalResult);
-    }
-
-    [Fact]
-    public async Task RelocationTerminalFailureCompletesCleanupInStoppedState()
-    {
-        using var fixture = Create();
-        fixture.Executor.Complete.TrySetResult(
-            ZLinkDrainForceReason.RelocationFailed);
-
-        var result = await fixture.Runtime.ShutdownAsync();
-        var repeated = await fixture.Runtime.ShutdownAsync();
-
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.ForceStopped, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.RelocationFailed, result.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, fixture.Runtime.State);
-        Assert.Equal(result, repeated);
-        Assert.Equal(result, fixture.Runtime.Snapshot().TerminalResult);
-    }
-
-    [Fact]
-    public async Task Observation_Is_Ordered_And_Terminal_State_Is_Visible()
-    {
-        using var fixture = Create();
-        await using var observer = fixture.Runtime.ObserveAsync(capacity: 2).GetAsyncEnumerator();
-        var next = observer.MoveNextAsync().AsTask();
-
-        fixture.Runtime.MarkServing();
-
-        Assert.True(await next);
-        Assert.Equal("zlink.runtime.host.termination_changed", observer.Current.Identifier);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, observer.Current.State);
-        Assert.Equal<ulong>(1, observer.Current.Sequence);
-
-        fixture.Executor.Complete.TrySetResult(null);
-        await fixture.Runtime.ShutdownAsync();
-        var snapshot = fixture.Runtime.Snapshot();
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, snapshot.State);
-        Assert.True(snapshot.WorkSealed);
-        Assert.True(snapshot.Sequence >= 4);
-    }
-
-    [Fact]
-    public async Task Capacity_One_Observer_Retains_Terminal_Event()
-    {
-        using var fixture = Create();
-        await using var observer = fixture.Runtime.ObserveAsync(capacity: 1).GetAsyncEnumerator();
-        var first = observer.MoveNextAsync().AsTask();
-        fixture.Runtime.MarkServing();
-        Assert.True(await first);
-
-        fixture.Executor.Complete.TrySetResult(null);
-        await fixture.Runtime.ShutdownAsync();
-
-        Assert.True(await observer.MoveNextAsync());
-        Assert.Equal(
-            ZLinkFrameworkTerminationOutcome.Stopped,
-            observer.Current.Outcome);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, observer.Current.State);
-    }
-
-    [Fact]
-    public void Snapshot_Reports_Framework_Owned_Pending_Counts()
-    {
-        using var fixture = Create(
-            pending: static () => new ZLinkDrainRemainderCounts(
-                Actors: 2,
-                Spots: 3,
-                Requests: 5,
-                Sessions: 7));
-
-        var snapshot = fixture.Runtime.Snapshot();
-
-        Assert.Equal<ulong>(5, snapshot.PendingRequestCount);
-        Assert.Equal<ulong>(5, snapshot.PendingRelocationCount);
-        Assert.Equal<ulong>(7, snapshot.PendingStreamBarrierCount);
+        Assert.Contains(observed, status =>
+            status.State == ZLinkFrameworkRuntimeState.Relocated);
     }
 
     private static Fixture Create(
-        Func<CancellationToken, ValueTask<ZLinkFrameworkTerminationReason?>>? preflight = null,
-        Func<CancellationToken, ValueTask<bool>>? publishRetiring = null,
-        Func<ZLinkDrainRemainderCounts>? pending = null)
+        Func<
+            ZLinkFrameworkRelocationMode,
+            long,
+            CancellationToken,
+            ValueTask<ZLinkFrameworkRelocationReason?>>? preflight = null,
+        long sourceApplicationVersion = 0)
     {
         var executor = new MaintenanceExecutor();
         var drain = new ZLinkDrainCoordinator(
@@ -559,10 +194,10 @@ public sealed class MaintenanceRuntimeTests
             events: null);
         var runtime = new ZLinkFrameworkMaintenanceRuntime(
             drain,
-            preflight ?? (static _ =>
-                ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(null)),
-            publishRetiring ?? (static _ => ValueTask.FromResult(true)),
-            pending ?? (static () => new ZLinkDrainRemainderCounts(0, 0, 0, 0)));
+            preflight ?? (static (_, _, _) =>
+                ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(null)),
+            static _ => ValueTask.FromResult(true),
+            sourceApplicationVersion);
         return new Fixture(runtime, drain, executor);
     }
 
@@ -583,43 +218,29 @@ public sealed class MaintenanceRuntimeTests
         public TaskCompletionSource<ZLinkDrainForceReason?> Complete { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource Started { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         public int ExecuteCount { get; private set; }
 
-        public ZLinkFrameworkTerminationIntent? Intent { get; private set; }
+        public ZLinkFrameworkLifecycleIntent? Intent { get; private set; }
 
-        public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
+        public ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
             TimeSpan deadline,
-            CancellationToken deadlineToken)
-        {
-            return await ExecuteAsync(
-                    ZLinkFrameworkTerminationIntent.Shutdown,
-                    deadline,
-                    deadlineToken)
-                .ConfigureAwait(false);
-        }
+            CancellationToken deadlineToken) =>
+            ExecuteAsync(ZLinkFrameworkLifecycleIntent.Shutdown, deadline, deadlineToken);
 
         public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
-            ZLinkFrameworkTerminationIntent intent,
+            ZLinkFrameworkLifecycleIntent intent,
             TimeSpan deadline,
             CancellationToken deadlineToken)
         {
             _ = deadline;
             Intent = intent;
             ExecuteCount++;
-            Started.TrySetResult();
             return await Complete.Task.WaitAsync(deadlineToken).ConfigureAwait(false);
         }
 
         public ValueTask ForceStopAsync(
             ZLinkDrainForceReason reason,
-            CancellationToken cancellationToken)
-        {
-            _ = reason;
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
+            CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
     }
 }

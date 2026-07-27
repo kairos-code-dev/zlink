@@ -19,14 +19,11 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
         var spotId = $"spot-inflight-req-{Guid.NewGuid():N}";
         await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 106);
-        var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
-
         var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotId));
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotId}"]);
-        var requestTask = context.ProbeRefAsync(
+        var requestTask = context.ProbeFromNodeAsync(
             context.NodeA,
             actorId,
-            oldRef,
             new ProbeReq("ST-F6", "correlated-reply"),
             TimeSpan.FromSeconds(5));
         await context.WaitRuntimeEvidenceAsync(context.NodeA,
@@ -35,7 +32,9 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
 
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
         var response = await requestTask;
-        ZlinkStreamAssert.Ensure(response.Succeeded && response.Reply?.NodeRid == "actor-b",
+        ZlinkStreamAssert.Ensure(response.Succeeded
+            && response.Reply is { } reply
+            && SpotActorTransferScenarioContext.IsNode(reply.NodeRid, "actor-b"),
             $"ST-F6 reply did not correlate to the original caller: {response.ErrorKind}");
         ZlinkStreamAssert.Ensure(response.Reply?.Marker == "correlated-reply", "ST-F6 correlated reply marker mismatch.");
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|packet_handler|correlated-reply"]);
@@ -47,14 +46,11 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
         var spotId = $"spot-inflight-req-timeout-{Guid.NewGuid():N}";
         await context.CreateSpotAsync(context.NodeB, spotId, "delay-joined");
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 107);
-        var oldRef = await context.GetActorRefAsync(context.NodeA, actorId);
-
         var joinTask = context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-F6", spotId));
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|joined_wait|{spotId}"]);
-        var requestTask = context.ProbeRefAsync(
+        var requestTask = context.ProbeFromNodeAsync(
             context.NodeA,
             actorId,
-            oldRef,
             new ProbeReq("ST-F6", "late-reply"),
             TimeSpan.FromMilliseconds(250));
         var timeout = await requestTask;

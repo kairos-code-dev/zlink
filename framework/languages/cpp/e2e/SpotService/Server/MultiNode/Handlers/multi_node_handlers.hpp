@@ -17,10 +17,10 @@ namespace
 
 inline bool evidence_entry_matches (const e2e::evidence_entry_t &entry,
                                     const std::string &marker,
-                                    const std::string &spot_rid,
+                                    const std::string &spot_id,
                                     const std::string &value_part)
 {
-    return entry.marker == marker && entry.spot_rid == spot_rid
+    return entry.marker == marker && entry.spot_id == spot_id
            && (value_part.empty () || entry.value.find (value_part) != std::string::npos);
 }
 
@@ -37,14 +37,14 @@ inline const char *multi_node_route_channel_for (const std::string &node_rid)
 
 inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client_t &routes,
                                                   zlink::framework::spot_handle_resolver_t &handles,
-                                                  const std::string &spot_rid,
+                                                  const std::string &spot_id,
                                                   int delta)
 {
-    auto handle = handles.resolve_spot_handle (zlink::framework::spot_rid_t::from_string (spot_rid))
+    auto handle = handles.resolve_spot_handle ((spot_id))
                     .result ()
                     .value ();
     if (!handle) {
-        throw std::runtime_error ("multi-node spot '" + spot_rid + "' has no live location row");
+        throw std::runtime_error ("multi-node spot '" + spot_id + "' has no live location row");
     }
     auto reply = routes
                    .request_to_spot (*handle, e2e::state_req_t{.op = "add", .amount = delta})
@@ -54,7 +54,7 @@ inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client
     if (reply) {
         return reply.value ();
     }
-    throw std::runtime_error ("multi-node spot route failed for '" + spot_rid
+    throw std::runtime_error ("multi-node spot route failed for '" + spot_id
                               + "': "
                               + (reply.error () ? reply.error ()->what ()
                                                 : "unknown route error"));
@@ -151,14 +151,14 @@ class multi_node_create_local_handler_t
     e2e::multi_node_create_spot_res_t create_spot (
       const e2e::multi_node_create_spot_req_t &request)
     {
-        const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+        const auto rid = (request.spot_id);
         const auto created =
           _spots.get_or_create_spot (multi_node_spot_name_for (_state.node_rid), rid, request);
         const auto state =
           created.state == zlink::framework::spot_create_state_t::created ? "created"
                                                                           : "existing";
-        _state.record ("MultiCreateSpot", {}, request.spot_rid, state);
-        return {.spot_rid = request.spot_rid,
+        _state.record ("MultiCreateSpot", {}, request.spot_id, state);
+        return {.spot_id = request.spot_id,
                 .node_rid = _state.node_rid,
                 .state = state,
                 .value = 0};
@@ -194,7 +194,7 @@ class multi_node_state_member_handler_t
     e2e::state_res_t handle (const e2e::multi_node_state_route_req_t &request,
                              const zlink::framework::route_handler_context_t &)
     {
-        return request_multi_node_state (_routes, _handles, request.spot_rid, request.delta);
+        return request_multi_node_state (_routes, _handles, request.spot_id, request.delta);
     }
 
   private:
@@ -231,7 +231,7 @@ class multi_node_state_route_handler_t
             return reply.value ();
         }
         throw std::runtime_error (
-          "multi-node state route failed for '" + request.spot_rid + "': "
+          "multi-node state route failed for '" + request.spot_id + "': "
           + (reply.error () ? reply.error ()->what () : "unknown route error"));
     }
 
@@ -257,17 +257,17 @@ class multi_node_create_user_local_handler_t
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::create_spot_req_t> ();
-        const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+        const auto rid = (request.spot_id);
         const auto created =
           _spots.get_or_create_spot (multi_node_spot_name_for (_state.node_rid), rid, request);
         const auto state =
           created.state == zlink::framework::spot_create_state_t::created ? "created"
                                                                           : "existing";
-        _state.record ("CreateUserSpot", {}, request.spot_rid, state);
+        _state.record ("CreateUserSpot", {}, request.spot_id, state);
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::create_spot_res_t{
-                          .spot_rid = request.spot_rid,
+                          .spot_id = request.spot_id,
                           .owner_node_rid = _state.node_rid,
                           .created = created.state == zlink::framework::spot_create_state_t::created})
                           .dump ();
@@ -295,13 +295,13 @@ class multi_node_spot_only_mesh_handler_t
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::spot_only_mesh_req_t> ();
-        const auto rid = zlink::framework::spot_rid_t::from_string (request.source_spot_rid);
+        const auto rid = (request.source_spot_id);
         (void) _spots.get_or_create_spot (multi_node_spot_name_for (_state.node_rid), rid, request);
         const auto value_marker = "marker=" + request.marker;
         auto snapshot = _state.wait_until (
           [&] (const e2e::evidence_snapshot_t &current) {
               for (const auto &entry : current.entries) {
-                  if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_rid,
+                  if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_id,
                                               value_marker)) {
                       return true;
                   }
@@ -311,7 +311,7 @@ class multi_node_spot_only_mesh_handler_t
           std::chrono::seconds (10));
         bool found = false;
         for (const auto &entry : snapshot.entries) {
-            if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_rid,
+            if (evidence_entry_matches (entry, "SpotOnlyRequest", request.source_spot_id,
                                         value_marker)) {
                 found = true;
                 break;
@@ -324,8 +324,8 @@ class multi_node_spot_only_mesh_handler_t
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_only_mesh_res_t{
-            .source_spot_rid = request.source_spot_rid,
-            .target_spot_rid = request.target_spot_rid,
+            .source_spot_id = request.source_spot_id,
+            .target_spot_id = request.target_spot_id,
             .target_value = 7,
             .marker = request.marker})
             .dump ();

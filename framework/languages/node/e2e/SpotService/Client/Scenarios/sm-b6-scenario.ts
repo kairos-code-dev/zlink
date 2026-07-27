@@ -19,7 +19,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmB6(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
-  const spotRid = `spot-sm-b6-${suffix}`;
+  const spotId = `spot-sm-b6-${suffix}`;
   const leaveActorId = `actor-sm-b6-left-${suffix}`;
   const disconnectActorId = `actor-sm-b6-disconnected-${suffix}`;
 
@@ -28,7 +28,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   try {
     await leaveClient
       .request({
-        spotRid,
+        spotId,
         actorId: leaveActorId,
         displayName: leaveActorId,
         nodeRid: 'play-a'
@@ -40,7 +40,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       containsAll: [`entry-joined|rid=play-a|actor=${leaveActorId}`],
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
-    await joinUserSpotActor(leaveClient, spotRid, leaveActorId);
+    await joinUserSpotActor(leaveClient, spotId, leaveActorId);
 
     const left = await leaveClient
       .request({ actorId: leaveActorId } satisfies LeaveReq)
@@ -52,7 +52,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
     await leaveClient.close();
   }
 
-  const expectedLeaveEvidence = [`spot-actor-left|rid=play-a|spot=${spotRid}|actor=${leaveActorId}`];
+  const expectedLeaveEvidence = [`spot-actor-left|rid=play-a|spot=${spotId}|actor=${leaveActorId}`];
   const playAAfterLeave = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedLeaveEvidence,
     timeoutMilliseconds: 10000
@@ -63,7 +63,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   );
   ensure(
     playAAfterLeave.every((line) =>
-      !line.includes(`spot-actor-disconnected|rid=play-a|spot=${spotRid}|actor=${leaveActorId}`)),
+      !line.includes(`spot-actor-disconnected|rid=play-a|spot=${spotId}|actor=${leaveActorId}`)),
     'SM-B6 explicit leave incorrectly emitted disconnect evidence.'
   );
   await postJson<string[]>(options.playAUrl, '/evidence/wait', {
@@ -76,7 +76,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   try {
     await disconnectClient
       .request({
-        spotRid,
+        spotId,
         actorId: disconnectActorId,
         displayName: disconnectActorId,
         nodeRid: 'play-a'
@@ -88,9 +88,9 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
       containsAll: [`entry-joined|rid=play-a|actor=${disconnectActorId}`],
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
-    await joinUserSpotActor(disconnectClient, spotRid, disconnectActorId);
+    await joinUserSpotActor(disconnectClient, spotId, disconnectActorId);
     await postJson<string[]>(options.playAUrl, '/evidence/wait', {
-      containsAll: [`spot-actor-joined|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`],
+      containsAll: [`spot-actor-joined|rid=play-a|spot=${spotId}|actor=${disconnectActorId}`],
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
   } finally {
@@ -98,7 +98,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   }
 
   const expectedDisconnectEvidence = [
-    `spot-actor-disconnected|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`
+    `spot-actor-disconnected|rid=play-a|spot=${spotId}|actor=${disconnectActorId}`
   ];
   const playAAfterDisconnect = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedDisconnectEvidence,
@@ -110,7 +110,7 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
   );
   ensure(
     playAAfterDisconnect.every((line) =>
-      !line.includes(`spot-actor-left|rid=play-a|spot=${spotRid}|actor=${disconnectActorId}`)),
+      !line.includes(`spot-actor-left|rid=play-a|spot=${spotId}|actor=${disconnectActorId}`)),
     'SM-B6 disconnect incorrectly emitted leave evidence.'
   );
 
@@ -119,11 +119,11 @@ export async function runSmB6(options: ClientOptions): Promise<void> {
 
 async function joinUserSpotActor(
   client: ReturnType<typeof createStreamClient>,
-  spotRid: string,
+  spotId: string,
   actorId: string
 ): Promise<void> {
   const joined = await client
-    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .request({ spotId, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
     .submit<JoinUserSpotActorRes>();

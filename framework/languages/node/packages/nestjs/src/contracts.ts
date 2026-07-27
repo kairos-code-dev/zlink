@@ -200,7 +200,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   setApplicationVersion(version: bigint): this;
   setMaintenanceWave(waveId: string): this;
   setActorTransferTimeout(timeoutMs: number): this;
-  setActorTransferForwardWindow(timeoutMs: number): this;
+  setMessageFollowDuration(timeoutMs: number): this;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   configureLocations(): ZLinkLocationOptions;
   addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder;

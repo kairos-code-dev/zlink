@@ -10,11 +10,11 @@ namespace
 inline void scenario_runner_t::run_st_b3_scenario ()
 {
     const auto actor_id = "actor-no-adapter-" + unique_suffix ();
-    const auto spot_rid = "spot-no-adapter-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid);
+    const auto spot_id = "spot-no-adapter-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id);
     create_actor (_nodes.a, actor_id, e2e::actor_type_no_adapter, 31);
 
-    const auto join = join_actor (_nodes.a, actor_id, {"ST-B3", spot_rid});
+    const auto join = join_actor (_nodes.a, actor_id, {"ST-B3", spot_id});
     require (join.accepted, "ST-B3 join was rejected.");
 
     const auto probe = probe_actor (_nodes.a, actor_id, {"ST-B3", "after-default-empty-transfer"});
@@ -26,11 +26,11 @@ inline void scenario_runner_t::run_st_b3_scenario ()
                                "transfer|" + actor_id + "|leave|31",
                                "message_flow|" + actor_id + "|commit_request|",
                                "message_flow|" + actor_id + "|commit_ack|"});
-    wait_evidence (_nodes.a, {"ST-B3|" + actor_id + "|success_reply|" + spot_rid});
+    wait_evidence (_nodes.a, {"ST-B3|" + actor_id + "|success_reply|" + spot_id});
     assert_evidence_sequence (
       _nodes.b, {"ST-B3|" + actor_id + "|admission|",
                  "transfer|" + actor_id + "|transfer_in_empty_default|actor-factory",
-                 "transfer|" + actor_id + "|joined|" + spot_rid + ":0",
+                 "transfer|" + actor_id + "|joined|" + spot_id + ":0",
                  "message_flow|" + actor_id + "|location_committed|",
                  "ST-B3|" + actor_id + "|packet_handler|after-default-empty-transfer"});
     wait_evidence (_nodes.a, {"message_flow|" + actor_id + "|source_cleanup|"});

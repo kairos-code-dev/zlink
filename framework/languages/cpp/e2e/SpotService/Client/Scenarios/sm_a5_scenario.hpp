@@ -37,11 +37,11 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
                     .build ();
 
     const auto key = std::string ("sm-a5-stage");
-    const auto spot_rid = user_spot_rid_for_key (key);
+    const auto spot_id = user_spot_id_for_key (key);
 
     auto created =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = spot_rid})
+        .body (create_spot_req_t{.spot_id = spot_id})
         .submit_raw ()
         .result ();
     if (!created) {
@@ -51,7 +51,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     ensure_sm_a5_http_success (created.value (), "SM-A5 create");
     const auto create_reply =
       nlohmann::json::parse (created.value ().body).get<create_spot_res_t> ();
-    if (create_reply.spot_rid != spot_rid || create_reply.owner_node_rid != "play-a"
+    if (create_reply.spot_id != spot_id || create_reply.owner_node_rid != "play-a"
         || !create_reply.created) {
         throw std::runtime_error ("SM-A5 create reply mismatch");
     }
@@ -59,7 +59,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     auto route_ready =
       play_b.post ("/spot/state/request")
         .body (spot_state_route_req_t{
-          .spot_rid = spot_rid, .state = state_req_t{.op = "add", .amount = 0}})
+          .spot_id = spot_id, .state = state_req_t{.op = "add", .amount = 0}})
         .submit_raw ()
         .result ();
     if (!route_ready) {
@@ -69,14 +69,14 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     ensure_sm_a5_http_success (route_ready.value (), "SM-A5 route-ready");
     const auto route_reply =
       nlohmann::json::parse (route_ready.value ().body).get<state_res_t> ();
-    if (route_reply.spot_rid != spot_rid || route_reply.owner_node_rid != "play-a"
+    if (route_reply.spot_id != spot_id || route_reply.owner_node_rid != "play-a"
         || route_reply.value != 0) {
         throw std::runtime_error ("SM-A5 route-ready reply mismatch");
     }
 
     auto stage_probe =
       play_b.post ("/spot/stage/request")
-        .body (spot_stage_probe_req_t{.spot_rid = spot_rid,
+        .body (spot_stage_probe_req_t{.spot_id = spot_id,
                                       .marker = "sm-a5-stage",
                                       .delta = 9})
         .submit_raw ()
@@ -88,14 +88,14 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     ensure_sm_a5_http_success (stage_probe.value (), "SM-A5 stage probe");
     const auto probe_reply =
       nlohmann::json::parse (stage_probe.value ().body).get<state_res_t> ();
-    if (probe_reply.spot_rid != spot_rid || probe_reply.owner_node_rid != "play-a"
+    if (probe_reply.spot_id != spot_id || probe_reply.owner_node_rid != "play-a"
         || probe_reply.value != 9) {
         throw std::runtime_error ("SM-A5 stage probe reply mismatch");
     }
 
     auto timer_started =
       play_b.post ("/spot/stage/timer")
-        .body (spot_stage_timer_req_t{.spot_rid = spot_rid,
+        .body (spot_stage_timer_req_t{.spot_id = spot_id,
                                       .name = "sm-a5-stage-timer",
                                       .period_ms = 50})
         .submit_raw ()
@@ -107,7 +107,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     ensure_sm_a5_http_success (timer_started.value (), "SM-A5 stage timer");
     const auto timer_reply =
       nlohmann::json::parse (timer_started.value ().body).get<spot_stage_timer_res_t> ();
-    if (timer_reply.spot_rid != spot_rid || timer_reply.name != "sm-a5-stage-timer"
+    if (timer_reply.spot_id != spot_id || timer_reply.name != "sm-a5-stage-timer"
         || !timer_reply.started) {
         throw std::runtime_error ("SM-A5 stage timer reply mismatch");
     }
@@ -115,7 +115,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     auto evidence =
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{
-          .contains_all = {"SpotInitialized", spot_rid, "StageRequest", "sm-a5-stage:9",
+          .contains_all = {"SpotInitialized", spot_id, "StageRequest", "sm-a5-stage:9",
                            "StageTimer", "sm-a5-stage-timer:1"},
           .timeout_milliseconds = 10000})
         .submit_raw ()
@@ -138,13 +138,13 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     ensure_sm_a5_http_success (closed.value (), "SM-A5 close");
     const auto close_reply =
       nlohmann::json::parse (closed.value ().body).get<close_spot_res_t> ();
-    if (close_reply.spot_rid != spot_rid || !close_reply.closed) {
+    if (close_reply.spot_id != spot_id || !close_reply.closed) {
         throw std::runtime_error ("SM-A5 close reply mismatch");
     }
 
     auto closing_evidence =
       play_a.post ("/evidence/wait")
-        .body (evidence_wait_req_t{.contains_all = {"SpotClosing", spot_rid},
+        .body (evidence_wait_req_t{.contains_all = {"SpotClosing", spot_id},
                                    .timeout_milliseconds = 5000})
         .submit_raw ()
         .result ();

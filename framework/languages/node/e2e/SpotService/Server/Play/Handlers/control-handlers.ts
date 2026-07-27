@@ -107,13 +107,13 @@ export class CreateSpotHandler implements ZLinkRouteRequestHandler<CreateSpotReq
     const created = await this.spots.getOrCreate(
       SpotServiceNames.spotChannel,
       ScenarioUserSpot,
-      request.spotRid
+      request.spotId
     );
     const state = typeof created.state === 'string' ? created.state : String(created.state);
-    InMemorySpotRouteStore.recordUserSpot(String(created.spotRid), this.evidence.rid);
-    this.evidence.add(`create-spot|rid=${this.evidence.rid}|spot=${created.spotRid}|state=${state}`);
+    InMemorySpotRouteStore.recordUserSpot(String(created.spotId), this.evidence.rid);
+    this.evidence.add(`create-spot|rid=${this.evidence.rid}|spot=${created.spotId}|state=${state}`);
     return {
-      spotRid: String(created.spotRid),
+      spotId: String(created.spotId),
       nodeRid: this.evidence.rid,
       state
     };

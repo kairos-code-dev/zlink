@@ -21,8 +21,8 @@ import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 
 /** Owns the transfer-only backlog and bounded source-retirement state. */
 final class ZLinkActorTransferHandoff implements AutoCloseable {
-    static final int MAX_FORWARDING_MESSAGES = 1024;
-    static final long MAX_FORWARDING_BYTES = 16L * 1024L * 1024L;
+    static final int MAX_MESSAGE_FOLLOW_MESSAGES = 1024;
+    static final long MAX_MESSAGE_FOLLOW_BYTES = 16L * 1024L * 1024L;
     private final ScheduledExecutorService retirementsExecutor =
         Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "zlink-actor-transfer-retirement");
@@ -33,10 +33,10 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
     private final Map<String, List<ZLinkActorHandoffPacket>> backlogs =
         new ConcurrentHashMap<>();
     private final AtomicLong arrivalIndex = new AtomicLong();
-    private final Map<String, ForwardingSource> forwardingSources =
+    private final Map<String, MessageFollowSource> messageFollowSources =
         new ConcurrentHashMap<>();
     private final java.util.Set<Retention> retirements = ConcurrentHashMap.newKeySet();
-    private final AtomicLong forwardingToken = new AtomicLong();
+    private final AtomicLong messageFollowToken = new AtomicLong();
     private boolean closed;
 
     synchronized void begin(String actorId) {
@@ -116,9 +116,9 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         String actorId,
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef,
-        Duration window,
-        Consumer<ForwardingSource> retirement) {
-        retain(actorId, sourceActorRef, targetActorRef, null, window, retirement);
+        Duration duration,
+        Consumer<MessageFollowSource> removal) {
+        retain(actorId, sourceActorRef, targetActorRef, null, duration, removal);
     }
 
     synchronized void retain(
@@ -126,28 +126,28 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef,
         SpotTransportAddress targetAddress,
-        Duration window,
-        Consumer<ForwardingSource> retirement) {
+        Duration duration,
+        Consumer<MessageFollowSource> removal) {
         requireOpen();
-        ForwardingSource source = new ForwardingSource(
+        MessageFollowSource source = new MessageFollowSource(
             sourceActorRef, targetActorRef, targetAddress,
-            forwardingToken.incrementAndGet());
-        forwardingSources.put(actorId, source);
-        Retention retained = new Retention(actorId, source, retirement);
+            messageFollowToken.incrementAndGet());
+        messageFollowSources.put(actorId, source);
+        Retention retained = new Retention(actorId, source, removal);
         retirements.add(retained);
         ScheduledFuture<?> future = retirementsExecutor.schedule(
             () -> retire(retained),
-            window.toMillis(),
+            duration.toMillis(),
             TimeUnit.MILLISECONDS);
         retained.future(future);
     }
 
-    Optional<ForwardingSource> forwardingSource(String actorId) {
-        return Optional.ofNullable(forwardingSources.get(actorId));
+    Optional<MessageFollowSource> messageFollowSource(String actorId) {
+        return Optional.ofNullable(messageFollowSources.get(actorId));
     }
 
-    synchronized Optional<ForwardingSource> takeForwardingSource(String actorId) {
-        ForwardingSource source = forwardingSources.remove(actorId);
+    synchronized Optional<MessageFollowSource> takeMessageFollowSource(String actorId) {
+        MessageFollowSource source = messageFollowSources.remove(actorId);
         if (source == null) {
             return Optional.empty();
         }
@@ -165,32 +165,32 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         return Optional.of(source);
     }
 
-    int forwardingSourceCount() {
-        return forwardingSources.size();
+    int messageFollowSourceCount() {
+        return messageFollowSources.size();
     }
 
-    <T> CompletionStage<T> forward(
+    <T> CompletionStage<T> follow(
         String actorId,
         long objectGeneration,
         long payloadBytes,
         java.util.function.Supplier<CompletionStage<T>> submission) {
-        ForwardingSource source = forwardingSources.get(actorId);
+        MessageFollowSource source = messageFollowSources.get(actorId);
         if (source == null
             || source.sourceActorRef().generation() != objectGeneration
             || source.targetActorRef().generation() != objectGeneration) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new IllegalStateException(
-                    "committed forwarding mapping is unavailable or stale"));
+                    "committed Message Follow route is unavailable or stale"));
         }
         if (!source.tryAcquire(payloadBytes)) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new IllegalStateException(
-                    "committed forwarding mapping queue exceeds 1024 messages or 16 MiB"));
+                    "committed Message Follow route queue exceeds 1024 messages or 16 MiB"));
         }
         CompletionStage<T> submitted;
         try {
             submitted = java.util.Objects.requireNonNull(
-                submission.get(), "forwarding submission returned null");
+                submission.get(), "Message Follow submission returned null");
         } catch (RuntimeException failure) {
             source.release(payloadBytes);
             return java.util.concurrent.CompletableFuture.failedFuture(failure);
@@ -225,8 +225,8 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         if (!retirements.remove(retained)) {
             return;
         }
-        forwardingSources.remove(retained.actorId(), retained.source());
-        retained.retirement().accept(retained.source());
+        messageFollowSources.remove(retained.actorId(), retained.source());
+        retained.removal().accept(retained.source());
     }
 
     private void requireOpen() {
@@ -237,29 +237,29 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
 
     private static final class Retention {
         private final String actorId;
-        private final ForwardingSource source;
-        private final Consumer<ForwardingSource> retirement;
+        private final MessageFollowSource source;
+        private final Consumer<MessageFollowSource> removal;
         private volatile ScheduledFuture<?> future;
 
         private Retention(
             String actorId,
-            ForwardingSource source,
-            Consumer<ForwardingSource> retirement) {
+            MessageFollowSource source,
+            Consumer<MessageFollowSource> removal) {
             this.actorId = actorId;
             this.source = source;
-            this.retirement = retirement;
+            this.removal = removal;
         }
 
         String actorId() {
             return actorId;
         }
 
-        ForwardingSource source() {
+        MessageFollowSource source() {
             return source;
         }
 
-        Consumer<ForwardingSource> retirement() {
-            return retirement;
+        Consumer<MessageFollowSource> removal() {
+            return removal;
         }
 
         ScheduledFuture<?> future() {
@@ -271,7 +271,7 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         }
     }
 
-    static final class ForwardingSource {
+    static final class MessageFollowSource {
         private final ZLinkBackendActorRef sourceActorRef;
         private final ZLinkBackendActorRef targetActorRef;
         private final SpotTransportAddress targetAddress;
@@ -279,7 +279,7 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         private int pendingMessages;
         private long pendingBytes;
 
-        private ForwardingSource(
+        private MessageFollowSource(
             ZLinkBackendActorRef sourceActorRef,
             ZLinkBackendActorRef targetActorRef,
             SpotTransportAddress targetAddress,
@@ -298,9 +298,9 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         long token() { return token; }
 
         private synchronized boolean tryAcquire(long bytes) {
-            if (bytes < 0 || bytes > MAX_FORWARDING_BYTES
-                || pendingMessages >= MAX_FORWARDING_MESSAGES
-                || pendingBytes + bytes > MAX_FORWARDING_BYTES) {
+            if (bytes < 0 || bytes > MAX_MESSAGE_FOLLOW_BYTES
+                || pendingMessages >= MAX_MESSAGE_FOLLOW_MESSAGES
+                || pendingBytes + bytes > MAX_MESSAGE_FOLLOW_BYTES) {
                 return false;
             }
             pendingMessages++;

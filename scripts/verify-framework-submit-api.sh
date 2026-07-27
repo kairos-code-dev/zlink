@@ -91,15 +91,22 @@ if (mode === '--contract') {
     }
   }
 
-  const actorForwardWindowFragments = {
-    dotnet: 'RelocationForwardingWindow',
-    cpp: 'relocation_forwarding_window',
-    java: 'relocationForwardingWindow',
-    node: 'relocationForwardingWindowMs',
+  const messageFollowDurationFragments = {
+    dotnet: 'MessageFollowDuration',
+    cpp: 'message_follow_duration',
+    java: 'messageFollowDuration',
+    node: 'messageFollowDurationMs',
   };
-  for (const [language, fragment] of Object.entries(actorForwardWindowFragments)) {
+  for (const [language, fragment] of Object.entries(messageFollowDurationFragments)) {
     if (!contracts.get(language).source.includes(fragment)) {
-      fail(`${language} host-wide Actor forwarding window is missing`);
+      fail(`${language} host-wide Message Follow duration is missing`);
+    }
+  }
+  const removedMessageFollowNames =
+    /\b(?:RelocationForwardingWindow|relocationForwardingWindow(?:Ms)?|relocation_forwarding_window|ActorTransferForwardWindow|actorTransferForwardWindow(?:Ms)?|actor_transfer_forward_window)\b/;
+  for (const [language, contract] of contracts) {
+    if (removedMessageFollowNames.test(contract.code)) {
+      fail(`${language} exact public declarations retain a removed forwarding-window name`);
     }
   }
 

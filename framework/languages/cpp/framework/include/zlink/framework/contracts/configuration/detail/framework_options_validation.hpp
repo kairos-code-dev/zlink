@@ -40,18 +40,18 @@ inline void validate_location_options (const location_options_t &options)
           "owner lease renewal interval plus timeout must be shorter than the fenced lease lifetime");
     }
     if (options.route_cache_max_age < 0ms
-        || options.relocation_forwarding_window < 0ms) {
+        || options.message_follow_duration < 0ms) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
-          "route cache and relocation forwarding durations must not be negative");
+          "route cache age and Message Follow duration must not be negative");
     }
     if (options.route_cache_max_age > 0ms
-        && options.relocation_forwarding_window > 0ms
-        && options.relocation_forwarding_window
+        && options.message_follow_duration > 0ms
+        && options.message_follow_duration
              < options.route_cache_max_age + 5s) {
         throw framework_exception_t (
           framework_error_kind_t::request_protocol_error,
-          "relocation forwarding window must be at least five seconds longer than route cache max age");
+          "Message Follow duration must be at least five seconds longer than route cache max age");
     }
     if (options.max_active_outbound_relocations == 0
         || options.max_active_inbound_relocations == 0

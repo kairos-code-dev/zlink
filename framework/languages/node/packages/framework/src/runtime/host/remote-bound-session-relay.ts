@@ -227,16 +227,20 @@ export class ZLinkRemoteBoundSessionRelay {
       throw new Error(`Actor '${value.actorId}' command 44 did not match its command 42 Session seal.`);
     }
     const actorRef = {
-      nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
       actorId: value.actorId,
-      generation: BigInt(value.actorGeneration),
+      objectGeneration: BigInt(value.actorGeneration),
+      meshName: value.meshName,
+      nodeRid: decodeWireRoutingId(value.actorNodeRid, value.actorNodeRidHex),
       bindingGeneration,
       ownershipGeneration,
       ownerLeaseGeneration: targetOwnerLeaseGeneration,
       acceptedHighWater
     } as ActorRef;
     const current = this.options.streamBindingRuntime().find(value.actorId)?.ref;
-    if (current === undefined || current.generation !== actorRef.generation) {
+    if (
+      current === undefined
+      || current.objectGeneration !== actorRef.objectGeneration
+    ) {
       throw new Error(`Actor '${value.actorId}' bound-session ownership update has no matching binding.`);
     }
     const currentFence = current as ActorRef & {

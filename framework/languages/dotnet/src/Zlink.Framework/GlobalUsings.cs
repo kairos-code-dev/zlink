@@ -18,6 +18,7 @@ global using Zlink.Framework.Contracts.Streams;
 global using Zlink.Framework.Contracts.Timers;
 global using Zlink.Framework.Contracts.Workers;
 global using Zlink.Framework.Contracts;
+global using Zlink.Framework.LocationProvider;
 global using Zlink.Framework.Runtime.Dispatch;
 global using Zlink.Framework.Runtime.Handlers;
 global using Zlink.Framework.Runtime.Messaging;

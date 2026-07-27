@@ -1,44 +1,51 @@
-declare const zlinkRelocationReferenceBrand: unique symbol;
+declare const zlinkBlobReferenceBrand: unique symbol;
 
-export interface ZLinkRelocationReference {
+export interface ZLinkBlobReference {
   readonly value: string;
-  readonly [zlinkRelocationReferenceBrand]: true;
+  readonly [zlinkBlobReferenceBrand]: true;
 }
 
-export interface ZLinkRelocationStored {
-  readonly reference: ZLinkRelocationReference;
-  readonly checksumCrc32c: number;
-  readonly expiresAt: Date;
-  readonly storeNow: Date;
-}
+export type ZLinkBlobPutResult =
+  | {
+      readonly kind: 'stored' | 'alreadyStored';
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'conflict'; readonly storeNow: Date };
 
-export type ZLinkRelocationReadResult =
-  | { readonly kind: 'found'; readonly payload: Uint8Array }
-  | { readonly kind: 'missing' };
+export type ZLinkBlobReadResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | {
+      readonly kind: 'found';
+      readonly bytes: Uint8Array;
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    };
 
-export type ZLinkRelocationRenewResult =
-  | { readonly kind: 'renewed'; readonly expiresAt: Date; readonly storeNow: Date }
-  | { readonly kind: 'missing' };
-
-export type ZLinkRelocationDeleteResult = 'deleted' | 'missing';
+export type ZLinkBlobRenewResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | {
+      readonly kind: 'renewed';
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    };
 
 export interface ZLinkRelocationStore {
-  putRelocation(
+  put(
+    reference: ZLinkBlobReference,
     payload: Uint8Array,
     retentionMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationStored>;
-  getRelocation(
-    reference: ZLinkRelocationReference,
+  ): Promise<ZLinkBlobPutResult>;
+  read(
+    reference: ZLinkBlobReference,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationReadResult>;
-  renewRelocation(
-    reference: ZLinkRelocationReference,
+  ): Promise<ZLinkBlobReadResult>;
+  renew(
+    reference: ZLinkBlobReference,
     retentionMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationRenewResult>;
-  deleteRelocation(
-    reference: ZLinkRelocationReference,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationDeleteResult>;
+  ): Promise<ZLinkBlobRenewResult>;
+  delete(reference: ZLinkBlobReference, signal?: AbortSignal): Promise<void>;
+  dispose?(): void | Promise<void>;
 }

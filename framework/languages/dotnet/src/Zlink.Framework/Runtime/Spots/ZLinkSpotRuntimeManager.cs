@@ -8,7 +8,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     ZLinkLocationLifecycle? locationLifecycle)
 {
     private readonly ZLinkFrameworkRegistration _frameworkRegistration = registration;
-    private readonly IZLinkLocationStore? _locationStore =
+    private readonly IZLinkLocationRepository? _locationStore =
         registration.Locations.ResolveStore();
     private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new(runtime);
     private long _nextPlacementSelection;

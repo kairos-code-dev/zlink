@@ -40,7 +40,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   private currentLocalAddr: string | undefined;
   private currentRemoteAddr: string | undefined;
   private readonly nativeActorBindings = new Map<string, {
-    readonly actor: ActorRef;
+    readonly actor: ZLinkBackendActorRef;
     readonly bindingGeneration: bigint;
   }>();
   private readonly submitter: ZLinkAsyncSubmitter;
@@ -221,7 +221,7 @@ export class ZLinkManagedStream implements ZLinkStream {
         || completion.failureErrno !== 0
         || resolved === undefined
         || resolved.actorId !== actor.actorId
-        || resolved.generation !== actor.generation
+        || resolved.generation !== actor.objectGeneration
         || String(resolved.nodeRid) !== String(actor.nodeRid)
       ) {
         throw new ZLinkFrameworkException(
@@ -302,7 +302,7 @@ export class ZLinkManagedStream implements ZLinkStream {
   }
 
   private async submitNativeSessionBind(
-    actor: ActorRef,
+    actor: ZLinkBackendActorRef,
     timeoutMs: number,
     signal?: AbortSignal
   ): Promise<{ readonly high: bigint; readonly low: bigint }> {
@@ -366,15 +366,15 @@ function toBackendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: actor.generation
+    generation: actor.objectGeneration
   };
 }
 
-function toNativeActorRef(actor: ActorRef): ActorRef {
+function toNativeActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: actor.generation
+    generation: actor.objectGeneration
   };
 }
 

@@ -35,7 +35,7 @@ import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { containsRequestMarkersInOrder, ensure } from './scenario-assert';
 
 interface AwaitActorScenarioContext {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actorA: string;
   readonly actorB: string;
 }
@@ -43,7 +43,7 @@ interface AwaitActorScenarioContext {
 type Terminator = 'async' | 'yield';
 
 export class ExecutionTurnScenarioSuite {
-  private spotRid?: string;
+  private spotId?: string;
   private actors?: AwaitActorScenarioContext;
 
   constructor(private readonly client: ZlinkStreamConnector) {}
@@ -174,19 +174,19 @@ export class ExecutionTurnScenarioSuite {
     const actors = await this.createActorContext(await this.spot());
     const reply = await this.actorRequest<ActorAwaitRes>(actors.actorA, {
       requestId: newId('TD-E1'),
-      targetSpotRid: actors.spotRid
+      targetSpotId: actors.spotId
     } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq');
     ensure(reply.marker === 'actor-join-await-completed', 'TD-E1 Entry-to-user Spot join failed.');
   }
 
   async tdE2(): Promise<void> {
     const actors = await this.createActorContext(await this.spot());
-    await this.ensureActorInSpot(actors.actorA, actors.spotRid, 'TD-E2-prepare');
+    await this.ensureActorInSpot(actors.actorA, actors.spotId, 'TD-E2-prepare');
     const target = `td-e2-target-${uniqueId()}`;
     await this.ensureSpot(target, 'play-a');
     const reply = await this.actorRequest<ActorAwaitRes>(actors.actorA, {
       requestId: newId('TD-E2'),
-      targetSpotRid: target
+      targetSpotId: target
     } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq');
     ensure(reply.marker === 'actor-join-completed', 'TD-E2 user-to-user Spot join failed.');
   }
@@ -201,10 +201,10 @@ export class ExecutionTurnScenarioSuite {
     await this.ensureActorInSpot(actors.actorB, spotB, 'TD-E3-prepare-b');
     const replies = await Promise.all([
       this.actorRequest<ActorAwaitRes>(actors.actorA, {
-        requestId: newId('TD-E3-A'), targetSpotRid: spotB
+        requestId: newId('TD-E3-A'), targetSpotId: spotB
       } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq'),
       this.actorRequest<ActorAwaitRes>(actors.actorB, {
-        requestId: newId('TD-E3-B'), targetSpotRid: spotA
+        requestId: newId('TD-E3-B'), targetSpotId: spotA
       } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq')
     ]);
     ensure(replies.every((reply) => reply.marker === 'actor-join-completed'),
@@ -218,7 +218,7 @@ export class ExecutionTurnScenarioSuite {
     for (const terminator of ['async', 'yield'] as const) {
       const reply = await this.spotRequest<AutomaticTurnDispatchRes>(owner, {
         requestId: newId(`TD-F1-${terminator}`),
-        targetSpotRid: target,
+        targetSpotId: target,
         delayMs: 100,
         terminator
       } satisfies RemoteSpotAwaitReq, 'RemoteSpotAwaitReq');
@@ -427,10 +427,10 @@ export class ExecutionTurnScenarioSuite {
   }
 
   private async spot(): Promise<string> {
-    if (this.spotRid !== undefined) return this.spotRid;
-    this.spotRid = `execution-turn-${uniqueId()}`;
-    await this.ensureSpot(this.spotRid, 'play-a');
-    return this.spotRid;
+    if (this.spotId !== undefined) return this.spotId;
+    this.spotId = `execution-turn-${uniqueId()}`;
+    await this.ensureSpot(this.spotId, 'play-a');
+    return this.spotId;
   }
 
   private async actorContext(): Promise<AwaitActorScenarioContext> {
@@ -439,56 +439,56 @@ export class ExecutionTurnScenarioSuite {
     return this.actors;
   }
 
-  private async createActorContext(spotRid: string): Promise<AwaitActorScenarioContext> {
+  private async createActorContext(spotId: string): Promise<AwaitActorScenarioContext> {
     const actorA = `actor-a-${uniqueId()}`;
     const actorB = `actor-b-${uniqueId()}`;
-    const result = await this.client.request({ spotRid, actorIds: [actorA, actorB] } satisfies BindAwaitActorsReq)
+    const result = await this.client.request({ spotId, actorIds: [actorA, actorB] } satisfies BindAwaitActorsReq)
       .packetName('BindAwaitActorsReq').timeout(30000).submit<BindAwaitActorsRes>();
     ensure(result.actors.length === 2, 'Execution turn actor binding failed.');
-    return { spotRid, actorA, actorB };
+    return { spotId, actorA, actorB };
   }
 
-  private async ensureActorInSpot(actorId: string, spotRid: string, scenarioId: string): Promise<void> {
+  private async ensureActorInSpot(actorId: string, spotId: string, scenarioId: string): Promise<void> {
     const reply = await this.actorRequest<ActorAwaitRes>(actorId, {
-      requestId: newId(scenarioId), targetSpotRid: spotRid
+      requestId: newId(scenarioId), targetSpotId: spotId
     } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq');
     ensure(reply.marker.includes('actor-join'), `${scenarioId} actor placement failed.`);
   }
 
-  private async ensureSpot(spotRid: string, targetNode: string): Promise<void> {
-    const builder = this.client.request({ spotRid } satisfies EnsureSpotReq).packetName('EnsureSpotReq');
+  private async ensureSpot(spotId: string, targetNode: string): Promise<void> {
+    const builder = this.client.request({ spotId } satisfies EnsureSpotReq).packetName('EnsureSpotReq');
     if (targetNode !== 'play-a') builder.metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, targetNode);
     const result = await builder.timeout(30000).submit<EnsureSpotRes>();
-    ensure(result.spotRid === spotRid, `Spot creation failed for '${spotRid}'.`);
-    ensure(result.nodeRid === targetNode, `Spot '${spotRid}' was created on '${result.nodeRid}', expected '${targetNode}'.`);
+    ensure(result.spotId === spotId, `Spot creation failed for '${spotId}'.`);
+    ensure(result.nodeRid === targetNode, `Spot '${spotId}' was created on '${result.nodeRid}', expected '${targetNode}'.`);
     const requestId = newId('route-ready');
     const deadline = Date.now() + 30000;
     while (true) {
       try {
         const reply = await this.client.request({ requestId, marker: 'route-ready' } satisfies ProbeReq)
           .packetName('ProbeReq')
-          .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid)
+          .metadata(AutomaticTurnDispatchNames.spotIdMetadata, spotId)
           .timeout(5000).submit<AutomaticTurnDispatchRes>();
-        ensure(reply.marker === 'route-ready', `Spot route probe for '${spotRid}' returned the wrong marker.`);
+        ensure(reply.marker === 'route-ready', `Spot route probe for '${spotId}' returned the wrong marker.`);
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!/Host unreachable|timed out|not connected|disconnected/i.test(message) || Date.now() >= deadline) {
-          throw new Error(`Spot route for '${spotRid}' did not become ready: ${message}`);
+          throw new Error(`Spot route for '${spotId}' did not become ready: ${message}`);
         }
         await delay(50);
       }
     }
   }
 
-  private async sendSpot<T>(spotRid: string, message: T, packetName: string): Promise<void> {
+  private async sendSpot<T>(spotId: string, message: T, packetName: string): Promise<void> {
     await this.client.send(message).packetName(packetName)
-      .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid).submit();
+      .metadata(AutomaticTurnDispatchNames.spotIdMetadata, spotId).submit();
   }
 
-  private async spotRequest<T>(spotRid: string, request: object, packetName: string): Promise<T> {
+  private async spotRequest<T>(spotId: string, request: object, packetName: string): Promise<T> {
     return await this.client.request(request).packetName(packetName)
-      .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid)
+      .metadata(AutomaticTurnDispatchNames.spotIdMetadata, spotId)
       .timeout(30000).submit<T>();
   }
 

@@ -407,7 +407,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **Topology·사전 조건:** 존재하지 않는 global Spot ID와 ready location을 가진 remote Spot을 준비한다.
   Ready Spot은 resolve와 outbound admission 사이에서 close·recreate하여 generation을 바꿀 수 있고 current
   owner의 receiver gate를 독립 제어할 수 있어야 한다.
-- **절차:** Missing RID로 한 번 보낸다. Ready RID는 resolve barrier에서 정지한 뒤 close·recreate하고 barrier를
+- **절차:** Missing Spot ID로 한 번 보낸다. Ready Spot ID는 resolve barrier에서 정지한 뒤 close·recreate하고 barrier를
   해제한다. 별도 fresh operation으로 즉시 수락·pending 뒤 수락·deadline 만료를 실행한다.
 - **기대 결과:** Missing Spot은 `TargetNotFound` Framework 예외이며 remote creation을 시작하지 않는다. Generation 교체 전
   operation은 새 incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며 잘못된 handler 실행은 0이다.
@@ -464,7 +464,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   예외로 바꾸지 않는다.
 - **공통 evidence:** Case마다 public invocation, executor direct handoff, transport attempt, commit count,
   snapshot pass count와 target별 admission attempt count를 검증 build 내부 evidence로 분리해 남긴다.
-  MeshNode snapshot의 multicast field, publish target count가 있는 runtime event·message-flow event와
+  RouteMesh status의 multicast field, publish target count가 있는 structured log·message-flow event와
   `zlink.mesh_node.multicast.*` metric은 모두 부재함을 확인한다. `SA-E2E-13.b`는 snapshot member ID,
   snapshot 기록 시각, 각 pipe 종료 시각과 barrier 해제 시각을 남긴다. `SA-E2E-13.d`는 process-local
   index entry와 ready match 0을 함께 기록한다.

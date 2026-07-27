@@ -121,7 +121,7 @@ internal static class AwaitReplies
         return new AutomaticTurnDispatchRes(
             scenarioId,
             requestId,
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             marker);
     }
@@ -140,7 +140,7 @@ internal static class ActorReplies
             scenarioId,
             requestId,
             actor.ActorId,
-            entrySpot.Context.SpotRid.ToString(),
+            entrySpot.Context.SpotId.ToString(),
             entrySpot.Context.NodeRid.ToString(),
             marker);
     }
@@ -156,7 +156,7 @@ internal static class ActorReplies
             scenarioId,
             requestId,
             actor.ActorId,
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             marker);
     }

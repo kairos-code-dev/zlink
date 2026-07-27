@@ -19,7 +19,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
           "playHttpEndpoint and playBHttpEndpoint are required for SM-C2");
     }
 
-    constexpr auto spot_rid = "user:play-b:sm-c2-outbound";
+    constexpr auto spot_id = "user:play-b:sm-c2-outbound";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
                     .build ();
@@ -29,7 +29,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
 
     auto created_raw =
       play_b.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = spot_rid})
+        .body (create_spot_req_t{.spot_id = spot_id})
         .submit_raw ()
         .result ();
     if (!created_raw || created_raw.value ().status >= 400) {
@@ -37,14 +37,14 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
     }
     const auto created =
       nlohmann::json::parse (created_raw.value ().body).get<create_spot_res_t> ();
-    if (created.spot_rid != spot_rid || created.owner_node_rid != "play-b") {
+    if (created.spot_id != spot_id || created.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-C2 spot was not created on play-b");
     }
 
     auto outbound_raw =
       play_a.post ("/spot/outbound")
         .body (spot_outbound_route_req_t{
-          .target_node_rid = "play-b", .spot_rid = spot_rid, .marker = "sm-c2"})
+          .target_node_rid = "play-b", .spot_id = spot_id, .marker = "sm-c2"})
         .submit_raw ()
         .result ();
     if (!outbound_raw || outbound_raw.value ().status >= 400) {
@@ -56,14 +56,14 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
     }
     const auto outbound =
       nlohmann::json::parse (outbound_raw.value ().body).get<spot_outbound_route_res_t> ();
-    if (outbound.spot_rid != spot_rid || outbound.marker != "sm-c2" || !outbound.accepted) {
+    if (outbound.spot_id != spot_id || outbound.marker != "sm-c2" || !outbound.accepted) {
         throw std::runtime_error ("SM-C2 outbound route was not accepted");
     }
 
     auto negative_raw =
       play_a.post ("/spot/outbound-negative")
         .body (spot_outbound_route_req_t{
-          .target_node_rid = "play-b", .spot_rid = spot_rid, .marker = "sm-c2-missing"})
+          .target_node_rid = "play-b", .spot_id = spot_id, .marker = "sm-c2-missing"})
         .submit_raw ()
         .result ();
     if (!negative_raw || negative_raw.value ().status >= 400) {
@@ -75,7 +75,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
     }
     const auto negative =
       nlohmann::json::parse (negative_raw.value ().body).get<spot_outbound_route_res_t> ();
-    if (negative.spot_rid != spot_rid || negative.marker != "sm-c2-missing"
+    if (negative.spot_id != spot_id || negative.marker != "sm-c2-missing"
         || !negative.accepted) {
         throw std::runtime_error ("SM-C2 outbound negative route was not accepted");
     }

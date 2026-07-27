@@ -1841,7 +1841,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return result;
     }
 
-    internal SubmitResult ForwardSendToSpot(
+    internal SubmitResult MessageFollowSendToSpot(
         string sourceSpotId,
         RoutingId targetRid,
         string spotId,
@@ -1850,7 +1850,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
         IReadOnlyList<Message> parts,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata) =>
@@ -1864,14 +1864,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             operation: null,
             flags,
             metadata,
-            new ForwardedSpotRoute(
+            new SpotMessageFollowRoute(
                 operationId,
                 targetNodeGeneration,
                 authorityOwnerGeneration,
                 ownerLeaseGeneration,
-                forwardingHopCount));
+                messageFollowHopCount,
+                0));
 
-    internal SubmitResult ForwardRequestToSpot(
+    internal SubmitResult MessageFollowRequestToSpot(
         string sourceSpotId,
         RoutingId targetRid,
         string spotId,
@@ -1880,7 +1881,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
+        ulong deadlineUnixMs,
         IReadOnlyList<Message> parts,
         out MeshOperationId transportOperationId,
         TimeSpan timeout,
@@ -1907,12 +1909,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             operation,
             flags,
             metadata,
-            new ForwardedSpotRoute(
+            new SpotMessageFollowRoute(
                 operationId,
                 targetNodeGeneration,
                 authorityOwnerGeneration,
                 ownerLeaseGeneration,
-                forwardingHopCount));
+                messageFollowHopCount,
+                deadlineUnixMs));
         if (result != SubmitResult.Ok)
         {
             RemoveManagedOperation(operation);
@@ -2177,12 +2180,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         PendingOperation? operation,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata,
-        ForwardedSpotRoute? forwardedRoute = null)
+        SpotMessageFollowRoute? messageFollowRoute = null)
     {
         ArgumentNullException.ThrowIfNull(parts);
         if (parts.Count == 0)
             throw new ArgumentException("Application payload is required.", nameof(parts));
-        var routedOperationId = forwardedRoute?.OperationId
+        var routedOperationId = messageFollowRoute?.OperationId
             ?? operation?.OperationId
             ?? NextStandaloneOperationId();
         if (targetNodeRid != _routingId)
@@ -2193,18 +2196,18 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (peer is null || !peer.Admitted)
                 return SubmitResult.NotConnected;
             ObservedAuthority authority;
-            if (forwardedRoute is { } committed)
+            if (messageFollowRoute is { } messageFollowRouteValue)
             {
-                if (committed.OperationId == default
-                    || committed.TargetNodeGeneration == 0
-                    || committed.AuthorityOwnerGeneration == 0
-                    || committed.OwnerLeaseGeneration == 0
-                    || committed.ForwardingHopCount is 0 or > 8)
+                if (messageFollowRouteValue.OperationId == default
+                    || messageFollowRouteValue.TargetNodeGeneration == 0
+                    || messageFollowRouteValue.AuthorityOwnerGeneration == 0
+                    || messageFollowRouteValue.OwnerLeaseGeneration == 0
+                    || messageFollowRouteValue.MessageFollowHopCount is 0 or > 8)
                     return SubmitResult.InvalidState;
                 authority = new ObservedAuthority(
-                    committed.TargetNodeGeneration,
-                    committed.AuthorityOwnerGeneration,
-                    committed.OwnerLeaseGeneration);
+                    messageFollowRouteValue.TargetNodeGeneration,
+                    messageFollowRouteValue.AuthorityOwnerGeneration,
+                    messageFollowRouteValue.OwnerLeaseGeneration);
             }
             else if (!_observedSpotAuthorities.TryGetValue(
                          new ObservedSpotAuthorityKey(
@@ -2232,7 +2235,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 authority.AuthorityOwnerGeneration,
                 authority.OwnerLeaseGeneration,
                 !metadata.IsEmpty,
-                forwardedRoute?.ForwardingHopCount ?? 0);
+                messageFollowRoute?.MessageFollowHopCount ?? 0,
+                request
+                    ? messageFollowRoute?.DeadlineUnixMs
+                      ?? operation?.DeadlineUnixMs
+                      ?? throw new InvalidOperationException(
+                          "Spot requests require an absolute deadline.")
+                    : 0);
             return SubmitStatefulWire(
                 peer,
                 head,
@@ -2298,7 +2307,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             targetNodeGeneration: localAuthority.TargetNodeGeneration,
             authorityOwnerGeneration: localAuthority.AuthorityOwnerGeneration,
             ownerLeaseGeneration: localAuthority.OwnerLeaseGeneration,
-            replyRouteId: request ? operation?.OperationId.Low ?? 0 : 0);
+            replyRouteId: request ? operation?.OperationId.Low ?? 0 : 0,
+            deadlineUnixMs: request
+                ? messageFollowRoute?.DeadlineUnixMs
+                  ?? operation?.DeadlineUnixMs
+                  ?? throw new InvalidOperationException(
+                      "Spot requests require an absolute deadline.")
+                : 0);
         EnqueueOwned(
             MailboxKey.ForSpot(spot, MeshReadyDomains.Application),
             record,
@@ -2306,12 +2321,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return SubmitResult.Ok;
     }
 
-    private readonly record struct ForwardedSpotRoute(
+    private readonly record struct SpotMessageFollowRoute(
         MeshOperationId OperationId,
         ulong TargetNodeGeneration,
         ulong AuthorityOwnerGeneration,
         ulong OwnerLeaseGeneration,
-        byte ForwardingHopCount);
+        byte MessageFollowHopCount,
+        ulong DeadlineUnixMs);
 
     private SubmitResult SubmitActor(
         ActorRef actorRef,
@@ -2460,12 +2476,18 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         TimeSpan timeout,
         out PendingOperation operation)
     {
+        var effectiveTimeout = timeout <= TimeSpan.Zero
+            ? TimeSpan.FromSeconds(30)
+            : timeout;
         if (!TryCreateOperation(kind, out var correlation, out operation))
             return false;
+        operation.DeadlineUnixMs = checked((ulong)DateTimeOffset.UtcNow
+            .Add(effectiveTimeout)
+            .ToUnixTimeMilliseconds());
         _ = ExpireOperationAsync(
             correlation,
             operation,
-            timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : timeout);
+            effectiveTimeout);
         return true;
     }
 
@@ -3442,6 +3464,19 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     SendFlags.DontWait);
             return;
         }
+        if (stateful.Command == ServiceWireConstants.Command.SpotRequest
+            && stateful.DeadlineUnixMs
+               <= checked((ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+        {
+            SendTerminalReply(
+                sourceRid,
+                stateful.Correlation,
+                RequestResult.TimedOut,
+                (uint)ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut,
+                Array.Empty<Message>(),
+                SendFlags.DontWait);
+            return;
+        }
         var payloadOffset = stateful.HasMetadata ? 2 : 1;
         if (received.Parts.Count <= payloadOffset)
         {
@@ -3549,8 +3584,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 targetNodeGeneration: stateful.TargetNodeGeneration,
                 authorityOwnerGeneration: stateful.AuthorityOwnerGeneration,
                 ownerLeaseGeneration: stateful.OwnerLeaseGeneration,
-                forwardingHopCount: stateful.ForwardingHopCount,
-                replyRouteId: stateful.Correlation),
+                messageFollowHopCount: stateful.MessageFollowHopCount,
+                replyRouteId: stateful.Correlation,
+                deadlineUnixMs: stateful.DeadlineUnixMs),
             parts);
     }
 
@@ -5767,6 +5803,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         internal MeshOperationKind Kind { get; } = kind;
         internal ZLinkServiceWireCodec.RequestSourceFence RequestSource { get; } =
             requestSource;
+        internal ulong DeadlineUnixMs { get; set; }
         internal CancellationToken Token => _timeout.Token;
         internal bool TryComplete()
         {

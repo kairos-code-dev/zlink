@@ -14,14 +14,14 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 void run_td_c2_http_async_exclusion_scenario (TConnector &connector,
                                               TConnector &observer,
-                                              const std::string &spot_rid)
+                                              const std::string &spot_id)
 {
     const auto request_id = unique_id ("TD-C2");
     connector.send (http_await_msg_t{.request_id = request_id,
                                      .delay_ms = 350,
                                      .terminator = "async"})
       .packet_name (http_await_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     auto held =
       observer.request (await_evidence_wait_req_t{.request_id = request_id,
@@ -41,11 +41,11 @@ void run_td_c2_http_async_exclusion_scenario (TConnector &connector,
                                      .period_ms = 30,
                                      .delay_ms = 0})
       .packet_name (timer_start_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     observer.send (probe_msg_t{.request_id = request_id, .marker = "http-probe"})
       .packet_name (probe_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     auto evidence =
       observer.request (await_evidence_wait_req_t{.request_id = request_id,
@@ -65,7 +65,7 @@ void run_td_c2_http_async_exclusion_scenario (TConnector &connector,
             "TD-C2 timer callback entered while HTTP async held the turn");
     observer.send (timer_stop_msg_t{.request_id = request_id})
       .packet_name (timer_stop_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     std::cout << "scenario TD-C2 passed\n";
 }

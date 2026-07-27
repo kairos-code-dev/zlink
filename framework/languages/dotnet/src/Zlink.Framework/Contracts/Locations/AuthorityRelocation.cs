@@ -440,28 +440,3 @@ public abstract record ZLinkRelocationRenewResult
 
     public sealed record Missing : ZLinkRelocationRenewResult;
 }
-
-/// <summary>
-/// Stores immutable relocation payloads independently of location authority.
-/// This is a provider SPI, not an application object API.
-/// </summary>
-public interface IZLinkRelocationStore
-{
-    ValueTask<ZLinkRelocationStored> PutRelocationAsync(
-        ReadOnlyMemory<byte> payload,
-        TimeSpan retention,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
-        string reference,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
-        string reference,
-        TimeSpan retention,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
-        string reference,
-        CancellationToken cancellationToken = default);
-}

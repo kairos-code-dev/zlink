@@ -66,10 +66,10 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
         }
         if (packet == yd::ensure_spot_req_t::packet_name) {
             auto request = payload.parse_json<yd::ensure_spot_req_t> ();
-            if (request.spot_rid.empty ()) {
+            if (request.spot_id.empty ()) {
                 throw zlink::framework::framework_exception_t (
                   zlink::framework::framework_error_kind_t::request_protocol_error,
-                  "EnsureSpotReq spot_rid is missing at session relay");
+                  "EnsureSpotReq spot_id is missing at session relay");
             }
             auto reply = co_await request_control<yd::ensure_spot_res_t> (
               request, packet, target_or_default (dispatch));
@@ -105,88 +105,88 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
         }
         if (packet == yd::hold_req_t::packet_name) {
             auto reply = co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::hold_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::await_req_t::packet_name) {
             auto reply = co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::await_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::worker_await_req_t::packet_name) {
             auto reply = co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::worker_await_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::await_timeout_req_t::packet_name) {
             auto reply = co_await request_spot<yd::await_timeout_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::await_timeout_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::remote_spot_await_req_t::packet_name) {
             auto reply = co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::remote_spot_await_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::probe_req_t::packet_name) {
             auto reply = co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-              target_or_default (dispatch), spot_rid (dispatch),
+              target_or_default (dispatch), spot_id (dispatch),
               payload.parse_json<yd::probe_req_t> (), packet);
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
             co_return;
         }
         if (packet == yd::hold_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::hold_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::await_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::await_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::worker_await_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::worker_await_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::http_await_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::http_await_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::io_worker_await_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::io_worker_await_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::await_timeout_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::await_timeout_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::timer_start_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::timer_start_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::timer_stop_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::timer_stop_msg_t> (), packet);
             co_return;
         }
         if (packet == yd::probe_msg_t::packet_name) {
-            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+            co_await send_spot (target_or_default (dispatch), spot_id (dispatch),
                                 payload.parse_json<yd::probe_msg_t> (), packet);
             co_return;
         }
@@ -280,10 +280,10 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     {
         const auto target = zlink::routing_id_t::from ("play-a");
         (void) co_await request_control<yd::ensure_spot_res_t> (
-          yd::ensure_spot_req_t{.spot_rid = request.spot_rid},
+          yd::ensure_spot_req_t{.spot_id = request.spot_id},
           yd::ensure_spot_req_t::packet_name, target);
         (void) co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-          target, request.spot_rid,
+          target, request.spot_id,
           yd::await_req_t{.request_id = request.request_id,
                           .delay_ms = request.delay_ms,
                           .correlation_id = "shutdown"},
@@ -293,7 +293,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
           yd::await_evidence_req_t::packet_name, target);
         co_return yd::await_scenario_res_t{
           .operation = "await.e3-shutdown-unexpected-completion",
-          .spot_rid = request.spot_rid,
+          .spot_id = request.spot_id,
           .evidence = std::move (evidence.evidence)};
     }
 
@@ -303,10 +303,10 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     {
         const auto target = zlink::routing_id_t::from ("play-a");
         (void) co_await request_control<yd::ensure_spot_res_t> (
-          yd::ensure_spot_req_t{.spot_rid = request.spot_rid},
+          yd::ensure_spot_req_t{.spot_id = request.spot_id},
           yd::ensure_spot_req_t::packet_name, target);
         (void) co_await request_spot<yd::automatic_turn_dispatch_res_t> (
-          target, request.spot_rid,
+          target, request.spot_id,
           yd::probe_req_t{.request_id = request.request_id,
                           .marker = "shutdown-recovery-probe"},
           yd::probe_req_t::packet_name);
@@ -317,7 +317,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
           yd::await_evidence_wait_req_t::packet_name, target);
         co_return yd::await_scenario_res_t{
           .operation = "await.e3-shutdown-recovery",
-          .spot_rid = request.spot_rid,
+          .spot_id = request.spot_id,
           .evidence = std::move (evidence.evidence)};
     }
 
@@ -325,16 +325,16 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
      * The handle itself owns the safe refresh rule of the spot-address
      * messaging contract; the retry here only covers startup races before
      * the location row exists. */
-    zlink::framework::spot_handle_t resolve_spot (const std::string &spot_rid)
+    zlink::framework::spot_handle_t resolve_spot (const std::string &spot_id)
     {
         auto handle =
-          _spots.resolve_spot_handle (zlink::framework::spot_rid_t::from_string (spot_rid))
+          _spots.resolve_spot_handle ((spot_id))
             .result ()
             .value ();
         if (!handle) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::spot_route_not_found,
-              "Spot '" + spot_rid + "' has no live location row.");
+              "Spot '" + spot_id + "' has no live location row.");
         }
         return *handle;
     }
@@ -342,7 +342,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     template <typename TRequest>
     zlink::framework::task_t<void>
     send_spot (zlink::routing_id_t target,
-               const std::string &spot_rid,
+               const std::string &spot_id,
                const TRequest &request,
                const std::string &packet)
     {
@@ -352,7 +352,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
         std::exception_ptr last;
         while (std::chrono::steady_clock::now () < deadline) {
             try {
-                _routes.send_to_spot (resolve_spot (spot_rid), request).submit ();
+                _routes.send_to_spot (resolve_spot (spot_id), request).submit ();
                 co_return;
             }
             catch (const zlink::framework::framework_exception_t &) {
@@ -366,7 +366,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     template <typename TReply, typename TRequest>
     zlink::framework::task_t<TReply>
     request_spot (zlink::routing_id_t target,
-                  const std::string &spot_rid,
+                  const std::string &spot_id,
                   const TRequest &request,
                   const std::string &packet,
                   std::chrono::milliseconds timeout = std::chrono::milliseconds (3000))
@@ -377,7 +377,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
         std::exception_ptr last;
         while (std::chrono::steady_clock::now () < deadline) {
             try {
-                auto reply = co_await _routes.request_to_spot (resolve_spot (spot_rid), request)
+                auto reply = co_await _routes.request_to_spot (resolve_spot (spot_id), request)
                                .timeout (timeout)
                                .template submit<TReply> ();
                 co_return reply;
@@ -403,9 +403,9 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
         return zlink::routing_id_t::from ("play-a");
     }
 
-    static std::string spot_rid (const zlink::framework::stream_dispatch_context_t &dispatch)
+    static std::string spot_id (const zlink::framework::stream_dispatch_context_t &dispatch)
     {
-        if (auto value = dispatch.metadata ().find (yd::spot_rid_metadata)) {
+        if (auto value = dispatch.metadata ().find (yd::spot_id_metadata)) {
             return std::string (*value);
         }
         throw zlink::framework::framework_exception_t (

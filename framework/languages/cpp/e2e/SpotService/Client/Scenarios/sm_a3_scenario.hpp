@@ -50,7 +50,7 @@ inline void run_sm_a3_scenario (const std::string &play_http_endpoint,
     auto raw =
       play_b.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-a",
-                                       .spot_rid = created.spot_rid,
+                                       .spot_id = created.spot_id,
                                        .value = "route-direct"})
         .submit_raw ()
         .result ();
@@ -63,8 +63,8 @@ inline void run_sm_a3_scenario (const std::string &play_http_endpoint,
     }
 
     auto routed = nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
-    if (routed.spot_rid != created.spot_rid) {
-        throw std::runtime_error ("SM-A3 route reached wrong spot: " + routed.spot_rid);
+    if (routed.spot_id != created.spot_id) {
+        throw std::runtime_error ("SM-A3 route reached wrong spot: " + routed.spot_id);
     }
     if (routed.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A3 route reached wrong node: " + routed.owner_node_rid);

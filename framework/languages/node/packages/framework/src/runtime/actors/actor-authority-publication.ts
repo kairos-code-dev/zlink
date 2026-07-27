@@ -60,7 +60,7 @@ export async function publishInitialActorAuthority(
     const terminalEnvelope = Buffer.from(JSON.stringify({
       status: 'created',
       actorId: identity.actor.actorId,
-      actorGeneration: identity.actor.generation.toString()
+      actorGeneration: identity.actor.objectGeneration.toString()
     }), 'utf8');
     const operationBytes = randomBytes(16);
     const completed = await store.completeCreation({
@@ -116,7 +116,7 @@ export function encodeActorAuthorityIdentity(
     actorType: identity.actorType,
     actorId: identity.actor.actorId,
     actorNodeRid: String(identity.actor.nodeRid),
-    actorGeneration: identity.actor.generation.toString(),
+    actorGeneration: identity.actor.objectGeneration.toString(),
     meshName: identity.meshName,
     ownerNodeGeneration: identity.ownerNodeGeneration.toString(),
     ownerId: identity.owner.ownerId,
@@ -160,9 +160,10 @@ export function decodeActorAuthorityIdentity(
   return {
     actorType: value.actorType,
     actor: {
-      nodeRid: value.actorNodeRid as ActorRef['nodeRid'],
       actorId: value.actorId,
-      generation: actorGeneration
+      objectGeneration: actorGeneration,
+      meshName: value.meshName,
+      nodeRid: value.actorNodeRid as ActorRef['nodeRid']
     },
     meshName: value.meshName,
     ownerNodeGeneration,
@@ -190,7 +191,7 @@ function requireActorAuthority(
     || actual === undefined
     || actual.actorType !== expected.actorType
     || actual.actor.actorId !== expected.actor.actorId
-    || actual.actor.generation !== expected.actor.generation
+    || actual.actor.objectGeneration !== expected.actor.objectGeneration
     || String(actual.actor.nodeRid) !== String(expected.actor.nodeRid)
   ) {
     throw new Error(`Actor '${expected.actor.actorId}' authority fence does not match its ActorRef.`);

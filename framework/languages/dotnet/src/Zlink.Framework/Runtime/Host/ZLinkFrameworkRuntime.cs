@@ -57,6 +57,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private int _activeRequests;
     private bool _acceptingOperations;
     private long _nextInstanceActivationSelection;
+    private ZLinkRelocationTargetSelection _relocationTargetSelection;
 
     public ZLinkFrameworkRuntime(
         IServiceProvider services,
@@ -113,7 +114,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             _actorSessionManager,
             services,
             registration);
-        _actorStragglerForwarder = new ZLinkActorStragglerForwarder(this);
+        _actorMessageFollower = new ZLinkActorMessageFollower(this);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
 
@@ -186,7 +187,10 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         ulong committedUnitCount = 0;
         foreach (var spotNode in state.SpotNodes.Values)
         {
-            var result = await spotNode.TryDrainSpotsAsync(relocate, cancellationToken)
+            var result = await spotNode.TryDrainSpotsAsync(
+                    relocate,
+                    _relocationTargetSelection,
+                    cancellationToken)
                 .ConfigureAwait(false);
             drained &= result.Completed;
             committedUnitCount = checked(

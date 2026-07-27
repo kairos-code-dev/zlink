@@ -1,5 +1,6 @@
-import type { ZLinkRelocationReference, ZLinkRelocationStore } from '../../contracts';
+import type { ZLinkBlobReference, ZLinkRelocationStore } from '../../contracts';
 import { crc32c } from '../foundation/service-relocation-runtime';
+import { putNewRelocationBlob } from '../locations/relocation-blob';
 import type { ZLinkActorHandoffPacket } from './actor-handoff';
 
 const RETENTION_MS = 24 * 60 * 60 * 1_000;
@@ -9,7 +10,7 @@ export interface ZLinkBoundSessionAcceptedJournalRoot {
   readonly actorId: string;
   readonly actorGeneration: bigint;
   readonly acceptedHighWater: bigint;
-  readonly reference: ZLinkRelocationReference;
+  readonly reference: ZLinkBlobReference;
   readonly checksumCrc32c: number;
 }
 
@@ -27,10 +28,19 @@ export class ZLinkBoundSessionAcceptedJournal {
   ): Promise<ZLinkBoundSessionAcceptedJournalRoot> {
     requireIdentity(actorId, actorGeneration, sealId, acceptedHighWater);
     const payload = encodeRoot(actorId, actorGeneration, sealId, acceptedHighWater, entries);
-    const stored = await this.store.putRelocation(payload, RETENTION_MS, signal);
+    const stored = await putNewRelocationBlob(
+      this.store,
+      payload,
+      RETENTION_MS,
+      signal
+    );
     const checksumCrc32c = crc32c(payload);
-    if (stored.checksumCrc32c !== checksumCrc32c) {
-      await this.store.deleteRelocation(stored.reference).catch(() => 'missing');
+    const read = await this.store.read(stored.reference, signal);
+    if (
+      read.kind !== 'found'
+      || !Buffer.from(read.bytes).equals(payload)
+    ) {
+      await this.store.delete(stored.reference).catch(() => undefined);
       throw new Error(`Actor '${actorId}' accepted-journal checksum did not match the stored root.`);
     }
     return {
@@ -48,11 +58,11 @@ export class ZLinkBoundSessionAcceptedJournal {
     signal?: AbortSignal
   ): Promise<void> {
     requireIdentity(root.actorId, root.actorGeneration, root.sealId, root.acceptedHighWater);
-    const read = await this.store.getRelocation(root.reference, signal);
-    if (read.kind !== 'found' || crc32c(read.payload) !== root.checksumCrc32c) {
+    const read = await this.store.read(root.reference, signal);
+    if (read.kind !== 'found' || crc32c(read.bytes) !== root.checksumCrc32c) {
       throw new Error(`Actor '${root.actorId}' accepted-journal root is missing or corrupt.`);
     }
-    const decoded = JSON.parse(Buffer.from(read.payload).toString('utf8')) as {
+    const decoded = JSON.parse(Buffer.from(read.bytes).toString('utf8')) as {
       readonly actorId?: unknown;
       readonly actorGeneration?: unknown;
       readonly sealId?: unknown;
@@ -69,7 +79,7 @@ export class ZLinkBoundSessionAcceptedJournal {
   }
 
   async delete(root: ZLinkBoundSessionAcceptedJournalRoot): Promise<void> {
-    await this.store.deleteRelocation(root.reference);
+    await this.store.delete(root.reference);
   }
 }
 

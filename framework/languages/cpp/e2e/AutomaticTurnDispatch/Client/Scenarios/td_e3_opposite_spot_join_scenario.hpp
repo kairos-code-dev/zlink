@@ -33,7 +33,7 @@ void run_td_e3_opposite_spot_join_scenario (
     auto moved_a = promise_a.get_future ();
     auto moved_b = promise_b.get_future ();
     connector.request (actor_join_spot_req_t{.request_id = request_a,
-                                              .target_spot_rid = spot_b,
+                                              .target_spot_id = spot_b,
                                               .admission_delay_ms = 250})
       .packet_name (actor_join_spot_req_t::packet_name)
       .metadata (actor_id_metadata, actors.actor_a)
@@ -41,7 +41,7 @@ void run_td_e3_opposite_spot_join_scenario (
       .template submit<actor_await_res_t> (
         [&promise_a] (result_type result) { promise_a.set_value (std::move (result)); });
     connector.request (actor_join_spot_req_t{.request_id = request_b,
-                                              .target_spot_rid = spot_a,
+                                              .target_spot_id = spot_a,
                                               .admission_delay_ms = 250})
       .packet_name (actor_join_spot_req_t::packet_name)
       .metadata (actor_id_metadata, actors.actor_b)

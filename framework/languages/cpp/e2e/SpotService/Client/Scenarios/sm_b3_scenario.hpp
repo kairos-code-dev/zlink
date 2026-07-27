@@ -50,7 +50,7 @@ inline void run_sm_b3_scenario (const std::string &play_http_endpoint)
     const auto reply =
       nlohmann::json::parse (complex.value ().body).get<spot_complex_actor_res_t> ();
     if (reply.join.actor_id != actor_id || reply.join.owner_node_rid != "play-a"
-        || reply.join.spot_rid != "user:play-a:sm-b3-complex"
+        || reply.join.spot_id != "user:play-a:sm-b3-complex"
         || reply.join.tags != std::vector<std::string> ({"join", "complex"})) {
         throw std::runtime_error ("SM-B3 join payload fidelity mismatch");
     }

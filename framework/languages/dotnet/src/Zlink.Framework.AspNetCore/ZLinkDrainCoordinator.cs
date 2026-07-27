@@ -3,6 +3,12 @@ using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.AspNetCore;
 
+internal enum ZLinkFrameworkLifecycleIntent
+{
+    Relocate = 0,
+    Shutdown = 1
+}
+
 internal enum ZLinkDrainState
 {
     Serving = 0,
@@ -42,7 +48,7 @@ internal sealed record ForceStopped(
     ulong CommittedUnitCount = 0) : ZLinkDrainResult;
 
 internal sealed record DrainBlocked(
-    ZLinkFrameworkTerminationReason Reason) : ZLinkDrainResult;
+    ZLinkFrameworkRelocationReason Reason) : ZLinkDrainResult;
 
 internal readonly record struct ZLinkDrainExecutionResult(
     ZLinkDrainForceReason? ForceReason,
@@ -52,10 +58,10 @@ internal readonly record struct ZLinkDrainExecutionResult(
 }
 
 internal sealed class ZLinkDrainBlockedException(
-    ZLinkFrameworkTerminationReason reason) : Exception(
-    $"The Retire operation was blocked before its first relocation commit: {reason}.")
+    ZLinkFrameworkRelocationReason reason) : Exception(
+    $"The Relocate operation was blocked before its first relocation commit: {reason}.")
 {
-    internal ZLinkFrameworkTerminationReason Reason { get; } = reason;
+    internal ZLinkFrameworkRelocationReason Reason { get; } = reason;
 }
 
 internal interface IZLinkDrainExecutor
@@ -65,13 +71,13 @@ internal interface IZLinkDrainExecutor
         CancellationToken deadlineToken);
 
     ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         CancellationToken deadlineToken) =>
         ExecuteAsync(deadline, deadlineToken);
 
     async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached,
         CancellationToken deadlineToken)
@@ -83,7 +89,7 @@ internal interface IZLinkDrainExecutor
     }
 
     async ValueTask<ZLinkDrainExecutionResult> ExecuteWithProgressAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached,
         CancellationToken deadlineToken) =>
@@ -148,7 +154,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     public ValueTask<ZLinkDrainResult> DrainAsync(
         CancellationToken cancellationToken = default) =>
         DrainAsync(
-            ZLinkFrameworkTerminationIntent.Shutdown,
+            ZLinkFrameworkLifecycleIntent.Shutdown,
             DefaultDeadline,
             cancellationToken: cancellationToken);
 
@@ -156,13 +162,13 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
         TimeSpan deadline,
         CancellationToken cancellationToken = default) =>
         await DrainAsync(
-                ZLinkFrameworkTerminationIntent.Shutdown,
+                ZLinkFrameworkLifecycleIntent.Shutdown,
                 deadline,
                 cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
     internal async ValueTask<ZLinkDrainResult> DrainAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached = null,
         CancellationToken cancellationToken = default)
@@ -179,7 +185,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             if (_operation is null)
             {
                 Action? effectiveRelocationDetached = relocationDetached;
-                if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+                if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
                 {
                     _admission.BeginDrain();
                     Volatile.Write(ref _state, "draining");
@@ -201,7 +207,17 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             operation = _operation;
         }
 
-        return await operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var result = await operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (intent == ZLinkFrameworkLifecycleIntent.Relocate
+            && result is Drained)
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(_operation, operation))
+                    _operation = null;
+            }
+        }
+        return result;
     }
 
     public async ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
@@ -229,7 +245,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
     }
 
     private async Task<ZLinkDrainResult> ExecuteSharedAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached)
     {
@@ -245,7 +261,7 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
             using var deadlineSource = new CancellationTokenSource(deadline);
             TaskCompletionSource? detached = null;
             Action? observedRelocationDetached = relocationDetached;
-            if (intent == ZLinkFrameworkTerminationIntent.Retire)
+            if (intent == ZLinkFrameworkLifecycleIntent.Relocate)
             {
                 detached = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
@@ -315,23 +331,36 @@ internal sealed class ZLinkDrainCoordinator : IDisposable
 
         if (result is Drained)
         {
-            Volatile.Write(ref _state, "drained");
+            Volatile.Write(
+                ref _state,
+                intent == ZLinkFrameworkLifecycleIntent.Relocate
+                    ? "relocated"
+                    : "drained");
             try
             {
-                await PublishStateAsync(ZLinkDrainState.Drained).ConfigureAwait(false);
+                if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
+                    await PublishStateAsync(ZLinkDrainState.Drained).ConfigureAwait(false);
             }
             catch (Exception error)
             {
                 _logger?.LogError(error, "ZLink drained terminal event publication failed.");
             }
-            ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "drained");
+            ZLinkRuntimeMetrics.CompleteDrain(
+                metricStarted,
+                intent == ZLinkFrameworkLifecycleIntent.Relocate
+                    ? "relocated"
+                    : "drained");
         }
         else
         {
             ZLinkRuntimeMetrics.CompleteDrain(metricStarted, "force_stopped");
         }
 
-        _terminal.TrySetResult(result);
+        if (intent != ZLinkFrameworkLifecycleIntent.Relocate
+            || result is not Drained)
+        {
+            _terminal.TrySetResult(result);
+        }
         return result;
     }
 

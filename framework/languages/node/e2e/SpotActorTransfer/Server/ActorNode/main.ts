@@ -56,7 +56,7 @@ import {
   SpotActorTransferNames,
   type ActorCreateReq,
   type ActorCreateRes,
-  type ActorRefSnapshotRes,
+  type ActorRefRes,
   type BoundPushRes,
   type CreateSpotReq,
   type CreateSpotRes,
@@ -84,7 +84,6 @@ let stopping = false;
 process.once('SIGINT', () => { stopping = true; });
 process.once('SIGTERM', () => { stopping = true; });
 const actorScenarios = new Map<string, string>();
-const capturedActorRefs = new Map<string, ActorRef>();
 const actorLifecycleStates = new Map<string, { actorType: string; stateVersion: number }>();
 const joinCompletions = new Map<string, ZLinkActorJoinCompletion>();
 
@@ -117,7 +116,7 @@ class TransferActor implements ZLinkActor {
         actorScenarios.get(this.actorId) ?? reply.scenario,
         this.actorId,
         'commit_ack',
-        reply.targetSpotRid
+        reply.targetSpotId
       );
     }
     evidence.add(
@@ -236,11 +235,7 @@ class TransferEntrySpot implements ZLinkEntrySpot<TransferActor> {
     }
     actorLifecycleStates.set(actor.actor.actorId, { actorType, stateVersion });
     await this.actors
-      .sendToActor(
-        SpotActorTransferNames.mesh,
-        actor.actor,
-        new ApplyActorLifecycleState(actorType, stateVersion)
-      )
+      .sendToActor(actor.actor.actorId, new ApplyActorLifecycleState(actorType, stateVersion))
       .submit();
     evidence.add('create', actor.actor.actorId, 'create', `${actorType}:${stateVersion}`);
     return { accepted: true };
@@ -310,7 +305,7 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
         actorId,
         accepted,
         sourceNodeRid: '',
-        targetSpotRid: String(this.context.spotId),
+        targetSpotId: String(this.context.spotId),
         stateVersion: 0
       }
     };
@@ -335,8 +330,7 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
       actorLifecycleStates.set(actorId, { actorType: actor.actorType, stateVersion });
       await this.actors
         .sendToActor(
-          SpotActorTransferNames.mesh,
-          actor.actor,
+          actor.actor.actorId,
           new ApplyActorLifecycleState(actor.actorType, stateVersion)
         )
         .submit();
@@ -357,14 +351,14 @@ class JoinTargetHandler {
   async handle(actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
     evidence.correlate(actor.actorId, request.transferId);
     actorScenarios.set(actor.actorId, request.scenario);
-    actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).defer();
-    evidence.add(request.scenario, actor.actorId, 'join_deferred', request.targetSpotRid);
+    actor.context.joinSpot(request.targetSpotId, request).timeout(10000).defer();
+    evidence.add(request.scenario, actor.actorId, 'join_deferred', request.targetSpotId);
     return {
       scenario: request.scenario,
       actorId: actor.actorId,
       accepted: true,
       sourceNodeRid: options.rid,
-      targetSpotRid: request.targetSpotRid,
+      targetSpotId: request.targetSpotId,
       stateVersion: actor.stateVersion
     };
   }
@@ -376,14 +370,14 @@ class UserJoinTargetHandler implements ZLinkSpotActorRequestHandler<TransferActo
   async handle(actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
     evidence.correlate(actor.actorId, request.transferId);
     actorScenarios.set(actor.actorId, request.scenario);
-    actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).defer();
-    evidence.add(request.scenario, actor.actorId, 'join_deferred', request.targetSpotRid);
+    actor.context.joinSpot(request.targetSpotId, request).timeout(10000).defer();
+    evidence.add(request.scenario, actor.actorId, 'join_deferred', request.targetSpotId);
     return {
       scenario: request.scenario,
       actorId: actor.actorId,
       accepted: true,
       sourceNodeRid: options.rid,
-      targetSpotRid: request.targetSpotRid,
+      targetSpotId: request.targetSpotId,
       stateVersion: actor.stateVersion
     };
   }
@@ -455,19 +449,19 @@ class BoundPushHandler {
   }
 }
 
-function actorContextLocation(actor: TransferActor): { readonly spotRid: unknown; readonly nodeRid: unknown } {
+function actorContextLocation(actor: TransferActor): { readonly spotId: unknown; readonly nodeRid: unknown } {
   return {
-    spotRid: actor.context.spotId ?? options.rid,
+    spotId: actor.context.spotId ?? options.rid,
     nodeRid: options.rid
   };
 }
 
-async function pushBound(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
+async function pushBound(context: { spotId: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
   const response = probeResponse(context, actor, request);
   actor.context.boundSession.send(new BoundPushNotify(
     response.scenario,
     response.actorId,
-    response.spotRid,
+    response.spotId,
     response.nodeRid,
     response.stateVersion,
     response.marker
@@ -476,11 +470,11 @@ async function pushBound(context: { spotRid: unknown; nodeRid: unknown }, actor:
   return response;
 }
 
-function probeResponse(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: ProbeReq): ProbeRes {
+function probeResponse(context: { spotId: unknown; nodeRid: unknown }, actor: TransferActor, request: ProbeReq): ProbeRes {
   return {
     scenario: request.scenario,
     actorId: actor.actorId,
-    spotRid: String(context.spotRid),
+    spotId: String(context.spotId),
     nodeRid: String(context.nodeRid),
     stateVersion: actor.stateVersion,
     marker: request.marker
@@ -504,7 +498,8 @@ class ActorLocationEvidenceRecorder implements ZLinkRuntimeEventHandler<ZLinkLoc
       scenario,
       event.actor.actorId,
       'location_committed',
-      `node=${String(event.actor.ownerNodeRid)}|spot=${String(event.actor.spotId)}|generation=${event.actor.actorRef.generation}`
+      `node=${String(event.actor.ownerNodeRid)}|spot=${String(event.actor.spotId)}`
+        + `|generation=${event.actor.actorRef.objectGeneration}`
     );
   }
 }
@@ -569,7 +564,7 @@ Module({
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
-        builder.setActorTransferForwardWindow(500);
+        builder.setMessageFollowDuration(500);
         const mesh = builder.addRouteMesh(SpotActorTransferNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid);
         const objects = mesh.objects().server();
@@ -665,7 +660,7 @@ async function main(): Promise<void> {
         const spot = await spots.find(match![1]);
         return spot === undefined ? { found: false } : {
           found: true,
-          spotRid: String(spot.spotId)
+          spotId: String(spot.spotId)
         };
       }
     },
@@ -689,12 +684,12 @@ async function main(): Promise<void> {
       method: 'POST', path: '/spots', handle: async (body) => {
         const request = body as CreateSpotReq;
         const result = await spots
-          .getOrCreate(request.spotRid, TransferUserSpot.name)
+          .getOrCreate(request.spotId, TransferUserSpot.name)
           .inMesh(SpotActorTransferNames.mesh)
           .request(request)
           .submit();
         return {
-          spotRid: String(result.spot.spotId),
+          spotId: String(result.spot.spotId),
           nodeRid: String(result.spot.nodeRid),
           state: String(result.state)
         } satisfies CreateSpotRes;
@@ -711,30 +706,35 @@ async function main(): Promise<void> {
         if (result.status === 'rejected') {
           throw new Error(`Actor '${request.actorId}' creation was rejected.`);
         }
-        return { actorId: result.actor.actorId, actorType: request.actorType, nodeRid: String(result.actor.nodeRid), generation: result.actor.generation.toString() } satisfies ActorCreateRes;
+        return {
+          actorId: result.actor.actorId,
+          actorType: request.actorType,
+          objectGeneration: result.actor.objectGeneration.toString(),
+          meshName: result.actor.meshName,
+          nodeRid: String(result.actor.nodeRid)
+        } satisfies ActorCreateRes;
       }
     },
     {
       method: 'GET', path: /^\/actors\/([^/]+)\/ref$/, handle: async (_body, match) => {
         const actor = await requireActor(match![1]);
-        capturedActorRefs.set(actor.actorId, actor);
-        return actorSnapshot(actor);
+        return actorRefResponse(actor);
       }
     },
     {
       method: 'POST', path: /^\/actors\/([^/]+)\/join$/, handle: async (body, match) => {
         const actorId = match![1];
         const input = body as JoinTargetReq;
-        const request = new JoinTargetReq(input.scenario, input.targetSpotRid, input.expectedMode, input.transferId);
+        const request = new JoinTargetReq(input.scenario, input.targetSpotId, input.expectedMode, input.transferId);
         try {
-          const result = await actorClient.requestToActor(SpotActorTransferNames.mesh, await requireActor(actorId), request)
+          const result = await actorClient.requestToActor(actorId, request)
             .timeout(10000).submit<JoinTargetRes>();
-          evidence.add(request.scenario, actorId, result.accepted ? 'success_reply' : 'reject_reply', request.targetSpotRid);
+          evidence.add(request.scenario, actorId, result.accepted ? 'success_reply' : 'reject_reply', request.targetSpotId);
           return result;
         } catch (error) {
           const errorKind = error instanceof Error ? error.message : String(error);
           evidence.add(request.scenario, actorId, 'join_failed', errorKind);
-          return { scenario: request.scenario, actorId, accepted: false, sourceNodeRid: options.rid, targetSpotRid: request.targetSpotRid, stateVersion: 0, errorKind } satisfies JoinTargetRes;
+          return { scenario: request.scenario, actorId, accepted: false, sourceNodeRid: options.rid, targetSpotId: request.targetSpotId, stateVersion: 0, errorKind } satisfies JoinTargetRes;
         }
       }
     },
@@ -742,7 +742,7 @@ async function main(): Promise<void> {
       method: 'POST', path: /^\/actors\/([^/]+)\/probe$/, handle: async (body, match) => {
         const input = body as ProbeReq;
         const request = new ProbeReq(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs);
-        return await actorClient.requestToActor(SpotActorTransferNames.mesh, await requireActor(match![1]), request)
+        return await actorClient.requestToActor(match![1], request)
           .timeout(request.requestTimeoutMs ?? 10000)
           .submit<ProbeRes>();
       }
@@ -750,32 +750,20 @@ async function main(): Promise<void> {
     {
       method: 'POST', path: /^\/actors\/([^/]+)\/handoff$/, handle: async (body, match) => {
         const input = body as HandoffProbe;
-        await actorClient.sendToActor(SpotActorTransferNames.mesh, await requireActor(match![1]), new HandoffProbe(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs)).submit();
+        await actorClient.sendToActor(
+          match![1],
+          new HandoffProbe(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs)
+        ).submit();
         return { accepted: true };
-      }
-    },
-    {
-      method: 'POST', path: /^\/actors\/([^/]+)\/handoff-stale$/, handle: async (body, match) => {
-        const actor = capturedActorRefs.get(match![1]);
-        if (actor === undefined) throw new Error(`Actor '${match![1]}' does not have a captured ref.`);
-        const input = body as HandoffProbe;
-        await actorClient.sendToActor(SpotActorTransferNames.mesh, actor, new HandoffProbe(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs)).submit();
-        return { accepted: true };
-      }
-    },
-    {
-      method: 'POST', path: /^\/actors\/([^/]+)\/probe-stale$/, handle: async (body, match) => {
-        const actor = capturedActorRefs.get(match![1]);
-        if (actor === undefined) throw new Error(`Actor '${match![1]}' does not have a captured ref.`);
-        const input = body as ProbeReq;
-        return await actorClient.requestToActor(SpotActorTransferNames.mesh, actor, new ProbeReq(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs))
-          .timeout(10000).submit<ProbeRes>();
       }
     },
     {
       method: 'POST', path: /^\/actors\/([^/]+)\/bound-push$/, handle: async (body, match) => {
         const input = body as BoundPushReq;
-        return actorClient.requestToActor(SpotActorTransferNames.mesh, await requireActor(match![1]), new BoundPushReq(input.scenario, input.marker))
+        return actorClient.requestToActor(
+          match![1],
+          new BoundPushReq(input.scenario, input.marker)
+        )
           .timeout(10000).submit<BoundPushRes>();
       }
     },
@@ -798,8 +786,13 @@ async function requireActor(actorId: string): Promise<ActorRef> {
   return actor;
 }
 
-function actorSnapshot(actor: ActorRef): ActorRefSnapshotRes {
-  return { actorId: actor.actorId, nodeRid: String(actor.nodeRid), generation: actor.generation.toString() };
+function actorRefResponse(actor: ActorRef): ActorRefRes {
+  return {
+    actorId: actor.actorId,
+    objectGeneration: actor.objectGeneration.toString(),
+    meshName: actor.meshName,
+    nodeRid: String(actor.nodeRid)
+  };
 }
 
 async function delay(milliseconds: number): Promise<void> {

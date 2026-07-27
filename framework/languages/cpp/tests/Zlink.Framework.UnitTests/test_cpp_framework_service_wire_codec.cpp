@@ -249,7 +249,7 @@ int main ()
     assert (spot_request.correlation == correlation);
     assert ((spot_request.operation
              == protocol::wire_operation_id_t{9, correlation}));
-    assert (spot_request.forwarding_hop_count == 0);
+    assert (spot_request.message_follow_hop_count == 0);
     assert (spot_request.target == spot_fence);
     const protocol::actor_route_fence_t actor_fence{
       "actor-1", 11, {'n', 'o', 'd', 'e'}, 5, 9};
@@ -263,7 +263,7 @@ int main ()
     assert (!actor_send.correlation);
     assert ((actor_send.operation
              == protocol::wire_operation_id_t{9, correlation}));
-    assert (actor_send.forwarding_hop_count == 0);
+    assert (actor_send.message_follow_hop_count == 0);
     assert (actor_send.source_actor == source_actor);
     assert (actor_send.target == actor_fence);
     const protocol::user_spot_create_header_t user_spot_create{

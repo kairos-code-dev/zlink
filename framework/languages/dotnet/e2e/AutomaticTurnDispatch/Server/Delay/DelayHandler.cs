@@ -8,7 +8,7 @@ internal sealed class DelayHandler(NodeOptions node, EvidenceStore evidence)
 {
     public async ValueTask<DelayRes> HandleAsync(
         DelayReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

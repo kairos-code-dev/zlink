@@ -9,7 +9,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmF4(options: ClientOptions): Promise<void> {
   const missingTarget = await postJson<SpotMissingTargetRes>(options.playAUrl, '/spot/missing-target/request', {
-    spotRid: `missing-spot-sm-f4-${Date.now()}`
+    spotId: `missing-spot-sm-f4-${Date.now()}`
   } satisfies SpotMissingTargetReq);
   ensure(missingTarget.failed, 'SM-F4 missing target request did not fail.');
 

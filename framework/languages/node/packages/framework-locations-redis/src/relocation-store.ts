@@ -1,77 +1,152 @@
+import { createHash } from 'node:crypto';
 import type {
-  ZLinkRelocationDeleteResult,
-  ZLinkRelocationReadResult,
-  ZLinkRelocationReference,
-  ZLinkRelocationRenewResult,
-  ZLinkRelocationStore,
-  ZLinkRelocationStored
+  ZLinkBlobPutResult,
+  ZLinkBlobReadResult,
+  ZLinkBlobReference,
+  ZLinkBlobRenewResult,
+  ZLinkRelocationStore
 } from '@zlink-systems/framework';
 import type { ZLinkRedisRelocationOptions } from './redis-options';
-import { ZLinkRedisLocationStore } from './store';
+import { RedisConnection } from './redis-connection';
+import {
+  BLOB_PUT_SCRIPT,
+  BLOB_READ_SCRIPT,
+  BLOB_RENEW_SCRIPT
+} from './opaque-redis-scripts';
+import { asArray, asString, toNumber } from './redis-values';
 
-class RedisRelocationStoreBackend extends ZLinkRedisLocationStore {
-  put(
+const MAX_BLOB_BYTES = 64 * 1024 * 1024;
+
+/** Redis implementation of immutable relocation blob storage. */
+export class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
+  private readonly connection: RedisConnection;
+  private readonly domain: string;
+
+  constructor(options: ZLinkRedisRelocationOptions) {
+    this.connection = new RedisConnection(options);
+    this.domain = `${options.keyPrefix}:{zlink-relocation-opaque-v1}`;
+  }
+
+  async put(
+    reference: ZLinkBlobReference,
     payload: Uint8Array,
     retentionMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationStored> {
-    return this.putRelocationPayload(payload, retentionMs, signal);
+  ): Promise<ZLinkBlobPutResult> {
+    const referenceValue = requireReference(reference);
+    requirePayload(payload);
+    const retention = requireRetention(retentionMs);
+    const result = asArray(await this.connection.eval(
+      BLOB_PUT_SCRIPT,
+      [this.blobKey(referenceValue)],
+      [referenceValue, Buffer.from(payload), String(retention)],
+      signal
+    ));
+    const kind = asString(result[0]);
+    const storeNow = fromUnixMs(toNumber(result[1]));
+    if (kind === 'conflict') return { kind, storeNow };
+    return {
+      kind: kind === 'alreadyStored' ? 'alreadyStored' : 'stored',
+      storeNow,
+      expiresAt: fromUnixMs(toNumber(result[2]))
+    };
   }
 
-  get(
-    reference: ZLinkRelocationReference,
+  async read(
+    reference: ZLinkBlobReference,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationReadResult> {
-    return this.getRelocationPayload(reference, signal);
+  ): Promise<ZLinkBlobReadResult> {
+    const referenceValue = requireReference(reference);
+    const result = asArray(await this.connection.eval(
+      BLOB_READ_SCRIPT,
+      [this.blobKey(referenceValue)],
+      [referenceValue],
+      signal
+    ));
+    const storeNow = fromUnixMs(toNumber(result[1]));
+    if (toNumber(result[0]) !== 1) return { kind: 'missing', storeNow };
+    return {
+      kind: 'found',
+      bytes: Uint8Array.from(asBuffer(result[2])),
+      expiresAt: fromUnixMs(toNumber(result[3])),
+      storeNow
+    };
   }
 
-  renew(
-    reference: ZLinkRelocationReference,
+  async renew(
+    reference: ZLinkBlobReference,
     retentionMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationRenewResult> {
-    return this.renewRelocationPayload(reference, retentionMs, signal);
+  ): Promise<ZLinkBlobRenewResult> {
+    const referenceValue = requireReference(reference);
+    const retention = requireRetention(retentionMs);
+    const result = asArray(await this.connection.eval(
+      BLOB_RENEW_SCRIPT,
+      [this.blobKey(referenceValue)],
+      [referenceValue, String(retention)],
+      signal
+    ));
+    const storeNow = fromUnixMs(toNumber(result[1]));
+    if (toNumber(result[0]) !== 1) return { kind: 'missing', storeNow };
+    return {
+      kind: 'renewed',
+      expiresAt: fromUnixMs(toNumber(result[2])),
+      storeNow
+    };
   }
 
-  delete(
-    reference: ZLinkRelocationReference,
+  async delete(
+    reference: ZLinkBlobReference,
     signal?: AbortSignal
-  ): Promise<ZLinkRelocationDeleteResult> {
-    return this.deleteRelocationPayload(reference, signal);
+  ): Promise<void> {
+    const referenceValue = requireReference(reference);
+    await this.connection.command(['DEL', this.blobKey(referenceValue)], signal);
+  }
+
+  async dispose(): Promise<void> {
+    await this.connection.dispose();
+  }
+
+  private blobKey(reference: string): string {
+    return `${this.domain}:blob:${digest(reference)}`;
   }
 }
 
-/** Redis relocation payload capability with an independent prefix and lifecycle. */
-export class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
-  private readonly store: RedisRelocationStoreBackend;
-
-  constructor(options: ZLinkRedisRelocationOptions) {
-    this.store = new RedisRelocationStoreBackend(options);
+function requireReference(reference: ZLinkBlobReference): string {
+  const value = reference.value;
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 4_096) {
+    throw new RangeError('Relocation Store reference must contain 1..4,096 UTF-8 bytes.');
   }
+  return value;
+}
 
-  putRelocation(payload: Uint8Array, retentionMs: number, signal?: AbortSignal): Promise<ZLinkRelocationStored> {
-    return this.store.put(payload, retentionMs, signal);
+function requirePayload(payload: Uint8Array): void {
+  if (payload.byteLength > MAX_BLOB_BYTES) {
+    throw new RangeError('Relocation Store blob exceeds 64 MiB.');
   }
+}
 
-  getRelocation(reference: ZLinkRelocationReference, signal?: AbortSignal): Promise<ZLinkRelocationReadResult> {
-    return this.store.get(reference, signal);
+function requireRetention(retentionMs: number): number {
+  if (!Number.isSafeInteger(retentionMs) || retentionMs < 1) {
+    throw new RangeError('Relocation Store retention must be a positive safe integer.');
   }
+  return retentionMs;
+}
 
-  renewRelocation(
-    reference: ZLinkRelocationReference,
-    retentionMs: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationRenewResult> {
-    return this.store.renew(reference, retentionMs, signal);
+function asBuffer(value: unknown): Buffer {
+  if (Buffer.isBuffer(value)) return Buffer.from(value);
+  if (value instanceof Uint8Array) return Buffer.from(value);
+  return Buffer.from(asString(value), 'utf8');
+}
+
+function digest(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function fromUnixMs(value: number): Date {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error('Redis Store returned an invalid provider timestamp.');
   }
-
-  deleteRelocation(
-    reference: ZLinkRelocationReference,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationDeleteResult> {
-    return this.store.delete(reference, signal);
-  }
-
-  close(): Promise<void> { return this.store.dispose(); }
-  dispose(): Promise<void> { return this.store.dispose(); }
+  return new Date(value);
 }

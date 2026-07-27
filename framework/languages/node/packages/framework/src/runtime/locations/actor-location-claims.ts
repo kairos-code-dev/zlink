@@ -80,7 +80,12 @@ export class ZLinkActorLocationClaims {
       meshName: this.entryMeshName,
       actorType: normalizedType,
       actorId,
-      actorRef: { nodeRid, actorId, generation: 0n },
+      actorRef: {
+        actorId,
+        objectGeneration: 1n,
+        meshName: this.entryMeshName,
+        nodeRid
+      },
       ownerNodeRid: nodeRid,
       ownerNodeGeneration: 0n,
       spotKind: ZLinkSpotKind.Entry,

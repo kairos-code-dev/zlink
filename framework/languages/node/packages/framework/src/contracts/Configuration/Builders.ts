@@ -43,8 +43,8 @@ export interface ZLinkFrameworkOptions {
   setApplicationVersion(version: bigint): this;
   setMaintenanceWave(waveId: string): this;
   setActorTransferTimeout(timeoutMs: number): this;
-  /** Overrides the 5 second source forwarding window for stale actor references. */
-  setActorTransferForwardWindow(timeoutMs: number): this;
+  /** Sets how long Message Follow relays traffic from the previous owner. */
+  setMessageFollowDuration(timeoutMs: number): this;
   configureLocations(): ZLinkLocationOptions;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addRouteMesh(meshName: string): ZLinkMeshNodeBuilder;

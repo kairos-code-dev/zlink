@@ -384,7 +384,7 @@ internal sealed class ZLinkStandaloneActorRelocationTakeoverCoordinator(
         string ownerId,
         ulong ownerLeaseGeneration,
         IReadOnlyList<ZLinkMeshNodeDescriptor> descriptors,
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         CancellationToken cancellationToken)
     {
         if (nodeGeneration == 0

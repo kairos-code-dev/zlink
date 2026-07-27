@@ -117,28 +117,28 @@ current 상태를 다시 확인한다.
 ### 2.4 이전 owner route에 도착한 message
 
 Object relocation을 commit한 뒤에도 cache에 남은 이전 route로 message가 도착할 수
-있다. 이전 owner는 commit된 source→target mapping이 있을 때만 같은 operation을
+있다. 이전 owner는 commit된 source→target Message Follow route가 있을 때만 같은 operation을
 current owner로 relay한다. Relay 중에는 Location Store를 읽거나 application
 handler를 실행하지 않는다.
 
-Mapping은 global object ID, `ObjectGeneration`, source·target
+Message Follow route는 global object ID, `ObjectGeneration`, source·target
 `AuthorityOwnerGeneration`과 owner fence를 검증한다. Owner generation은 hop마다
-증가해야 하며 chain은 최대 8 hops다. Mapping 하나의 queue는 1,024 messages와
+증가해야 하며 chain은 최대 8 hops다. Route 하나의 queue는 1,024 messages와
 16 MiB를 넘을 수 없고 negotiated message bound도 함께 지킨다.
 
-`RelocationForwardingWindow` 기본값은 30초이며 0이면 forwarding을 사용하지 않는다.
-`RouteCacheMaxAge`와 forwarding window가 모두 양수이면 cache max age가 forwarding
-window보다 최소 5초 짧아야 한다. 실행 중 변경한 forwarding window는 새
+`MessageFollowDuration` 기본값은 30초이며 0이면 Message Follow를 사용하지 않는다.
+`RouteCacheMaxAge`와 Message Follow duration이 모두 양수이면 cache max age가 Message Follow
+duration보다 최소 5초 짧아야 한다. 실행 중 변경한 Message Follow duration은 새
 relocation부터 적용한다.
 
 Relay는 original operation ID, `ObjectGeneration`, payload와 reply route를
-보존한다. Mapping이 없거나 만료됐거나 generation mismatch, loop 또는 bound
+보존한다. Message Follow route가 없거나 만료됐거나 generation mismatch, loop 또는 bound
 초과가 발생하면 typed stale-route 오류로 끝난다.
 
 `PerActor` User Spot relocation 중 `ToActor`는 Spot authority가 아니라 Actor별
 current owner route를 사용한다. Spot authority가 target으로 바뀌어도 아직 source에
 남은 Actor는 source route를 유지한다. Actor owner CAS가 성공하면 이전 owner는
-같은 Actor mapping으로 target에 relay한다.
+같은 Actor Message Follow route로 target에 relay한다.
 
 Actor queue를 seal하기 전에 수락한 작업은 이전 queue와 accepted journal에
 포함한다. Seal 뒤 source에 도착한 작업은 ingress hold에 보관한다. Target은 다음
@@ -225,7 +225,7 @@ Bind가 끝난 뒤에는 다음 작업이 저장한 route를 사용한다.
 route는 current owner lease와 local admission deadline 안에서만 유효하다. Store를
 일시적으로 사용할 수 없어도 lease나 deadline을 연장하지 않는다.
 
-저장 route가 더 이상 유효하지 않으면 active forwarding mapping으로 original
+저장 route가 더 이상 유효하지 않으면 active Message Follow route로 original
 operation을 정확히 한 번 전달하거나 typed stale 오류로 끝낸다. Location Store에서
 새 `ActorRef`를 찾아 같은 operation을 다른 owner에게 자동으로 보내지 않는다.
 
@@ -311,7 +311,7 @@ Spot에서 request를 시작했다면 source runtime은 request correlation과 �
 Reply가 도착하면 원래 request completion을 재개한다. 같은 Spot ID로 새 incarnation이
 만들어져도 이전 reply를 새 Spot에 application message로 전달하지 않는다.
 
-Spot·Actor operation이 stale-route forwarding이나 relocation payload를 거쳐도
+Spot·Actor operation이 Message Follow나 relocation payload를 거쳐도
 original reply route와 correlation을 보존한다. Operation ID는 중복 작업을 구분하는
 값이며 reply route를 대신하지 않는다.
 
@@ -340,7 +340,7 @@ timeout, cancellation 또는 shutdown 가운데 먼저 확정된 terminal 결과
   제거된다.
 - Target admission이 resolve한 exact object·owner generation과 lease fence를
   검증하며 새 incarnation으로 retarget하지 않는다.
-- Stale-route relay가 committed mapping만 사용하고 Store를 읽지 않으며 operation
+- Message Follow relay가 committed route만 사용하고 Store를 읽지 않으며 operation
   ID, generation, payload와 reply route를 보존한다.
 - `PerActor` User Spot relocation에서 `ToSpot`은 Spot authority, `ToActor`는 Actor별
   current owner를 사용하며 source hold, relay 완료와 target direct queue 순서를

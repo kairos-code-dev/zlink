@@ -155,9 +155,9 @@ class workflow_event_store_t
         std::filesystem::create_directories (_directory);
     }
 
-    std::optional<int> replay (const std::string &spot_rid) const
+    std::optional<int> replay (const std::string &spot_id) const
     {
-        std::ifstream input (path_for (spot_rid));
+        std::ifstream input (path_for (spot_id));
         int event_value = 0;
         int applied = 0;
         bool found = false;
@@ -168,21 +168,21 @@ class workflow_event_store_t
         return found ? std::optional<int> (applied) : std::nullopt;
     }
 
-    void append (const std::string &spot_rid, int event_value) const
+    void append (const std::string &spot_id, int event_value) const
     {
-        std::ofstream output (path_for (spot_rid), std::ios::app);
+        std::ofstream output (path_for (spot_id), std::ios::app);
         if (!(output << event_value << '\n')) {
             throw std::runtime_error ("workflow event append failed for " + _writer_id);
         }
     }
 
   private:
-    std::filesystem::path path_for (const std::string &spot_rid) const
+    std::filesystem::path path_for (const std::string &spot_id) const
     {
         std::string encoded;
         static constexpr char digits[] = "0123456789abcdef";
-        encoded.reserve (spot_rid.size () * 2);
-        for (const auto value : spot_rid) {
+        encoded.reserve (spot_id.size () * 2);
+        for (const auto value : spot_id) {
             const auto byte = static_cast<unsigned char> (value);
             encoded.push_back (digits[byte >> 4]);
             encoded.push_back (digits[byte & 0x0f]);
@@ -240,16 +240,16 @@ class room_spot_t : public fw::spot_t
     obs::obs_action_res_t apply_action (const obs::obs_action_req_t &request)
     {
         if (_event_store) {
-            _event_store->append (request.spot_rid, request.value);
+            _event_store->append (request.spot_id, request.value);
         }
         _applied += request.value;
         /* OBS-A4(a)/B3: one action fans out to every mesh subscriber under
          * the same flow. */
         _context
           .publish (obs::projection_topic,
-                    obs::projection_event_t{request.spot_rid, request.marker, _applied})
+                    obs::projection_event_t{request.spot_id, request.marker, _applied})
           .submit ();
-        return obs::obs_action_res_t{request.spot_rid, request.marker, _applied};
+        return obs::obs_action_res_t{request.spot_id, request.marker, _applied};
     }
 
     void on_projection (const obs::projection_event_t &) { ++_projections_seen; }
@@ -432,7 +432,7 @@ class obs_session_t final : public fw::packet_stream_session_t
                                                + std::string (dispatch.packet_name ()));
         }
         auto request = payload.parse_json<obs::obs_action_req_t> ();
-        auto reply = co_await _routes.request_to_spot (request.spot_rid, request)
+        auto reply = co_await _routes.request_to_spot (request.spot_id, request)
                        .timeout (std::chrono::milliseconds (5000))
                        .submit<obs::obs_action_res_t> ();
         stream.reply_packet (zlink::message_t::from_json (reply))
@@ -526,7 +526,7 @@ class action_handler_t
 
     fw::task_t<obs::obs_action_res_t> handle (const obs::obs_action_req_t &request)
     {
-        co_return co_await _routes.request_to_spot (request.spot_rid, request)
+        co_return co_await _routes.request_to_spot (request.spot_id, request)
           .timeout (std::chrono::milliseconds (5000))
           .submit<obs::obs_action_res_t> ();
     }
@@ -554,12 +554,12 @@ class create_room_handler_t
     obs::create_room_res_t handle (const obs::create_room_req_t &request)
     {
         if (_drain.is_ready && !_drain.is_ready ()) {
-            return obs::create_room_res_t{request.spot_rid, "rejected"};
+            return obs::create_room_res_t{request.spot_id, "rejected"};
         }
         const auto created =
           _spots
             .get_or_create (
-              request.spot_rid,
+              request.spot_id,
               _role.value ==
                   zlink::framework::e2e::observability_ops::server::host_role_t::order_workflow
                 ? obs::order_workflow_spot
@@ -567,13 +567,13 @@ class create_room_handler_t
             .submit ()
             .result ();
         if (!created) {
-            return obs::create_room_res_t{request.spot_rid, "rejected"};
+            return obs::create_room_res_t{request.spot_id, "rejected"};
         }
         const auto state =
           created.value ().state == fw::spot_create_state_t::existing
             ? "existing"
             : "created";
-        return obs::create_room_res_t{request.spot_rid, state};
+        return obs::create_room_res_t{request.spot_id, state};
     }
 
   private:
@@ -593,13 +593,13 @@ class close_room_handler_t
 
     obs::create_room_res_t handle (const obs::create_room_req_t &request)
     {
-        const auto found = _spots.find (request.spot_rid).result ();
+        const auto found = _spots.find (request.spot_id).result ();
         if (!found || !found.value ()) {
-            return obs::create_room_res_t{request.spot_rid, "not_closed"};
+            return obs::create_room_res_t{request.spot_id, "not_closed"};
         }
         const auto closed = _spots.close (*found.value ()).result ();
         return obs::create_room_res_t{
-          request.spot_rid, closed && closed.value () ? "closed" : "not_closed"};
+          request.spot_id, closed && closed.value () ? "closed" : "not_closed"};
     }
 
   private:

@@ -21,7 +21,7 @@ internal sealed record ZLinkOwnerAdmissionDeadline(
 internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 {
     private readonly ZLinkLocationOptions _options;
-    private readonly IZLinkLocationStore _store;
+    private readonly IZLinkLocationRepository _store;
     private readonly ZLinkObservedLocationGenerations? _observed;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -40,7 +40,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
 
     internal ZLinkLocationRuntime(
         ZLinkLocationOptions options,
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         TimeProvider? timeProvider = null,
         ZLinkObservedLocationGenerations? observed = null)
     {
@@ -85,7 +85,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 "The owner lease admission deadline has expired.");
     }
 
-    internal IZLinkLocationStore Store => _store;
+    internal IZLinkLocationRepository Store => _store;
 
     internal string? LastError => Volatile.Read(ref _health).LastError;
 

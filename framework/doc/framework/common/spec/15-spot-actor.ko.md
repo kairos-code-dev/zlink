@@ -480,7 +480,7 @@ Entry Spot으로 이동하면 Framework는 Actor adapter로 state를 복원하�
 queue, timer와 session route를 이전한다. Infrastructure relocation은 target의
 `OnJoinedActor`와 source의 `OnLeaveActor`를 호출하지 않으며 relocation 전용
 application callback도 제공하지 않는다. Target Actor dispatch는 journal·queue·timer
-복원과 이전 owner message relay가 끝난 뒤 연다.
+복원과 이전 owner의 Message Follow가 끝난 뒤 연다.
 
 Spot의 terminal lifecycle callback은 `OnClosing(ClosingContext)`이다. Actor는 항상 Entry
 또는 User Spot에 속하므로 Actor별 closing callback을 제공하지 않는다. `ClosingContext`는 다음 닫힌 reason과
@@ -661,18 +661,18 @@ Final commit 뒤 lifecycle callback failure는 source rollback 조건이 아니�
 current authority fence에서 callback을 재시도한다. Adapter와 lifecycle callback은 같은 object generation에
 대해 두 번 이상 호출되어도 수렴해야 하며 exactly-once external side effect를 가정하면 안 된다.
 
-## 8. Route forwarding
+## 8. Message Follow
 
-Commit 뒤 source는 `RelocationForwardingWindow` 안에서 committed source→target mapping만 사용해 stale route를
+Commit 뒤 source는 `MessageFollowDuration` 안에서 committed source→target Message Follow route만 사용해 stale route를
 relay한다. Relay는 Store를 읽거나 application handler를 실행하지 않으며 original operation ID, generation,
 payload와 reply route를 보존한다.
 
-Mapping은 global key, ObjectGeneration, source·target AuthorityOwnerGeneration과 [owner fence](01-glossary.ko.md#owner-fence)를 exact 검증한다.
-Owner generation은 hop마다 증가하며 최대 8 hops다. Mapping 하나의 queue는 1024 messages와 16 MiB 이하이고
-negotiated message bound도 지킨다. Window 만료, mapping 없음, generation mismatch, loop 또는 bound 초과는
+Message Follow route는 global key, ObjectGeneration, source·target AuthorityOwnerGeneration과 [owner fence](01-glossary.ko.md#owner-fence)를 exact 검증한다.
+Owner generation은 hop마다 증가하며 최대 8 hops다. Route 하나의 queue는 1024 messages와 16 MiB 이하이고
+negotiated message bound도 지킨다. Message Follow duration 만료, route 없음, generation mismatch, loop 또는 bound 초과는
 stale-route error다. Framework는 failed operation을 fresh owner에게 hidden retry하지 않는다.
 
-User Spot aggregate의 Spot과 member Actor forwarding mapping은 같은 commit generation에서 설치한다.
+User Spot aggregate의 Spot과 member Actor Message Follow route는 같은 commit generation에서 등록한다.
 
 ## 9. Bound session
 
@@ -743,5 +743,5 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
   [bounded aggregate commit](01-glossary.ko.md#bounded-aggregate-commit)의
   generation 하나로 함께 전환된다.
 - Commit 뒤 failure가 participant 일부를 source로 rollback하지 않는다.
-- Forwarding이 bounded committed mapping만 사용하고 [operation identity](01-glossary.ko.md#operation-identity)를 보존한다.
+- Message Follow가 bounded committed route만 사용하고 [operation identity](01-glossary.ko.md#operation-identity)를 보존한다.
 - Bound STREAM connection은 이동하지 않으며 authority generation과 sequence barrier로 route만 바뀐다.

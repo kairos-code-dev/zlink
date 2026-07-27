@@ -24,19 +24,7 @@ internal static class SessionGatewayHostFactory
                 .SetKeyPrefix(options.RedisKeyPrefix)));
             var mesh27 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
-            foreach (var peer in options.RoutePeers)
-            {
-                var separator = peer.IndexOf('=');
-                if (separator <= 0 || separator == peer.Length - 1)
-                    throw new InvalidOperationException(
-                        $"Route peer '{peer}' must use the '<rid>=<endpoint>' format.");
-                var peerRid = peer[..separator];
-                if (!string.Equals(peerRid, options.Rid, StringComparison.Ordinal))
-                    mesh27.PeerConnections.Connect(
-                        RoutingId.From(peerRid),
-                        peer[(separator + 1)..]);
-            }
+                .SetRoutingIdPrefix(options.Rid);
             mesh27.Objects().Client();
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)

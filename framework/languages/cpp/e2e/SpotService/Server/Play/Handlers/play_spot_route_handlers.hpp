@@ -15,27 +15,27 @@
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
-/* Resolves the spot rid from an E2E payload once and returns the opaque
+/* Resolves the spot id from an E2E payload once and returns the opaque
  * messaging handle. A missing live location row fails with the typed routing
  * error so the negative scenarios do not wait for a request timeout. */
 inline std::optional<zlink::framework::spot_handle_t>
 try_resolve_spot_handle (zlink::framework::spot_handle_resolver_t &handles,
-                         const std::string &spot_rid)
+                         const std::string &spot_id)
 {
-    return handles.resolve_spot_handle (zlink::framework::spot_rid_t::from_string (spot_rid))
+    return handles.resolve_spot_handle ((spot_id))
       .result ()
       .value ();
 }
 
 inline zlink::framework::spot_handle_t
 resolve_required_spot_handle (zlink::framework::spot_handle_resolver_t &handles,
-                              const std::string &spot_rid)
+                              const std::string &spot_id)
 {
-    auto handle = try_resolve_spot_handle (handles, spot_rid);
+    auto handle = try_resolve_spot_handle (handles, spot_id);
     if (!handle) {
         throw zlink::framework::framework_exception_t (
           zlink::framework::framework_error_kind_t::spot_route_not_found,
-          "Spot '" + spot_rid + "' has no live location row.");
+          "Spot '" + spot_id + "' has no live location row.");
     }
     return *handle;
 }
@@ -57,12 +57,12 @@ class route_spot_state_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_state_route_req_t> ();
-        const auto spot_rid = request.spot_rid.empty ()
-                                ? e2e::user_spot_rid_for_key (request.key)
-                                : request.spot_rid;
+        const auto spot_id = request.spot_id.empty ()
+                                ? e2e::user_spot_id_for_key (request.key)
+                                : request.spot_id;
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, spot_rid), request.state)
+            .request_to_spot (resolve_required_spot_handle (_handles, spot_id), request.state)
             .submit<e2e::state_res_t> ()
             .result ();
         if (!reply) {
@@ -100,7 +100,7 @@ class direct_spot_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::direct_spot_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                               e2e::direct_spot_req_t{request.source_actor_id, request.value})
             .submit<e2e::direct_spot_res_t> ()
             .result ();
@@ -138,7 +138,7 @@ class direct_spot_command_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::direct_spot_route_req_t> ();
         _routes
-          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                          e2e::direct_spot_msg_t{request.source_actor_id, request.value})
           .submit ();
 
@@ -173,7 +173,7 @@ class spot_stage_probe_route_handler_t
         auto reply =
           _routes
             .request_to_spot (
-              resolve_required_spot_handle (_handles, request.spot_rid),
+              resolve_required_spot_handle (_handles, request.spot_id),
               e2e::stage_probe_req_t{.marker = request.marker, .delta = request.delta})
             .timeout (std::chrono::seconds (3))
             .submit<e2e::state_res_t> ()
@@ -215,13 +215,13 @@ class spot_stage_timer_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_stage_timer_req_t> ();
         _routes
           .send_to_spot (
-            resolve_required_spot_handle (_handles, request.spot_rid),
+            resolve_required_spot_handle (_handles, request.spot_id),
             e2e::stage_timer_start_msg_t{.name = request.name, .period_ms = request.period_ms})
           .submit ();
 
         zlink::framework::http_response_t response;
         response.body =
-          nlohmann::json (e2e::spot_stage_timer_res_t{.spot_rid = request.spot_rid,
+          nlohmann::json (e2e::spot_stage_timer_res_t{.spot_id = request.spot_id,
                                                       .name = request.name,
                                                       .started = true,
                                                       .evidence = _state.snapshot ()})
@@ -253,7 +253,7 @@ class spot_state_command_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_state_command_route_req_t> ();
         _routes
-          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                          e2e::direct_spot_msg_t{"sm-c1-client", request.marker})
           .submit ();
 
@@ -319,7 +319,7 @@ class spot_publish_wait_handler_t
                 response.body =
                   nlohmann::json (e2e::spot_publish_observe_res_t{
                     .operation = "spot.sm-c4-observe",
-                    .spot_rid = request.spot_rid,
+                    .spot_id = request.spot_id,
                     .marker = request.marker,
                     .received = true,
                     .evidence = std::move (snapshot)})
@@ -337,7 +337,7 @@ class spot_publish_wait_handler_t
                                       const e2e::spot_publish_route_req_t &request)
     {
         for (const auto &entry : snapshot.entries) {
-            if (entry.marker == "MeshMsgReceived" && entry.spot_rid == request.spot_rid
+            if (entry.marker == "MeshMsgReceived" && entry.spot_id == request.spot_id
                 && entry.value == "evt-sm-c4:" + request.marker) {
                 return true;
             }
@@ -367,7 +367,7 @@ class spot_worker_start_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_worker_start_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid), request)
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id), request)
             .timeout (std::chrono::seconds (30))
             .submit<e2e::spot_worker_start_res_t> ()
             .result ();
@@ -404,7 +404,7 @@ class spot_worker_complete_handler_t
             if (has_worker_complete_evidence (snapshot, request)) {
                 zlink::framework::http_response_t response;
                 response.body =
-                  nlohmann::json (e2e::spot_worker_complete_res_t{.spot_rid = request.spot_rid,
+                  nlohmann::json (e2e::spot_worker_complete_res_t{.spot_id = request.spot_id,
                                                                    .marker = request.marker,
                                                                    .completed = true,
                                                                    .evidence = std::move (
@@ -423,7 +423,7 @@ class spot_worker_complete_handler_t
                                               const e2e::spot_worker_complete_req_t &request)
     {
         for (const auto &entry : snapshot.entries) {
-            if (entry.marker == "WorkerCompleted" && entry.spot_rid == request.spot_rid
+            if (entry.marker == "WorkerCompleted" && entry.spot_id == request.spot_id
                 && entry.value == request.marker) {
                 return true;
             }
@@ -452,7 +452,7 @@ class spot_idle_close_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_idle_close_req_t> ();
         const auto created = _spots.get_or_create_spot (
-          e2e::user_spot, zlink::framework::spot_rid_t::from_string (request.spot_rid),
+          e2e::user_spot, (request.spot_id),
           e2e::idle_close_msg_t{.name = request.name, .period_ms = request.period_ms});
         if (created.state != zlink::framework::spot_create_state_t::created) {
             throw std::runtime_error ("idle close spot already exists");
@@ -465,7 +465,7 @@ class spot_idle_close_route_handler_t
                 zlink::framework::http_response_t response;
                 response.body =
                   nlohmann::json (e2e::spot_idle_close_res_t{
-                    .spot_rid = request.spot_rid,
+                    .spot_id = request.spot_id,
                     .name = request.name,
                     .closed = true,
                     .evidence = std::move (snapshot)})
@@ -485,7 +485,7 @@ class spot_idle_close_route_handler_t
         bool closed = false;
         bool closing = false;
         for (const auto &entry : snapshot.entries) {
-            if (entry.spot_rid != request.spot_rid) {
+            if (entry.spot_id != request.spot_id) {
                 continue;
             }
             if (entry.marker == "SpotIdleTimerClosed"
@@ -521,7 +521,7 @@ class spot_overrun_start_route_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_overrun_start_req_t> ();
         const auto created = _spots.get_or_create_spot (
-          e2e::user_spot, zlink::framework::spot_rid_t::from_string (request.spot_rid),
+          e2e::user_spot, (request.spot_id),
           e2e::overrun_timer_msg_t{
             .name = request.name, .policy = request.policy, .period_ms = request.period_ms});
         if (created.state != zlink::framework::spot_create_state_t::created) {
@@ -530,7 +530,7 @@ class spot_overrun_start_route_handler_t
 
         zlink::framework::http_response_t response;
         response.body =
-          nlohmann::json (e2e::spot_overrun_start_res_t{.spot_rid = request.spot_rid,
+          nlohmann::json (e2e::spot_overrun_start_res_t{.spot_id = request.spot_id,
                                                         .name = request.name,
                                                         .started = true,
                                                         .evidence = _state.snapshot ()})
@@ -561,7 +561,7 @@ class spot_slow_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_slow_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                               e2e::slow_spot_req_t{request.value})
             .timeout (std::chrono::milliseconds (request.timeout_ms))
             .submit<e2e::direct_spot_res_t> ()
@@ -595,7 +595,7 @@ class spot_missing_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_missing_route_req_t> ();
-        const auto target = try_resolve_spot_handle (_handles, request.spot_rid);
+        const auto target = try_resolve_spot_handle (_handles, request.spot_id);
         bool request_failed = true;
         if (target) {
             auto missing_request = _routes
@@ -650,7 +650,7 @@ class spot_missing_handler_request_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_missing_handler_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                               e2e::unhandled_spot_req_t{"missing-handler"})
             .timeout (std::chrono::milliseconds (2000))
             .submit<e2e::direct_spot_res_t> ()
@@ -659,7 +659,7 @@ class spot_missing_handler_request_handler_t
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_missing_handler_res_t{
-            .spot_rid = request.spot_rid, .failed = !reply.has_value (), .evidence = _state.snapshot ()})
+            .spot_id = request.spot_id, .failed = !reply.has_value (), .evidence = _state.snapshot ()})
             .dump ();
         return response;
     }
@@ -690,14 +690,14 @@ class spot_missing_handler_command_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_missing_command_req_t> ();
         _routes
-          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+          .send_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                          e2e::unhandled_spot_msg_t{e2e::unhandled_spot_req_t{request.marker}})
           .submit ();
 
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_missing_command_res_t{
-            .spot_rid = request.spot_rid,
+            .spot_id = request.spot_id,
             .marker = request.marker,
             .sent = true,
             .evidence = _state.snapshot ()})
@@ -729,7 +729,7 @@ class spot_missing_target_request_handler_t
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_missing_target_req_t> ();
         bool failed = true;
-        const auto target = try_resolve_spot_handle (_handles, request.spot_rid);
+        const auto target = try_resolve_spot_handle (_handles, request.spot_id);
         if (target) {
             auto reply = _routes
                            .request_to_spot (*target,
@@ -742,7 +742,7 @@ class spot_missing_target_request_handler_t
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::spot_missing_target_res_t{
-                          .spot_rid = request.spot_rid, .failed = failed})
+                          .spot_id = request.spot_id, .failed = failed})
                           .dump ();
         return response;
     }
@@ -771,7 +771,7 @@ class spot_outbound_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_outbound_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                               e2e::outbound_req_t{request.marker})
             .timeout (std::chrono::milliseconds (3000))
             .submit<e2e::outbound_res_t> ()
@@ -785,7 +785,7 @@ class spot_outbound_route_handler_t
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_outbound_route_res_t{
-            .spot_rid = request.spot_rid, .marker = request.marker, .accepted = true})
+            .spot_id = request.spot_id, .marker = request.marker, .accepted = true})
             .dump ();
         return response;
     }
@@ -814,7 +814,7 @@ class spot_outbound_negative_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_outbound_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.spot_id),
                               e2e::outbound_negative_req_t{e2e::outbound_req_t{request.marker}})
             .timeout (std::chrono::milliseconds (3000))
             .submit<e2e::outbound_res_t> ()
@@ -828,7 +828,7 @@ class spot_outbound_negative_route_handler_t
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json (e2e::spot_outbound_route_res_t{
-            .spot_rid = request.spot_rid, .marker = request.marker, .accepted = true})
+            .spot_id = request.spot_id, .marker = request.marker, .accepted = true})
             .dump ();
         return response;
     }
@@ -855,7 +855,7 @@ class spot_to_spot_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
-        const auto source = try_resolve_spot_handle (_handles, request.source_spot_rid);
+        const auto source = try_resolve_spot_handle (_handles, request.source_spot_id);
         if (!source) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::spot_route_not_found,
@@ -901,7 +901,7 @@ class spot_to_spot_timeout_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_id),
                               e2e::spot_to_spot_timeout_req_t{request})
             .timeout (std::chrono::milliseconds (3000))
             .submit<e2e::spot_to_spot_timeout_route_res_t> ()
@@ -941,7 +941,7 @@ class spot_to_spot_negative_route_handler_t
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
         auto reply =
           _routes
-            .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_rid),
+            .request_to_spot (resolve_required_spot_handle (_handles, request.source_spot_id),
                               e2e::spot_to_spot_negative_req_t{request})
             .timeout (std::chrono::milliseconds (3000))
             .submit<e2e::spot_to_spot_negative_route_res_t> ()

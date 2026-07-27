@@ -5,9 +5,9 @@ import type {
 } from '../../contracts/Locations/Authority';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import type {
-  ZLinkRelocationReference,
   ZLinkRelocationStore
 } from '../../contracts/Locations/RelocationStore';
+import { relocationBlobReference } from '../locations/relocation-blob';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import type {
   ServicePendingInstanceActivation
@@ -308,9 +308,9 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       }, signal);
       if (aborted.kind === 'aborted' || aborted.kind === 'alreadyAborted') {
         try {
-          await this.options.relocationStore?.deleteRelocation({
-            value: recovery.pending.requestReference
-          } as ZLinkRelocationReference);
+          await this.options.relocationStore?.delete(
+            relocationBlobReference(recovery.pending.requestReference)
+          );
         } catch {
           // The authority no longer publishes this root. Retention owns a
           // failed best-effort orphan cleanup.
@@ -329,8 +329,8 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     if (relocationStore === undefined) {
       throw new Error('Instance activation recovery requires a Relocation Store.');
     }
-    const result = await relocationStore.getRelocation(
-      { value: recovery.reference } as ZLinkRelocationReference,
+    const result = await relocationStore.read(
+      relocationBlobReference(recovery.reference),
       signal
     );
     if (result.kind !== 'found') {
@@ -338,7 +338,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
         `Instance activation recovery payload '${recovery.reference}' is missing.`
       );
     }
-    const payload = Buffer.from(result.payload);
+    const payload = Buffer.from(result.bytes);
     const sha256 = createHash('sha256').update(payload).digest();
     if (
       payload.byteLength !== recovery.encodedSize

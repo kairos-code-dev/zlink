@@ -227,7 +227,7 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
 
   async onCreate(request: ZLinkMessage): Promise<{ accepted: boolean }> {
     if (!request.toEncodedPayload().isEmpty()) this.mode = request.decode<CreateSpotReq>(Object as never).mode ?? 'accept';
-    evidence.add('create_spot', String(this.context.spotRid), 'spot_created', this.mode);
+    evidence.add('create_spot', String(this.context.spotId), 'spot_created', this.mode);
     return { accepted: true };
   }
 
@@ -237,7 +237,7 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
     evidence.correlate(actorId, join.transferId);
     this.scenarios.set(actorId, join.scenario);
     actorScenarios.set(actorId, join.scenario);
-    evidence.add(join.scenario, actorId, 'admission', `spot=${this.context.spotRid}|mode=${this.mode}|input=actor-id-only`);
+    evidence.add(join.scenario, actorId, 'admission', `spot=${this.context.spotId}|mode=${this.mode}|input=actor-id-only`);
     const accepted = this.mode !== 'reject' && join.expectedMode !== 'reject';
     return {
       accepted,
@@ -246,7 +246,7 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
         actorId,
         accepted,
         sourceNodeRid: '',
-        targetSpotRid: String(this.context.spotRid),
+        targetSpotId: String(this.context.spotId),
         stateVersion: 0
       }
     };
@@ -256,15 +256,15 @@ class TransferUserSpot implements ZLinkSpot<TransferActor> {
     const actorId = actor.actor.actorId;
     const scenario = this.scenarios.get(actorId) ?? 'transfer';
     if (this.mode === 'fail-joined') {
-      evidence.add(scenario, actorId, 'joined_failed', String(this.context.spotRid));
+      evidence.add(scenario, actorId, 'joined_failed', String(this.context.spotId));
       throw new Error('injected joined failure');
     }
     const state = actorLifecycleStates.get(actorId);
-    evidence.add('transfer', actorId, 'joined', `${this.context.spotRid}:${state?.stateVersion ?? 0}`);
+    evidence.add('transfer', actorId, 'joined', `${this.context.spotId}:${state?.stateVersion ?? 0}`);
   }
 
   async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    evidence.add('transfer', actor.actor.actorId, 'target_leave', String(this.context.spotRid));
+    evidence.add('transfer', actor.actor.actorId, 'target_leave', String(this.context.spotId));
   }
 
   async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
@@ -276,14 +276,14 @@ class JoinTargetHandler {
   async handle(actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
     evidence.correlate(actor.actorId, request.transferId);
     actorScenarios.set(actor.actorId, request.scenario);
-    const joined = await actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).submit<JoinTargetRes>();
-    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotRid);
+    const joined = await actor.context.joinSpot(request.targetSpotId, request).timeout(10000).submit<JoinTargetRes>();
+    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotId);
     return {
       scenario: request.scenario,
       actorId: actor.actorId,
       accepted: joined.status === 'accepted',
       sourceNodeRid: options.rid,
-      targetSpotRid: request.targetSpotRid,
+      targetSpotId: request.targetSpotId,
       stateVersion: actor.stateVersion
     };
   }
@@ -295,14 +295,14 @@ class UserJoinTargetHandler implements ZLinkSpotActorRequestHandler<TransferActo
   async handle(actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
     evidence.correlate(actor.actorId, request.transferId);
     actorScenarios.set(actor.actorId, request.scenario);
-    const joined = await actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).submit<JoinTargetRes>();
-    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotRid);
+    const joined = await actor.context.joinSpot(request.targetSpotId, request).timeout(10000).submit<JoinTargetRes>();
+    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotId);
     return {
       scenario: request.scenario,
       actorId: actor.actorId,
       accepted: joined.status === 'accepted',
       sourceNodeRid: options.rid,
-      targetSpotRid: request.targetSpotRid,
+      targetSpotId: request.targetSpotId,
       stateVersion: actor.stateVersion
     };
   }
@@ -315,7 +315,7 @@ class ProbeHandler {
     evidence.add(
       request.scenario,
       actor.actorId,
-      actor.context.spotRid === undefined ? 'entry_packet_handler' : 'packet_handler',
+      actor.context.spotId === undefined ? 'entry_packet_handler' : 'packet_handler',
       request.marker
     );
     if (request.delayMs !== undefined) await delay(request.delayMs);
@@ -332,7 +332,7 @@ class HandoffHandler {
     evidence.add(
       message.scenario,
       actor.actorId,
-      actor.context.spotRid === undefined ? 'entry_packet_handler' : 'packet_handler',
+      actor.context.spotId === undefined ? 'entry_packet_handler' : 'packet_handler',
       message.marker
     );
   }
@@ -374,19 +374,19 @@ class BoundPushHandler {
   }
 }
 
-function actorContextLocation(actor: TransferActor): { readonly spotRid: unknown; readonly nodeRid: unknown } {
+function actorContextLocation(actor: TransferActor): { readonly spotId: unknown; readonly nodeRid: unknown } {
   return {
-    spotRid: actor.context.spotRid ?? options.rid,
+    spotId: actor.context.spotId ?? options.rid,
     nodeRid: options.rid
   };
 }
 
-async function pushBound(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
+async function pushBound(context: { spotId: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
   const response = probeResponse(context, actor, request);
   actor.context.boundSession.send(new BoundPushNotify(
     response.scenario,
     response.actorId,
-    response.spotRid,
+    response.spotId,
     response.nodeRid,
     response.stateVersion,
     response.marker
@@ -395,11 +395,11 @@ async function pushBound(context: { spotRid: unknown; nodeRid: unknown }, actor:
   return response;
 }
 
-function probeResponse(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: ProbeReq): ProbeRes {
+function probeResponse(context: { spotId: unknown; nodeRid: unknown }, actor: TransferActor, request: ProbeReq): ProbeRes {
   return {
     scenario: request.scenario,
     actorId: actor.actorId,
-    spotRid: String(context.spotRid),
+    spotId: String(context.spotId),
     nodeRid: String(context.nodeRid),
     stateVersion: actor.stateVersion,
     marker: request.marker
@@ -413,7 +413,7 @@ class ActorLocationEvidenceRecorder implements ZLinkRuntimeEventHandler<ZLinkLoc
     if (
       event.sourceName !== 'observability-ops.actor-location'
       || event.event !== ZLinkLocationActorEventKind.RowUpdated
-      || event.actor?.spotRid === undefined
+      || event.actor?.spotId === undefined
     ) {
       return;
     }
@@ -423,7 +423,7 @@ class ActorLocationEvidenceRecorder implements ZLinkRuntimeEventHandler<ZLinkLoc
       scenario,
       event.actor.actorId,
       'location_committed',
-      `node=${String(event.actor.nodeRid)}|spot=${String(event.actor.spotRid)}|generation=${event.actor.generation}`
+      `node=${String(event.actor.nodeRid)}|spot=${String(event.actor.spotId)}|generation=${event.actor.generation}`
     );
   }
 }
@@ -482,7 +482,7 @@ Module({
           .messageFlow(options.messageFlowEnabled ? ZLinkMessageFlowLogMode.KeyTransitions : ZLinkMessageFlowLogMode.Off)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
-        builder.setActorTransferForwardWindow(500);
+        builder.setMessageFollowDuration(500);
         const mesh = builder.addRouteMesh(ObservabilityOpsNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
           .addEntrySpot(TransferEntrySpot)
@@ -574,7 +574,7 @@ async function main(): Promise<void> {
         const spot = await spots.find(match![1]);
         return spot === undefined ? { found: false } : {
           found: true,
-          spotRid: String(spot.spotId)
+          spotId: String(spot.spotId)
         };
       }
     },
@@ -595,10 +595,10 @@ async function main(): Promise<void> {
         const result = await spots.getOrCreate(
           ObservabilityOpsNames.mesh,
           TransferUserSpot,
-          request.spotRid,
+          request.spotId,
           request
         );
-        return { spotRid: String(result.spotRid), nodeRid: options.rid, state: String(result.state) } satisfies CreateSpotRes;
+        return { spotId: String(result.spotId), nodeRid: options.rid, state: String(result.state) } satisfies CreateSpotRes;
       }
     },
     {
@@ -629,16 +629,16 @@ async function main(): Promise<void> {
       method: 'POST', path: /^\/actors\/([^/]+)\/join$/, handle: async (body, match) => {
         const actorId = match![1];
         const input = body as JoinTargetReq;
-        const request = new JoinTargetReq(input.scenario, input.targetSpotRid, input.expectedMode, input.transferId);
+        const request = new JoinTargetReq(input.scenario, input.targetSpotId, input.expectedMode, input.transferId);
         try {
           const result = await actorClient.requestToActor(ObservabilityOpsNames.mesh, await requireActor(actorId), request)
             .timeout(10000).submit<JoinTargetRes>();
-          evidence.add(request.scenario, actorId, result.accepted ? 'success_reply' : 'reject_reply', request.targetSpotRid);
+          evidence.add(request.scenario, actorId, result.accepted ? 'success_reply' : 'reject_reply', request.targetSpotId);
           return result;
         } catch (error) {
           const errorKind = error instanceof Error ? error.message : String(error);
           evidence.add(request.scenario, actorId, 'join_failed', errorKind);
-          return { scenario: request.scenario, actorId, accepted: false, sourceNodeRid: options.rid, targetSpotRid: request.targetSpotRid, stateVersion: 0, errorKind } satisfies JoinTargetRes;
+          return { scenario: request.scenario, actorId, accepted: false, sourceNodeRid: options.rid, targetSpotId: request.targetSpotId, stateVersion: 0, errorKind } satisfies JoinTargetRes;
         }
       }
     },

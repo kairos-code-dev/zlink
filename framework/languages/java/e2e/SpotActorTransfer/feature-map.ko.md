@@ -43,8 +43,8 @@
 | ST-F2 | 구현 | handoff backlog를 location publish 전에 target에 적재하고, target direct packet보다 먼저 처리하는지 확인한다. |
 | ST-F3 | 구현 | bound session packet이 transfer 전후 순서를 유지하며 target에서 다시 처리되는지 확인한다. |
 | ST-F3A | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
-| ST-F4 | 구현 | forwarding window 안의 stale ref는 전달하고 window 뒤에는 `ACTOR_LOCATION_STALE`로 실패하는지 확인한다. |
-| ST-F5 | 구현 | 연속 transfer 뒤 이전 두 source의 forwarding mapping이 제거되는지 확인한다. |
+| ST-F4 | 전환 대상 | 이전 시나리오는 caller가 old `ActorRef` route를 직접 지정했다. Global Actor ID로 제출한 operation의 transport delivery를 지연하는 fixture가 필요하다. |
+| ST-F5 | 전환 대상 | 연속 relocation 뒤 route 제거 검증도 old `ActorRef` 직접 주입에 의존한다. Public route를 노출하지 않는 delivery-delay fixture로 바꿔야 한다. |
 | ST-F6 | 구현 | handoff 중 request reply correlation, 원래 timeout, late reply의 단일 처리를 확인한다. |
 | ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
 | ST-G2 | 미구현 | 큰 participant inventory와 typed capacity aggregate all-or-none E2E가 없다. |
@@ -59,10 +59,16 @@
 | ST-H4A | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
 | ST-H4B | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
 | ST-H5 | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
+| ST-I1 | 미구현 | 실제 encoded Actor·Spot payload profile과 경계·초과 크기 E2E가 없다. |
+| ST-I2 | 미구현 | 다량 Recreate·Snapshot Actor relocation의 처리 시간과 Actor·control service 연속성 E2E가 없다. |
+| ST-I3 | 미구현 | 다량 Instance Spot·SpotWide relocation의 처리 시간과 Spot·Actor·control service 연속성 E2E가 없다. |
+| ST-I4 | 미구현 | Actor·Spot × one-way·request × commit 전·후 Message Follow matrix가 없다. |
+| ST-I5 | 미구현 | Message Follow 기간 종료, duplicate, deadline, generation, loop와 bound E2E가 없다. |
+| ST-I6 | 미구현 | Actor·Spot multi-hop relocation과 Message Follow route 정리 E2E가 없다. |
 
 ## 남은 검증 갭
 
 - 위 `ST-A1`의 callback과 location commit 순서는 E2E-JV-31에서 추적한다. 성공 응답 marker가 있다는
   사실만으로 10.0.0 순서 계약을 완료로 판정하지 않는다.
-- 현재 `run_e2e.sh all`은 `ST-F3A`, `ST-G1~G6`, `ST-H1~H5`를 실행하지 않는다. 기존 실행 결과는
+- 현재 `run_e2e.sh all`은 `ST-F3A`, `ST-G1~G6`, `ST-H1~H5`, `ST-I1~I6`을 실행하지 않는다. 기존 실행 결과는
   현행 Config 10 전체 완료 증거가 아니다.

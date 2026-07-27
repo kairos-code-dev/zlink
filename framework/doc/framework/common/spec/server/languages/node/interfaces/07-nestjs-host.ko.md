@@ -159,7 +159,7 @@ export interface ZLinkLocationOptions {
     ownerLeaseFencingMarginMs(value: number): this;
     ownerLeaseRenewTimeoutMs(value: number): this;
     routeCacheMaxAgeMs(value: number): this;
-    relocationForwardingWindowMs(value: number): this;
+    messageFollowDurationMs(value: number): this;
     maxActiveOutboundRelocations(value: number): this;
     maxActiveInboundRelocations(value: number): this;
     maxConcurrentRelocationCaptures(value: number): this;

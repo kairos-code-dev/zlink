@@ -1,20 +1,15 @@
-using System.Diagnostics;
-using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Errors;
-using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 namespace AutomaticTurnDispatch.Server.Session.Support;
 
 internal sealed partial class AwaitSession
 {
-    private static async Task<AwaitShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
+    private async Task<AwaitShutdownScenarioRes> RunShutdownThroughSpotRouteAsync(
         IZLinkRouteClient routes,
         IZLinkSpotClient spotsClient,
-        IZLinkSpotHandleResolver spots,
         AwaitShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
@@ -22,13 +17,7 @@ internal sealed partial class AwaitSession
             routes,
             new EnsureSpotReq(request.SpotRid),
             cancellationToken);
-        var address = await spots.ResolveSpotHandleAsync(
-                          AutomaticTurnDispatchNames.SpotChannel,
-                          RoutingId.From(request.SpotRid),
-                          cancellationToken)
-                      ?? throw new InvalidOperationException(
-                          $"Spot '{request.SpotRid}' has no live location row.");
-        await spotsClient.RequestToSpot(address,
+        await spotsClient.RequestToSpot(request.SpotRid,
                 new AwaitReq(request.RequestId, request.DelayMs, "shutdown"))
             // The session gateway owns a shorter downstream deadline than the
             // client request, so a stopped play runtime becomes a public
@@ -43,10 +32,9 @@ internal sealed partial class AwaitSession
         return new AwaitShutdownScenarioRes("await.e3-shutdown-unexpected-completion", request.SpotRid, evidence.Evidence);
     }
 
-    private static async Task<AwaitShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
+    private async Task<AwaitShutdownRecoveryRes> RunShutdownRecoveryThroughSpotRouteAsync(
         IZLinkRouteClient routes,
         IZLinkSpotClient spotsClient,
-        IZLinkSpotHandleResolver spots,
         AwaitShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {
@@ -54,12 +42,8 @@ internal sealed partial class AwaitSession
             routes,
             new EnsureSpotReq(request.SpotRid),
             cancellationToken);
-        var handle = await WaitForRecoveredSpotAsync(
-            spots,
-            request.SpotRid,
-            cancellationToken);
         await spotsClient.RequestToSpot(
-                handle,
+                request.SpotRid,
                 new ProbeReq(request.RequestId, "shutdown-recovery-probe"))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<AutomaticTurnDispatchRes>(cancellationToken);
@@ -81,25 +65,4 @@ internal sealed partial class AwaitSession
         return new AwaitShutdownRecoveryRes("await.e3-shutdown-recovery", request.SpotRid, evidence.Evidence);
     }
 
-    private static async ValueTask<SpotHandle> WaitForRecoveredSpotAsync(
-        IZLinkSpotHandleResolver spots,
-        string spotRid,
-        CancellationToken cancellationToken)
-    {
-        var deadline = Stopwatch.StartNew();
-        while (deadline.Elapsed < TimeSpan.FromSeconds(3))
-        {
-            var handle = await spots.ResolveSpotHandleAsync(
-                AutomaticTurnDispatchNames.SpotChannel,
-                RoutingId.From(spotRid),
-                cancellationToken);
-            if (handle is not null)
-                return handle;
-            await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
-        }
-
-        throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.SpotRouteNotFound,
-            $"Spot '{spotRid}' did not become live within 3 seconds after recovery.");
-    }
 }

@@ -14,7 +14,7 @@ const {
 function harness() {
   const roots = new Map();
   const events = [];
-  let rootSequence = 0;
+  const references = [];
   let authorityVersion = 1;
   let authority = {
     kind: 'snapshot',
@@ -67,38 +67,43 @@ function harness() {
     }
   };
   const relocationStore = {
-    async putRelocation(payload) {
-      const reference = { value: `root-${++rootSequence}` };
+    async put(reference, payload) {
+      references.push(reference.value);
       const stable = Buffer.from(payload);
       roots.set(reference.value, stable);
       events.push(`put:${reference.value}`);
       return {
-        reference,
-        checksumCrc32c: crc32c(stable),
+        kind: 'stored',
         expiresAt: new Date(86_400_100),
         storeNow: new Date(100)
       };
     },
-    async getRelocation(reference) {
+    async read(reference) {
       const payload = roots.get(reference.value);
       return payload === undefined
-        ? { kind: 'missing' }
-        : { kind: 'found', payload: Buffer.from(payload) };
+        ? { kind: 'missing', storeNow: new Date(100) }
+        : {
+            kind: 'found',
+            bytes: Buffer.from(payload),
+            expiresAt: new Date(86_400_100),
+            storeNow: new Date(100)
+          };
     },
-    async deleteRelocation(reference) {
+    async delete(reference) {
       events.push(`delete:${reference.value}`);
-      return roots.delete(reference.value) ? 'deleted' : 'missing';
+      roots.delete(reference.value);
     }
   };
   return {
     events,
+    references,
     roots,
     journal: new ZLinkDeferredJoinAcceptedJournal(authorityStore, relocationStore)
   };
 }
 
 test('cross-node Accepted root preserves identity, reply and cursor across mailbox retry', async () => {
-  const { events, roots, journal } = harness();
+  const { events, references, roots, journal } = harness();
   const sourceActorRef = {
     nodeRid: 'node-a',
     actorId: 'actor-a',
@@ -117,13 +122,13 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
     Buffer.from('"accepted"')
   );
   assert.equal(root.cursor, 'prepared');
-  assert.equal(root.reference.value, 'root-1');
+  assert.equal(root.reference.value, references[0]);
 
   root = await journal.markCommitted(root, actorRef);
   assert.equal(root.cursor, 'committed');
-  assert.equal(root.reference.value, 'root-2');
+  assert.equal(root.reference.value, references[1]);
   assert.equal(root.actor.nodeRid, 'node-b');
-  assert.equal(roots.has('root-1'), false);
+  assert.equal(roots.has(references[0]), false);
 
   const mailbox = new ZLinkActorDispatchMailbox();
   const callbackEvents = [];
@@ -159,8 +164,8 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
     operation => mailbox.submit(operation)
   );
   assert.equal(root.cursor, 'delivered');
-  assert.equal(root.reference.value, 'root-3');
-  assert.equal(roots.has('root-2'), false);
+  assert.equal(root.reference.value, references[2]);
+  assert.equal(roots.has(references[1]), false);
 
   await journal.deliver(
     root,
@@ -170,14 +175,14 @@ test('cross-node Accepted root preserves identity, reply and cursor across mailb
   );
   assert.equal(attempts, 2);
   assert.deepEqual(events, [
-    'put:root-1',
+    `put:${references[0]}`,
     'authority-cas',
-    'put:root-2',
+    `put:${references[1]}`,
     'authority-cas',
-    'delete:root-1',
-    'put:root-3',
+    `delete:${references[0]}`,
+    `put:${references[2]}`,
     'authority-cas',
-    'delete:root-2'
+    `delete:${references[1]}`
   ]);
 });
 
@@ -214,14 +219,3 @@ test('generation fence rejects a replacement Actor before mailbox admission', as
   );
   assert.equal(admitted, false);
 });
-
-function crc32c(payload) {
-  let crc = 0xffff_ffff;
-  for (const byte of payload) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit++) {
-      crc = (crc >>> 1) ^ ((crc & 1) === 0 ? 0 : 0x82f6_3b78);
-    }
-  }
-  return (crc ^ 0xffff_ffff) >>> 0;
-}

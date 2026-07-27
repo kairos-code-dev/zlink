@@ -224,7 +224,7 @@ class mesh_node_runtime_t
       const actor_ref_t &actor,
       const node_rid_t &target_node,
       std::chrono::milliseconds timeout);
-    std::optional<actor_ref_t> forward_straggler_actor (const actor_ref_t &actor);
+    std::optional<actor_ref_t> follow_relocated_actor (const actor_ref_t &actor);
     result_t<operation_completion_t> wait_for_completion (
       const host::operation_id_t &operation,
       std::chrono::milliseconds timeout);

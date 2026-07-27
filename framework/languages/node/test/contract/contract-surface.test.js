@@ -99,10 +99,12 @@ test('location and relocation stores have separate public registration surfaces'
 
   assert.equal(frameworkOptions.includes('addLocationStore'), true);
   assert.equal(frameworkOptions.includes('addRelocationStore'), true);
-  assert.equal(relocationStore.includes('putRelocation'), true);
-  assert.equal(relocationStore.includes('getRelocation'), true);
-  assert.equal(relocationStore.includes('renewRelocation'), true);
-  assert.equal(relocationStore.includes('deleteRelocation'), true);
+  assert.equal(relocationStore.includes('put('), true);
+  assert.equal(relocationStore.includes('read('), true);
+  assert.equal(relocationStore.includes('renew('), true);
+  assert.equal(relocationStore.includes('delete('), true);
+  assert.equal(relocationStore.includes('putRelocation'), false);
+  assert.equal(relocationStore.includes('getRelocation'), false);
   assert.equal(frameworkOptions.includes('addRedis'), false);
   assert.equal(frameworkOptions.includes('addStores'), false);
 });

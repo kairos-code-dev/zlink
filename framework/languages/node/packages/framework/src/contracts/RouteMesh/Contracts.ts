@@ -20,7 +20,7 @@ export interface ZLinkLocationOptionValues {
   readonly routingIdFencingMarginMs: number;
   readonly ownerLeaseRenewTimeoutMs: number;
   readonly routeCacheMaxAgeMs: number;
-  readonly relocationForwardingWindowMs: number;
+  readonly messageFollowDurationMs: number;
   readonly maxActiveOutboundRelocations: number;
   readonly maxActiveInboundRelocations: number;
   readonly maxConcurrentRelocationCaptures: number;

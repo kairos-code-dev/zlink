@@ -163,8 +163,8 @@ export function decodeHandoffBacklog(value: unknown): readonly ZLinkActorHandoff
     const packet = entry as ZLinkActorHandoffPacket;
     const source = packet.source;
     if (typeof packet.operationId !== 'string' || packet.operationId.length === 0
-      || !Number.isSafeInteger(packet.forwardingHopCount)
-      || packet.forwardingHopCount < 0 || packet.forwardingHopCount > 8
+      || !Number.isSafeInteger(packet.messageFollowHopCount)
+      || packet.messageFollowHopCount < 0 || packet.messageFollowHopCount > 8
       || (packet.returnResponse && (
         source === undefined || source.ownerId.length === 0
         || BigInt(source.ownerLeaseGeneration) <= 0n || source.nodeRid.length === 0

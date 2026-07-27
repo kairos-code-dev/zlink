@@ -1,14 +1,21 @@
 package systems.zlink.e2e.kotlin.spotactortransfer.actor
 
 import java.time.Duration
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.future.await
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.spotactortransfer.shared.Contracts
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
+import systems.zlink.framework.actors.ZLinkActorJoinCompletion
+import systems.zlink.framework.actors.ZLinkActorRelocationAdapter
+import systems.zlink.framework.actors.ZLinkRelocationCancellation
+import systems.zlink.framework.kotlin.ZLinkSuspendingActor
 import systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory
-import systems.zlink.framework.kotlin.ZLinkSuspendingActorTransferAdapter
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
@@ -19,8 +26,7 @@ import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
-import systems.zlink.framework.spots.ZLinkSpotActorSendContext
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse
 import systems.zlink.framework.streams.ZLinkSessionContext
@@ -28,72 +34,102 @@ import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
-import systems.zlink.framework.actors.ZLinkActorJoinResult
 
 class TransferActor(
-    private val id: String,
-    private val actorContext: ZLinkActorContext,
-) : ZLinkActor {
+    override val context: ZLinkActorContext,
+    private val evidence: EvidenceStore,
+) : ZLinkSuspendingActor() {
     var actorType: String = Contracts.STATEFUL
     var stateVersion: Int = 0
 
-    override fun actorId(): String = id
-    override fun context(): ZLinkActorContext = actorContext
+    fun actorId(): String = context.actorId()
+
+    override suspend fun onJoinCompletedSuspending(completion: ZLinkActorJoinCompletion) {
+        when (completion) {
+            is ZLinkActorJoinCompletion.Accepted ->
+                evidence.add("transfer", actorId(), "commit_ack", completion.actor().nodeRid().toString())
+            is ZLinkActorJoinCompletion.Rejected ->
+                evidence.add("transfer", actorId(), "join_rejected", "")
+            is ZLinkActorJoinCompletion.Failed ->
+                evidence.add("transfer", actorId(), "join_failed", completion.kind().name)
+        }
+    }
 }
 
 class TransferActorFactory(
     private val evidence: EvidenceStore,
 ) : ZLinkSuspendingActorFactory() {
-    override suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor {
+    override suspend fun createActor(context: ZLinkActorContext): ZLinkActor {
+        val actorId = context.actorId()
         if (evidence.nodeRid == "actor-b" && actorId.startsWith("actor-no-adapter-")) {
             evidence.add("transfer", actorId, "transfer_in_empty_default", "actor-factory")
         }
-        return TransferActor(actorId, context)
+        return TransferActor(context, evidence)
     }
 }
 
 class TransferActorAdapter(
     private val evidence: EvidenceStore,
     private val gates: GateStore,
-) : ZLinkSuspendingActorTransferAdapter<TransferActor>() {
-    override suspend fun transferOutSuspending(
+) : ZLinkActorRelocationAdapter<TransferActor> {
+    override fun capture(
         actor: TransferActor,
-    ): ZLinkMessage {
+        cancellation: ZLinkRelocationCancellation,
+    ): CompletionStage<ByteArray> {
         if (actor.actorType == Contracts.FAIL_OUT) {
             evidence.add("ST-C3", actor.actorId(), "transfer_out_failed", actor.stateVersion.toString())
-            error("injected transfer out failure")
+            return CompletableFuture.failedFuture(IllegalStateException("injected transfer out failure"))
         }
         if (actor.actorType == Contracts.EMPTY_STATE) {
             evidence.add("transfer", actor.actorId(), "transfer_out_empty", "custom-adapter")
-            return ZLinkMessage.empty()
+            return CompletableFuture.completedFuture(byteArrayOf())
         }
         evidence.add("transfer", actor.actorId(), "transfer_out", actor.stateVersion.toString())
         if (actor.actorId().startsWith("actor-source-down-before-commit-")) {
             evidence.add("ST-C1", actor.actorId(), "before_commit_gate", actor.stateVersion.toString())
-            gates.waitFor(actor.actorId()).await()
+            return gates.waitFor(actor.actorId()).thenApply { transferState(actor) }
         }
-        return ZLinkMessage.of(Contracts.TransferState(actor.actorId(), actor.stateVersion, actor.actorType))
+        return CompletableFuture.completedFuture(transferState(actor))
     }
 
-    override suspend fun transferInSuspending(
-        actorId: String,
-        context: ZLinkActorContext,
-        state: ZLinkMessage,
-    ): TransferActor {
-        if (state.isEmpty) {
+    override fun restore(
+        actor: TransferActor,
+        state: ByteArray,
+        cancellation: ZLinkRelocationCancellation,
+    ): CompletionStage<Void> {
+        val actorId = actor.actorId()
+        if (state.isEmpty()) {
             evidence.add("transfer", actorId, "transfer_in_empty", "custom-adapter")
-            return TransferActor(actorId, context).also { it.actorType = Contracts.EMPTY_STATE }
+            actor.actorType = Contracts.EMPTY_STATE
+            return CompletableFuture.completedFuture(null)
         }
-        val transferred = state.decode(Contracts.TransferState::class.java)
+        val payload = ByteBuffer.wrap(state)
+        val stateVersion = payload.int
+        val actorTypeLength = payload.int
+        if (actorTypeLength < 0 || actorTypeLength > payload.remaining()) {
+            return CompletableFuture.failedFuture(
+                IllegalArgumentException("invalid Actor relocation state"),
+            )
+        }
+        val actorType = ByteArray(actorTypeLength)
+        payload.get(actorType)
         if (actorId.startsWith("actor-fail-transfer-in-")) {
-            evidence.add("ST-C3", actorId, "transfer_in_failed", transferred.stateVersion().toString())
-            error("injected transfer in failure")
+            evidence.add("ST-C3", actorId, "transfer_in_failed", stateVersion.toString())
+            return CompletableFuture.failedFuture(IllegalStateException("injected transfer in failure"))
         }
-        return TransferActor(actorId, context).also { actor ->
-            actor.actorType = transferred.actorType()
-            actor.stateVersion = transferred.stateVersion()
-            evidence.add("transfer", actorId, "transfer_in", actor.stateVersion.toString())
-        }
+        actor.actorType = String(actorType, StandardCharsets.UTF_8)
+        actor.stateVersion = stateVersion
+        evidence.add("transfer", actorId, "transfer_in", actor.stateVersion.toString())
+        return CompletableFuture.completedFuture(null)
+    }
+
+    private fun transferState(actor: TransferActor): ByteArray {
+        val actorType = actor.actorType.toByteArray(StandardCharsets.UTF_8)
+        return ByteBuffer.allocate(Int.SIZE_BYTES * 2 + actorType.size)
+            .putInt(actor.stateVersion)
+            .putInt(actorType.size)
+            .put(actorType)
+            .array()
     }
 }
 
@@ -113,7 +149,7 @@ class TransferEntrySpot(
     override suspend fun onCreateActorSuspending(
         actor: TransferActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         if (!createRequest.isEmpty) {
             val request = createRequest.decode(Contracts.ActorCreateReq::class.java)
             actor.actorType = request.actorType()
@@ -123,14 +159,7 @@ class TransferEntrySpot(
             }
         }
         evidence.add("create", actor.actorId(), "create", "${actor.actorType}:${actor.stateVersion}")
-    }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse {
-        evidence.add("local", actorId, "admission", "actor-id-only")
-        return ZLinkSpotActorJoinResponse.accept(request)
+        return ZLinkActorCreateResponse.accept()
     }
 
     override suspend fun onJoinedActorSuspending(actor: TransferActor) {
@@ -164,7 +193,7 @@ class TransferUserSpot(
         spotContext.handlers().addHandler<UserJoinTargetHandler>()
         spotContext.handlers().addHandler<ProbeHandler>()
         spotContext.handlers().addHandler<BoundPushHandler>()
-        spotContext.handlers().addHandler<StragglerSendHandler>()
+        spotContext.handlers().addHandler<MessageFollowSendHandler>()
     }
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
@@ -172,7 +201,7 @@ class TransferUserSpot(
             mode = request.decode(Contracts.CreateSpotReq::class.java).mode()
                 ?.takeIf(String::isNotBlank) ?: "accept"
         }
-        evidence.add("create_spot", spotContext.spotRid().toString(), "spot_created", mode)
+        evidence.add("create_spot", spotContext.spotId(), "spot_created", mode)
         return ZLinkSpotCreateResponse.accept()
     }
 
@@ -186,11 +215,11 @@ class TransferUserSpot(
             join.scenario(),
             actorId,
             "admission",
-            "spot=${spotContext.spotRid()};mode=$mode;input=actor-id-only",
+            "spot=${spotContext.spotId()};mode=$mode;input=actor-id-only",
         )
         val reject = mode == "reject" || join.expectedMode() == "reject"
         val response = Contracts.JoinTargetRes(
-            join.scenario(), actorId, !reject, "", spotContext.spotRid().toString(), 0,
+            join.scenario(), actorId, !reject, "", spotContext.spotId(), 0,
         )
         return if (reject) ZLinkSpotActorJoinResponse.reject(response)
         else ZLinkSpotActorJoinResponse.accept(response)
@@ -199,15 +228,15 @@ class TransferUserSpot(
     override suspend fun onJoinedActorSuspending(actor: TransferActor) {
         val scenario = scenarios[actor.actorId()] ?: "transfer"
         if (mode == "delay-joined") {
-            evidence.add(scenario, actor.actorId(), "joined_wait", spotContext.spotRid().toString())
-            gates.waitFor(spotContext.spotRid().toString()).await()
-            evidence.add(scenario, actor.actorId(), "joined_released", spotContext.spotRid().toString())
+            evidence.add(scenario, actor.actorId(), "joined_wait", spotContext.spotId())
+            gates.waitFor(spotContext.spotId()).await()
+            evidence.add(scenario, actor.actorId(), "joined_released", spotContext.spotId())
         }
         if (mode == "fail-joined") {
-            evidence.add(scenario, actor.actorId(), "joined_failed", spotContext.spotRid().toString())
+            evidence.add(scenario, actor.actorId(), "joined_failed", spotContext.spotId())
             error("injected joined failure")
         }
-        evidence.add("transfer", actor.actorId(), "joined", "${spotContext.spotRid()}:${actor.stateVersion}")
+        evidence.add("transfer", actor.actorId(), "joined", "${spotContext.spotId()}:${actor.stateVersion}")
         if (actor.actorType == Contracts.EMPTY_STATE) {
             actor.stateVersion = domainState.load(actor.actorId())
             evidence.add("transfer", actor.actorId(), "domain_state_loaded", actor.stateVersion.toString())
@@ -215,7 +244,7 @@ class TransferUserSpot(
     }
 
     override suspend fun onLeaveActorSuspending(actor: TransferActor) {
-        evidence.add("transfer", actor.actorId(), "target_leave", spotContext.spotRid().toString())
+        evidence.add("transfer", actor.actorId(), "target_leave", spotContext.spotId())
     }
 }
 
@@ -230,7 +259,7 @@ class JoinTargetHandler(
     override suspend fun handle(
         entrySpot: TransferEntrySpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.JoinTargetReq,
     ): Contracts.JoinTargetRes {
         return joinTarget(actor, request, evidence)
@@ -248,7 +277,7 @@ class UserJoinTargetHandler(
     override suspend fun handle(
         spot: TransferUserSpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.JoinTargetReq,
     ): Contracts.JoinTargetRes = joinTarget(actor, request, evidence)
 }
@@ -258,13 +287,13 @@ private suspend fun joinTarget(
     request: Contracts.JoinTargetReq,
     evidence: EvidenceStore,
 ): Contracts.JoinTargetRes {
-    val joined = actor.context()
-        .joinSpot(RoutingId.from(request.targetSpotRid()), request)
+    actor.context()
+        .joinSpot(request.targetSpotRid(), request)
         .timeout(Duration.ofSeconds(10))
-        .submit(Contracts.JoinTargetRes::class.java).await()
-    evidence.add(request.scenario(), actor.actorId(), "commit_ack", request.targetSpotRid())
+        .defer()
+    evidence.add(request.scenario(), actor.actorId(), "join_deferred", request.targetSpotRid())
     return Contracts.JoinTargetRes(
-        request.scenario(), actor.actorId(), joined is ZLinkActorJoinResult.Accepted<*>, evidence.nodeRid,
+        request.scenario(), actor.actorId(), true, evidence.nodeRid,
         request.targetSpotRid(), actor.stateVersion,
     )
 }
@@ -280,12 +309,12 @@ class EntryProbeHandler(
     override suspend fun handle(
         entrySpot: TransferEntrySpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.ProbeReq,
     ): Contracts.ProbeRes {
         evidence.add(request.scenario(), actor.actorId(), "entry_packet_handler", request.marker())
         return Contracts.ProbeRes(
-            request.scenario(), actor.actorId(), entrySpot.context().spotRid().toString(),
+            request.scenario(), actor.actorId(), entrySpot.context().spotId(),
             evidence.nodeRid, actor.stateVersion, request.marker(),
         )
     }
@@ -302,31 +331,31 @@ class ProbeHandler(
     override suspend fun handle(
         spot: TransferUserSpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.ProbeReq,
     ): Contracts.ProbeRes {
         evidence.add(request.scenario(), actor.actorId(), "packet_handler", request.marker())
         return Contracts.ProbeRes(
-            request.scenario(), actor.actorId(), spot.context().spotRid().toString(),
+            request.scenario(), actor.actorId(), spot.context().spotId(),
             evidence.nodeRid, actor.stateVersion, request.marker(),
         )
     }
 }
 
-class StragglerSendHandler(
+class MessageFollowSendHandler(
     private val evidence: EvidenceStore,
 ) : ZLinkSuspendingSpotActorSendHandler<
     TransferUserSpot,
     TransferActor,
-    Contracts.StragglerSendReq
+    Contracts.MessageFollowSendReq
 > {
     override suspend fun handle(
         spot: TransferUserSpot,
         actor: TransferActor,
-        context: ZLinkSpotActorSendContext,
-        message: Contracts.StragglerSendReq,
+        context: ZLinkMessageContext,
+        message: Contracts.MessageFollowSendReq,
     ) {
-        evidence.add(message.scenario(), actor.actorId(), "straggler_send", message.marker())
+        evidence.add(message.scenario(), actor.actorId(), "message_follow_send", message.marker())
     }
 }
 
@@ -380,7 +409,7 @@ class BindSessionHandler(
         context.client().reply(
             Contracts.BindSessionRes(
                 request.scenario(), request.actorId(), bound.ref().nodeRid().toString(),
-                bound.ref().generation(),
+                bound.ref().objectGeneration(),
             ),
         ).submit()
     }
@@ -397,9 +426,9 @@ class EntryBoundPushHandler(
     override suspend fun handle(
         entrySpot: TransferEntrySpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.BoundPushReq,
-    ): Contracts.BoundPushRes = push(actor, entrySpot.context().spotRid().toString(), request, evidence)
+    ): Contracts.BoundPushRes = push(actor, entrySpot.context().spotId(), request, evidence)
 }
 
 class BoundPushHandler(
@@ -413,9 +442,9 @@ class BoundPushHandler(
     override suspend fun handle(
         spot: TransferUserSpot,
         actor: TransferActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.BoundPushReq,
-    ): Contracts.BoundPushRes = push(actor, spot.context().spotRid().toString(), request, evidence)
+    ): Contracts.BoundPushRes = push(actor, spot.context().spotId(), request, evidence)
 }
 
 private fun push(

@@ -15,21 +15,21 @@ template <typename TConnector>
 std::string run_atd_d3_route_bridge_await_scenario (TConnector &connector)
 {
     const auto request_id = unique_id ("ATD-D3");
-    const auto spot_rid = unique_id ("await-route-bridge");
+    const auto spot_id = unique_id ("await-route-bridge");
     auto spot =
-      connector.request (ensure_spot_req_t{.spot_rid = spot_rid})
+      connector.request (ensure_spot_req_t{.spot_id = spot_id})
         .packet_name (ensure_spot_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-b")
         .timeout (std::chrono::milliseconds (30000))
         .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (spot), "ATD-D3 ensure spot failed");
-    ensure (spot.value ().spot_rid == spot_rid, "ATD-D3 ensure spot reply mismatch");
+    ensure (spot.value ().spot_id == spot_id, "ATD-D3 ensure spot reply mismatch");
 
     connector.send (await_msg_t{.request_id = request_id,
                                 .delay_ms = 1500,
                                 .correlation_id = "route-bridge"})
         .packet_name (await_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .metadata (target_node_rid_metadata, "play-b")
         .submit ();
     auto released =
@@ -48,7 +48,7 @@ std::string run_atd_d3_route_bridge_await_scenario (TConnector &connector)
 
     connector.send (probe_msg_t{.request_id = request_id, .marker = "route-bridge-probe"})
         .packet_name (probe_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .metadata (target_node_rid_metadata, "play-b")
         .submit ();
 
@@ -70,7 +70,7 @@ std::string run_atd_d3_route_bridge_await_scenario (TConnector &connector)
     bool saw_target_spot = false;
     for (const auto &line : evidence.value ().evidence) {
         if (line.find ("await-started|rid=play-b") != std::string::npos
-            && line.find ("spot=" + spot_rid) != std::string::npos
+            && line.find ("spot=" + spot_id) != std::string::npos
             && line.find ("handler=spot") != std::string::npos) {
             saw_target_spot = true;
         }

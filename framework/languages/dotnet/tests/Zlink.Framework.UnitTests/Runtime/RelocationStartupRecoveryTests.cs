@@ -468,7 +468,7 @@ public sealed class RelocationStartupRecoveryTests
             null,
             DateTimeOffset.UnixEpoch));
 
-    private sealed class RecoveryRelocationStore : IZLinkRelocationStore
+    private sealed class RecoveryRelocationStore : IZLinkRelocationRepository
     {
         private readonly Dictionary<string, byte[]> _roots =
             new(StringComparer.Ordinal);

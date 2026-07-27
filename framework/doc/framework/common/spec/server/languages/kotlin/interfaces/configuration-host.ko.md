@@ -36,6 +36,34 @@ payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한�
 다음 Java builder member는 Kotlin에서 property 변환 없이 같은 JVM signature로 직접 호출한다.
 
 ```java
+public interface systems.zlink.framework.locations.ZLinkLocationOptions {
+  public abstract java.time.Duration ownerLeaseRenewInterval();
+  public abstract void setOwnerLeaseRenewInterval(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseTtl();
+  public abstract void setOwnerLeaseTtl(java.time.Duration);
+  public abstract java.time.Duration pollingInterval();
+  public abstract void setPollingInterval(java.time.Duration);
+  public abstract java.time.Duration storeFailureGrace();
+  public abstract void setStoreFailureGrace(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseFencingMargin();
+  public abstract void setOwnerLeaseFencingMargin(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseRenewTimeout();
+  public abstract void setOwnerLeaseRenewTimeout(java.time.Duration);
+  public abstract java.time.Duration routeCacheMaxAge();
+  public abstract void setRouteCacheMaxAge(java.time.Duration);
+  public abstract java.time.Duration messageFollowDuration();
+  public abstract void setMessageFollowDuration(java.time.Duration);
+  public abstract int maxActiveOutboundRelocations();
+  public abstract void setMaxActiveOutboundRelocations(int);
+  public abstract int maxActiveInboundRelocations();
+  public abstract void setMaxActiveInboundRelocations(int);
+  public abstract int maxConcurrentRelocationCaptures();
+  public abstract void setMaxConcurrentRelocationCaptures(int);
+  public abstract int maxConcurrentRelocationRestores();
+  public abstract void setMaxConcurrentRelocationRestores(int);
+  public abstract long maxRelocationPayloadInFlightBytes();
+  public abstract void setMaxRelocationPayloadInFlightBytes(long);
+}
 public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);

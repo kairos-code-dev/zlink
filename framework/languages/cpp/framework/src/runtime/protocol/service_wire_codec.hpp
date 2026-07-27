@@ -82,7 +82,7 @@ struct wire_operation_id_t
 struct spot_message_header_t
 {
     wire_operation_id_t operation;
-    std::uint8_t forwarding_hop_count = 0;
+    std::uint8_t message_follow_hop_count = 0;
     std::optional<std::uint64_t> correlation;
     std::string source_spot_id;
     spot_route_fence_t target;
@@ -91,7 +91,7 @@ struct spot_message_header_t
 struct actor_message_header_t
 {
     wire_operation_id_t operation;
-    std::uint8_t forwarding_hop_count = 0;
+    std::uint8_t message_follow_hop_count = 0;
     std::optional<std::uint64_t> correlation;
     std::optional<std::pair<std::string, std::uint64_t>> source_actor;
     actor_route_fence_t target;
@@ -768,7 +768,7 @@ std::vector<std::uint8_t> encode_spot_message_header (
   const spot_route_fence_t &target,
   wire_operation_id_t operation,
   std::optional<std::uint64_t> correlation = std::nullopt,
-  std::uint8_t forwarding_hop_count = 0);
+  std::uint8_t message_follow_hop_count = 0);
 spot_message_header_t decode_spot_message_header (
   std::span<const std::uint8_t> bytes,
   command expected_kind);
@@ -778,7 +778,7 @@ std::vector<std::uint8_t> encode_actor_message_header (
   const actor_route_fence_t &target,
   wire_operation_id_t operation,
   std::optional<std::uint64_t> correlation = std::nullopt,
-  std::uint8_t forwarding_hop_count = 0);
+  std::uint8_t message_follow_hop_count = 0);
 actor_message_header_t decode_actor_message_header (
   std::span<const std::uint8_t> bytes,
   command expected_kind);

@@ -77,14 +77,15 @@ public sealed class EventingContracts
         AssertEnumValues<ZLinkRuntimeMessageFlowMode>(
             ("Off", 0), ("ErrorsOnly", 1), ("KeyTransitions", 2), ("Verbose", 3));
         var contract = typeof(IZLinkFrameworkRuntime);
-        var isReady = contract.GetProperty(nameof(IZLinkFrameworkRuntime.IsReady));
-        Assert.NotNull(isReady);
-        Assert.Equal(typeof(bool), isReady!.PropertyType);
-        Assert.True(isReady.CanRead);
-        Assert.False(isReady.CanWrite);
+        var status = contract.GetProperty(nameof(IZLinkFrameworkRuntime.Status));
+        Assert.NotNull(status);
+        Assert.Equal(typeof(ZLinkFrameworkRuntimeStatus), status!.PropertyType);
+        Assert.True(status.CanRead);
+        Assert.False(status.CanWrite);
 
-        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.RetireAsync)));
+        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.RelocateAsync)));
         Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.ShutdownAsync)));
+        Assert.Null(contract.GetMethod("RetireAsync"));
         Assert.Null(contract.GetMethod("DrainAsync"));
         Assert.Null(contract.GetMethod("AwaitDrainedAsync"));
 

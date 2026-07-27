@@ -98,7 +98,7 @@ export class ZLinkSessionActorCoordinator {
     const sameIncarnation =
       previous !== undefined
       && previous.actor.ref.actorId === actorRef.actorId
-      && BigInt(previous.actor.ref.generation) === BigInt(actorRef.generation);
+      && BigInt(previous.actor.ref.objectGeneration) === BigInt(actorRef.objectGeneration);
     const reuseActor =
       previous?.context === context && sameIncarnation ? previous.actor : undefined;
     const previousRef = previous?.actor.ref;
@@ -335,7 +335,8 @@ function isActorRef(value: ZLinkActor | ActorRef): value is ActorRef {
   return (
     typeof value === 'object'
     && 'nodeRid' in value
-    && 'generation' in value
+    && 'objectGeneration' in value
+    && 'meshName' in value
     && 'actorId' in value
   );
 }
@@ -347,20 +348,20 @@ function createBindingToken(): string {
 function sameActorRef(left: ActorRef, right: ActorRef): boolean {
   return routingIdsEqual(left.nodeRid, right.nodeRid)
     && left.actorId === right.actorId
-    && BigInt(left.generation) === BigInt(right.generation);
+    && BigInt(left.objectGeneration) === BigInt(right.objectGeneration);
 }
 
 function requireSameIncarnation(current: ActorRef, updated: ActorRef): void {
   if (
     current.actorId === updated.actorId
-    && BigInt(current.generation) === BigInt(updated.generation)
+    && BigInt(current.objectGeneration) === BigInt(updated.objectGeneration)
   ) {
     return;
   }
   throw new ZLinkFrameworkException(
     ZLinkFrameworkErrorKind.ActorLocationStale,
     `Actor '${updated.actorId}' route update cannot replace object generation `
-      + `${String(current.generation)} with ${String(updated.generation)}.`,
+      + `${String(current.objectGeneration)} with ${String(updated.objectGeneration)}.`,
     true
   );
 }

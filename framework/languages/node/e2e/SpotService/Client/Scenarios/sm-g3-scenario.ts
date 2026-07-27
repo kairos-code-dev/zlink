@@ -22,13 +22,13 @@ import { ensure } from '../Support/scenario-assert';
 export async function runSmG3(options: ClientOptions): Promise<void> {
   const actorCount = 2;
   const key = Date.now();
-  const spotRid = `spot-sm-g3-${key}`;
+  const spotId = `spot-sm-g3-${key}`;
   const actorIds = Array.from({ length: actorCount }, (_, index) => `actor-sm-g3-${key}-${index}`);
   const clients: Array<ReturnType<typeof createStreamClient>> = [];
 
   try {
     for (const actorId of actorIds) {
-      const client = await connectAndAuth(options.sessionAStreamEndpoint, spotRid, actorId);
+      const client = await connectAndAuth(options.sessionAStreamEndpoint, spotId, actorId);
       clients.push(client);
     }
 
@@ -51,8 +51,8 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
     }));
 
     const expectedEvidence = actorIds.flatMap((actorId) => [
-      `spot-actor-joined|rid=play-a|spot=${spotRid}|actor=${actorId}`,
-      `spot-actor-left|rid=play-a|spot=${spotRid}|actor=${actorId}`
+      `spot-actor-joined|rid=play-a|spot=${spotId}|actor=${actorId}`,
+      `spot-actor-left|rid=play-a|spot=${spotId}|actor=${actorId}`
     ]);
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
@@ -65,12 +65,12 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
     for (const actorId of actorIds) {
       ensure(
         evidence.filter((line) =>
-          line.includes(`spot-actor-joined|rid=play-a|spot=${spotRid}|actor=${actorId}`)).length === 1,
+          line.includes(`spot-actor-joined|rid=play-a|spot=${spotId}|actor=${actorId}`)).length === 1,
         `SM-G3 join evidence count mismatch for ${actorId}.`
       );
       ensure(
         evidence.filter((line) =>
-          line.includes(`spot-actor-left|rid=play-a|spot=${spotRid}|actor=${actorId}`)).length === 1,
+          line.includes(`spot-actor-left|rid=play-a|spot=${spotId}|actor=${actorId}`)).length === 1,
         `SM-G3 leave evidence count mismatch for ${actorId}.`
       );
     }
@@ -81,7 +81,7 @@ export async function runSmG3(options: ClientOptions): Promise<void> {
   console.log('scenario SM-G3 passed');
 }
 
-async function connectAndAuth(endpoint: string, spotRid: string, actorId: string) {
+async function connectAndAuth(endpoint: string, spotId: string, actorId: string) {
   const deadline = Date.now() + 15000;
   let last: unknown;
   while (Date.now() < deadline) {
@@ -90,7 +90,7 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
       await client.connect();
       await client
         .request({
-          spotRid,
+          spotId,
           actorId,
           displayName: actorId,
           nodeRid: 'play-a'
@@ -98,7 +98,7 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
         .packetName('UserSpotAuthReq')
         .timeout(5000)
         .submit<AuthRes>();
-      await joinUserSpotActor(client, spotRid, actorId);
+      await joinUserSpotActor(client, spotId, actorId);
       return client;
     } catch (error) {
       last = error;
@@ -113,11 +113,11 @@ async function connectAndAuth(endpoint: string, spotRid: string, actorId: string
 
 async function joinUserSpotActor(
   client: ReturnType<typeof createStreamClient>,
-  spotRid: string,
+  spotId: string,
   actorId: string
 ): Promise<void> {
   const joined = await client
-    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .request({ spotId, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
     .submit<JoinUserSpotActorRes>();

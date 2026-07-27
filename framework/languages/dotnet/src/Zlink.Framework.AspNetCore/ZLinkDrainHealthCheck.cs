@@ -11,7 +11,7 @@ internal sealed class ZLinkDrainHealthCheck(IServiceProvider services) : IHealth
     {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
-        var ready = services.GetRequiredService<IZLinkFrameworkRuntime>().IsReady;
+        var ready = services.GetRequiredService<IZLinkFrameworkRuntime>().Status.IsReady;
         return Task.FromResult(
             ready
                 ? HealthCheckResult.Healthy("ZLink accepts new assignments.")

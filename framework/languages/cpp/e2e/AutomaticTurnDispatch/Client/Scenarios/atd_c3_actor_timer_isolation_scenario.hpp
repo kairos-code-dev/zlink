@@ -48,7 +48,7 @@ void run_atd_c3_actor_timer_isolation_scenario (
                                       .period_ms = 50,
                                       .delay_ms = 0})
         .packet_name (timer_start_msg_t::packet_name)
-        .metadata (spot_rid_metadata, actors.spot_rid)
+        .metadata (spot_id_metadata, actors.spot_id)
         .submit ();
     auto fast_timer_completed =
       connector.request (
@@ -63,7 +63,7 @@ void run_atd_c3_actor_timer_isolation_scenario (
             "ATD-C3A timer-fast-completed wait failed");
     connector.send (timer_stop_msg_t{.request_id = actor_then_timer})
         .packet_name (timer_stop_msg_t::packet_name)
-        .metadata (spot_rid_metadata, actors.spot_rid)
+        .metadata (spot_id_metadata, actors.spot_id)
         .submit ();
     auto actor_await_reply = actor_yield.get ();
     ensure (static_cast<bool> (actor_await_reply), "ATD-C3A ActorYieldReq failed");
@@ -92,7 +92,7 @@ void run_atd_c3_actor_timer_isolation_scenario (
                                       .period_ms = 500,
                                       .delay_ms = 350})
         .packet_name (timer_start_msg_t::packet_name)
-        .metadata (spot_rid_metadata, actors.spot_rid)
+        .metadata (spot_id_metadata, actors.spot_id)
         .submit ();
     auto await_timer_released =
       connector.request (
@@ -126,7 +126,7 @@ void run_atd_c3_actor_timer_isolation_scenario (
             "ATD-C3B evidence wait failed");
     connector.send (timer_stop_msg_t{.request_id = timer_then_actor})
         .packet_name (timer_stop_msg_t::packet_name)
-        .metadata (spot_rid_metadata, actors.spot_rid)
+        .metadata (spot_id_metadata, actors.spot_id)
         .submit ();
     ensure_contains_in_order (timer_actor_evidence.value ().evidence,
                               timer_then_actor,

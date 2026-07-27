@@ -10,11 +10,11 @@ import { ensure } from './scenario-assert';
 
 export async function runShutdownWait(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
-  const spotRid = requireOption(options.spotRid, 'spot-rid');
+  const spotId = requireOption(options.spotId, 'spot-rid');
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const reply = await client.request({ requestId, spotRid, delayMs: 30000 } satisfies AwaitShutdownScenarioReq)
+    const reply = await client.request({ requestId, spotId, delayMs: 30000 } satisfies AwaitShutdownScenarioReq)
       .packetName('AwaitShutdownScenarioReq').timeout(90000).submit<AwaitScenarioRes>();
     throw new Error(`TD-F5 expected shutdown during a pending await, but '${reply.operation}' completed.`);
   } catch (error) {
@@ -30,14 +30,14 @@ export async function runShutdownWait(options: ClientOptions): Promise<void> {
 
 export async function runShutdownRecovery(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
-  const spotRid = requireOption(options.spotRid, 'spot-rid');
+  const spotId = requireOption(options.spotId, 'spot-rid');
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const result = await client.request({ requestId, spotRid } satisfies AwaitShutdownRecoveryReq)
+    const result = await client.request({ requestId, spotId } satisfies AwaitShutdownRecoveryReq)
       .packetName('AwaitShutdownRecoveryReq').timeout(30000).submit<AwaitScenarioRes>();
     ensure(result.operation === 'await.e3-shutdown-recovery', 'TD-F5 recovery operation mismatch.');
-    ensure(result.spotRid === spotRid, 'TD-F5 recovery Spot routing id mismatch.');
+    ensure(result.spotId === spotId, 'TD-F5 recovery Spot routing id mismatch.');
     ensure(result.evidence.some((line) => line.includes(`request=${requestId}`)
       && line.includes('marker=shutdown-recovery-probe')),
     'TD-F5 recovery probe marker missing.');

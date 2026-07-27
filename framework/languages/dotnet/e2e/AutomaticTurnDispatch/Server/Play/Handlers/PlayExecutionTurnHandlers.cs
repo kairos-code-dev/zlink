@@ -19,7 +19,7 @@ internal sealed class CounterResetHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         spot.ResetCounter();
-        evidence.Add($"counter-reset|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+        evidence.Add($"counter-reset|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
         return ValueTask.CompletedTask;
     }
 }
@@ -37,17 +37,16 @@ internal sealed class CounterAwaitHandler(
     {
         var observed = spot.ReadCounter();
         evidence.Add(
-            $"counter-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"counter-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|operation={request.OperationId}|observed={observed}");
         var call = routeClient.RequestToChannel(
-                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, request.OperationId))
             .Timeout(TimeSpan.FromSeconds(5));
         await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         spot.WriteCounter(observed + 1);
         evidence.Add(
-            $"counter-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"counter-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|operation={request.OperationId}|value={spot.ReadCounter()}");
     }
 }
@@ -78,22 +77,22 @@ internal sealed class HttpAwaitHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"http-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+            $"http-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
         var call = client.Get("/delay")
             .Query("requestId", request.RequestId)
             .Query("marker", request.Terminator)
             .Query("delayMs", request.DelayMs.ToString());
         evidence.Add(
             $"http-{request.Terminator}-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}"
-            + $"|spot={spot.Context.SpotRid}|request={request.RequestId}");
+            + $"|spot={spot.Context.SpotId}|request={request.RequestId}");
         var response = request.Terminator == "yield"
             ? await call.Yield<ExternalDelayRes>(cancellationToken)
             : await call.Async<ExternalDelayRes>(cancellationToken);
         evidence.Add(
-            $"http-{request.Terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"http-{request.Terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|marker={response.Body.Marker}");
         evidence.Add(
-            $"http-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+            $"http-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
     }
 }
 
@@ -109,7 +108,7 @@ internal sealed class IoWorkerAwaitHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"io-worker-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"io-worker-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
             + $"|operation={request.OperationId}|thread={Environment.CurrentManagedThreadId}");
         var call = spot.Context.RunIoWorker(async ct =>
         {
@@ -121,11 +120,11 @@ internal sealed class IoWorkerAwaitHandler(
             return response.Body;
         });
         evidence.Add(
-            $"io-worker-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"io-worker-released|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
             + $"|operation={request.OperationId}");
         var result = await call.Yield(cancellationToken);
         evidence.Add(
-            $"io-worker-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+            $"io-worker-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
             + $"|operation={request.OperationId}|marker={result.Marker}");
     }
 }
@@ -141,7 +140,7 @@ internal sealed class CpuWorkerAwaitHandler(EvidenceStore evidence)
     {
         var callerThread = Environment.CurrentManagedThreadId;
         evidence.Add(
-            $"cpu-worker-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"cpu-worker-{request.Terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|caller-thread={callerThread}");
         var call = spot.Context.RunCpuWorker(ct =>
         {
@@ -151,12 +150,12 @@ internal sealed class CpuWorkerAwaitHandler(EvidenceStore evidence)
         });
         evidence.Add(
             $"cpu-worker-{request.Terminator}-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}"
-            + $"|spot={spot.Context.SpotRid}|request={request.RequestId}");
+            + $"|spot={spot.Context.SpotId}|request={request.RequestId}");
         var workerThread = request.Terminator == "yield"
             ? await call.Yield(cancellationToken)
             : await call.Async(cancellationToken);
         evidence.Add(
-            $"cpu-worker-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"cpu-worker-{request.Terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|caller-thread={callerThread}|worker-thread={workerThread}");
     }
 }

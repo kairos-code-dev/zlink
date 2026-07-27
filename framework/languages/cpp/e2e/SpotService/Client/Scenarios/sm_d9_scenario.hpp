@@ -72,7 +72,7 @@ inline void run_sm_d9_scenario (const std::string &session_stream_endpoint)
                     .submit<actor_ping_res_t> ();
     auto describe_ping = [] (const actor_ping_res_t &reply) {
         return "actor=" + reply.actor_id + "|node=" + reply.node_rid
-               + "|spot=" + reply.spot_rid + "|value=" + reply.value
+               + "|spot=" + reply.spot_id + "|value=" + reply.value
                + "|seen=" + std::to_string (reply.seen);
     };
     if (!first || first.value ().actor_id != actor_id || first.value ().value != "observer-1") {

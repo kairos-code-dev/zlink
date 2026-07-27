@@ -218,14 +218,14 @@ Same-node join과 cross-node relocation에서는 logical incarnation이 유지�
 Relocation은 내부 `AuthorityOwnerGeneration`을 증가시키지만 이 값은 public `ActorRef`에 노출하지 않는다.
 
 일반 messaging은 global Actor ID로 current owner를 resolve한다. Relocation 직후 이전 route로 도착한 message는
-기본 30초 `RelocationForwardingWindow` 안에서 committed source→target mapping으로 relay할 수 있다. Exact
+Message Follow가 기본 30초인 `MessageFollowDuration` 안에서 committed source→target route로 relay할 수 있다. Exact
 destroy 같은 mutation은 `ActorRef`의 `ObjectGeneration`을 검사하며, Actor를 delete한 뒤 같은 ID로 새로 만든
 경우 이전 ref는 새 incarnation을 변경하지 못한다.
 
 fencing 규칙 전체는 [spec/aspnet-core-location](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)이 다룬다.
 
-> 30초는 `RelocationForwardingWindow`의 기본값이다. 값을 늘리면 stale route를 더 오래
-> 흡수하는 대신 source node가 forwarding mapping을 더 오래 보관한다. 이 값은 bound
+> 30초는 `MessageFollowDuration`의 기본값이다. 값을 늘리면 stale route를 더 오래
+> 흡수하는 대신 source node가 Message Follow route를 더 오래 보관한다. 이 값은 bound
 > session의 packet 순서 보장과는 무관하다.
 
 ## 3. Spot이 actor를 호스팅 — 콜백과 트리거 함수

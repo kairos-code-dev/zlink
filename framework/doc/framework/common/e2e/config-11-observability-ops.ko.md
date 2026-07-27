@@ -19,9 +19,9 @@ event를 다룬다면, 이 config는 (1) 한 흐름을 노드 경계 너머로 �
 - 다룬다: `flow=` 로그가 STREAM→actor→spot 경계를 관통하는지, 메트릭 계기가 실제 사건과 일치하는지,
   `Relocate`가 배치 제외·핸드오프 뒤 `Relocated`에서 host를 유지하는지, `Shutdown`이 relocation과
   독립적으로 bounded cleanup을 수행하는지.
-- 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), MeshNode runtime snapshot·event
+- 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), RouteMesh·host public status
   관찰(Config 7), 대시보드·exporter 구성(앱 몫,
-  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-reader와-성능)).
+  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-수집-경계)).
 
 ## 2. 서버 구성 (한 번 구동)
 
@@ -173,20 +173,21 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   [§4](../spec/25-runtime-metrics.ko.md#4-object와-stream)).
 - 세부 동작: Actor relocation 계기.
 
-#### OBS-B3 fanout·lease 계기와 카디널리티
+#### OBS-B3 publish 계기 부재·lease 계기와 카디널리티
 
 우선순위: `P1`
 
-**검증 질문:** fanout 발행/수신 차분과 owner lease 갱신 지연이 계기에 기록되고 고카디널리티 라벨이 제외되는가.
+**검증 질문:** Publish 전용 계기는 만들지 않으면서 owner lease 갱신 지연은 낮은 카디널리티 계기에
+기록하는가.
 
 - 절차: `OrderWorkflow`가 이벤트를 fanout publish하고 다수 subscriber가 받는다. lease 갱신 지연은 내부 훅이 아니라 Redis 측 지연 주입(외부 인프라 조작, house rule 준수)으로 만든다.
-- 검증: `zlink.fanout.published`/`received`가 1:N로 계수된다. backend가 drop을 관찰할 수 없으면
-  `fanout.dropped` instrument가 없고 0을 방출하지 않는다. 관찰 가능한 backend에서는
-  queue 제한으로 drop을 유발해 실제 수와 일치하는지 확인한다. `zlink.location.owner_lease.renew.lateness`가
-  갱신 지연을 기록한다. **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_id` 라벨을
+- 검증: Logical Multicast와 classic fanout 모두 publish submit·target·수신·drop 전용 metric을 만들지
+  않는다. Subscriber 수신 여부는 역할 server의 bounded evidence로만 확인하며 metric으로 재구성하지
+  않는다. `zlink.location.owner_lease.renew.lateness`는 실제 갱신 지연을 기록한다.
+  **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_id` 라벨을
   포함하지 않는다
-  ([Runtime Metrics §6~7](../spec/25-runtime-metrics.ko.md#6-location과-classic-fanout-계기)).
-- 세부 동작: fanout/lease 계기 + 카디널리티 규약.
+  ([Runtime Metrics §6~7](../spec/25-runtime-metrics.ko.md#6-location과-telemetry)).
+- 세부 동작: publish 전용 집계 부재, owner lease 계기와 카디널리티 규약.
 
 #### OBS-B4 비활성 계측의 최소 비용
 
@@ -197,7 +198,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 절차: reader를 등록하지 않은 노드에서 트래픽을 흘린다.
 - 검증: reader 미등록에서도 messaging 정확성이 불변이고, 장시간 트래픽에 계기 저장 공간이 상한 내로
   유지된다(무한 적재 없음,
-  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-reader와-성능)). Hot path의 clock
+  [Runtime Metrics §8](../spec/25-runtime-metrics.ko.md#8-수집-경계)). Hot path의 clock
   read 생략은 프로세스 밖 E2E로 관찰할 수 없는 구현 내부 속성이므로 언어별 benchmark·unit test
   `RMETRIC-009`가 소유하며 이 config에서 단언하지 않는다.
 - 세부 동작: 비활성 계측의 최소 비용.
@@ -212,8 +213,8 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 작업은 terminal 결과까지 유지되는가.
 
 - 절차: 룸과 bound actor가 유지 중인 `play-a`에 `PlannedMaintenance` mode로 host `Relocate`를 요청한다.
-- 검증: `play-a` MeshNode descriptor의 relocation 제외 상태와 runtime snapshot의
-  `State=Relocating`이 관측되어 신규 room/actor 배정에서 제외된다. 완료 뒤 `State=Relocated`가
+- 검증: Public host status의 `State=Relocating`, `IsReady=false`, `AcceptingWork=false`가 관측되고
+  신규 room/actor 배정 결과에서 `play-a`가 제외된다. 완료 뒤 `State=Relocated`가
   되고 host connection과 infrastructure는 유지된다. `zlink.host.state` gauge가
   `state=serving`→`state=relocating`→`state=relocated`로 전이한다
   ([Host maintenance §13](../spec/28-graceful-drain-handoff.ko.md#13-관측-정보)).
@@ -262,7 +263,7 @@ ObjectGeneration을 유지하는가.
 - 검증: User Spot과 모든 member Actor는 ObjectGeneration을 유지하고 AuthorityOwnerGeneration만 증가한다.
   Location Store의 aggregate owner·generation·inventory root는 한 CAS에서 target으로
   전환되고 Relocation manifest의 participant count와 inventory digest가 일치한다. Source Spot에는 `OnClosing(RelocationOut)`이 한 번
-  전달되지만 logical authority row를 삭제하거나 같은 RID를 새 generation으로 재생성하지 않는다. Target
+  전달되지만 logical authority row를 삭제하거나 같은 Spot ID를 새 generation으로 재생성하지 않는다. Target
   factory와 `Restore`는 retry-safe하게 at-least-once 실행될 수 있지만 stale attempt는 commit·admission을
   수행하지 못한다. Current relocation fence의 accepted message·journal은 application handler에 중복 적용되지
   않는다. 한 `Relocate` operation의 terminal result와 terminal lifecycle event는 각각 정확히 한 번 기록된다.

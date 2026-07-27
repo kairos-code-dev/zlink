@@ -3,7 +3,7 @@ import type {
   ZLinkAuthorityKey,
   ZLinkAuthoritySnapshot,
   ZLinkLocationOwnerToken,
-  ZLinkRelocationReference,
+  ZLinkBlobReference,
   ZLinkRelocationStore
 } from '../../contracts/Locations';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
@@ -33,6 +33,10 @@ import {
   crc32c
 } from '../foundation/service-relocation-runtime';
 import {
+  putNewRelocationBlob,
+  relocationBlobReference
+} from '../locations/relocation-blob';
+import {
   encodeInstanceActivationRecoveryEnvelope,
   type ServiceInstanceActivationRecoveryEnvelope
 } from '../foundation/service-instance-activation-recovery-codec';
@@ -45,7 +49,7 @@ interface PendingReservation {
   readonly reservationId: string;
   readonly creating: ZLinkAuthoritySnapshot;
   readonly owner: ZLinkLocationOwnerToken;
-  readonly requestReference: ZLinkRelocationReference;
+  readonly requestReference: ZLinkBlobReference;
   readonly requestSha256: Buffer;
   readonly requestEncodedSize: number;
 }
@@ -87,14 +91,18 @@ implements ServiceAsyncInstanceActivationAuthority {
       throw new Error('Instance activation requires a Relocation Store.');
     }
     const requestHash = createHash('sha256').update(requestBytes).digest();
-    const stored = await relocationStore.putRelocation(
+    const stored = await putNewRelocationBlob(
+      relocationStore,
       requestBytes,
       CREATION_REQUEST_RETENTION_MS
     );
+    const storedRead = await relocationStore.read(stored.reference);
     if (
       stored.reference.value.length === 0
-      || stored.checksumCrc32c !== crc32c(requestBytes)
       || stored.expiresAt.getTime() <= stored.storeNow.getTime()
+      || storedRead.kind !== 'found'
+      || crc32c(storedRead.bytes) !== crc32c(requestBytes)
+      || !Buffer.from(storedRead.bytes).equals(requestBytes)
     ) {
       await this.deleteOrphan(stored.reference);
       throw new Error('Relocation Store returned an invalid creation request receipt.');
@@ -209,9 +217,9 @@ implements ServiceAsyncInstanceActivationAuthority {
         ownerId: current.ownerId,
         leaseGeneration: current.ownerLeaseGeneration
       },
-      requestReference: {
-        value: projection.requestContentReference
-      } as ZLinkRelocationReference,
+      requestReference: relocationBlobReference(
+        projection.requestContentReference
+      ),
       requestSha256: Buffer.from(projection.requestSha256),
       requestEncodedSize: Number(projection.requestEncodedSize)
     });
@@ -373,9 +381,7 @@ implements ServiceAsyncInstanceActivationAuthority {
     if (stored.kind !== 'stored') {
       throw new Error(`Instance activation inbox release failed: ${stored.kind}.`);
     }
-    await this.deleteOrphan({
-      value: recovery.reference
-    } as ZLinkRelocationReference);
+    await this.deleteOrphan(relocationBlobReference(recovery.reference));
     const { kind: _, ...snapshot } = stored;
     return routeFromSnapshot({ kind: 'snapshot', ...snapshot });
   }
@@ -411,9 +417,9 @@ implements ServiceAsyncInstanceActivationAuthority {
     return owner;
   }
 
-  private async deleteOrphan(reference: ZLinkRelocationReference): Promise<void> {
+  private async deleteOrphan(reference: ZLinkBlobReference): Promise<void> {
     try {
-      await this.options.relocationStore?.deleteRelocation(reference);
+      await this.options.relocationStore?.delete(reference);
     } catch {
       // No authority publishes this root. Retention owns cleanup when
       // best-effort deletion fails.

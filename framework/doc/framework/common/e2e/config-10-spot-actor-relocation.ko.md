@@ -25,7 +25,7 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 - 다룬다: 같은 node join 순서, remote actor relocation 정상 경로, relocation state 복원, 빈 state relocation, admission/commit
   분리, source node down 전후 동작, authority commit 시점, moving 중 actor packet admission 차단,
   `Recreate`·`Snapshot` adapter 경계와 callback 실패, bound session 이전, **seal 전에 수락한 Actor journal의
-  순서 보존·Ready 전 replay, stale-route forwarding과 mapping 축출, request reply correlation과 timeout**.
+  순서 보존·Ready 전 replay, Message Follow와 route 제거, request reply correlation과 timeout**.
 - 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), 비동기 handler 완료 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
 - 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. admission accept 뒤
@@ -41,7 +41,7 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor·Spot authority row와 owner lease는 framework lifecycle이 관리한다. |
 | relocation store | 1 | 공식 Redis relocation store extension. Location Store와 같은 deployment를 사용할 수 있지만 별도 prefix와 `AddRelocationStore(...)` 등록을 사용한다. |
-| actor 노드 | 2 (`actor-a`, `actor-b`) | Object Server role의 Entry Spot + User Spot + Actor mailbox host. 두 node에 같은 stable Actor·User Spot type, positive placement capacity와 explicit relocation policy를 등록한다. Snapshot type은 kind별 adapter를 등록하고 Recreate type은 adapter 없이 factory만 등록한다. Lifecycle callback과 adapter는 order marker를 남긴다. |
+| actor 노드 | 2 (`actor-a`, `actor-b`), multi-hop 반복은 3 (`actor-c` 추가) | Object Server role의 Entry Spot + User Spot + Actor mailbox host. 모든 node에 같은 stable Actor·User Spot type, positive placement capacity와 explicit relocation policy를 등록한다. Snapshot type은 kind별 adapter를 등록하고 Recreate type은 adapter 없이 factory만 등록한다. Lifecycle callback과 adapter는 order marker를 남긴다. |
 | session gateway | 2 (`session-a`, `session-b`) | Object Client role과 Location Store를 등록하고 stream session, exact `ActorRef` bind와 actor push를 관찰한다. Remote relocation 뒤 bound session push가 target actor로 이어지는지 검증한다. |
 | relocation controller | 1 | Object Client role과 Location Store를 등록한 실제 사용자 요청 역할 server. HTTP endpoint 안에서 actor 생성, join, global Actor ID packet send와 failure injection을 public framework API로 실행한다. |
 | consumer | 시나리오별 | HTTP client wrapper로 relocation controller endpoint를 호출하고, 필요한 경우 stream connector로 session gateway에 연결해 push와 bind 상태를 관찰한다. |
@@ -54,13 +54,20 @@ actor 노드는 아래 evidence를 공통으로 남긴다.
   `route_ack`, `steady_normalized`, `ready`, `admission_open`, `success_reply`.
 - accepted-work marker: `journal_accepted`(seal 전에 수락), `journal_staged`(target queue 준비),
   `journal_replayed`(commit 뒤 replay), `moving_rejected`(seal 뒤 `ActorMoving`),
-  `straggler_forward`(commit 뒤 stale route relay), `mapping_evicted`(window 후 축출),
-  `stale_fail_fast`(축출 뒤 stale route 거부).
+  `message_follow_relay`(commit 뒤 이전 route message 전달),
+  `message_follow_route_removed`(duration 경과 뒤 route 제거),
+  `message_follow_expired`(route 제거 뒤 이전 route message 거부).
   각 actor packet은 arrival sequence index를 함께 남겨 target 처리 순서와 대조할 수 있어야 한다.
 - `OnActorJoin` 입력 snapshot. actor id 외에 actor instance나 route metadata가 전달되었거나 저장되면 실패 evidence로 남긴다.
 - relocation state marker. state를 담는 actor type은 source actor state version과 target actor 복원 state가 같은지 확인할 수 있어야 한다. 빈 state actor type은 target `OnJoinedActor` 이후 별도 조회 marker를 남긴다.
 - actor packet handler marker. moving 중 source와 target 양쪽 handler가 동시에 처리하지 않았는지 대조한다.
 - bound session snapshot. relocation 전후 push 대상 session gateway와 client connector를 비교한다.
+- workload marker. relocation unit별 application state, queue, accepted journal, timer와 framing의 실제 encoded
+  byte 수, permit 대기·seal·authority commit·admission 개방 시각, host operation의 시작·terminal 시각을
+  monotonic clock으로 기록한다. Process별 CPU time, peak RSS와 Relocation Store read/write byte 수도 함께
+  기록하되 correctness 판정은 public authority와 역할 server evidence를 사용한다.
+- service marker. relocation 대상과 무관한 control Actor·Spot의 request latency와 성공 수, one-way 수락·처리
+  sequence, relocation 대상의 operation ID·reply correlation·handler 실행 수를 1초 구간으로 기록한다.
 
 relocation controller는 시나리오 실행 전용 driver가 아니다. consumer는 실제 app endpoint를 호출하고,
 그 endpoint 내부에서 framework의 public actor/spot API가 실행되어야 한다. 장애 주입은 endpoint가
@@ -97,7 +104,7 @@ commit, joined, success reply가 정해진 순서로 관찰되는가.
   success reply 전에 authority row가 committed target User Spot을 가리켜야 한다. join 이후 packet은 target
   Actor handler에서만 처리되고 Spot lifecycle callback을 경유하지 않는다.
 - 검증: 이 local join에는 `capture`, `target_factory`, `restore`, `journal_staged`, relocation `completed`,
-  forwarding mapping marker가 없어야 한다. Relocation Store를 읽거나 쓰지 않는다.
+  Message Follow marker가 없어야 한다. Relocation Store를 읽거나 쓰지 않는다.
 - 세부 동작: 같은 node join 완료 조건과 actor instance 미노출 admission.
 
 #### ST-A2 local join reject side effect 없음
@@ -128,7 +135,7 @@ commit, joined, success reply가 정해진 순서로 관찰되는가.
 - 검증: membership 변경 구간에는 source와 target Actor handler가 같은 actor packet을 동시에 처리한 evidence가
   없어야 한다. target `OnJoinedActor` 완료 전 target Actor handler 성공 evidence도 없어야 한다. latch 해제
   뒤 follow-up packet은 target Actor handler에서 처리된다. Relocation Store, factory·adapter, accepted journal,
-  `Completed`와 forwarding mapping을 사용한 evidence가 있으면 실패다.
+  `Completed`와 Message Follow route를 사용한 evidence가 있으면 실패다.
 - 세부 동작: relocation sequence를 사용하지 않는 local membership barrier.
 
 ### Track B — remote relocation 정상 경로
@@ -353,13 +360,14 @@ completion barrier를 끝내는가.
   보이면 실패다.
 - 세부 동작: 실패한 relocation의 bound session 비오염.
 
-### Track F — accepted journal과 stale-route forwarding
+### Track F — accepted journal과 Message Follow
 
 [Actor model §3·§8](../spec/14-actor-model.ko.md)과
 [Spot Actor §4·§8](../spec/15-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
-accepted journal로 고정한다. Seal 뒤 새 operation은 `ActorMoving`으로 끝나며 journal이나 forwarding queue에
-숨겨서 보관하지 않는다. Commit 뒤 이전 owner route로 늦게 도착한 stale operation만 bounded forwarding
-대상이다. 모든 시나리오는 operation ID와 accepted sequence로 수락, staging, replay와 terminal 결과를 대조한다.
+accepted journal로 고정한다. Seal 뒤 새 operation은 `ActorMoving`으로 끝나며 journal이나 Message Follow
+queue에 숨겨서 보관하지 않는다. Commit 뒤 이전 owner route로 늦게 도착한 operation만
+`MessageFollowDuration` 안에서 Message Follow 대상이 된다. 모든 시나리오는 operation ID와 accepted
+sequence로 수락, staging, replay와 terminal 결과를 대조한다.
 
 #### ST-F1 in-flight handoff order
 
@@ -375,7 +383,7 @@ Ready 공개 전에 replay되는가.
 - 검증: `P1 -> P2 -> P3`은 accepted boundary와 frozen journal에 같은 sequence로 기록되고 target factory와
   optional `Restore` 뒤 handler를 실행하지 않은 채 staging queue에 준비된다. Commit 뒤 callback과 함께
   `P1 -> P2 -> P3` 순서로 replay되고, source handler가 실행한 evidence는 없어야 한다. `P4`는
-  `ActorMoving`으로 끝나며 journal, forwarding queue와 어느 Actor handler에도 들어가지 않는다. Journal replay,
+  `ActorMoving`으로 끝나며 journal, Message Follow queue와 어느 Actor handler에도 들어가지 않는다. Journal replay,
   source cleanup, `Completed`, route ACK와 steady normalization이 끝나기 전에 target을 `Ready`로 공개하면 실패다.
 - 세부 동작: seal 전 accepted journal 고정, seal 뒤 `ActorMoving`, Ready 전 replay.
 
@@ -428,42 +436,47 @@ seal·route ACK가 Actor binding route를 바꾸지 못하는가.
   중복과 FIFO 역전이 없다.
 - 세부 동작: Bound-session barrier의 host lease fencing과 transport liveness 분리.
 
-#### ST-F4 straggler forward then fail-fast
+#### ST-F4 Message Follow duration 전후 결과
 
 우선순위: `P1`
 
-**검증 질문:** authority commit 전에 이전 owner route로 전송된 straggler가 forwarding window(기본 30초)
-안에서는 target으로 relay되고, window 초과분은 fail-fast로 분류되는가.
+**검증 질문:** authority commit 전에 이전 owner route로 전송된 message가
+`MessageFollowDuration` 기본값 30초 안에서는 target으로 전달되고, duration 경과 뒤에는 typed stale
+결과로 끝나는가.
 
-- 절차: `actor-straggler`의 relocation authority commit 전에 source owner route로 이미 전송된 packet `G1`과
-  `G2`를 transport fixture에서 각각 지연한다. `G1`은 commit 뒤 forwarding window 안에, `G2`는 window가
-  지난 뒤 source에 전달한다. Public caller는 global Actor ID만 사용하고 transport fixture가 resolve된 이전
+- 절차: `actor-message-follow`의 relocation authority commit 전에 source owner route로 이미 전송된 packet
+  `G1`과 `G2`를 transport fixture에서 각각 지연한다. `G1`은 commit 뒤 Message Follow duration 안에,
+  `G2`는 duration이 지난 뒤 source에 전달한다. Public caller는 global Actor ID만 사용하고 transport fixture가 resolve된 이전
   owner route의 delivery만 지연한다. Object generation은 relocation 전후 동일하며 fixture가 caller에게 이전
   owner route를 노출하거나 선택하게 해서는 안 된다. 공통 기본값 30초도 option snapshot으로 확인하되 이
-  시나리오는 topology의 `RelocationForwardingWindow`를 짧게 설정해 실행 시간을 줄일 수 있다.
-- 검증: `G1`은 original operation ID, generation, payload와 reply route를 보존한 `straggler_forward`를 거친다.
-  Target admission이 아직 닫혀 있으면 Ready까지 handler 실행을 기다린 뒤 target Actor에서 처리된다. `G2`는 `stale_fail_fast`로
+  시나리오는 topology의 `MessageFollowDuration`을 짧게 설정해 실행 시간을 줄일 수 있다.
+- 검증: `G1`은 original operation ID, generation, payload와 reply route를 보존한
+  `message_follow_relay`를 거친다. Target admission이 아직 닫혀 있으면 Ready까지 handler 실행을 기다린 뒤
+  target Actor에서 처리된다. `G2`는 `message_follow_expired`로
   분류되고 target에서 처리되지 않으며, caller는 terminal 결과를 확인한 뒤 명시적으로 다시 제출해야 한다.
   framework가 `G2`를 자동 저장·재전송한 evidence가 있으면 실패다.
-- 세부 동작: straggler bounded forwarding과 cutoff.
+- 세부 동작: Message Follow duration 안의 전달과 duration 경과 뒤 거부.
 
-#### ST-F5 forwarding mapping eviction
+#### ST-F5 Message Follow route 제거
 
 우선순위: `P1`
 
-**검증 질문:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가
-([Spot Actor §8](../spec/15-spot-actor.ko.md#8-route-forwarding)).
+**검증 질문:** duration 경과 뒤 Message Follow route가 제거되어 누수가 없고, duration 안 재이동은
+route를 갱신하는가([Spot Actor §8](../spec/15-spot-actor.ko.md#8-message-follow)).
 
-- 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote relocation한 뒤 window 경과를 bounded wait로
-  두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
-  actor-a의 다른 user Spot`처럼 **다른 node로 두 번** 연속 이동시키고 각 node의 forwarding entry snapshot을
-  관찰한다. 첫 node(`actor-a`)의 old ref로 straggler를 주입한다.
-- 검증: (a) window 경과 후 `mapping_evicted`가 남고, 이후 old ref packet은 `stale_fail_fast`다. (b) **각
-  source node는 그 actor에 대해 entry가 최대 하나**이고 그 entry는 자기 **다음 hop**을 가리킨다(첫 node는
-  두 번째 node를, 두 번째 node는 최종 target을). 첫 node에 주입한 straggler는 hop을 따라 최종 target까지
-  전달된다. 한 node 안에 이전 target을 가리키는 잔여 entry가 함께 남으면 실패다. 각 window 경과 후 모든
-  entry가 축출되어 누수가 없다.
-- 세부 동작: mapping retained state의 bounded 축출과 node별 chained forward(hop 전달).
+- 절차: 두 부분으로 실행한다. (a) `actor-follow-remove`를 remote relocation한 뒤 duration 경과를 bounded
+  wait로 두고 `message_follow_route_removed` marker를 관찰한다. (b) public global Actor ID로 message를
+  제출하고 최초 resolve가 고른 delivery만 transport fixture에서 지연한다. 그 Actor를 duration 안에
+  `actor-a -> actor-b -> actor-c`처럼 **다른 node로 두 번** 연속 이동시키고 각 node의
+  Message Follow route snapshot을 관찰한 뒤 지연한 delivery를 첫 node에서 다시 진행한다.
+  Caller와 application DTO에는 이전 `ActorRef`, owner RID, generation 또는 hop을 노출하지 않는다.
+- 검증: (a) duration 경과 후 `message_follow_route_removed`가 남고, 이후 old ref packet은
+  `message_follow_expired`다. (b) **각 source node는 그 actor와 source owner generation에 대해 route가
+  최대 하나**이고 그 route는 자기 **다음 hop**을 가리킨다(첫 node는
+  두 번째 node를, 두 번째 node는 최종 target을). 첫 node에 주입한 늦은 message는 hop을 따라 최종 target까지
+  전달된다. 한 node 안에 이전 target을 가리키는 잔여 route가 함께 남으면 실패다. 각 duration 경과 후 모든
+  Message Follow route가 제거되어 누수가 없어야 한다.
+- 세부 동작: Message Follow route의 bounded lifecycle과 node별 chained relay.
 
 #### ST-F6 in-flight request reply correlation과 timeout
 
@@ -481,7 +494,7 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   caller에 한 번만 correlate된다. Durable terminal completion과 reply relay ACK를 끝내지 않고 source cleanup이나
   `Completed`를 통과하면 실패다. (b)는 normal request timeout으로 끝나며 뒤늦은 replay reply는 late-reply
   drop된다. Framework가 새 operation으로 숨겨서 재제출하지 않는다. (c)는 `ActorMoving`으로 즉시 끝나며
-  journal, forwarding queue와 target handler에 들어가지 않는다.
+  journal, Message Follow queue와 target handler에 들어가지 않는다.
 - 세부 동작: accepted request replay, durable reply correlation, timeout과 moving rejection 분리.
 
 ### Track G — execution lane barrier와 aggregate capacity
@@ -531,7 +544,7 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   source와 target에 나뉘어 존재할 수 있다. 마지막 Actor와 relay가 끝난 뒤 source shell을 제거한다.
 - 세부 동작: public Spot identity 유지, authority-first shell 전환, Actor별 owner lookup.
 
-#### ST-G4 이동 중 ToActor relay와 target queue 순서
+#### ST-G4 이동 중 ToActor Message Follow와 target queue 순서
 
 우선순위: `P0`
 
@@ -542,7 +555,7 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   Relay는 operation ID, ObjectGeneration, absolute deadline, request correlation과 reply route를 그대로
   유지한다. Target 처리 순서는 이전된 실행 전 queue·accepted journal, source ingress hold와 relay 완료,
   새 target direct queue 순서다. Request reply는 원래 caller에 한 번만 전달된다.
-- 세부 동작: stale route forwarding, request correlation 보존과 target admission order.
+- 세부 동작: Message Follow, request correlation 보존과 target admission order.
 
 #### ST-G5 Entry·PerActor Actor relocation interruption 목표
 
@@ -592,7 +605,7 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 - 검증: Defer는 동기 registration만 수행하며 handler의 마지막 continuation 전에는 target I/O와
   Location mutation이 없다. Join은 Defer 시점의 immutable request와 absolute deadline을 사용한다.
   같은 Actor의 후속 packet은 source seal 전에는 barrier 뒤 Actor queue에 수락되고 cross-node
-  relocation에서는 accepted journal·실행 전 queue와 함께 이관된다. Source seal 이후 CAS 전과 forwarding
+  relocation에서는 accepted journal·실행 전 queue와 함께 이관된다. Source seal 이후 CAS 전과 Message Follow
   구간의 payload만 bounded ingress hold에 들어간다. 다른 Actor와 Spot lane은 계속 진행된다.
 - 세부 동작: handler-scoped barrier, request snapshot과 Actor-scoped queue hold.
 
@@ -684,6 +697,182 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   Actor, MessageContext와 payload를 받으며 다섯 언어가 같은 정보를 제공한다.
 - 세부 동작: public context naming과 handler information parity.
 
+### Track I — 현실 부하, 서비스 연속성과 Message Follow
+
+Relocation 뒤 이전 owner로 도착한 message를 일정 기간 current owner에 전달하는 기능을
+[Message Follow](../spec/01-glossary.ko.md#message-follow)라고 한다. Message flow tracing이나 session
+relay와 구분하며, public caller가 owner RID나 이전 route를 선택하는 API를 추가하지 않는다.
+
+이 Track은 correctness contract와 이 config의 workload SLO를 분리한다. Authority, queue 순서,
+operation identity, deadline과 reply correlation 위반은 runtime correctness 실패다. 아래에 고정한
+처리량과 1초 interruption 목표를 넘으면 relocation operation 자체를 취소하거나 실패로 바꾸지 않는다.
+Runtime terminal을 끝까지 관찰한 뒤 `workload_slo_missed` evidence와 해당 측정값을 남기고 E2E
+scenario를 실패시킨다. 따라서 SLO 실패와 `RelocationFailed`를 같은 결과로 집계하면 안 된다.
+
+#### 현실 부하 profile
+
+Payload 크기는 application object만 직렬화한 크기가 아니라 Relocation Store에 저장하는 encoded
+payload 전체를 기준으로 측정한다. 각 fixture는 압축되지 않는 deterministic byte pattern과 SHA-256을
+사용한다. Application adapter는 `Capture`가 반환한 state byte를 기록한다. E2E용 Store wrapper는 public
+opaque Store SPI를 그대로 구현하면서 write·read마다 blob 크기와 checksum을 기록한다. Runner는
+application state 합계, Store blob별 크기, Store 전체 byte, read-back checksum과 process peak RSS를
+report에 남긴다. Queue·accepted journal·timer·participant 목록과 framing은 private envelope를 해석하지
+않고 `Store 전체 byte - application state와 fixture가 넣은 raw message byte`의 합산 overhead로 기록한다.
+예상 크기나 object allocator 크기만 기록하면 실패다.
+
+이 측정을 위해 Framework private envelope decoder, 내부 Store key 또는 runtime field를 E2E에 노출하지
+않는다. Provider wrapper는 opaque key·value의 크기와 checksum만 관찰하고 값을 해석하지 않는다.
+
+| Profile | Actor·Instance Spot application state | `SpotWide` aggregate application state | Queue·journal·timer 구성 | 사용 목적 |
+|---|---:|---:|---|---|
+| `small` | 4 KiB | 64 KiB | queue 8×1 KiB, journal 2×1 KiB, timer 4개 | 자주 이동하는 작은 상태 |
+| `normal` | 64 KiB | 1 MiB | queue 32×4 KiB, journal 8×4 KiB, timer 16개 | 일반 업무 상태와 대기 작업 |
+| `large` | 8 MiB | 32 MiB | queue 64×64 KiB, journal 16×64 KiB, timer 64개 | 큰 state와 backlog |
+| `boundary` | Snapshot object 하나당 64 MiB | participant 5개의 합계 320 MiB | ingress hold는 별도 반복에서 1,024 records와 16 MiB 경계를 사용 | participant 상한과 oversized aggregate 단독 실행 |
+
+`boundary`의 320 MiB aggregate는 process의 기본 256 MiB payload gate를 줄여서 통과시키지 않는다.
+다른 payload 이동이 없을 때 한 unit만 실행되는지 확인한다. Actor 하나와 Instance Spot은 256 MiB
+gate 안에서만 진행하고 Snapshot object 하나가 64 MiB를 넘는 반복은
+`Blocked/StateIncompatible`이어야 한다. Message payload 자체의 상한은 negotiated
+`MaxMessageSize`를 따르므로 relocation state 크기와 혼동하지 않는다.
+
+#### 고정 workload SLO
+
+공통 CI profile은 아래 값을 사용한다. 개발자가 local 진단에서 더 작은 수로 실행할 수는 있지만 그
+결과는 공통 E2E 완료 evidence로 사용할 수 없다. 처리량은 첫 unit을 seal한 시점부터 마지막 unit의
+target admission 또는 safe abort가 끝난 시점까지의 전체 host wall time으로 계산한다. 성공한 unit만
+분모로 사용하거나 factory·Restore 시간, Store 대기 시간을 빼면 실패다.
+
+| Workload | 고정 수와 payload | 전체 host 목표 |
+|---|---|---|
+| Entry·`PerActor` Actor bulk | `Recreate` Actor 10,000개 | 180초 이내, 64 units/s 이상 |
+| Snapshot Actor bulk | `normal` Actor 1,000개 | 90초 이내, 16 units/s 이상 |
+| Instance Spot bulk | `normal` Instance Spot 1,000개 | 150초 이내, 8 units/s 이상 |
+| `SpotWide` bulk | Actor 100개씩 포함한 User Spot 100개, 전체 participant 10,000개 | 180초 이내, 1 aggregate/s 이상 |
+
+처리량 계산에는 `unit_count`, `completed`, `safe_aborted`, `blocked`, elapsed time, units/s,
+encoded bytes/s와 payload profile별 p50·p95·p99·max를 남긴다. Entry·`PerActor` Actor는 queue seal부터
+target admission까지 interruption도 unit별로 기록한다. 장애를 주입하지 않은 모든 Actor profile에서
+1초를 넘긴 unit 수는 0이어야 한다. 의도적으로 1초 넘게 지연한 adapter 반복은 SLO population에서
+분리한 negative control이다. 이 반복은 `workload_slo_missed` evidence를 남기면서 runtime이 해당
+unit을 rollback하거나 취소하지 않고 safe terminal까지 진행해야 통과한다.
+
+#### ST-I1 payload 크기와 relocation gate 측정
+
+우선순위: `P0`
+
+- 절차: Actor, Instance Spot과 `SpotWide` User Spot을 `small`, `normal`, `large`, `boundary` profile로
+  각각 이전한다. 같은 process에서 outbound·inbound unit, Capture·Restore callback과 payload byte
+  permit을 하나씩 부족하게 만든 반복도 실행한다.
+- 검증: 모든 permit을 얻기 전에는 source queue를 seal하지 않는다. `Capture` 뒤 실제 payload가 예상보다
+  작으면 byte reservation을 줄일 수 있지만 늘리지 않는다. `boundary` aggregate는 다른 payload
+  relocation과 겹치지 않고 단독 실행한다. Profile별 encoded 구성 byte의 합과 Relocation Store
+  read-back 크기, checksum이 일치해야 한다. Gate 대기 중인 unit은 message와 timer를 계속 처리한다.
+  Permit 부족, participant 64 MiB 초과와 aggregate 단독 실행 결과를 같은 failure로 합치지 않는다.
+- 세부 동작: 현실적인 payload 분포, 실제 encoded byte accounting과 permit-before-seal.
+
+#### ST-I2 다량 Actor relocation과 서비스 연속성
+
+우선순위: `P0`
+
+- 절차: 고정 workload SLO의 두 Actor bulk를 각각 실행한다. Relocation 전 60초 동안 source와 target의
+  control Actor·Spot에 request 200/s와 one-way 200/s를 균등하게 보내 baseline을 만든다. Host
+  relocation 동안 같은 offered load를 유지하고, 이동 대상 Actor에도 global Actor ID로 request와
+  one-way를 계속 보낸다. Request에는 absolute deadline과 correlation ID, 모든 operation에는 단조
+  증가 sequence를 넣는다.
+- 검증: control traffic은 request 오류 0건, accepted one-way 누락·중복 0건이어야 한다. Relocation
+  구간의 control throughput은 baseline의 90% 이상이고 request p99는 `max(baseline p99×2, 250 ms)`
+  이하여야 한다. 이동 대상에 seal 전에 수락된 operation은 queue·journal 순서를 유지하고, host
+  relocation의 seal 뒤 commit 전 operation은 bounded relocation ingress hold를 거친다. Commit 뒤
+  이전 route operation은 Message Follow duration 안에서 current owner가 한 번 처리한다. Request reply는
+  original correlation에 한 번만 연결되고 accepted one-way sequence는 한 handler에서 한 번만
+  관찰되어야 한다.
+- SLO 검증: 10,000개와 1,000개 반복이 각각 고정 전체 host 목표를 만족하고 장애를 주입하지 않은 Actor의
+  interruption 초과가 0건이어야 한다. 목표를 넘겨도 runtime relocation은 safe terminal까지 계속하며,
+  E2E result만 `workload_slo_missed`로 실패한다.
+- 세부 동작: 전체 host Actor 처리량, Actor별 interruption과 이동 중 application service 연속성.
+
+#### ST-I3 다량 Spot relocation과 서비스 연속성
+
+우선순위: `P0`
+
+- 절차: 고정 workload SLO의 Instance Spot과 `SpotWide` bulk를 각각 실행한다. Control traffic은
+  `ST-I2`와 같은 baseline과 offered load를 사용한다. 이동하는 Spot에는 `ToSpot` one-way와 request를
+  계속 제출하고 `SpotWide` member Actor에도 `ToActor` traffic을 함께 보낸다.
+- 검증: control service의 오류, throughput과 latency 기준은 `ST-I2`와 같다. `SpotWide`는 aggregate
+  authority CAS 전 participant 어느 것도 target owner로 공개하지 않고 CAS 뒤 전체를 target owner로
+  공개한다. `PerActor` Spot authority 전환 반복에서는 `ToSpot`·Create·Join이 target으로 가는 동안
+  아직 이전하지 않은 Actor의 `ToActor`는 source에서 계속 처리된다. 느린 Spot 하나가 다른 Spot,
+  Actor, target `ToSpot`, Create와 Join을 막으면 실패다.
+- SLO 검증: Instance Spot 1,000개와 `SpotWide` 100개 반복이 각각 고정 전체 host 목표를 만족해야 한다.
+  목표를 넘겨도 이미 시작한 unit의 commit·abort·recovery는 끝까지 확인하고 E2E SLO failure로만
+  기록한다.
+- 세부 동작: 다량 Spot 처리량, aggregate atomicity와 이동 중 Spot·Actor service 연속성.
+
+#### ST-I4 authority 경계별 Message Follow matrix
+
+우선순위: `P0`
+
+아래 matrix는 Actor와 Spot, one-way와 request를 모두 실제 public target API로 제출한다. Transport
+fixture는 public resolver가 선택한 route의 delivery만 지연하며 caller에게 owner RID, `ActorRef`·`SpotRef`
+내부 route나 Message Follow hop을 노출하지 않는다.
+
+| Case | Target·operation | 이전 owner 도착 시점 | 기대 결과 |
+|---|---|---|---|
+| `MF-AO-QUEUE` | Actor one-way | source seal 전 | source queue 또는 accepted journal에 한 번 수락한다. Message Follow route는 사용하지 않는다. |
+| `MF-AR-HOLD` | Actor request | host relocation seal 뒤, authority commit 전 | bounded ingress hold에 operation ID, absolute deadline, correlation과 reply route를 보존한다. Commit이면 target queue, abort이면 source queue에 원래 순서로 넣는다. |
+| `MF-AO-FOLLOW` | Actor one-way | authority commit 뒤, Message Follow duration 안 | Committed source→target Message Follow route로 한 번 relay하고 current Actor handler가 한 번 처리한다. |
+| `MF-AR-FOLLOW` | Actor request | authority commit 뒤, Message Follow duration 안 | Original request operation과 reply route를 보존하고 target reply를 original caller correlation에 한 번만 연결한다. |
+| `MF-SO-QUEUE` | Instance·`SpotWide` Spot one-way | source seal 전 | Spot queue 또는 aggregate payload에 한 번 수락하고 target direct queue보다 먼저 처리한다. |
+| `MF-SR-HOLD` | Instance·`SpotWide` Spot request | seal 뒤, authority commit 전 | 1,024 records·16 MiB ingress hold 안에서 보관한다. Commit과 abort에 따라 target 또는 source queue로 되돌린다. |
+| `MF-SO-FOLLOW` | Instance·`SpotWide` Spot one-way | authority commit 뒤, Message Follow duration 안 | Current Spot owner로 한 번 relay하며 source application handler는 실행하지 않는다. |
+| `MF-SR-FOLLOW` | Instance·`SpotWide` Spot request | authority commit 뒤, Message Follow duration 안 | Deadline과 reply correlation을 보존하고 current Spot handler의 terminal reply 하나만 반환한다. |
+| `MF-PA-SPLIT` | `PerActor` User Spot의 `ToSpot`·`ToActor` | Spot authority commit 뒤, Actor owner commit 전후 | `ToSpot`은 target Spot authority, `ToActor`는 해당 Actor의 current owner를 사용한다. Actor commit 뒤 old Actor route만 Message Follow 대상으로 삼는다. |
+
+Cross-node Actor `Join`에서 source seal 뒤 새 operation을 `ActorMoving`으로 끝내는 Track F와 host
+`Relocate`가 bounded ingress hold를 사용하는 이 matrix를 같은 경로로 합치지 않는다. 각 case는
+`operation_id`, object·owner generation, source arrival, hold/relay enqueue, hop, target admission,
+handler와 terminal reply 시각을 하나의 message flow로 대조한다.
+
+#### ST-I5 Message Follow expiry, duplicate, deadline, loop와 bound
+
+우선순위: `P0`
+
+| Case | 주입 방법 | 기대 결과 |
+|---|---|---|
+| `MF-DUP` | 같은 operation의 이전 route delivery를 두 번 완료한다. | Actor·Spot, one-way·request 모두 target handler 실행은 한 번이다. Request terminal reply도 하나이며 두 번째 delivery는 dedup evidence를 남긴다. |
+| `MF-EXP` | Message Follow route 없음, `MessageFollowDuration=0`, duration 만료 뒤 delivery를 각각 실행한다. | Typed stale-route 결과로 끝나며 handler, Store lookup과 fresh owner 자동 재제출은 0건이다. One-way는 caller result를 만들지 않고 moving/stale drop evidence를 남긴다. |
+| `MF-DEADLINE` | Actor·Spot request가 duration 안에서 relay되는 중 absolute deadline을 넘긴다. | Request는 timeout terminal 하나로 끝나고 late reply는 drop한다. Relay가 deadline을 새로 계산하거나 연장하면 실패다. |
+| `MF-CORR` | 서로 다른 correlation ID를 가진 request를 순서를 바꿔 relay한다. | Reply payload와 correlation이 original request에 각각 한 번 연결되며 operation ID를 correlation 대신 사용하지 않는다. |
+| `MF-GEN` | 같은 ID의 이전 `ObjectGeneration` message를 current Message Follow route에 전달한다. | Typed generation-stale로 끝나고 새 incarnation handler는 실행하지 않는다. |
+| `MF-LOOP` | 정상 relocation으로 owner가 `actor-a -> actor-b -> actor-c -> actor-a`가 된 뒤, 이전 owner generation의 delayed operation을 전달한다. | Owner generation이 증가하지 않는 hop이나 이미 방문한 Message Follow route는 typed stale-route로 끝나며 application handler를 실행하지 않는다. |
+| `MF-HOP` | Message Follow duration 안에서 세 node를 번갈아 사용해 8 hops와 9번째 hop을 만든다. | 8 hops 안의 operation은 current owner에 도달하고 추가 hop은 typed stale-route로 끝난다. |
+| `MF-BOUND` | Message Follow route 하나에 1,024 records·16 MiB 경계를 정확히 채운 뒤 record 수와 byte를 각각 하나씩 넘긴다. | 경계 안 operation은 순서대로 relay한다. 초과 request는 typed stale-route·overload terminal, one-way는 drop evidence로 끝나며 일부 payload를 handler에 전달하지 않는다. |
+
+Loop와 hop 반복은 public relocation으로 commit된 Message Follow route와 transport delivery 지연만 사용한다.
+Framework private route를 쓰거나 바꾸는 테스트 adapter는 사용할 수 없다. 모든 failure case에서 Location Store를
+읽어 fresh owner로 같은 operation을 다시 제출한 evidence가 있으면 실패다.
+
+#### ST-I6 Actor·Spot multi-hop Message Follow와 route 정리
+
+우선순위: `P0`
+
+- 절차: Actor, Instance Spot과 `SpotWide` User Spot을 각각 Message Follow duration 안에
+  `actor-a -> actor-b -> actor-c -> actor-a`로 연속 relocation한다. 첫 owner route에 one-way와
+  request를 commit 전에 보내 transport에서 지연한 뒤 마지막 relocation이 Ready가 된 다음 전달한다.
+  같은 반복에서 중간 owner를 한 번 비정상 종료하고 recovery가 committed Message Follow route를 복원한 뒤 delayed
+  operation을 다시 전달한다.
+- 검증: 각 source node에는 object·source owner generation별 current next-hop Message Follow route만 남는다.
+  Relay hop마다 operation ID, `ObjectGeneration`, absolute deadline, payload checksum, request
+  correlation과 reply route가 같고 owner generation만 committed chain에 맞게 증가한다. One-way는
+  final owner handler에서 한 번, request는 final owner handler와 original caller terminal에서 각각
+  한 번 관찰된다. 중간 node가 비정상 종료되어도 Message Follow route를 추측하거나 Location Store에서 fresh route를
+  찾아 같은 operation을 다시 만들지 않는다.
+- 정리 검증: 각 Message Follow route의 duration이 끝나면 node별 entry와 queued byte가 0이 된다. 만료 뒤 첫
+  owner route delivery는 typed stale-route 결과이며 final owner handler가 실행되지 않는다. Actor와
+  Spot 가운데 한 종류만 정리되거나 이전 owner process의 Message Follow route가 무기한 유지되면 실패다.
+- 세부 동작: Actor·Spot multi-hop Message Follow, recovery와 bounded route lifecycle.
+
 ## 5. 완료 기준
 
 - Track A, Track B, Track C의 `P0` 시나리오는 모든 framework 언어가 같은 의미로 구현해야 한다.
@@ -698,9 +887,14 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   completion callback도 source·target·abort 반복에서 검증해야 한다.
 - Track H의 `P0` 시나리오는 deferred barrier, completion, Context identity·fencing과 error-kind parity를
   다섯 언어에서 검증해야 한다.
+- Track I의 `P0` 시나리오는 payload profile별 실제 encoded byte, 다량 Actor·Spot의 전체 host 처리량,
+  Actor별 1초 interruption, relocation 중 control service와 이동 대상 service, Actor·Spot
+  one-way·request의 Message Follow matrix를 다섯 언어에서 검증해야 한다. Correctness failure,
+  runtime relocation terminal과 workload SLO failure를 서로 다른 evidence field로 기록해야 한다.
 - callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로
   검증한다.
-- location 검증은 public Actor·Spot manager의 `Find`, runtime snapshot 또는 역할 server endpoint로 관찰한다. 내부 store key를 client가
+- Location 검증은 public Actor·Spot manager의 `Find`, RouteMesh·host status 또는 역할 server endpoint로
+  관찰한다. 내부 Store key를 client가
   직접 읽어 성공 판정하면 안 된다.
 - failure injection은 application endpoint 또는 runner process control로만 한다. framework private state를
   직접 조작하는 테스트 전용 adapter는 사용하지 않는다.

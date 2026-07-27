@@ -6,7 +6,7 @@ export const AutomaticTurnDispatchNames = {
   streamNode: 'await.stream',
   actorType: 'await.actor',
   actorIdMetadata: 'actor-id',
-  spotRidMetadata: 'spot-rid',
+  spotIdMetadata: 'spot-rid',
   targetNodeRidMetadata: 'target-node-rid'
 } as const;
 
@@ -31,18 +31,18 @@ export interface ExternalDelayRes {
 
 export interface AwaitShutdownScenarioReq {
   readonly requestId: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly delayMs: number;
 }
 
 export interface AwaitShutdownRecoveryReq {
   readonly requestId: string;
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface AwaitScenarioRes {
   readonly operation: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly evidence: readonly string[];
 }
 
@@ -117,7 +117,7 @@ export interface SelfCycleMsg {
 
 export interface RemoteSpotAwaitReq {
   readonly requestId: string;
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
   readonly terminator?: 'async' | 'yield';
@@ -125,7 +125,7 @@ export interface RemoteSpotAwaitReq {
 
 export interface RemoteSpotAwaitMsg {
   readonly requestId: string;
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
   readonly terminator?: 'async' | 'yield';
@@ -170,11 +170,11 @@ export interface ProbeMsg {
 export interface ProbeReq extends ProbeMsg {}
 
 export interface EnsureSpotReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface EnsureSpotRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
 }
 
@@ -194,12 +194,12 @@ export interface AwaitEvidenceRes {
 }
 
 export interface BindAwaitActorsReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actorIds: readonly string[];
 }
 
 export interface BindAwaitActorsRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actors: readonly AwaitActorBinding[];
 }
 
@@ -227,7 +227,7 @@ export interface ActorFastMsg {
 
 export interface ActorJoinAwaitReq {
   readonly requestId: string;
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
 }
 
 export interface ActorPushAwaitReq {
@@ -249,7 +249,7 @@ export interface ActorAwaitRes {
   readonly scenarioId: string;
   readonly requestId: string;
   readonly actorId: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly marker: string;
 }
@@ -257,7 +257,7 @@ export interface ActorAwaitRes {
 export interface AutomaticTurnDispatchRes {
   readonly scenarioId: string;
   readonly requestId: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly marker: string;
 }

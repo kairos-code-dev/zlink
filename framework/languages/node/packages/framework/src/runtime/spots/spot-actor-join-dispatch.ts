@@ -164,7 +164,19 @@ export class ZLinkSpotActorJoinDispatch {
       routedActorTransferProvider: transfer?.runtime.materializeRoutedActor.bind(transfer.runtime),
       commitTransferredActor: actors.commitTransferredActor,
       actorPacketHandler: options.packets?.handle,
-      bindRemoteSession: options.packets?.bindRemoteSession,
+      bindRemoteSession: options.packets?.bindRemoteSession === undefined
+        ? undefined
+        : (actor, sourceNodeRid, sourceSessionRid, declaredTarget) =>
+            options.packets!.bindRemoteSession!(
+              {
+                actorId: actor.actorId,
+                generation: actor.objectGeneration,
+                nodeRid: actor.nodeRid
+              },
+              sourceNodeRid,
+              sourceSessionRid,
+              declaredTarget
+            ),
       routedBoundSessionReceiver: options.boundSessionRuntime?.receiveRoutedBoundSession.bind(options.boundSessionRuntime),
       routedBoundSessionResponseReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionResponse.bind(options.boundSessionRuntime),
       routedBoundSessionErrorReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionError.bind(options.boundSessionRuntime),

@@ -10,7 +10,7 @@ exports.zlinkRuntimeDefaultLocationOptions = {
     routingIdFencingMarginMs: 5000,
     ownerLeaseRenewTimeoutMs: 3000,
     routeCacheMaxAgeMs: 15000,
-    relocationForwardingWindowMs: 30000,
+    messageFollowDurationMs: 30000,
     maxActiveOutboundRelocations: 64,
     maxActiveInboundRelocations: 64,
     maxConcurrentRelocationCaptures: 8,

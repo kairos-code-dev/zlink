@@ -11,15 +11,11 @@
 
     <ItemGroup>
         <PackageReference Include="StackExchange.Redis"/>
-        <PackageReference Include="System.Text.Json"/>
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../Zlink.Framework.Provider.Abstractions/Zlink.Framework.Provider.Abstractions.csproj"/>
     </ItemGroup>
 
-    <ItemGroup>
-        <Compile Include="../Shared/ZLinkCanonicalLocationKeyFormatter.cs"
-                 Link="Internal/ZLinkCanonicalLocationKeyFormatter.cs"/>
-    </ItemGroup>
 </Project>

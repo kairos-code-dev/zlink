@@ -47,9 +47,8 @@ runner는 "시작 → cleanup → 종료"만 지원하므로, 아래 시나리�
 **성공 기준 어휘:** "정해진 public error"는 시나리오마다 정확한 `ZLinkFrameworkErrorKind`
 (`RouteNotConnected`·`RequestTargetNotFound`·`RequestRejected`·`RequestFailed`) 또는
 `TimeoutException`과, 그 retriable 여부·timeout window를 명시한다. 재시도가 framework 동작인지
-client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공 +
-`ListMeshNodesAsync(meshName)`의 descriptor와 `IZLinkRouteMeshRuntime.Snapshot(meshName)`의 peer
-snapshot에서 제거·추가가 반영되는지 확인하는 방식처럼
+client harness 동작인지도 구분한다. 복구는 "이후 follow-up request 성공과 public RouteMesh status의
+ready peer·Channel target에서 제거·추가가 반영되는지 확인하는 방식처럼
 **눈으로 확인 가능한 결과**로 판정한다(내부 pending dict는 public 표면이 아니므로 직접 단언하지
 않는다).
 
@@ -192,12 +191,15 @@ crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊�
 
 우선순위: `P1`
 
-**검증 질문:** provider를 정상 종료하면 descriptor와 ready member에서 제외되고 consumer가 해당
-endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply는 정상 수신되는가.
+**검증 질문:** Provider를 정상 종료하면 ready peer·target에서 제외되고 consumer가 해당 connection을
+선택하지 않으며, 종료 직전에 완료된 request의 reply는 정상 수신되는가.
 
 - 절차: provider에 정상 종료(`StopAsync`/lifetime stop)를 요청한다.
-- 검증: 종료 후 provider의 MeshNode descriptor가 store에서 제거되고(MeshNode runtime snapshot에서 사라짐 — `Shutdown` 경로의 owner lease 제거 + descriptor bulk remove) consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. socket weight로 신규 부하만 제외하는 경로는 RL-B4·RL-B5에서, host `Relocate` lifecycle은 RL-A4와 Config 11에서 별도로 다룬다.
-- 세부 동작: 정상 종료 시 descriptor 제거 + stale endpoint 회피.
+- 검증: 종료 후 provider의 Node RID가 public RouteMesh status의 ready peer·Channel target에서 사라지고
+  consumer가 이전 connection으로 더 가지 않는다. 종료 시점에 이미 완료된 request의 reply는 정상
+  수신된다. Socket weight로 신규 부하만 제외하는 경로는 RL-B4·RL-B5에서, host `Relocate` lifecycle은
+  RL-A4와 Config 11에서 별도로 다룬다.
+- 세부 동작: 정상 종료 뒤 public topology 수렴과 stale connection 회피.
 
 #### RL-B4 ChannelName weight 부하 제외 / 복원
 
@@ -208,8 +210,8 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 
 - 절차: provider 2대로 분산 중 한 노드의 admin 경로에서
   `IZLinkRouteMeshRuntimeOptions.Channel(channelName).Weight = 0`으로 바꾼다.
-  local getter와 descriptor `ChannelWeights[channelName]`가 weight 0을 반영한 뒤 consumer가 request를 보내 실제 전파를
-  확인한다. 이후 같은 노드를 `Weight = 100`으로 복원하고 다시 실제 트래픽으로 반영을 확인한다.
+  Local getter가 weight 0을 반영한 뒤 consumer가 request를 보내 실제 전파를 확인한다. 이후 같은
+  노드를 `Weight = 100`으로 복원하고 다시 실제 트래픽으로 반영을 확인한다.
 - 검증: weight 0 전파를 확인한 뒤의 검증 구간에는 신규 request가 해당 노드 evidence에 기록되지 않고
   다른 노드가 처리한다(후보가 그 노드뿐이면 정해진 public error). 노드는 종료되지 않고 descriptor와
   기존 연결도 유지된다. weight 복원 뒤 다시 부하 분산 대상이 되어 request를 처리한다. consumer
@@ -232,8 +234,7 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 
 - 절차: provider가 느린 handler(`value=="slow"`)로 request를 처리하고 있다는 handler-start evidence를
   확인한 뒤 그 provider의 `Channel(channelName).Weight = 0`으로 바꾼다. local getter와
-  descriptor `ChannelWeights` 반영 뒤 신규 request를
-  계속 보내 실제 전파 완료를 확인한다.
+  신규 request의 provider evidence를 함께 확인해 실제 전파 완료를 판정한다.
 - 검증: weight 변경 전에 시작한 request는 끝까지 완료되어 reply가 정상 수신된다. 전파 완료 뒤의 신규
   request는 해당 provider evidence에 기록되지 않고 다른 provider가 처리한다. 완료 후 pending이 남지
   않는다. 이 시나리오는 `Draining` 상태 전이, in-flight 대기, actor handoff를 단언하지 않는다.
@@ -278,8 +279,8 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 descriptor가 성공 결과에서 제외되고 consumer가 정상 provider만 선택하는가.
 
 - 절차: provider를 `kill(SIGKILL)`로 비정상 종료해 descriptor remove를 수행하지 못한 상태를 만든다.
-- 검증: owner lease TTL 만료로 그 provider의 MeshNode descriptor가 `ListMeshNodesAsync(meshName)`의
-  성공 결과와 MeshNode runtime snapshot에서 제외되고, consumer의 follow-up request가 정상 provider에서만
+- 검증: Owner lease TTL 만료로 그 provider의 Node RID가 public RouteMesh status의 ready peer와
+  Channel ready target에서 제외되고, consumer의 follow-up request가 정상 provider에서만
   처리된다. 현재 scale-in 테스트가 graceful `StopAsync`만 다루면 이 경로는 하네스 구현 전까지
   미구현으로 표시한다. lease 만료의 정밀 검증은 Config 6 SF-C1이 담당한다.
 - 세부 동작: 비정상 종료 + owner lease 만료 stale 정리.
@@ -288,31 +289,31 @@ descriptor가 성공 결과에서 제외되고 consumer가 정상 provider만 �
 
 우선순위: `P2`
 
-**검증 질문:** provider process를 정상 종료했다가 재시작하면 old location이 제거되고 새 RID의
-descriptor로 topology가 다시 수렴하며 이전 lifecycle descriptor가 남지 않는가.
+**검증 질문:** Provider process를 정상 종료했다가 재시작하면 이전 Node RID가 제외되고 새 Node RID로
+topology가 다시 수렴하는가.
 
-- 절차: provider process를 `SIGTERM`으로 정상 종료하고 descriptor 성공 조회에서 old descriptor가
-  제거됐는지 확인한다. 그 뒤 같은 endpoint와 automatic discovery가 발급한 새 RID로 process를 재시작하고 store/runtime snapshot과
-  지속 request를 관찰한다.
+- 절차: Provider process를 `SIGTERM`으로 정상 종료하고 public RouteMesh status에서 이전 Node RID가
+  제외됐는지 확인한다. 그 뒤 같은 endpoint와 automatic discovery가 발급한 새 Node RID로 process를
+  재시작하고 public status와 지속 request를 관찰한다.
   실제 network partition과 `SIGSTOP`/`SIGCONT` pause는 연결·lease 조건이 다르므로 이 시나리오에 섞지
   않는다. network partition은 proxy/iptables 같은 별도 harness가 마련되면 별도 시나리오로 추가한다.
-- 검증: 종료 구간의 request 결과는 RL-A1의 restart 오류 계약을 따른다. 복구 뒤 provider가 새 RID의 owner
-  lease와 MeshNode descriptor를 등록하고 MeshNode topology가 다시 수렴해 messaging이 정상화된다.
-  이전 RID와 old generation descriptor는 성공 결과에 남지 않는다.
+- 검증: 종료 구간의 request 결과는 RL-A1의 restart 오류 계약을 따른다. 복구 뒤 새 Node RID가 public
+  status에서 Ready가 되고 messaging이 정상화된다. 이전 Node RID는 ready peer·target에 남지 않는다.
+  Owner lease, descriptor generation과 endpoint는 public status에 노출하지 않는다.
 - 세부 동작: 정상 process restart 뒤 새 lifecycle identity와 topology 재수렴.
 
 #### RL-C4 location store restart/outage 복구
 
 우선순위: `P1`
 
-**검증 질문:** 공유 location store가 일시 중단되어도 이미 연결된 ChannelName messaging은 계속
-동작하고, store 복구 후 descriptor와 runtime snapshot이 정상화되는가.
+**검증 질문:** 공유 Location Store가 일시 중단되어도 이미 연결된 ChannelName messaging은 계속
+동작하고, Store 복구 후 public topology status가 정상화되는가.
 
 - 절차: provider·consumer가 동작하는 중 store(Redis) 프로세스를 `restart`한다.
 - 검증: store 다운 동안 **이미 수립된 MeshNode peer 연결의 messaging은 계속 동작한다**(위치
   resolve는 store에 의존하지만 수립된 연결 자체는 store와 독립 — fail-static). store 다운 중 read
-  표면은 store 장애를 not found가 아니라 infrastructure error로 구분해 반환한다. store 복구 후 각
-  노드가 owner lease와 MeshNode descriptor를 다시 upsert하고, MeshNode runtime snapshot이 정상화되며 follow-up
+  표면은 Store 장애를 not found가 아니라 infrastructure error로 구분해 반환한다. Store 복구 후
+  public RouteMesh status가 다시 Ready로 수렴하며 follow-up
   request가 성공한다. (재등록 순서·owner lease renew 유예·grace 초과 같은 장애 매트릭스 정밀 검증은
   Config 6가 담당한다 — 여기서는 "수립된 연결의 store 독립 + 복구 후 정상화"만 본다.)
 - 세부 동작: admitted peer 연결은 store와 독립(fail-static) + 복구 후 owner lease/descriptor 재등록·재조회.
@@ -477,7 +478,7 @@ monitor callback이 남지 않는가.
 우선순위: `P0`
 
 - 절차: 같은 Actor를 owner A에서 B로 이전한 뒤 새 authority로 A에 다시 이전한다. 최초
-  A owner의 message, frozen journal, forwarding record와 timer를 지연시켜 두 번째 A owner에 도착시킨다.
+  A owner의 message, frozen journal, Message Follow record와 timer를 지연시켜 두 번째 A owner에 도착시킨다.
 - 검증: Current membership fence와 다른 모든 record를 application admission 전에 거부한다. 새 A
   owner의 state, accepted journal order과 handler count는 지연 record로 변경되지 않는다.
 
@@ -561,7 +562,9 @@ monitor callback이 남지 않는가.
 
 - 절차: Object role `None`이고 Location Store와 Relocation Store를 사용하지 않는 fixed-RID manual RouteMesh
   peer에서 target object로 장기 request와 one-way send를
-  각각 수락시킨 뒤 target host에 `PlannedMaintenance` mode의 `Relocate`를 시작한다. 첫 반복은 두 작업을
+  각각 수락시킨 뒤 automatic topology만 등록한 target host에 `PlannedMaintenance` mode의 `Relocate`를
+  시작한다. Target host에는 manual RouteMesh peer, ClientServer client endpoint와 manual fanout component를
+  등록하지 않는다. 첫 반복은 두 작업을
   capture 전에 완료하고, 두 번째 반복은
   reversible seal deadline을 넘도록 handler를 지연한다. Manual peer를 재시작해 같은 RID로 새 service
   connection도 admission한다.
@@ -570,7 +573,9 @@ monitor callback이 남지 않는가.
   request와 one-way send는 durable accepted journal과 reply relay에 포함하지 않고 모두 `Captured` 전에 terminal
   완료한다. 하나라도 deadline 안에 끝나지 않으면 relocation은 pre-Captured abort, `Relocate`는
   `Blocked/DeadlineExceeded`이고 source admission을 복원한다. Durable accepted journal은 exact source owner lease로
-  fence할 수 있는 lease-backed accepted work만 기록한다.
+  fence할 수 있는 lease-backed accepted work만 기록한다. 이 시나리오는 relocating host에 manual component를
+  등록한 경우를 허용하지 않는다. 그 경우에는 Config 11 OBS-C9처럼 precommit에서
+  `Blocked/ManualTopologyUnsupported`여야 한다.
 
 #### RL-F9 preflight deadline과 seal 경계
 
@@ -687,5 +692,7 @@ monitor callback이 남지 않는가.
 - 모든 `P0`와 connection liveness 묶음 `RL-E1`~`RL-E5`는 네 runtime lane과 다섯 public 언어 표현에서
   구현한다. 모든 `P1`은 해당 formal capability를 지원하는 언어에서 구현한다. `P2`는 선택이며 미구현
   이유를 남긴다.
-- 복구 시나리오는 복구 후 follow-up request 성공 + runtime query MeshNode descriptor snapshot의 제거/추가 반영으로 관측한다(내부 pending/stale 상태는 public 표면이 아니므로 직접 단언하지 않는다).
+- 복구 시나리오는 복구 후 follow-up request 성공과 public RouteMesh status의 ready peer·target
+  제거·추가로 관측한다. 내부 pending, stale descriptor와 provider record는 public 표면이 아니므로
+  직접 단언하지 않는다.
 - public contract만 직접 호출하고 `ensure`로 단언한다.

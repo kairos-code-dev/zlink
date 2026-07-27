@@ -10,58 +10,64 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
 {
     private static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
 
-    private readonly ZLinkDrainCoordinator _shutdown;
-    private readonly Func<CancellationToken, ValueTask<ZLinkFrameworkTerminationReason?>> _retirePreflight;
-    private readonly Func<CancellationToken, ValueTask<bool>> _publishRetiring;
-    private readonly Func<ZLinkDrainRemainderCounts> _pending;
+    private readonly ZLinkDrainCoordinator _lifecycle;
+    private readonly Func<
+            ZLinkFrameworkRelocationMode,
+            long,
+            CancellationToken,
+            ValueTask<ZLinkFrameworkRelocationReason?>>
+        _relocationPreflight;
+    private readonly Func<CancellationToken, ValueTask<bool>> _publishRelocating;
+    private readonly long _sourceApplicationVersion;
     private readonly IDisposable _metricRegistration;
     private readonly object _gate = new();
-    private readonly List<Channel<ZLinkFrameworkRuntimeEvent>> _observers = [];
-    private Task<ZLinkFrameworkTerminationResult>? _operation;
+    private readonly List<Channel<ZLinkFrameworkRuntimeStatus>> _observers = [];
+
+    private Task<ZLinkFrameworkRelocationResult>? _relocationOperation;
+    private Task<ZLinkFrameworkTerminationResult>? _shutdownOperation;
     private ZLinkFrameworkRuntimeState _state = ZLinkFrameworkRuntimeState.Preparing;
-    private ZLinkFrameworkTerminationIntent? _effectiveIntent;
+    private ZLinkFrameworkRelocationResult? _relocationResult;
+    private ZLinkFrameworkTerminationResult? _terminationResult;
     private DateTimeOffset? _deadline;
-    private ZLinkFrameworkTerminationReason? _blocker;
-    private ZLinkFrameworkTerminationResult? _terminal;
-    private CancellationTokenSource? _preflightCancellation;
+    private ZLinkFrameworkRelocationMode? _activeMode;
+    private long? _activeTargetVersion;
     private ulong _sequence;
-    private long _operationStartedTimestamp;
-    private bool _workSealed;
-    private bool _shutdownRequestedDuringPreflight;
-    private bool _retiringPublicationCommitted;
     private int _disposed;
 
     internal ZLinkFrameworkMaintenanceRuntime(
-        ZLinkDrainCoordinator shutdown,
-        Func<CancellationToken, ValueTask<ZLinkFrameworkTerminationReason?>> retirePreflight,
-        Func<CancellationToken, ValueTask<bool>> publishRetiring,
-        Func<ZLinkDrainRemainderCounts> pending)
+        ZLinkDrainCoordinator lifecycle,
+        Func<
+                ZLinkFrameworkRelocationMode,
+                long,
+                CancellationToken,
+                ValueTask<ZLinkFrameworkRelocationReason?>>
+            relocationPreflight,
+        Func<CancellationToken, ValueTask<bool>> publishRelocating,
+        long sourceApplicationVersion = 0)
     {
-        _shutdown = shutdown;
-        _retirePreflight = retirePreflight;
-        _publishRetiring = publishRetiring;
-        _pending = pending;
+        _lifecycle = lifecycle;
+        _relocationPreflight = relocationPreflight;
+        _publishRelocating = publishRelocating;
+        _sourceApplicationVersion = sourceApplicationVersion;
         _metricRegistration = ZLinkRuntimeMetrics.RegisterTerminationState(
-            () => State.ToString().ToLowerInvariant());
+            () => Status.State.ToString().ToLowerInvariant());
     }
 
-    public ZLinkFrameworkRuntimeState State
+    public ZLinkFrameworkRuntimeStatus Status
     {
         get
         {
-            lock (_gate) return _state;
+            lock (_gate)
+                return CreateStatusUnderLock(DateTimeOffset.UtcNow);
         }
     }
-
-    public bool IsReady => State == ZLinkFrameworkRuntimeState.Serving;
 
     internal void MarkServing()
     {
         lock (_gate)
         {
-            if (_state != ZLinkFrameworkRuntimeState.Preparing)
-                return;
-            TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
+            if (_state == ZLinkFrameworkRuntimeState.Preparing)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
         }
     }
 
@@ -69,9 +75,8 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     {
         lock (_gate)
         {
-            if (_state == ZLinkFrameworkRuntimeState.Stopped)
-                return;
-            TransitionUnderLock(ZLinkFrameworkRuntimeState.Error);
+            if (_state != ZLinkFrameworkRuntimeState.Stopped)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Error);
         }
     }
 
@@ -81,35 +86,11 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         MarkError();
     }
 
-    public ZLinkFrameworkRuntimeSnapshot Snapshot()
-    {
-        lock (_gate)
-        {
-            var pending = _pending();
-            return new ZLinkFrameworkRuntimeSnapshot(
-                _state,
-                _effectiveIntent,
-                _deadline,
-                _workSealed,
-                _blocker,
-                checked((ulong)Math.Max(0, pending.Requests)),
-                checked((ulong)Math.Max(0, pending.Actors + pending.Spots)),
-                checked((ulong)Math.Max(0, pending.Sessions)),
-                _terminal,
-                _sequence,
-                DateTimeOffset.UtcNow);
-        }
-    }
-
-    public async IAsyncEnumerable<ZLinkFrameworkRuntimeEvent> ObserveAsync(
-        int capacity = 1024,
+    public async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (capacity <= 0)
-            throw new ArgumentOutOfRangeException(nameof(capacity));
-
-        var observer = Channel.CreateBounded<ZLinkFrameworkRuntimeEvent>(
-            new BoundedChannelOptions(capacity)
+        var observer = Channel.CreateBounded<ZLinkFrameworkRuntimeStatus>(
+            new BoundedChannelOptions(1024)
             {
                 SingleReader = true,
                 SingleWriter = false,
@@ -120,254 +101,239 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         {
             ThrowIfDisposed();
             _observers.Add(observer);
+            observer.Writer.TryWrite(CreateStatusUnderLock(DateTimeOffset.UtcNow));
         }
         try
         {
-            await foreach (var item in observer.Reader.ReadAllAsync(cancellationToken)
+            await foreach (var status in observer.Reader.ReadAllAsync(cancellationToken)
                                .ConfigureAwait(false))
-                yield return item;
+                yield return status;
         }
         finally
         {
-            lock (_gate) _observers.Remove(observer);
+            lock (_gate)
+                _observers.Remove(observer);
         }
     }
 
-    public ValueTask<ZLinkFrameworkTerminationResult> RetireAsync(
-        TimeSpan? deadline = null,
-        CancellationToken cancellationToken = default) =>
-        TerminateAsync(ZLinkFrameworkTerminationIntent.Retire, deadline, cancellationToken);
+    public ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(
+        ZLinkFrameworkRelocationOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var (effectiveTargetVersion, timeout) = Validate(options);
+
+        Task<ZLinkFrameworkRelocationResult> operation;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_relocationResult is { } completed)
+                return ValueTask.FromResult(completed);
+            if (_shutdownOperation is not null
+                || _state is ZLinkFrameworkRuntimeState.Draining
+                    or ZLinkFrameworkRuntimeState.Stopped)
+                return ValueTask.FromResult(Blocked(
+                    options.Mode,
+                    effectiveTargetVersion,
+                    ZLinkFrameworkRelocationReason.ShutdownRequested));
+            if (_relocationOperation is not null)
+            {
+                if (_activeMode != options.Mode
+                    || _activeTargetVersion != effectiveTargetVersion)
+                    return ValueTask.FromResult(Blocked(
+                        options.Mode,
+                        effectiveTargetVersion,
+                        ZLinkFrameworkRelocationReason.OperationInProgress));
+                operation = _relocationOperation;
+            }
+            else
+            {
+                if (_state != ZLinkFrameworkRuntimeState.Serving)
+                    return ValueTask.FromResult(Blocked(
+                        options.Mode,
+                        effectiveTargetVersion,
+                        ZLinkFrameworkRelocationReason.RuntimeNotReady));
+                _activeMode = options.Mode;
+                _activeTargetVersion = effectiveTargetVersion;
+                _deadline = DateTimeOffset.UtcNow + timeout;
+                _relocationOperation = ExecuteRelocationAsync(
+                    options.Mode,
+                    effectiveTargetVersion,
+                    _deadline.Value);
+                operation = _relocationOperation;
+            }
+        }
+        return new ValueTask<ZLinkFrameworkRelocationResult>(
+            operation.WaitAsync(cancellationToken));
+    }
 
     public ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
         TimeSpan? deadline = null,
-        CancellationToken cancellationToken = default) =>
-        TerminateAsync(ZLinkFrameworkTerminationIntent.Shutdown, deadline, cancellationToken);
-
-    private async ValueTask<ZLinkFrameworkTerminationResult> TerminateAsync(
-        ZLinkFrameworkTerminationIntent intent,
-        TimeSpan? deadline,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         var timeout = deadline ?? DefaultDeadline;
         if (timeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(
                 nameof(deadline),
                 deadline,
-                "Termination deadline must be greater than zero.");
+                "Shutdown deadline must be greater than zero.");
 
         Task<ZLinkFrameworkTerminationResult> operation;
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_terminal is { } terminal)
-                return terminal;
-            if (_operation is null)
-            {
-                if (intent == ZLinkFrameworkTerminationIntent.Retire
-                    && _state != ZLinkFrameworkRuntimeState.Serving)
-                {
-                    var metricStarted = ZLinkRuntimeMetrics.StartTermination();
-                    var blocked = new ZLinkFrameworkTerminationResult(
-                        intent,
-                        ZLinkFrameworkTerminationOutcome.Blocked,
-                        ZLinkFrameworkTerminationReason.RuntimeNotReady);
-                    PublishUnderLock(
-                        "zlink.runtime.host.termination_changed",
-                        blocked.Outcome,
-                        blocked.Reason);
-                    RecordCompletion(metricStarted, blocked);
-                    return blocked;
-                }
-
-                _effectiveIntent = intent;
-                _deadline = DateTimeOffset.UtcNow + timeout;
-                _blocker = null;
-                _operationStartedTimestamp = ZLinkRuntimeMetrics.StartTermination();
-                _operation = ExecuteAsync(intent, _deadline.Value);
-            }
-            else if (intent == ZLinkFrameworkTerminationIntent.Shutdown
-                     && _state == ZLinkFrameworkRuntimeState.Serving
-                     && _effectiveIntent == ZLinkFrameworkTerminationIntent.Retire
-                     && !_retiringPublicationCommitted)
-            {
-                _shutdownRequestedDuringPreflight = true;
-                _effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                _preflightCancellation?.Cancel();
-            }
-            operation = _operation;
+            if (_terminationResult is { } completed)
+                return ValueTask.FromResult(completed);
+            _shutdownOperation ??= ExecuteShutdownAsync(timeout);
+            operation = _shutdownOperation;
         }
-
-        return await operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new ValueTask<ZLinkFrameworkTerminationResult>(
+            operation.WaitAsync(cancellationToken));
     }
 
-    private async Task<ZLinkFrameworkTerminationResult> ExecuteAsync(
-        ZLinkFrameworkTerminationIntent intent,
+    private async Task<ZLinkFrameworkRelocationResult> ExecuteRelocationAsync(
+        ZLinkFrameworkRelocationMode mode,
+        long targetApplicationVersion,
         DateTimeOffset absoluteDeadline)
     {
-        // The shared operation must be visible before a synchronously completed
-        // preflight can clear a Blocked attempt and permit a later retry.
         await Task.Yield();
-
-        var effectiveIntent = intent;
-        if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
+        var metricStarted = ZLinkRuntimeMetrics.StartTermination();
+        using var deadline = CreateDeadline(absoluteDeadline);
+        ZLinkFrameworkRelocationReason? blocker;
+        try
         {
-            ZLinkFrameworkTerminationReason? blocker;
-            CancellationTokenSource? preflightDeadline = null;
-            lock (_gate)
-            {
-                if (_shutdownRequestedDuringPreflight)
-                    effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                else
-                {
-                    var preflightRemaining = absoluteDeadline - DateTimeOffset.UtcNow;
-                    if (preflightRemaining <= TimeSpan.Zero)
-                        return CompleteBlocked(ZLinkFrameworkTerminationReason.DeadlineExceeded);
-                    preflightDeadline = new CancellationTokenSource(preflightRemaining);
-                    _preflightCancellation = preflightDeadline;
-                }
-            }
-
-            blocker = null;
-            if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
-            {
-                try
-                {
-                    blocker = await _retirePreflight(preflightDeadline!.Token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (preflightDeadline!.IsCancellationRequested)
-                {
-                    lock (_gate)
-                        if (_shutdownRequestedDuringPreflight)
-                            effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                    if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
-                        blocker = ZLinkFrameworkTerminationReason.DeadlineExceeded;
-                }
-                catch
-                {
-                    blocker = ZLinkFrameworkTerminationReason.StoreUnavailable;
-                }
-                finally
-                {
-                    lock (_gate)
-                    {
-                        if (ReferenceEquals(_preflightCancellation, preflightDeadline))
-                            _preflightCancellation = null;
-                        if (_shutdownRequestedDuringPreflight)
-                            effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                    }
-                    preflightDeadline!.Dispose();
-                }
-            }
-
-            if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire
-                && blocker is { } reason)
-                return CompleteBlocked(reason);
-
-            if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
-            {
-                var publicationRemaining = absoluteDeadline - DateTimeOffset.UtcNow;
-                if (publicationRemaining <= TimeSpan.Zero)
-                    return CompleteBlocked(ZLinkFrameworkTerminationReason.DeadlineExceeded);
-                using var publicationDeadline = new CancellationTokenSource(
-                    publicationRemaining);
-                lock (_gate)
-                {
-                    if (_shutdownRequestedDuringPreflight)
-                        effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                    else
-                        _preflightCancellation = publicationDeadline;
-                }
-                bool published;
-                try
-                {
-                    published = effectiveIntent
-                                == ZLinkFrameworkTerminationIntent.Shutdown
-                        || await _publishRetiring(publicationDeadline.Token)
-                            .ConfigureAwait(false);
-                    if (published
-                        && effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
-                        lock (_gate)
-                            _retiringPublicationCommitted = true;
-                }
-                catch (OperationCanceledException)
-                    when (publicationDeadline.IsCancellationRequested)
-                {
-                    published = false;
-                }
-                catch (ZLinkRetiringPublicationRollbackException)
-                {
-                    effectiveIntent = ZLinkFrameworkTerminationIntent.Retire;
-                    return await CompleteForcedAsync(
-                            effectiveIntent,
-                            absoluteDeadline,
-                            ZLinkDrainForceReason.TeardownFailed)
-                        .ConfigureAwait(false);
-                }
-                catch
-                {
-                    lock (_gate)
-                        if (_shutdownRequestedDuringPreflight
-                            && !_retiringPublicationCommitted)
-                            effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                    if (effectiveIntent == ZLinkFrameworkTerminationIntent.Shutdown)
-                        published = true;
-                    else
-                        return CompleteBlocked(
-                            ZLinkFrameworkTerminationReason.StoreUnavailable);
-                }
-                finally
-                {
-                    lock (_gate)
-                    {
-                        if (ReferenceEquals(
-                                _preflightCancellation,
-                                publicationDeadline))
-                            _preflightCancellation = null;
-                        if (_shutdownRequestedDuringPreflight
-                            && !_retiringPublicationCommitted)
-                            effectiveIntent = ZLinkFrameworkTerminationIntent.Shutdown;
-                    }
-                }
-                if (effectiveIntent == ZLinkFrameworkTerminationIntent.Shutdown
-                    && !_retiringPublicationCommitted)
-                    published = true;
-                if (!published)
-                    return CompleteBlocked(
-                        publicationDeadline.IsCancellationRequested
-                            ? ZLinkFrameworkTerminationReason.DeadlineExceeded
-                            : ZLinkFrameworkTerminationReason.StoreUnavailable);
-
-                if (effectiveIntent == ZLinkFrameworkTerminationIntent.Retire)
-                    lock (_gate)
-                    {
-                        TransitionUnderLock(ZLinkFrameworkRuntimeState.Retiring);
-                    }
-            }
+            blocker = await _relocationPreflight(
+                    mode,
+                    targetApplicationVersion,
+                    deadline.Token)
+                .ConfigureAwait(false);
         }
-
-        if (effectiveIntent == ZLinkFrameworkTerminationIntent.Shutdown)
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
-            lock (_gate)
-            {
-                _workSealed = true;
-                TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
-            }
+            blocker = ZLinkFrameworkRelocationReason.DeadlineExceeded;
         }
+        catch
+        {
+            blocker = ZLinkFrameworkRelocationReason.StoreUnavailable;
+        }
+        if (blocker is { } preflightBlocker)
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                preflightBlocker,
+                metricStarted);
 
-        ZLinkDrainResult drained;
+        bool published;
+        try
+        {
+            published = await _publishRelocating(deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.DeadlineExceeded,
+                metricStarted);
+        }
+        catch
+        {
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.StoreUnavailable,
+                metricStarted);
+        }
+        if (!published)
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.StoreUnavailable,
+                metricStarted);
+
+        lock (_gate)
+            TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocating);
+
+        ZLinkDrainResult result;
         try
         {
             var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
                 remaining = TimeSpan.FromTicks(1);
-            drained = await _shutdown.DrainAsync(
-                    effectiveIntent,
+            result = await _lifecycle.DrainAsync(
+                    ZLinkFrameworkLifecycleIntent.Relocate,
                     remaining,
-                    effectiveIntent == ZLinkFrameworkTerminationIntent.Retire
-                        ? MarkRelocationDetached
-                        : null,
+                    MarkRelocated,
                     CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            result = new ForceStopped(ZLinkDrainForceReason.RelocationFailed);
+        }
+
+        if (result is DrainBlocked blocked)
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                blocked.Reason,
+                metricStarted);
+        if (result is not Drained)
+        {
+            lock (_gate)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Error);
+            return CompleteBlocked(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationReason.RelocationFailed,
+                metricStarted,
+                restoreServing: false);
+        }
+
+        lock (_gate)
+        {
+            var completed = new ZLinkFrameworkRelocationResult(
+                mode,
+                targetApplicationVersion,
+                ZLinkFrameworkRelocationOutcome.Relocated,
+                ZLinkFrameworkRelocationReason.None);
+            _relocationResult = completed;
+            _deadline = null;
+            _relocationOperation = null;
+            if (_state != ZLinkFrameworkRuntimeState.Relocated)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
+            else
+                PublishUnderLock();
+            RecordRelocationCompletion(metricStarted, completed);
+            return completed;
+        }
+    }
+
+    private async Task<ZLinkFrameworkTerminationResult> ExecuteShutdownAsync(
+        TimeSpan timeout)
+    {
+        await Task.Yield();
+        var metricStarted = ZLinkRuntimeMetrics.StartTermination();
+
+        Task<ZLinkFrameworkRelocationResult>? relocation;
+        lock (_gate)
+            relocation = _relocationOperation;
+        if (relocation is not null)
+            await relocation.ConfigureAwait(false);
+
+        lock (_gate)
+        {
+            _deadline = DateTimeOffset.UtcNow + timeout;
+            TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
+        }
+
+        ZLinkDrainResult drained;
+        try
+        {
+            drained = await _lifecycle.DrainAsync(
+                    ZLinkFrameworkLifecycleIntent.Shutdown,
+                    timeout,
+                    cancellationToken: CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch
@@ -375,169 +341,161 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
             drained = new ForceStopped(ZLinkDrainForceReason.TeardownFailed);
         }
 
-        return drained is DrainBlocked blocked
-            ? CompleteBlocked(blocked.Reason)
-            : CompleteTerminal(effectiveIntent, drained);
-    }
-
-    private async Task<ZLinkFrameworkTerminationResult> CompleteForcedAsync(
-        ZLinkFrameworkTerminationIntent effectiveIntent,
-        DateTimeOffset absoluteDeadline,
-        ZLinkDrainForceReason reason)
-    {
-        lock (_gate)
-        {
-            _workSealed = true;
-            TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
-        }
-        var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
-        if (remaining <= TimeSpan.Zero)
-            remaining = TimeSpan.FromTicks(1);
-        var drained = await _shutdown.ForceStopAsync(reason, remaining)
-            .ConfigureAwait(false);
-        return CompleteTerminal(effectiveIntent, drained);
-    }
-
-    private ZLinkFrameworkTerminationResult CompleteTerminal(
-        ZLinkFrameworkTerminationIntent effectiveIntent,
-        ZLinkDrainResult drained)
-    {
         var result = drained switch
         {
             Drained => new ZLinkFrameworkTerminationResult(
-                effectiveIntent,
                 ZLinkFrameworkTerminationOutcome.Stopped,
                 ZLinkFrameworkTerminationReason.None),
             ForceStopped forced => new ZLinkFrameworkTerminationResult(
-                effectiveIntent,
                 ZLinkFrameworkTerminationOutcome.ForceStopped,
-                MapForceReason(forced.Reason)),
-            _ => throw new InvalidOperationException(
-                $"Unknown drain result '{drained.GetType().Name}'.")
+                forced.Reason == ZLinkDrainForceReason.DeadlineExceeded
+                    ? ZLinkFrameworkTerminationReason.DeadlineExceeded
+                    : ZLinkFrameworkTerminationReason.TeardownFailed),
+            _ => new ZLinkFrameworkTerminationResult(
+                ZLinkFrameworkTerminationOutcome.ForceStopped,
+                ZLinkFrameworkTerminationReason.TeardownFailed)
         };
         lock (_gate)
         {
-            _terminal = result;
-            TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
-            PublishUnderLock(
-                "zlink.runtime.host.termination_changed",
-                result.Outcome,
-                result.Reason);
-            RecordCompletion(_operationStartedTimestamp, result);
-        }
-        return result;
-    }
-
-    private void MarkRelocationDetached()
-    {
-        lock (_gate)
-        {
-            _workSealed = true;
-            if (_state == ZLinkFrameworkRuntimeState.Retiring)
-                TransitionUnderLock(ZLinkFrameworkRuntimeState.Draining);
-        }
-    }
-
-    private ZLinkFrameworkTerminationResult CompleteBlocked(
-        ZLinkFrameworkTerminationReason reason)
-    {
-        lock (_gate)
-        {
-            var result = new ZLinkFrameworkTerminationResult(
-                ZLinkFrameworkTerminationIntent.Retire,
-                ZLinkFrameworkTerminationOutcome.Blocked,
-                reason);
-            _blocker = reason;
-            _retiringPublicationCommitted = false;
-            _shutdownRequestedDuringPreflight = false;
-            _workSealed = false;
-            if (_state == ZLinkFrameworkRuntimeState.Retiring)
-                TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
-            _effectiveIntent = null;
+            _terminationResult = result;
             _deadline = null;
-            _operation = null;
-            PublishUnderLock(
-                "zlink.runtime.host.termination_changed",
-                result.Outcome,
-                result.Reason);
-            RecordCompletion(_operationStartedTimestamp, result);
+            TransitionUnderLock(ZLinkFrameworkRuntimeState.Stopped);
+            ZLinkRuntimeMetrics.CompleteTermination(
+                metricStarted,
+                "shutdown",
+                result.Outcome == ZLinkFrameworkTerminationOutcome.Stopped
+                    ? "stopped"
+                    : "force_stopped",
+                result.Reason == ZLinkFrameworkTerminationReason.None
+                    ? "none"
+                    : result.Reason == ZLinkFrameworkTerminationReason.DeadlineExceeded
+                        ? "deadline_exceeded"
+                        : "teardown_failed");
             return result;
         }
     }
 
-    private static ZLinkFrameworkTerminationReason MapForceReason(
-        ZLinkDrainForceReason reason) =>
-        reason switch
+    private void MarkRelocated()
+    {
+        lock (_gate)
         {
-            ZLinkDrainForceReason.DeadlineExceeded =>
-                ZLinkFrameworkTerminationReason.DeadlineExceeded,
-            ZLinkDrainForceReason.DrainingStatePublishFailed =>
-                ZLinkFrameworkTerminationReason.RelocationFailed,
-            ZLinkDrainForceReason.OwnerCleanupFailed =>
-                ZLinkFrameworkTerminationReason.TeardownFailed,
-            ZLinkDrainForceReason.RelocationFailed =>
-                ZLinkFrameworkTerminationReason.RelocationFailed,
-            ZLinkDrainForceReason.TeardownFailed =>
-                ZLinkFrameworkTerminationReason.TeardownFailed,
-            _ => ZLinkFrameworkTerminationReason.TeardownFailed
+            if (_state == ZLinkFrameworkRuntimeState.Relocating)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Relocated);
+        }
+    }
+
+    private ZLinkFrameworkRelocationResult CompleteBlocked(
+        ZLinkFrameworkRelocationMode mode,
+        long targetApplicationVersion,
+        ZLinkFrameworkRelocationReason reason,
+        long metricStarted,
+        bool restoreServing = true)
+    {
+        lock (_gate)
+        {
+            var result = Blocked(mode, targetApplicationVersion, reason);
+            _deadline = null;
+            _activeMode = null;
+            _activeTargetVersion = null;
+            _relocationOperation = null;
+            if (restoreServing && _state == ZLinkFrameworkRuntimeState.Relocating)
+                TransitionUnderLock(ZLinkFrameworkRuntimeState.Serving);
+            else
+                PublishUnderLock();
+            RecordRelocationCompletion(metricStarted, result);
+            return result;
+        }
+    }
+
+    private (long EffectiveTargetVersion, TimeSpan Timeout) Validate(
+        ZLinkFrameworkRelocationOptions options)
+    {
+        if (!Enum.IsDefined(options.Mode))
+            throw new ArgumentOutOfRangeException(nameof(options.Mode));
+        var timeout = options.Deadline ?? DefaultDeadline;
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(options.Deadline));
+
+        return options.Mode switch
+        {
+            ZLinkFrameworkRelocationMode.PlannedMaintenance
+                when options.TargetApplicationVersion is not null =>
+                throw new ArgumentException(
+                    "PlannedMaintenance does not accept TargetApplicationVersion.",
+                    nameof(options)),
+            ZLinkFrameworkRelocationMode.PlannedMaintenance =>
+                (_sourceApplicationVersion, timeout),
+            ZLinkFrameworkRelocationMode.RollingUpdate
+                when options.TargetApplicationVersion is not { } target
+                     || target <= _sourceApplicationVersion =>
+                throw new ArgumentException(
+                    "RollingUpdate requires a target application version greater than the source version.",
+                    nameof(options)),
+            ZLinkFrameworkRelocationMode.RollingUpdate =>
+                (options.TargetApplicationVersion!.Value, timeout),
+            _ => throw new ArgumentOutOfRangeException(nameof(options.Mode))
         };
+    }
+
+    private static ZLinkFrameworkRelocationResult Blocked(
+        ZLinkFrameworkRelocationMode mode,
+        long targetApplicationVersion,
+        ZLinkFrameworkRelocationReason reason) =>
+        new(
+            mode,
+            targetApplicationVersion,
+            ZLinkFrameworkRelocationOutcome.Blocked,
+            reason);
+
+    private static CancellationTokenSource CreateDeadline(
+        DateTimeOffset absoluteDeadline)
+    {
+        var remaining = absoluteDeadline - DateTimeOffset.UtcNow;
+        return new CancellationTokenSource(
+            remaining > TimeSpan.Zero ? remaining : TimeSpan.FromTicks(1));
+    }
+
+    private ZLinkFrameworkRuntimeStatus CreateStatusUnderLock(DateTimeOffset observedAt)
+    {
+        var accepting = _state == ZLinkFrameworkRuntimeState.Serving;
+        return new ZLinkFrameworkRuntimeStatus(
+            _state,
+            _state == ZLinkFrameworkRuntimeState.Serving,
+            accepting,
+            _deadline,
+            _relocationResult,
+            _terminationResult,
+            _sequence,
+            observedAt);
+    }
 
     private void TransitionUnderLock(ZLinkFrameworkRuntimeState state)
     {
         _state = state;
-        PublishUnderLock("zlink.runtime.host.termination_changed", null, null);
+        PublishUnderLock();
     }
 
-    private void PublishUnderLock(
-        string identifier,
-        ZLinkFrameworkTerminationOutcome? outcome,
-        ZLinkFrameworkTerminationReason? reason)
+    private void PublishUnderLock()
     {
-        var @event = new ZLinkFrameworkRuntimeEvent(
-            identifier,
-            checked(++_sequence),
-            DateTimeOffset.UtcNow,
-            _state,
-            _effectiveIntent,
-            outcome,
-            reason);
+        _sequence = checked(_sequence + 1);
+        var status = CreateStatusUnderLock(DateTimeOffset.UtcNow);
         foreach (var observer in _observers)
-            observer.Writer.TryWrite(@event);
+            observer.Writer.TryWrite(status);
     }
+
+    private static void RecordRelocationCompletion(
+        long started,
+        ZLinkFrameworkRelocationResult result) =>
+        ZLinkRuntimeMetrics.CompleteTermination(
+            started,
+            "relocate",
+            result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated
+                ? "relocated"
+                : "blocked",
+            result.Reason.ToString().ToLowerInvariant());
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-    private static void RecordCompletion(
-        long startedTimestamp,
-        ZLinkFrameworkTerminationResult result) =>
-        ZLinkRuntimeMetrics.CompleteTermination(
-            startedTimestamp,
-            result.EffectiveIntent == ZLinkFrameworkTerminationIntent.Retire
-                ? "retire"
-                : "shutdown",
-            result.Outcome switch
-            {
-                ZLinkFrameworkTerminationOutcome.Stopped => "stopped",
-                ZLinkFrameworkTerminationOutcome.Blocked => "blocked",
-                ZLinkFrameworkTerminationOutcome.ForceStopped => "force_stopped",
-                _ => "unknown"
-            },
-            result.Reason switch
-            {
-                ZLinkFrameworkTerminationReason.None => "none",
-                ZLinkFrameworkTerminationReason.TargetUnavailable => "target_unavailable",
-                ZLinkFrameworkTerminationReason.StoreUnavailable => "store_unavailable",
-                ZLinkFrameworkTerminationReason.RelocationDisabled => "relocation_disabled",
-                ZLinkFrameworkTerminationReason.StateIncompatible => "state_incompatible",
-                ZLinkFrameworkTerminationReason.DeadlineExceeded => "deadline_exceeded",
-                ZLinkFrameworkTerminationReason.RelocationFailed => "relocation_failed",
-                ZLinkFrameworkTerminationReason.TeardownFailed => "teardown_failed",
-                ZLinkFrameworkTerminationReason.RuntimeNotReady => "runtime_not_ready",
-                ZLinkFrameworkTerminationReason.ManualTopologyUnsupported =>
-                    "manual_topology_unsupported",
-                _ => "unknown"
-            });
 
     public void Dispose()
     {

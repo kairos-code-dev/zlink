@@ -154,9 +154,10 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         ?.ownershipGeneration;
       const payload = encodeRemoteBoundSessionSendPayload({
         actorId: this.options.actorId,
+        actorMeshName: actorRef?.meshName,
         actorNodeRid: actorRef === undefined ? undefined : String(actorRef.nodeRid),
         actorNodeRidHex: (actorRef?.nodeRid as { toHex?: () => string } | undefined)?.toHex?.(),
-        actorGeneration: actorRef?.generation.toString(),
+        actorGeneration: actorRef?.objectGeneration.toString(),
         actorOwnershipGeneration: ownershipGeneration?.toString(),
         message: this.message,
         boundPacketName: packetName,

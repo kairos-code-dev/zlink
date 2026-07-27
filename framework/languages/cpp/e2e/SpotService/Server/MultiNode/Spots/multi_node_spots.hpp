@@ -66,7 +66,7 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
 
     void on_initialize ()
     {
-        _state.record ("MultiSpotInitialized", {}, std::string (_context.spot_rid ().value ()));
+        _state.record ("MultiSpotInitialized", {}, _context.spot_id ());
     }
 
     zlink::framework::task_t<zlink::framework::spot_create_response_t>
@@ -86,18 +86,18 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
                 auto reply = co_await _context
                                .request_to<e2e::state_res_t> (
                                  multi_node_target_rid (target_node),
-                                 multi_node_target_rid (command->target_spot_rid),
+                                 multi_node_target_rid (command->target_spot_id),
                                  e2e::state_req_t{.op = "add", .amount = 7})
                                .timeout (std::chrono::milliseconds (3000))
                                .submit ();
                 _context
                   .send_to (multi_node_target_rid (target_node),
-                            multi_node_target_rid (command->target_spot_rid),
-                            e2e::direct_spot_msg_t{.source_actor_id = command->source_spot_rid,
+                            multi_node_target_rid (command->target_spot_id),
+                            e2e::direct_spot_msg_t{.source_actor_id = command->source_spot_id,
                                                    .value = "sm-f6-send-" + command->marker})
                   .submit ();
-                _state.record ("SpotOnlyRequest", {}, std::string (_context.spot_rid ().value ()),
-                               "target=" + command->target_spot_rid + "|value="
+                _state.record ("SpotOnlyRequest", {}, _context.spot_id (),
+                               "target=" + command->target_spot_id + "|value="
                                  + std::to_string (reply.value)
                                  + "|marker=" + command->marker);
             }
@@ -110,7 +110,7 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
                    const zlink::framework::message_t &)
     {
         _state.record ("SpotActorJoined", std::string (actor_id),
-                       std::string (_context.spot_rid ().value ()));
+                       _context.spot_id ());
         return zlink::framework::spot_actor_join_response_t::accept ();
     }
 
@@ -120,9 +120,9 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
             _value += request.amount;
         }
         ++_sequence;
-        _state.record ("MultiStateRequest", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("MultiStateRequest", {}, _context.spot_id (),
                        std::to_string (_value));
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = NodeName,
                 .value = _value,
                 .sequence = _sequence};
@@ -131,7 +131,7 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
     void state_command (const e2e::direct_spot_msg_t &request)
     {
         _state.record ("SpotStateCommand", request.source_actor_id,
-                       std::string (_context.spot_rid ().value ()), request.value);
+                       _context.spot_id (), request.value);
     }
 
     e2e::actor_ping_res_t actor_probe (const multi_node_actor_t &actor,
@@ -140,7 +140,7 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
     {
         return {.actor_id = actor.actor_id,
                 .node_rid = NodeName,
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .value = request.value,
                 .seen = 1};
     }
@@ -185,14 +185,14 @@ class multi_node_entry_spot_t : public zlink::framework::entry_spot_t
         }
         auto joined =
           co_await actor.context
-            .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
+            .join_spot ((request.target_spot_id),
                         zlink::framework::message_t {})
             .async ();
         const auto accepted = std::holds_alternative<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>> (joined);
-        _state.record ("SpotOnlyActorJoin", actor.actor_id, request.target_spot_rid,
+        _state.record ("SpotOnlyActorJoin", actor.actor_id, request.target_spot_id,
                        "accepted=" + std::string (accepted ? "true" : "false")
                          + "|marker=" + request.marker);
-        co_return e2e::spot_only_join_res_t{.target_spot_rid = request.target_spot_rid,
+        co_return e2e::spot_only_join_res_t{.target_spot_id = request.target_spot_id,
                                             .actor_id = actor.actor_id,
                                             .accepted = accepted,
                                             .marker = request.marker};

@@ -113,7 +113,7 @@ inline int run_play_server (int argc, char **argv)
                          ? "drop"
                          : "fail_caller");
                 state_ptr->record ("SpotRouteDispatchFailure", *event.packet_name,
-                                   event.spot_rid.value_or (""),
+                                   event.spot_id.value_or (""),
                                    std::string ("handler_missing:") + action);
             });
         auto http_execution_turn =

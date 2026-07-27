@@ -38,13 +38,18 @@ class GatewaySession implements ZLinkSession {
   async onDispatch(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
     if (dispatch.packetName === SpotActorTransferNames.packetBindActor) {
       const request = payload.decode<BindActorSessionReq>(Object as never);
-      if (request.nodeRid === undefined || request.generation === undefined) {
-        throw new Error('Session gateway bind requires an ActorRef snapshot.');
+      if (
+        request.nodeRid === undefined
+        || request.objectGeneration === undefined
+        || request.meshName === undefined
+      ) {
+        throw new Error('Session gateway bind requires an exact ActorRef.');
       }
       const actor = {
         actorId: request.actorId,
+        objectGeneration: BigInt(request.objectGeneration),
+        meshName: request.meshName,
         nodeRid: request.nodeRid,
-        generation: BigInt(request.generation)
       } as ActorRef;
       evidence.correlate(request.actorId, request.transferId);
       await this.context.actors.bindOrGet(actor, signal);
@@ -52,13 +57,15 @@ class GatewaySession implements ZLinkSession {
         request.scenario,
         request.actorId,
         'session_bound',
-        `gateway=${options.rid}|node=${String(actor.nodeRid)}|generation=${actor.generation}`
+        `gateway=${options.rid}|node=${String(actor.nodeRid)}`
+          + `|generation=${actor.objectGeneration}`
       );
       this.context.client.reply({
         scenario: request.scenario,
         actorId: actor.actorId,
         nodeRid: String(actor.nodeRid),
-        generation: actor.generation.toString()
+        objectGeneration: actor.objectGeneration.toString(),
+        meshName: actor.meshName
       } satisfies BindActorSessionRes).submit();
       return;
     }

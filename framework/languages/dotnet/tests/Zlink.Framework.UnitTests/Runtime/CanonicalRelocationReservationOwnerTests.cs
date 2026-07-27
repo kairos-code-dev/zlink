@@ -767,7 +767,7 @@ public sealed class CanonicalRelocationReservationOwnerTests
         }
     }
 
-    private sealed class BlockingAuthorityStore(IZLinkLocationStore inner)
+    private sealed class BlockingAuthorityStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         internal TaskCompletionSource Entered { get; } = new(

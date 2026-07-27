@@ -55,6 +55,7 @@ export class ZLinkSpotActorLifecycleDrain {
       if (actorId === undefined || this.options.resolveActor(actorId) === undefined) {
         continue;
       }
+      if (actorRef === null || actorRef === undefined) continue;
       await this.options.serial.execute(() => {
         const actor = this.options.resolveActor(actorId);
         if (actor === undefined) {
@@ -66,7 +67,12 @@ export class ZLinkSpotActorLifecycleDrain {
           : event.info.currentMembershipEpoch;
         const membership = createActorMembership(
           actor,
-          actorRef as ZLinkBackendActorRef,
+          {
+            actorId: actorRef.actorId,
+            objectGeneration: actorRef.generation,
+            meshName: actor.context.meshName,
+            nodeRid: actorRef.nodeRid
+          },
           membershipEpoch
         );
         if (event.kind === ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {

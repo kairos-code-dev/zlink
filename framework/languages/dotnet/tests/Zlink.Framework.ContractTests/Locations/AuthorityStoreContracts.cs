@@ -26,7 +26,6 @@ public sealed class AuthorityStoreContracts
         new("play-node-c#7ab1", 42L);
 
     [Fact]
-    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Authority_store_reserves_commits_and_hands_an_object_to_a_new_owner()
     {
         var store = new ExampleAuthorityStore();
@@ -165,7 +164,6 @@ public sealed class AuthorityStoreContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Authority_store_aborts_a_failed_activation_and_moves_a_spot_aggregate()
     {
         var store = new ExampleAuthorityStore();
@@ -261,7 +259,6 @@ public sealed class AuthorityStoreContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkRelocationStore))]
     public async Task Relocation_store_holds_the_opaque_payload_for_one_move_under_a_fixed_retention()
     {
         // The framework always passes exactly 24 hours; retention is not an
@@ -303,7 +300,6 @@ public sealed class AuthorityStoreContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Client_server_descriptors_are_channel_scoped_and_paged()
     {
         // ClientServer registration is optional for an application, but its
@@ -899,7 +895,7 @@ public sealed class AuthorityStoreContracts
         }
     }
 
-    private sealed class ExampleRelocationStore : IZLinkRelocationStore
+    private sealed class ExampleRelocationStore : IZLinkRelocationRepository
     {
         private readonly Dictionary<string, byte[]> _payloads = new(StringComparer.Ordinal);
         private int _sequence;

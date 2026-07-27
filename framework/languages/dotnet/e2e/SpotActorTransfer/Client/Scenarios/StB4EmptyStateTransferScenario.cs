@@ -18,7 +18,7 @@ internal static class StB4EmptyStateTransferScenario
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-B4 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B4", "after-empty-state-transfer"));
-        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-B4 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(probe.NodeRid, "actor-b"), $"ST-B4 probe expected actor-b, got {probe.NodeRid}.");
         ZlinkStreamAssert.Ensure(probe.StateVersion == 41, $"ST-B4 loaded target state expected 41, got {probe.StateVersion}.");
 
         await context.WaitEvidenceAsync(context.NodeA, [

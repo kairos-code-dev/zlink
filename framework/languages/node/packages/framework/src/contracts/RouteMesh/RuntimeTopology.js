@@ -1,27 +1,38 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ZLinkTerminationReason = exports.ZLinkTerminationOutcome = exports.ZLinkTerminationIntent = void 0;
-var ZLinkTerminationIntent;
-(function (ZLinkTerminationIntent) {
-    ZLinkTerminationIntent[ZLinkTerminationIntent["Retire"] = 0] = "Retire";
-    ZLinkTerminationIntent[ZLinkTerminationIntent["Shutdown"] = 1] = "Shutdown";
-})(ZLinkTerminationIntent || (exports.ZLinkTerminationIntent = ZLinkTerminationIntent = {}));
-var ZLinkTerminationOutcome;
-(function (ZLinkTerminationOutcome) {
-    ZLinkTerminationOutcome[ZLinkTerminationOutcome["Stopped"] = 0] = "Stopped";
-    ZLinkTerminationOutcome[ZLinkTerminationOutcome["Blocked"] = 1] = "Blocked";
-    ZLinkTerminationOutcome[ZLinkTerminationOutcome["ForceStopped"] = 2] = "ForceStopped";
-})(ZLinkTerminationOutcome || (exports.ZLinkTerminationOutcome = ZLinkTerminationOutcome = {}));
-var ZLinkTerminationReason;
-(function (ZLinkTerminationReason) {
-    ZLinkTerminationReason[ZLinkTerminationReason["None"] = 0] = "None";
-    ZLinkTerminationReason[ZLinkTerminationReason["TargetUnavailable"] = 1] = "TargetUnavailable";
-    ZLinkTerminationReason[ZLinkTerminationReason["StoreUnavailable"] = 2] = "StoreUnavailable";
-    ZLinkTerminationReason[ZLinkTerminationReason["RelocationDisabled"] = 3] = "RelocationDisabled";
-    ZLinkTerminationReason[ZLinkTerminationReason["StateIncompatible"] = 4] = "StateIncompatible";
-    ZLinkTerminationReason[ZLinkTerminationReason["DeadlineExceeded"] = 5] = "DeadlineExceeded";
-    ZLinkTerminationReason[ZLinkTerminationReason["RelocationFailed"] = 6] = "RelocationFailed";
-    ZLinkTerminationReason[ZLinkTerminationReason["TeardownFailed"] = 7] = "TeardownFailed";
-    ZLinkTerminationReason[ZLinkTerminationReason["RuntimeNotReady"] = 8] = "RuntimeNotReady";
-    ZLinkTerminationReason[ZLinkTerminationReason["ManualTopologyUnsupported"] = 9] = "ManualTopologyUnsupported";
-})(ZLinkTerminationReason || (exports.ZLinkTerminationReason = ZLinkTerminationReason = {}));
+exports.ZLinkFrameworkTerminationReason = exports.ZLinkFrameworkTerminationOutcome = exports.ZLinkFrameworkRelocationReason = exports.ZLinkFrameworkRelocationMode = exports.ZLinkFrameworkRelocationOutcome = void 0;
+var ZLinkFrameworkRelocationOutcome;
+(function (ZLinkFrameworkRelocationOutcome) {
+    ZLinkFrameworkRelocationOutcome[ZLinkFrameworkRelocationOutcome["Relocated"] = 0] = "Relocated";
+    ZLinkFrameworkRelocationOutcome[ZLinkFrameworkRelocationOutcome["Blocked"] = 1] = "Blocked";
+})(ZLinkFrameworkRelocationOutcome || (exports.ZLinkFrameworkRelocationOutcome = ZLinkFrameworkRelocationOutcome = {}));
+var ZLinkFrameworkRelocationMode;
+(function (ZLinkFrameworkRelocationMode) {
+    ZLinkFrameworkRelocationMode[ZLinkFrameworkRelocationMode["PlannedMaintenance"] = 0] = "PlannedMaintenance";
+    ZLinkFrameworkRelocationMode[ZLinkFrameworkRelocationMode["RollingUpdate"] = 1] = "RollingUpdate";
+})(ZLinkFrameworkRelocationMode || (exports.ZLinkFrameworkRelocationMode = ZLinkFrameworkRelocationMode = {}));
+var ZLinkFrameworkRelocationReason;
+(function (ZLinkFrameworkRelocationReason) {
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["None"] = 0] = "None";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["TargetUnavailable"] = 1] = "TargetUnavailable";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["StoreUnavailable"] = 2] = "StoreUnavailable";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["RelocationDisabled"] = 3] = "RelocationDisabled";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["StateIncompatible"] = 4] = "StateIncompatible";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["DeadlineExceeded"] = 5] = "DeadlineExceeded";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["RelocationFailed"] = 6] = "RelocationFailed";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["RuntimeNotReady"] = 7] = "RuntimeNotReady";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["ManualTopologyUnsupported"] = 8] = "ManualTopologyUnsupported";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["ShutdownRequested"] = 9] = "ShutdownRequested";
+    ZLinkFrameworkRelocationReason[ZLinkFrameworkRelocationReason["OperationInProgress"] = 10] = "OperationInProgress";
+})(ZLinkFrameworkRelocationReason || (exports.ZLinkFrameworkRelocationReason = ZLinkFrameworkRelocationReason = {}));
+var ZLinkFrameworkTerminationOutcome;
+(function (ZLinkFrameworkTerminationOutcome) {
+    ZLinkFrameworkTerminationOutcome[ZLinkFrameworkTerminationOutcome["Stopped"] = 0] = "Stopped";
+    ZLinkFrameworkTerminationOutcome[ZLinkFrameworkTerminationOutcome["ForceStopped"] = 1] = "ForceStopped";
+})(ZLinkFrameworkTerminationOutcome || (exports.ZLinkFrameworkTerminationOutcome = ZLinkFrameworkTerminationOutcome = {}));
+var ZLinkFrameworkTerminationReason;
+(function (ZLinkFrameworkTerminationReason) {
+    ZLinkFrameworkTerminationReason[ZLinkFrameworkTerminationReason["None"] = 0] = "None";
+    ZLinkFrameworkTerminationReason[ZLinkFrameworkTerminationReason["DeadlineExceeded"] = 1] = "DeadlineExceeded";
+    ZLinkFrameworkTerminationReason[ZLinkFrameworkTerminationReason["TeardownFailed"] = 2] = "TeardownFailed";
+})(ZLinkFrameworkTerminationReason || (exports.ZLinkFrameworkTerminationReason = ZLinkFrameworkTerminationReason = {}));

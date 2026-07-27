@@ -14,14 +14,14 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 std::string run_atd_a3_continuation_context_scenario (TConnector &connector,
                                                      TConnector &observer,
-                                                     const std::string &spot_rid)
+                                                     const std::string &spot_id)
 {
     const auto request_id = unique_id ("ATD-A3");
     connector.send (await_msg_t{.request_id = request_id,
                                 .delay_ms = 50,
                                 .correlation_id = "corr-a3"})
         .packet_name (await_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
     auto evidence =
       observer.request (
@@ -38,7 +38,7 @@ std::string run_atd_a3_continuation_context_scenario (TConnector &connector,
                                 "await-completed"}),
             "ATD-A3 marker order mismatch");
     ensure (every_request_line_has (evidence.value ().evidence, request_id,
-                                    {"spot=" + spot_rid, "correlation=corr-a3"}),
+                                    {"spot=" + spot_id, "correlation=corr-a3"}),
             "ATD-A3 context evidence mismatch");
     std::cout << "scenario ATD-A3 passed\n";
     return request_id;

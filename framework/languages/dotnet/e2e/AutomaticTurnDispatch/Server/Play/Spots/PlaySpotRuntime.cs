@@ -33,21 +33,21 @@ internal sealed class AwaitProbeSpot(
             if (delay.DelayMs > 0) await Task.Delay(TimeSpan.FromMilliseconds(delay.DelayMs), cancellationToken);
         }
 
-        evidence.Add($"actor-admitted|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actorId}");
+        evidence.Add($"actor-admitted|rid={evidence.Rid}|spot={Context.SpotId}|actor={actorId}");
         return ZLinkSpotActorJoinResult.Accept(request);
     }
 
     public ValueTask OnJoinedActorAsync(AwaitActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"actor-joined|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(AwaitActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"actor-left|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"actor-left|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 

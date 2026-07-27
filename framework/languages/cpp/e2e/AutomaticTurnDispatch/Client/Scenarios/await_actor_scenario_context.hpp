@@ -8,7 +8,7 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 
 struct await_actor_scenario_context_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string actor_a;
     std::string actor_b;
 };

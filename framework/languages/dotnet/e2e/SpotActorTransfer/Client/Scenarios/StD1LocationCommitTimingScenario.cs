@@ -62,7 +62,7 @@ internal static class StD1LocationCommitTimingScenario
         ]);
         var sourceDuring = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(
-            sourceDuring.NodeRid == "actor-a",
+            SpotActorTransferScenarioContext.IsNode(sourceDuring.NodeRid, "actor-a"),
             $"ST-D1 remote source ref moved before target joined completed. got={sourceDuring.NodeRid}");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
@@ -70,7 +70,7 @@ internal static class StD1LocationCommitTimingScenario
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-D1 remote join was rejected.");
         var targetAfter = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(
-            targetAfter.NodeRid == "actor-b",
+            SpotActorTransferScenarioContext.IsNode(targetAfter.NodeRid, "actor-b"),
             $"ST-D1 remote target ref was not committed after joined completed. got={targetAfter.NodeRid}");
 
         await context.WaitEvidenceAsync(context.NodeA, [

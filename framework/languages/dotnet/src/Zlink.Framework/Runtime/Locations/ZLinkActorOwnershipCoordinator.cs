@@ -181,6 +181,84 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
     }
 
+    internal async ValueTask AdoptCommittedActorAuthorityAsync(
+        string actorId,
+        string actorType,
+        ActorRef actorRef,
+        Func<CancellationToken, ValueTask>? deactivate,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            if (_actors.ContainsKey(actorId))
+                return;
+        }
+
+        var read = await runtime.Store.ReadAuthorityAsync(
+                ZLinkActorAuthorityPayloadCodec.AuthorityKey(actorId),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (read is not ZLinkAuthorityReadResult.Found found)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' committed creation authority is missing.",
+                true);
+
+        AdoptCommittedActorAuthority(
+            actorId,
+            actorType,
+            actorRef,
+            found.Snapshot,
+            deactivate);
+    }
+
+    internal void AdoptCommittedActorAuthority(
+        string actorId,
+        string actorType,
+        ActorRef actorRef,
+        ZLinkAuthoritySnapshot snapshot,
+        Func<CancellationToken, ValueTask>? deactivate)
+    {
+        lock (_gate)
+        {
+            if (_actors.TryGetValue(actorId, out var tracked))
+            {
+                if (tracked.Snapshot.ObjectGeneration == actorRef.ObjectGeneration
+                    && tracked.Payload.NodeRid == actorRef.NodeRid
+                    && string.Equals(
+                        tracked.Payload.StableType,
+                        actorType,
+                        StringComparison.Ordinal))
+                    return;
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorLocationStale,
+                    $"Actor '{actorId}' is already tracked with another authority.",
+                    true);
+            }
+        }
+
+        if (snapshot.Allocation.ObjectKind != ZLinkPlacementObjectKind.Actor
+            || snapshot.ObjectGeneration != actorRef.ObjectGeneration
+            || !ZLinkActorAuthorityPayloadCodec.TryDecode(
+                snapshot.Payload.Span,
+                out var authority)
+            || authority.State != ZLinkActorAuthorityState.Ready
+            || !string.Equals(authority.ActorId, actorId, StringComparison.Ordinal)
+            || !string.Equals(authority.StableType, actorType, StringComparison.Ordinal)
+            || !string.Equals(authority.MeshName, actorRef.MeshName, StringComparison.Ordinal)
+            || authority.NodeRid != actorRef.NodeRid
+            || !string.Equals(snapshot.OwnerId, runtime.OwnerToken.OwnerId, StringComparison.Ordinal)
+            || snapshot.OwnerLeaseGeneration != runtime.OwnerToken.LeaseGeneration
+            || !string.Equals(authority.OwnerId, runtime.OwnerToken.OwnerId, StringComparison.Ordinal)
+            || authority.OwnerLeaseGeneration != checked((ulong)runtime.OwnerToken.LeaseGeneration))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' committed creation authority does not belong to this runtime.",
+                true);
+
+        TrackCommittedActorAuthority(actorId, snapshot, authority, deactivate);
+    }
+
     internal async ValueTask NotifyActorJoinedSpotAsync(
         string actorId,
         string spotId,

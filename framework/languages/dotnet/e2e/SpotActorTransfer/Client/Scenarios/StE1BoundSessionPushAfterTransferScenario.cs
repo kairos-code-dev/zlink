@@ -30,7 +30,7 @@ internal static class StE1BoundSessionPushAfterTransferScenario
         ]);
         var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(
-            targetRef.NodeRid == "actor-b",
+            SpotActorTransferScenarioContext.IsNode(targetRef.NodeRid, "actor-b"),
             $"ST-E1 target route expected actor-b, got {targetRef.NodeRid}.");
         ZlinkStreamAssert.Ensure(
             targetRef.Generation == sourceRef.Generation,
@@ -41,8 +41,8 @@ internal static class StE1BoundSessionPushAfterTransferScenario
             .Async().AsTask();
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-E1", "after-remote-transfer"));
         var notify = await pushed;
-        ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");
-        ZlinkStreamAssert.Ensure(notify.Payload.NodeRid == "actor-b", $"ST-E1 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(pushReply.NodeRid, "actor-b"), $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(notify.Payload.NodeRid, "actor-b"), $"ST-E1 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
         ZlinkStreamAssert.Ensure(notify.Payload.StateVersion == 91, $"ST-E1 bound push state expected 91, got {notify.Payload.StateVersion}.");
     }
 }

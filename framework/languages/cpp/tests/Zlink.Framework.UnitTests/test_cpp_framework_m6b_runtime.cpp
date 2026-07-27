@@ -83,6 +83,17 @@ class memory_relocation_store_t final :
 
 class execution_mode_spot_t final : public zlink::framework::spot_t
 {
+  public:
+    explicit execution_mode_spot_t (zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    void configure () {}
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 class recording_actor_client_t final : public zlink::framework::actor_client_t
@@ -163,9 +174,12 @@ void verify_user_spot_execution_mode_registration ()
     using namespace zlink::framework;
 
     spot_node_builder_t builder;
-    builder.add_spot<execution_mode_spot_t> ("wide");
+    const auto factory = [] (spot_context_t context) {
+        return std::make_shared<execution_mode_spot_t> (std::move (context));
+    };
+    builder.add_spot<execution_mode_spot_t> ("wide", factory);
     builder.add_spot<execution_mode_spot_t> (
-      "actors", user_spot_execution_mode_t::per_actor);
+      "actors", factory, user_spot_execution_mode_t::per_actor);
 
     const auto snapshot = builder.snapshot ();
     assert (
@@ -700,34 +714,34 @@ void verify_session_binding_and_terminal_once ()
     assert (terminal_count == 1);
 }
 
-void verify_bounded_stale_forwarding ()
+void verify_bounded_message_follow ()
 {
     using namespace zlink::framework;
     spots::actor_transfer_coordinator_t coordinator;
     const actor_ref_t target (
-      node_rid_t::from_string ("node-b"), "player", "actor-forward", 7);
+      node_rid_t::from_string ("node-b"), "player", "actor-message-follow", 7);
     const spot_route_t route{
       node_rid_t::from_string ("node-b"), "spot-b", "game"};
     const auto expires = std::chrono::steady_clock::now () + 30s;
-    coordinator.activate_forwarding (
-      "player:actor-forward", 7, target, route, expires, "relocation-1");
+    coordinator.activate_message_follow (
+      "player:actor-message-follow", 7, target, route, expires, "relocation-1");
 
-    assert (!coordinator.try_acquire_forwarding (
-      "player:actor-forward", 7, 1, 8));
-    assert (!coordinator.try_acquire_forwarding (
-      "player:actor-forward", 7, 16u * 1024u * 1024u + 1u, 0));
+    assert (!coordinator.try_acquire_message_follow (
+      "player:actor-message-follow", 7, 1, 8));
+    assert (!coordinator.try_acquire_message_follow (
+      "player:actor-message-follow", 7, 16u * 1024u * 1024u + 1u, 0));
     for (std::size_t index = 0; index != 1024; ++index) {
-        assert (coordinator.try_acquire_forwarding (
-          "player:actor-forward", 7, 1, 0));
+        assert (coordinator.try_acquire_message_follow (
+          "player:actor-message-follow", 7, 1, 0));
     }
-    assert (!coordinator.try_acquire_forwarding (
-      "player:actor-forward", 7, 1, 0));
-    coordinator.release_forwarding ("player:actor-forward", 7, 1);
-    assert (coordinator.try_acquire_forwarding (
-      "player:actor-forward", 7, 1, 0));
-    coordinator.release_forwarding ("player:actor-forward", 7, 1);
+    assert (!coordinator.try_acquire_message_follow (
+      "player:actor-message-follow", 7, 1, 0));
+    coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
+    assert (coordinator.try_acquire_message_follow (
+      "player:actor-message-follow", 7, 1, 0));
+    coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
     for (std::size_t index = 1; index != 1024; ++index)
-        coordinator.release_forwarding ("player:actor-forward", 7, 1);
+        coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
 }
 
 void verify_remote_session_route_ack_and_atomic_switch ()
@@ -2877,7 +2891,7 @@ int main ()
     verify_membership_turns_and_independent_infrastructure ();
     verify_instance_cold_activation_only_from_intent ();
     verify_session_binding_and_terminal_once ();
-    verify_bounded_stale_forwarding ();
+    verify_bounded_message_follow ();
     verify_remote_session_route_ack_and_atomic_switch ();
     verify_location_store_accepted_record_authority ();
     verify_raw_spot_and_actor_routing ();

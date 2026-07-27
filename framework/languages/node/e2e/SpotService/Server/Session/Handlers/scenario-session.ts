@@ -168,7 +168,7 @@ class ScenarioSession implements ZLinkSession {
   private async ensureRemoteUserSpot(request: UserSpotAuthReq, signal?: AbortSignal): Promise<void> {
     await this.route
       .requestToNode(SpotServiceNames.controlChannel, request.nodeRid,
-        spotServicePacket(CreateSpotReq, { spotRid: request.spotRid }))
+        spotServicePacket(CreateSpotReq, { spotId: request.spotId }))
       .timeout(5000)
       .submit(signal);
   }

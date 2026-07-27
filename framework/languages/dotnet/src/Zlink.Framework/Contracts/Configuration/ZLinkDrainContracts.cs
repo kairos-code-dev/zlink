@@ -4,26 +4,26 @@ public enum ZLinkFrameworkRuntimeState
 {
     Preparing = 0,
     Serving = 1,
-    Retiring = 2,
-    Draining = 3,
-    Stopped = 4,
-    Error = 5
+    Relocating = 2,
+    Relocated = 3,
+    Draining = 4,
+    Stopped = 5,
+    Error = 6
 }
 
-public enum ZLinkFrameworkTerminationIntent
+public enum ZLinkFrameworkRelocationOutcome
 {
-    Retire = 0,
-    Shutdown = 1
+    Relocated = 0,
+    Blocked = 1
 }
 
-public enum ZLinkFrameworkTerminationOutcome
+public enum ZLinkFrameworkRelocationMode
 {
-    Stopped = 0,
-    Blocked = 1,
-    ForceStopped = 2
+    PlannedMaintenance = 0,
+    RollingUpdate = 1
 }
 
-public enum ZLinkFrameworkTerminationReason
+public enum ZLinkFrameworkRelocationReason
 {
     None = 0,
     TargetUnavailable = 1,
@@ -32,54 +32,80 @@ public enum ZLinkFrameworkTerminationReason
     StateIncompatible = 4,
     DeadlineExceeded = 5,
     RelocationFailed = 6,
-    TeardownFailed = 7,
-    RuntimeNotReady = 8,
-    ManualTopologyUnsupported = 9
+    RuntimeNotReady = 7,
+    ManualTopologyUnsupported = 8,
+    ShutdownRequested = 9,
+    OperationInProgress = 10
+}
+
+public sealed record ZLinkFrameworkRelocationOptions
+{
+    /// <summary>Selects same-version maintenance or an exact-version update.</summary>
+    public required ZLinkFrameworkRelocationMode Mode { get; init; }
+
+    /// <summary>
+    /// Identifies the exact target version for a rolling update. It must be
+    /// omitted for planned maintenance.
+    /// </summary>
+    public long? TargetApplicationVersion { get; init; }
+
+    /// <summary>Limits this relocation attempt. The default is 30 seconds.</summary>
+    public TimeSpan? Deadline { get; init; }
+}
+
+public readonly record struct ZLinkFrameworkRelocationResult(
+    ZLinkFrameworkRelocationMode Mode,
+    long TargetApplicationVersion,
+    ZLinkFrameworkRelocationOutcome Outcome,
+    ZLinkFrameworkRelocationReason Reason);
+
+public enum ZLinkFrameworkTerminationOutcome
+{
+    Stopped = 0,
+    ForceStopped = 1
+}
+
+public enum ZLinkFrameworkTerminationReason
+{
+    None = 0,
+    DeadlineExceeded = 1,
+    TeardownFailed = 2
 }
 
 public readonly record struct ZLinkFrameworkTerminationResult(
-    ZLinkFrameworkTerminationIntent EffectiveIntent,
     ZLinkFrameworkTerminationOutcome Outcome,
     ZLinkFrameworkTerminationReason Reason);
 
-public sealed record ZLinkFrameworkRuntimeSnapshot(
+public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState State,
-    ZLinkFrameworkTerminationIntent? EffectiveIntent,
+    bool IsReady,
+    bool AcceptingWork,
     DateTimeOffset? Deadline,
-    bool WorkSealed,
-    ZLinkFrameworkTerminationReason? BlockerReason,
-    ulong PendingRequestCount,
-    ulong PendingRelocationCount,
-    ulong PendingStreamBarrierCount,
-    ZLinkFrameworkTerminationResult? TerminalResult,
+    ZLinkFrameworkRelocationResult? RelocationResult,
+    ZLinkFrameworkTerminationResult? TerminationResult,
     ulong Sequence,
     DateTimeOffset ObservedAt);
 
-public sealed record ZLinkFrameworkRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    ZLinkFrameworkRuntimeState State,
-    ZLinkFrameworkTerminationIntent? EffectiveIntent,
-    ZLinkFrameworkTerminationOutcome? Outcome,
-    ZLinkFrameworkTerminationReason? Reason);
-
 public interface IZLinkFrameworkRuntime
 {
-    ZLinkFrameworkRuntimeState State { get; }
+    /// <summary>Gets the latest immutable host lifecycle status.</summary>
+    ZLinkFrameworkRuntimeStatus Status { get; }
 
-    bool IsReady { get; }
-
-    ZLinkFrameworkRuntimeSnapshot Snapshot();
-
-    IAsyncEnumerable<ZLinkFrameworkRuntimeEvent> ObserveAsync(
-        int capacity = 1024,
+    /// <summary>Observes the latest host status without changing host lifecycle.</summary>
+    IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkFrameworkTerminationResult> RetireAsync(
-        TimeSpan? deadline = null,
+    /// <summary>
+    /// Moves stateful workload from this host. Successful completion leaves
+    /// infrastructure active in the Relocated state.
+    /// </summary>
+    ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(
+        ZLinkFrameworkRelocationOptions options,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stops this host. It does not implicitly request stateful relocation.
+    /// </summary>
     ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
         TimeSpan? deadline = null,
         CancellationToken cancellationToken = default);

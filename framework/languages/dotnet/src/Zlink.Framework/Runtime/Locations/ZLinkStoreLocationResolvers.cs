@@ -12,7 +12,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkStoreLocationResolvers :
     IZLinkMeshNodeLocationResolver
 {
-    private readonly IZLinkLocationStore _store;
+    private readonly IZLinkLocationRepository _store;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
     private readonly ZLinkLocationStoreHealth? _health;
@@ -26,7 +26,7 @@ internal sealed class ZLinkStoreLocationResolvers :
         _actorRoutes = [];
 
     internal ZLinkStoreLocationResolvers(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed,
         ZLinkLocationStoreHealth? health = null,

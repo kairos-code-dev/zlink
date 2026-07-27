@@ -16,10 +16,10 @@ import { waitForFlow } from '../Support/observability-support.js';
 
 export async function runObsA1(): Promise<void> {
   const actorId = unique('obs-a1-actor');
-  const spotRid = unique('obs-a1-room');
-  await createSpot(nodeA, spotRid);
+  const spotId = unique('obs-a1-room');
+  await createSpot(nodeA, spotId);
   const actor = await createActor(nodeA, actorId, ObservabilityOpsNames.actorTypeStateful, 1);
-  require((await joinActor(nodeA, actorId, { scenario: 'OBS-A1', targetSpotRid: spotRid })).accepted,
+  require((await joinActor(nodeA, actorId, { scenario: 'OBS-A1', targetSpotId: spotId })).accepted,
     'OBS-A1 actor did not join the room Spot.');
   const connector = await connectAndBind(options.sessionAStreamEndpoint, 'OBS-A1', actor, unique('flow-bind'));
   try {

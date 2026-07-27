@@ -9,6 +9,8 @@ namespace SpotActorTransfer.Client.Support;
 
 internal sealed class SpotActorTransferScenarioContext : IDisposable
 {
+    private readonly SemaphoreSlim _placementGate = new(1, 1);
+
     public SpotActorTransferScenarioContext(ClientOptions options)
     {
         Options = options;
@@ -30,12 +32,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             (Node: NodeB, Peers: new[] { "actor-a", "actor-c", "session-a", "session-b" }),
             (Node: NodeC, Peers: new[] { "actor-a", "actor-b", "session-a", "session-b" })
         };
-        var expectedSpotTypes = new[]
-        {
-            SpotActorTransferNames.UserSpotType("actor-a"),
-            SpotActorTransferNames.UserSpotType("actor-b"),
-            SpotActorTransferNames.UserSpotType("actor-c")
-        };
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         var observed = new List<string>();
         do
@@ -48,13 +44,14 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 observed.Add(
                     $"{snapshot.NodeRid}:peers={string.Join(',', snapshot.ReadyPeerRids)}"
                     + $";spots={string.Join(',', snapshot.ReadySpotTypes)}");
-                if (peers.Any(peer => !snapshot.ReadyPeerRids.Contains(
-                        peer,
+                if (peers.Any(peer => !snapshot.ReadyPeerRids.Any(
+                        rid => IsNode(rid, peer))))
+                {
+                    ready = false;
+                }
+                if (!snapshot.ReadySpotTypes.Contains(
+                        SpotActorTransferNames.UserSpotType,
                         StringComparer.Ordinal))
-                    || expectedSpotTypes.Any(spotType =>
-                        !snapshot.ReadySpotTypes.Contains(
-                            spotType,
-                            StringComparer.Ordinal)))
                 {
                     ready = false;
                 }
@@ -71,39 +68,152 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
     public void Dispose()
     {
+        _placementGate.Dispose();
         NodeA.Dispose();
         NodeB.Dispose();
         NodeC.Dispose();
     }
 
+    public static bool IsNode(string actualRid, string diagnosticPrefix) =>
+        actualRid.StartsWith(
+            diagnosticPrefix + "-",
+            StringComparison.Ordinal);
+
     public async Task<CreateSpotRes> CreateSpotAsync(
-        ZLinkHttpClient client,
+        ZLinkHttpClient placementNode,
         string spotId,
         string mode = "accept")
     {
-        var (targetNodeRid, coordinator) = ReferenceEquals(client, NodeA)
-            ? ("actor-a", NodeB)
-            : ReferenceEquals(client, NodeB)
-                ? ("actor-b", NodeA)
-                : ReferenceEquals(client, NodeC)
-                    ? ("actor-c", NodeA)
-                    : throw new InvalidOperationException(
-                        "Spot target must be one of the scenario Actor nodes.");
-        return (await coordinator.Post("/spots")
-                   .Body(new CreateSpotReq(spotId, mode, targetNodeRid))
-                   .Async<CreateSpotRes>()).Body
-               ?? throw new InvalidOperationException("Create spot response was null.");
+        return await WithPlacementNodeAsync(
+            placementNode,
+            async () =>
+            {
+                var result = (await NodeA.Post("/spots")
+                                 .Body(new CreateSpotReq(spotId, mode))
+                                 .Async<CreateSpotRes>()).Body
+                             ?? throw new InvalidOperationException(
+                                 "Create spot response was null.");
+                EnsurePlacementOwner(placementNode, result.NodeRid, "Spot");
+                return result;
+            });
     }
 
     public async Task<ActorCreateRes> CreateActorAsync(
-        ZLinkHttpClient client,
+        ZLinkHttpClient placementNode,
         string actorId,
         string actorType,
-        int stateVersion)
+        int stateVersion,
+        int applicationStateBytes = 0)
     {
-        return (await client.Post("/actors").Body(new ActorCreateReq(actorId, actorType, stateVersion))
-                   .Async<ActorCreateRes>()).Body
-               ?? throw new InvalidOperationException("Create actor response was null.");
+        return await WithPlacementNodeAsync(
+            placementNode,
+            async () =>
+            {
+                var result = (await NodeA.Post("/actors").Body(new ActorCreateReq(
+                                   actorId,
+                                   actorType,
+                                   stateVersion,
+                                   applicationStateBytes))
+                               .Async<ActorCreateRes>()).Body
+                             ?? throw new InvalidOperationException(
+                                 "Create actor response was null.");
+                EnsurePlacementOwner(placementNode, result.NodeRid, "Actor");
+                return result;
+            });
+    }
+
+    private async Task<T> WithPlacementNodeAsync<T>(
+        ZLinkHttpClient placementNode,
+        Func<Task<T>> action)
+    {
+        await _placementGate.WaitAsync();
+        try
+        {
+            foreach (var node in ActorNodes())
+                await SetPlacementWeightAsync(node, 0);
+            await SetPlacementWeightAsync(placementNode, 100);
+            return await action();
+        }
+        finally
+        {
+            try
+            {
+                foreach (var node in ActorNodes())
+                    await SetPlacementWeightAsync(node, 100);
+            }
+            finally
+            {
+                _placementGate.Release();
+            }
+        }
+    }
+
+    private async Task SetPlacementWeightAsync(
+        ZLinkHttpClient node,
+        int weight)
+    {
+        var result = (await node.Post("/placement-weight")
+                         .Body(new PlacementWeightReq(weight))
+                         .Async<PlacementWeightRes>()).Body
+                     ?? throw new InvalidOperationException(
+                         "Placement weight response was null.");
+        ZlinkStreamAssert.Ensure(
+            result.Weight == weight,
+            $"Placement weight expected {weight}, got {result.Weight}.");
+    }
+
+    private void EnsurePlacementOwner(
+        ZLinkHttpClient placementNode,
+        string actualNodeRid,
+        string objectKind)
+    {
+        var expectedPrefix = ReferenceEquals(placementNode, NodeA)
+            ? "actor-a"
+            : ReferenceEquals(placementNode, NodeB)
+                ? "actor-b"
+                : ReferenceEquals(placementNode, NodeC)
+                    ? "actor-c"
+                    : throw new InvalidOperationException(
+                        "Placement node must be one of the scenario Actor nodes.");
+        ZlinkStreamAssert.Ensure(
+            IsNode(actualNodeRid, expectedPrefix),
+            $"{objectKind} placement expected {expectedPrefix}, got {actualNodeRid}.");
+    }
+
+    private IEnumerable<ZLinkHttpClient> ActorNodes()
+    {
+        yield return NodeA;
+        yield return NodeB;
+        yield return NodeC;
+    }
+
+    public ZLinkHttpClient NodeForRid(string nodeRid)
+    {
+        if (IsNode(nodeRid, "actor-a")) return NodeA;
+        if (IsNode(nodeRid, "actor-b")) return NodeB;
+        if (IsNode(nodeRid, "actor-c")) return NodeC;
+        throw new InvalidOperationException(
+            $"Unknown Actor node RID '{nodeRid}'.");
+    }
+
+    public (ZLinkHttpClient Client, string DiagnosticPrefix) OtherActorNode(
+        string sourceNodeRid)
+    {
+        return IsNode(sourceNodeRid, "actor-a")
+            ? (NodeB, "actor-b")
+            : (NodeA, "actor-a");
+    }
+
+    public ZLinkHttpClient ThirdActorNode(
+        ZLinkHttpClient first,
+        ZLinkHttpClient second)
+    {
+        foreach (var candidate in new[] { NodeA, NodeB, NodeC })
+            if (!ReferenceEquals(candidate, first)
+                && !ReferenceEquals(candidate, second))
+                return candidate;
+        throw new InvalidOperationException(
+            "A third Actor node is required for stale-route observation.");
     }
 
     public async Task<GateReleaseRes> ReleaseJoinedGateAsync(ZLinkHttpClient client, string spotId)
@@ -180,6 +290,78 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         return (await client.Get("/evidence").Async<IReadOnlyList<ActorEvidence>>()).Body
                ?? throw new InvalidOperationException("Evidence response was null.");
     }
+
+    public async Task<IReadOnlyList<RelocationBlobMeasurement>>
+        GetRelocationBlobMeasurementsAsync(ZLinkHttpClient client)
+    {
+        return (await client.Get("/relocation-blobs")
+                   .Async<IReadOnlyList<RelocationBlobMeasurement>>()).Body
+               ?? throw new InvalidOperationException(
+                   "Relocation blob measurement response was null.");
+    }
+
+    public async Task ResetRelocationBlobMeasurementsAsync(
+        params ZLinkHttpClient[] clients)
+    {
+        foreach (var client in clients)
+            await client.Post("/relocation-blobs/reset").AsyncRaw();
+    }
+
+    public async Task<RelocationPayloadSpotRes> CreatePayloadUserSpotAsync(
+        ZLinkHttpClient coordinator,
+        string spotId,
+        RelocationPayloadSpotReq request) =>
+        (await coordinator.Post($"/payload-spots/user/{spotId}")
+                .Body(request)
+                .Async<RelocationPayloadSpotRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Payload User Spot response was null.");
+
+    public async Task<RelocationPayloadSpotRes> ActivatePayloadInstanceSpotAsync(
+        ZLinkHttpClient coordinator,
+        string spotId,
+        RelocationPayloadSpotReq request) =>
+        (await coordinator.Post($"/payload-spots/instance/{spotId}")
+                .Body(request)
+                .Async<RelocationPayloadSpotRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Payload Instance Spot response was null.");
+
+    public async Task ClosePayloadSpotAsync(
+        ZLinkHttpClient coordinator,
+        string spotId)
+    {
+        var closed = (await coordinator
+                .Post($"/payload-spots/{spotId}/close")
+                .Async<bool>())
+            .Body;
+        ZlinkStreamAssert.Ensure(
+            closed,
+            $"Payload Spot '{spotId}' was not closed.");
+    }
+
+    public async Task<RelocateHostRes> RelocateAsync(
+        ZLinkHttpClient source,
+        TimeSpan? deadline = null) =>
+        (await source.Post("/relocate")
+                .Body(new RelocateHostReq(
+                    DeadlineMilliseconds: checked((int)(
+                        deadline ?? TimeSpan.FromMinutes(2))
+                        .TotalMilliseconds)))
+                .Timeout(deadline ?? TimeSpan.FromMinutes(2))
+                .Async<RelocateHostRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Host relocation response was null.");
+
+    public async Task<ProcessMemoryRes> GetProcessMemoryAsync(
+        ZLinkHttpClient client) =>
+        (await client.Get("/process-memory").Async<ProcessMemoryRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Process memory response was null.");
 
     public async Task ShutdownAsync(ZLinkHttpClient client)
     {
@@ -270,34 +452,104 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Probe response was null.");
     }
 
-    public async Task<ActorRefProbeRes> ProbeRefAsync(
+    public async Task<NodeActorProbeRes> ProbeFromNodeAsync(
         ZLinkHttpClient client,
         string actorId,
-        ActorRefSnapshotRes actor,
         ProbeReq request,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        string? transportOperationId = null)
     {
-        return (await client.Post($"/actors/{actorId}/probe-ref")
-                   .Body(new ActorRefProbeReq(
+        // Selecting the HTTP client selects the submitting process. The
+        // framework call itself carries only the public global Actor ID.
+        return (await client.Post($"/actors/{actorId}/probe-from-node")
+                   .Body(new NodeActorCallReq(
                        request.Scenario,
                        request.Marker,
-                       actor.NodeRid,
-                       actor.Generation,
-                       checked((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds)))
-                   .Async<ActorRefProbeRes>()).Body
-               ?? throw new InvalidOperationException("Actor ref probe response was null.");
+                       checked((int)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds),
+                       transportOperationId))
+                   .Async<NodeActorProbeRes>()).Body
+               ?? throw new InvalidOperationException(
+                   "Node Actor probe response was null.");
     }
 
-    public async Task SendRefAsync(
+    public async Task SendFromNodeAsync(
         ZLinkHttpClient client,
         string actorId,
-        ActorRefSnapshotRes actor,
-        HandoffPacket packet)
+        HandoffPacket packet,
+        string? transportOperationId = null)
     {
-        await client.Post($"/actors/{actorId}/send-ref")
-            .Body(new ActorRefProbeReq(packet.Scenario, packet.Marker, actor.NodeRid, actor.Generation))
+        // The selected process may have a stale bounded route. No owner RID
+        // or ObjectGeneration is supplied by application code.
+        await client.Post($"/actors/{actorId}/send-from-node")
+            .Body(new NodeActorCallReq(
+                packet.Scenario,
+                packet.Marker,
+                TransportOperationId: transportOperationId))
             .AsyncRaw();
     }
+
+    public async Task ArmTransportDeliveryAsync(
+        ZLinkHttpClient client,
+        string operationId,
+        string actorId,
+        string kind)
+    {
+        var response = (await client
+                .Post($"/transport-delivery/{operationId}/arm")
+                .Body(new TransportDeliveryArmReq(actorId, kind))
+                .Async<TransportDeliveryGateRes>())
+            .Body
+            ?? throw new InvalidOperationException(
+                "Transport delivery arm response was null.");
+        ZlinkStreamAssert.Ensure(
+            response.Armed
+            && response.ActorId == actorId
+            && response.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase),
+            $"Transport delivery '{operationId}' was not armed.");
+    }
+
+    public async Task<TransportDeliveryGateRes> WaitTransportDeliveryAsync(
+        ZLinkHttpClient client,
+        string operationId)
+    {
+        var response = (await client
+                .Post($"/transport-delivery/{operationId}/wait")
+                .Async<TransportDeliveryGateRes>())
+            .Body
+            ?? throw new InvalidOperationException(
+                "Transport delivery wait response was null.");
+        ZlinkStreamAssert.Ensure(
+            response.CapturedCount == 1,
+            $"Transport delivery '{operationId}' capture count was "
+            + $"{response.CapturedCount}, expected 1.");
+        return response;
+    }
+
+    public async Task<TransportDeliveryGateRes> ReleaseTransportDeliveryAsync(
+        ZLinkHttpClient client,
+        string operationId)
+    {
+        var response = (await client
+                .Post($"/transport-delivery/{operationId}/release")
+                .Async<TransportDeliveryGateRes>())
+            .Body
+            ?? throw new InvalidOperationException(
+                "Transport delivery release response was null.");
+        ZlinkStreamAssert.Ensure(
+            response.Released,
+            $"Transport delivery '{operationId}' was not released.");
+        return response;
+    }
+
+    public async Task<TransportDeliveryGateRes> GetTransportDeliveryAsync(
+        ZLinkHttpClient client,
+        string operationId) =>
+        (await client
+                .Get($"/transport-delivery/{operationId}")
+                .Async<TransportDeliveryGateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Transport delivery snapshot response was null.");
 
     public async Task<BoundPushRes> BoundPushAsync(
         ZLinkHttpClient client,
@@ -404,18 +656,17 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             $"Actor '{actorId}' {kind} order mismatch: {string.Join(",", evidence)}.");
     }
 
-    public async Task<(string ActorId, ActorRefSnapshotRes OldRef)> TransferForStragglerAsync(
+    public async Task<string> TransferForMessageFollowAsync(
         string scenario,
         int stateVersion)
     {
-        var actorId = $"actor-straggler-{scenario}-{Guid.NewGuid():N}";
-        var spotId = $"spot-straggler-{scenario}-{Guid.NewGuid():N}";
+        var actorId = $"actor-message-follow-{scenario}-{Guid.NewGuid():N}";
+        var spotId = $"spot-message-follow-{scenario}-{Guid.NewGuid():N}";
         await CreateSpotAsync(NodeB, spotId);
         await CreateActorAsync(NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, stateVersion);
-        var oldRef = await GetActorRefAsync(NodeA, actorId);
         ZlinkStreamAssert.Ensure((await JoinAsync(NodeA, actorId, new JoinTargetReq(scenario, spotId))).Accepted,
             $"{scenario} transfer was rejected.");
-        return (actorId, oldRef);
+        return actorId;
     }
 
     public static string EvidenceText(ActorEvidence evidence) =>

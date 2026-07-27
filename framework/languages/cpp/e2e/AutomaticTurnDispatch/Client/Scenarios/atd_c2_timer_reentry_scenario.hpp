@@ -14,7 +14,7 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 std::string run_atd_c2_timer_reentry_scenario (TConnector &connector,
                                               TConnector &observer,
-                                              const std::string &spot_rid)
+                                              const std::string &spot_id)
 {
     const auto request_id = unique_id ("ATD-C2");
     connector.send (timer_start_msg_t{.request_id = request_id,
@@ -23,7 +23,7 @@ std::string run_atd_c2_timer_reentry_scenario (TConnector &connector,
                                       .period_ms = 340,
                                       .delay_ms = 350})
         .packet_name (timer_start_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
     auto evidence =
       observer.request (
@@ -45,7 +45,7 @@ std::string run_atd_c2_timer_reentry_scenario (TConnector &connector,
                               "ATD-C2 marker order mismatch");
     connector.send (timer_stop_msg_t{.request_id = request_id})
         .packet_name (timer_stop_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
     std::cout << "scenario ATD-C2 passed\n";
     return request_id;

@@ -99,10 +99,10 @@ struct nodes_t
 };
 
 e2e::create_spot_res_t
-create_spot (http::client_t &node, const std::string &spot_rid, const std::string &mode = "accept")
+create_spot (http::client_t &node, const std::string &spot_id, const std::string &mode = "accept")
 {
     return node.post ("/spots")
-      .body (e2e::create_spot_req_t{spot_rid, mode})
+      .body (e2e::create_spot_req_t{spot_id, mode})
       .submit<e2e::create_spot_res_t> ().result ().value ().body;
 }
 
@@ -116,9 +116,9 @@ e2e::actor_create_res_t create_actor (http::client_t &node,
       .submit<e2e::actor_create_res_t> ().result ().value ().body;
 }
 
-e2e::gate_release_res_t release_joined_gate (http::client_t &node, const std::string &spot_rid)
+e2e::gate_release_res_t release_joined_gate (http::client_t &node, const std::string &spot_id)
 {
-    return node.post ("/joined-gates/" + spot_rid + "/release").submit<e2e::gate_release_res_t> ().result ().value ().body;
+    return node.post ("/joined-gates/" + spot_id + "/release").submit<e2e::gate_release_res_t> ().result ().value ().body;
 }
 
 e2e::gate_release_res_t release_transfer_gate (http::client_t &node, const std::string &actor_id)
@@ -319,13 +319,13 @@ void assert_request_handoff_frame (http::client_t &source,
     require (handler_count == 1, "In-flight request was not dispatched exactly once.");
 }
 
-std::vector<e2e::actor_evidence_t> forwarding_entries (http::client_t &node,
-                                                       const std::string &actor_id)
+std::vector<e2e::actor_evidence_t> message_follow_entries (
+  http::client_t &node, const std::string &actor_id)
 {
     std::vector<e2e::actor_evidence_t> entries;
     for (const auto &entry : get_evidence (node)) {
         if (entry.scenario == "message_flow" && entry.actor_id == actor_id
-            && entry.kind == "forwarding_entry") {
+            && entry.kind == "message_follow_registered") {
             entries.push_back (entry);
         }
     }
@@ -412,7 +412,7 @@ class bound_session_t
     std::optional<sc::connector_t> _connector;
 };
 
-struct straggler_setup_t
+struct message_follow_setup_t
 {
     std::string actor_id;
     e2e::actor_ref_snapshot_res_t old_ref;
@@ -447,7 +447,9 @@ class scenario_runner_t
   private:
     void in_flight_request_correlation ();
     void in_flight_request_timeout ();
-    straggler_setup_t transfer_for_straggler (const std::string &scenario, int state_version);
+    message_follow_setup_t relocate_for_message_follow (
+      const std::string &scenario,
+      int state_version);
     void transfer_out_failure ();
     void source_leave_failure ();
     void transfer_in_failure ();

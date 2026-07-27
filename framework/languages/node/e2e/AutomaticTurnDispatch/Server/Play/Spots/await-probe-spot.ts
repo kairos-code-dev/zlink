@@ -63,16 +63,16 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
         void reject;
       });
     }
-    this.evidence.add(`actor-admitted|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
+    this.evidence.add(`actor-admitted|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
     return { accepted: true, reply: delay };
   }
 
   async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
+    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
   }
 
   async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
+    this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
   }
 
   async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }

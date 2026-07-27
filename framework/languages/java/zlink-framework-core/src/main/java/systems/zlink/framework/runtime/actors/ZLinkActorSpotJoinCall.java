@@ -53,7 +53,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     private final String explicitRouterChannelId;
     private final boolean entryTarget;
     private AtomicBoolean deferred = new AtomicBoolean();
-    private final AtomicReference<SpotTransportAddress> forwardingAddress =
+    private final AtomicReference<SpotTransportAddress> messageFollowAddress =
         new AtomicReference<>();
     private final AtomicBoolean acceptedCompletionDeliveredOnTarget =
         new AtomicBoolean();
@@ -406,7 +406,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
 
     private CompletionStage<Void> applyCoreRemoteActorMigration(
         ZLinkBackendActorJoinResult result) {
-        // The source-bound session remains attached to the forwarding actor.
+        // The source-bound session remains attached to the Message Follow proxy.
         // Framework routing resolves the relocated Spot for subsequent relay.
         return applyRemoteActorMigration(result, true, true);
     }
@@ -414,7 +414,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     private CompletionStage<Void> applyRemoteActorMigration(
         ZLinkBackendActorJoinResult result,
         boolean sessionAlreadyRebound,
-        boolean retainForwardingSource) {
+        boolean retainMessageFollowSource) {
         if (result.result() != ZLinkBackendRequestResult.OK
             || result.joinResultCode() != 0
             || result.actor() == null
@@ -441,15 +441,15 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 }
                 services.actors().abandonSourceLocationOwnership(context.actor());
                 services.actors().completeRemoteMove(context.actor());
-                if (retainForwardingSource) {
-                    services.actors().retainForwardingSource(
+                if (retainMessageFollowSource) {
+                    services.actors().retainMessageFollowSource(
                         context.actor(), sourceActorRef, result.actor(),
                         java.util.Objects.requireNonNull(
-                            forwardingAddress.get(),
-                            "committed forwarding address"));
+                            messageFollowAddress.get(),
+                            "committed Message Follow address"));
                 }
             });
-        if (retainForwardingSource && services.actors().isActorDispatchActive(context.actor())) {
+        if (retainMessageFollowSource && services.actors().isActorDispatchActive(context.actor())) {
             services.actors().continueAfterActorDispatch(context.actor(), cleanup);
             return CompletableFuture.completedFuture(null);
         }
@@ -496,7 +496,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 0L,
                 systems.zlink.framework.spots.ZLinkSpotKind.ENTRY));
         return resolved.thenCompose(target -> {
-                forwardingAddress.set(target);
+                messageFollowAddress.set(target);
                 ZLinkBackendActorRef currentActorRef = context.actorRef();
                 String actorType = actorTypeOrEmpty(currentActorRef.actorId());
                 String transferId = UUID.randomUUID().toString();

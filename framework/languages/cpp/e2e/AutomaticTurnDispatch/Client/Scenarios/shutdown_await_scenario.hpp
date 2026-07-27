@@ -42,7 +42,7 @@ inline void run_shutdown_wait_scenario (const client_options_t &client_options)
 
     auto result =
       client.request (await_shutdown_scenario_req_t{.request_id = client_options.request_id,
-                                                    .spot_rid = client_options.spot_rid,
+                                                    .spot_id = client_options.spot_id,
                                                     .delay_ms = 30000})
         .packet_name (await_shutdown_scenario_req_t::packet_name)
         .timeout (std::chrono::milliseconds (3000))
@@ -66,7 +66,7 @@ inline void run_shutdown_recovery_scenario (const client_options_t &client_optio
     auto result =
       client.request (
               await_shutdown_recovery_req_t{.request_id = client_options.request_id,
-                                            .spot_rid = client_options.spot_rid})
+                                            .spot_id = client_options.spot_id})
         .packet_name (await_shutdown_recovery_req_t::packet_name)
         .timeout (std::chrono::milliseconds (30000))
         .submit<await_scenario_res_t> ();
@@ -74,8 +74,8 @@ inline void run_shutdown_recovery_scenario (const client_options_t &client_optio
     ensure (static_cast<bool> (result), "ATD-E3 shutdown recovery request failed");
     ensure (result.value ().operation == "await.e3-shutdown-recovery",
             "ATD-E3 recovery operation mismatch");
-    ensure (result.value ().spot_rid == client_options.spot_rid,
-            "ATD-E3 recovery spot rid mismatch");
+    ensure (result.value ().spot_id == client_options.spot_id,
+            "ATD-E3 recovery spot id mismatch");
     bool saw_probe = false;
     for (const auto &line : result.value ().evidence) {
         if (line.find ("request=" + client_options.request_id) != std::string::npos

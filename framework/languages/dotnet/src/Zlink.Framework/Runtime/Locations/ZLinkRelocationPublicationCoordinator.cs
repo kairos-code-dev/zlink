@@ -48,8 +48,8 @@ internal sealed class ZLinkRelocationPublicationConflictException(
 }
 
 internal sealed class ZLinkRelocationPublicationCoordinator(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore)
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore)
 {
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);
 

@@ -124,7 +124,7 @@ class AwaitSession implements ZLinkSession {
       const request = decodePacket(payload, AwaitShutdownScenarioReq);
       this.evidence.add(
         `session-shutdown|rid=${this.evidence.rid}|session=${this.context.sessionId}`
-        + `|request=${request.requestId}|spot=${request.spotRid}`
+        + `|request=${request.requestId}|spot=${request.spotId}`
       );
       const result = await this.runShutdownThroughSpotRoute(request, signal);
       this.context.client.reply(result).submit();
@@ -135,7 +135,7 @@ class AwaitSession implements ZLinkSession {
       const request = decodePacket(payload, AwaitShutdownRecoveryReq);
       this.evidence.add(
         `session-shutdown-recovery|rid=${this.evidence.rid}|session=${this.context.sessionId}`
-        + `|request=${request.requestId}|spot=${request.spotRid}`
+        + `|request=${request.requestId}|spot=${request.spotId}`
       );
       const result = await this.runShutdownRecoveryThroughSpotRoute(request, signal);
       this.context.client.reply(result).submit();
@@ -320,8 +320,8 @@ class AwaitSession implements ZLinkSession {
     request: AwaitShutdownScenarioReq,
     signal?: AbortSignal
   ): Promise<AwaitScenarioRes> {
-    await this.ensurePlaySpot(request.spotRid, signal);
-    const spot = await this.requireSpotHandle(request.spotRid, signal);
+    await this.ensurePlaySpot(request.spotId, signal);
+    const spot = await this.requireSpotHandle(request.spotId, signal);
     await this.outbound
       .requestToSpot(spot, Object.assign(new AwaitReq(), {
         requestId: request.requestId,
@@ -333,7 +333,7 @@ class AwaitSession implements ZLinkSession {
     const evidence = await this.requestPlayEvidence(request.requestId, signal);
     return {
       operation: 'await.e3-shutdown-unexpected-completion',
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       evidence: evidence.evidence
     };
   }
@@ -342,8 +342,8 @@ class AwaitSession implements ZLinkSession {
     request: AwaitShutdownRecoveryReq,
     signal?: AbortSignal
   ): Promise<AwaitScenarioRes> {
-    await this.ensurePlaySpot(request.spotRid, signal);
-    const spot = await this.requireSpotHandle(request.spotRid, signal);
+    await this.ensurePlaySpot(request.spotId, signal);
+    const spot = await this.requireSpotHandle(request.spotId, signal);
     await this.outbound
       .sendToSpot(spot, Object.assign(new ProbeMsg(), {
         requestId: request.requestId,
@@ -354,24 +354,24 @@ class AwaitSession implements ZLinkSession {
     const evidence = await this.requestPlayEvidence(request.requestId, signal);
     if (!evidence.evidence.some((line) =>
       line.includes('probe-completed')
-      && line.includes(`rid=play-a|spot=${request.spotRid}`)
+      && line.includes(`rid=play-a|spot=${request.spotId}`)
       && line.includes('marker=shutdown-recovery-probe')
     )) {
       throw new Error('TD-F5 recovery probe marker missing.');
     }
     return {
       operation: 'await.e3-shutdown-recovery',
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       evidence: evidence.evidence
     };
   }
 
-  private async ensurePlaySpot(spotRid: string, signal?: AbortSignal): Promise<void> {
+  private async ensurePlaySpot(spotId: string, signal?: AbortSignal): Promise<void> {
     await this.route
       .requestToNode(
         AutomaticTurnDispatchNames.controlChannel,
         'play-a',
-        Object.assign(new EnsureSpotReq(), { spotRid })
+        Object.assign(new EnsureSpotReq(), { spotId })
       )
       .timeout(5000)
       .submit<EnsureSpotRes>(signal);
@@ -410,15 +410,15 @@ class AwaitSession implements ZLinkSession {
       | TimerStartMsg | TimerStopMsg | RemoteSpotAwaitMsg,
     signal?: AbortSignal
   ): Promise<void> {
-    const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);
-    if (spotRid === undefined || spotRid.trim() === '') {
-      throw new Error(`${AutomaticTurnDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
+    const spotId = dispatch.metadata.get(AutomaticTurnDispatchNames.spotIdMetadata);
+    if (spotId === undefined || spotId.trim() === '') {
+      throw new Error(`${AutomaticTurnDispatchNames.spotIdMetadata} metadata is required for '${dispatch.packetName}'.`);
     }
-    const spot = await this.requireSpotHandle(spotRid, signal);
+    const spot = await this.requireSpotHandle(spotId, signal);
     await this.outbound
       .sendToSpot(spot, request)
       .submit();
-    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=sent`);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=sent`);
   }
 
   private async relayToSpotRequest<TReply = AutomaticTurnDispatchRes>(
@@ -426,16 +426,16 @@ class AwaitSession implements ZLinkSession {
     request: RemoteSpotAwaitReq | AwaitReq | CounterReadReq | ProbeReq | IoWorkerBatchReq,
     signal?: AbortSignal
   ): Promise<TReply> {
-    const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);
-    if (spotRid === undefined || spotRid.trim() === '') {
-      throw new Error(`${AutomaticTurnDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
+    const spotId = dispatch.metadata.get(AutomaticTurnDispatchNames.spotIdMetadata);
+    if (spotId === undefined || spotId.trim() === '') {
+      throw new Error(`${AutomaticTurnDispatchNames.spotIdMetadata} metadata is required for '${dispatch.packetName}'.`);
     }
-    const spot = await this.requireSpotHandle(spotRid, signal);
+    const spot = await this.requireSpotHandle(spotId, signal);
     const reply = await this.outbound
       .requestToSpot(spot, request)
       .timeout(5000)
       .submit<TReply>(signal);
-    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=replied`);
     return reply;
   }
 
@@ -448,23 +448,23 @@ class AwaitSession implements ZLinkSession {
       await this.relayToSpot(dispatch, request, signal);
       return;
     }
-    const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);
-    if (spotRid === undefined || spotRid.trim() === '') {
-      throw new Error(`${AutomaticTurnDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
+    const spotId = dispatch.metadata.get(AutomaticTurnDispatchNames.spotIdMetadata);
+    if (spotId === undefined || spotId.trim() === '') {
+      throw new Error(`${AutomaticTurnDispatchNames.spotIdMetadata} metadata is required for '${dispatch.packetName}'.`);
     }
-    const spot = await this.requireSpotHandle(spotRid, signal);
+    const spot = await this.requireSpotHandle(spotId, signal);
     await this.outbound
       .requestToSpot(spot, request)
       .timeout(5000)
       .submit(signal);
-    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
+    this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=replied`);
     this.context.client.reply({ ok: true }).submit();
   }
 
-  private async requireSpotHandle(spotRid: string, signal?: AbortSignal) {
-    const spot = await this.spotHandles.find(spotRid, signal);
+  private async requireSpotHandle(spotId: string, signal?: AbortSignal) {
+    const spot = await this.spotHandles.find(spotId, signal);
     if (spot === undefined) {
-      throw new Error(`SpotHandle '${spotRid}' was not found.`);
+      throw new Error(`SpotHandle '${spotId}' was not found.`);
     }
     return spot;
   }

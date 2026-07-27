@@ -1,19 +1,18 @@
 using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Streams;
-
-using Zlink.Framework.Contracts.Locations;
 
 namespace AutomaticTurnDispatch.Server.Session.Support;
 
 internal sealed partial class AwaitSession(
     IZLinkSessionContext context,
     IZLinkRouteClient routes,
+    IZLinkRouteMeshRuntime meshRuntime,
     IZLinkSpotClient spotsClient,
-    IZLinkSpotHandleResolver spots,
     EvidenceStore evidence) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -59,16 +58,17 @@ internal sealed partial class AwaitSession(
                 {
                     await Context.Actors.BindAsync(
                         new ActorRef(
-                            RoutingId.From(actor.NodeRid),
                             actor.ActorId,
-                            actor.Generation),
+                            actor.Generation,
+                            AutomaticTurnDispatchNames.SpotChannel,
+                            RoutingId.From(actor.NodeRid)),
                         cancellationToken);
                     evidence.Add(
                         $"session-bound-actor|rid={evidence.Rid}|session={Context.SessionId}"
                         + $"|actor={actor.ActorId}|node={actor.NodeRid}");
                 }
 
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "AwaitShutdownScenarioReq":
@@ -79,10 +79,9 @@ internal sealed partial class AwaitSession(
                 var result = await RunShutdownThroughSpotRouteAsync(
                     routes,
                     spotsClient,
-                    spots,
                     request,
                     cancellationToken);
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "AwaitShutdownRecoveryReq":
@@ -93,10 +92,9 @@ internal sealed partial class AwaitSession(
                 var result = await RunShutdownRecoveryThroughSpotRouteAsync(
                     routes,
                     spotsClient,
-                    spots,
                     request,
                     cancellationToken);
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "AwaitEvidenceReq":
@@ -107,7 +105,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "AwaitEvidenceWaitReq":
@@ -118,7 +116,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "EnsureSpotReq":
@@ -129,7 +127,7 @@ internal sealed partial class AwaitSession(
                     request,
                     TargetOrDefault(dispatch),
                     cancellationToken);
-                await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+                await Context.Client.Reply(result).Async(cancellationToken);
                 return;
             }
             case "HoldReq":
@@ -278,11 +276,10 @@ internal sealed partial class AwaitSession(
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         var result = await RequestSpotAsync<TRes>(
             spotsClient,
-            spots,
             spotRid,
             request,
             cancellationToken);
-        await Context.Client.Reply(result).SubmitAsync(cancellationToken);
+        await Context.Client.Reply(result).Async(cancellationToken);
     }
 
     private async Task RelaySpotCommandAsync<TMsg>(
@@ -298,7 +295,6 @@ internal sealed partial class AwaitSession(
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
         await SendSpotAsync(
             spotsClient,
-            spots,
             spotRid,
             command,
             cancellationToken);

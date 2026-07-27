@@ -14,14 +14,14 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 void run_td_c1_http_yield_interleave_scenario (TConnector &connector,
                                                TConnector &observer,
-                                               const std::string &spot_rid)
+                                               const std::string &spot_id)
 {
     const auto request_id = unique_id ("TD-C1");
     connector.send (http_await_msg_t{.request_id = request_id,
                                      .delay_ms = 1500,
                                      .terminator = "yield"})
       .packet_name (http_await_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     auto released =
       observer.request (await_evidence_wait_req_t{.request_id = request_id,
@@ -41,11 +41,11 @@ void run_td_c1_http_yield_interleave_scenario (TConnector &connector,
                                      .period_ms = 30,
                                      .delay_ms = 0})
       .packet_name (timer_start_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     observer.send (probe_msg_t{.request_id = request_id, .marker = "http-probe"})
       .packet_name (probe_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     auto evidence =
       observer.request (await_evidence_wait_req_t{.request_id = request_id,
@@ -66,7 +66,7 @@ void run_td_c1_http_yield_interleave_scenario (TConnector &connector,
             "TD-C1 timer did not run while the HTTP yield released the turn");
     observer.send (timer_stop_msg_t{.request_id = request_id})
       .packet_name (timer_stop_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     std::cout << "scenario TD-C1 passed\n";
 }

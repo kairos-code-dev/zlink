@@ -222,6 +222,40 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
+    public async Task Reserved_Actor_Adopts_Committed_Authority_Before_First_Join()
+    {
+        await using var fixture = await LifecycleFixture.CreateAsync();
+        var node = await fixture.NodeAsync("node-a");
+        var actorRef = new ActorRef(
+            ActorId,
+            1,
+            MeshName,
+            RoutingId.From("node-a"));
+
+        // ActorManager committed the reservation, but this target runtime did
+        // not run the ordinary claim path that installs local ownership.
+        Assert.False(node.ActorOwnership.OwnsActor(ActorId));
+
+        await node.ActorOwnership.AdoptCommittedActorAuthorityAsync(
+            ActorId,
+            ActorType,
+            actorRef,
+            deactivate: null);
+        await node.ActorOwnership.NotifyActorJoinedSpotAsync(
+            ActorId,
+            "spot-after-create",
+            spotGeneration: 9);
+
+        Assert.True(node.ActorOwnership.OwnsActor(ActorId));
+        var joined = await node.Resolvers.ResolveActorRowAsync(
+            new ZLinkActorLocationKey(ActorId));
+        Assert.NotNull(joined);
+        Assert.Equal("spot-after-create", joined.SpotId);
+        Assert.Equal(9UL, joined.SpotGeneration);
+        Assert.Equal(actorRef, joined.ActorRef);
+    }
+
+    [Fact]
     public async Task Actor_Release_And_Spot_Release_Remove_Their_Rows_With_The_Owner_Token()
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
@@ -700,7 +734,7 @@ public sealed class LocationLifecycleTests
             string nodeRid,
             ControlledActorStore? actorStore = null)
         {
-            IZLinkLocationStore locationStore = actorStore is null
+            IZLinkLocationRepository locationStore = actorStore is null
                 ? Store
                 : actorStore;
             var runtime = new ZLinkLocationRuntime(

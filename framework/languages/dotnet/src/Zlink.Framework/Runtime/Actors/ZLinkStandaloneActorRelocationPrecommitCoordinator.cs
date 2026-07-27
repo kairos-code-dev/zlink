@@ -10,7 +10,7 @@ namespace Zlink.Framework.Runtime.Actors;
 /// following NewOwner CAS to consume the same fence without a version gap.
 /// </summary>
 internal sealed class ZLinkStandaloneActorRelocationPrecommitCoordinator(
-    IZLinkLocationStore store)
+    IZLinkLocationRepository store)
 {
     private const int MaxConflictRetries = 8;
 

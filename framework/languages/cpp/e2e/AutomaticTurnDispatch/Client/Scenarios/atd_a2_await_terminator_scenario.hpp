@@ -15,14 +15,14 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 std::string run_atd_a2_await_terminator_scenario (TConnector &connector,
                                                  TConnector &observer,
-                                                 const std::string &spot_rid)
+                                                 const std::string &spot_id)
 {
     const auto request_id = unique_id ("ATD-A2");
     connector.send (await_msg_t{.request_id = request_id,
                                 .delay_ms = 1500,
                                 .correlation_id = "corr-a2"})
       .packet_name (await_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     auto released =
       observer.request (
@@ -39,7 +39,7 @@ std::string run_atd_a2_await_terminator_scenario (TConnector &connector,
             "ATD-A2 await-released marker was not observed");
     observer.send (probe_msg_t{.request_id = request_id, .marker = "await-probe"})
         .packet_name (probe_msg_t::packet_name)
-        .metadata (spot_rid_metadata, spot_rid)
+        .metadata (spot_id_metadata, spot_id)
         .submit ();
     auto evidence =
       observer.request (

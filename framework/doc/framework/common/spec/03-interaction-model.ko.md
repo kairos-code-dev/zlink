@@ -121,8 +121,8 @@ public interface IZLinkSessionClient
 Node direct는 infrastructure와 명시적 owner routing에 사용한다. target RID가 현재 mesh member가 아니면
 target-not-found 결과를 내고, member이지만 pipe가 준비되지 않았으면 send readiness 한계까지 기다린 뒤
 route-not-connected 결과를 낸다. Node direct operation은 실패한 request를 다른 node에 자동으로 다시
-보내지 않는다. Global Spot·Actor message는 cached Ready route와 committed forwarding mapping만 사용한다.
-Forwarding bound 안에서 current owner로 relay할 수 없으면 stale-route 오류로 끝내며 source가 Store를 읽어
+보내지 않는다. Global Spot·Actor message는 cached Ready route와 committed Message Follow route만 사용한다.
+Message Follow 제한 안에서 current owner로 relay할 수 없으면 stale-route 오류로 끝내며 source가 Store를 읽어
 다른 owner에게 같은 operation을 다시 제출하지 않는다.
 
 Channel operation은 ChannelName으로 process-local 송신 경로를 먼저 결정한다. RouteMesh 경로는 호출 순간의

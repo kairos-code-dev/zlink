@@ -306,7 +306,7 @@ internal static class ZLinkClientServerControlProtocol
         {
             ZLinkFrameworkRuntimeState.Preparing => 0,
             ZLinkFrameworkRuntimeState.Serving => 1,
-            ZLinkFrameworkRuntimeState.Retiring
+            ZLinkFrameworkRuntimeState.Relocating
                 or ZLinkFrameworkRuntimeState.Draining => 2,
             ZLinkFrameworkRuntimeState.Stopped => 3,
             ZLinkFrameworkRuntimeState.Error => 4,

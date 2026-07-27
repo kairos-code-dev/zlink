@@ -10,8 +10,8 @@ namespace
 inline void scenario_runner_t::run_st_e1_scenario ()
 {
     const auto actor_id = "actor-bound-session-" + unique_suffix ();
-    const auto spot_rid = "spot-bound-session-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid);
+    const auto spot_id = "spot-bound-session-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id);
     create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 91);
     const auto source_ref = get_actor_ref (_nodes.a, actor_id);
     bound_session_t bound (_nodes.a_stream_endpoint, "ST-E1", source_ref);
@@ -19,7 +19,7 @@ inline void scenario_runner_t::run_st_e1_scenario ()
     bound_push (_nodes.a, actor_id, {"ST-E1", "before-transfer"});
     before_push.get ();
 
-    const auto join = join_actor (_nodes.a, actor_id, {"ST-E1", spot_rid});
+    const auto join = join_actor (_nodes.a, actor_id, {"ST-E1", spot_id});
     require (join.accepted, "ST-E1 join was rejected.");
     auto pushed = bound.expect_push ("after-remote-transfer");
     const auto push_reply = bound_push (_nodes.b, actor_id, {"ST-E1", "after-remote-transfer"});

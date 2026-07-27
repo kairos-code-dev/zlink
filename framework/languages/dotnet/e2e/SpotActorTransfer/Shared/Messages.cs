@@ -9,16 +9,19 @@ public static class SpotActorTransferNames
     public const string ActorTypeFailTransferOut = "transfer-fail-out";
     public const string ActorTypeFailLeave = "transfer-fail-leave";
     public const string ActorTypeFailTransferIn = "transfer-fail-in";
-    public const string UserSpotTypePrefix = "transfer-user-spot";
+    public const string UserSpotType = "transfer-user-spot";
+    public const string RelocationPayloadUserSpotType =
+        "relocation-payload-user-spot";
+    public const string RelocationPayloadInstanceSpotType =
+        "relocation-payload-instance-spot";
 
-    public static string UserSpotType(string nodeRid) =>
-        $"{UserSpotTypePrefix}:{nodeRid}";
 }
 
 public sealed record ActorCreateReq(
     string ActorId,
     string ActorType,
-    int StateVersion);
+    int StateVersion,
+    int ApplicationStateBytes = 0);
 
 public sealed record ActorCreateRes(
     string ActorId,
@@ -28,8 +31,7 @@ public sealed record ActorCreateRes(
 
 public sealed record CreateSpotReq(
     string SpotId,
-    string Mode = "accept",
-    string? TargetNodeRid = null);
+    string Mode = "accept");
 
 public sealed record CreateSpotRes(
     string SpotId,
@@ -40,6 +42,10 @@ public sealed record MeshReadyRes(
     string NodeRid,
     string[] ReadyPeerRids,
     string[] ReadySpotTypes);
+
+public sealed record PlacementWeightReq(int Weight);
+
+public sealed record PlacementWeightRes(int Weight);
 
 public sealed record GateReleaseRes(
     string SpotId,
@@ -81,14 +87,13 @@ public sealed record ProbeRes(
     int StateVersion,
     string Marker);
 
-public sealed record ActorRefProbeReq(
+public sealed record NodeActorCallReq(
     string Scenario,
     string Marker,
-    string NodeRid,
-    long Generation,
-    int TimeoutMs = 5000);
+    int TimeoutMs = 5000,
+    string? TransportOperationId = null);
 
-public sealed record ActorRefProbeRes(
+public sealed record NodeActorProbeRes(
     bool Succeeded,
     ProbeRes? Reply,
     string? ErrorKind);
@@ -151,13 +156,51 @@ public sealed record ActorDestroyRes(
     long Generation,
     bool Destroyed);
 
-public sealed record TransferStateDto(
-    string ActorId,
-    int StateVersion);
-
 public sealed record ActorEvidence(
     string Scenario,
     string ActorId,
     string Kind,
     string Value,
     string NodeRid);
+
+public sealed record RelocationBlobMeasurement(
+    string Operation,
+    int EncodedBytes,
+    string PayloadSha256,
+    string OpaqueReferenceSha256);
+
+public sealed record RelocationPayloadSpotReq(
+    string Scenario,
+    int ApplicationStateBytes);
+
+public sealed record RelocationPayloadSpotRes(
+    string SpotId,
+    string NodeRid,
+    int ApplicationStateBytes,
+    string ApplicationStateSha256);
+
+public sealed record RelocateHostReq(
+    long? TargetApplicationVersion = null,
+    int DeadlineMilliseconds = 120000);
+
+public sealed record RelocateHostRes(
+    string Outcome,
+    string Reason,
+    string State);
+
+public sealed record ProcessMemoryRes(
+    long WorkingSetBytes,
+    long PeakWorkingSetBytes);
+
+public sealed record TransportDeliveryArmReq(
+    string ActorId,
+    string Kind);
+
+public sealed record TransportDeliveryGateRes(
+    string OperationId,
+    string ActorId,
+    string Kind,
+    int CapturedCount,
+    int ReleasedCount,
+    bool Armed,
+    bool Released);

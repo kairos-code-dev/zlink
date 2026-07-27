@@ -16,8 +16,6 @@ import { runStE2 } from './Scenarios/st-e2-target-restart-recovery-scenario';
 import { runStF1 } from './Scenarios/st-f1-packet-order-scenario';
 import { runStF2 } from './Scenarios/st-f2-in-flight-order-scenario';
 import { runStF3 } from './Scenarios/st-f3-request-order-scenario';
-import { runStF4 } from './Scenarios/st-f4-bound-session-transfer-scenario';
-import { runStF5 } from './Scenarios/st-f5-external-route-scenario';
 import { runStF6 } from './Scenarios/st-f6-backpressure-timeout-scenario';
 import { closeScenarioClients, options } from './Support/scenario-support';
 
@@ -28,7 +26,7 @@ const scenarios: Readonly<Record<string, () => Promise<void>>> = {
   'ST-D1': runStD1, 'ST-D2': runStD2,
   'ST-E1': runStE1, 'ST-E2': runStE2,
   'ST-F1': runStF1, 'ST-F2': runStF2, 'ST-F3': runStF3,
-  'ST-F4': runStF4, 'ST-F5': runStF5, 'ST-F6': runStF6
+  'ST-F6': runStF6
 };
 
 async function main(): Promise<void> {

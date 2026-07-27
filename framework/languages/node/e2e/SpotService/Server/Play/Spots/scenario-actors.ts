@@ -164,12 +164,12 @@ export class EntryActorPingHandler
     actor.seen += 1;
     evidence.add(
       `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
-      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
+      + `|spot=${actor.context.spotId ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
       nodeRid: evidence.rid,
-      spotRid: String(actor.context.spotRid ?? evidence.rid),
+      spotId: String(actor.context.spotId ?? evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -201,18 +201,18 @@ export class EntrySlowActorPingHandler
     const evidence = EntrySlowActorPingHandler.requireEvidence();
     evidence.add(
       `actor-slow-ping-start|rid=${evidence.rid}|actor=${actor.actorId}`
-      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}`
+      + `|spot=${actor.context.spotId ?? evidence.rid}|value=${request.value}`
     );
     await new Promise((resolve) => setTimeout(resolve, Math.max(0, request.delayMs)));
     actor.seen += 1;
     evidence.add(
       `actor-slow-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
-      + `|spot=${actor.context.spotRid ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
+      + `|spot=${actor.context.spotId ?? evidence.rid}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
       nodeRid: evidence.rid,
-      spotRid: String(actor.context.spotRid ?? evidence.rid),
+      spotId: String(actor.context.spotId ?? evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -243,15 +243,15 @@ export class EntryUserActorPingHandler
     void context;
     const evidence = EntryUserActorPingHandler.requireEvidence();
     actor.seen += 1;
-    const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
+    const spotId = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
     evidence.add(
       `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
-      + `|spot=${spotRid}|value=${request.value}|seen=${actor.seen}`
+      + `|spot=${spotId}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
       nodeRid: evidence.rid,
-      spotRid,
+      spotId,
       value: request.value,
       seen: actor.seen
     };
@@ -283,7 +283,7 @@ export class ActorPushHandler
     return {
       actorId: actor.actorId,
       nodeRid: this.evidence.rid,
-      spotRid: String(actor.context.spotRid ?? this.evidence.rid),
+      spotId: String(actor.context.spotId ?? this.evidence.rid),
       value: request.value,
       seen: actor.seen
     };
@@ -302,14 +302,14 @@ export class EntryUserActorPushHandler
   ): Promise<ActorPingRes> {
     void context;
     actor.seen += 1;
-    const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
+    const spotId = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
     actor.context.boundSession
       .send(new ActorPushNotify(actor.actorId, request.value, actor.seen))
       .submit();
     return {
       actorId: actor.actorId,
       nodeRid: this.evidence.rid,
-      spotRid,
+      spotId,
       value: request.value,
       seen: actor.seen
     };
@@ -377,9 +377,9 @@ export class EntryActorLeaveHandler
       throw new Error('Leave request actor does not match dispatched actor.');
     }
     const evidence = EntryActorLeaveHandler.requireEvidence();
-    const spotRid = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
+    const spotId = InMemoryActorSpotStore.find(actor.actorId) ?? actor.displayName;
     evidence.add(
-      `spot-actor-left|rid=${evidence.rid}|spot=${spotRid}|actor=${actor.actorId}`
+      `spot-actor-left|rid=${evidence.rid}|spot=${spotId}|actor=${actor.actorId}`
     );
     await actor.context.leaveSpot(context.connectionAborted);
     return {
@@ -408,20 +408,20 @@ export class EntryUserSpotActorJoinHandler
       throw new Error('Join request actor does not match dispatched actor.');
     }
     const result = await actor.context
-      .joinSpot(request.spotRid, request)
+      .joinSpot(request.spotId, request)
       .timeout(5000)
       .submit(context.connectionAborted);
     if (result.status === 'rejected') {
       return {
-        spotRid: request.spotRid,
+        spotId: request.spotId,
         actorId: actor.actorId,
         accepted: false,
         generation: '0'
       };
     }
-    InMemoryActorSpotStore.record(actor.actorId, request.spotRid);
+    InMemoryActorSpotStore.record(actor.actorId, request.spotId);
     return {
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       actorId: actor.actorId,
       accepted: true,
       generation: result.actor.generation.toString()

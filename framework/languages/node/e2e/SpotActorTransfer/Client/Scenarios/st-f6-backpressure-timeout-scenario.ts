@@ -4,12 +4,12 @@ import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActo
 
 export async function runStF6(): Promise<void> {
   const replyActorId = unique('actor-handoff-gate-f6-reply');
-  const replySpotRid = unique('spot-handoff-request-reply');
-  await createSpot(nodeB, replySpotRid);
+  const replySpotId = unique('spot-handoff-request-reply');
+  await createSpot(nodeB, replySpotId);
   await createActor(nodeA, replyActorId, SpotActorTransferNames.actorTypeStateful, 106);
   const replyJoin = joinActor(nodeA, replyActorId, {
     scenario: 'ST-F6',
-    targetSpotRid: replySpotRid
+    targetSpotId: replySpotId
   });
   await waitEvidence(nodeA, [`ST-F6|${replyActorId}|before_commit_gate|106`]);
   const inFlightReply = post<ProbeRes>(nodeA, `/actors/${replyActorId}/probe`, {
@@ -45,12 +45,12 @@ export async function runStF6(): Promise<void> {
   );
 
   const timeoutActorId = unique('actor-handoff-gate-f6-timeout');
-  const timeoutSpotRid = unique('spot-handoff-request-timeout');
-  await createSpot(nodeB, timeoutSpotRid);
+  const timeoutSpotId = unique('spot-handoff-request-timeout');
+  await createSpot(nodeB, timeoutSpotId);
   await createActor(nodeA, timeoutActorId, SpotActorTransferNames.actorTypeStateful, 107);
   const timeoutJoin = joinActor(nodeA, timeoutActorId, {
     scenario: 'ST-F6',
-    targetSpotRid: timeoutSpotRid
+    targetSpotId: timeoutSpotId
   });
   await waitEvidence(nodeA, [`ST-F6|${timeoutActorId}|before_commit_gate|107`]);
   const timedRequest = post<ProbeRes>(nodeA, `/actors/${timeoutActorId}/probe`, {

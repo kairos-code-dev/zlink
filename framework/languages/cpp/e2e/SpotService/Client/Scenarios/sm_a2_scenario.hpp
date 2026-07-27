@@ -28,7 +28,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint,
     auto observed =
       api.post ("/evidence/wait")
         .body (evidence_wait_req_t{
-          .contains_all = {"StateRouted", context.spot_rid,
+          .contains_all = {"StateRouted", context.spot_id,
                            std::to_string (context.current_value)}})
         .submit_raw ()
         .result ();
@@ -47,7 +47,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint,
     const auto found = std::any_of (evidence.entries.begin (), evidence.entries.end (),
                                     [&] (const evidence_entry_t &entry) {
                                         return entry.marker == "StateRouted"
-                                               && entry.spot_rid == context.spot_rid
+                                               && entry.spot_id == context.spot_id
                                                && entry.value == expected_value;
                                     });
     if (!found) {
@@ -83,8 +83,8 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
                                   + joined.value ().body);
     }
     auto created = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
-    if (created.spot_rid != "user:play-a:a-room") {
-        throw std::runtime_error ("SM-A2 spot rid mismatch: " + created.spot_rid);
+    if (created.spot_id != "user:play-a:a-room") {
+        throw std::runtime_error ("SM-A2 spot id mismatch: " + created.spot_id);
     }
 
     auto first = api.post ("/spot/state")

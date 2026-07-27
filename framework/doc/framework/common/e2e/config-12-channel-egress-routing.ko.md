@@ -40,7 +40,7 @@ config에서는 Channel egress index가 그 경로를 가로채지 않는 회귀
 | `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `Snapshot` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
 | `Api` | 2 | `game` RouteMesh의 `game.api` Server. 서로 다른 weight와 lifecycle generation 사용 |
 | `WorkflowClient` | 1 | `workflow.command` ClientServer Client |
-| `WorkflowServer` | 2 | `workflow.command` ClientServer Server, `game` RouteMesh membership 0개. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
+| `WorkflowServer` | 2 | 같은 `workflow.command`에 ClientServer Client와 Server를 각각 한 번 등록한다. 같은 process의 Server도 local 우선권 없이 remote Server와 같은 weight 후보가 된다. `game` RouteMesh membership은 0개다. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
 | `Audit` | 1 | 별도 `audit` RouteMesh의 `audit.record` Server |
 
 `Play`는 두 RouteMesh를 등록한다. `game`은 Session·Play·Api의 공통 물리 연결이고, `audit`은 분리된
@@ -77,7 +77,7 @@ Fixture는 최소한 다음 정보를 가진다.
     "play": {"routeMeshes": ["game", "audit"], "channels": {"game.play": "server", "game.session": "client", "game.api": "client", "audit.record": "client"}, "clientServer": {"workflow.command": "client"}},
     "api": {"routeMeshes": ["game"], "channels": {"game.api": "server"}},
     "workflowClient": {"clientServer": {"workflow.command": "client"}},
-    "workflowServer": {"routeMeshes": ["game"], "channels": {}, "clientServer": {"workflow.command": "server"}},
+    "workflowServer": {"routeMeshes": ["game"], "channels": {}, "clientServer": {"workflow.command": "client_and_server"}},
     "audit": {"routeMeshes": ["audit"], "channels": {"audit.record": "server"}}
   }
 }
@@ -88,7 +88,7 @@ Fixture는 최소한 다음 정보를 가진다.
 
 - process-local ChannelName과 선택한 egress 종류
 - RouteMesh peer의 논리 RID와 실제 connection 수
-- ClientServer ready server identity, weight, generation과 `Draining` state
+- ClientServer ready server Node RID, weight와 `Draining` state
 - request correlation의 시작·terminal 횟수
 - listener의 configured bind endpoint, actual bound endpoint와 advertised endpoint
 - handler 실행 횟수와 unsolicited message drop·protocol 오류 수
@@ -184,6 +184,21 @@ Framework는 `game.api` Server membership의 positive-weight ready member 중 re
 공유하되 ChannelName handler namespace와 reply correlation이 유지되어야 한다. 등록하지 않은 다른
 RouteMesh나 ClientServer egress를 fallback·relay로 사용하면 실패다.
 
+### CH-E2E-12 — 같은 process의 ClientServer Client·Server
+
+`WorkflowServer` 하나가 같은 `workflow.command` ChannelName의 Client와 Server를 역할별로 한 번씩
+등록한 상태에서 request를 시작한다. Local Server와 다른 process의 remote Server는 Ready, positive
+weight, non-draining 조건을 만족하면 모두 같은 선택 후보에 들어가야 한다.
+
+Local Server를 특별히 우선하거나 제외하지 않고 장기 선택 비율이 각 Server weight에 수렴해야 한다.
+Local Server가 선택되어도 handler 직접 호출이나 queue·transport 경계 우회를 만들지 않으며 remote
+Server와 같은 request/reply terminal 의미를 적용한다. Local weight를 `0`으로 바꾸거나 local Server가
+`Draining`이면 신규 선택에서 제외하되 이미 수락한 request는 완료해야 한다.
+
+같은 ChannelName의 Client 또는 Server 역할을 같은 process에 두 번 등록한 negative variant는 listener
+bind 전에 startup configuration error로 끝나야 한다. 같은 ChannelName의 Client+Server 조합은 정상이며
+RouteMesh와 같은 ChannelName을 함께 등록하는 충돌은 CH-E2E-06처럼 실패해야 한다.
+
 ## 5. 회귀 gate
 
 Config 12 구현과 함께 다음 회귀를 실행한다.
@@ -199,10 +214,11 @@ Config 12 구현과 함께 다음 회귀를 실행한다.
 | `CH-REG-07` | 7개 공통 sample 구성 snapshot | 공통 sample topology fixture와 다르다 |
 | `CH-REG-08` | 물리 peer와 listener 수 | 같은 peer pair에 반대 방향 또는 RouteMesh·ClientServer 중복 연결이 생긴다 |
 | `CH-REG-09` | sample 공개 API source | MeshName 은닉 helper, weight 0 client 표현, 가짜 membership 또는 언어별 예외가 남는다 |
+| `CH-REG-10` | 같은 ClientServer ChannelName의 Client+Server 역할별 1회 등록, local Server의 동일 weight 선택과 일반 transport 의미 | Client+Server를 중복 오류로 거부하거나 local Server를 우선·제외하거나 handler를 직접 호출한다 |
 
 ## 6. 언어별 feature map과 runner inventory
 
-각 언어 feature map은 `CH-E2E-01~11`, `CH-REG-01~09`를 한 행씩 대응시킨다.
+각 언어 feature map은 `CH-E2E-01~12`, `CH-REG-01~10`을 한 행씩 대응시킨다.
 구현 전에는 `planned` 또는 구체적 gap으로 표시하고 runner·assertion·evidence 경로없이
 `implemented`로 표시하지 않는다. Java와 Kotlin은 binding/runtime을 공유하지만 각 언어의
 public builder와 handler 문법을 compile fixture로 검증한다. Runtime E2E는 JVM lane에서 한

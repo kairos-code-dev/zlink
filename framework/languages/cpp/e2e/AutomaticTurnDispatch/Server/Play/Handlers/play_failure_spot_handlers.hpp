@@ -41,7 +41,7 @@ timeout_reply (const zlink::framework::spot_context_t &context,
 {
     return {.scenario_id = "ATD-E1",
             .request_id = request.request_id,
-            .spot_rid = std::string (context.spot_rid ().value ()),
+            .spot_id = context.spot_id (),
             .node_rid = evidence.node_rid,
             .timed_out = timed_out,
             .error = std::move (error)};
@@ -52,8 +52,8 @@ handle_await_timeout (zlink::framework::spot_context_t &context,
                       evidence_store_t &evidence,
                       const yd::await_timeout_req_t &request)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
-    evidence.add ("timeout-await-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    const auto spot_id = context.spot_id ();
+    evidence.add ("timeout-await-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request.request_id + "|handler=spot");
     try {
         auto call =
@@ -63,16 +63,16 @@ handle_await_timeout (zlink::framework::spot_context_t &context,
                                       .delay_ms = request.delay_ms,
                                       .marker = "timeout"})
             .timeout (std::chrono::milliseconds (request.timeout_ms));
-        evidence.add ("timeout-await-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
+        evidence.add ("timeout-await-released|rid=" + evidence.node_rid + "|spot=" + spot_id
                       + "|request=" + request.request_id + "|handler=spot");
         co_await call.submit<yd::delay_res_t> ();
         evidence.add ("timeout-await-unexpected-resumed|rid=" + evidence.node_rid
-                      + "|spot=" + spot_rid + "|request=" + request.request_id
+                      + "|spot=" + spot_id + "|request=" + request.request_id
                       + "|handler=spot");
         co_return timeout_reply (context, evidence, request, false, "");
     }
     catch (const zlink::framework::framework_exception_t &error) {
-        evidence.add ("timeout-await-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+        evidence.add ("timeout-await-completed|rid=" + evidence.node_rid + "|spot=" + spot_id
                       + "|request=" + request.request_id + "|error="
                       + timeout_error_name (error) + "|handler=spot");
         co_return timeout_reply (context, evidence, request, true,

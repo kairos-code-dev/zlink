@@ -277,7 +277,7 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     ulong RequestSourceNodeGeneration,
     ulong OperationIdHigh,
     ulong OperationIdLow,
-    byte ForwardingHopCount,
+    byte MessageFollowHopCount,
     ulong ReplyRequestId,
     uint ReplyFlags,
     string? ReplyCapability,
@@ -323,7 +323,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 new MeshOperationId(
                     message.OperationIdHigh,
                     message.OperationIdLow),
-                message.ForwardingHopCount,
+                message.MessageFollowHopCount,
                 message.ReplyRequestId,
                 message.ReplyFlags,
                 message.ReplyCapability,

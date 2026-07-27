@@ -45,12 +45,12 @@ inline void run_sm_b2_scenario (const std::string &play_http_endpoint)
     const auto reply =
       nlohmann::json::parse (flow.value ().body).get<remote_actor_flow_res_t> ();
     if (reply.join.owner_node_rid != "play-b"
-        || reply.join.spot_rid != "user:play-b:b-sm-b2-remote"
+        || reply.join.spot_id != "user:play-b:b-sm-b2-remote"
         || reply.join.actor_id != actor_id
         || reply.join.actor.node_rid != "play-b") {
         throw std::runtime_error ("SM-B2 remote join reply mismatch");
     }
-    if (reply.state.owner_node_rid != "play-b" || reply.state.spot_rid != reply.join.spot_rid
+    if (reply.state.owner_node_rid != "play-b" || reply.state.spot_id != reply.join.spot_id
         || reply.state.value != 2 || reply.state.sequence != 1) {
         throw std::runtime_error ("SM-B2 remote actor request mismatch");
     }

@@ -30,14 +30,14 @@ export class SpotAdminHandler implements ZLinkSpotRequestHandler<ScenarioUserSpo
           SpotServiceNames.spotEventTopic,
           spotServicePacket(SpotMsg, { marker: request.marker ?? '' })
         ).submit();
-        this.evidence.add(`spot-publish|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${request.marker}`);
+        this.evidence.add(`spot-publish|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${request.marker}`);
         break;
       case 'worker': {
         const marker = await spot.context.runIoWorker(
           (signal) => delayWorker(request.marker ?? '', request.delayMs ?? 0, signal)
         ).yield();
         spot.add(100);
-        this.evidence.add(`worker-complete|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${marker}`);
+        this.evidence.add(`worker-complete|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${marker}`);
         break;
       }
       case 'idleTimer':
@@ -52,7 +52,7 @@ export class SpotAdminHandler implements ZLinkSpotRequestHandler<ScenarioUserSpo
         });
         break;
     }
-    return { spotRid: String(spot.context.spotRid), nodeRid: String(spot.context.nodeRid), marker: request.marker };
+    return { spotId: String(spot.context.spotId), nodeRid: String(spot.context.nodeRid), marker: request.marker };
   }
 }
 

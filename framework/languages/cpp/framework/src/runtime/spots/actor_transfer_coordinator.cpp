@@ -104,45 +104,49 @@ actor_transfer_coordinator_t::take_backlog (const std::string &actor_key)
     return backlog;
 }
 
-void actor_transfer_coordinator_t::activate_forwarding (
+void actor_transfer_coordinator_t::activate_message_follow (
   const std::string &actor_key,
   std::uint64_t old_generation,
   actor_ref_t target_actor,
   spot_route_t target_route,
-  std::chrono::steady_clock::time_point evict_at,
+  std::chrono::steady_clock::time_point remove_at,
   std::string transfer_id)
 {
     std::lock_guard lock (_mutex);
-    // At most one entry per actor: a re-transfer refreshes the entry toward the
-    // new hop and restarts the window instead of accumulating entries (§10.4-4).
-    _forwardings[actor_key] = forwarding_entry_t{
-      old_generation, std::move (target_actor), std::move (target_route), evict_at,
+    // At most one route per actor: a later relocation replaces the previous
+    // target and restarts the bounded Message Follow duration.
+    _message_follow_routes[actor_key] = message_follow_route_t{
+      old_generation, std::move (target_actor), std::move (target_route), remove_at,
       std::move (transfer_id), 0, 0};
 }
 
-bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string &actor_key,
-                                                              std::uint64_t generation) const
+bool actor_transfer_coordinator_t::can_follow_stale_generation (
+  const std::string &actor_key,
+  std::uint64_t generation) const
 {
     std::lock_guard lock (_mutex);
-    const auto found = _forwardings.find (actor_key);
-    return found != _forwardings.end () && generation <= found->second.old_generation;
+    const auto found = _message_follow_routes.find (actor_key);
+    return found != _message_follow_routes.end ()
+           && generation <= found->second.old_generation;
 }
 
-std::optional<actor_forwarding_target_t>
-actor_transfer_coordinator_t::forwarding_target (const std::string &actor_key,
-                                                 std::uint64_t generation) const
+std::optional<actor_message_follow_target_t>
+actor_transfer_coordinator_t::message_follow_target (const std::string &actor_key,
+                                                     std::uint64_t generation) const
 {
     std::lock_guard lock (_mutex);
-    const auto found = _forwardings.find (actor_key);
-    if (found == _forwardings.end () || found->second.old_generation != generation
-        || found->second.evict_at <= std::chrono::steady_clock::now ()) {
+    const auto found = _message_follow_routes.find (actor_key);
+    if (found == _message_follow_routes.end ()
+        || found->second.old_generation != generation
+        || found->second.remove_at <= std::chrono::steady_clock::now ()) {
         return std::nullopt;
     }
-    return actor_forwarding_target_t{found->second.target_actor, found->second.target_route};
+    return actor_message_follow_target_t{
+      found->second.target_actor, found->second.target_route};
 }
 
-std::optional<actor_forwarding_target_t>
-actor_transfer_coordinator_t::try_acquire_forwarding (
+std::optional<actor_message_follow_target_t>
+actor_transfer_coordinator_t::try_acquire_message_follow (
   const std::string &actor_key,
   std::uint64_t generation,
   std::size_t payload_bytes,
@@ -152,10 +156,10 @@ actor_transfer_coordinator_t::try_acquire_forwarding (
     constexpr std::size_t max_bytes = 16u * 1024u * 1024u;
     constexpr std::size_t max_hops = 8;
     std::lock_guard lock (_mutex);
-    const auto found = _forwardings.find (actor_key);
-    if (found == _forwardings.end ()
+    const auto found = _message_follow_routes.find (actor_key);
+    if (found == _message_follow_routes.end ()
         || found->second.old_generation != generation
-        || found->second.evict_at <= std::chrono::steady_clock::now ()
+        || found->second.remove_at <= std::chrono::steady_clock::now ()
         || hop_count >= max_hops
         || payload_bytes > max_bytes
         || found->second.in_flight_messages >= max_messages
@@ -164,18 +168,18 @@ actor_transfer_coordinator_t::try_acquire_forwarding (
     }
     ++found->second.in_flight_messages;
     found->second.in_flight_bytes += payload_bytes;
-    return actor_forwarding_target_t{
+    return actor_message_follow_target_t{
       found->second.target_actor, found->second.target_route};
 }
 
-void actor_transfer_coordinator_t::release_forwarding (
+void actor_transfer_coordinator_t::release_message_follow (
   const std::string &actor_key,
   std::uint64_t generation,
   std::size_t payload_bytes) noexcept
 {
     std::lock_guard lock (_mutex);
-    const auto found = _forwardings.find (actor_key);
-    if (found == _forwardings.end ()
+    const auto found = _message_follow_routes.find (actor_key);
+    if (found == _message_follow_routes.end ()
         || found->second.old_generation != generation)
         return;
     if (found->second.in_flight_messages != 0)
@@ -186,22 +190,24 @@ void actor_transfer_coordinator_t::release_forwarding (
         : found->second.in_flight_bytes - payload_bytes;
 }
 
-std::vector<evicted_actor_forwarding_t>
-actor_transfer_coordinator_t::evict_expired_forwarding (std::chrono::steady_clock::time_point now)
+std::vector<removed_actor_message_follow_t>
+actor_transfer_coordinator_t::remove_expired_message_follow (
+  std::chrono::steady_clock::time_point now)
 {
     std::lock_guard lock (_mutex);
-    std::vector<evicted_actor_forwarding_t> evicted;
-    for (auto found = _forwardings.begin (); found != _forwardings.end ();) {
-        if (found->second.evict_at <= now) {
-            evicted.push_back (
-              evicted_actor_forwarding_t{found->first, found->second.old_generation,
-                                          found->second.transfer_id});
-            found = _forwardings.erase (found);
+    std::vector<removed_actor_message_follow_t> removed;
+    for (auto found = _message_follow_routes.begin ();
+         found != _message_follow_routes.end ();) {
+        if (found->second.remove_at <= now) {
+            removed.push_back (
+              removed_actor_message_follow_t{found->first, found->second.old_generation,
+                                              found->second.transfer_id});
+            found = _message_follow_routes.erase (found);
         } else {
             ++found;
         }
     }
-    return evicted;
+    return removed;
 }
 
 bool actor_transfer_coordinator_t::blocks_dispatch (const std::string &actor_key) const

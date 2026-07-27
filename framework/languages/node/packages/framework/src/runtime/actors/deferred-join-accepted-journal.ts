@@ -4,13 +4,14 @@ import type {
   ZLinkActorJoinCompletion,
   ZLinkActorJoinOperationId,
   ZLinkAuthoritySnapshot,
-  ZLinkRelocationReference,
+  ZLinkBlobReference,
   ZLinkRelocationStore
 } from '../../contracts';
 import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
 import { crc32c } from '../foundation/service-relocation-runtime';
+import { putNewRelocationBlob } from '../locations/relocation-blob';
 import { decodeRoutingId, routingIdWireHex } from '../routing-id';
 import {
   decodeActorAuthorityIdentity,
@@ -29,7 +30,7 @@ export type ZLinkDeferredJoinDeliveryCursor =
 
 export interface ZLinkDeferredJoinAcceptedRoot {
   readonly authority: ZLinkAuthoritySnapshot;
-  readonly reference: ZLinkRelocationReference;
+  readonly reference: ZLinkBlobReference;
   readonly checksumCrc32c: number;
   readonly operationId: ZLinkActorJoinOperationId;
   readonly actor: ActorRef;
@@ -39,7 +40,7 @@ export interface ZLinkDeferredJoinAcceptedRoot {
 
 interface DeferredJoinAuthorityPublication {
   readonly applicationPayload: Buffer;
-  readonly reference: ZLinkRelocationReference;
+  readonly reference: ZLinkBlobReference;
   readonly checksumCrc32c: number;
 }
 
@@ -253,10 +254,10 @@ export class ZLinkDeferredJoinAcceptedJournal {
   ): Promise<ZLinkDeferredJoinAcceptedRoot | undefined> {
     const publication = decodeAuthorityPublication(authority.payload);
     if (publication === undefined) return undefined;
-    const read = await this.relocation.getRelocation(publication.reference, signal);
+    const read = await this.relocation.read(publication.reference, signal);
     if (
       read.kind !== 'found'
-      || crc32c(read.payload) !== publication.checksumCrc32c
+      || crc32c(read.bytes) !== publication.checksumCrc32c
     ) {
       throw new Error('Published deferred Join completion root is missing or corrupt.');
     }
@@ -264,7 +265,7 @@ export class ZLinkDeferredJoinAcceptedJournal {
       authority,
       reference: publication.reference,
       checksumCrc32c: publication.checksumCrc32c,
-      ...decodeRoot(read.payload)
+      ...decodeRoot(read.bytes)
     };
   }
 
@@ -277,18 +278,22 @@ export class ZLinkDeferredJoinAcceptedJournal {
   ): Promise<Omit<ZLinkDeferredJoinAcceptedRoot, 'authority'>> {
     const payload = encodeRoot(value);
     const checksumCrc32c = crc32c(payload);
-    const stored = await this.relocation.putRelocation(payload, RETENTION_MS, signal);
+    const stored = await putNewRelocationBlob(
+      this.relocation,
+      payload,
+      RETENTION_MS,
+      signal
+    );
     if (
-      stored.checksumCrc32c !== checksumCrc32c
-      || stored.expiresAt.getTime() <= stored.storeNow.getTime()
+      stored.expiresAt.getTime() <= stored.storeNow.getTime()
     ) {
       await this.deleteBestEffort(stored.reference);
       throw new Error('Relocation Store returned an invalid deferred Join root receipt.');
     }
-    const read = await this.relocation.getRelocation(stored.reference, signal);
+    const read = await this.relocation.read(stored.reference, signal);
     if (
       read.kind !== 'found'
-      || !Buffer.from(read.payload).equals(payload)
+      || !Buffer.from(read.bytes).equals(payload)
     ) {
       await this.deleteBestEffort(stored.reference);
       throw new Error('Relocation Store failed deferred Join root verification.');
@@ -301,9 +306,9 @@ export class ZLinkDeferredJoinAcceptedJournal {
     };
   }
 
-  private async deleteBestEffort(reference: ZLinkRelocationReference): Promise<void> {
+  private async deleteBestEffort(reference: ZLinkBlobReference): Promise<void> {
     try {
-      await this.relocation.deleteRelocation(reference);
+      await this.relocation.delete(reference);
     } catch {
       // Fixed retention remains the orphan cleanup boundary.
     }
@@ -318,7 +323,7 @@ function requireAuthorityActor(payload: Uint8Array, actor: ActorRef): void {
   if (
     identity === undefined
     || identity.actor.actorId !== actor.actorId
-    || identity.actor.generation !== actor.generation
+    || identity.actor.objectGeneration !== actor.objectGeneration
     || String(identity.actor.nodeRid) !== String(actor.nodeRid)
   ) {
     throw new Error(`Actor '${actor.actorId}' authority fence does not match its ActorRef.`);
@@ -337,7 +342,8 @@ function encodeRoot(
     operationHigh: value.operationId.high.toString(),
     operationLow: value.operationId.low.toString(),
     actorId: value.actor.actorId,
-    actorGeneration: value.actor.generation.toString(),
+    actorGeneration: value.actor.objectGeneration.toString(),
+    actorMeshName: value.actor.meshName,
     actorNodeRid: String(value.actor.nodeRid),
     actorNodeRidHex: nodeRidHex,
     rawReply: Buffer.from(value.rawReply).toString('base64'),
@@ -362,6 +368,7 @@ function decodeRoot(
     || typeof value.operationLow !== 'string'
     || typeof value.actorId !== 'string'
     || typeof value.actorGeneration !== 'string'
+    || typeof value.actorMeshName !== 'string'
     || typeof value.actorNodeRid !== 'string'
     || typeof value.rawReply !== 'string'
     || !isCursor(value.cursor)
@@ -378,12 +385,13 @@ function decodeRoot(
     low: BigInt(value.operationLow)
   };
   const actor: ActorRef = {
+    actorId: value.actorId,
+    objectGeneration: actorGeneration,
+    meshName: value.actorMeshName,
     nodeRid: decodeRoutingId(
       value.actorNodeRid,
       typeof value.actorNodeRidHex === 'string' ? value.actorNodeRidHex : undefined
-    ),
-    actorId: value.actorId,
-    generation: actorGeneration
+    )
   };
   validateIdentity(value.actorId, operationId, actor);
   return {
@@ -435,7 +443,7 @@ function decodeAuthorityPublication(
   }
   return {
     applicationPayload,
-    reference: { value: value.deferredJoin.reference } as ZLinkRelocationReference,
+    reference: { value: value.deferredJoin.reference } as ZLinkBlobReference,
     checksumCrc32c: value.deferredJoin.checksumCrc32c
   };
 }
@@ -448,7 +456,7 @@ function validateIdentity(
   if (
     actorId.length === 0
     || actor.actorId !== actorId
-    || actor.generation <= 0n
+    || actor.objectGeneration <= 0n
     || operationId.high === 0n && operationId.low === 0n
   ) {
     throw new Error('Deferred Join completion identity is invalid.');
@@ -464,7 +472,7 @@ function requireSameOperation(
     root.operationId.high !== operationId.high
     || root.operationId.low !== operationId.low
     || root.actor.actorId !== actor.actorId
-    || root.actor.generation !== actor.generation
+    || root.actor.objectGeneration !== actor.objectGeneration
   ) {
     throw new Error(`Actor '${actor.actorId}' already has a different durable Join completion.`);
   }
@@ -476,7 +484,7 @@ function requireSameActor(
 ): void {
   if (
     root.actor.actorId !== actor.actorId
-    || root.actor.generation !== actor.generation
+    || root.actor.objectGeneration !== actor.objectGeneration
   ) {
     throw new Error('Deferred Join completion generation fence is stale.');
   }

@@ -29,10 +29,10 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto play_b = zlink::http_client::client_t::create ()
                     .base_url (play_b_http_endpoint)
                     .build ();
-    constexpr auto spot_rid = "user:play-b:sm-e1-missing";
+    constexpr auto spot_id = "user:play-b:sm-e1-missing";
     auto created =
       play_b.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = spot_rid})
+        .body (create_spot_req_t{.spot_id = spot_id})
         .submit_raw ()
         .result ();
     if (!created) {
@@ -45,7 +45,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
                                   + created.value ().body);
     }
     const auto create_reply = nlohmann::json::parse (created.value ().body).get<create_spot_res_t> ();
-    if (!create_reply.created || create_reply.spot_rid != spot_rid
+    if (!create_reply.created || create_reply.spot_id != spot_id
         || create_reply.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-E1 create spot reply mismatch");
     }
@@ -53,7 +53,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto missing =
       play_a.post ("/spot/missing-route")
         .body (spot_missing_route_req_t{.target_node_rid = "play-b",
-                                        .spot_rid = spot_rid,
+                                        .spot_id = spot_id,
                                         .value = "missing-route"})
         .submit_raw ()
         .result ();
@@ -74,7 +74,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
 
     auto request_missing_handler = [&] {
         return play_a.post ("/spot/missing-handler/request")
-          .body (spot_missing_handler_req_t{.spot_rid = spot_rid})
+          .body (spot_missing_handler_req_t{.spot_id = spot_id})
           .submit_raw ()
           .result ();
     };
@@ -100,14 +100,14 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     const auto missing_handler_request_reply =
       nlohmann::json::parse (missing_handler_request.value ().body)
         .get<spot_missing_handler_res_t> ();
-    if (missing_handler_request_reply.spot_rid != spot_rid
+    if (missing_handler_request_reply.spot_id != spot_id
         || !missing_handler_request_reply.failed) {
         throw std::runtime_error ("SM-E1 missing handler request reply mismatch");
     }
 
     auto missing_handler_command =
       play_a.post ("/spot/missing-handler/command")
-        .body (spot_missing_command_req_t{.spot_rid = spot_rid, .marker = "sm-e1-missing-command"})
+        .body (spot_missing_command_req_t{.spot_id = spot_id, .marker = "sm-e1-missing-command"})
         .submit_raw ()
         .result ();
     if (!missing_handler_command || missing_handler_command.value ().status >= 400) {
@@ -116,16 +116,16 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     const auto missing_handler_command_reply =
       nlohmann::json::parse (missing_handler_command.value ().body)
         .get<spot_missing_command_res_t> ();
-    if (missing_handler_command_reply.spot_rid != spot_rid
+    if (missing_handler_command_reply.spot_id != spot_id
         || missing_handler_command_reply.marker != "sm-e1-missing-command"
         || !missing_handler_command_reply.sent) {
         throw std::runtime_error ("SM-E1 missing handler command reply mismatch");
     }
 
-    const auto absent_spot_rid = user_spot_rid_for_key ("b-sm-e1-missing-target");
+    const auto absent_spot_id = user_spot_id_for_key ("b-sm-e1-missing-target");
     auto missing_target =
       play_a.post ("/spot/missing-target/request")
-        .body (spot_missing_target_req_t{.spot_rid = absent_spot_rid})
+        .body (spot_missing_target_req_t{.spot_id = absent_spot_id})
         .submit_raw ()
         .result ();
     if (!missing_target || missing_target.value ().status >= 400) {
@@ -133,7 +133,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     }
     const auto missing_target_reply =
       nlohmann::json::parse (missing_target.value ().body).get<spot_missing_target_res_t> ();
-    if (missing_target_reply.spot_rid != absent_spot_rid || !missing_target_reply.failed) {
+    if (missing_target_reply.spot_id != absent_spot_id || !missing_target_reply.failed) {
         throw std::runtime_error ("SM-E1 missing target reply mismatch");
     }
 }

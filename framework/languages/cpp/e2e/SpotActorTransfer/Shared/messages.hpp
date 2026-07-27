@@ -20,7 +20,7 @@ inline constexpr const char *actor_type_no_adapter = "transfer-no-adapter";
 inline constexpr const char *actor_type_fail_transfer_out = "transfer-fail-out";
 inline constexpr const char *actor_type_fail_leave = "transfer-fail-leave";
 inline constexpr const char *actor_type_fail_transfer_in = "transfer-fail-in";
-inline constexpr const char *entry_spot_rid = "spot-actor-transfer-entry";
+inline constexpr const char *entry_spot_id = "spot-actor-transfer-entry";
 
 struct actor_create_req_t
 {
@@ -39,20 +39,20 @@ struct actor_create_res_t
 
 struct create_spot_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string mode = "accept";
 };
 
 struct create_spot_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string node_rid;
     std::string state;
 };
 
 struct gate_release_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     bool released = false;
 };
 
@@ -60,7 +60,7 @@ struct join_target_req_t
 {
     static constexpr const char *packet_name = "JoinTargetReq";
     std::string scenario;
-    std::string target_spot_rid;
+    std::string target_spot_id;
     std::string expected_mode = "accept";
 };
 
@@ -70,7 +70,7 @@ struct join_target_res_t
     std::string actor_id;
     bool accepted = false;
     std::string source_node_rid;
-    std::string target_spot_rid;
+    std::string target_spot_id;
     int state_version = 0;
     std::string error_kind;
 };
@@ -93,7 +93,7 @@ struct probe_res_t
 {
     std::string scenario;
     std::string actor_id;
-    std::string spot_rid;
+    std::string spot_id;
     std::string node_rid;
     int state_version = 0;
     std::string marker;
@@ -144,7 +144,7 @@ struct bound_push_res_t
 {
     std::string scenario;
     std::string actor_id;
-    std::string spot_rid;
+    std::string spot_id;
     std::string node_rid;
     std::string marker;
     int state_version = 0;
@@ -155,7 +155,7 @@ struct bound_push_notify_t
     static constexpr const char *packet_name = "BoundPushNotify";
     std::string scenario;
     std::string actor_id;
-    std::string spot_rid;
+    std::string spot_id;
     std::string node_rid;
     std::string marker;
     int state_version = 0;
@@ -224,49 +224,49 @@ inline void from_json (const nlohmann::json &json, actor_create_res_t &value)
 
 inline void to_json (nlohmann::json &json, const create_spot_req_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"mode", value.mode}};
+    json = {{"spotId", value.spot_id}, {"mode", value.mode}};
 }
 
 inline void from_json (const nlohmann::json &json, create_spot_req_t &value)
 {
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.mode = json.value ("mode", "accept");
 }
 
 inline void to_json (nlohmann::json &json, const create_spot_res_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"nodeRid", value.node_rid}, {"state", value.state}};
+    json = {{"spotId", value.spot_id}, {"nodeRid", value.node_rid}, {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, create_spot_res_t &value)
 {
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.node_rid = json.value ("nodeRid", "");
     value.state = json.value ("state", "");
 }
 
 inline void to_json (nlohmann::json &json, const gate_release_res_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"released", value.released}};
+    json = {{"spotId", value.spot_id}, {"released", value.released}};
 }
 
 inline void from_json (const nlohmann::json &json, gate_release_res_t &value)
 {
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.released = json.value ("released", false);
 }
 
 inline void to_json (nlohmann::json &json, const join_target_req_t &value)
 {
     json = {{"scenario", value.scenario},
-            {"targetSpotRid", value.target_spot_rid},
+            {"targetSpotId", value.target_spot_id},
             {"expectedMode", value.expected_mode}};
 }
 
 inline void from_json (const nlohmann::json &json, join_target_req_t &value)
 {
     value.scenario = json.value ("scenario", "");
-    value.target_spot_rid = json.value ("targetSpotRid", "");
+    value.target_spot_id = json.value ("targetSpotId", "");
     value.expected_mode = json.value ("expectedMode", "accept");
 }
 
@@ -276,7 +276,7 @@ inline void to_json (nlohmann::json &json, const join_target_res_t &value)
             {"actorId", value.actor_id},
             {"accepted", value.accepted},
             {"sourceNodeRid", value.source_node_rid},
-            {"targetSpotRid", value.target_spot_rid},
+            {"targetSpotId", value.target_spot_id},
             {"stateVersion", value.state_version}};
     if (!value.error_kind.empty ()) {
         json["errorKind"] = value.error_kind;
@@ -289,7 +289,7 @@ inline void from_json (const nlohmann::json &json, join_target_res_t &value)
     value.actor_id = json.value ("actorId", "");
     value.accepted = json.value ("accepted", false);
     value.source_node_rid = json.value ("sourceNodeRid", "");
-    value.target_spot_rid = json.value ("targetSpotRid", "");
+    value.target_spot_id = json.value ("targetSpotId", "");
     value.state_version = json.value ("stateVersion", 0);
     value.error_kind = json.value ("errorKind", "");
 }
@@ -320,7 +320,7 @@ inline void to_json (nlohmann::json &json, const probe_res_t &value)
 {
     json = {{"scenario", value.scenario},
             {"actorId", value.actor_id},
-            {"spotRid", value.spot_rid},
+            {"spotId", value.spot_id},
             {"nodeRid", value.node_rid},
             {"stateVersion", value.state_version},
             {"marker", value.marker}};
@@ -330,7 +330,7 @@ inline void from_json (const nlohmann::json &json, probe_res_t &value)
 {
     value.scenario = json.value ("scenario", "");
     value.actor_id = json.value ("actorId", "");
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.node_rid = json.value ("nodeRid", "");
     value.state_version = json.value ("stateVersion", 0);
     value.marker = json.value ("marker", "");
@@ -429,7 +429,7 @@ inline void to_json (nlohmann::json &json, const bound_push_res_t &value)
 {
     json = {{"scenario", value.scenario},
             {"actorId", value.actor_id},
-            {"spotRid", value.spot_rid},
+            {"spotId", value.spot_id},
             {"nodeRid", value.node_rid},
             {"marker", value.marker},
             {"stateVersion", value.state_version}};
@@ -439,7 +439,7 @@ inline void from_json (const nlohmann::json &json, bound_push_res_t &value)
 {
     value.scenario = json.value ("scenario", "");
     value.actor_id = json.value ("actorId", "");
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.node_rid = json.value ("nodeRid", "");
     value.marker = json.value ("marker", "");
     value.state_version = json.value ("stateVersion", 0);
@@ -449,7 +449,7 @@ inline void to_json (nlohmann::json &json, const bound_push_notify_t &value)
 {
     json = {{"scenario", value.scenario},
             {"actorId", value.actor_id},
-            {"spotRid", value.spot_rid},
+            {"spotId", value.spot_id},
             {"nodeRid", value.node_rid},
             {"marker", value.marker},
             {"stateVersion", value.state_version}};
@@ -459,7 +459,7 @@ inline void from_json (const nlohmann::json &json, bound_push_notify_t &value)
 {
     value.scenario = json.value ("scenario", "");
     value.actor_id = json.value ("actorId", "");
-    value.spot_rid = json.value ("spotRid", "");
+    value.spot_id = json.value ("spotId", "");
     value.node_rid = json.value ("nodeRid", "");
     value.marker = json.value ("marker", "");
     value.state_version = json.value ("stateVersion", 0);

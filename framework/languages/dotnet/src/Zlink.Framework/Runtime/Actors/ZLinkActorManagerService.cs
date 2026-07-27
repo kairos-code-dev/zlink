@@ -354,7 +354,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
             && string.Equals(capability.StableType, actorType, StringComparison.Ordinal));
 
     private async ValueTask<ZLinkActorCreateResult?> JoinExistingAsync(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ZLinkAuthorityKey key,
         string actorId,
         string actorType,

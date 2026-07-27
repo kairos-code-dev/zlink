@@ -23,7 +23,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("playBHttpEndpoint is required for SM-C1");
     }
 
-    constexpr auto spot_rid = "user:play-a:sm-c1-channel";
+    constexpr auto spot_id = "user:play-a:sm-c1-channel";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
                     .build ();
@@ -33,7 +33,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
 
     auto created_raw =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = spot_rid})
+        .body (create_spot_req_t{.spot_id = spot_id})
         .submit_raw ()
         .result ();
     if (!created_raw || created_raw.value ().status >= 400) {
@@ -41,7 +41,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     }
     const auto created =
       nlohmann::json::parse (created_raw.value ().body).get<create_spot_res_t> ();
-    if (created.spot_rid != spot_rid || created.owner_node_rid != "play-a") {
+    if (created.spot_id != spot_id || created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-C1 spot was not created on play-a");
     }
 
@@ -49,7 +49,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       external_channel.post ("/spot/direct")
         .body (direct_spot_route_req_t{
           .target_node_rid = "play-a",
-          .spot_rid = spot_rid,
+          .spot_id = spot_id,
           .value = "sm-c1-request",
           .source_actor_id = "sm-c1-client"})
         .submit_raw ()
@@ -59,7 +59,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     }
     const auto via_channel =
       nlohmann::json::parse (request_raw.value ().body).get<direct_spot_res_t> ();
-    if (via_channel.spot_rid != spot_rid || via_channel.owner_node_rid != "play-a"
+    if (via_channel.spot_id != spot_id || via_channel.owner_node_rid != "play-a"
         || via_channel.value != "sm-c1-request:reply") {
         throw std::runtime_error ("SM-C1 channel-to-spot request reply mismatch");
     }
@@ -67,7 +67,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     auto command_raw =
       external_channel.post ("/spot/state/command")
         .body (spot_state_command_route_req_t{
-          .target_node_rid = "play-a", .spot_rid = spot_rid, .marker = "sm-c1-send"})
+          .target_node_rid = "play-a", .spot_id = spot_id, .marker = "sm-c1-send"})
         .submit_raw ()
         .result ();
     if (!command_raw || command_raw.value ().status >= 400) {
@@ -81,7 +81,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
 
     const auto publish_marker = [&] (const std::string &marker) {
         return external_channel.post ("/spot/publish")
-          .body (spot_publish_route_req_t{.spot_rid = spot_rid, .marker = marker})
+          .body (spot_publish_route_req_t{.spot_id = spot_id, .marker = marker})
           .submit_raw ()
           .result ();
     };
@@ -94,7 +94,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
         const auto evidence = play_a.get ("/evidence").submit<evidence_snapshot_t> ().result ().value ().body;
         for (const auto &entry : evidence.entries) {
-            if (entry.marker == "MeshMsgReceived" && entry.spot_rid == spot_rid
+            if (entry.marker == "MeshMsgReceived" && entry.spot_id == spot_id
                 && entry.value == "evt-sm-c1:sm-c1-warmup") {
                 mesh_ready = true;
                 break;
@@ -117,7 +117,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     auto publish_observed =
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{
-          .contains_all = {"MeshMsgReceived", spot_rid, "evt-sm-c1:sm-c1-publish"}})
+          .contains_all = {"MeshMsgReceived", spot_id, "evt-sm-c1:sm-c1-publish"}})
         .submit_raw ()
         .result ();
     if (!publish_observed || publish_observed.value ().status >= 400) {
@@ -127,7 +127,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     auto timeout_raw =
       external_channel.post ("/spot/slow/request")
         .body (spot_slow_route_req_t{.target_node_rid = "play-a",
-                                     .spot_rid = spot_rid,
+                                     .spot_id = spot_id,
                                      .value = "sm-c1-timeout",
                                      .timeout_ms = 50})
         .submit_raw ()
@@ -145,7 +145,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       external_channel.post ("/spot/direct")
         .body (direct_spot_route_req_t{
           .target_node_rid = "play-a",
-          .spot_rid = spot_rid,
+          .spot_id = spot_id,
           .value = "sm-c1-after-timeout",
           .source_actor_id = "sm-c1-client"})
         .submit_raw ()
@@ -155,7 +155,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     }
     const auto after_timeout =
       nlohmann::json::parse (after_timeout_raw.value ().body).get<direct_spot_res_t> ();
-    if (after_timeout.spot_rid != spot_rid || after_timeout.owner_node_rid != "play-a"
+    if (after_timeout.spot_id != spot_id || after_timeout.owner_node_rid != "play-a"
         || after_timeout.value != "sm-c1-after-timeout:reply") {
         throw std::runtime_error ("SM-C1 post-timeout request reply mismatch");
     }
@@ -163,7 +163,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     auto missing_raw =
       external_channel.post ("/spot/missing-route")
         .body (spot_missing_route_req_t{
-          .target_node_rid = "play-a", .spot_rid = spot_rid, .value = "sm-c1-missing"})
+          .target_node_rid = "play-a", .spot_id = spot_id, .value = "sm-c1-missing"})
         .submit_raw ()
         .result ();
     if (!missing_raw || missing_raw.value ().status >= 400) {

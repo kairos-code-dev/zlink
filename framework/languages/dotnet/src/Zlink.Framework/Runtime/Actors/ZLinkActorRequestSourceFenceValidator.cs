@@ -13,7 +13,7 @@ internal static class ZLinkActorRequestSourceFenceValidator
     private const int MaximumConcurrentLeaseReads = 8;
 
     internal static ValueTask ValidateAsync(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         string meshName,
         MeshNodeStatus localNode,
         IReadOnlyList<MeshNodePeer> peers,

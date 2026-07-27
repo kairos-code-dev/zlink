@@ -56,16 +56,16 @@ int main (int argc, char **argv)
         if (scenario == "shutdown-wait") {
             ensure (!client_options.request_id.empty (),
                     "requestId is required for shutdown-wait");
-            ensure (!client_options.spot_rid.empty (),
-                    "spotRid is required for shutdown-wait");
+            ensure (!client_options.spot_id.empty (),
+                    "spotId is required for shutdown-wait");
             atd_client::run_shutdown_wait_scenario (client_options);
             return 0;
         }
         if (scenario == "shutdown-recovery") {
             ensure (!client_options.request_id.empty (),
                     "requestId is required for shutdown-recovery");
-            ensure (!client_options.spot_rid.empty (),
-                    "spotRid is required for shutdown-recovery");
+            ensure (!client_options.spot_id.empty (),
+                    "spotId is required for shutdown-recovery");
             atd_client::run_shutdown_recovery_scenario (client_options);
             return 0;
         }
@@ -85,18 +85,18 @@ int main (int argc, char **argv)
         ensure (static_cast<bool> (observer_connected),
                 "AutomaticTurnDispatch observer stream connect failed");
 
-        const auto spot_rid = unique_id ("await-track-a");
+        const auto spot_id = unique_id ("await-track-a");
         auto spot =
-          client.request (yd::ensure_spot_req_t{.spot_rid = spot_rid})
+          client.request (yd::ensure_spot_req_t{.spot_id = spot_id})
             .packet_name (yd::ensure_spot_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
             .submit<yd::ensure_spot_res_t> ();
         ensure_result (spot, "ATD-A ensure spot request failed");
-        ensure (spot.value ().spot_rid == spot_rid, "ATD-A ensure spot reply mismatch");
+        ensure (spot.value ().spot_id == spot_id, "ATD-A ensure spot reply mismatch");
         const atd_client::await_actor_scenario_context_t actors{
-          .spot_rid = spot_rid, .actor_a = unique_id ("actor-a"), .actor_b = unique_id ("actor-b")};
+          .spot_id = spot_id, .actor_a = unique_id ("actor-a"), .actor_b = unique_id ("actor-b")};
         auto bound_actors =
-          client.request (yd::bind_await_actors_req_t{.spot_rid = actors.spot_rid,
+          client.request (yd::bind_await_actors_req_t{.spot_id = actors.spot_id,
                                                       .actor_ids = {actors.actor_a, actors.actor_b}})
             .packet_name (yd::bind_await_actors_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
@@ -105,7 +105,7 @@ int main (int argc, char **argv)
         ensure (bound_actors.value ().actors.size () == 2, "ATD-B bind actor count mismatch");
         auto observer_bound_actors =
           observer.request (
-                    yd::bind_await_actors_req_t{.spot_rid = actors.spot_rid,
+                    yd::bind_await_actors_req_t{.spot_id = actors.spot_id,
                                                 .actor_ids = {actors.actor_a, actors.actor_b}})
             .packet_name (yd::bind_await_actors_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
@@ -113,16 +113,16 @@ int main (int argc, char **argv)
         ensure (static_cast<bool> (observer_bound_actors),
                 "ATD-B observer bind actors failed");
         if (wants ("atd-a1")) {
-            atd_client::run_atd_a1_basic_terminator_scenario (client, spot_rid);
+            atd_client::run_atd_a1_basic_terminator_scenario (client, spot_id);
         }
         if (wants ("atd-a2")) {
-            atd_client::run_atd_a2_await_terminator_scenario (client, observer, spot_rid);
+            atd_client::run_atd_a2_await_terminator_scenario (client, observer, spot_id);
         }
         if (wants ("atd-a3")) {
-            atd_client::run_atd_a3_continuation_context_scenario (client, observer, spot_rid);
+            atd_client::run_atd_a3_continuation_context_scenario (client, observer, spot_id);
         }
         if (wants ("atd-a4")) {
-            atd_client::run_atd_a4_worker_await_scenario (client, observer, spot_rid);
+            atd_client::run_atd_a4_worker_await_scenario (client, observer, spot_id);
         }
 
         if (wants ("atd-b1")) {
@@ -141,43 +141,43 @@ int main (int argc, char **argv)
             atd_client::run_td_e3_opposite_spot_join_scenario (client, actors);
         }
         auto rebound_actors =
-          client.request (yd::bind_await_actors_req_t{.spot_rid = actors.spot_rid,
+          client.request (yd::bind_await_actors_req_t{.spot_id = actors.spot_id,
                                                       .actor_ids = {actors.actor_a, actors.actor_b}})
             .packet_name (yd::bind_await_actors_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
             .submit<yd::bind_await_actors_res_t> ();
         ensure (static_cast<bool> (rebound_actors), "ATD-C actor rebind failed");
 
-        const auto timer_spot_rid = unique_id ("await-timer");
+        const auto timer_spot_id = unique_id ("await-timer");
         auto timer_spot =
-          client.request (yd::ensure_spot_req_t{.spot_rid = timer_spot_rid})
+          client.request (yd::ensure_spot_req_t{.spot_id = timer_spot_id})
             .packet_name (yd::ensure_spot_req_t::packet_name)
             .timeout (std::chrono::milliseconds (15000))
             .submit<yd::ensure_spot_res_t> ();
         ensure (static_cast<bool> (timer_spot), "ATD-C ensure timer spot request failed");
-        ensure (timer_spot.value ().spot_rid == timer_spot_rid,
+        ensure (timer_spot.value ().spot_id == timer_spot_id,
                 "ATD-C ensure timer spot reply mismatch");
 
         if (wants ("atd-c1")) {
-            atd_client::run_atd_c1_timer_isolation_scenario (client, observer, timer_spot_rid);
+            atd_client::run_atd_c1_timer_isolation_scenario (client, observer, timer_spot_id);
         }
         if (wants ("atd-c2")) {
-            atd_client::run_atd_c2_timer_reentry_scenario (client, observer, timer_spot_rid);
+            atd_client::run_atd_c2_timer_reentry_scenario (client, observer, timer_spot_id);
         }
         if (wants ("atd-c3")) {
             atd_client::run_atd_c3_actor_timer_isolation_scenario (client, actors);
         }
         if (wants ("td-c1")) {
             atd_client::run_td_c1_http_yield_interleave_scenario (
-              client, observer, timer_spot_rid);
+              client, observer, timer_spot_id);
         }
         if (wants ("td-c2")) {
             atd_client::run_td_c2_http_async_exclusion_scenario (
-              client, observer, timer_spot_rid);
+              client, observer, timer_spot_id);
         }
         if (wants ("td-c3")) {
             atd_client::run_td_c3_io_worker_capacity_scenario (
-              client, observer, timer_spot_rid);
+              client, observer, timer_spot_id);
         }
 
         if (wants ("atd-d2")) {

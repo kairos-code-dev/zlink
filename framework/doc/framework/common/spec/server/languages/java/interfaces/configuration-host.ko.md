@@ -31,6 +31,35 @@ public interface ZLinkFrameworkOptions {
     void useHandlerExecutor(Executor executor);
 }
 
+public interface ZLinkLocationOptions {
+    Duration ownerLeaseRenewInterval();
+    void setOwnerLeaseRenewInterval(Duration value);
+    Duration ownerLeaseTtl();
+    void setOwnerLeaseTtl(Duration value);
+    Duration pollingInterval();
+    void setPollingInterval(Duration value);
+    Duration storeFailureGrace();
+    void setStoreFailureGrace(Duration value);
+    Duration ownerLeaseFencingMargin();
+    void setOwnerLeaseFencingMargin(Duration value);
+    Duration ownerLeaseRenewTimeout();
+    void setOwnerLeaseRenewTimeout(Duration value);
+    Duration routeCacheMaxAge();
+    void setRouteCacheMaxAge(Duration value);
+    Duration messageFollowDuration();
+    void setMessageFollowDuration(Duration value);
+    int maxActiveOutboundRelocations();
+    void setMaxActiveOutboundRelocations(int value);
+    int maxActiveInboundRelocations();
+    void setMaxActiveInboundRelocations(int value);
+    int maxConcurrentRelocationCaptures();
+    void setMaxConcurrentRelocationCaptures(int value);
+    int maxConcurrentRelocationRestores();
+    void setMaxConcurrentRelocationRestores(int value);
+    long maxRelocationPayloadInFlightBytes();
+    void setMaxRelocationPayloadInFlightBytes(long value);
+}
+
 public interface ZLinkNetworkOptions {
     String bindHost();
     void setBindHost(String host);
@@ -566,6 +595,34 @@ public interface systems.zlink.framework.configuration.ZLinkFrameworkOptions {
   public abstract systems.zlink.framework.configuration.ZLinkWorkerOptions configureWorkers();
   public abstract void useVirtualThreadHandlers();
   public abstract void useHandlerExecutor(java.util.concurrent.Executor);
+}
+public interface systems.zlink.framework.locations.ZLinkLocationOptions {
+  public abstract java.time.Duration ownerLeaseRenewInterval();
+  public abstract void setOwnerLeaseRenewInterval(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseTtl();
+  public abstract void setOwnerLeaseTtl(java.time.Duration);
+  public abstract java.time.Duration pollingInterval();
+  public abstract void setPollingInterval(java.time.Duration);
+  public abstract java.time.Duration storeFailureGrace();
+  public abstract void setStoreFailureGrace(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseFencingMargin();
+  public abstract void setOwnerLeaseFencingMargin(java.time.Duration);
+  public abstract java.time.Duration ownerLeaseRenewTimeout();
+  public abstract void setOwnerLeaseRenewTimeout(java.time.Duration);
+  public abstract java.time.Duration routeCacheMaxAge();
+  public abstract void setRouteCacheMaxAge(java.time.Duration);
+  public abstract java.time.Duration messageFollowDuration();
+  public abstract void setMessageFollowDuration(java.time.Duration);
+  public abstract int maxActiveOutboundRelocations();
+  public abstract void setMaxActiveOutboundRelocations(int);
+  public abstract int maxActiveInboundRelocations();
+  public abstract void setMaxActiveInboundRelocations(int);
+  public abstract int maxConcurrentRelocationCaptures();
+  public abstract void setMaxConcurrentRelocationCaptures(int);
+  public abstract int maxConcurrentRelocationRestores();
+  public abstract void setMaxConcurrentRelocationRestores(int);
+  public abstract long maxRelocationPayloadInFlightBytes();
+  public abstract void setMaxRelocationPayloadInFlightBytes(long);
 }
 public final class systems.zlink.framework.configuration.ZLinkLogLevel extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkLogLevel> {
   public static final systems.zlink.framework.configuration.ZLinkLogLevel TRACE;

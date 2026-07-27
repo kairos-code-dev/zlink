@@ -9,6 +9,7 @@ using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Actors;
 using SessionServerOptions = AutomaticTurnDispatch.Server.Session.Support.SessionOptions;
 using AwaitStreamSession = AutomaticTurnDispatch.Server.Session.Support.AwaitSession;
 
@@ -38,6 +39,9 @@ internal static class SessionHostFactory
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix)));
+            framework.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
+                .SetConnectionString(options.RedisEndpoint)
+                .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")));
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
@@ -45,21 +49,25 @@ internal static class SessionHostFactory
                 .TraceLabel(options.Rid);
             var controlMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.ControlChannel)
                 .Listen(options.ControlEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
-            controlMesh.ChannelName(AutomaticTurnDispatchNames.ControlChannel);
+                .SetRoutingIdPrefix(options.Rid);
+            controlMesh.Channel(AutomaticTurnDispatchNames.ControlChannel).Client();
             var spotRouteMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotRouteChannel)
                 .Listen("tcp://127.0.0.1:0")
-                .SetRoutingId(RoutingId.From(options.Rid));
-            spotRouteMesh.ChannelName(AutomaticTurnDispatchNames.SpotRouteChannel).SetWeight(0);
+                .SetRoutingIdPrefix(options.Rid);
+            spotRouteMesh.Channel(AutomaticTurnDispatchNames.SpotRouteChannel).Server().SetWeight(0);
             var mesh23 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
-                                .Listen(options.SpotRouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid))
+                .Listen(options.SpotRouterEndpoint)
+                .SetRoutingIdPrefix(options.Rid);
+            mesh23.Objects().Server()
                 .AddEntrySpot<SessionAwaitEntrySpot>()
-                .AddActorFactory<SessionAwaitActorFactory>(AutomaticTurnDispatchNames.ActorType);
-            mesh23.ChannelName(AutomaticTurnDispatchNames.SpotChannel);
+                .AddActorFactory<SessionAwaitActor, SessionAwaitActorFactory>(
+                    AutomaticTurnDispatchNames.ActorType,
+                    options: null,
+                    ZLinkRelocationPolicy<SessionAwaitActor>.Recreate);
+            mesh23.Channel(AutomaticTurnDispatchNames.SpotChannel).Server();
             framework.AddStreamNode(AutomaticTurnDispatchNames.StreamNode)
                 .Bind(options.StreamEndpoint)
-                .EnableActorDispatch(AutomaticTurnDispatchNames.SpotChannel)
+                .EnableActorDispatch()
                 .AddSession<AwaitStreamSession>();
         });
 
@@ -74,17 +82,14 @@ internal static class SessionHostFactory
         {
             var snapshot = runtime.Snapshot(meshName);
             var snapshotReady = snapshot.Peers.Any(peer =>
-                            peer.Ready
-                            && string.Equals(
-                                peer.Rid.ToString(),
-                                rid,
-                                StringComparison.Ordinal))
-                        && snapshot.Channels.Any(channel =>
-                            string.Equals(
-                                channel.ChannelName,
-                                meshName,
-                                StringComparison.Ordinal)
-                            && channel.Selectable);
+                peer.Ready
+                && (string.Equals(
+                        peer.Rid.ToString(),
+                        rid,
+                        StringComparison.Ordinal)
+                    || peer.Rid.ToString().StartsWith(
+                        $"{rid}-",
+                        StringComparison.Ordinal)));
             if (!snapshotReady
                 || !string.Equals(
                     meshName,
@@ -94,9 +99,15 @@ internal static class SessionHostFactory
 
             try
             {
+                var target = snapshot.Peers
+                    .Where(peer => peer.Ready)
+                    .Select(peer => peer.Rid)
+                    .First(peer => peer.ToString().StartsWith(
+                        $"{rid}-",
+                        StringComparison.Ordinal));
                 _ = await routes.RequestToNode(
                         meshName,
-                        RoutingId.From(rid),
+                        target,
                         new AwaitEvidenceReq($"readiness-{rid}"))
                     .Timeout(TimeSpan.FromMilliseconds(500))
                     .Async<AwaitEvidenceRes>(cancellationToken);

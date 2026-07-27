@@ -31,8 +31,8 @@ internal sealed record ZLinkStandaloneActorRelocationProgress(
 /// and replacing its Location Store reference and terminal counts in one CAS.
 /// </summary>
 internal sealed class ZLinkStandaloneActorRelocationProgressCoordinator(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore,
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore,
     ZLinkStandaloneActorRelocationTargetFence? targetFence = null)
 {
     private const int MaxConflictRetries = 8;

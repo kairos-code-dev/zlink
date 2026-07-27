@@ -62,7 +62,10 @@ internal static class PublicContractSnapshot
         var bases = new List<string>();
         if (type.BaseType is { } baseType && baseType != typeof(object) && baseType != typeof(ValueType))
             bases.Add(FormatType(baseType));
-        bases.AddRange(type.GetInterfaces().Select(static item => FormatType(item)).Order(StringComparer.Ordinal));
+        bases.AddRange(type.GetInterfaces()
+            .Where(static item => item.IsPublic || item.IsNestedPublic)
+            .Select(static item => FormatType(item))
+            .Order(StringComparer.Ordinal));
         lines.Add($"  type {kind} {FormatType(type)}{FormatBases(bases)}{required}");
         if (type.GetCustomAttribute<AttributeUsageAttribute>() is { } usage)
             lines.Add(

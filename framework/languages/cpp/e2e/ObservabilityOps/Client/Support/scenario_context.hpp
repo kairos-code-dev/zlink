@@ -218,7 +218,7 @@ inline double metric_total (const nlohmann::json &body, const std::string &name)
 inline const std::set<std::string> &forbidden_metric_labels ()
 {
     static const std::set<std::string> labels{
-      "correlation_id", "flow_id", "actor_id", "spot_rid"};
+      "correlation_id", "flow_id", "actor_id", "spot_id"};
     return labels;
 }
 

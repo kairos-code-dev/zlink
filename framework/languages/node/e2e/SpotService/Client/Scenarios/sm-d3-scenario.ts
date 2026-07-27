@@ -23,7 +23,7 @@ import { ensure } from '../Support/scenario-assert';
 export async function runSmD3(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
   const entryActorId = `actor-sm-d3-entry-${suffix}`;
-  const userSpotRid = `spot-sm-d3-user-${suffix}`;
+  const userSpotId = `spot-sm-d3-user-${suffix}`;
   const userActorId = `actor-sm-d3-user-${suffix}`;
 
   const entry = createStreamClient(options.sessionAStreamEndpoint);
@@ -66,7 +66,7 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
   try {
     await user
       .request({
-        spotRid: userSpotRid,
+        spotId: userSpotId,
         actorId: userActorId,
         displayName: 'user bind',
         nodeRid: 'play-a'
@@ -78,7 +78,7 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
       containsAll: [`entry-joined|rid=play-a|actor=${userActorId}`],
       timeoutMilliseconds: 10000
     } satisfies EvidenceWaitReq);
-    await joinUserSpotActor(user, userSpotRid, userActorId);
+    await joinUserSpotActor(user, userSpotId, userActorId);
 
     const userPushed = user.waitFor<ActorPushNotify>('ActorPushNotify')
       .where((message) => message.payload.actorId === userActorId)
@@ -98,7 +98,7 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
 
     ensure(userReply.actorId === userActorId, 'SM-D3 user bind actor mismatch.');
     ensure(userReply.nodeRid === 'play-a', 'SM-D3 user bind node mismatch.');
-    ensure(userReply.spotRid === userSpotRid, 'SM-D3 user bind spot mismatch.');
+    ensure(userReply.spotId === userSpotId, 'SM-D3 user bind spot mismatch.');
     ensure(userReply.value === 'user-relay', 'SM-D3 user relay value mismatch.');
     ensure(userPushReply.actorId === userActorId, 'SM-D3 user push reply actor mismatch.');
     ensure(userNotify.payload.actorId === userActorId, 'SM-D3 user push actor mismatch.');
@@ -108,8 +108,8 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
   }
 
   const expectedEvidence = [
-    `spot-actor-joined|rid=play-a|spot=${userSpotRid}|actor=${userActorId}`,
-    `actor-pingMsg|rid=play-a|actor=${userActorId}|spot=${userSpotRid}|value=user-relay`
+    `spot-actor-joined|rid=play-a|spot=${userSpotId}|actor=${userActorId}`,
+    `actor-pingMsg|rid=play-a|actor=${userActorId}|spot=${userSpotId}|value=user-relay`
   ];
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
     containsAll: expectedEvidence,
@@ -125,11 +125,11 @@ export async function runSmD3(options: ClientOptions): Promise<void> {
 
 async function joinUserSpotActor(
   client: ReturnType<typeof createStreamClient>,
-  spotRid: string,
+  spotId: string,
   actorId: string
 ): Promise<void> {
   const joined = await client
-    .request({ spotRid, actorId } satisfies JoinUserSpotActorReq)
+    .request({ spotId, actorId } satisfies JoinUserSpotActorReq)
     .packetName('JoinUserSpotActorReq')
     .timeout(5000)
     .submit<JoinUserSpotActorRes>();

@@ -131,9 +131,9 @@ class ProjectionHandler implements ZLinkPublishHandler<WorkflowProjected> {
 @Injectable()
 class WorkflowTimerHandler implements ZLinkSpotTimerHandler<WorkflowSpot> {
   async handle(spot: WorkflowSpot, tick: ZLinkTimerTick): Promise<void> {
-    evidence.add('workflow', String(spot.context.spotRid), 'timer', `tick=${tick.deliveryIndex}`);
+    evidence.add('workflow', String(spot.context.spotId), 'timer', `tick=${tick.deliveryIndex}`);
     await fanoutClient.publish(WORKFLOW_FANOUT,
-      new WorkflowProjected(String(spot.context.spotRid), Number(tick.deliveryIndex), options.rid)).submit();
+      new WorkflowProjected(String(spot.context.spotId), Number(tick.deliveryIndex), options.rid)).submit();
     await spot.completeTimer();
   }
 }
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
       method: 'POST', path: '/workflows', handle: async (body) => {
         const request = body as WorkflowApplyReq;
         const created = await spots.getOrCreate(WorkflowSpot, request.orderId, request);
-        const handle = await spots.find(String(created.spotRid));
+        const handle = await spots.find(String(created.spotId));
         if (handle === undefined) throw new Error(`Workflow '${request.orderId}' was not resolved.`);
         const result = await outbound.requestToSpot(handle, new WorkflowApplyReq(request.orderId, request.value))
           .timeout(5000).submit<WorkflowApplyRes>();

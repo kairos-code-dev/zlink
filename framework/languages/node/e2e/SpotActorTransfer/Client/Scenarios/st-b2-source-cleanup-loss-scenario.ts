@@ -3,10 +3,10 @@ import { SpotActorTransferNames, nodeA, nodeB, createSpot, createActor, joinActo
 
 export async function runStB2(): Promise<void> {
   const actorId = unique('actor-cleanup-after-success');
-  const spotRid = unique('spot-cleanup-after-success');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('spot-cleanup-after-success');
+  await createSpot(nodeB, spotId);
   await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 22);
-  require((await joinActor(nodeA, actorId, { scenario: 'ST-B2', targetSpotRid: spotRid })).accepted, 'ST-B2 join failed.');
+  require((await joinActor(nodeA, actorId, { scenario: 'ST-B2', targetSpotId: spotId })).accepted, 'ST-B2 join failed.');
   await post(nodeA, '/shutdown', {});
   await delay(1500);
   const probe = await probeActor(nodeB, actorId, 'ST-B2', 'after-source-cleanup-loss');

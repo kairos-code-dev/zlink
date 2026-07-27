@@ -145,6 +145,7 @@ export function decodeRemoteBoundSessionSend(
       metadata: metadataOf(send.metadata),
       actorRef: decodeActorRef({
         actorId: send.actorId,
+        actorMeshName: send.actorMeshName,
         actorNodeRid: send.actorNodeRid,
         actorNodeRidHex: send.actorNodeRidHex,
         actorGeneration: send.actorGeneration,
@@ -162,6 +163,7 @@ export function decodeRemoteBoundSessionSend(
 
 function decodeActorRef(payload: {
   readonly actorId?: unknown;
+  readonly actorMeshName?: unknown;
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
@@ -171,16 +173,18 @@ function decodeActorRef(payload: {
     typeof payload.actorId !== 'string'
     || typeof payload.actorNodeRid !== 'string'
     || typeof payload.actorGeneration !== 'string'
+    || typeof payload.actorMeshName !== 'string'
   ) {
     return undefined;
   }
   const actorRef = {
     actorId: payload.actorId,
+    objectGeneration: BigInt(payload.actorGeneration),
+    meshName: payload.actorMeshName,
     nodeRid: decodeWireRoutingId(
       payload.actorNodeRid,
       typeof payload.actorNodeRidHex === 'string' ? payload.actorNodeRidHex : undefined
-    ),
-    generation: BigInt(payload.actorGeneration)
+    )
   } as ActorRef & { ownershipGeneration?: bigint };
   if (typeof payload.actorOwnershipGeneration === 'string') {
     actorRef.ownershipGeneration = BigInt(payload.actorOwnershipGeneration);
@@ -240,7 +244,7 @@ export function decodeRemoteActorPacketRelay(
         actorNodeRid: relay.actorNodeRid,
         actorNodeRidHex: relay.actorNodeRidHex,
       actorGeneration: relay.actorGeneration
-      }, relay.handoffTargetSpotId, relay.operationId, relay.forwardingHopCount),
+      }, relay.handoffTargetSpotId, relay.operationId, relay.messageFollowHopCount),
       bindingActorRef: decodeActorRef({
         actorId: relay.actorId,
         actorNodeRid: relay.bindingActorNodeRid,
@@ -259,12 +263,13 @@ function decodeForwardedActorRef(payload: {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
-}, targetSpotId: unknown, operationId?: string, forwardingHopCount?: number): ActorRef | undefined {
+}, targetSpotId: unknown, operationId?: string, messageFollowHopCount?: number): ActorRef | undefined {
   const actorRef = decodeActorRef(payload);
   if (actorRef !== undefined) {
-    (actorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded = true;
+    (actorRef as ActorRef & { handoffMessageFollowed?: boolean }).handoffMessageFollowed = true;
     (actorRef as ActorRef & { handoffOperationId?: string }).handoffOperationId = operationId;
-    (actorRef as ActorRef & { handoffForwardingHopCount?: number }).handoffForwardingHopCount = forwardingHopCount;
+    (actorRef as ActorRef & { handoffMessageFollowHopCount?: number })
+      .handoffMessageFollowHopCount = messageFollowHopCount;
     if (typeof targetSpotId === 'string') {
       (actorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId = targetSpotId;
     }

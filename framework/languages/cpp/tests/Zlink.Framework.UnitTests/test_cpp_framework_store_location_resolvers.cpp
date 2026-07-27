@@ -1453,7 +1453,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsInvalidRoutingAndRelocationLi
         options_fixture_t fixture;
         auto options = fixture.make_options ();
         options.configure_locations ().route_cache_max_age = std::chrono::seconds (26);
-        options.configure_locations ().relocation_forwarding_window = std::chrono::seconds (30);
+        options.configure_locations ().message_follow_duration = std::chrono::seconds (30);
         EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
     }
     {

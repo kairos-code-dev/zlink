@@ -25,14 +25,14 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         long operationHigh,
         long operationLow,
-        int forwardingHopCount,
+        int messageFollowHopCount,
         String sourceSpotId,
         SpotRouteFence target) {
         if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0
             || request != (correlation != null)
             || (correlation != null && correlation <= 0)
             || operationHigh == 0 && operationLow == 0
-            || forwardingHopCount < 0 || forwardingHopCount > 8) {
+            || messageFollowHopCount < 0 || messageFollowHopCount > 8) {
             throw protocol("invalid Spot message header");
         }
         Objects.requireNonNull(sourceSpotId, "sourceSpotId");
@@ -47,7 +47,7 @@ public final class ZLinkServiceM6BWireCodec {
         }
         writer.bits64(operationHigh);
         writer.bits64(operationLow);
-        writer.u8(forwardingHopCount);
+        writer.u8(messageFollowHopCount);
         writer.text8(sourceSpotId, "sourceSpotId");
         writer.text8(target.spotId(), "targetSpotId");
         writer.nonzero(target.spotGeneration(), "targetSpotGeneration");
@@ -83,9 +83,9 @@ public final class ZLinkServiceM6BWireCodec {
         if (operationHigh == 0 && operationLow == 0) {
             throw protocol("Spot operation id is zero");
         }
-        int forwardingHopCount = reader.u8("forwardingHopCount");
-        if (forwardingHopCount > 8) {
-            throw protocol("Spot forwarding hop count exceeds its bound");
+        int messageFollowHopCount = reader.u8("messageFollowHopCount");
+        if (messageFollowHopCount > 8) {
+            throw protocol("Spot Message Follow hop count exceeds its bound");
         }
         String sourceSpotId = reader.text8("sourceSpotId");
         SpotRouteFence target = new SpotRouteFence(
@@ -101,7 +101,7 @@ public final class ZLinkServiceM6BWireCodec {
             correlation,
             operationHigh,
             operationLow,
-            forwardingHopCount,
+            messageFollowHopCount,
             sourceSpotId,
             target);
     }
@@ -112,7 +112,7 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         long operationHigh,
         long operationLow,
-        int forwardingHopCount,
+        int messageFollowHopCount,
         ZLinkBackendActorRef sourceActor,
         ActorRouteFence target) {
         return encodeActorHeader(
@@ -121,7 +121,7 @@ public final class ZLinkServiceM6BWireCodec {
             correlation,
             operationHigh,
             operationLow,
-            forwardingHopCount,
+            messageFollowHopCount,
             sourceActor,
             target,
             null);
@@ -133,7 +133,7 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         long operationHigh,
         long operationLow,
-        int forwardingHopCount,
+        int messageFollowHopCount,
         ZLinkBackendActorRef sourceActor,
         ActorRouteFence target,
         BoundSessionTail boundSession) {
@@ -148,7 +148,7 @@ public final class ZLinkServiceM6BWireCodec {
             || ((flags & boundFlags) == boundFlags)
                 != (boundSession != null)
             || operationHigh == 0 && operationLow == 0
-            || forwardingHopCount < 0 || forwardingHopCount > 8) {
+            || messageFollowHopCount < 0 || messageFollowHopCount > 8) {
             throw protocol("invalid Actor message header");
         }
         Objects.requireNonNull(target, "target");
@@ -162,7 +162,7 @@ public final class ZLinkServiceM6BWireCodec {
         }
         writer.bits64(operationHigh);
         writer.bits64(operationLow);
-        writer.u8(forwardingHopCount);
+        writer.u8(messageFollowHopCount);
         if (sourceActor == null) {
             writer.u8(0);
         } else {
@@ -220,9 +220,9 @@ public final class ZLinkServiceM6BWireCodec {
         if (operationHigh == 0 && operationLow == 0) {
             throw protocol("Actor operation id is zero");
         }
-        int forwardingHopCount = reader.u8("forwardingHopCount");
-        if (forwardingHopCount > 8) {
-            throw protocol("Actor forwarding hop count exceeds its bound");
+        int messageFollowHopCount = reader.u8("messageFollowHopCount");
+        if (messageFollowHopCount > 8) {
+            throw protocol("Actor Message Follow hop count exceeds its bound");
         }
         String sourceActorId = reader.optionalText8("sourceActorId");
         ActorIdentity sourceActor = sourceActorId == null
@@ -255,7 +255,7 @@ public final class ZLinkServiceM6BWireCodec {
             correlation,
             operationHigh,
             operationLow,
-            forwardingHopCount,
+            messageFollowHopCount,
             sourceActor,
             target,
             boundSession);
@@ -1186,7 +1186,7 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         long operationHigh,
         long operationLow,
-        int forwardingHopCount,
+        int messageFollowHopCount,
         String sourceSpotId,
         SpotRouteFence target) {
         public SpotMessage(
@@ -1219,7 +1219,7 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         long operationHigh,
         long operationLow,
-        int forwardingHopCount,
+        int messageFollowHopCount,
         ActorIdentity sourceActor,
         ActorRouteFence target,
         BoundSessionTail boundSession) {
@@ -1229,7 +1229,7 @@ public final class ZLinkServiceM6BWireCodec {
             Long correlation,
             long operationHigh,
             long operationLow,
-            int forwardingHopCount,
+            int messageFollowHopCount,
             ActorIdentity sourceActor,
             ActorRouteFence target) {
             this(
@@ -1238,7 +1238,7 @@ public final class ZLinkServiceM6BWireCodec {
                 correlation,
                 operationHigh,
                 operationLow,
-                forwardingHopCount,
+                messageFollowHopCount,
                 sourceActor,
                 target,
                 null);

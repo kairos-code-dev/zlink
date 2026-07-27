@@ -470,6 +470,6 @@ function toBoundSessionSendActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: actor.generation
+    generation: actor.objectGeneration
   };
 }

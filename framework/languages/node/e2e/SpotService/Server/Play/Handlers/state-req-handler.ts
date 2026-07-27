@@ -18,9 +18,9 @@ export class StateReqHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot
     void context;
     const delta = request.operation === 'add' ? request.delta : 0;
     const value = spot.add(delta);
-    this.evidence.add(`spot-state-request|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|value=${value}`);
+    this.evidence.add(`spot-state-request|rid=${this.evidence.rid}|spot=${spot.context.spotId}|value=${value}`);
     return {
-      spotRid: String(spot.context.spotRid),
+      spotId: String(spot.context.spotId),
       nodeRid: String(spot.context.nodeRid),
       value
     };
@@ -39,7 +39,7 @@ export class StateCommandHandler implements ZLinkSpotPacketHandler<ScenarioUserS
   ): Promise<void> {
     void context;
     this.evidence.add(
-      `spot-state-command|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${message.marker}`
+      `spot-state-command|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${message.marker}`
     );
   }
 }
@@ -57,10 +57,10 @@ export class SlowSpotHandler implements ZLinkSpotRequestHandler<ScenarioUserSpot
     void context;
     await new Promise((resolve) => setTimeout(resolve, request.delayMs));
     this.evidence.add(
-      `slow-spot-request|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${request.marker}`
+      `slow-spot-request|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${request.marker}`
     );
     return {
-      spotRid: String(spot.context.spotRid),
+      spotId: String(spot.context.spotId),
       nodeRid: String(spot.context.nodeRid),
       marker: request.marker
     };

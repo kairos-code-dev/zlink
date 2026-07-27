@@ -98,7 +98,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
       );
     }
     return {
-      actorRef: toFrameworkActorRef(nativeActorRef),
+      actorRef: toFrameworkActorRef(nativeActorRef, this.meshName),
       actorType,
       membershipEpoch: this.state.spotMembershipEpoch
     };

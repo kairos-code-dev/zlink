@@ -9,7 +9,7 @@ import {
   type ActorCreateReq,
   type ActorCreateRes,
   type ActorEvidence,
-  type ActorRefSnapshotRes,
+  type ActorRefRes,
   type BindActorSessionReq,
   type BindActorSessionRes,
   type BoundPushNotify,
@@ -46,9 +46,9 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
   const sourceNode = actorNode(sourceActor.nodeRid);
   const targetSpot = await createRemoteSpot(sourceActor.nodeRid);
   const targetNode = actorNode(targetSpot.nodeRid);
-  await waitSpotRef(sourceNode, targetSpot.spotRid, targetSpot.nodeRid);
+  await waitSpotRef(sourceNode, targetSpot.spotId, targetSpot.nodeRid);
   require(
-    (await joinActor(sourceNode, actorId, { scenario, targetSpotRid: targetSpot.spotRid })).accepted,
+    (await joinActor(sourceNode, actorId, { scenario, targetSpotId: targetSpot.spotId })).accepted,
     `${scenario} join submission failed.`
   );
   await waitEvidence(targetNode, [
@@ -60,17 +60,17 @@ export async function runRemoteTransfer(scenario: string, actorId: string, actor
     `${scenario} target state mismatch.`
   );
   const source = await waitEvidence(sourceNode, [
-    `${scenario}|${actorId}|success_reply|${targetSpot.spotRid}`,
+    `${scenario}|${actorId}|success_reply|${targetSpot.spotId}`,
     `transfer|${actorId}|transfer_out|${stateVersion}`,
     `transfer|${actorId}|leave|${stateVersion}`,
     `${scenario}|${actorId}|commit_request|after-source-leave`
   ]);
   const target = await waitEvidence(targetNode, [
-    `${scenario}|${actorId}|admission|spot=${targetSpot.spotRid}`,
+    `${scenario}|${actorId}|admission|spot=${targetSpot.spotId}`,
     `transfer|${actorId}|transfer_in|${stateVersion}`,
-    `transfer|${actorId}|joined|${targetSpot.spotRid}:${stateVersion}`,
-    `${scenario}|${actorId}|location_committed|node=${targetSpot.nodeRid}|spot=${targetSpot.spotRid}`,
-    `${scenario}|${actorId}|commit_ack|${targetSpot.spotRid}`
+    `transfer|${actorId}|joined|${targetSpot.spotId}:${stateVersion}`,
+    `${scenario}|${actorId}|location_committed|node=${targetSpot.nodeRid}|spot=${targetSpot.spotId}`,
+    `${scenario}|${actorId}|commit_ack|${targetSpot.spotId}`
   ]);
   require(source.length > 0 && target.length > 0, `${scenario} transfer evidence missing.`);
   assertOrder(source, actorId, [
@@ -120,10 +120,10 @@ export async function assertSourceFailure(
   targetCommitted = false
 ): Promise<void> {
   const actorId = unique(`actor-fail-${label}`);
-  const spotRid = unique(`spot-fail-${label}`);
-  await createSpot(nodeB, spotRid);
+  const spotId = unique(`spot-fail-${label}`);
+  await createSpot(nodeB, spotId);
   await createActor(nodeA, actorId, actorType, 70);
-  require(!(await joinActor(nodeA, actorId, { scenario: 'ST-C3', targetSpotRid: spotRid })).accepted, `ST-C3 ${label} failure returned success.`);
+  require(!(await joinActor(nodeA, actorId, { scenario: 'ST-C3', targetSpotId: spotId })).accepted, `ST-C3 ${label} failure returned success.`);
   const source = await getEvidence(nodeA);
   const target = await getEvidence(nodeB);
   require(has(source, actorId, expectedKind), `ST-C3 ${label} evidence missing.`);
@@ -161,8 +161,9 @@ export async function connectAndBind(
   const bound = await connector.request({
     scenario,
     actorId: actor.actorId,
+    objectGeneration: actor.objectGeneration,
+    meshName: actor.meshName,
     nodeRid: actor.nodeRid,
-    generation: actor.generation,
     transferId
   } satisfies BindActorSessionReq).packetName(SpotActorTransferNames.packetBindActor).submit<BindActorSessionRes>();
   require(bound.actorId === actor.actorId, `${scenario} session bind mismatch.`);
@@ -205,8 +206,8 @@ export async function assertHttpBoundPush(
   require(reply.nodeRid === expectedNode && notify.payload.nodeRid === expectedNode, `${scenario} bound push node mismatch.`);
 }
 
-export async function createSpot(node: HttpClient, spotRid: string, mode = 'accept'): Promise<CreateSpotRes> {
-  return await post<CreateSpotRes>(node, '/spots', { spotRid, mode } satisfies CreateSpotReq);
+export async function createSpot(node: HttpClient, spotId: string, mode = 'accept'): Promise<CreateSpotRes> {
+  return await post<CreateSpotRes>(node, '/spots', { spotId, mode } satisfies CreateSpotReq);
 }
 
 export async function createActor(node: HttpClient, actorId: string, actorType: string, stateVersion: number): Promise<ActorCreateRes> {
@@ -228,18 +229,18 @@ export async function sendHandoff(node: HttpClient, actorId: string, scenario: s
   await post(node, `/actors/${actorId}/handoff`, { scenario, marker } satisfies ProbeReq);
 }
 
-export async function getRef(node: HttpClient, actorId: string): Promise<ActorRefSnapshotRes> {
-  return await node.get(`/actors/${actorId}/ref`).fetch<ActorRefSnapshotRes>();
+export async function getRef(node: HttpClient, actorId: string): Promise<ActorRefRes> {
+  return await node.get(`/actors/${actorId}/ref`).fetch<ActorRefRes>();
 }
 
-export async function waitSpotRef(node: HttpClient, spotRid: string, expectedNodeRid: string): Promise<void> {
+export async function waitSpotRef(node: HttpClient, spotId: string, expectedNodeRid: string): Promise<void> {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
-    const spot = await node.get(`/spots/${spotRid}/ref`).fetch<{ found: boolean }>();
+    const spot = await node.get(`/spots/${spotId}/ref`).fetch<{ found: boolean }>();
     if (spot.found) return;
     await delay(100);
   }
-  throw new Error(`Spot '${spotRid}' did not resolve while waiting for '${expectedNodeRid}'.`);
+  throw new Error(`Spot '${spotId}' did not resolve while waiting for '${expectedNodeRid}'.`);
 }
 
 export async function getEvidence(node: HttpClient): Promise<readonly ActorEvidence[]> {

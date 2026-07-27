@@ -92,7 +92,7 @@ public final class Program {
             String nodeRid = evidence.nodeRid();
             options.addRelocationStore(relocationStore);
             options.addHandlersFromPackageOf(TransferComponents.class);
-            options.setActorTransferForwardWindow(Duration.ofSeconds(2));
+            options.configureLocations().setMessageFollowDuration(Duration.ofSeconds(2));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .setMessageFlowObserver(flow -> {

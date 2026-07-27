@@ -10,7 +10,7 @@ authority owner 하나와
 `Ready`가 되기 전에는 application handler를 실행하지 않고, `Ready` commit 뒤에는 첫
 message부터 Instance Spot queue에서 순서대로 처리해야 한다.
 
-일반 Spot direct call은 existing-only이며 Missing RID에서 Instance intent를 명시한 call만 cold activation을
+일반 Spot direct call은 existing-only이며 Missing Spot ID에서 Instance intent를 명시한 call만 cold activation을
 시작한다. Spot manager는 User Spot Create·GetOrCreate만 제공하고 Instance Spot create operation을
 제공하지 않는다. Core와 bindings는 raw socket transport만 제공하며 Instance
 activation, owner claim, barrier와 queue를 해석하지 않는다.
@@ -120,7 +120,7 @@ Stale owner 검증은 owner process를 실제로 중지했다가 local monotonic
 
 ### 3.4 Call deadline
 
-짧은 request와 긴 request는 같은 activation group에 제출하되 각 public deadline을 유지한다. RID
+짧은 request와 긴 request는 같은 activation group에 제출하되 각 public deadline을 유지한다. Spot ID
 resolve·claim에 사용한 시간도 각 deadline에 포함한다. 짧은 request가 만료되어도 shared
 activation, 긴 request와 one-way send를 취소하지 않는다.
 
@@ -184,7 +184,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-REG-10` | Existing send | `Ready` Instance를 포함한 existing-only send가 exact direct route와 source submit 의미를 사용 |
 | `IS-REG-11` | Existing request | Request deadline·cancellation·terminal-once가 Instance hidden retry로 바뀌지 않음 |
 | `IS-REG-12` | Public surface | Spot ID fluent call·factory·async send/request만 노출하고 Instance address·manager create·raw placement·token·phase helper를 노출하지 않음 |
-| `IS-REG-13` | Global identity | 같은 RID를 다른 Mesh에 동시 생성해도 authority·kind·type·generation 하나로 수렴하고 Mesh별 row를 만들지 않음 |
+| `IS-REG-13` | Global identity | 같은 Spot ID를 다른 Mesh에 동시 생성해도 authority·kind·type·generation 하나로 수렴하고 Mesh별 row를 만들지 않음 |
 | `IS-REG-14` | Core·binding removal | Core·binding public surface에 Instance service API를 복구하지 않음 |
 
 ## 6. E2E 시나리오
@@ -194,7 +194,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-01` | Cold request | Row가 없는 global Spot ID의 Instance-intent request envelope가 target-owned claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
 | `IS-E2E-02` | Cold send | Resolve·selection과 activation envelope outbound admission은 같은 send deadline 안에서 끝나고 Submit은 outbound admission으로 완료되며 target reservation·factory·Ready를 기다리지 않음. Target activation 실패는 이미 반환한 결과를 바꾸지 않고 drop·flow event로 관측 |
 | `IS-E2E-03` | Concurrent first call | 두 caller의 request 100개가 authority owner·runtime object·factory 하나와 handler concurrency 1로 수렴 |
-| `IS-E2E-04` | Different RID | 여러 RID가 eligible node에 분산되고 RID별 serial queue가 서로를 차단하지 않음 |
+| `IS-E2E-04` | Different Spot ID | 여러 Spot ID가 eligible node에 분산되고 Spot ID별 serial queue가 서로를 차단하지 않음 |
 | `IS-E2E-05` | `Ready` owner crash | Lease 만료 전에는 새 owner가 없고 expiry 뒤 새 call만 같은 object generation과 더 높은 authority owner generation으로 복구 |
 | `IS-E2E-06` | `Creating` owner crash | Pending request가 claim에서 발급한 같은 nonzero object generation과 owner fence의 terminal failure로 완료되고 lease expiry 뒤 새 call만 activation을 시작 |
 | `IS-E2E-07` | Normal `Relocate` | 신규 placement에서 A를 제외하고 accepted turn·owner commit 뒤 B가 같은 object generation과 더 높은 authority owner generation으로 materialize |
@@ -204,14 +204,14 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-11` | Confirmed not admitted | Target 미수락이 확정되어도 같은 request를 다른 owner에 재제출하지 않고 terminal 하나로 완료 |
 | `IS-E2E-12` | Ambiguous result | Target 수락 뒤 connection을 종료해도 다른 owner로 재제출하지 않음 |
 | `IS-E2E-13` | Accepted send then failure | 다른 owner에서 replay하지 않고 runtime error·trace·drop metric으로 관측 |
-| `IS-E2E-14` | Store outage | Authority deadline 뒤 cached route와 target admission을 막고 Missing RID를 local 상태로 추측하지 않음 |
+| `IS-E2E-14` | Store outage | Authority deadline 뒤 cached route와 target admission을 막고 Missing Spot ID를 local 상태로 추측하지 않음 |
 | `IS-E2E-15` | Kind·type atomic conflict | 같은 global Spot ID의 User Spot `GetOrCreate`와 Instance cold request를 동시에 제출해 authority CAS winner의 kind·type·factory 하나만 성공하고 loser가 Mesh별 location row·generation을 남기지 않음. Winner close 뒤 다른 kind를 만들면 더 높은 object generation을 사용 |
 | `IS-E2E-16` | No eligible node | Request와 send가 target-not-found로 종료하고 authority row를 남기지 않음 |
 | `IS-E2E-17` | Activation backpressure | Message·byte 상한 초과가 bounded 결과로 종료하고 accepted order와 serial handler를 유지 |
 | `IS-E2E-18` | Cross-language | 다른 Framework 언어 caller·owner 조합이 authority, queue, failure code와 timeout을 같게 해석 |
 | `IS-E2E-19` | `Ready` ordering | Durable activation inbox first record가 Ready CAS 전에 확정되지만 handler는 실행되지 않는다. Ready를 본 뒤의 message는 restored local queue head 뒤에 admit되어 cold first message를 추월하지 않음 |
 | `IS-E2E-20` | `Closing` owner crash | Lease 전 takeover를 막고 expiry 뒤 높은 authority owner generation으로 close recovery를 끝낸 뒤 다음 activation이 높은 object generation을 사용하며 A의 늦은 release를 거부 |
-| `IS-E2E-21` | Multi-Mesh initial placement | Missing RID에서만 `InMesh` 선택이 적용되고 Ready authority에 다른 Mesh를 지정한 후속 call이 current owner를 이동시키지 않음 |
+| `IS-E2E-21` | Multi-Mesh initial placement | Missing Spot ID에서만 `InMesh` 선택이 적용되고 Ready authority에 다른 Mesh를 지정한 후속 call이 current owner를 이동시키지 않음 |
 | `IS-E2E-22` | Monotonic owner deadline | Process pause를 authority deadline 뒤 재개해도 target runtime이 신규 message·timer admission을 거부 |
 | `IS-E2E-23` | Handler capability | Actor handler·Logical Multicast subscription 등록이 `Ready` 전에 실패하고 authority·scope·slot을 정리 |
 | `IS-E2E-24` | Late lease response | Store call 중 pause 시간이 deadline을 넘으면 과거 응답으로 admission을 다시 열지 않음 |
@@ -273,7 +273,7 @@ Config 14 완료에는 다음 증거가 모두 필요하다.
 
 1. `IS-R01~03`, `IS-F01~15`, `IS-P01~08`이 네 Framework runtime과 최종 internal Core·binding
    package 조합에서 통과한다.
-2. 각 지원 언어 feature map이 `IS-REG-01~14`, `IS-E2E-01~33`과 실제 process log를 연결한다.
+2. 각 지원 언어 feature map이 `IS-REG-01~14`, `IS-E2E-01~36`과 실제 process log를 연결한다.
 3. 최소 두 Framework 언어를 사용한 caller·owner 조합이 같은 authority·queue·failure code로
    수렴한다.
 4. GameQuest와 ShoppingMall이 같은 global Spot ID + Instance fluent intent 계약으로 동작하고 기존 Spot·Actor·Channel

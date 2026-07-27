@@ -35,7 +35,7 @@ export interface ZLinkFrameworkRegistration {
   readonly actorFactories: ReadonlyMap<string, Type>;
   readonly actorTransferAdapters: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
-  readonly actorTransferForwardWindowMs: number;
+  readonly messageFollowDurationMs: number;
   readonly spotFactories: ReadonlySet<Type<ZLinkSpot>>;
   readonly channels: ReadonlyMap<string, ZLinkChannelOptions>;
   readonly channelClients: ReadonlySet<string>;
@@ -100,8 +100,8 @@ export interface ZLinkFrameworkRegistrationOptions {
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly actorTransferAdapters?: ReadonlyMap<Type, Type>;
   readonly actorTransferTimeoutMs?: number;
-  /** How long a source node forwards packets sent to an actor's old generation. Defaults to 5000 ms. */
-  readonly actorTransferForwardWindowMs?: number;
+  /** How long Message Follow relays messages from a previous owner. Defaults to 30000 ms. */
+  readonly messageFollowDurationMs?: number;
   readonly channels?: Readonly<Record<string, ZLinkChannelOptions>>;
   readonly routeChannels?: readonly (string | ZLinkRouteChannelOptions)[];
   readonly streamNodes?: Readonly<Record<string, ZLinkStreamNodeOptions>>;

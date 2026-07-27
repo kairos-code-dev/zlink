@@ -852,8 +852,9 @@ int main ()
     /* E2E-CP-50 — missing required Track-F markers fail the runner. */
     gate.require (transfer_client.find ("handoff_backlog") != std::string::npos
                     && transfer_client.find ("backlog_enqueued") != std::string::npos
-                    && transfer_client.find ("mapping_evicted") != std::string::npos
-                    && transfer_client.find ("stale_fail_fast") != std::string::npos
+                    && transfer_client.find ("message_follow_route_removed")
+                         != std::string::npos
+                    && transfer_client.find ("message_follow_expired") != std::string::npos
                     && transfer_runner.find ("timing-dependent") == std::string::npos,
                   "E2E-CP-50",
                   "Track-F required markers are not client assertions or remain warnings");
@@ -912,8 +913,8 @@ int main ()
                   "ST-C3 joined failure still asserts an actor packet nobody sends");
     const auto st_f5 =
       read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f5_scenario.hpp");
-    gate.require (st_f5.find ("mapping_evicted") != std::string::npos
-                    && st_f5.find ("forwarding_entries") != std::string::npos
+    gate.require (st_f5.find ("message_follow_route_removed") != std::string::npos
+                    && st_f5.find ("message_follow_entries") != std::string::npos
                     && st_f5.find ("spot-map-chain-a-final-") != std::string::npos
                     && st_f5.find ("_nodes.c,") == std::string::npos,
                   "E2E-CP-52",
@@ -952,14 +953,14 @@ int main ()
                   "E2E-CP-53",
                   "remote transfer does not enqueue raced backlog before location publication");
 
-    /* E2E-CP-54 — both sides of the forwarding window use the same one-way
+    /* E2E-CP-54 — both sides of the Message Follow duration use the same one-way
      * send surface; an explicit stale ref is never silently re-resolved. */
     const auto st_f4 =
       read_file (e2e_root / "SpotActorTransfer/Client/Scenarios/st_f4_scenario.hpp");
     gate.require (st_f4.find ("send_ref") != std::string::npos
                     && st_f4.find ("{\"ST-F4\", \"G2\"}") != std::string::npos
                     && st_f4.find ("probe_ref") == std::string::npos
-                    && st_f4.find ("stale_fail_fast") != std::string::npos,
+                    && st_f4.find ("message_follow_expired") != std::string::npos,
                   "E2E-CP-54",
                   "ST-F4 still changes G2 from send to request or omits stale evidence");
     const auto actor_client_runtime =

@@ -308,7 +308,7 @@ public sealed class DeferredActorJoinDurabilityTests
 
     }
 
-    private sealed class TestRelocationStore : IZLinkRelocationStore
+    private sealed class TestRelocationStore : IZLinkRelocationRepository
     {
         internal Dictionary<string, byte[]> Payloads { get; } = [];
 

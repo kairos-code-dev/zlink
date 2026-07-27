@@ -24,7 +24,7 @@ public sealed class RedisLocationStoreLifecycleTests
                 return connection;
             });
 
-        var read = store.GetMeshNodeChangeStampAsync("play")
+        var read = store.ReadAsync(new ZLinkStoreKey("lifecycle:read"))
             .AsTask();
         await connectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -32,12 +32,13 @@ public sealed class RedisLocationStoreLifecycleTests
         Assert.False(dispose.IsCompleted);
 
         releaseConnect.SetResult();
-        Assert.Equal(0UL, await read.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsType<ZLinkStoreReadResult.Missing>(
+            await read.WaitAsync(TimeSpan.FromSeconds(5)));
         await dispose.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(1, connection.DisposeCount);
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => store.GetMeshNodeChangeStampAsync("play")
+            () => store.ReadAsync(new ZLinkStoreKey("lifecycle:after-dispose"))
                 .AsTask());
 
         await store.DisposeAsync();
@@ -57,9 +58,8 @@ public sealed class RedisLocationStoreLifecycleTests
             },
             _ => ValueTask.FromResult<IZLinkRedisConnection>(connection));
 
-        Assert.Equal(
-            0UL,
-            await store.GetMeshNodeChangeStampAsync("play"));
+        Assert.IsType<ZLinkStoreReadResult.Missing>(
+            await store.ReadAsync(new ZLinkStoreKey("lifecycle:connect")));
 
         var first = store.DisposeAsync().AsTask();
         await connection.DisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -90,7 +90,7 @@ public sealed class RedisLocationStoreLifecycleTests
             },
             _ => ValueTask.FromResult<IZLinkRedisConnection>(connection));
 
-        var admitted = store.GetMeshNodeChangeStampAsync("play")
+        var admitted = store.ReadAsync(new ZLinkStoreKey("lifecycle:blocked"))
             .AsTask();
         await command.CommandStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -98,11 +98,12 @@ public sealed class RedisLocationStoreLifecycleTests
         Assert.False(dispose.IsCompleted);
         Assert.False(connection.DisposeStarted.Task.IsCompleted);
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => store.GetMeshNodeChangeStampAsync("play")
+            () => store.ReadAsync(new ZLinkStoreKey("lifecycle:rejected"))
                 .AsTask());
 
-        command.ReleaseCommand.TrySetResult(RedisValue.Null);
-        Assert.Equal(0UL, await admitted.WaitAsync(TimeSpan.FromSeconds(5)));
+        command.ReleaseCommand.TrySetResult(MissingReadResult());
+        Assert.IsType<ZLinkStoreReadResult.Missing>(
+            await admitted.WaitAsync(TimeSpan.FromSeconds(5)));
         await dispose.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(1, connection.DisposeCount);
@@ -134,9 +135,9 @@ public sealed class RedisLocationStoreLifecycleTests
     {
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name == nameof(IDatabase.StringGetAsync)
-                && targetMethod.ReturnType == typeof(Task<RedisValue>))
-                return Task.FromResult(RedisValue.Null);
+            if (targetMethod?.Name == nameof(IDatabase.ScriptEvaluateAsync)
+                && targetMethod.ReturnType == typeof(Task<RedisResult>))
+                return Task.FromResult(MissingReadResult());
 
             throw new NotSupportedException(targetMethod?.ToString());
         }
@@ -147,13 +148,13 @@ public sealed class RedisLocationStoreLifecycleTests
         public TaskCompletionSource CommandStarted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public TaskCompletionSource<RedisValue> ReleaseCommand { get; } =
+        public TaskCompletionSource<RedisResult> ReleaseCommand { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
-            if (targetMethod?.Name == nameof(IDatabase.StringGetAsync)
-                && targetMethod.ReturnType == typeof(Task<RedisValue>))
+            if (targetMethod?.Name == nameof(IDatabase.ScriptEvaluateAsync)
+                && targetMethod.ReturnType == typeof(Task<RedisResult>))
             {
                 CommandStarted.TrySetResult();
                 return ReleaseCommand.Task;
@@ -162,4 +163,12 @@ public sealed class RedisLocationStoreLifecycleTests
             throw new NotSupportedException(targetMethod?.ToString());
         }
     }
+
+    private static RedisResult MissingReadResult() =>
+        RedisResult.Create(
+        [
+            RedisResult.Create((RedisValue)"missing"),
+            RedisResult.Create((RedisValue)DateTimeOffset.UtcNow
+                .ToUnixTimeMilliseconds())
+        ]);
 }

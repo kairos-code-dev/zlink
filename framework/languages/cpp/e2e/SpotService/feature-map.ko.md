@@ -13,16 +13,16 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   검증하도록 바꿔야 한다.
 - `SM-A2`: 같은 user spot에 연속 상태 변경 request를 보내 누적 상태와 순서를 검증하고,
   `.NET`식 lifecycle context group에서는 앞선 SM-A4/F1/F2 state evidence가 보존되는지 확인한다.
-- `SM-A3`: route client가 `target_node_rid`와 특정 `spot_rid_t`를 함께 지정해 원격 user spot으로
+- `SM-A3`: route client가 `target_node_rid`와 특정 `spot_id_t`를 함께 지정해 원격 user spot으로
   직접 request를 보내고, 해당 owner node와 spot id의 reply가 오는지 검증한다.
-- `SM-A4`: 같은 key가 같은 owner node와 같은 spot rid로 매핑되는지 검증하고, `.NET`식 lifecycle
-  context group에서는 같은 context spot rid가 play-a owner에 유지되는지 확인한다.
+- `SM-A4`: 같은 key가 같은 owner node와 같은 spot id로 매핑되는지 검증하고, `.NET`식 lifecycle
+  context group에서는 같은 context spot id가 play-a owner에 유지되는지 확인한다.
 - `SM-A5`: `.NET`의 app-level `ScenarioStage` wrapper에 대응해 C++ user spot이 public spot
   request handler와 `spot_context_t::add_timer<THandler>`를 사용하고, stage request, stage timer,
   spot close lifecycle evidence를 검증한다.
 - `SM-A6`: actor 없는 user spot을 생성한 뒤 public `close_spot`으로 닫아 initialize/closing
   lifecycle evidence를 검증한다.
-- `SM-A7`: 같은 spot rid를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
+- `SM-A7`: 같은 spot id를 다른 spot 타입으로 다시 `get_or_create_spot`할 때
   `spot_type_mismatch`로 거부되고 기존 user spot 상태가 유지되는지 검증한다.
 - `SM-A8`: `/spot/worker/start`가 public `run_worker`로 무거운 작업을 spot 직렬 루프 밖에
   offload하고, 같은 spot의 다른 request가 worker 완료 전에 처리되며 `/spot/worker/complete`가

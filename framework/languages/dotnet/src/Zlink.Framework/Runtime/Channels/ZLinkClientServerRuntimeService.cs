@@ -278,7 +278,7 @@ internal sealed class ZLinkClientServerRuntimeService(
             ZLinkFrameworkRuntimeState.Serving =>
                 ZLinkClientServerServerState.Ready,
             ZLinkFrameworkRuntimeState.Draining or
-                ZLinkFrameworkRuntimeState.Retiring =>
+                ZLinkFrameworkRuntimeState.Relocating =>
                 ZLinkClientServerServerState.Draining,
             ZLinkFrameworkRuntimeState.Stopped =>
                 ZLinkClientServerServerState.Disconnected,

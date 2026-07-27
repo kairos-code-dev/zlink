@@ -106,7 +106,7 @@ e2e::join_res_t ensure_f_spot (const std::string &play_http_endpoint)
                                   .tags = {"beta", "remote"}},
           .state = e2e::state_req_t{.op = "add", .amount = 11}});
     if (response.join.owner_node_rid != "play-b"
-        || response.join.spot_rid != "user:play-b:b-room") {
+        || response.join.spot_id != "user:play-b:b-room") {
         throw std::runtime_error ("F scenario setup did not create play-b b-room spot");
     }
     auto api = make_http (play_http_endpoint);
@@ -115,7 +115,7 @@ e2e::join_res_t ensure_f_spot (const std::string &play_http_endpoint)
         auto visible =
           api.post ("/spot/direct")
             .body (e2e::direct_spot_route_req_t{.target_node_rid = "play-b",
-                                                .spot_rid = response.join.spot_rid,
+                                                .spot_id = response.join.spot_id,
                                                 .value = "f-setup-ready",
                                                 .source_actor_id = "external-client"})
             .submit_raw ()
@@ -316,25 +316,25 @@ void run_scenario (const e2e_client::client_options_t &options)
         std::cout << "scenario SM-E4 passed\n";
     } else if (mode == "sm-f1") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
-        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_rid);
+        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_id);
     } else if (mode == "sm-f2") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
-        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_rid);
-        scenarios::run_sm_f2_scenario (options.play_http_endpoint, spot.spot_rid);
+        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_id);
+        scenarios::run_sm_f2_scenario (options.play_http_endpoint, spot.spot_id);
     } else if (mode == "sm-f3") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
-        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_rid);
-        scenarios::run_sm_f2_scenario (options.play_http_endpoint, spot.spot_rid);
+        scenarios::run_sm_f1_scenario (options.play_http_endpoint, spot.spot_id);
+        scenarios::run_sm_f2_scenario (options.play_http_endpoint, spot.spot_id);
         scenarios::run_sm_f3_scenario (options.play_http_endpoint, options.play_b_http_endpoint,
-                                       spot.spot_rid);
+                                       spot.spot_id);
     } else if (mode == "sm-f4") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
         scenarios::run_sm_f4_scenario (options.play_http_endpoint,
-                                       options.play_b_http_endpoint, spot.spot_rid);
+                                       options.play_b_http_endpoint, spot.spot_id);
     } else if (mode == "sm-f5") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
         scenarios::run_sm_f4_scenario (options.play_http_endpoint,
-                                       options.play_b_http_endpoint, spot.spot_rid);
+                                       options.play_b_http_endpoint, spot.spot_id);
         scenarios::run_sm_f5_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
     } else if (mode == "sm-f6") {
         scenarios::run_sm_f6_scenario (options.multi_a_http_endpoint,

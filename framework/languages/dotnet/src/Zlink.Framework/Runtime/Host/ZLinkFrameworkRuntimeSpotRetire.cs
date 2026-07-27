@@ -420,7 +420,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var authorityStore = Registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
                                  "Location Store is not registered.");
-        var relocationStore = Registration.Locations.RelocationStoreInstance
+        var relocationStore = Registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Relocation Store is not registered.");
         var targetOwner = LocationLifecycle?.OwnerToken
@@ -538,7 +538,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var authorityStore = Registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
                                  "Location Store is not registered.");
-        var relocationStore = Registration.Locations.RelocationStoreInstance
+        var relocationStore = Registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Relocation Store is not registered.");
         var targetOwner = LocationLifecycle?.OwnerToken
@@ -686,7 +686,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private async ValueTask<ZLinkServiceWireCodec.ReplyRelayRecord>
         CreateCanonicalReplyRelayAsync(
-            IZLinkLocationStore authorityStore,
+            IZLinkLocationRepository authorityStore,
             TargetStage stage,
             ZLinkRelocationParticipantEnvelope participant,
             ZLinkCanonicalAcceptedRequest request,

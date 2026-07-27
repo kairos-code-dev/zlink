@@ -66,7 +66,7 @@ class evidence_wait_handler_t
         return entry.marker.find (expected) != std::string::npos
                || entry.node_rid.find (expected) != std::string::npos
                || entry.actor_id.find (expected) != std::string::npos
-               || entry.spot_rid.find (expected) != std::string::npos
+               || entry.spot_id.find (expected) != std::string::npos
                || entry.value.find (expected) != std::string::npos;
     }
 

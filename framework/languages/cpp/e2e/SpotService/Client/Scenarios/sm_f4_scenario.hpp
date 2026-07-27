@@ -55,18 +55,18 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
 
     auto source_created =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = source_spot})
+        .body (create_spot_req_t{.spot_id = source_spot})
         .submit<create_spot_res_t> ()
         .result ();
-    if (!source_created || source_created.value ().body.spot_rid != source_spot) {
+    if (!source_created || source_created.value ().body.spot_id != source_spot) {
         throw std::runtime_error ("SM-F4 source spot setup failed");
     }
 
     auto created = play_b.post ("/spot/create")
-                     .body (create_spot_req_t{.spot_rid = target_spot})
+                     .body (create_spot_req_t{.spot_id = target_spot})
                      .submit<create_spot_res_t> ()
                      .result ();
-    if (!created || created.value ().body.spot_rid != target_spot) {
+    if (!created || created.value ().body.spot_id != target_spot) {
         throw std::runtime_error ("SM-F4 target spot setup failed");
     }
 
@@ -90,9 +90,9 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
     auto missing_route =
       play_a.post ("/spot/to-spot/negative")
         .body (spot_to_spot_route_req_t{.source_node_rid = "play-a",
-                                        .source_spot_rid = source_spot,
+                                        .source_spot_id = source_spot,
                                         .target_node_rid = "play-b",
-                                        .target_spot_rid = target_spot,
+                                        .target_spot_id = target_spot,
                                         .marker = "missing-route"})
         .submit<spot_to_spot_negative_route_res_t> ()
         .result ();
@@ -130,7 +130,7 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
     auto raw =
       play_a.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = remote_spot,
+                                       .spot_id = remote_spot,
                                        .value = "route-recovery",
                                        .source_actor_id = "external-client"})
         .submit_raw ()

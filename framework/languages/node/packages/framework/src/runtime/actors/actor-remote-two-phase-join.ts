@@ -176,7 +176,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       if (commitReply.accepted) {
         transfer.commit(
           target,
-          actorRefFromReply(commitReply),
+          actorRefFromReply(commitReply, actor.context.meshName),
           commitReply.handoffResults ?? []
         );
       } else await transfer.rollback();
@@ -212,7 +212,10 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     target: ZLinkSpotRouteTarget,
     replyMessage: Message | undefined
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
-    const resultActor = actorRefFromReply(reply);
+    const resultActor = actorRefFromReply(
+      reply,
+      state.meshName ?? target.routerChannelId
+    );
     if (reply.accepted) {
       state.endMove();
       state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
@@ -306,10 +309,14 @@ export class ZLinkRemoteTwoPhaseActorJoin {
   }
 }
 
-function actorRefFromReply(reply: ZLinkRemoteActorJoinReply): ActorRef {
+function actorRefFromReply(
+  reply: ZLinkRemoteActorJoinReply,
+  meshName: string
+): ActorRef {
   return {
-    nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex),
     actorId: reply.actorId,
-    generation: BigInt(reply.actorGeneration)
-  } as ActorRef;
+    objectGeneration: BigInt(reply.actorGeneration),
+    meshName,
+    nodeRid: decodeWireRoutingId(reply.actorNodeRid, reply.actorNodeRidHex)
+  };
 }

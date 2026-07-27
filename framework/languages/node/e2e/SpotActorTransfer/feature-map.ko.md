@@ -24,9 +24,29 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-F1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: moving backlog FIFO. Track F 로그: `log/20260710-200221-3864800`. |
 | `ST-F2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: location publish 전 replay 순서. Track F 로그: `log/20260710-200221-3864800`. |
 | `ST-F3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: bound session의 cross-move FIFO. Track F 로그: `log/20260710-200221-3864800`. |
-| `ST-F4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: bounded straggler forwarding window. Track F 로그: `log/20260710-200221-3864800`. |
-| `ST-F5` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: forwarding map 교체와 만료 뒤 축출. Track F 로그: `log/20260710-200221-3864800`. |
+| `ST-F3A` | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
+| `ST-F4` | 전환 대상 | 기존 로그는 caller가 old route를 직접 지정한 fixture에서 생성됐다. Global Actor ID operation의 transport delivery를 지연하는 fixture가 필요하다. |
+| `ST-F5` | 전환 대상 | 기존 route 교체·제거 검증도 old route 직접 주입에 의존한다. Public route를 노출하지 않는 multi-hop fixture로 바꿔야 한다. |
 | `ST-F6` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: request correlation과 caller timeout 뒤 late reply 격리. Track F 로그: `log/20260710-200221-3864800`. |
+| `ST-G1` | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
+| `ST-G2` | 미구현 | 큰 participant inventory와 typed capacity aggregate all-or-none E2E가 없다. |
+| `ST-G3` | 미구현 | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
+| `ST-G4` | 미구현 | relocation 중 `ToActor` Message Follow와 target queue 순서를 검증하는 E2E가 없다. |
+| `ST-G5` | 미구현 | Entry·PerActor Actor relocation interruption 목표와 초과 뒤 계속 진행을 검증하는 E2E가 없다. |
+| `ST-G6` | 미구현 | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하는 E2E가 없다. |
+| `ST-H1` | 미구현 | Deferred Join 등록, immutable request와 Actor queue barrier를 실제 process에서 검증하지 않는다. |
+| `ST-H2` | 미구현 | Join completion outcome, operation ID와 crash recovery E2E가 없다. |
+| `ST-H3` | 미구현 | Context identity와 relocation 이후 source fence E2E가 없다. |
+| `ST-H4` | 미구현 | 허용 execution context, 중복 등록과 relocation error parity E2E가 없다. |
+| `ST-H4A` | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
+| `ST-H4B` | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
+| `ST-H5` | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
+| `ST-I1` | 미구현 | 실제 encoded Actor·Spot payload profile과 경계·초과 크기 E2E가 없다. |
+| `ST-I2` | 미구현 | 다량 Recreate·Snapshot Actor relocation의 처리 시간과 Actor·control service 연속성 E2E가 없다. |
+| `ST-I3` | 미구현 | 다량 Instance Spot·SpotWide relocation의 처리 시간과 Spot·Actor·control service 연속성 E2E가 없다. |
+| `ST-I4` | 미구현 | Actor·Spot × one-way·request × commit 전·후 Message Follow matrix가 없다. |
+| `ST-I5` | 미구현 | Message Follow 기간 종료, duplicate, deadline, generation, loop와 bound E2E가 없다. |
+| `ST-I6` | 미구현 | Actor·Spot multi-hop relocation과 Message Follow route 정리 E2E가 없다. |
 
 ## 증거 경계
 
@@ -39,3 +59,6 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 - Focused contract test는 cross-node Accepted root의 operation ID·raw reply·target ActorRef·generation과
   `Prepared→Committed→Delivered` cursor, callback retry·dedupe, backlog 선행 순서를 검증한다. Redis provide
   test는 immutable bytes, CRC32C와 provider clock 기준 expiry·renew·delete를 검증한다.
+- 현재 `run_e2e.sh all-core`는 전환 대상인 `ST-F4~F5`도 실행한다. 이 결과는 public
+  transport-delay fixture로 바꾸기 전에는 현행 `ST-F4~F5` 완료 증거가 아니다.
+  `ST-F3A`, `ST-G1~G6`, `ST-H1~H5`와 `ST-I1~I6`은 실행하지 않는다.

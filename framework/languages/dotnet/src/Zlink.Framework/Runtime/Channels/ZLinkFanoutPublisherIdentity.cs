@@ -26,7 +26,7 @@ internal sealed class ZLinkFanoutPublisherIdentity(
         => SetState(ZLinkFrameworkRuntimeState.Draining);
 
     internal Snapshot MarkRetiring()
-        => SetState(ZLinkFrameworkRuntimeState.Retiring);
+        => SetState(ZLinkFrameworkRuntimeState.Relocating);
 
     internal Snapshot MarkServing()
         => SetState(ZLinkFrameworkRuntimeState.Serving);

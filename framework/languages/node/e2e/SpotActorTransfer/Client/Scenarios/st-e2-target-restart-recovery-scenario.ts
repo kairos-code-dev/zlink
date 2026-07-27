@@ -3,13 +3,13 @@ import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, assertBo
 
 export async function runStE2(): Promise<void> {
   const actorId = uniqueShort('e2');
-  const spotRid = unique('spot-bound-failed-transfer');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('spot-bound-failed-transfer');
+  await createSpot(nodeB, spotId);
   const source = await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeFailTransferOut, 92);
   const transferId = uniqueShort('transfer');
   const connector = await connectAndBind(options.sessionAStreamEndpoint, 'ST-E2', source, transferId);
   try {
-    require(!(await joinActor(nodeA, actorId, { scenario: 'ST-E2', targetSpotRid: spotRid, transferId })).accepted, 'ST-E2 failed transfer returned success.');
+    require(!(await joinActor(nodeA, actorId, { scenario: 'ST-E2', targetSpotId: spotId, transferId })).accepted, 'ST-E2 failed transfer returned success.');
     await assertBoundPush(connector, nodeA, actorId, 'ST-E2', 'after-failed-transfer', 'actor-a');
     const targetEvidence = await getEvidence(nodeB);
     require(!has(targetEvidence, actorId, 'bound_push'), 'ST-E2 target bound route was exposed.');
@@ -18,8 +18,8 @@ export async function runStE2(): Promise<void> {
   }
 
   const rollbackActorId = uniqueShort('e2-joined');
-  const rollbackSpotRid = unique('spot-bound-joined-failure');
-  await createSpot(nodeB, rollbackSpotRid, 'fail-joined');
+  const rollbackSpotId = unique('spot-bound-joined-failure');
+  await createSpot(nodeB, rollbackSpotId, 'fail-joined');
   const rollbackSource = await createActor(nodeA, rollbackActorId, SpotActorTransferNames.actorTypeStateful, 93);
   const rollbackTransferId = uniqueShort('transfer');
   const rollbackConnector = await connectAndBind(
@@ -32,7 +32,7 @@ export async function runStE2(): Promise<void> {
     require(!(
       await joinActor(nodeA, rollbackActorId, {
         scenario: 'ST-E2',
-        targetSpotRid: rollbackSpotRid,
+        targetSpotId: rollbackSpotId,
         transferId: rollbackTransferId
       })
     ).accepted, 'ST-E2 joined failure returned success.');

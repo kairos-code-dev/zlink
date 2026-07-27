@@ -17,11 +17,11 @@ class ScenarioStage {
   apply(request: StageProbeReq, evidence: EvidenceStore): StateRes {
     const value = this.spot.add(request.delta);
     evidence.add(
-      `stage-request|rid=${evidence.rid}|spot=${this.spot.context.spotRid}`
+      `stage-request|rid=${evidence.rid}|spot=${this.spot.context.spotId}`
       + `|marker=${request.marker}|value=${value}`
     );
     return {
-      spotRid: String(this.spot.context.spotRid),
+      spotId: String(this.spot.context.spotId),
       nodeRid: String(this.spot.context.nodeRid),
       value
     };
@@ -66,7 +66,7 @@ export class StageTimerHandler implements ZLinkSpotTimerHandler<ScenarioUserSpot
 
   async handle(spot: ScenarioUserSpot, tick: ZLinkTimerTick): Promise<void> {
     this.evidence.add(
-      `stage-timer|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|name=${tick.name}`
+      `stage-timer|rid=${this.evidence.rid}|spot=${spot.context.spotId}|name=${tick.name}`
       + `|delivery=${tick.deliveryIndex}`
     );
   }

@@ -43,7 +43,7 @@ export class SpotOutboundHandler implements ZLinkSpotPacketHandler<ScenarioUserS
         spotServicePacket(SpotMsg, { marker: 'sm-c2-publish' }))
       .submit();
     this.evidence.add(
-      `spot-outbound|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `spot-outbound|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|echo=${echo.value}|notify=${notifyMarker}`
     );
   }
@@ -75,7 +75,7 @@ export class SpotOutboundNegativeHandler implements ZLinkSpotPacketHandler<Scena
         spotServicePacket(MissingChannelNotify, { marker: `missing-${request.marker}` }))
       .submit();
     this.evidence.add(
-      `spot-outbound-negative|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|requestFailed=${requestFailed ? 'True' : 'False'}`
+      `spot-outbound-negative|rid=${this.evidence.rid}|spot=${spot.context.spotId}|requestFailed=${requestFailed ? 'True' : 'False'}`
     );
   }
 }
@@ -86,6 +86,6 @@ export class SpotMsgHandler implements ZLinkSpotSubscriptionHandler<ScenarioUser
 
   async handle(spot: ScenarioUserSpot, event: SpotMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    this.evidence.add(`spot-msg|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${event.marker}`);
+    this.evidence.add(`spot-msg|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${event.marker}`);
   }
 }

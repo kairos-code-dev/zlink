@@ -125,6 +125,12 @@ export class ZLinkActorCreationCoordinator {
       );
     }
     const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+    const meshName = state.meshName;
+    if (meshName === undefined || meshName.length === 0) {
+      throw new ZLinkConfigurationException(
+        `Actor '${actorId}' has no RouteMesh identity.`
+      );
+    }
     try {
       let nodeRid: RoutingId | undefined;
       if (nativeActorNode !== undefined) {
@@ -160,12 +166,12 @@ export class ZLinkActorCreationCoordinator {
           await this.options.locationLifecycle?.setActorRef(
             actorType,
             actorId,
-            toFrameworkActorRef(actorRef),
+            toFrameworkActorRef(actorRef, meshName),
             nativeActorNode.status().lifecycleGeneration
           );
           await this.options.publishActorAuthority?.(
             actorType,
-            toFrameworkActorRef(actorRef),
+            toFrameworkActorRef(actorRef, meshName),
             nativeActorNode.status().lifecycleGeneration,
             signal
           );
@@ -174,7 +180,7 @@ export class ZLinkActorCreationCoordinator {
         await this.options.locationLifecycle?.setActorRef(
           actorType,
           actorId,
-          { nodeRid, actorId, generation: 0n },
+          { actorId, objectGeneration: 1n, meshName, nodeRid },
           0n
         );
       }

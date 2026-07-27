@@ -12,13 +12,15 @@ internal interface IZLinkSpotRetireTarget
 {
     ValueTask<ZLinkSpotRetireReservation?> TryReserveAsync(
         ZLinkSpotRetireInventory inventory,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkSpotRetireReservation?> TryReserveForPreflightAsync(
         ZLinkSpotRetireInventory inventory,
         ZLinkRetirePreflightPlan plan,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken) =>
-        TryReserveAsync(inventory, cancellationToken);
+        TryReserveAsync(inventory, selection, cancellationToken);
 
     ValueTask StageAsync(
         ZLinkSpotRetireReservation reservation,
@@ -162,8 +164,8 @@ internal static class ZLinkSpotRetireCompletionMarker
 /// authority commit aborts target staging and resumes the exact source seal.
 /// </summary>
 internal sealed class ZLinkSpotRetireScheduler(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore,
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore,
     IZLinkSpotRetireTarget target,
     ZLinkRelocationPermitPool permits)
 {
@@ -174,9 +176,10 @@ internal sealed class ZLinkSpotRetireScheduler(
         sizeof(uint) + sizeof(ushort) + 16 + sizeof(ulong)
         + sizeof(int) + 32 + sizeof(int);
 
-    internal async ValueTask<ZLinkFrameworkTerminationReason?> PreflightAsync(
+    internal async ValueTask<ZLinkFrameworkRelocationReason?> PreflightAsync(
         IReadOnlyList<(ZLinkSpotActivation Activation, bool Instance)> units,
         ZLinkRetirePreflightPlan plan,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         foreach (var unit in units)
@@ -184,13 +187,14 @@ internal sealed class ZLinkSpotRetireScheduler(
             var inventory = CreateInventory(unit.Activation, unit.Instance);
             if (inventory.RequiredCapabilities.Any(static capability =>
                     capability.Policy == ZLinkObjectMaintenancePolicyKind.Disabled))
-                return ZLinkFrameworkTerminationReason.RelocationDisabled;
+                return ZLinkFrameworkRelocationReason.RelocationDisabled;
             if (await target.TryReserveForPreflightAsync(
                     inventory,
                     plan,
+                    selection,
                     cancellationToken)
                     .ConfigureAwait(false) is null)
-                return ZLinkFrameworkTerminationReason.TargetUnavailable;
+                return ZLinkFrameworkRelocationReason.TargetUnavailable;
         }
         return null;
     }
@@ -218,6 +222,7 @@ internal sealed class ZLinkSpotRetireScheduler(
     internal async ValueTask<bool> TryRelocateAsync(
         ZLinkSpotActivation activation,
         bool instanceSpot,
+        ZLinkRelocationTargetSelection selection,
         DateTimeOffset deadline,
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> completeSource,
         CancellationToken cancellationToken)
@@ -244,6 +249,7 @@ internal sealed class ZLinkSpotRetireScheduler(
         var inventory = CreateInventory(activation, instanceSpot, actorIds);
         var reservation = await target.TryReserveAsync(
                 inventory,
+                selection,
                 cancellationToken)
             .ConfigureAwait(false);
         if (reservation is null)
@@ -279,7 +285,7 @@ internal sealed class ZLinkSpotRetireScheduler(
             IReadOnlyList<ZLinkAcceptedWorkRecord> committedHeld = [];
             var committed = false;
             var targetPublished = false;
-            var forwardingStarted = false;
+            var messageFollowStarted = false;
             var sourceCommitted = false;
             var committedHeldValidated = false;
             var sourceCompleted = false;
@@ -488,20 +494,20 @@ internal sealed class ZLinkSpotRetireScheduler(
                     targetPublished = true;
                 }
                 committed = true;
-                if (!forwardingStarted)
+                if (!messageFollowStarted)
                 {
                     var spotParticipant = published.Envelope.Participants.Single(
                         static participant => participant.ObjectKind
                             is ZLinkPlacementObjectKind.UserSpot
                             or ZLinkPlacementObjectKind.InstanceSpot);
-                    activation.BeginCommittedForwarding(
+                    activation.BeginMessageFollow(
                         reservation.TargetDescriptor.Rid,
                         reservation.TargetDescriptorLifecycleGeneration,
                         spotParticipant.AuthorityOwnerGeneration,
                         checked(
                             spotParticipant.AuthorityOwnerGeneration + 1),
                         reservation.TargetOwner);
-                    forwardingStarted = true;
+                    messageFollowStarted = true;
                 }
                 if (!sourceCommitted)
                 {

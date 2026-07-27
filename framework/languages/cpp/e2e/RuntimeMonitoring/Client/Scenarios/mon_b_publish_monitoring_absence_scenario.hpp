@@ -85,7 +85,7 @@ inline void run_mon_b_publish_monitoring_absence_scenario (
     const auto evidence_start = fetch_evidence (options.service_url).size ();
     if (create_subject) {
         const auto created =
-          http.post ("/admin/subject/create?spotRid=monitoring-subject-b2")
+          http.post ("/admin/subject/create?spotId=monitoring-subject-b2")
             .submit_raw ()
             .result ();
         ensure (created && created.value ().status < 400,

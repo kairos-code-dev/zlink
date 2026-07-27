@@ -8,6 +8,8 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkLocationRegistration
 {
     private ZLinkInMemoryLocationStore? _inMemoryStore;
+    private IZLinkLocationRepository? _repository;
+    private IZLinkRelocationRepository? _relocationRepository;
 
     public bool UseInMemoryStores { get; set; }
 
@@ -20,12 +22,46 @@ internal sealed class ZLinkLocationRegistration
 
     public ZLinkLocationOptions Options { get; } = new();
 
-    public bool Enabled => UseInMemoryStores || StoreInstance is not null;
+    public bool Enabled =>
+        UseInMemoryStores || StoreInstance is not null || _repository is not null;
 
-    internal IZLinkLocationStore? ResolveStore()
+    internal bool HasExplicitStore =>
+        StoreInstance is not null || _repository is not null;
+
+    internal IZLinkLocationRepository? ResolveStore()
     {
-        if (StoreInstance is not null) return StoreInstance;
+        if (_repository is not null) return _repository;
+        if (StoreInstance is not null)
+            return _repository ??= new ZLinkProviderLocationRepository(StoreInstance);
         if (!UseInMemoryStores) return null;
         return _inMemoryStore ??= new ZLinkInMemoryLocationStore();
+    }
+
+    internal IZLinkRelocationRepository? ResolveRelocationStore()
+    {
+        if (_relocationRepository is not null) return _relocationRepository;
+        if (RelocationStoreInstance is null) return null;
+        return _relocationRepository ??=
+            new ZLinkProviderRelocationRepository(RelocationStoreInstance);
+    }
+
+    internal void SetTestRepository(IZLinkLocationRepository repository)
+    {
+        if (StoreInstance is not null || _repository is not null)
+            throw new ZLinkConfigurationException(
+                "A Location Store is already registered.");
+        _repository = repository;
+    }
+
+    internal void SetTestRelocationRepository(
+        IZLinkRelocationRepository repository)
+    {
+        if (RelocationStoreInstance is not null
+            || _relocationRepository is not null)
+        {
+            throw new ZLinkConfigurationException(
+                "A Relocation Store is already registered.");
+        }
+        _relocationRepository = repository;
     }
 }

@@ -46,7 +46,8 @@ internal static partial class ZLinkServiceWireCodec
         ulong TargetNodeGeneration,
         ulong AuthorityOwnerGeneration,
         ulong OwnerLeaseGeneration,
-        byte ForwardingHopCount,
+        byte MessageFollowHopCount,
+        ulong DeadlineUnixMs,
         bool HasMetadata);
 
     internal readonly record struct UserSpotOperationRecord(
@@ -643,7 +644,8 @@ internal static partial class ZLinkServiceWireCodec
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
         bool hasMetadata,
-        byte forwardingHopCount = 0)
+        byte messageFollowHopCount = 0,
+        ulong deadlineUnixMs = 0)
     {
         var request = command == ServiceWireConstants.Command.SpotRequest;
         if (command is not (ServiceWireConstants.Command.SpotSend
@@ -655,14 +657,19 @@ internal static partial class ZLinkServiceWireCodec
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0
-            || forwardingHopCount > 8)
+            || (request && (deadlineUnixMs is 0 or > long.MaxValue))
+            || (!request && deadlineUnixMs != 0)
+            || messageFollowHopCount > 8)
             throw new ArgumentOutOfRangeException(nameof(command));
         var body = new WireWriter();
         if (request)
+        {
             body.U64(correlation);
+            body.U64(deadlineUnixMs);
+        }
         body.U64(operationId.High);
         body.U64(operationId.Low);
-        body.U8(forwardingHopCount);
+        body.U8(messageFollowHopCount);
         body.Text8(sourceSpotId);
         body.Text8(targetSpotId);
         body.U64(targetSpotGeneration);
@@ -678,7 +685,7 @@ internal static partial class ZLinkServiceWireCodec
         return result;
     }
 
-    internal static long MeasureForwardedSpotEncodedBytes(
+    internal static long MeasureSpotMessageFollowEncodedBytes(
         bool request,
         MeshOperationId operationId,
         string sourceSpotId,
@@ -688,9 +695,10 @@ internal static partial class ZLinkServiceWireCodec
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
         IReadOnlyList<Message> parts,
-        ReadOnlyMemory<byte> metadata)
+        ReadOnlyMemory<byte> metadata,
+        ulong deadlineUnixMs = 1)
     {
         ArgumentNullException.ThrowIfNull(parts);
         var head = EncodeSpot(
@@ -707,7 +715,8 @@ internal static partial class ZLinkServiceWireCodec
             authorityOwnerGeneration,
             ownerLeaseGeneration,
             !metadata.IsEmpty,
-            forwardingHopCount);
+            messageFollowHopCount,
+            request ? deadlineUnixMs : 0);
         var bytes = checked((long)head.LongLength + metadata.Length);
         foreach (var part in parts)
             bytes = checked(bytes + part.Size);
@@ -724,7 +733,7 @@ internal static partial class ZLinkServiceWireCodec
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
         bool hasMetadata,
-        byte forwardingHopCount = 0)
+        byte messageFollowHopCount = 0)
     {
         var request = command == ServiceWireConstants.Command.ActorRequest;
         if (command is not (ServiceWireConstants.Command.ActorSend
@@ -738,14 +747,14 @@ internal static partial class ZLinkServiceWireCodec
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0
-            || forwardingHopCount > 8)
+            || messageFollowHopCount > 8)
             throw new ArgumentOutOfRangeException(nameof(command));
         var body = new WireWriter();
         if (request)
             body.U64(correlation);
         body.U64(operationId.High);
         body.U64(operationId.Low);
-        body.U8(forwardingHopCount);
+        body.U8(messageFollowHopCount);
         body.U8(0); // optional source Actor: absent
         body.U16(0);
         body.Text8(targetActor.ActorId);
@@ -868,10 +877,20 @@ internal static partial class ZLinkServiceWireCodec
         var request = command is ServiceWireConstants.Command.SpotRequest
             or ServiceWireConstants.Command.ActorRequest;
         ulong correlation = 0;
+        ulong deadlineUnixMs = 0;
         if (request
             && (!reader.TryU64(out correlation) || correlation == 0))
         {
             error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+        if (command == ServiceWireConstants.Command.SpotRequest
+            && (!reader.TryU64(out deadlineUnixMs)
+                || deadlineUnixMs is 0 or > long.MaxValue))
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : DecodeError.InvalidField;
             return false;
         }
         if (!reader.TryU64(out var operationHigh)
@@ -882,8 +901,8 @@ internal static partial class ZLinkServiceWireCodec
             error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
             return false;
         }
-        if (!reader.TryU8(out var forwardingHopCount)
-            || forwardingHopCount > 8)
+        if (!reader.TryU8(out var messageFollowHopCount)
+            || messageFollowHopCount > 8)
         {
             error = reader.Truncated
                 ? DecodeError.TruncatedField
@@ -962,7 +981,8 @@ internal static partial class ZLinkServiceWireCodec
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
-            forwardingHopCount,
+            messageFollowHopCount,
+            deadlineUnixMs,
             (flags & ServiceWireConstants.Flag.Metadata) != 0);
         error = DecodeError.None;
         return true;
@@ -1629,7 +1649,7 @@ internal static partial class ZLinkServiceWireCodec
     private static void WriteOptionalText8(WireWriter writer, string? value)
     {
         // optional-text8 carries the u8 length itself; length 0 means absent.
-        if (value is null)
+        if (string.IsNullOrEmpty(value))
         {
             writer.U8(0);
             return;

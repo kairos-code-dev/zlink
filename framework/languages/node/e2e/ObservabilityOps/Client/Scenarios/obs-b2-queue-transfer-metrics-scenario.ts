@@ -14,10 +14,10 @@ import { metric, metrics, waitFor } from '../Support/observability-support.js';
 
 export async function runObsB2(): Promise<void> {
   const actorId = unique('obs-b2-actor');
-  const spotRid = unique('obs-b2-room');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('obs-b2-room');
+  await createSpot(nodeB, spotId);
   await createActor(nodeA, actorId, ObservabilityOpsNames.actorTypeStateful, 2);
-  require((await joinActor(nodeA, actorId, { scenario: 'OBS-B2', targetSpotRid: spotRid })).accepted,
+  require((await joinActor(nodeA, actorId, { scenario: 'OBS-B2', targetSpotId: spotId })).accepted,
     'OBS-B2 actor transfer failed.');
   require((await probeActor(nodeB, actorId, 'OBS-B2', 'after-transfer')).nodeRid === 'play-b',
     'OBS-B2 actor did not reach play-b.');

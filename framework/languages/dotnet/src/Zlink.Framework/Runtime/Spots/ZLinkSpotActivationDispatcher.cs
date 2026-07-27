@@ -368,7 +368,7 @@ internal sealed class ZLinkSpotActivationDispatcher
         }
     }
 
-    internal static void RejectApplicationRouteForStaleForwarding(
+    internal static void RejectApplicationRouteForStaleMessageFollow(
         ZLinkBackendRouteReceived received,
         string channelName)
     {
@@ -384,7 +384,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                     header.CorrelationId,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.SpotGenerationStale,
-                        "The committed SPOT forwarding route is stale."));
+                        "The Spot Message Follow route is stale."));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
             }
             catch

@@ -56,12 +56,12 @@ export class ScenarioUserSpot implements ZLinkSpot {
 
   async onInitialize(): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
-    evidence.add(`spot-initialize|rid=${evidence.rid}|spot=${this.context.spotRid}`);
+    evidence.add(`spot-initialize|rid=${evidence.rid}|spot=${this.context.spotId}`);
   }
 
   async onClosing(): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
-    evidence.add(`spot-closing|rid=${evidence.rid}|spot=${this.context.spotRid}`);
+    evidence.add(`spot-closing|rid=${evidence.rid}|spot=${this.context.spotId}`);
   }
 
   add(delta: number): number {
@@ -75,7 +75,7 @@ export class ScenarioUserSpot implements ZLinkSpot {
     if (payload.actorId?.includes('reject') === true) {
       const evidence = ScenarioUserSpot.requireEvidence();
       evidence.add(
-        `spot-actor-join-rejected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actorId}`
+        `spot-actor-join-rejected|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actorId}`
       );
       return { accepted: false, reply: { accepted: false, actorId } };
     }
@@ -85,21 +85,21 @@ export class ScenarioUserSpot implements ZLinkSpot {
   async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
+      `spot-actor-joined|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
     );
   }
 
   async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
+      `spot-actor-left|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
     );
   }
 
   async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
-      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`
+      `spot-actor-disconnected|rid=${this.context.nodeRid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`
     );
   }
 
@@ -124,12 +124,12 @@ export class UserActorPingHandler
     const evidence = ScenarioUserSpot.requireEvidence();
     evidence.add(
       `actor-pingMsg|rid=${evidence.rid}|actor=${actor.actorId}`
-      + `|spot=${actor.context.spotRid}|value=${request.value}|seen=${actor.seen}`
+      + `|spot=${actor.context.spotId}|value=${request.value}|seen=${actor.seen}`
     );
     return {
       actorId: actor.actorId,
       nodeRid: evidence.rid,
-      spotRid: String(actor.context.spotRid),
+      spotId: String(actor.context.spotId),
       value: request.value,
       seen: actor.seen
     };
@@ -153,7 +153,7 @@ export class UserActorPushHandler
     return {
       actorId: actor.actorId,
       nodeRid: evidence.rid,
-      spotRid: String(actor.context.spotRid),
+      spotId: String(actor.context.spotId),
       value: request.value,
       seen: actor.seen
     };

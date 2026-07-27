@@ -1826,7 +1826,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
     }
 
     private sealed class ProgressRelocationStore(
-        bool contentAddressed = false) : IZLinkRelocationStore
+        bool contentAddressed = false) : IZLinkRelocationRepository
     {
         private int _next;
         internal System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>

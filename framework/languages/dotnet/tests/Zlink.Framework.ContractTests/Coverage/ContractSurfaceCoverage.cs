@@ -101,12 +101,16 @@ public sealed class ContractSurfaceCoverage
         var exportedContractTypes = new[]
             {
                 typeof(IZLinkFrameworkOptions).Assembly,
-                typeof(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension).Assembly
+                typeof(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension).Assembly,
+                typeof(Zlink.Framework.LocationProvider.IZLinkLocationStore).Assembly
             }
             .Distinct()
             .SelectMany(static assembly => assembly.GetExportedTypes())
             .Where(static type => type.Namespace is not null
-                                  && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
+                                  && (type.Namespace.StartsWith(
+                                          "Zlink.Framework.Contracts",
+                                          StringComparison.Ordinal)
+                                      || type.Namespace == "Zlink.Framework.LocationProvider"))
             .ToHashSet();
 
         // Every exported interface must have a worked example. Closed-union abstract records
@@ -211,6 +215,7 @@ public sealed class ContractSurfaceCoverage
                 typeof(ZLinkMessagePackCodec).Assembly,
                 typeof(ZLinkProtobufCodec).Assembly,
                 typeof(ZLinkRedisLocationStore).Assembly,
+                typeof(Zlink.Framework.LocationProvider.IZLinkLocationStore).Assembly,
                 typeof(ZLinkHttpClient).Assembly,
                 typeof(IZlinkStreamConnector).Assembly
             }

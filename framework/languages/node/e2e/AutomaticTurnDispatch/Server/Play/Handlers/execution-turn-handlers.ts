@@ -35,7 +35,7 @@ export class CounterResetHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
   async handle(spot: AwaitProbeSpot, request: CounterResetMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     spot.resetCounter();
-    this.evidence.add(`counter-reset|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`);
+    this.evidence.add(`counter-reset|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`);
   }
 }
 
@@ -48,7 +48,7 @@ export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
     void context;
     const observed = spot.readCounter();
     this.evidence.add(
-      `counter-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `counter-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|operation=${request.operationId}|observed=${observed}`
     );
     const call = spot.context.runIoWorker(async (signal) => {
@@ -62,7 +62,7 @@ export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
     }
     spot.writeCounter(observed + 1);
     this.evidence.add(
-      `counter-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `counter-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|operation=${request.operationId}|value=${spot.readCounter()}`
     );
   }
@@ -88,7 +88,7 @@ export class HttpAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
   async handle(spot: AwaitProbeSpot, request: HttpAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
-      `http-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `http-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}`
     );
     const call = this.client.get('/delay')
@@ -97,17 +97,17 @@ export class HttpAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
       .query('delayMs', String(request.delayMs));
     this.evidence.add(
       `http-${request.terminator}-${request.terminator === 'yield' ? 'released' : 'held'}`
-      + `|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
     );
     const response = request.terminator === 'yield'
       ? await call.yield<ExternalDelayRes>()
       : await call.async<ExternalDelayRes>();
     this.evidence.add(
-      `http-${request.terminator}-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `http-${request.terminator}-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|marker=${response.body.marker}`
     );
     this.evidence.add(
-      `http-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `http-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}`
     );
   }
@@ -130,7 +130,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
     const calls = Array.from({ length: request.count }, (_unused, index) => {
       const operationId = `io-${index.toString().padStart(2, '0')}`;
       this.evidence.add(
-        `io-worker-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `io-worker-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|operation=${operationId}`
       );
       const call = spot.context.runIoWorker(async () => {
@@ -142,7 +142,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
         return response.body;
       });
       this.evidence.add(
-        `io-worker-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `io-worker-released|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|operation=${operationId}`
       );
       return { operationId, call };
@@ -151,7 +151,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
     const results = await Promise.all(calls.map(async ({ operationId }, index) => {
       const result = await pending[index];
       this.evidence.add(
-        `io-worker-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `io-worker-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|operation=${operationId}|marker=${result.marker}`
       );
       return result;
@@ -168,7 +168,7 @@ export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeS
   async handle(spot: AwaitProbeSpot, request: CpuWorkerAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(
-      `cpu-worker-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `cpu-worker-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}`
     );
     const call = spot.context.runCpuWorker(() => {
@@ -180,11 +180,11 @@ export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeS
     });
     this.evidence.add(
       `cpu-worker-${request.terminator}-${request.terminator === 'yield' ? 'released' : 'held'}`
-      + `|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      + `|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
     );
     const workerThread = request.terminator === 'yield' ? await call.yield() : await call.submit();
     this.evidence.add(
-      `cpu-worker-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      `cpu-worker-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
       + `|request=${request.requestId}|worker-thread=${workerThread}`
     );
   }
@@ -200,8 +200,8 @@ export class SelfCycleHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
 
   async handle(spot: AwaitProbeSpot, request: SelfCycleMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    const self = await this.spotHandles.find(String(spot.context.spotRid));
-    if (self === undefined) throw new Error(`Self SpotHandle was not resolved for '${spot.context.spotRid}'.`);
+    const self = await this.spotHandles.find(String(spot.context.spotId));
+    if (self === undefined) throw new Error(`Self SpotHandle was not resolved for '${spot.context.spotId}'.`);
     try {
       await spot.context.outbound
         .requestToSpot(self, Object.assign(new ProbeReq(), { requestId: request.requestId, marker: 'cycle' }))
@@ -211,7 +211,7 @@ export class SelfCycleHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
     } catch (error) {
       const name = error instanceof Error ? error.name : 'Error';
       this.evidence.add(
-        `self-cycle-timed-out|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `self-cycle-timed-out|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|error=${name}`
       );
     }

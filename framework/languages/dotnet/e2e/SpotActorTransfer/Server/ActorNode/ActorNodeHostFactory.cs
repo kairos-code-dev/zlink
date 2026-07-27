@@ -4,7 +4,9 @@ using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Locations.Redis;
+using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -28,17 +30,23 @@ internal static class ActorNodeHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
         var cleanupGates = new ActorCleanupGateStore(evidence);
+        var relocationBlobs = new RelocationBlobObserver();
         builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(runtimeEvidence);
+        builder.Services.AddSingleton(relocationBlobs);
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
         builder.Services.AddSingleton<TransferGateStore>();
+        builder.Services.AddSingleton<JoinCompletionStore>();
+        builder.Services.AddSingleton<TransportDeliveryGate>();
+        builder.Services.AddSingleton<IZLinkActorTransportDeliveryGate>(
+            services => services.GetRequiredService<TransportDeliveryGate>());
         builder.Services.AddSingleton(cleanupGates);
         builder.Services.AddSingleton<ActorJoinTargetUseCase>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
-            // The common ST-F4/F5 contract permits a short controller window so
+            // The common ST-F4/F5 contract permits a short controller duration so
             // the E2E verifies cutoff semantics without coupling the scenario to
             // the independently tested owner-lease TTL.
             var redisStore = new ZLinkRedisLocationStore(redis => redis
@@ -47,28 +55,24 @@ internal static class ActorNodeHostFactory
             framework.AddLocationStore(new CleanupGatedLocationStore(
                 redisStore,
                 cleanupGates));
+            framework.AddRelocationStore(new ObservedRelocationStore(
+                new ZLinkRedisRelocationStore(redis => redis
+                    .SetConnectionString(options.RedisEndpoint)
+                    .SetKeyPrefix($"{options.RedisKeyPrefix}:relocation")),
+                relocationBlobs));
             var locations = framework.ConfigureLocations();
-            locations.RouteCacheMaxAge = TimeSpan.Zero;
-            locations.RelocationForwardingWindow = TimeSpan.FromSeconds(2);
+            // A third node keeps a bounded stale owner route so ST-I4 can
+            // exercise Message Follow through the public global Actor ID API.
+            // The cache remains five seconds shorter than Message Follow.
+            locations.RouteCacheMaxAge = TimeSpan.FromSeconds(2);
+            locations.MessageFollowDuration = TimeSpan.FromSeconds(7);
             locations.OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1);
             locations.OwnerLeaseTtl = TimeSpan.FromSeconds(10);
             locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
             var mesh28 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid));
-            foreach (var peer in options.RoutePeers)
-            {
-                var separator = peer.IndexOf('=');
-                if (separator <= 0 || separator == peer.Length - 1)
-                    throw new InvalidOperationException(
-                        $"Route peer '{peer}' must use the '<rid>=<endpoint>' format.");
-                var peerRid = peer[..separator];
-                if (!string.Equals(peerRid, options.Rid, StringComparison.Ordinal))
-                    mesh28.PeerConnections.Connect(
-                        RoutingId.From(peerRid),
-                        peer[(separator + 1)..]);
-            }
+                .SetRoutingIdPrefix(options.Rid);
             mesh28.Objects().Server()
                 .AddEntrySpot<TransferEntrySpot>()
                 .AddActorFactory<TransferActor, TransferActorFactory>(
@@ -101,9 +105,22 @@ internal static class ActorNodeHostFactory
                     ZLinkRelocationPolicy<TransferActor>
                         .Snapshot<TransferActorRelocationAdapter>())
                 .AddSpotFactory<TransferUserSpot>(
-                    SpotActorTransferNames.UserSpotType(options.Rid),
+                    SpotActorTransferNames.UserSpotType,
                     null,
-                    ZLinkRelocationPolicy<TransferUserSpot>.Disabled);
+                    ZLinkRelocationPolicy<TransferUserSpot>.Disabled)
+                .AddSpotFactory<RelocationPayloadUserSpot>(
+                    SpotActorTransferNames.RelocationPayloadUserSpotType,
+                    new ZLinkUserSpotFactoryOptions
+                    {
+                        ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
+                    },
+                    ZLinkRelocationPolicy<RelocationPayloadUserSpot>
+                        .Snapshot<RelocationPayloadUserSpotAdapter>())
+                .AddInstanceSpotFactory<RelocationPayloadInstanceSpot>(
+                    SpotActorTransferNames.RelocationPayloadInstanceSpotType,
+                    null,
+                    ZLinkRelocationPolicy<RelocationPayloadInstanceSpot>
+                        .Snapshot<RelocationPayloadInstanceSpotAdapter>());
         });
         return (builder.Build(), options);
     }

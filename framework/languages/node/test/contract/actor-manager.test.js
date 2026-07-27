@@ -1998,9 +1998,9 @@ test('target ownership publication retries an exact command 44 after command 45 
     actorTransferRegistry: {},
     authorityStore: () => undefined,
     relocationStore: () => ({
-      async getRelocation(reference) {
+      async read(reference) {
         assert.equal(reference.value, 'journal-ack');
-        return { kind: 'found', payload: acceptedJournal };
+        return foundBlob(acceptedJournal);
       }
     }),
     reportPostCommitError(error) { reported.push(error); },
@@ -2049,23 +2049,22 @@ test('source command 42 seal publishes a durable accepted journal and rollback a
   const stored = new Map();
   let deleted = 0;
   const relocationStore = {
-    async putRelocation(payload) {
-      const reference = { value: 'accepted-root-1' };
+    async put(reference, payload) {
       stored.set(reference.value, Buffer.from(payload));
+      const storeNow = new Date();
       return {
-        reference,
-        checksumCrc32c: crc32c(payload),
-        expiresAt: new Date(Date.now() + 60_000),
-        storeNow: new Date()
+        kind: 'stored',
+        expiresAt: new Date(storeNow.getTime() + 60_000),
+        storeNow
       };
     },
-    async getRelocation(reference) {
+    async read(reference) {
       const payload = stored.get(reference.value);
-      return payload === undefined ? { kind: 'missing' } : { kind: 'found', payload };
+      return payload === undefined ? missingBlob() : foundBlob(payload);
     },
-    async deleteRelocation(reference) {
+    async delete(reference) {
       deleted++;
-      return stored.delete(reference.value) ? 'deleted' : 'missing';
+      stored.delete(reference.value);
     }
   };
   const runtime = new ZLinkActorTransferRuntime({
@@ -2102,7 +2101,7 @@ test('source command 42 seal publishes a durable accepted journal and rollback a
   const prepared = await runtime.prepareSource(actor, state, undefined, 'core');
   assert.equal(commands[0].options.packetName, framework.ZLINK_REMOTE_BOUND_SESSION_SEAL_PACKET);
   assert.equal(remoteTarget.acceptedHighWater, 7n);
-  assert.equal(remoteTarget.acceptedJournalReference, 'accepted-root-1');
+  assert.equal(stored.has(remoteTarget.acceptedJournalReference), true);
   assert.equal(remoteTarget.relocationSealId, commands[0].payload.sealId);
   assert.equal(stored.size, 1);
   assert.equal(moving, true);
@@ -2351,7 +2350,7 @@ test('target ownership publication shutdown preserves the committed target locat
     actorHandoff: {},
     actorTransferRegistry: {},
     relocationStore: () => ({
-      async getRelocation() { return { kind: 'found', payload: acceptedJournal }; }
+      async read() { return foundBlob(acceptedJournal); }
     }),
     shutdownSignal: () => shutdown.signal,
     clearRemoteActorPacketTarget() {}
@@ -3874,5 +3873,22 @@ function legacyJoinCompletion(result, parts, spotId) {
       }
     },
     parts
+  };
+}
+
+function foundBlob(bytes) {
+  const storeNow = new Date();
+  return {
+    kind: 'found',
+    bytes: Buffer.from(bytes),
+    expiresAt: new Date(storeNow.getTime() + 60_000),
+    storeNow
+  };
+}
+
+function missingBlob() {
+  return {
+    kind: 'missing',
+    storeNow: new Date()
   };
 }

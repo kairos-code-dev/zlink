@@ -54,7 +54,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         var authorityStore = registration.Locations.ResolveStore()
                              ?? throw new ZLinkConfigurationException(
                                  "Standalone Actor relocation requires a Location Store.");
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Standalone Actor relocation requires a Relocation Store.");
         var read = await authorityStore.ReadAuthorityAsync(
@@ -486,7 +486,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                    == target.LeaseGeneration));
 
     private static async ValueTask WaitForCommittedTargetAuthorityAsync(
-        IZLinkLocationStore authorityStore,
+        IZLinkLocationRepository authorityStore,
         ZLinkAuthorityKey authorityKey,
         ZLinkAuthoritySnapshot source,
         ZLinkRelocationStored root,
@@ -542,7 +542,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             registration.Locations.ResolveStore()
             ?? throw new ZLinkConfigurationException(
                 "Location Store is not registered."),
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered."),
             new ZLinkStandaloneActorRelocationTargetFence(
@@ -558,7 +558,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 targetOwner,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        var trailing = actorState.Handoff.CutoverCaptureToForwarding(
+        var trailing = actorState.Handoff.CutoverCaptureToMessageFollow(
             acceptedCount,
             sourceRef,
             targetRef,
@@ -571,8 +571,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             checked((ulong)target.LeaseGeneration));
         runtime.RelayStandaloneActorRelocationTrailing(
             actorState, sourceRef, trailing);
-        actorState.Handoff.CommitForwardingCutover(
-            registration.Locations.Options.RelocationForwardingWindow);
+        actorState.Handoff.CommitMessageFollow(
+            registration.Locations.Options.MessageFollowDuration);
         await runtime.CompleteStandaloneActorRelocationSourceAsync(
                 actor,
                 actorState,
@@ -1311,7 +1311,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             registration.Locations.ResolveStore()
             ?? throw new ZLinkConfigurationException(
                 "Location Store is not registered."),
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered."),
             new ZLinkStandaloneActorRelocationTargetFence(
@@ -1521,7 +1521,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
 
         var root = prepare.Root
                    ?? throw DataLost("Standalone Actor relocation has no immutable root.");
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Relocation Store is not registered.");
         var tree = await ZLinkRelocationTreeStore.ReadAsync(
@@ -1725,7 +1725,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             registration.Locations.ResolveStore()
             ?? throw new ZLinkConfigurationException(
                 "Location Store is not registered."),
-            registration.Locations.RelocationStoreInstance
+            registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Relocation Store is not registered."),
             new ZLinkStandaloneActorRelocationTargetFence(
@@ -2111,16 +2111,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         if (actorState.Handoff.RouteFrame(
                 sourceActorRef,
                 sourceActorRef,
-                out var forwarding) != ZLinkActorFrameRoute.Forward
-            || forwarding is null)
+                out var messageFollowRoute) != ZLinkActorFrameRoute.MessageFollow
+            || messageFollowRoute is null)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
-                $"Actor '{actorState.ActorId}' committed forwarding map is unavailable.");
+                $"Actor '{actorState.ActorId}' committed Message Follow route is unavailable.");
         foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
         {
             using var body = Message.From(frame.Body);
-            ActorStragglerForwarder.Enqueue(
-                forwarding.Value,
+            ActorMessageFollower.Enqueue(
+                messageFollowRoute.Value,
                 frame.SourceNodeRid.Length == 0
                     ? default
                     : RoutingId.From(frame.SourceNodeRid),
@@ -2354,7 +2354,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             Registration.Locations.ResolveStore()
             ?? throw new ZLinkConfigurationException(
                 "Standalone Actor relocation requires a Location Store."),
-            Registration.Locations.RelocationStoreInstance
+            Registration.Locations.ResolveRelocationStore()
             ?? throw new ZLinkConfigurationException(
                 "Standalone Actor relocation requires a Relocation Store."),
             new ZLinkStandaloneActorRelocationTargetFence(

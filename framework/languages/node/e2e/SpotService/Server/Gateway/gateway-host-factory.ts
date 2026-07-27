@@ -121,11 +121,11 @@ function createGatewayEndpoints(
           .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic,
             spotServicePacket(SpotMsg, { marker: request.marker }))
           .submit();
-        evidence.add(`spot-publish|rid=${options.rid}|spot=${request.spotRid}|marker=${request.marker}`);
+        evidence.add(`spot-publish|rid=${options.rid}|spot=${request.spotId}|marker=${request.marker}`);
         return {
           operation: 'spot.sm-c4-publish',
           publisherRid: options.rid,
-          spotRid: request.spotRid,
+          spotId: request.spotId,
           marker: request.marker,
           evidence: evidence.snapshot()
         };

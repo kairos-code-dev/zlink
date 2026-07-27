@@ -11,8 +11,9 @@ internal sealed class ZLinkActorDrainCoordinator(
     IServiceProvider services,
     ZLinkFrameworkRegistration registration)
 {
-    public async ValueTask<ZLinkFrameworkTerminationReason?> PreflightAsync(
+    public async ValueTask<ZLinkFrameworkRelocationReason?> PreflightAsync(
         ZLinkRetirePreflightPlan plan,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         var states = StandaloneActors(actorSessions.SnapshotStates());
@@ -29,9 +30,10 @@ internal sealed class ZLinkActorDrainCoordinator(
                 var sourceNode = registration.SpotNodes.Values.Single(node =>
                     node.ActorFactories.ContainsKey(actorType!));
                 if (sourceNode.ActorRelocations[actorType!].PolicyKind == 0)
-                    return ZLinkFrameworkTerminationReason.RelocationDisabled;
+                    return ZLinkFrameworkRelocationReason.RelocationDisabled;
                 var targets = await ResolveTargetCandidatesAsync(
                         actorType!,
+                        selection,
                         cancellationToken)
                     .ConfigureAwait(false);
                 foreach (var state in states.Where(state =>
@@ -43,7 +45,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                     if (!targets.Any(target =>
                             target.Target.NodeRid != actorRef.NodeRid
                             && plan.TryReserve(target.Descriptor, capacity)))
-                        return ZLinkFrameworkTerminationReason.TargetUnavailable;
+                        return ZLinkFrameworkRelocationReason.TargetUnavailable;
                 }
             }
         }
@@ -55,6 +57,7 @@ internal sealed class ZLinkActorDrainCoordinator(
     }
 
     public async ValueTask<ZLinkActorDrainResult> DrainAsync(
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         var states = StandaloneActors(actorSessions.SnapshotStates());
@@ -69,6 +72,7 @@ internal sealed class ZLinkActorDrainCoordinator(
         {
             targetsByActorType[actorType!] = (await ResolveTargetCandidatesAsync(
                     actorType!,
+                    selection,
                     cancellationToken)
                 .ConfigureAwait(false));
         }
@@ -144,7 +148,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                     if (!IsTargetLocalRetriable(error))
                         return new ZLinkActorDrainResult(
                             false,
-                            ZLinkFrameworkTerminationReason.RelocationFailed,
+                            ZLinkFrameworkRelocationReason.RelocationFailed,
                             0);
                 }
                 catch (ZlinkSubmitException error)
@@ -175,7 +179,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                         $"drain handoff terminal actor={actorState.ActorId} target={target.NodeRid} message={error.Message}");
                     return new ZLinkActorDrainResult(
                         false,
-                        ZLinkFrameworkTerminationReason.RelocationFailed,
+                        ZLinkFrameworkRelocationReason.RelocationFailed,
                         0);
                 }
             }
@@ -210,6 +214,7 @@ internal sealed class ZLinkActorDrainCoordinator(
 
     private async ValueTask<ZLinkActorDrainCandidate[]> ResolveTargetCandidatesAsync(
         string actorType,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         if (services.GetService<IZLinkMeshNodeLocationResolver>() is not { } peers)
@@ -244,7 +249,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                 && descriptor.LeaseGeneration > 0
                 && descriptor.Rid is { Size: > 0 }
                 && !string.IsNullOrWhiteSpace(descriptor.EntrySpotId)
-                && descriptor.ApplicationVersion >= registration.ApplicationVersion
+                && selection.Matches(descriptor)
                 && (registration.MaintenanceWave is null
                     || !StringComparer.Ordinal.Equals(
                         registration.MaintenanceWave,
@@ -284,7 +289,7 @@ internal readonly record struct ZLinkActorDrainCandidate(
 
 internal readonly record struct ZLinkActorDrainResult(
     bool Completed,
-    ZLinkFrameworkTerminationReason? TerminalReason,
+    ZLinkFrameworkRelocationReason? TerminalReason,
     ulong CommittedUnitCount)
 {
     internal bool HasCommitted => CommittedUnitCount != 0;

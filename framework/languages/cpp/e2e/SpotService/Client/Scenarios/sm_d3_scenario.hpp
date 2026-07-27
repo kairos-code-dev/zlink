@@ -124,7 +124,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
         .submit<actor_ping_res_t> ();
     if (!user_ping || user_ping.value ().actor_id != user_actor_id
         || user_ping.value ().node_rid != "play-a" || user_ping.value ().value != "user-relay"
-        || user_ping.value ().spot_rid != user_join.spot_rid) {
+        || user_ping.value ().spot_id != user_join.spot_id) {
         throw std::runtime_error ("SM-D3 user actor ping mismatch");
     }
 

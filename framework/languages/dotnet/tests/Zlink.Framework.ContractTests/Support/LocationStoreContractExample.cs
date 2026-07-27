@@ -4,7 +4,7 @@ namespace Zlink.Framework.ContractTests.Support;
 /// Supplies unused operations for examples that demonstrate one part of the
 /// complete Location Store provider contract.
 /// </summary>
-internal abstract class LocationStoreContractExample : IZLinkLocationStore
+internal abstract class LocationStoreContractExample : IZLinkLocationRepository
 {
     public virtual ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,

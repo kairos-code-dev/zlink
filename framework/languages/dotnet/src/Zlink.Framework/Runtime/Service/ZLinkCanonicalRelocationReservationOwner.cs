@@ -20,8 +20,8 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
     private const int DefaultMaximumSlots = 1_024;
     private const int MaximumTerminalReservations = 1_024;
     private static readonly TimeSpan TerminalRetention = TimeSpan.FromMinutes(5);
-    private readonly IZLinkLocationStore _store;
-    private readonly IZLinkRelocationStore? _relocationStore;
+    private readonly IZLinkLocationRepository _store;
+    private readonly IZLinkRelocationRepository? _relocationStore;
     private readonly ZLinkSpotRetireTargetRuntime? _targetRuntime;
     private readonly ZLinkStandaloneActorRelocationRuntime?
         _standaloneActorRuntime;
@@ -42,7 +42,7 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
     private readonly Task _sweepLoop;
 
     internal ZLinkCanonicalRelocationReservationOwner(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ZLinkRelocationPermitPool permits,
         string meshName,
         RoutingId localNodeRid,
@@ -50,7 +50,7 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
         TimeSpan acceptDeadline,
         TimeProvider? timeProvider = null,
         int maximumSlots = DefaultMaximumSlots,
-        IZLinkRelocationStore? relocationStore = null,
+        IZLinkRelocationRepository? relocationStore = null,
         ZLinkSpotRetireTargetRuntime? targetRuntime = null,
         ZLinkStandaloneActorRelocationRuntime? standaloneActorRuntime = null)
     {

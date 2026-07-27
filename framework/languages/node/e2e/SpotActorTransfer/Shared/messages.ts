@@ -15,14 +15,20 @@ export const SpotActorTransferNames = {
 } as const;
 
 export interface ActorCreateReq { actorId: string; actorType: string; stateVersion: number }
-export interface ActorCreateRes { actorId: string; actorType: string; nodeRid: string; generation: string }
-export interface CreateSpotReq { spotRid: string; mode?: string }
-export interface CreateSpotRes { spotRid: string; nodeRid: string; state: string }
+export interface ActorCreateRes {
+  actorId: string;
+  actorType: string;
+  objectGeneration: string;
+  meshName: string;
+  nodeRid: string;
+}
+export interface CreateSpotReq { spotId: string; mode?: string }
+export interface CreateSpotRes { spotId: string; nodeRid: string; state: string }
 export interface GateReleaseRes { key: string; released: boolean }
 export class JoinTargetReq {
   constructor(
     readonly scenario: string,
-    readonly targetSpotRid: string,
+    readonly targetSpotId: string,
     readonly expectedMode?: string,
     readonly transferId?: string
   ) {}
@@ -32,7 +38,7 @@ export interface JoinTargetRes {
   actorId: string;
   accepted: boolean;
   sourceNodeRid: string;
-  targetSpotRid: string;
+  targetSpotId: string;
   stateVersion: number;
   errorKind?: string;
 }
@@ -48,7 +54,7 @@ export class HandoffProbe extends ProbeReq {}
 export interface ProbeRes {
   scenario: string;
   actorId: string;
-  spotRid: string;
+  spotId: string;
   nodeRid: string;
   stateVersion: number;
   marker: string;
@@ -56,11 +62,18 @@ export interface ProbeRes {
 export interface BindActorSessionReq {
   scenario: string;
   actorId: string;
+  objectGeneration?: string;
+  meshName?: string;
   nodeRid?: string;
-  generation?: string;
   transferId?: string;
 }
-export interface BindActorSessionRes { scenario: string; actorId: string; nodeRid: string; generation: string }
+export interface BindActorSessionRes {
+  scenario: string;
+  actorId: string;
+  objectGeneration: string;
+  meshName: string;
+  nodeRid: string;
+}
 export class BoundPushReq {
   constructor(readonly scenario: string, readonly marker: string) {}
 }
@@ -69,14 +82,19 @@ export class BoundPushNotify implements ProbeRes {
   constructor(
     readonly scenario: string,
     readonly actorId: string,
-    readonly spotRid: string,
+    readonly spotId: string,
     readonly nodeRid: string,
     readonly stateVersion: number,
     readonly marker: string
   ) {}
 }
 export interface EvidenceWaitReq { containsAll: readonly string[]; timeoutMilliseconds?: number }
-export interface ActorRefSnapshotRes { actorId: string; nodeRid: string; generation: string }
+export interface ActorRefRes {
+  actorId: string;
+  objectGeneration: string;
+  meshName: string;
+  nodeRid: string;
+}
 export interface TransferStateDto { actorId: string; actorType: string; stateVersion: number }
 export interface ActorEvidence {
   scenario: string;

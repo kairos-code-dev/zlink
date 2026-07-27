@@ -32,14 +32,14 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         throw std::runtime_error ("SM-F6 requires runId");
     }
     const auto &suffix = run_id;
-    const auto source_spot_rid = "spot-sm-f6-source-cpp-" + suffix;
-    const auto target_spot_rid = "spot-sm-f6-target-cpp-" + suffix;
+    const auto source_spot_id = "spot-sm-f6-source-cpp-" + suffix;
+    const auto target_spot_id = "spot-sm-f6-target-cpp-" + suffix;
     const auto actor_id = "actor-sm-f6-cpp-" + suffix;
     const auto marker = "sm-f6-cpp-" + suffix;
 
     auto target =
       multi_b.post ("/spot/create-user-local")
-        .body (create_spot_req_t{.spot_rid = target_spot_rid})
+        .body (create_spot_req_t{.spot_id = target_spot_id})
         .submit_raw ()
         .result ();
     if (!target || target.value ().status >= 400) {
@@ -52,8 +52,8 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
 
     auto mesh =
       multi_a.post ("/spot/spot-only/request-send")
-        .body (spot_only_mesh_req_t{.source_spot_rid = source_spot_rid,
-                                    .target_spot_rid = target_spot_rid,
+        .body (spot_only_mesh_req_t{.source_spot_id = source_spot_id,
+                                    .target_spot_id = target_spot_id,
                                     .marker = marker})
         .submit_raw ()
         .result ();
@@ -65,13 +65,13 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
     }
     const auto mesh_result =
       nlohmann::json::parse (mesh.value ().body).get<spot_only_mesh_res_t> ();
-    if (mesh_result.target_spot_rid != target_spot_rid || mesh_result.target_value != 7) {
+    if (mesh_result.target_spot_id != target_spot_id || mesh_result.target_value != 7) {
         throw std::runtime_error ("SM-F6 spot-only mesh reply mismatch");
     }
 
     auto join =
       multi_a.post ("/actor/spot-only-join")
-        .body (spot_only_join_req_t{.target_spot_rid = target_spot_rid,
+        .body (spot_only_join_req_t{.target_spot_id = target_spot_id,
                                     .actor_id = actor_id,
                                     .marker = marker})
         .submit_raw ()

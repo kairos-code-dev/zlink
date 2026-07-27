@@ -71,6 +71,35 @@ public sealed class SharedAsyncDisposalTests
     }
 
     [Fact]
+    public async Task LocationStoreOwner_Disposes_Distinct_Provider_Stores_Once()
+    {
+        var locationStore =
+            DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
+        var relocationStore =
+            DispatchProxy.Create<ITrackedRelocationStore, TrackedRelocationStoreProxy>();
+        var locationTracker = (TrackedLocationStoreProxy)(object)locationStore;
+        var relocationTracker = (TrackedRelocationStoreProxy)(object)relocationStore;
+        var owner = new ZLinkLocationStoreInstanceOwner(locationStore, relocationStore);
+
+        await owner.DisposeAsync();
+
+        Assert.Equal(1, locationTracker.DisposeCount);
+        Assert.Equal(1, relocationTracker.DisposeCount);
+    }
+
+    [Fact]
+    public async Task LocationStoreOwner_Disposes_Shared_Provider_Store_Once()
+    {
+        var store = DispatchProxy.Create<ITrackedProviderStore, TrackedProviderStoreProxy>();
+        var tracker = (TrackedProviderStoreProxy)(object)store;
+        var owner = new ZLinkLocationStoreInstanceOwner(store, store);
+
+        await owner.DisposeAsync();
+
+        Assert.Equal(1, tracker.DisposeCount);
+    }
+
+    [Fact]
     public async Task SerialQueue_Concurrent_Dispose_Callers_Share_The_Drain()
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -268,12 +297,21 @@ public sealed class SharedAsyncDisposalTests
         await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    private interface ITrackedLocationStore : IZLinkLocationStore, IAsyncDisposable;
+    private interface ITrackedLocationStore :
+        Zlink.Framework.LocationProvider.IZLinkLocationStore,
+        IAsyncDisposable;
+
+    private interface ITrackedRelocationStore :
+        Zlink.Framework.LocationProvider.IZLinkRelocationStore,
+        IAsyncDisposable;
+
+    private interface ITrackedProviderStore :
+        Zlink.Framework.LocationProvider.IZLinkLocationStore,
+        Zlink.Framework.LocationProvider.IZLinkRelocationStore,
+        IAsyncDisposable;
 
     private class TrackedLocationStoreProxy : DispatchProxy
     {
-        private readonly ZLinkInMemoryLocationStore _inner = new();
-
         public int DisposeCount { get; private set; }
 
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
@@ -285,7 +323,44 @@ public sealed class SharedAsyncDisposalTests
                 return ValueTask.CompletedTask;
             }
 
-            return targetMethod.Invoke(_inner, args);
+            throw new NotSupportedException(
+                "This disposal probe does not execute Store operations.");
+        }
+    }
+
+    private class TrackedRelocationStoreProxy : DispatchProxy
+    {
+        public int DisposeCount { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.NotNull(targetMethod);
+            if (targetMethod.DeclaringType == typeof(IAsyncDisposable))
+            {
+                DisposeCount++;
+                return ValueTask.CompletedTask;
+            }
+
+            throw new NotSupportedException(
+                "This disposal probe does not execute Store operations.");
+        }
+    }
+
+    private class TrackedProviderStoreProxy : DispatchProxy
+    {
+        public int DisposeCount { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            Assert.NotNull(targetMethod);
+            if (targetMethod.DeclaringType == typeof(IAsyncDisposable))
+            {
+                DisposeCount++;
+                return ValueTask.CompletedTask;
+            }
+
+            throw new NotSupportedException(
+                "This disposal probe does not execute Store operations.");
         }
     }
 

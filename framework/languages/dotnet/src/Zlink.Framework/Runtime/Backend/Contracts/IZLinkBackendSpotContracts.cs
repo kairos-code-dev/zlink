@@ -445,9 +445,9 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
         IReadOnlyList<Message> parts);
 }
 
-internal interface IZLinkBackendCommittedSpotForwarder
+internal interface IZLinkBackendSpotMessageFollower
 {
-    SubmitResult ForwardSendToSpot(
+    SubmitResult MessageFollowSendToSpot(
         RoutingId targetRid,
         string spotId,
         ulong spotGeneration,
@@ -455,12 +455,12 @@ internal interface IZLinkBackendCommittedSpotForwarder
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
         IReadOnlyList<Message> parts,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata);
 
-    bool ForwardRequestToSpot(
+    bool MessageFollowRequestToSpot(
         RoutingId targetRid,
         string spotId,
         ulong spotGeneration,
@@ -468,7 +468,8 @@ internal interface IZLinkBackendCommittedSpotForwarder
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
+        ulong deadlineUnixMs,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,

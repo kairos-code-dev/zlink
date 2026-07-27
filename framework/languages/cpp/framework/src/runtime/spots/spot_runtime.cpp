@@ -527,9 +527,9 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
     {
         std::lock_guard<std::recursive_mutex> node_lock (state->mutex);
         // A lost claim races with a completed transfer: after this node hands the
-        // actor to another node it records the newer generation as a forwarding
-        // route. A loss notification for an older generation is stale and must not
-        // erase that newer record.
+        // actor to another node it records the newer generation and Message
+        // Follow route. A loss notification for an older generation is stale
+        // and must not erase that newer record.
         const auto recorded = state->actor_generations.find (key);
         if (recorded != state->actor_generations.end ()
             && recorded->second > actor.generation ()) {
@@ -2067,9 +2067,9 @@ spot_node_builder_t::spot_node_builder_t (spot_node_builder_t &&) noexcept = def
 spot_node_builder_t &spot_node_builder_t::operator= (spot_node_builder_t &&) noexcept = default;
 
 spot_node_builder_t &
-spot_node_builder_t::set_actor_transfer_forward_window (std::chrono::milliseconds window)
+spot_node_builder_t::set_message_follow_duration (std::chrono::milliseconds duration)
 {
-    _state->actor_transfer_forward_window = window;
+    _state->message_follow_duration = duration;
     return *this;
 }
 
@@ -3070,15 +3070,15 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
         emit_actor_transfer_marker ("source_cleanup", cleanup.source_actor,
                                     cleanup.transfer_id, cleanup.target_spot_id);
     }
-    const auto evicted = _state->actor_transfer_coordinator.evict_expired_forwarding (now);
-    if (!evicted.empty ()) {
+    const auto removed_message_follow_routes =
+      _state->actor_transfer_coordinator.remove_expired_message_follow (now);
+    if (!removed_message_follow_routes.empty ()) {
         std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
-        for (const auto &entry : evicted) {
+        for (const auto &entry : removed_message_follow_routes) {
             const auto &key = entry.actor_key;
-            // The forwarding window ended (§10.4-3): drop the retained route so
-            // this node stops forwarding. The generation record stays behind as
-            // a tombstone so stale refs keep failing fast instead of
-            // re-materializing the actor here.
+            // Message Follow ended (§10.4-3): remove the retained route. The
+            // generation record remains so stale refs fail fast instead of
+            // recreating the actor on this node.
             const auto generation = _state->actor_generations.find (key);
             if (generation == _state->actor_generations.end ()
                 || generation->second <= entry.old_generation + 1) {
@@ -3091,7 +3091,7 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
                   node_rid (), key.substr (0, separator), key.substr (separator + 1),
                   entry.old_generation);
                 emit_actor_transfer_marker (
-                  "mapping_evicted", actor_ref,
+                  "message_follow_route_removed", actor_ref,
                   entry.transfer_id.empty () ? key : entry.transfer_id);
             }
             ++removed;
@@ -3122,9 +3122,9 @@ bool spot_node_runtime_t::actor_transfer_in_progress (std::string_view actor_id)
       type->second + ":" + std::string (actor_id));
 }
 
-void spot_node_runtime_t::set_actor_transfer_forward_window (std::chrono::milliseconds window)
+void spot_node_runtime_t::set_message_follow_duration (std::chrono::milliseconds duration)
 {
-    _state->actor_transfer_forward_window = window;
+    _state->message_follow_duration = duration;
 }
 
 void spot_node_runtime_t::bind_relocation_store (
@@ -3592,16 +3592,16 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
                                std::chrono::duration<double> (*transfer_elapsed).count ());
         }
     }
-    // Keep the old-generation forwarding hop independent from the actor's
+    // Keep the old-generation Message Follow route independent from the actor's
     // current route. On A→B→A, recording the final local route must not erase
     // the generation-1 A→B hop that still chains through B to generation 3.
-    _state->actor_transfer_coordinator.activate_forwarding (
+    _state->actor_transfer_coordinator.activate_message_follow (
       key, source_actor.generation (), target_actor, target_route,
-      std::chrono::steady_clock::now () + _state->actor_transfer_forward_window,
+      std::chrono::steady_clock::now () + _state->message_follow_duration,
       transfer_id);
     detail::record_actor_route_unlocked (*_state, key, std::move (target_route),
                                          target_actor.generation ());
-    // Commit acknowledgement fixes the new owner and forwarding route first.
+    // Commit acknowledgement fixes the new owner and Message Follow route first.
     // Releasing stale source ownership is post-commit housekeeping: losing the
     // source process now cannot roll back the accepted target generation.
     _state->pending_remote_source_cleanups.push_back (
@@ -4080,14 +4080,14 @@ void spot_node_runtime_t::on_actor_packet_relay (
     _state->actor_packet_relay = std::move (relay);
 }
 
-void spot_node_runtime_t::on_actor_packet_forward (
+void spot_node_runtime_t::on_actor_message_follow (
   std::function<result_t<std::optional<zlink::message_t>> (
     const actor_ref_t &,
     const runtime::messaging::envelope_header_t &,
     const zlink::message_t &,
-    std::chrono::milliseconds)> forward)
+    std::chrono::milliseconds)> relay)
 {
-    _state->actor_packet_forwarder = std::move (forward);
+    _state->actor_message_follow_relay = std::move (relay);
 }
 
 result_t<std::optional<zlink::message_t>>
@@ -4274,7 +4274,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         // (ST-A3); for a genuinely stale record the client re-resolves the same
         // answer and eventually surfaces this stale on its own budget timeout.
         emit_actor_transfer_marker (
-          "stale_fail_fast", actor_ref,
+          "message_follow_expired", actor_ref,
           std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
           current_spot_id);
         return result_t<std::optional<zlink::message_t>>::failure (
@@ -4968,10 +4968,10 @@ std::optional<spot_route_t> spot_node_runtime_t::actor_route (const actor_ref_t 
     return found->second;
 }
 
-std::optional<actor_forwarding_target_t>
-spot_node_runtime_t::actor_forwarding_target (const actor_ref_t &actor_ref) const
+std::optional<actor_message_follow_target_t>
+spot_node_runtime_t::actor_message_follow_target (const actor_ref_t &actor_ref) const
 {
-    return _state->actor_transfer_coordinator.forwarding_target (
+    return _state->actor_transfer_coordinator.message_follow_target (
       actor_key (actor_ref), actor_ref.generation ());
 }
 

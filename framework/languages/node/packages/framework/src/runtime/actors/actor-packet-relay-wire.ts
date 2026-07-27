@@ -52,13 +52,13 @@ export function encodeRemoteActorPacketRelayPayload(input: {
     bindingActorNodeRidHex: input.bindingActorRef === undefined
       ? undefined
       : routingIdWireHex(input.bindingActorRef.nodeRid),
-    bindingActorGeneration: input.bindingActorRef?.generation.toString(),
+    bindingActorGeneration: input.bindingActorRef?.objectGeneration.toString(),
     header: Buffer.from(input.header).toString('base64'),
     payload: Buffer.from(input.payload).toString('base64')
   };
 }
 
-export function encodeForwardedRemoteActorPacketRelayPayload(input: {
+export function encodeMessageFollowRemoteActorPacketRelayPayload(input: {
   readonly actorId: string;
   readonly routerChannelId?: string;
   readonly boundSessionTargetNodeRid?: string;
@@ -69,7 +69,7 @@ export function encodeForwardedRemoteActorPacketRelayPayload(input: {
   readonly actorGeneration: string;
   readonly handoffTargetSpotId: string;
   readonly operationId: string;
-  readonly forwardingHopCount: number;
+  readonly messageFollowHopCount: number;
   readonly authorityOwnerGeneration?: string;
   readonly ownerLeaseGeneration?: string;
 }): Record<string, unknown> {
@@ -131,7 +131,7 @@ function requireSpotId(value: string): string {
 }
 
 export function sessionActorPacketTargetKey(actor: ZLinkSessionActor): string {
-  return `${String(actor.ref.nodeRid)}:${actor.actorId}:${String(actor.ref.generation)}`;
+  return `${String(actor.ref.nodeRid)}:${actor.actorId}:${String(actor.ref.objectGeneration)}`;
 }
 
 export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
@@ -146,7 +146,7 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly actorGeneration?: string;
   readonly handoffTargetSpotId?: string;
   readonly operationId?: string;
-  readonly forwardingHopCount?: number;
+  readonly messageFollowHopCount?: number;
   readonly authorityOwnerGeneration?: string;
   readonly ownerLeaseGeneration?: string;
   readonly bindingActorNodeRid?: string;
@@ -175,7 +175,7 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     actorGeneration: optionalString(payload, 'actorGeneration'),
     handoffTargetSpotId: optionalString(payload, 'handoffTargetSpotId'),
     operationId: optionalString(payload, 'operationId'),
-    forwardingHopCount: optionalBoundedInteger(payload, 'forwardingHopCount', 0, 8),
+    messageFollowHopCount: optionalBoundedInteger(payload, 'messageFollowHopCount', 0, 8),
     authorityOwnerGeneration: optionalString(payload, 'authorityOwnerGeneration'),
     ownerLeaseGeneration: optionalString(payload, 'ownerLeaseGeneration'),
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),

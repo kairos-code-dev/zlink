@@ -56,12 +56,12 @@ async function runRemoteSpotAwait(
 ): Promise<void> {
   const terminator = request.terminator ?? 'async';
   evidence.add(
-    `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
-    + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
+    `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotId}`
+    + `|request=${request.requestId}|target=${request.targetSpotId}|handler=spot`
   );
-  const targetSpot = request.targetSpot ?? await spotHandles.find(request.targetSpotRid);
+  const targetSpot = request.targetSpot ?? await spotHandles.find(request.targetSpotId);
   if (targetSpot === undefined) {
-    throw new Error(`Remote spot target ref is required for '${request.targetSpotRid}'.`);
+    throw new Error(`Remote spot target ref is required for '${request.targetSpotId}'.`);
   }
   const call = spot.context.outbound
     .requestToSpot(targetSpot, Object.assign(new AwaitReq(), {
@@ -73,19 +73,19 @@ async function runRemoteSpotAwait(
     .timeout(5000);
   evidence.add(
     `remote-${terminator}-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}`
-    + `|spot=${spot.context.spotRid}`
-    + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
+    + `|spot=${spot.context.spotId}`
+    + `|request=${request.requestId}|target=${request.targetSpotId}|handler=spot`
   );
   const targetReply = terminator === 'yield'
     ? await call.yield<AutomaticTurnDispatchRes>()
     : await call.submit<AutomaticTurnDispatchRes>();
   evidence.add(
-    `remote-${terminator}-resumed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
-    + `|request=${request.requestId}|target=${request.targetSpotRid}|targetNode=${targetReply.nodeRid}|handler=spot`
+    `remote-${terminator}-resumed|rid=${evidence.rid}|spot=${spot.context.spotId}`
+    + `|request=${request.requestId}|target=${request.targetSpotId}|targetNode=${targetReply.nodeRid}|handler=spot`
   );
   evidence.add(
-    `remote-${terminator}-completed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
-    + `|request=${request.requestId}|target=${request.targetSpotRid}|targetNode=${targetReply.nodeRid}|handler=spot`
+    `remote-${terminator}-completed|rid=${evidence.rid}|spot=${spot.context.spotId}`
+    + `|request=${request.requestId}|target=${request.targetSpotId}|targetNode=${targetReply.nodeRid}|handler=spot`
   );
 }
 
@@ -98,7 +98,7 @@ function reply(
   return {
     scenarioId,
     requestId,
-    spotRid: String(spot.context.spotRid),
+    spotId: String(spot.context.spotId),
     nodeRid: String(spot.context.nodeRid),
     marker
   };

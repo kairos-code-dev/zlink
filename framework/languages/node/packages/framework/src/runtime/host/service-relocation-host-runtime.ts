@@ -10,13 +10,16 @@ import type {
   ZLinkLocationOwnerToken,
   ZLinkMeshNodeDescriptor,
   ZLinkRelocationCapacityFence,
-  ZLinkRelocationReference,
   ZLinkRelocationStore,
   ZLinkSpot,
   ZLinkSpotRelocationAdapter,
   ZLinkInstanceSpot
 } from '../../contracts';
 import type { ZLinkDomainLocationStore as ZLinkLocationStore } from '../locations/domain-store-contract';
+import {
+  putNewRelocationBlob,
+  relocationBlobReference
+} from '../locations/relocation-blob';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
@@ -417,9 +420,10 @@ export class ZLinkHostServiceRelocationRuntime {
             spotKind: kind === 'user_spot' ? 2 : 3,
             authorityOwnerGeneration: committedAuthority.authorityOwnerGeneration
           } as never, {
-            nodeRid: target.rid,
             actorId: session.state.actorId,
-            generation: actorAuthorities.get(session.state.actorId)!.objectGeneration
+            objectGeneration: actorAuthorities.get(session.state.actorId)!.objectGeneration,
+            meshName,
+            nodeRid: target.rid
           });
           activation.commitActorDeparture(session.state.actorId);
           this.requireActorManager().completeRelocationSource(session.state.actorId);
@@ -543,9 +547,10 @@ export class ZLinkHostServiceRelocationRuntime {
           spotKind: 1,
           authorityOwnerGeneration: committedAuthority.authorityOwnerGeneration
         } as never, {
-          nodeRid: target.rid,
           actorId: state.actorId,
-          generation: authority.objectGeneration
+          objectGeneration: authority.objectGeneration,
+          meshName,
+          nodeRid: target.rid
         });
         this.requireActorManager().completeRelocationSource(state.actorId);
       },
@@ -1096,14 +1101,14 @@ export class ZLinkHostServiceRelocationRuntime {
     root: NonNullable<ServiceMaintenanceRelocationPrepare['root']>,
     signal?: AbortSignal
   ): Promise<ServiceRelocationEnvelope> {
-    const read = await this.requireRelocationStore().getRelocation(
-      { value: root.reference } as ZLinkRelocationReference,
+    const read = await this.requireRelocationStore().read(
+      relocationBlobReference(root.reference),
       signal
     );
-    if (read.kind === 'missing' || crc32c(read.payload) !== root.checksumCrc32c) {
+    if (read.kind === 'missing' || crc32c(read.bytes) !== root.checksumCrc32c) {
       throw new Error('Relocation prepare references missing or corrupt shared durable data.');
     }
-    return decodeServiceRelocationEnvelope(read.payload);
+    return decodeServiceRelocationEnvelope(read.bytes);
   }
 
   private async handleReplyRelay(
@@ -1354,14 +1359,14 @@ export class ZLinkHostServiceRelocationRuntime {
     if (publication?.phase !== 'sourceCleanupCompleted') {
       throw new Error('Relocation terminal completion requires a completed durable root.');
     }
-    const read = await this.requireRelocationStore().getRelocation(
-      { value: publication.reference } as ZLinkRelocationReference,
+    const read = await this.requireRelocationStore().read(
+      relocationBlobReference(publication.reference),
       signal
     );
-    if (read.kind !== 'found' || crc32c(read.payload) !== publication.checksumCrc32c) {
+    if (read.kind !== 'found' || crc32c(read.bytes) !== publication.checksumCrc32c) {
       throw new Error('Relocation terminal completion durable root is missing or corrupt.');
     }
-    const envelope = decodeServiceRelocationEnvelope(read.payload);
+    const envelope = decodeServiceRelocationEnvelope(read.bytes);
     if (envelope.aggregateId !== stage.staging.envelope.aggregateId) {
       throw new Error('Relocation terminal completion durable identity changed.');
     }
@@ -2356,19 +2361,28 @@ class LocalTargetPort implements ServiceRelocationTargetObjectPort<LocalHidden> 
 function relocationStorePort(store: ZLinkRelocationStore): ServiceRelocationStorePort {
   return {
     async put(payload, retentionMs, signal) {
-      const result = await store.putRelocation(payload, retentionMs, signal);
+      const result = await putNewRelocationBlob(
+        store,
+        payload,
+        retentionMs,
+        signal
+      );
       return {
         reference: result.reference.value,
-        checksumCrc32c: result.checksumCrc32c,
+        checksumCrc32c: crc32c(payload),
         expiresAtMs: result.expiresAt.getTime(),
         storeNowMs: result.storeNow.getTime()
       };
     },
-    get(reference, signal) {
-      return store.getRelocation({ value: reference } as ZLinkRelocationReference, signal);
+    async get(reference, signal) {
+      const result = await store.read(relocationBlobReference(reference), signal);
+      return result.kind === 'found'
+        ? { kind: 'found', payload: result.bytes }
+        : { kind: 'missing' };
     },
-    delete(reference, signal) {
-      return store.deleteRelocation({ value: reference } as ZLinkRelocationReference, signal);
+    async delete(reference, signal) {
+      await store.delete(relocationBlobReference(reference), signal);
+      return 'deleted';
     }
   };
 }

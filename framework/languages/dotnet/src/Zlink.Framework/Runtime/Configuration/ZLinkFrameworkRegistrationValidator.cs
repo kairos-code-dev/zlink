@@ -58,7 +58,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (!requiresRelocationStore)
             return;
 
-        if (registration.Locations.RelocationStoreInstance is null)
+        if (registration.Locations.ResolveRelocationStore() is null)
             throw new ZLinkConfigurationException(
                 "An Object Server with a Recreate or Snapshot relocation policy, "
                 + "or any Instance Spot factory, requires exactly one Relocation Store. "

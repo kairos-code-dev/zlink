@@ -10,11 +10,11 @@ namespace
 inline void scenario_runner_t::run_st_d2_scenario ()
 {
     const auto actor_id = "actor-stale-release-" + unique_suffix ();
-    const auto spot_rid = "spot-stale-release-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid);
+    const auto spot_id = "spot-stale-release-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id);
     create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 81);
 
-    const auto join = join_actor (_nodes.a, actor_id, {"ST-D2", spot_rid});
+    const auto join = join_actor (_nodes.a, actor_id, {"ST-D2", spot_id});
     require (join.accepted, "ST-D2 join was rejected.");
     const auto before = get_actor_ref (_nodes.b, actor_id);
     require (before.node_rid == "actor-b",

@@ -57,7 +57,7 @@ builder.Services.AddZLinkFramework(options =>
     options.DefaultRequestTimeout = TimeSpan.FromSeconds(15);
     var locations = options.ConfigureLocations();
     locations.RouteCacheMaxAge = TimeSpan.Zero;
-    locations.RelocationForwardingWindow = TimeSpan.FromSeconds(5);
+    locations.MessageFollowDuration = TimeSpan.FromSeconds(5);
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));

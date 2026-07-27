@@ -483,19 +483,19 @@ write_client_config() {
   local path="$1"
   local scenario="$2"
   local request_id="${3:-}"
-  local spot_rid="${4:-}"
+  local spot_id="${4:-}"
   python3 - "$path" "$SESSION_A_STREAM" "$SESSION_B_STREAM" "$scenario" \
-    "$request_id" "$spot_rid" <<'PY'
+    "$request_id" "$spot_id" <<'PY'
 import json
 import os
 import stat
 import sys
 
-path, session_a, session_b, scenario, request_id, spot_rid = sys.argv[1:]
+path, session_a, session_b, scenario, request_id, spot_id = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"sessionAStreamEndpoint": session_a,
         "sessionBStreamEndpoint": session_b, "scenario": scenario,
-        "requestId": request_id, "spotRid": spot_rid}}, file, indent=2)
+        "requestId": request_id, "spotId": spot_id}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }

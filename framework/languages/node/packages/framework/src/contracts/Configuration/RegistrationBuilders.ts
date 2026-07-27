@@ -83,7 +83,7 @@ import {
   registerEntrySpot,
   registerSpotFactory,
   validateActorTransferTimeout,
-  validateActorTransferForwardWindow
+  validateMessageFollowDuration
 } from './RegistrationBuilderPolicy';
 
 export function createFrameworkOptions(
@@ -146,8 +146,8 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     return this;
   }
 
-  setActorTransferForwardWindow(timeoutMs: number): this {
-    this.options.actorTransferForwardWindowMs = validateActorTransferForwardWindow(timeoutMs);
+  setMessageFollowDuration(timeoutMs: number): this {
+    this.options.messageFollowDurationMs = validateMessageFollowDuration(timeoutMs);
     return this;
   }
 
@@ -208,7 +208,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       spotFactories: this.options.spotFactories,
       actorTransferAdapters: new Map(this.options.actorTransferAdapters),
       actorTransferTimeoutMs: this.options.actorTransferTimeoutMs,
-      actorTransferForwardWindowMs: this.options.actorTransferForwardWindowMs,
+      messageFollowDurationMs: this.options.messageFollowDurationMs,
       dispatch: this.options.dispatch,
       worker: this.options.worker,
       locations: this.options.locations
@@ -326,8 +326,8 @@ export class DefaultLocationOptionsBuilder implements ZLinkLocationOptions {
     return this;
   }
 
-  relocationForwardingWindowMs(value: number): this {
-    this.options.relocationForwardingWindowMs = value;
+  messageFollowDurationMs(value: number): this {
+    this.options.messageFollowDurationMs = value;
     return this;
   }
 
@@ -1114,7 +1114,7 @@ interface MutableFrameworkRegistrationOptions {
   maintenanceWave?: string;
   actorTransferAdapters: Map<Type, Type>;
   actorTransferTimeoutMs?: number;
-  actorTransferForwardWindowMs?: number;
+  messageFollowDurationMs?: number;
   codecs?: MutableCodecRegistryOptions;
   channels: Record<string, MutableChannelOptions>;
   streamNodes: Record<string, MutableStreamNodeOptions>;

@@ -12,6 +12,7 @@ global using Zlink.Framework.Contracts.Errors;
 global using Zlink.Framework.Contracts.Handlers;
 global using Zlink.Framework.Contracts.Eventing;
 global using Zlink.Framework.Contracts.Locations;
+global using Zlink.Framework.LocationProvider;
 global using Zlink.Framework.Runtime.Locations;
 global using Zlink.Framework.Contracts.Spots;
 global using Zlink.Framework.Contracts.Streams;

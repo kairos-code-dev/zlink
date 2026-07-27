@@ -44,7 +44,7 @@ public final class ZLinkFrameworkRegistration {
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
-    private Duration actorTransferForwardWindow = Duration.ofSeconds(5);
+    private Duration messageFollowDuration = Duration.ofSeconds(30);
     private ZLinkRelocationStore relocationStore;
     private long applicationVersion;
     private String maintenanceWave;
@@ -57,8 +57,8 @@ public final class ZLinkFrameworkRegistration {
         this.defaultRequestTimeout = defaultRequestTimeout;
     }
 
-    public Duration actorTransferForwardWindow() {
-        return actorTransferForwardWindow;
+    public Duration messageFollowDuration() {
+        return messageFollowDuration;
     }
 
     public long applicationVersion() {

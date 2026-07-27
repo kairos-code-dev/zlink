@@ -364,7 +364,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         string actorType,
         string handoffId,
         ZLinkObjectRelocationRegistration relocation,
-        IZLinkLocationStore authorityStore,
+        IZLinkLocationRepository authorityStore,
         ZLinkActorAuthorityPayload sourceAuthority,
         ulong actorAuthorityOwnerGeneration,
         long predictedPayloadBytes,
@@ -548,7 +548,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         // the concrete session node rid — the actor's current owner node — or
         // its pushes can never route back to the session.
         var committedFrames = actorState.Handoff.SnapshotFrames();
-        var relocationStore = registration.Locations.RelocationStoreInstance
+        var relocationStore = registration.Locations.ResolveRelocationStore()
                               ?? throw new ZLinkConfigurationException(
                                   "Cross-node Actor relocation requires a Relocation Store.");
         var relocationId = Guid.ParseExact(handoffId, "N");
@@ -673,7 +673,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkActorRelocationAuthorityPhase.Cleaning,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        var trailingFrames = actorState.Handoff.CutoverCaptureToForwarding(
+        var trailingFrames = actorState.Handoff.CutoverCaptureToMessageFollow(
             committedFrames.Count,
             actorRef,
             resultActorRef,
@@ -692,8 +692,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actorState,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        actorState.Handoff.CommitForwardingCutover(
-            registration.Locations.Options.RelocationForwardingWindow);
+        actorState.Handoff.CommitMessageFollow(
+            registration.Locations.Options.MessageFollowDuration);
         await ReconcileCommittedSourceHandoffAsync(
                 actorState,
                 actorRef,

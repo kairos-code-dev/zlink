@@ -135,7 +135,7 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
   const options = { ...zlinkDefaultLocationOptions, ...locations.options };
   for (const [name, value] of Object.entries({
     routeCacheMaxAgeMs: options.routeCacheMaxAgeMs,
-    relocationForwardingWindowMs: options.relocationForwardingWindowMs
+    messageFollowDurationMs: options.messageFollowDurationMs
   })) {
     if (!Number.isFinite(value) || value < 0) {
       throw new ZLinkConfigurationException(`${name} must be a finite non-negative number.`);
@@ -143,11 +143,11 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
   }
   if (
     options.routeCacheMaxAgeMs > 0
-    && options.relocationForwardingWindowMs > 0
-    && options.routeCacheMaxAgeMs > options.relocationForwardingWindowMs - 5000
+    && options.messageFollowDurationMs > 0
+    && options.routeCacheMaxAgeMs > options.messageFollowDurationMs - 5000
   ) {
     throw new ZLinkConfigurationException(
-      'routeCacheMaxAgeMs must be at least 5000 ms shorter than relocationForwardingWindowMs.'
+      'routeCacheMaxAgeMs must be at least 5000 ms shorter than messageFollowDurationMs.'
     );
   }
   for (const [name, value] of Object.entries({

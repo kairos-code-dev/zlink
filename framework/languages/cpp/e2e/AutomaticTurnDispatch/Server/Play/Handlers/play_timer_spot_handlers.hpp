@@ -60,12 +60,12 @@ handle_timer_start_command (zlink::framework::spot_context_t &context,
                             std::mutex &timer_mutex,
                             const yd::timer_start_msg_t &request)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
+    const auto spot_id = context.spot_id ();
     {
         std::lock_guard lock (timer_mutex);
         if (timers.find (request.timer_name) != timers.end ()) {
             evidence.add ("timer-start-duplicate-ignored|rid=" + evidence.node_rid
-                          + "|spot=" + spot_rid + "|request=" + request.request_id
+                          + "|spot=" + spot_id + "|request=" + request.request_id
                           + "|timer=" + request.timer_name + "|mode=" + request.mode);
             return;
         }
@@ -86,7 +86,7 @@ handle_timer_start_command (zlink::framework::spot_context_t &context,
             found->second.timer = std::move (timer);
         }
     }
-    evidence.add ("timer-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("timer-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request.request_id + "|timer=" + request.timer_name
                   + "|mode=" + request.mode);
 }
@@ -125,14 +125,14 @@ handle_timer_tick (zlink::framework::spot_context_t &context,
         co_return;
     }
 
-    const auto spot_rid = std::string (context.spot_rid ().value ());
+    const auto spot_id = context.spot_id ();
     const auto tick_id = std::to_string (state->tick_number);
     if (state->mode == "fast") {
         evidence.add ("timer-fast-started|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         evidence.add ("timer-fast-completed|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         deactivate_await_timer (timers, timer_mutex, state->timer_name);
         co_return;
@@ -141,7 +141,7 @@ handle_timer_tick (zlink::framework::spot_context_t &context,
     if (state->tick_number == 1
         && (state->mode == "await-on-first" || state->mode == "await-then-next")) {
         evidence.add ("timer-await-started|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         auto call =
           context.outbound ()
@@ -151,14 +151,14 @@ handle_timer_tick (zlink::framework::spot_context_t &context,
                                       .marker = state->timer_name})
             .timeout (std::chrono::milliseconds (5000));
         evidence.add ("timer-await-released|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         co_await call.submit<yd::delay_res_t> ();
         evidence.add ("timer-await-resumed|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         evidence.add ("timer-await-completed|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         if (state->mode == "await-on-first") {
             deactivate_await_timer (timers, timer_mutex, state->timer_name);
@@ -168,10 +168,10 @@ handle_timer_tick (zlink::framework::spot_context_t &context,
 
     if (state->mode == "await-then-next" && state->tick_number == 2) {
         evidence.add ("timer-next-started|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         evidence.add ("timer-next-completed|rid=" + evidence.node_rid + "|spot="
-                      + spot_rid + "|request=" + state->request_id + "|timer="
+                      + spot_id + "|request=" + state->request_id + "|timer="
                       + state->timer_name + "|tick=" + tick_id + "|handler=timer");
         deactivate_await_timer (timers, timer_mutex, state->timer_name);
     }

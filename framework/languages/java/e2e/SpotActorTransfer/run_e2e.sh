@@ -25,7 +25,7 @@ if [[ "${SCENARIO}" == "all" ]]; then
         passed=1
         break
       fi
-      log_root="${ROOT_DIR}/log"
+      log_root="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}"
       latest_log="$(find "${log_root}" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
       if [[ "${attempt}" == "3" ]] \
          || ! rg --no-ignore -q "ZlinkBindException|BindException|Address already in use|errno=98" "${latest_log}"; then
@@ -39,8 +39,9 @@ if [[ "${SCENARIO}" == "all" ]]; then
   exit 0
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-PROJECT_ROOT="${ROOT_DIR}"
-LOG_DIR="${ROOT_DIR}/log/${RUN_ID}"
+PROJECT_ROOT="${ZLINK_JAVA_E2E_PROJECT_ROOT:-${ROOT_DIR}}"
+LOG_ROOT="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}"
+LOG_DIR="${LOG_ROOT}/${RUN_ID}"
 CONFIG_DIR="$(mktemp -d)"
 chmod 0700 "${CONFIG_DIR}"
 REDIS_CONTAINER=""
@@ -102,8 +103,8 @@ if [[ "${ZLINK_E2E_REDIS_MONITOR:-0}" == "1" ]]; then
 fi
 
 LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
-NODE_BIN="${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node"
-CLIENT_BIN="${ROOT_DIR}/Client/build/install/spot-actor-transfer-client/bin/spot-actor-transfer-client"
+NODE_BIN="${ZLINK_JAVA_E2E_NODE_BIN:-${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node}"
+CLIENT_BIN="${ZLINK_JAVA_E2E_CLIENT_BIN:-${ROOT_DIR}/Client/build/install/spot-actor-transfer-client/bin/spot-actor-transfer-client}"
 
 "${JAVA_DIR}/gradlew" \
   -p "${PROJECT_ROOT}" \

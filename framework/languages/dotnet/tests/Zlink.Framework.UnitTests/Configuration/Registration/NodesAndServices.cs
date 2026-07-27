@@ -854,7 +854,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
         await using var provider = services.BuildServiceProvider();
 
-        Assert.Same(backing, provider.GetRequiredService<IZLinkLocationStore>());
+        Assert.Same(backing, provider.GetRequiredService<IZLinkLocationRepository>());
 
         // The location runtime surface comes up on top of the hook exactly
         // as it does for the per-role registrations.
@@ -875,7 +875,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Equal(TimeSpan.FromSeconds(5), options.OwnerLeaseFencingMargin);
         Assert.Equal(TimeSpan.FromSeconds(3), options.OwnerLeaseRenewTimeout);
         Assert.Equal(TimeSpan.FromSeconds(15), options.RouteCacheMaxAge);
-        Assert.Equal(TimeSpan.FromSeconds(30), options.RelocationForwardingWindow);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.MessageFollowDuration);
         Assert.Equal(64, options.MaxActiveOutboundRelocations);
         Assert.Equal(64, options.MaxActiveInboundRelocations);
         Assert.Equal(8, options.MaxConcurrentRelocationCaptures);
@@ -889,19 +889,19 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     [InlineData(26, 30)]
     public void AddZLinkFramework_RejectsInvalidObjectRoutingTimes(
         int cacheSeconds,
-        int forwardingSeconds)
+        int messageFollowSeconds)
     {
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 var locations = options.ConfigureLocations();
                 locations.RouteCacheMaxAge = TimeSpan.FromSeconds(cacheSeconds);
-                locations.RelocationForwardingWindow =
-                    TimeSpan.FromSeconds(forwardingSeconds);
+                locations.MessageFollowDuration =
+                    TimeSpan.FromSeconds(messageFollowSeconds);
             }));
 
         Assert.Contains(
-            cacheSeconds < 0 || forwardingSeconds < 0
+            cacheSeconds < 0 || messageFollowSeconds < 0
                 ? "greater than or equal to zero"
                 : "at least five seconds shorter",
             exception.Message,
@@ -984,8 +984,14 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options => options.AddLocationStore(store));
         var provider = services.BuildServiceProvider();
 
-        Assert.Same(store, provider.GetRequiredService<IZLinkLocationStore>());
-        Assert.Same(store, provider.GetRequiredService<IZLinkLocationStore>());
+        Assert.Same(
+            store,
+            provider.GetRequiredService<
+                Zlink.Framework.LocationProvider.IZLinkLocationStore>());
+        Assert.Same(
+            store,
+            provider.GetRequiredService<
+                Zlink.Framework.LocationProvider.IZLinkLocationStore>());
         _ = provider.GetServices<IHostedService>().ToArray();
         await provider.DisposeAsync();
 
@@ -1202,11 +1208,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
-    private interface ITrackedLocationStore : IZLinkLocationStore, IAsyncDisposable;
+    private interface ITrackedLocationStore :
+        Zlink.Framework.LocationProvider.IZLinkLocationStore,
+        IAsyncDisposable;
 
     private class TrackedLocationStoreProxy : DispatchProxy
     {
-        private readonly ZLinkInMemoryLocationStore _inner = new();
+        private readonly ZLinkInMemoryProviderLocationStore _inner = new();
 
         public int DisposeCount { get; private set; }
 

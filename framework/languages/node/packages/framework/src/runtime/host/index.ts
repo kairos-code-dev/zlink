@@ -316,7 +316,7 @@ export class ZLinkFrameworkRuntimeHost implements
     });
     this.actorHandoff = new ZLinkActorHandoffCoordinator({
       routedTransport: this.routeTransport,
-      forwardWindowMs: options.registration.locations.options.relocationForwardingWindowMs,
+      messageFollowDurationMs: options.registration.locations.options.messageFollowDurationMs,
       requestTimeoutMs: options.registration.requestTimeoutMs,
       requestSource: () => {
         const owner = this.locationOwner.currentRuntime?.currentOwnerToken;
@@ -347,7 +347,7 @@ export class ZLinkFrameworkRuntimeHost implements
         const current = state?.nativeActorRef;
         if (actorRef === undefined) return state?.remoteActorPacketTarget !== undefined;
         return current !== undefined && (
-          current.generation !== actorRef.generation ||
+          current.generation !== actorRef.objectGeneration ||
           !routingIdsEqual(current.nodeRid, actorRef.nodeRid)
         );
       },

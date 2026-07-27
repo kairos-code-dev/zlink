@@ -44,14 +44,14 @@ struct expired_actor_admission_t
     pending_actor_admission_t admission;
 };
 
-struct evicted_actor_forwarding_t
+struct removed_actor_message_follow_t
 {
     std::string actor_key;
     std::uint64_t old_generation = 0;
     std::string transfer_id;
 };
 
-struct actor_forwarding_target_t
+struct actor_message_follow_target_t
 {
     actor_ref_t actor;
     spot_route_t route;
@@ -90,33 +90,33 @@ class actor_transfer_coordinator_t
     // In-flight handoff (spot-actor spec §10). One-way packets that arrive while
     // the actor is moving are preserved here in arrival order; the commit path
     // drains them into the commit request, and packets that race the commit ack
-    // drain into the forwarding path afterwards.
+    // enter the Message Follow route afterwards.
     bool try_append_backlog (const std::string &actor_key, handoff_packet_t packet);
     std::vector<handoff_packet_t> take_backlog (const std::string &actor_key);
 
-    // Forwarding mapping lifetime (§10.4): activated when the source confirms
+    // Message Follow route lifetime (§10.4): activated when the source confirms
     // the target commit, refreshed on re-transfer (at most one entry per actor),
-    // and evicted after the forward window so retained state cannot pile up.
-    void activate_forwarding (const std::string &actor_key,
-                              std::uint64_t old_generation,
-                              actor_ref_t target_actor,
-                              spot_route_t target_route,
-                              std::chrono::steady_clock::time_point evict_at,
-                              std::string transfer_id = {});
-    bool forwards_stale_generation (const std::string &actor_key,
-                                    std::uint64_t generation) const;
-    std::optional<actor_forwarding_target_t>
-    forwarding_target (const std::string &actor_key, std::uint64_t generation) const;
-    std::optional<actor_forwarding_target_t>
-    try_acquire_forwarding (const std::string &actor_key,
-                            std::uint64_t generation,
-                            std::size_t payload_bytes,
-                            std::size_t hop_count);
-    void release_forwarding (const std::string &actor_key,
-                             std::uint64_t generation,
-                             std::size_t payload_bytes) noexcept;
-    std::vector<evicted_actor_forwarding_t>
-    evict_expired_forwarding (std::chrono::steady_clock::time_point now);
+    // and removed after the configured duration so retained state cannot pile up.
+    void activate_message_follow (const std::string &actor_key,
+                                  std::uint64_t old_generation,
+                                  actor_ref_t target_actor,
+                                  spot_route_t target_route,
+                                  std::chrono::steady_clock::time_point remove_at,
+                                  std::string transfer_id = {});
+    bool can_follow_stale_generation (const std::string &actor_key,
+                                      std::uint64_t generation) const;
+    std::optional<actor_message_follow_target_t>
+    message_follow_target (const std::string &actor_key, std::uint64_t generation) const;
+    std::optional<actor_message_follow_target_t>
+    try_acquire_message_follow (const std::string &actor_key,
+                                std::uint64_t generation,
+                                std::size_t payload_bytes,
+                                std::size_t hop_count);
+    void release_message_follow (const std::string &actor_key,
+                                 std::uint64_t generation,
+                                 std::size_t payload_bytes) noexcept;
+    std::vector<removed_actor_message_follow_t>
+    remove_expired_message_follow (std::chrono::steady_clock::time_point now);
 
     bool try_add_admission (std::string transfer_id, pending_actor_admission_t admission);
     std::optional<pending_actor_admission_t> admission (
@@ -148,12 +148,12 @@ class actor_transfer_coordinator_t
         std::optional<std::chrono::steady_clock::time_point> transfer_started_at;
     };
 
-    struct forwarding_entry_t
+    struct message_follow_route_t
     {
         std::uint64_t old_generation = 0;
         actor_ref_t target_actor;
         spot_route_t target_route;
-        std::chrono::steady_clock::time_point evict_at;
+        std::chrono::steady_clock::time_point remove_at;
         std::string transfer_id;
         std::size_t in_flight_messages = 0;
         std::size_t in_flight_bytes = 0;
@@ -163,7 +163,7 @@ class actor_transfer_coordinator_t
     std::map<std::string, move_state_t> _moves;
     std::map<std::string, pending_actor_admission_t> _admissions;
     std::map<std::string, std::vector<handoff_packet_t>> _backlogs;
-    std::map<std::string, forwarding_entry_t> _forwardings;
+    std::map<std::string, message_follow_route_t> _message_follow_routes;
     std::uint64_t _next_transfer_id = 1;
 };
 

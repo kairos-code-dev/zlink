@@ -22,8 +22,8 @@ internal sealed record ZLinkOwnerLease(
 /// rows and owner leases share one physical store. Never use it for
 /// production topologies where processes must share location data.
 /// </summary>
-internal sealed partial class ZLinkInMemoryLocationStore :
-    IZLinkLocationStore
+internal partial class ZLinkInMemoryLocationStore :
+    IZLinkLocationRepository
 {
     private readonly object _gate = new();
     private readonly TimeProvider _time;

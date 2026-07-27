@@ -14,7 +14,7 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     private readonly ZLinkAutoConnectReconciler _reconciler;
     private readonly ZLinkLocationOptions _options;
     private readonly string _meshName;
-    private readonly IZLinkLocationStore _store;
+    private readonly IZLinkLocationRepository _store;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
     private readonly TimeProvider _time;
@@ -32,7 +32,7 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
         ZLinkAutoConnectReconciler reconciler,
         ZLinkAutoConnectLocal local,
         ZLinkLocationOptions options,
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         IZLinkLocationWatchStore? watchStore = null,
         TimeProvider? timeProvider = null,
         ZLinkOwnerLeaseTracker? leaseTracker = null)

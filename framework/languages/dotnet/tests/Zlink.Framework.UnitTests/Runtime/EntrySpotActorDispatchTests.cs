@@ -829,7 +829,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 targetNodeGeneration: 21,
                 authorityOwnerGeneration: 22,
                 ownerLeaseGeneration: 23,
-                forwardingHopCount: 7),
+                messageFollowHopCount: 7),
             [
                 Message.From(Encoding.UTF8.GetBytes("header")),
                 Message.From(Encoding.UTF8.GetBytes("body"))
@@ -846,7 +846,7 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.All(parts, part =>
             {
                 Assert.Equal(operationId, part.RouteContext.OperationId);
-                Assert.Equal((byte)7, part.RouteContext.ForwardingHopCount);
+                Assert.Equal((byte)7, part.RouteContext.MessageFollowHopCount);
                 Assert.Equal(21ul, part.RouteContext.TargetNodeGeneration);
                 Assert.Equal(22ul, part.RouteContext.AuthorityOwnerGeneration);
                 Assert.Equal(23ul, part.RouteContext.OwnerLeaseGeneration);
@@ -863,7 +863,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task ActorSessionForwarder_RejectsDirectRouteAtEightHops()
+    public async Task ActorMessageFollowDispatcher_RejectsDirectRouteAtEightHops()
     {
         var node = new CapturingSpotNode();
         var (runtime, _) = await CreateStartedRuntimeAsync(node);
@@ -875,7 +875,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var target = new ZLinkBackendActorRef(
                 RoutingId.From("new-owner"), "actor-hop-limit", 4);
             state.Handoff.BeginCapture();
-            state.Handoff.CutoverCaptureToForwarding(
+            state.Handoff.CutoverCaptureToMessageFollow(
                 committedFrameCount: 0,
                 sourceActor: source,
                 targetActor: target,
@@ -886,11 +886,11 @@ public sealed partial class EntrySpotActorDispatchTests
                 targetAuthorityOwnerGeneration: 42,
                 sourceOwnerLeaseGeneration: 51,
                 targetOwnerLeaseGeneration: 52);
-            state.Handoff.CommitForwardingCutover(TimeSpan.FromSeconds(5));
+            state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(5));
             using var body = Message.From(Encoding.UTF8.GetBytes("body"));
 
             var exception = Assert.Throws<ZLinkFrameworkException>(() =>
-                ZLinkActorSessionForwarder.TryForward(
+                ZLinkActorMessageFollowDispatcher.TryFollow(
                     runtime,
                     state,
                     source,
@@ -900,7 +900,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     flags: 1,
                     routeContext: new ZLinkBackendActorRouteContext(
                         new MeshOperationId(71, 72),
-                        ForwardingHopCount: 8,
+                        MessageFollowHopCount: 8,
                         TargetNodeGeneration: 31,
                         AuthorityOwnerGeneration: 41,
                         OwnerLeaseGeneration: 51,
@@ -910,7 +910,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     body: body));
 
             Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, exception.Kind);
-            Assert.Empty(node.ForwardedParts);
+            Assert.Empty(node.MessageFollowParts);
         }
         finally
         {
@@ -919,7 +919,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public void ActorStragglerForwarderToRelay_PreservesExactDirectRouteAndPayload()
+    public void ActorMessageFollowerToRelay_PreservesExactDirectRouteAndPayload()
     {
         var localNode = new CapturingSpotNode();
         var states = new Dictionary<string, ZLinkActorRuntimeState>(StringComparer.Ordinal);
@@ -942,7 +942,7 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         var incomingRoute = new ZLinkBackendActorRouteContext(
             new MeshOperationId(81, 82),
-            ForwardingHopCount: 2,
+            MessageFollowHopCount: 2,
             TargetNodeGeneration: 73,
             AuthorityOwnerGeneration: 74,
             OwnerLeaseGeneration: 75,
@@ -950,9 +950,9 @@ public sealed partial class EntrySpotActorDispatchTests
             ReplyFlags: 87);
         var target = new ZLinkBackendActorRef(
             RoutingId.From("remote-owner"), "actor-relay", 9);
-        var forwardingWindow = new ZLinkActorForwardingWindow(TimeProvider.System);
-        forwardingWindow.Commit(TimeSpan.FromSeconds(5));
-        var mapping = new ZLinkActorForwardingMapping(
+        var messageFollowLease = new ZLinkActorMessageFollowLease(TimeProvider.System);
+        messageFollowLease.Commit(TimeSpan.FromSeconds(5));
+        var messageFollowRoute = new ZLinkActorMessageFollowRoute(
             new ZLinkBackendActorRef(
                 RoutingId.From("old-owner"), "actor-relay", 8),
             target,
@@ -963,9 +963,9 @@ public sealed partial class EntrySpotActorDispatchTests
             TargetAuthorityOwnerGeneration: 84,
             SourceOwnerLeaseGeneration: 75,
             TargetOwnerLeaseGeneration: 85,
-            Lease: forwardingWindow);
-        var route = ZLinkActorStragglerForwarder.AdvanceRoute(
-            mapping,
+            Lease: messageFollowLease);
+        var route = ZLinkActorMessageFollower.AdvanceRoute(
+            messageFollowRoute,
             incomingRoute,
             requestId: 86,
             flags: 87);
@@ -1011,7 +1011,7 @@ public sealed partial class EntrySpotActorDispatchTests
         Assert.NotNull(relayed);
         Assert.Equal(route, relayed.Value.Route);
         Assert.Equal(incomingRoute.OperationId, relayed.Value.Route.OperationId);
-        Assert.Equal((byte)3, relayed.Value.Route.ForwardingHopCount);
+        Assert.Equal((byte)3, relayed.Value.Route.MessageFollowHopCount);
         Assert.Equal(83ul, relayed.Value.Route.TargetNodeGeneration);
         Assert.Equal(84ul, relayed.Value.Route.AuthorityOwnerGeneration);
         Assert.Equal(85ul, relayed.Value.Route.OwnerLeaseGeneration);
@@ -1029,7 +1029,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var sourceNode = RoutingId.From("caller-node");
         var route = new ZLinkBackendActorRouteContext(
             new MeshOperationId(92, 93),
-            ForwardingHopCount: 1,
+            MessageFollowHopCount: 1,
             TargetNodeGeneration: 11,
             AuthorityOwnerGeneration: 12,
             OwnerLeaseGeneration: 13);
@@ -1126,7 +1126,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 sourceSessionRid: default,
                 originalSource,
                 new MeshOperationId(81, 82),
-                forwardingHopCount: 1,
+                messageFollowHopCount: 1,
                 replyRequestId: 83,
                 replyFlags: 1,
                 replyCapability: "reply-capability",
@@ -1310,7 +1310,7 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
-    public async Task StragglerForwarder_StopsFinalPartRetryWhenTheForwardingWindowCloses()
+    public async Task MessageFollower_StopsFinalPartRetryWhenTheDurationExpires()
     {
         var node = new CapturingSpotNode();
         node.ForwardResults.Enqueue(true);
@@ -1318,15 +1318,15 @@ public sealed partial class EntrySpotActorDispatchTests
         var (runtime, _) = await CreateStartedRuntimeAsync(node);
         try
         {
-            var forwarder = new ZLinkActorStragglerForwarder(runtime, capacity: 1);
+            var follower = new ZLinkActorMessageFollower(runtime, capacity: 1);
             using var body = Message.From(Encoding.UTF8.GetBytes("body"));
             var source = new ZLinkBackendActorRef(RoutingId.From("source-node"), "actor-forward", 1);
             // The runtime's own node rid keeps this on the backend forward
             // path (a remote target now takes the actor-frame relay plane).
             var target = new ZLinkBackendActorRef(RoutingId.From("entry-node"), "actor-forward", 2);
-            var forwardingWindow = new ZLinkActorForwardingWindow(TimeProvider.System);
-            forwardingWindow.Commit(TimeSpan.FromSeconds(5));
-            var mapping = new ZLinkActorForwardingMapping(
+            var messageFollowLease = new ZLinkActorMessageFollowLease(TimeProvider.System);
+            messageFollowLease.Commit(TimeSpan.FromSeconds(5));
+            var messageFollowRoute = new ZLinkActorMessageFollowRoute(
                 source,
                 target,
                 "entry",
@@ -1336,12 +1336,12 @@ public sealed partial class EntrySpotActorDispatchTests
                 TargetAuthorityOwnerGeneration: 4,
                 SourceOwnerLeaseGeneration: 5,
                 TargetOwnerLeaseGeneration: 6,
-                Lease: forwardingWindow);
+                Lease: messageFollowLease);
 
             var disposedBody = Message.From(Encoding.UTF8.GetBytes("disposed"));
             disposedBody.Dispose();
-            Assert.Throws<ObjectDisposedException>(() => forwarder.Enqueue(
-                mapping,
+            Assert.Throws<ObjectDisposedException>(() => follower.Enqueue(
+                messageFollowRoute,
                 RoutingId.From("entry-node"),
                 RoutingId.From("session-1"),
                 6,
@@ -1350,8 +1350,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 CreateHeader("forward-disposed"),
                 disposedBody));
 
-            forwarder.Enqueue(
-                mapping,
+            follower.Enqueue(
+                messageFollowRoute,
                 RoutingId.From("entry-node"),
                 RoutingId.From("session-1"),
                 7,
@@ -1364,8 +1364,8 @@ public sealed partial class EntrySpotActorDispatchTests
 
             using var overflowBody = Message.From(Encoding.UTF8.GetBytes("overflow"));
             var overflow = await Assert.ThrowsAsync<ZLinkFrameworkException>(() => Task.Run(() =>
-                    forwarder.Enqueue(
-                        mapping,
+                    follower.Enqueue(
+                        messageFollowRoute,
                         RoutingId.From("session-node"),
                         RoutingId.From("session-overflow"),
                         8,
@@ -1376,21 +1376,21 @@ public sealed partial class EntrySpotActorDispatchTests
                 .WaitAsync(TimeSpan.FromSeconds(1)));
             Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, overflow.Kind);
 
-            forwardingWindow.Cancel();
+            messageFollowLease.Cancel();
             await Task.Delay(25);
-            var attemptsAfterCutoff = node.ForwardedParts.Count;
+            var attemptsAfterExpiry = node.MessageFollowParts.Count;
             await Task.Delay(25);
-            Assert.True(node.ForwardedParts.Count >= 2);
-            Assert.True(node.ForwardedParts[0].HasMore);
-            Assert.All(node.ForwardedParts.Skip(1), static part => Assert.False(part.HasMore));
-            Assert.Equal(attemptsAfterCutoff, node.ForwardedParts.Count);
+            Assert.True(node.MessageFollowParts.Count >= 2);
+            Assert.True(node.MessageFollowParts[0].HasMore);
+            Assert.All(node.MessageFollowParts.Skip(1), static part => Assert.False(part.HasMore));
+            Assert.Equal(attemptsAfterExpiry, node.MessageFollowParts.Count);
 
             using var nextBody = Message.From(Encoding.UTF8.GetBytes("next"));
-            var nextLease = new ZLinkActorForwardingWindow(TimeProvider.System);
+            var nextLease = new ZLinkActorMessageFollowLease(TimeProvider.System);
             nextLease.Commit(TimeSpan.FromSeconds(5));
-            var nextMapping = mapping with { Lease = nextLease };
-            await Task.Run(() => forwarder.Enqueue(
-                    nextMapping,
+            var nextMessageFollowRoute = messageFollowRoute with { Lease = nextLease };
+            await Task.Run(() => follower.Enqueue(
+                    nextMessageFollowRoute,
                     RoutingId.From("session-node"),
                     RoutingId.From("session-1"),
                     9,
@@ -3873,7 +3873,7 @@ public sealed partial class EntrySpotActorDispatchTests
             DefaultRequestTimeout = TimeSpan.FromSeconds(1),
             ImplicitHandlerAutoRegistrationEnabled = false
         };
-        registration.Locations.StoreInstance = locationStore;
+        registration.Locations.SetTestRepository(locationStore);
         if (messageFlowMode is { } mode)
             registration.DispatchOptions.MessageFlow(mode);
         if (messageFlowObserver is not null)
@@ -4367,7 +4367,7 @@ public sealed partial class EntrySpotActorDispatchTests
         }
     }
 
-    private sealed class FailOnceRemoveActorStore(IZLinkLocationStore inner)
+    private sealed class FailOnceRemoveActorStore(IZLinkLocationRepository inner)
         : global::Zlink.Framework.UnitTests.ZLinkLocationStoreTestDouble
     {
         private int _removeAttempts;
@@ -5468,7 +5468,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public ConcurrentQueue<bool> ForwardResults { get; } = new();
 
-        public List<(bool HasMore, byte[] Payload)> ForwardedParts { get; } = [];
+        public List<(bool HasMore, byte[] Payload)> MessageFollowParts { get; } = [];
 
         public TaskCompletionSource FinalPartAttempted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -5870,8 +5870,8 @@ public sealed partial class EntrySpotActorDispatchTests
             SendFlags flags)
         {
             var result = !ForwardResults.TryDequeue(out var configured) || configured;
-            lock (ForwardedParts)
-                ForwardedParts.Add((hasMore, message.AsReadOnlySpan().ToArray()));
+            lock (MessageFollowParts)
+                MessageFollowParts.Add((hasMore, message.AsReadOnlySpan().ToArray()));
             if (!hasMore) FinalPartAttempted.TrySetResult();
             return result;
         }

@@ -400,8 +400,9 @@ internal readonly struct MeshReceiveRecord
         ulong targetNodeGeneration = 0,
         ulong authorityOwnerGeneration = 0,
         ulong ownerLeaseGeneration = 0,
-        byte forwardingHopCount = 0,
-        ulong replyRouteId = 0)
+        byte messageFollowHopCount = 0,
+        ulong replyRouteId = 0,
+        ulong deadlineUnixMs = 0)
     {
         Kind = kind; Domain = domain; SourceNodeRid = sourceNodeRid;
         SourceSpotId = sourceSpotId; SourceBindingGeneration = sourceBindingGeneration;
@@ -413,8 +414,9 @@ internal readonly struct MeshReceiveRecord
         TargetNodeGeneration = targetNodeGeneration;
         AuthorityOwnerGeneration = authorityOwnerGeneration;
         OwnerLeaseGeneration = ownerLeaseGeneration;
-        ForwardingHopCount = forwardingHopCount;
+        MessageFollowHopCount = messageFollowHopCount;
         ReplyRouteId = replyRouteId;
+        DeadlineUnixMs = deadlineUnixMs;
     }
     public MeshRecordKind Kind { get; }
     public MeshReadyDomains Domain { get; }
@@ -434,8 +436,9 @@ internal readonly struct MeshReceiveRecord
     public ulong TargetNodeGeneration { get; }
     public ulong AuthorityOwnerGeneration { get; }
     public ulong OwnerLeaseGeneration { get; }
-    public byte ForwardingHopCount { get; }
+    public byte MessageFollowHopCount { get; }
     public ulong ReplyRouteId { get; }
+    public ulong DeadlineUnixMs { get; }
     public MeshRecordPayload? KindData { get; }
     public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
     public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;

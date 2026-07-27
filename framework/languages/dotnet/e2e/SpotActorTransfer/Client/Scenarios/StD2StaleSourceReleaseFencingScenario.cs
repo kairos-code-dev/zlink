@@ -23,12 +23,12 @@ internal static class StD2StaleSourceReleaseFencingScenario
         ]);
         var before = await context.GetActorRefWithEvidenceAsync(
             context.NodeB, actorId, "ST-D2", "location_snapshot_before_cleanup");
-        ZlinkStreamAssert.Ensure(before.NodeRid == "actor-b", $"ST-D2 target ref expected actor-b, got {before.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(before.NodeRid, "actor-b"), $"ST-D2 target ref expected actor-b, got {before.NodeRid}.");
         var beforeCleanupProbe = await context.ProbeAsync(
             context.NodeB,
             actorId,
             new ProbeReq("ST-D2", "before-stale-cleanup-release"));
-        ZlinkStreamAssert.Ensure(beforeCleanupProbe.NodeRid == "actor-b",
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(beforeCleanupProbe.NodeRid, "actor-b"),
             $"ST-D2 pre-cleanup probe expected actor-b, got {beforeCleanupProbe.NodeRid}.");
 
         await context.ReleaseCleanupGateAsync(context.NodeA, actorId, "ST-D2");
@@ -37,10 +37,10 @@ internal static class StD2StaleSourceReleaseFencingScenario
         ]);
         var after = await context.GetActorRefWithEvidenceAsync(
             context.NodeB, actorId, "ST-D2", "location_snapshot_after_cleanup");
-        ZlinkStreamAssert.Ensure(after.NodeRid == "actor-b", $"ST-D2 target ref changed after delayed cleanup: {after.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(after.NodeRid, "actor-b"), $"ST-D2 target ref changed after delayed cleanup: {after.NodeRid}.");
         ZlinkStreamAssert.Ensure(after.Generation == before.Generation,
             $"ST-D2 generation changed after delayed cleanup. before={before.Generation}, after={after.Generation}");
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-D2", "after-stale-cleanup-window"));
-        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-D2 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(probe.NodeRid, "actor-b"), $"ST-D2 probe expected actor-b, got {probe.NodeRid}.");
     }
 }

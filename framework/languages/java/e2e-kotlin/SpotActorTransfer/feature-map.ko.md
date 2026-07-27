@@ -16,7 +16,7 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 
 | 시나리오 | 상태 | 검증 대상 |
 |---|---|---|
-| `ST-A1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: local admission accept와 callback 순서. |
+| `ST-A1` | runtime blocker | 현재 public API로 compile된다. Actor가 remote owner에 배치된 뒤 global Actor ID request가 Java runtime의 local-only dispatch에서 `actor is not local`로 실패한다. |
 | `ST-A2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: local admission reject의 무효과. |
 | `ST-A3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: joined callback 완료 전 packet dispatch 차단. |
 | `ST-B1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: remote transfer 성공과 state 복원. |
@@ -34,12 +34,25 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 | `ST-F1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: moving backlog FIFO. |
 | `ST-F2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: location publish 전 replay 순서. |
 | `ST-F3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: bound session의 cross-move FIFO. |
-| `ST-F4` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: bounded straggler forwarding window. |
-| `ST-F5` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: forwarding map 교체와 만료 뒤 축출. |
+| `ST-F4` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: 제한된 Message Follow 기간. |
+| `ST-F5` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: Message Follow route 교체와 만료 뒤 제거. |
 | `ST-F6` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: request correlation과 caller timeout 뒤 late reply 격리. |
+| `ST-F3A` | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
+| `ST-G1~G6` | 미구현 | relocation barrier, aggregate capacity, `PerActor` route 분리, interruption 목표와 application-signaled 경계를 검증하지 않는다. |
+| `ST-H1~H5` | 미구현 | Deferred Join의 queue barrier, durable completion, execution context와 `MessageContext` parity를 검증하지 않는다. |
+| `ST-I1` | 미구현 | 실제 encoded Actor·Spot payload profile과 permit 경계를 측정하지 않는다. |
+| `ST-I2` | 미구현 | 다량 Actor relocation의 처리 시간과 서비스 연속성을 측정하지 않는다. |
+| `ST-I3` | 미구현 | 다량 Instance Spot·`SpotWide` User Spot relocation의 처리 시간과 서비스 연속성을 측정하지 않는다. |
+| `ST-I4` | 미구현 | Actor·Spot one-way·request의 authority commit 전후 Message Follow matrix가 없다. |
+| `ST-I5` | 미구현 | Message Follow expiry, duplicate, deadline, generation, loop와 bound를 검증하지 않는다. |
+| `ST-I6` | 미구현 | Actor·Spot multi-hop Message Follow와 route cleanup을 검증하지 않는다. |
 
-현재 Kotlin source와 runner에는 목표 MeshNode topology와 정식 `ST-*` marker가 없으므로 위 행은
-구현 완료 표시가 아니다. 구현
-단계에서 각 `ST-* result=passed` marker와 최종
-`spot-actor-transfer e2e result=passed` marker를 남기고, 실제 bindings package 이름, version과
-경로 및 제거 대상 topology의 정적 검사 결과를 함께 출력해야 한다.
+Kotlin Client·Shared·JavaClient·ActorNode는 현재 source로 compile된다. Runner는 Java의
+`ST-A1~F6` process 구성을 사용하지만 `ST-A1`에서 위 remote Actor dispatch gap을 재현하므로
+그 뒤 시나리오와 `all`을 완료 증거로 사용할 수 없다. `ST-F3A`, G·H·I track은 selector에도
+등록되어 있지 않다.
+
+각 시나리오는 실제 Kotlin client와 server entry point에서
+`ST-* result=passed` marker를 남겨야 한다. 최종
+`spot-actor-transfer e2e result=passed` marker, bindings package 이름·version·경로와
+제거 대상 topology의 정적 검사 결과도 함께 출력해야 한다.

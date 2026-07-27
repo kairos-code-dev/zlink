@@ -804,7 +804,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
       actor_ref, finalized.value ().actor,
       spot_route_t{route->node_rid, spot_id, route->spot_name},
       transfer_id);
-    runtime.emit_actor_transfer_marker ("forwarding_entry", actor_ref, transfer_id,
+    runtime.emit_actor_transfer_marker ("message_follow_registered", actor_ref, transfer_id,
                                         route->spot_id, route->node_rid);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{finalized.value ().result_code, finalized.value ().actor,
@@ -873,13 +873,13 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
                             node_entry, actor_ref);
     };
 
-    if (const auto forwarding = runtime.actor_forwarding_target (actor_ref)) {
+    if (const auto follow_target = runtime.actor_message_follow_target (actor_ref)) {
         runtime.emit_actor_transfer_marker (
-          "straggler_forward", actor_ref,
+          "message_follow_relay", actor_ref,
           std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
-          forwarding->route.spot_id, forwarding->route.node_rid);
-        return send_remote (forwarding->route, forwarding->route.spot_id,
-                            forwarding->actor);
+          follow_target->route.spot_id, follow_target->route.node_rid);
+        return send_remote (follow_target->route, follow_target->route.spot_id,
+                            follow_target->actor);
     }
 
     auto route = runtime.actor_route (actor_ref);
@@ -888,13 +888,13 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         if (const auto current = runtime.current_actor_ref (actor_ref);
             current && current->generation () > actor_ref.generation ()) {
             runtime.emit_actor_transfer_marker (
-              "straggler_forward", actor_ref,
+              "message_follow_relay", actor_ref,
               std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
               route->spot_id, route->node_rid);
-            const auto forwarded = actor_ref_t (
+            const auto followed_actor = actor_ref_t (
               route->node_rid, std::string (actor_ref.actor_type ()),
               std::string (actor_ref.actor_id ()), current->generation ());
-            return send_remote (*route, route->spot_id, forwarded);
+            return send_remote (*route, route->spot_id, followed_actor);
         }
         return send_remote (*route, route->spot_id, actor_ref);
     }

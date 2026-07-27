@@ -285,7 +285,7 @@ struct spot_create_response_t
 
 /// Runtime-private projection of one inbound Spot or Spot Actor message. Dispatch fills it from the
 /// wire envelope and then builds the public `message_context_t` the handler declared, so the frame
-/// layout and the forwarding staging map never reach the public handler surface.
+/// layout and the internal metadata staging map never reach the public handler surface.
 struct spot_inbound_message_t
 {
     std::optional<std::string_view> find (std::string_view key) const
@@ -1520,10 +1520,9 @@ class spot_node_builder_t
     spot_node_builder_t (const spot_node_builder_t &) = default;
     spot_node_builder_t &operator= (const spot_node_builder_t &) = default;
 
-    // In-flight handoff (spot-actor.ko.md 10.4): how long this node keeps the
-    // straggler forwarding mapping after a completed transfer. Default 5s;
-    // deployments override it, tests shorten it.
-    spot_node_builder_t &set_actor_transfer_forward_window (std::chrono::milliseconds window);
+    // How long this node keeps the Message Follow route after a completed
+    // relocation. The default is 30 seconds; zero disables Message Follow.
+    spot_node_builder_t &set_message_follow_duration (std::chrono::milliseconds duration);
     template <typename TEntrySpot>
     spot_node_builder_t &add_entry_spot (
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)

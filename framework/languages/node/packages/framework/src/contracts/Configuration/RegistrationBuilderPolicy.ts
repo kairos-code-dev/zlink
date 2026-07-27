@@ -18,9 +18,9 @@ export function registerActorTransferAdapter<TActor extends ZLinkActor>(
   adapters.set(actorType, adapterType);
 }
 
-export function validateActorTransferForwardWindow(timeoutMs: number): number {
+export function validateMessageFollowDuration(timeoutMs: number): number {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 0) {
-    throw new ZLinkConfigurationException('actor transfer forward window must be a non-negative safe integer.');
+    throw new ZLinkConfigurationException('Message Follow duration must be a non-negative safe integer.');
   }
   return timeoutMs;
 }

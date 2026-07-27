@@ -18,29 +18,28 @@ internal sealed class EntryActorAwaitHandler(
     public async ValueTask<ActorAwaitRes> HandleAsync(
         AwaitEntrySpot entrySpot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         var call = routeClient.RequestToChannel(
-                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
-            $"actor-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         evidence.Add(
-            $"actor-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         return ActorReplies.Reply("probe-B", request.RequestId, actor, entrySpot, "actor-await-completed");
     }
@@ -53,7 +52,7 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
     public ValueTask<ActorAwaitRes> HandleAsync(
         AwaitEntrySpot entrySpot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorFastReq request,
         CancellationToken cancellationToken)
     {
@@ -61,11 +60,11 @@ internal sealed class EntryActorFastHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-fast-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-fast-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
         evidence.Add(
-            $"actor-fast-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-fast-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
         return ValueTask.FromResult(ActorReplies.Reply("probe-B", request.RequestId, actor, entrySpot, request.Marker));
@@ -81,29 +80,28 @@ internal sealed class SpotActorAwaitHandler(
     public async ValueTask<ActorAwaitRes> HandleAsync(
         AwaitProbeSpot spot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         var call = routeClient.RequestToChannel(
-                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-await-{(request.Terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await TurnTerminator.Complete<DelayRes>(call, request.Terminator, cancellationToken);
         evidence.Add(
-            $"actor-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         evidence.Add(
-            $"actor-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         return ActorReplies.Reply("probe-B", request.RequestId, actor, spot, "actor-await-completed");
     }
@@ -116,7 +114,7 @@ internal sealed class SpotActorFastHandler(EvidenceStore evidence)
     public ValueTask<ActorAwaitRes> HandleAsync(
         AwaitProbeSpot spot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorFastReq request,
         CancellationToken cancellationToken)
     {
@@ -124,11 +122,11 @@ internal sealed class SpotActorFastHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-fast-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-fast-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
         evidence.Add(
-            $"actor-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}"
             + $"|marker={request.Marker}|handler=actor");
         return ValueTask.FromResult(ActorReplies.Reply("probe-B", request.RequestId, actor, spot, request.Marker));
@@ -144,35 +142,34 @@ internal sealed class SpotActorPushAwaitHandler(
     public async ValueTask<ActorAwaitRes> HandleAsync(
         AwaitProbeSpot spot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPushAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-push-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-push-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         var call = routeClient.RequestToChannel(
-                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-push-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-push-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-push-await-released|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await call.Async<DelayRes>(cancellationToken);
         evidence.Add(
-            $"actor-push-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-push-await-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await actor.Context.BoundSession.Send(
                 new ActorPushNotify(
                     actor.ActorId,
                     request.RequestId,
                     request.Value,
-                    spot.Context.NodeRid.ToString())).SubmitAsync(cancellationToken);
+                    spot.Context.NodeRid.ToString())).Async(cancellationToken);
         evidence.Add(
-            $"actor-push-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"actor-push-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         return ActorReplies.Reply("probe-D4", request.RequestId, actor, spot, "actor-push-await-completed");
     }
@@ -182,33 +179,28 @@ internal sealed class SpotActorPushAwaitHandler(
 internal sealed class EntryActorJoinAwaitHandler(EvidenceStore evidence)
     : IZLinkEntrySpotActorRequestHandler<AwaitEntrySpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes>
 {
-    public async ValueTask<ActorAwaitRes> HandleAsync(
+    public ValueTask<ActorAwaitRes> HandleAsync(
         AwaitEntrySpot entrySpot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorJoinAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-join-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-join-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|target={request.TargetSpotRid}");
+        actor.TrackJoin(request.RequestId, "actor-join-await");
         var call = actor.Context.JoinSpot(
-            RoutingId.From(request.TargetSpotRid),
+            request.TargetSpotRid,
             ZLinkMessage.From(new DelayReq(request.RequestId, 350, "join")));
+        call.Defer();
         evidence.Add(
-            $"actor-join-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-join-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|target={request.TargetSpotRid}");
-        var joined = await call.Async(cancellationToken);
-        var accepted = joined is ZLinkActorJoinResult.Accepted;
-        evidence.Add(
-            $"actor-join-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
-            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|accepted={accepted}");
-        evidence.Add(
-            $"actor-join-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
-            + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|accepted={accepted}");
-        return ActorReplies.Reply("probe-B3", request.RequestId, actor, entrySpot, "actor-join-await-completed");
+        return ValueTask.FromResult(
+            ActorReplies.Reply("probe-B3", request.RequestId, actor, entrySpot, "actor-join-await-released"));
     }
 }
 
@@ -216,26 +208,27 @@ internal sealed class EntryActorJoinAwaitHandler(EvidenceStore evidence)
 internal sealed class SpotActorJoinAwaitHandler(EvidenceStore evidence)
     : IZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes>
 {
-    public async ValueTask<ActorAwaitRes> HandleAsync(
+    public ValueTask<ActorAwaitRes> HandleAsync(
         AwaitProbeSpot spot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorJoinAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         evidence.Add(
-            $"actor-join-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|actor={actor.ActorId}"
+            $"actor-join-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|actor={actor.ActorId}"
             + $"|request={request.RequestId}|target={request.TargetSpotRid}");
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.From(request.TargetSpotRid),
+        actor.TrackJoin(request.RequestId, "actor-join");
+        actor.Context.JoinSpot(
+                request.TargetSpotRid,
                 ZLinkMessage.From(new DelayReq(request.RequestId, 25, "join")))
-            .Async(cancellationToken);
-        var accepted = joined is ZLinkActorJoinResult.Accepted;
+            .Defer();
         evidence.Add(
-            $"actor-join-completed|rid={evidence.Rid}|spot={request.TargetSpotRid}|actor={actor.ActorId}"
-            + $"|request={request.RequestId}|accepted={accepted}");
-        return ActorReplies.Reply("TD-E2", request.RequestId, actor, spot, "actor-join-completed");
+            $"actor-join-deferred|rid={evidence.Rid}|spot={spot.Context.SpotId}|actor={actor.ActorId}"
+            + $"|request={request.RequestId}|target={request.TargetSpotRid}");
+        return ValueTask.FromResult(
+            ActorReplies.Reply("TD-E2", request.RequestId, actor, spot, "actor-join-deferred"));
     }
 }
 
@@ -248,35 +241,34 @@ internal sealed class EntryActorPushAwaitHandler(
     public async ValueTask<ActorAwaitRes> HandleAsync(
         AwaitEntrySpot entrySpot,
         AwaitActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         ActorPushAwaitReq request,
         CancellationToken cancellationToken)
     {
         _ = context;
         var mailboxId = $"actor:{actor.ActorId}";
         evidence.Add(
-            $"actor-push-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-push-await-started|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         var call = routeClient.RequestToChannel(
-                AutomaticTurnDispatchNames.DelayChannel,
                 AutomaticTurnDispatchNames.DelayChannel,
                 new DelayReq(request.RequestId, request.DelayMs, $"actor-push-{actor.ActorId}"))
             .Timeout(TimeSpan.FromSeconds(5));
         evidence.Add(
-            $"actor-push-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-push-await-released|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await call.Async<DelayRes>(cancellationToken);
         evidence.Add(
-            $"actor-push-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-push-await-resumed|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         await actor.Context.BoundSession.Send(
                 new ActorPushNotify(
                     actor.ActorId,
                     request.RequestId,
                     request.Value,
-                    entrySpot.Context.NodeRid.ToString())).SubmitAsync(cancellationToken);
+                    entrySpot.Context.NodeRid.ToString())).Async(cancellationToken);
         evidence.Add(
-            $"actor-push-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotRid}"
+            $"actor-push-await-completed|rid={evidence.Rid}|spot={entrySpot.Context.SpotId}"
             + $"|actor={actor.ActorId}|mailbox={mailboxId}|request={request.RequestId}|handler=actor");
         return ActorReplies.Reply("probe-D4", request.RequestId, actor, entrySpot, "actor-push-await-completed");
     }

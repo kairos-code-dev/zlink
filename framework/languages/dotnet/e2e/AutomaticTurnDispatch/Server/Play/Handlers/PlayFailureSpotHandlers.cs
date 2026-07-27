@@ -3,15 +3,13 @@ using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
-using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Spots;
 
 namespace AutomaticTurnDispatch.Server.Play.Handlers;
 
 [ZLinkSpotPacketHandler("SelfCycleMsg")]
 internal sealed class SelfCycleHandler(
-    EvidenceStore evidence,
-    IZLinkSpotHandleResolver spots)
+    EvidenceStore evidence)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, SelfCycleMsg>
 {
     public async ValueTask HandleAsync(
@@ -20,24 +18,21 @@ internal sealed class SelfCycleHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"self-cycle-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+            $"self-cycle-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
         try
         {
-            var handle = await spots.ResolveSpotHandleAsync(
-                             spot.Context.MeshName,
-                             spot.Context.SpotRid,
-                             cancellationToken)
-                         ?? throw new InvalidOperationException("The current Spot handle was not found.");
-            await spot.Context.Outbound.RequestToSpot(handle, new ProbeReq(request.RequestId, "self-cycle"))
+            await spot.Context.Outbound.RequestToSpot(
+                    spot.Context.SpotId,
+                    new ProbeReq(request.RequestId, "self-cycle"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs))
                 .Async<AutomaticTurnDispatchRes>(cancellationToken);
             evidence.Add(
-                $"self-cycle-unexpected-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}");
+                $"self-cycle-unexpected-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
         {
             evidence.Add(
-                $"self-cycle-timed-out|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                $"self-cycle-timed-out|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}");
         }
     }
@@ -55,31 +50,30 @@ internal sealed class AwaitTimeoutHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+            $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         try
         {
             var call = routeClient.RequestToChannel(
                     AutomaticTurnDispatchNames.DelayChannel,
-                    AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "timeout"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
             evidence.Add(
-                $"timeout-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"timeout-await-released|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
             await call.Async<DelayRes>(cancellationToken);
             evidence.Add(
-                $"timeout-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new AwaitTimeoutRes("probe-E1", request.RequestId, spot.Context.SpotRid.ToString(),
+                $"timeout-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
+            return new AwaitTimeoutRes("probe-E1", request.RequestId, spot.Context.SpotId.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
         {
             evidence.Add(
-                $"timeout-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                $"timeout-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
             return new AwaitTimeoutRes(
                 "probe-E1",
                 request.RequestId,
-                spot.Context.SpotRid.ToString(),
+                spot.Context.SpotId.ToString(),
                 spot.Context.NodeRid.ToString(),
                 true,
                 ex.GetType().Name);
@@ -99,24 +93,23 @@ internal sealed class AwaitTimeoutCommandHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+            $"timeout-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         try
         {
             var call = routeClient.RequestToChannel(
                     AutomaticTurnDispatchNames.DelayChannel,
-                    AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "timeout"))
                 .Timeout(TimeSpan.FromMilliseconds(request.TimeoutMs));
             evidence.Add(
-                $"timeout-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"timeout-await-released|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
             await call.Async<DelayRes>(cancellationToken);
             evidence.Add(
-                $"timeout-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"timeout-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         }
         catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
         {
             evidence.Add(
-                $"timeout-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                $"timeout-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
         }
     }
@@ -134,33 +127,32 @@ internal sealed class AwaitCancelHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"cancel-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+            $"cancel-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromMilliseconds(request.CancelAfterMs));
         try
         {
             var call = routeClient.RequestToChannel(
                     AutomaticTurnDispatchNames.DelayChannel,
-                    AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "cancel"))
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
-                $"cancel-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"cancel-await-released|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
             await call.Async<DelayRes>(cts.Token);
             evidence.Add(
-                $"cancel-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
-            return new AwaitCancelRes("probe-E2", request.RequestId, spot.Context.SpotRid.ToString(),
+                $"cancel-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
+            return new AwaitCancelRes("probe-E2", request.RequestId, spot.Context.SpotId.ToString(),
                 spot.Context.NodeRid.ToString(), false, "");
         }
         catch (Exception ex) when (ex is OperationCanceledException or ZLinkFrameworkException)
         {
             evidence.Add(
-                $"cancel-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                $"cancel-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
             return new AwaitCancelRes(
                 "probe-E2",
                 request.RequestId,
-                spot.Context.SpotRid.ToString(),
+                spot.Context.SpotId.ToString(),
                 spot.Context.NodeRid.ToString(),
                 true,
                 ex.GetType().Name);
@@ -180,26 +172,25 @@ internal sealed class AwaitCancelCommandHandler(
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"cancel-await-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+            $"cancel-await-started|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromMilliseconds(request.CancelAfterMs));
         try
         {
             var call = routeClient.RequestToChannel(
                     AutomaticTurnDispatchNames.DelayChannel,
-                    AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(request.RequestId, request.DelayMs, "cancel"))
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
-                $"cancel-await-released|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"cancel-await-released|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
             await call.Async<DelayRes>(cts.Token);
             evidence.Add(
-                $"cancel-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}|handler=spot");
+                $"cancel-await-unexpected-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}|handler=spot");
         }
         catch (Exception ex) when (ex is OperationCanceledException or ZLinkFrameworkException)
         {
             evidence.Add(
-                $"cancel-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}|request={request.RequestId}"
+                $"cancel-await-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}|request={request.RequestId}"
                 + $"|error={ex.GetType().Name}|handler=spot");
         }
     }

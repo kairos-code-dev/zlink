@@ -17,13 +17,13 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
                                     const std::string &session_stream_endpoint,
                                     const std::string &node_rid,
-                                    const std::string &spot_rid,
+                                    const std::string &spot_id,
                                     const std::string &actor_id)
 {
     auto owner = zlink::http_client::client_t::create ().base_url (owner_http_endpoint).build ();
     auto created =
       owner.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = spot_rid})
+        .body (create_spot_req_t{.spot_id = spot_id})
         .submit_raw ()
         .result ();
     if (!created || created.value ().status >= 400) {
@@ -50,14 +50,14 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
     }
     auto allowed =
       stream
-        .request (join_admitted_user_spot_actor_req_t{.spot_rid = spot_rid,
+        .request (join_admitted_user_spot_actor_req_t{.spot_id = spot_id,
                                                       .actor_id = actor_id,
                                                       .allow = true,
                                                       .reason = "allowed"})
         .packet_name ("JoinAdmittedUserSpotActorReq")
         .timeout (std::chrono::milliseconds (10000))
         .submit<join_admitted_user_spot_actor_res_t> ();
-    if (!allowed || !allowed.value ().accepted || allowed.value ().spot_rid != spot_rid) {
+    if (!allowed || !allowed.value ().accepted || allowed.value ().spot_id != spot_id) {
         throw std::runtime_error ("SM-B9 allowed join was rejected");
     }
 
@@ -72,7 +72,7 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
     }
     auto rejected =
       stream
-        .request (join_admitted_user_spot_actor_req_t{.spot_rid = spot_rid,
+        .request (join_admitted_user_spot_actor_req_t{.spot_id = spot_id,
                                                       .actor_id = rejected_actor_id,
                                                       .allow = false,
                                                       .reason = "capacity"})
@@ -87,7 +87,7 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
 
     auto evidence =
       owner.post ("/evidence/wait")
-        .body (evidence_wait_req_t{.contains_all = {spot_rid, actor_id, "allowed",
+        .body (evidence_wait_req_t{.contains_all = {spot_id, actor_id, "allowed",
                                                     rejected_actor_id, "capacity"},
                                    .timeout_milliseconds = 10000})
         .submit_raw ()
@@ -97,7 +97,7 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
     }
     const auto snapshot = nlohmann::json::parse (evidence.value ().body).get<evidence_snapshot_t> ();
     for (const auto &entry : snapshot.entries) {
-        if (entry.marker == "SpotActorJoined" && entry.spot_rid == spot_rid
+        if (entry.marker == "SpotActorJoined" && entry.spot_id == spot_id
             && entry.actor_id == rejected_actor_id) {
             throw std::runtime_error ("SM-B9 rejected actor was joined to the user spot");
         }

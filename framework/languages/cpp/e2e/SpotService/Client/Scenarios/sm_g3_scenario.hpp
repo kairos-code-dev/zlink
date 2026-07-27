@@ -23,11 +23,11 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline int sm_g3_count_evidence (const evidence_snapshot_t &snapshot,
                                  const std::string &marker,
                                  const std::string &actor_id,
-                                 const std::string &spot_rid)
+                                 const std::string &spot_id)
 {
     int count = 0;
     for (const auto &entry : snapshot.entries) {
-        if (entry.marker == marker && entry.actor_id == actor_id && entry.spot_rid == spot_rid) {
+        if (entry.marker == marker && entry.actor_id == actor_id && entry.spot_id == spot_id) {
             ++count;
         }
     }
@@ -36,7 +36,7 @@ inline int sm_g3_count_evidence (const evidence_snapshot_t &snapshot,
 
 inline evidence_snapshot_t fetch_sm_g3_evidence_until (zlink::http_client::client_t &client,
                                                        const std::array<std::string, 2> &actor_ids,
-                                                       const std::string &spot_rid)
+                                                       const std::string &spot_id)
 {
     for (int attempt = 0; attempt < 80; ++attempt) {
         auto raw = client.get ("/evidence").submit_raw ().result ();
@@ -46,9 +46,9 @@ inline evidence_snapshot_t fetch_sm_g3_evidence_until (zlink::http_client::clien
             bool complete = true;
             for (const auto &actor_id : actor_ids) {
                 complete = complete
-                           && sm_g3_count_evidence (snapshot, "ActorJoined", actor_id, spot_rid)
+                           && sm_g3_count_evidence (snapshot, "ActorJoined", actor_id, spot_id)
                                 == 1
-                           && sm_g3_count_evidence (snapshot, "ActorLeft", actor_id, spot_rid)
+                           && sm_g3_count_evidence (snapshot, "ActorLeft", actor_id, spot_id)
                                 == 1;
             }
             if (complete) {
@@ -165,7 +165,7 @@ inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
     }
 
     constexpr auto spot_key = "sm-g3-concurrent";
-    constexpr auto spot_rid = "user:play-a:sm-g3-concurrent";
+    constexpr auto spot_id = "user:play-a:sm-g3-concurrent";
     const std::array<std::string, 2> actor_ids{"actor-sm-g3-0", "actor-sm-g3-1"};
 
     std::vector<sm_g3_bound_client_t> clients;
@@ -193,12 +193,12 @@ inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
                     .build ();
-    const auto evidence = fetch_sm_g3_evidence_until (play_a, actor_ids, spot_rid);
+    const auto evidence = fetch_sm_g3_evidence_until (play_a, actor_ids, spot_id);
     for (const auto &actor_id : actor_ids) {
-        if (sm_g3_count_evidence (evidence, "ActorJoined", actor_id, spot_rid) != 1) {
+        if (sm_g3_count_evidence (evidence, "ActorJoined", actor_id, spot_id) != 1) {
             throw std::runtime_error ("SM-G3 join evidence count mismatch for " + actor_id);
         }
-        if (sm_g3_count_evidence (evidence, "ActorLeft", actor_id, spot_rid) != 1) {
+        if (sm_g3_count_evidence (evidence, "ActorLeft", actor_id, spot_id) != 1) {
             throw std::runtime_error ("SM-G3 leave evidence count mismatch for " + actor_id);
         }
     }

@@ -377,13 +377,13 @@ class actor_client_impl_t final : public actor_client_t
                   != actor_ref.node_rid ().value ()
                 || current.value ().framework_ref.generation ()
                      != actor_ref.generation ())) {
-            const auto forwarded = runtime->forward_straggler_actor (actor_ref);
-            if (!forwarded) {
+            const auto followed = runtime->follow_relocated_actor (actor_ref);
+            if (!followed) {
                 return task_t<void> (result_t<void>::failure (
                   framework_error_kind_t::actor_location_stale,
-                  "actor ref is outside the forwarding window"));
+                  "actor ref is outside the Message Follow duration"));
             }
-            actor = resolve_explicit_actor (*forwarded);
+            actor = resolve_explicit_actor (*followed);
         }
         if (!actor) {
             return task_t<void> (result_t<void>::failure (
@@ -470,7 +470,7 @@ class actor_client_impl_t final : public actor_client_t
                     // Whether the ref was current when the request was issued
                     // decides the two in-flight cases (spot-actor.ko.md §10.2-5/6):
                     //   - ref already stale at issue (actor is elsewhere) → this is
-                    //     a cross-node straggler; after the forwarding window it
+                    //     a cross-node delayed message; after Message Follow it
                     //     fails fast so the sender re-resolves (§10.2-6, ST-F4/F5).
                     //   - ref current at issue but the actor moves mid-request →
                     //     follow it to the committed location so the reply still

@@ -13,10 +13,10 @@ import { metrics, readFlowLog } from '../Support/observability-support.js';
 
 export async function runObsB4(): Promise<void> {
   const actorId = unique('obs-b4-actor');
-  const spotRid = unique('obs-b4-room');
-  await createSpot(nodeA, spotRid);
+  const spotId = unique('obs-b4-room');
+  await createSpot(nodeA, spotId);
   await createActor(nodeA, actorId, ObservabilityOpsNames.actorTypeStateful, 4);
-  require((await joinActor(nodeA, actorId, { scenario: 'OBS-B4', targetSpotRid: spotRid })).accepted,
+  require((await joinActor(nodeA, actorId, { scenario: 'OBS-B4', targetSpotId: spotId })).accepted,
     'OBS-B4 actor join failed with metrics disabled.');
   require((await probeActor(nodeA, actorId, 'OBS-B4', 'metrics-off')).marker === 'metrics-off',
     'OBS-B4 messaging changed with metrics disabled.');

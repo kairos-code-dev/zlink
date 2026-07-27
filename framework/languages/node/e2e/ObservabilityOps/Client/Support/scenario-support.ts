@@ -107,8 +107,8 @@ export async function assertHttpBoundPush(
   require(reply.nodeRid === expectedNode && notify.payload.nodeRid === expectedNode, `${scenario} bound push node mismatch.`);
 }
 
-export async function createSpot(node: HttpClient, spotRid: string, mode = 'accept'): Promise<CreateSpotRes> {
-  return await post<CreateSpotRes>(node, '/spots', { spotRid, mode } satisfies CreateSpotReq);
+export async function createSpot(node: HttpClient, spotId: string, mode = 'accept'): Promise<CreateSpotRes> {
+  return await post<CreateSpotRes>(node, '/spots', { spotId, mode } satisfies CreateSpotReq);
 }
 
 export async function createActor(node: HttpClient, actorId: string, actorType: string, stateVersion: number): Promise<ActorCreateRes> {

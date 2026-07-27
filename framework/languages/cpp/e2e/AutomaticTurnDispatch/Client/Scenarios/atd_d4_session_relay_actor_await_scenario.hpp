@@ -32,7 +32,7 @@ std::string run_atd_d4_session_relay_actor_await_scenario (
     const auto request_id = unique_id ("ATD-D4");
     auto rebound =
       connector
-        .request (bind_await_actors_req_t{.spot_rid = actors.spot_rid,
+        .request (bind_await_actors_req_t{.spot_id = actors.spot_id,
                                           .actor_ids = {actors.actor_a, actors.actor_b}})
         .packet_name (bind_await_actors_req_t::packet_name)
         .timeout (std::chrono::milliseconds (15000))

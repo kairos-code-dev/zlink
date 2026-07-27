@@ -913,9 +913,10 @@ export class DefaultZLinkSpotManager {
     }
     const resolvedOwner = this.options.actorDispatchOwnerResolver?.(actor.actorId);
     const resolvedActorRef = resolvedOwner?.actorRef ?? {
-      nodeRid: String(actor.nodeRid),
       actorId: actor.actorId,
-      generation: actor.generation
+      objectGeneration: actor.generation,
+      meshName,
+      nodeRid: String(actor.nodeRid)
     };
     const responseActorRef = record.sourceBindingGeneration > 0n
       ? {
@@ -928,7 +929,7 @@ export class DefaultZLinkSpotManager {
       ? responseActorRef
       : {
         ...responseActorRef,
-        handoffForwarded: true,
+        handoffMessageFollowed: true,
         handoffTargetSpotId: String(resolvedSpotId)
       } as ActorRef;
     try {
@@ -1023,9 +1024,12 @@ export class DefaultZLinkSpotManager {
           throw new ZLinkConfigurationException(`Actor '${actorId}' join record has no ActorRef.`);
         }
         const actorRef: ActorRef = {
-          nodeRid: rawActorRef.nodeRid as unknown as RoutingId,
           actorId: rawActorRef.actorId,
-          generation: rawActorRef.generation
+          objectGeneration: 'objectGeneration' in rawActorRef
+            ? rawActorRef.objectGeneration
+            : rawActorRef.generation,
+          meshName,
+          nodeRid: rawActorRef.nodeRid as unknown as RoutingId
         };
         const response: ZLinkSpotActorJoinResponse = await activation.serial.execute(async () =>
           activation.spot.onActorJoin(

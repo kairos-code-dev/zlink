@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using SpotActorTransfer.Shared;
+using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
 
@@ -14,8 +15,7 @@ internal sealed record ServerOptions(
     string RouterEndpoint,
     string EvidenceFile,
     string LogDir,
-    int RequestTimeoutMilliseconds,
-    string[] RoutePeers)
+    int RequestTimeoutMilliseconds)
 {
     public static ServerOptions Parse(string[] args, string role)
         => E2eConfiguration.Load<ServerOptions>(args);
@@ -76,6 +76,163 @@ internal sealed class RuntimeEvidenceStore
         }
 
         return _items.ToArray();
+    }
+}
+
+internal sealed record JoinCompletionOutcome(
+    JoinTargetRes? Reply,
+    string? ErrorKind);
+
+internal sealed class JoinCompletionStore
+{
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<JoinCompletionOutcome>>
+        _pending = new(StringComparer.Ordinal);
+
+    public Task<JoinCompletionOutcome> Register(
+        string actorId,
+        string scenario)
+    {
+        var key = Key(actorId, scenario);
+        var completion = new TaskCompletionSource<JoinCompletionOutcome>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pending.TryAdd(key, completion))
+            throw new InvalidOperationException(
+                $"Join completion '{scenario}' for Actor '{actorId}' is already pending.");
+        return completion.Task;
+    }
+
+    public void Complete(
+        string actorId,
+        string scenario,
+        JoinCompletionOutcome outcome)
+    {
+        if (_pending.TryRemove(Key(actorId, scenario), out var completion))
+            completion.TrySetResult(outcome);
+    }
+
+    public void Cancel(
+        string actorId,
+        string scenario)
+    {
+        if (_pending.TryRemove(Key(actorId, scenario), out var completion))
+            completion.TrySetCanceled();
+    }
+
+    private static string Key(string actorId, string scenario) =>
+        actorId + "\n" + scenario;
+}
+
+internal sealed class TransportDeliveryGate
+    : IZLinkActorTransportDeliveryGate
+{
+    private readonly ConcurrentDictionary<string, Entry> _entries =
+        new(StringComparer.Ordinal);
+
+    public TransportDeliveryGateRes Arm(
+        string operationId,
+        TransportDeliveryArmReq request)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
+        if (!Guid.TryParseExact(operationId, "N", out var parsed)
+            || !string.Equals(
+                operationId,
+                parsed.ToString("N"),
+                StringComparison.Ordinal))
+            throw new ArgumentException(
+                "Transport delivery operation ID must be a 128-bit lowercase GUID.",
+                nameof(operationId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.ActorId);
+        var expectedKind = Enum.Parse<ZLinkActorTransportOperationKind>(
+            request.Kind,
+            ignoreCase: true);
+        var entry = new Entry(request.ActorId, expectedKind);
+        if (!_entries.TryAdd(operationId, entry))
+            throw new InvalidOperationException(
+                $"Transport delivery operation '{operationId}' is already armed.");
+        return Snapshot(operationId, entry);
+    }
+
+    public async ValueTask<TransportDeliveryGateRes> WaitCapturedAsync(
+        string operationId,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var entry = Get(operationId);
+        await entry.Captured.Task
+            .WaitAsync(timeout, cancellationToken)
+            .ConfigureAwait(false);
+        return Snapshot(operationId, entry);
+    }
+
+    public TransportDeliveryGateRes Release(string operationId)
+    {
+        var entry = Get(operationId);
+        entry.Release.TrySetResult();
+        Volatile.Write(ref entry.Released, 1);
+        return Snapshot(operationId, entry);
+    }
+
+    public TransportDeliveryGateRes GetSnapshot(string operationId)
+    {
+        var entry = Get(operationId);
+        return Snapshot(operationId, entry);
+    }
+
+    public async ValueTask WaitAsync(
+        ZLinkActorTransportDelivery delivery,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(delivery.OperationId)
+            || !_entries.TryGetValue(delivery.OperationId, out var entry))
+            return;
+        if (!string.Equals(
+                entry.ActorId,
+                delivery.ActorId,
+                StringComparison.Ordinal)
+            || entry.Kind != delivery.Kind)
+            throw new InvalidOperationException(
+                $"Transport delivery operation '{delivery.OperationId}' "
+                + "did not match its armed Actor and operation kind.");
+
+        Interlocked.Increment(ref entry.CapturedCount);
+        entry.Captured.TrySetResult();
+        await entry.Release.Task
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        Interlocked.Increment(ref entry.ReleasedCount);
+    }
+
+    private Entry Get(string operationId) =>
+        _entries.TryGetValue(operationId, out var entry)
+            ? entry
+            : throw new KeyNotFoundException(
+                $"Transport delivery operation '{operationId}' is not armed.");
+
+    private static TransportDeliveryGateRes Snapshot(
+        string operationId,
+        Entry entry) =>
+        new(
+            operationId,
+            entry.ActorId,
+            entry.Kind.ToString(),
+            Volatile.Read(ref entry.CapturedCount),
+            Volatile.Read(ref entry.ReleasedCount),
+            true,
+            Volatile.Read(ref entry.Released) != 0);
+
+    private sealed class Entry(
+        string actorId,
+        ZLinkActorTransportOperationKind kind)
+    {
+        internal string ActorId { get; } = actorId;
+        internal ZLinkActorTransportOperationKind Kind { get; } = kind;
+        internal TaskCompletionSource Captured { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal int CapturedCount;
+        internal int ReleasedCount;
+        internal int Released;
     }
 }
 

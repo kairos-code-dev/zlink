@@ -14,24 +14,24 @@ inline constexpr const char *room_spot = "obs.room";
 inline constexpr const char *workflow_spot_mesh = "obs.workflow";
 inline constexpr const char *workflow_route_channel = "obs.workflow.route";
 inline constexpr const char *order_workflow_spot = "OrderWorkflowSpot";
-inline constexpr const char *spot_rid_metadata = "obs-spot-rid";
+inline constexpr const char *spot_id_metadata = "obs-spot-rid";
 
 struct obs_action_req_t
 {
     static constexpr const char *packet_name = "ObsActionReq";
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     int value = 0;
 };
 
 inline void to_json (nlohmann::json &json, const obs_action_req_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"marker", value.marker}, {"value", value.value}};
+    json = {{"spotId", value.spot_id}, {"marker", value.marker}, {"value", value.value}};
 }
 
 inline void from_json (const nlohmann::json &json, obs_action_req_t &value)
 {
-    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("spotId").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("value").get_to (value.value);
 }
@@ -39,19 +39,19 @@ inline void from_json (const nlohmann::json &json, obs_action_req_t &value)
 struct obs_action_res_t
 {
     static constexpr const char *packet_name = "ObsActionRes";
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     int value = 0;
 };
 
 inline void to_json (nlohmann::json &json, const obs_action_res_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"marker", value.marker}, {"value", value.value}};
+    json = {{"spotId", value.spot_id}, {"marker", value.marker}, {"value", value.value}};
 }
 
 inline void from_json (const nlohmann::json &json, obs_action_res_t &value)
 {
-    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("spotId").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("value").get_to (value.value);
 }
@@ -75,33 +75,33 @@ inline void from_json (const nlohmann::json &json, obs_unknown_req_t &value)
 
 struct create_room_req_t
 {
-    std::string spot_rid;
+    std::string spot_id;
 };
 
 inline void to_json (nlohmann::json &json, const create_room_req_t &value)
 {
-    json = {{"spotRid", value.spot_rid}};
+    json = {{"spotId", value.spot_id}};
 }
 
 inline void from_json (const nlohmann::json &json, create_room_req_t &value)
 {
-    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("spotId").get_to (value.spot_id);
 }
 
 struct create_room_res_t
 {
-    std::string spot_rid;
+    std::string spot_id;
     std::string state;
 };
 
 inline void to_json (nlohmann::json &json, const create_room_res_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"state", value.state}};
+    json = {{"spotId", value.spot_id}, {"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, create_room_res_t &value)
 {
-    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("spotId").get_to (value.spot_id);
     json.at ("state").get_to (value.state);
 }
 
@@ -209,19 +209,19 @@ inline void from_json (const nlohmann::json &json, actor_ping_res_t &value)
 struct projection_event_t
 {
     static constexpr const char *packet_name = "ObsProjectionEvent";
-    std::string spot_rid;
+    std::string spot_id;
     std::string marker;
     int applied = 0;
 };
 
 inline void to_json (nlohmann::json &json, const projection_event_t &value)
 {
-    json = {{"spotRid", value.spot_rid}, {"marker", value.marker}, {"applied", value.applied}};
+    json = {{"spotId", value.spot_id}, {"marker", value.marker}, {"applied", value.applied}};
 }
 
 inline void from_json (const nlohmann::json &json, projection_event_t &value)
 {
-    json.at ("spotRid").get_to (value.spot_rid);
+    json.at ("spotId").get_to (value.spot_id);
     json.at ("marker").get_to (value.marker);
     json.at ("applied").get_to (value.applied);
 }

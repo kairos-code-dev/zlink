@@ -1305,7 +1305,7 @@ spot = "user:play-a:spot-owner-order-sm-a4"
 
 def has(snapshot, marker, value=None, actor_id=None):
     return any(item["marker"] == marker
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and (value is None or item["value"] == value)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in snapshot["entries"])
@@ -1313,12 +1313,12 @@ def has(snapshot, marker, value=None, actor_id=None):
 values = [entry["value"]
           for entry in play_a["entries"]
           if entry["marker"] == "StateRouted"
-          and entry["spot_rid"] == spot]
+          and entry["spot_id"] == spot]
 assert has(play_a, "SpotInitialized")
 assert values == ["0", "7", "12"], values
 assert has(play_a, "SpotToSpotMsg", "sm-f1-command", "sm-c1-client")
 assert has(play_a, "SpotToSpotMsg", "sm-f2-command", "sm-c1-client")
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A1/A2/A4/F1/F2 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1395,7 +1395,7 @@ while time.monotonic() < deadline:
     with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
         last = json.loads(response.read().decode("utf-8"))
     if any(item["marker"] == "SpotStateCommand"
-           and item["spot_rid"] == target_spot
+           and item["spot_id"] == target_spot
            and item["value"] == expected_value
            for item in last["entries"]):
         break
@@ -1416,7 +1416,7 @@ send_value = f"sm-f6-send-sm-f6-cpp-{run_id}"
 
 def has(marker, value=None, actor_id=None):
     return any(item["marker"] == marker
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and (value is None or item["value"] == value)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in multi_b["entries"])
@@ -1525,7 +1525,7 @@ assert any(entry["marker"] == "EntryJoin"
            for entry in play_a["entries"])
 assert any(entry["marker"] == "ActorJoined"
            and entry["actor_id"] == "alice"
-           and entry["spot_rid"] == "user:play-a:a-room"
+           and entry["spot_id"] == "user:play-a:a-room"
            for entry in play_a["entries"])
 print("scenario SM-A1 evidence passed")
 PY
@@ -1549,7 +1549,7 @@ values = [entry["value"]
           for entry in play_a["entries"]
           if entry["marker"] == "StateMutated"
           and entry["actor_id"] == "alice"
-          and entry["spot_rid"] == "user:play-a:a-room"]
+          and entry["spot_id"] == "user:play-a:a-room"]
 assert len(values) == 4, values
 assert values[:2] == ["3", "7"], values
 assert values[-1] == "18", values
@@ -1579,10 +1579,10 @@ play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 spot = "user:play-a:sm-a3-route"
 assert any(entry["marker"] == "SpotToSpotRequest"
            and entry["actor_id"] == "sm-a3-client"
-           and entry["spot_rid"] == spot
+           and entry["spot_id"] == spot
            and entry["value"] == "route-direct"
            for entry in play_a["entries"])
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A3 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1607,10 +1607,10 @@ spot = "user:play-a:sm-a4-owner"
 values = [entry["value"]
           for entry in play_a["entries"]
           if entry["marker"] == "StateRouted"
-          and entry["spot_rid"] == spot]
+          and entry["spot_id"] == spot]
 assert len(values) == 2, values
 assert all(value == "0" for value in values), values
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A4 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1636,7 +1636,7 @@ spot = "user:play-a:sm-a5-stage"
 
 def has(snapshot, marker, value=None):
     return any(entry["marker"] == marker
-               and entry["spot_rid"] == spot
+               and entry["spot_id"] == spot
                and (value is None or entry["value"] == value)
                for entry in snapshot["entries"])
 
@@ -1645,7 +1645,7 @@ assert has(play_a, "StateRouted", "0")
 assert has(play_a, "StageRequest", "sm-a5-stage:9")
 assert has(play_a, "StageTimer", "sm-a5-stage-timer:1")
 assert has(play_a, "SpotClosing")
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A5 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1670,28 +1670,28 @@ life = "user:play-a:sm-a6-life"
 busy = "user:play-a:sm-a6-busy"
 initialized = [entry for entry in play_a["entries"]
                if entry["marker"] == "SpotInitialized"
-               and entry["spot_rid"] == life]
+               and entry["spot_id"] == life]
 closing = [entry for entry in play_a["entries"]
            if entry["marker"] == "SpotClosing"
-           and entry["spot_rid"] == life]
+           and entry["spot_id"] == life]
 closed = [entry for entry in play_a["entries"]
           if entry["marker"] == "SpotLifecycleClosed"
-          and entry["spot_rid"] == life
+          and entry["spot_id"] == life
           and entry["value"] == "closed"]
 assert len(initialized) == 1, initialized
 assert len(closing) == 1, closing
 assert len(closed) == 1, closed
 assert any(entry["marker"] == "ActorJoined"
            and entry["actor_id"] == "sm-a6-actor"
-           and entry["spot_rid"] == busy
+           and entry["spot_id"] == busy
            for entry in play_a["entries"])
 assert any(entry["marker"] == "SpotCloseRequested"
-           and entry["spot_rid"] == busy
+           and entry["spot_id"] == busy
            and entry["value"] == "not-closed"
            for entry in play_a["entries"])
-assert not any(entry["marker"] == "SpotClosing" and entry["spot_rid"] == busy
+assert not any(entry["marker"] == "SpotClosing" and entry["spot_id"] == busy
                for entry in play_a["entries"])
-assert not any(entry["spot_rid"] in (life, busy) for entry in play_b["entries"])
+assert not any(entry["spot_id"] in (life, busy) for entry in play_b["entries"])
 print("scenario SM-A6 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1715,14 +1715,14 @@ play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 spot = "user:play-a:sm-a7-mismatch"
 mismatches = [entry for entry in play_a["entries"]
               if entry["marker"] == "SpotTypeMismatch"
-              and entry["spot_rid"] == spot
+              and entry["spot_id"] == spot
               and entry["value"] == "user"]
 state_values = [entry["value"] for entry in play_a["entries"]
                 if entry["marker"] == "StateMutated"
-                and entry["spot_rid"] == spot]
+                and entry["spot_id"] == spot]
 assert len(mismatches) == 1, mismatches
 assert state_values == ["17", "17"], state_values
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A7 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1749,7 +1749,7 @@ entries = play_a["entries"]
 def indices(marker, value=None):
     result = []
     for index, entry in enumerate(entries):
-        if entry["marker"] != marker or entry["spot_rid"] != spot:
+        if entry["marker"] != marker or entry["spot_id"] != spot:
             continue
         if value is not None and entry["value"] != value:
             continue
@@ -1763,7 +1763,7 @@ assert len(started) == 1, started
 assert len(interleaved) == 1, interleaved
 assert len(completed) == 1, completed
 assert started[0] < interleaved[0] < completed[0], (started, interleaved, completed)
-assert not any(entry["spot_rid"] == spot for entry in play_b["entries"])
+assert not any(entry["spot_id"] == spot for entry in play_b["entries"])
 print("scenario SM-A8 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -1794,16 +1794,16 @@ for marker in markers:
                if entry["marker"] == marker
                and entry["actor_id"] == actor
                and (marker in ("ActorCreated", "EntryActorJoined")
-                    or entry["spot_rid"] == spot)]
+                    or entry["spot_id"] == spot)]
     assert len(matches) == 1, (marker, matches)
     indices.append(matches[0])
 assert indices == sorted(indices), indices
 assert any(entry["marker"] == "StateMutated"
            and entry["actor_id"] == actor
-           and entry["spot_rid"] == spot
+           and entry["spot_id"] == spot
            and entry["value"] == "1"
            for entry in play_a["entries"])
-assert not any(entry["actor_id"] == actor or entry["spot_rid"] == spot
+assert not any(entry["actor_id"] == actor or entry["spot_id"] == spot
                for entry in play_b["entries"])
 print("scenario SM-B1 evidence passed")
 PY
@@ -1835,21 +1835,21 @@ for marker in markers:
     matches = [index for index, item in enumerate(play_b["entries"])
                if item["marker"] == marker
                and item["actor_id"] == actor
-               and (item["spot_rid"] == entry or item["spot_rid"] == spot)]
+               and (item["spot_id"] == entry or item["spot_id"] == spot)]
     assert len(matches) == 1, (marker, matches)
     indices.append(matches[0])
 assert indices == sorted(indices), indices
 assert any(item["marker"] == "EntryJoin"
            and item["actor_id"] == actor
-           and item["spot_rid"] == entry
+           and item["spot_id"] == entry
            and item["value"] == "b-sm-b2-remote"
            for item in play_b["entries"])
 assert any(item["marker"] == "StateMutated"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "2"
            for item in play_b["entries"])
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_a["entries"])
 print("scenario SM-B2 evidence passed")
 PY
@@ -1881,21 +1881,21 @@ for marker in markers:
     matches = [index for index, item in enumerate(play_a["entries"])
                if item["marker"] == marker
                and item["actor_id"] == actor
-               and (item["spot_rid"] == entry or item["spot_rid"] == spot)]
+               and (item["spot_id"] == entry or item["spot_id"] == spot)]
     assert len(matches) == 1, (marker, matches)
     indices.append(matches[0])
 assert indices == sorted(indices), indices
 assert any(item["marker"] == "EntryJoin"
            and item["actor_id"] == actor
-           and item["spot_rid"] == entry
+           and item["spot_id"] == entry
            and item["value"] == "sm-b3-complex"
            for item in play_a["entries"])
 assert any(item["marker"] == "ActorComplex"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "Ada Lovelace|42|analyst|west"
            for item in play_a["entries"])
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_b["entries"])
 print("scenario SM-B3 evidence passed")
 PY
@@ -1919,7 +1919,7 @@ play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 actor = "sm-b4-remote"
 spot = "user:play-b:b-sm-b4-remote"
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_a["entries"])
 assert any(item["marker"] == "RemoteActorRequestSent"
            and item["actor_id"] == actor
@@ -1938,13 +1938,13 @@ assert any(item["marker"] == "EntryJoin"
            for item in play_b["entries"])
 assert any(item["marker"] == "ActorJoined"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "b-sm-b4-remote"
            for item in play_b["entries"])
 state = [index for index, item in enumerate(play_b["entries"])
          if item["marker"] == "StateMutated"
          and item["actor_id"] == actor
-         and item["spot_rid"] == spot
+         and item["spot_id"] == spot
          and item["value"] == "14"]
 assert len(state) == 1, state
 print("scenario SM-B4 evidence passed")
@@ -1973,9 +1973,9 @@ actor = "sm-b5-missing"
 spot = "user:play-a:sm-b5-missing"
 assert any(item["marker"] == "ActorJoined"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            for item in play_a["entries"])
-assert not any((item["actor_id"] == actor or item["spot_rid"] == spot)
+assert not any((item["actor_id"] == actor or item["spot_id"] == spot)
                for item in play_b["entries"])
 print("scenario SM-B5 evidence passed")
 PY
@@ -2040,7 +2040,7 @@ def count(snapshot, marker, actor):
 def has(snapshot, marker, actor, spot=None):
     return any(item["marker"] == marker
                and item["actor_id"] == actor
-               and (spot is None or item["spot_rid"] == spot)
+               and (spot is None or item["spot_id"] == spot)
                for item in snapshot["entries"])
 
 assert count(play_a, "ActorLeft", left) == 1
@@ -2095,13 +2095,13 @@ entry = "play-a"
 spot = "user:play-a:sm-b7-order"
 entries = play_a["entries"]
 
-def first_index(marker, spot_rid=None, value=None):
+def first_index(marker, spot_id=None, value=None):
     matches = [index for index, item in enumerate(entries)
                if item["marker"] == marker
                and item["actor_id"] == actor
-               and (spot_rid is None or item["spot_rid"] == spot_rid)
+               and (spot_id is None or item["spot_id"] == spot_id)
                and (value is None or item["value"] == value)]
-    assert len(matches) == 1, (marker, spot_rid, value, matches)
+    assert len(matches) == 1, (marker, spot_id, value, matches)
     return matches[0]
 
 created = first_index("ActorCreated", entry)
@@ -2112,7 +2112,7 @@ first_ping = first_index("ActorPing", spot, "order-1:1")
 second_ping = first_index("ActorPing", spot, "order-2:2")
 assert [created, entry_joined, joined, joined_callback, first_ping, second_ping] == sorted(
     [created, entry_joined, joined, joined_callback, first_ping, second_ping])
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_b["entries"])
 print("scenario SM-B7 evidence passed")
 PY
@@ -2157,11 +2157,11 @@ actor = "actor-sm-b8-destroy"
 entry = "play-a"
 entries = play_a["entries"]
 
-def indexes(marker, spot_rid=None, value=None):
+def indexes(marker, spot_id=None, value=None):
     return [index for index, item in enumerate(entries)
             if item["marker"] == marker
             and item["actor_id"] == actor
-            and (spot_rid is None or item["spot_rid"] == spot_rid)
+            and (spot_id is None or item["spot_id"] == spot_id)
             and (value is None or item["value"] == value)]
 
 created = indexes("ActorCreated", entry)
@@ -2172,7 +2172,7 @@ assert len(joined) == 1, joined
 assert len(destroyed) == 1, destroyed
 assert created[0] < joined[0] < destroyed[0]
 assert not indexes("EntryActorPing", entry, "after-destroy:1")
-assert not any(item["actor_id"] == actor or item["spot_rid"] == entry
+assert not any(item["actor_id"] == actor or item["spot_id"] == entry
                for item in play_b["entries"])
 assert any(item["marker"] == "StreamUnbound" and item["actor_id"] == actor
            for item in session_a["entries"])
@@ -2219,21 +2219,21 @@ checks = [
 for snapshot, spot, actor in checks:
     rejected = actor + "-rejected"
     assert any(item["marker"] == "SpotActorJoinAdmitted"
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and item["actor_id"] == actor
                and item["value"] == "allowed"
                for item in snapshot["entries"])
     assert any(item["marker"] == "SpotActorJoined"
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and item["actor_id"] == actor
                for item in snapshot["entries"])
     assert any(item["marker"] == "SpotActorJoinRejected"
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and item["actor_id"] == rejected
                and item["value"] == "capacity"
                for item in snapshot["entries"])
     assert not any(item["marker"] == "SpotActorJoined"
-                   and item["spot_rid"] == spot
+                   and item["spot_id"] == spot
                    and item["actor_id"] == rejected
                    for item in snapshot["entries"])
 print("scenario SM-B9 evidence passed")
@@ -2278,7 +2278,7 @@ entries = play_a["entries"]
 
 def has(marker, value=None, actor_id=None):
     return any(item["marker"] == marker
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and (value is None or item["value"] == value)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in entries)
@@ -2288,7 +2288,7 @@ assert has("SpotToSpotRequest", "sm-c1-request", "sm-c1-client")
 assert has("SpotToSpotMsg", "sm-c1-send", "sm-c1-client")
 assert has("MeshMsgReceived", "evt-sm-c1:sm-c1-publish")
 assert has("SpotToSpotRequest", "sm-c1-after-timeout", "sm-c1-client")
-assert not any(item["spot_rid"] == spot for item in play_b["entries"])
+assert not any(item["spot_id"] == spot for item in play_b["entries"])
 print("scenario SM-C1 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
@@ -2332,20 +2332,20 @@ play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 spot = "user:play-b:sm-c2-outbound"
 
-def has(snapshot, marker, value=None, spot_rid=None):
+def has(snapshot, marker, value=None, spot_id=None):
     return any(item["marker"] == marker
                and (value is None or item["value"] == value)
-               and (spot_rid is None or item["spot_rid"] == spot_rid)
+               and (spot_id is None or item["spot_id"] == spot_id)
                for item in snapshot["entries"])
 
-assert has(play_b, "SpotInitialized", spot_rid=spot)
+assert has(play_b, "SpotInitialized", spot_id=spot)
 assert has(play_b, "SpotOutbound", "echo-sm-c2|notify-sm-c2|timeout=true", spot)
 assert has(play_b, "MeshMsgReceived", "evt-sm-c2:sm-c2-publish", spot)
 assert has(play_b, "SpotOutboundNegative", "requestFailed=true", spot)
 assert has(play_a, "ChannelEcho", "sm-c2")
 assert has(play_a, "ChannelMsg", "notify-sm-c2")
 assert has(play_a, "ChannelSlow", "sm-c2")
-assert not any(item["spot_rid"] == spot for item in play_a["entries"])
+assert not any(item["spot_id"] == spot for item in play_a["entries"])
 print("scenario SM-C2 evidence passed")
 PY
   grep -q "surface=channel.*reason=handler_missing.*action=reply_error.*packet=MissingChannelReq" \
@@ -2390,15 +2390,15 @@ play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 source = "user:play-b:sm-c3-source"
 target = "user:play-a:sm-c3-target"
 
-def has(snapshot, marker, value=None, spot_rid=None, actor_id=None):
+def has(snapshot, marker, value=None, spot_id=None, actor_id=None):
     return any(item["marker"] == marker
                and (value is None or item["value"] == value)
-               and (spot_rid is None or item["spot_rid"] == spot_rid)
+               and (spot_id is None or item["spot_id"] == spot_id)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in snapshot["entries"])
 
-assert has(play_b, "SpotInitialized", spot_rid=source)
-assert has(play_a, "SpotInitialized", spot_rid=target)
+assert has(play_b, "SpotInitialized", spot_id=source)
+assert has(play_a, "SpotInitialized", spot_id=target)
 assert has(play_b, "SpotToSpotOutbound",
            f"target={target}|value=sm-c3-direct:reply", source)
 assert has(play_a, "SpotToSpotRequest", "sm-c3-direct", target, source)
@@ -2451,18 +2451,18 @@ gateway = json.load(open(sys.argv[2], encoding="utf-8"))
 subscribed = "user:play-a:sm-c4-subscribed"
 unsubscribed = "user:play-a:sm-c4-unsubscribed"
 
-def count_event(spot_rid):
+def count_event(spot_id):
     return sum(1 for item in play_a["entries"]
                if item["marker"] == "MeshMsgReceived"
-               and item["spot_rid"] == spot_rid
+               and item["spot_id"] == spot_id
                and item["value"] == "evt-sm-c4:sm-c4-publish")
 
-assert any(item["marker"] == "SpotInitialized" and item["spot_rid"] == subscribed
+assert any(item["marker"] == "SpotInitialized" and item["spot_id"] == subscribed
            for item in play_a["entries"])
 assert count_event(subscribed) >= 1
 assert count_event(unsubscribed) == 0
 assert any(item["marker"] == "SpotPublish"
-           and item["spot_rid"] == subscribed
+           and item["spot_id"] == subscribed
            and item["value"] == "publisher=gateway|marker=sm-c4-publish"
            for item in gateway["entries"])
 assert not any(item["marker"] == "SpotInitialized" for item in gateway["entries"])
@@ -2501,7 +2501,7 @@ import sys
 
 play_b = json.load(open(sys.argv[1], encoding="utf-8"))
 assert any(item["marker"] == "MeshMsgReceived"
-           and item["spot_rid"] == "spot-sm-c5-target-cpp"
+           and item["spot_id"] == "spot-sm-c5-target-cpp"
            and item["value"] == "evt-sm-c3:sm-c3-publish-sm-c5-cpp"
            for item in play_b["entries"])
 print("scenario SM-C5 evidence passed")
@@ -2532,7 +2532,7 @@ spot = "user:play-b:b-room"
 
 def has(marker, value=None, actor_id=None, target_spot=spot):
     return any(item["marker"] == marker
-               and item["spot_rid"] == target_spot
+               and item["spot_id"] == target_spot
                and (value is None or item["value"] == value)
                and (actor_id is None or item["actor_id"] == actor_id)
                for item in play_b["entries"])
@@ -2701,15 +2701,15 @@ assert any(item["marker"] == "StreamBound"
            for item in session_a["entries"])
 assert any(item["marker"] == "ActorPing"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "local-relay:1"
            for item in play_a["entries"])
 assert any(item["marker"] == "ActorPushedSession"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "push-local"
            for item in play_a["entries"])
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_b["entries"])
 print("scenario SM-D1 evidence passed")
 PY
@@ -2762,15 +2762,15 @@ assert any(item["marker"] == "StreamBound"
            for item in session_a["entries"])
 assert any(item["marker"] == "ActorPing"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "remote-relay:1"
            for item in play_b["entries"])
 assert any(item["marker"] == "ActorPushedSession"
            and item["actor_id"] == actor
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "push-remote"
            for item in play_b["entries"])
-assert not any(item["actor_id"] == actor or item["spot_rid"] == spot
+assert not any(item["actor_id"] == actor or item["spot_id"] == spot
                for item in play_a["entries"])
 print("scenario SM-D2 evidence passed")
 PY
@@ -2820,7 +2820,7 @@ user_spot = "user:play-a:sm-d3-user"
 def has(snapshot, marker, actor, spot=None, value=None):
     return any(item["marker"] == marker
                and item["actor_id"] == actor
-               and (spot is None or item["spot_rid"] == spot)
+               and (spot is None or item["spot_id"] == spot)
                and (value is None or item["value"] == value)
                for item in snapshot["entries"])
 
@@ -2833,7 +2833,7 @@ assert has(play_a, "ActorPushedSession", user_actor, user_spot, "user-push")
 assert has(session_a, "StreamBound", entry_actor)
 assert has(session_a, "StreamBound", user_actor)
 assert not any(item["actor_id"] in (entry_actor, user_actor)
-               or item["spot_rid"] in (entry_spot, user_spot)
+               or item["spot_id"] in (entry_spot, user_spot)
                for item in play_b["entries"])
 print("scenario SM-D3 evidence passed")
 PY
@@ -2892,7 +2892,7 @@ assert has(play_a, "EntryActorPushedSession", first, "push-x")
 assert has(play_a, "EntryActorPushedSession", second, "push-y")
 assert has(session_a, "StreamBound", first)
 assert has(session_a, "StreamBound", second)
-assert not any(item["actor_id"] in (first, second) or item["spot_rid"] == entry
+assert not any(item["actor_id"] in (first, second) or item["spot_id"] == entry
                for item in play_b["entries"])
 print("scenario SM-D4 evidence passed")
 PY
@@ -2963,9 +2963,9 @@ assert count(play_b, "ActorLeft", remote) == 0
 assert sum(1 for item in session_a["entries"]
            if item["marker"] == "StreamDisconnected") == 3
 assert not any(item["actor_id"] in (single, notified, muted)
-               or item["spot_rid"] in (single_spot, notified_spot, muted_spot)
+               or item["spot_id"] in (single_spot, notified_spot, muted_spot)
                for item in play_b["entries"])
-assert not any(item["actor_id"] == remote or item["spot_rid"] == remote_spot
+assert not any(item["actor_id"] == remote or item["spot_id"] == remote_spot
                for item in play_a["entries"])
 print("scenario SM-D5 evidence passed")
 PY
@@ -3551,13 +3551,13 @@ import sys
 play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 
-def has(snapshot, marker, spot_rid=None):
+def has(snapshot, marker, spot_id=None):
     return any(item["marker"] == marker
-               and (spot_rid is None or item["spot_rid"] == spot_rid)
+               and (spot_id is None or item["spot_id"] == spot_id)
                for item in snapshot["entries"])
 
 assert has(play_b, "SpotInitialized", "user:play-b:sm-e1-missing")
-assert not any(item["spot_rid"] == "user:play-b:sm-e1-missing" for item in play_a["entries"])
+assert not any(item["spot_id"] == "user:play-b:sm-e1-missing" for item in play_a["entries"])
 print("scenario SM-E1 evidence passed")
 PY
   grep -q "surface=spot_route.*reason=handler_missing.*action=reply_error.*packet=MissingSpotReq" \
@@ -3594,10 +3594,10 @@ import sys
 
 play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 spot = "user:play-a:sm-e2-timer"
-assert any(item["marker"] == "SpotInitialized" and item["spot_rid"] == spot
+assert any(item["marker"] == "SpotInitialized" and item["spot_id"] == spot
            for item in play_a["entries"])
 assert any(item["marker"] == "SpotTimerTick"
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "sm-e2-tick:1"
            for item in play_a["entries"])
 print("scenario SM-E2 evidence passed")
@@ -3633,10 +3633,10 @@ import sys
 play_a = json.load(open(sys.argv[1], encoding="utf-8"))
 spot = "user:play-a:sm-e3-idle"
 assert any(item["marker"] == "SpotIdleTimerClosed"
-           and item["spot_rid"] == spot
+           and item["spot_id"] == spot
            and item["value"] == "sm-e3-idle:closed=true"
            for item in play_a["entries"])
-assert any(item["marker"] == "SpotClosing" and item["spot_rid"] == spot
+assert any(item["marker"] == "SpotClosing" and item["spot_id"] == spot
            for item in play_a["entries"])
 print("scenario SM-E3 evidence passed")
 PY
@@ -3685,23 +3685,23 @@ def field(value, key):
 for spot, name in cases.items():
     entries = [item for item in play_a["entries"]
                if item["marker"] == "SpotTimerOverrun"
-               and item["spot_rid"] == spot
+               and item["spot_id"] == spot
                and item["value"].startswith(name + "|")]
     assert len(entries) >= 3, (spot, name, entries)
 
 skip_entries = [item for item in play_a["entries"]
                 if item["marker"] == "SpotTimerOverrun"
-                and item["spot_rid"] == "user:play-a:sm-e4-skip"]
+                and item["spot_id"] == "user:play-a:sm-e4-skip"]
 assert any(field(item["value"], "skipped") > 0 for item in skip_entries)
 
 catch_entries = [item for item in play_a["entries"]
                  if item["marker"] == "SpotTimerOverrun"
-                 and item["spot_rid"] == "user:play-a:sm-e4-catch"]
+                 and item["spot_id"] == "user:play-a:sm-e4-catch"]
 assert any(field(item["value"], "skipped") > 0 for item in catch_entries)
 
 delay_entries = [item for item in play_a["entries"]
                  if item["marker"] == "SpotTimerOverrun"
-                 and item["spot_rid"] == "user:play-a:sm-e4-delay"][:3]
+                 and item["spot_id"] == "user:play-a:sm-e4-delay"][:3]
 assert all(field(item["value"], "skipped") == 0
            and field(item["value"], "delivery") == field(item["value"], "scheduled")
            for item in delay_entries)
@@ -3746,9 +3746,9 @@ play_b = json.load(open(sys.argv[2], encoding="utf-8"))
 first_spot = "user:play-a:sm-g2-owner"
 remapped_spot = "user:play-b:sm-g2-owner"
 
-def has(snapshot, marker, spot_rid, value=None):
+def has(snapshot, marker, spot_id, value=None):
     return any(item["marker"] == marker
-               and item["spot_rid"] == spot_rid
+               and item["spot_id"] == spot_id
                and (value is None or item["value"] == value)
                for item in snapshot["entries"])
 
@@ -3756,8 +3756,8 @@ assert has(play_a, "SpotInitialized", first_spot)
 assert has(play_b, "SpotInitialized", remapped_spot)
 assert has(play_a, "SpotToSpotRequest", first_spot, "sm-g2-before-remap")
 assert has(play_b, "SpotToSpotRequest", remapped_spot, "sm-g2-after-remap")
-assert not any(item["spot_rid"] == remapped_spot for item in play_a["entries"])
-assert not any(item["spot_rid"] == first_spot for item in play_b["entries"])
+assert not any(item["spot_id"] == remapped_spot for item in play_a["entries"])
+assert not any(item["spot_id"] == first_spot for item in play_b["entries"])
 print("scenario SM-G2 evidence passed")
 PY
   echo "spot-service e2e result=passed"
@@ -3799,11 +3799,11 @@ session_a = json.load(open(sys.argv[2], encoding="utf-8"))
 spot = "user:play-a:sm-g3-concurrent"
 actors = ["actor-sm-g3-0", "actor-sm-g3-1"]
 
-def count(snapshot, marker, actor_id, spot_rid=None):
+def count(snapshot, marker, actor_id, spot_id=None):
     return sum(1 for item in snapshot["entries"]
                if item["marker"] == marker
                and item["actor_id"] == actor_id
-               and (spot_rid is None or item["spot_rid"] == spot_rid))
+               and (spot_id is None or item["spot_id"] == spot_id))
 
 for actor in actors:
     assert count(play_a, "ActorJoined", actor, spot) == 1

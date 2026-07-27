@@ -16,13 +16,12 @@ internal sealed class BindAwaitActorsControlHandler(
 {
     public async ValueTask<BindAwaitActorsRes> HandleAsync(
         BindAwaitActorsReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
-        await spots.GetOrCreateAsync<AwaitProbeSpot>(
-            RoutingId.From(request.SpotRid),
-            cancellationToken);
+        await spots.GetOrCreate(request.SpotRid, AutomaticTurnDispatchNames.SpotType)
+            .Async(cancellationToken);
         var bindings = new List<AwaitActorBinding>();
         foreach (var actorId in request.ActorIds)
         {
@@ -35,11 +34,11 @@ internal sealed class BindAwaitActorsControlHandler(
             };
             evidence.Add(
                 $"bind-actor|rid={node.Rid}|spot={request.SpotRid}|actor={actor.ActorId}"
-                + $"|generation={actor.Generation}");
+                + $"|generation={actor.ObjectGeneration}");
             bindings.Add(new AwaitActorBinding(
                 actor.ActorId,
                 actor.NodeRid.ToString(),
-                actor.Generation));
+                actor.ObjectGeneration));
         }
 
         return new BindAwaitActorsRes(request.SpotRid, bindings.ToArray());
@@ -53,13 +52,12 @@ internal sealed class EnsureSpotControlHandler(
 {
     public async ValueTask<EnsureSpotRes> HandleAsync(
         EnsureSpotReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
-        await spots.GetOrCreateAsync<AwaitProbeSpot>(
-            RoutingId.From(request.SpotRid),
-            cancellationToken);
+        await spots.GetOrCreate(request.SpotRid, AutomaticTurnDispatchNames.SpotType)
+            .Async(cancellationToken);
         return new EnsureSpotRes(request.SpotRid, node.Rid);
     }
 }
@@ -69,7 +67,7 @@ internal sealed class AwaitEvidenceControlHandler(EvidenceStore evidence)
 {
     public ValueTask<AwaitEvidenceRes> HandleAsync(
         AwaitEvidenceReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;
@@ -83,7 +81,7 @@ internal sealed class AwaitEvidenceWaitControlHandler(EvidenceStore evidence)
 {
     public async ValueTask<AwaitEvidenceRes> HandleAsync(
         AwaitEvidenceWaitReq request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

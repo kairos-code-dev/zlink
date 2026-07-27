@@ -8,7 +8,7 @@ export interface ZLinkLocationOptions {
   routingIdFencingMarginMs(value: number): this;
   ownerLeaseRenewTimeoutMs(value: number): this;
   routeCacheMaxAgeMs(value: number): this;
-  relocationForwardingWindowMs(value: number): this;
+  messageFollowDurationMs(value: number): this;
   maxActiveOutboundRelocations(value: number): this;
   maxActiveInboundRelocations(value: number): this;
   maxConcurrentRelocationCaptures(value: number): this;
@@ -30,7 +30,7 @@ export const zlinkRuntimeDefaultLocationOptions: Readonly<
   routingIdFencingMarginMs: 5000,
   ownerLeaseRenewTimeoutMs: 3000,
   routeCacheMaxAgeMs: 15000,
-  relocationForwardingWindowMs: 30000,
+  messageFollowDurationMs: 30000,
   maxActiveOutboundRelocations: 64,
   maxActiveInboundRelocations: 64,
   maxConcurrentRelocationCaptures: 8,

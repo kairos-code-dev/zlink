@@ -357,33 +357,36 @@ reservation이나 Ready commit 완료를 뜻하지 않는다. Request는 resolve
 terminal-once로 완료한다. Target queue admission 뒤의
 failure를 current owner를 다시 찾아 hidden retry하지 않는다.
 
-## 6. Route cache와 stale-route forwarding
+## 6. Route cache와 Message Follow
 
-`RouteCacheMaxAge`의 기본값은 15초이고 `RelocationForwardingWindow`의 기본값은 30초다. 둘 다 0이면 각각
-cache와 forwarding을 끈다. 두 값이 양수이면 cache max age가 forwarding window보다 최소 5초 작아야 한다.
+`RouteCacheMaxAge`의 기본값은 15초이고 `MessageFollowDuration`의 기본값은 30초다. 둘 다 0이면 각각
+cache와 Message Follow를 끈다. 두 값이 양수이면 cache max age가 Message Follow duration보다 최소 5초 작아야 한다.
 Runtime 변경은 새 cache entry와 새 relocation에만 적용한다.
 
-Relocation commit 뒤 source는 committed source→target mapping만 사용해 stale physical route를 relay한다. Relay
-중 Store를 읽거나 application handler를 실행하지 않는다. Mapping은 Spot ID, [ObjectGeneration](01-glossary.ko.md#objectgeneration), source와
+Relocation commit 뒤 source는 commit된 source→target Message Follow route만 사용해 이전
+physical route로 도착한 message를 current owner에 전달한다. Message Follow 중에는 Store를
+읽거나 application handler를 실행하지 않는다. Message Follow route는 Spot ID,
+[ObjectGeneration](01-glossary.ko.md#objectgeneration), source와
 target AuthorityOwnerGeneration과 owner fence를 exact 검증한다. Target owner generation은 hop마다 증가하며
 최대 8 hops다.
 
-Mapping 하나의 대기열은 1024 messages와 16 MiB 이하이며 negotiated message bound도 지킨다. Relay는 original
-operation ID, generation, payload와 reply route를 보존한다. Mapping 없음·만료, generation mismatch, loop 또는
-bound 초과는 stale-route 오류로 끝난다. Failed application operation을 Store에서 찾은 owner에게 다시
+Message Follow route 하나의 대기열은 1024 messages와 16 MiB 이하이며 negotiated message
+bound도 지킨다. Message Follow는 original operation ID, generation, payload와 reply route를
+보존한다. Route 없음·만료, generation mismatch, loop 또는 bound 초과는 stale-route 오류로
+끝난다. Failed application operation을 Store에서 찾은 owner에게 다시
 제출하지 않으며 다음 call만 fresh resolve를 수행한다.
 
-`SpotWide` User Spot relocation은 Spot과 member Actor의 mapping을 같은 aggregate
-commit에서 설치한다. 개별 participant mapping을 commit 전에 current route로
+`SpotWide` User Spot relocation은 Spot과 member Actor의 Message Follow route를 같은
+aggregate commit에서 설치한다. 개별 participant route를 commit 전에 current route로
 공개하지 않는다.
 
-`PerActor` User Spot relocation은 Spot mapping과 Actor mapping을 분리한다. Spot
+`PerActor` User Spot relocation은 Spot과 Actor의 Message Follow route를 분리한다. Spot
 authority commit 뒤 `ToSpot`, Actor Create와 Join은 target으로 보낸다. 아직
 source에 남은 Actor의 `ToActor` route는 해당 Actor의 current owner를 계속 가리킨다.
-Actor가 이전될 때마다 Actor별 source→target mapping을 설치한다.
+Actor가 이전될 때마다 Actor별 source→target Message Follow route를 설치한다.
 
 Relocation unit을 seal한 뒤 source route로 도착한 ingress는 bounded hold에 넣고 application handler를 실행하지
-않는다. Owner commit 전 abort에서는 source queue에 arrival order로 복원하고, commit 뒤에는 stale-route mapping과
+않는다. Owner commit 전 abort에서는 source queue에 arrival order로 복원하고, commit 뒤에는 Message Follow route와
 같은 operation ID·generation·reply route를 유지해 target으로 relay한다. Permit을 기다리는 `Relocating` unit은 seal된
 상태가 아니므로 기존 [owner route](01-glossary.ko.md#owner-route)에서 application message와 timer를 계속 수락한다.
 
@@ -444,7 +447,7 @@ registration·pending tick은 relocation payload에 포함하며 target Framewor
 Actor와 함께 이전하고 Spot-level application timer는 이전하지 않는다.
 
 Original send·request를 maintenance target에 새 operation으로 자동 재제출하지
-않지만 seal 뒤 source ingress hold는 commit된 mapping으로 relay한다.
+않지만 seal 뒤 source ingress hold는 commit된 Message Follow route로 relay한다.
 
 ## 9. 실패와 관측
 
@@ -456,7 +459,7 @@ Original send·request를 maintenance target에 새 operation으로 자동 재�
 - Expired owner는 신규 message·timer admission과 location update를 수행할 수 없다.
 
 관측 정보는 global Spot ID, current [MeshName](01-glossary.ko.md#meshname), ObjectGeneration, resolve·cache 결과, creation attempt,
-cold activation·close·maintenance operation kind, forwarding hop·drop과 stale 분류를 구분한다. Spot ID는 metric
+cold activation·close·maintenance operation kind, Message Follow hop·drop과 stale 분류를 구분한다. Spot ID는 metric
 label로 사용하지 않는다.
 
 ## 10. 구현 및 contract test 검증 요구
@@ -486,11 +489,11 @@ label로 사용하지 않는다.
 - Store의 현재 authority와 일치하지 않는 local Instance에는 message를 전달하지
   않는다. 생성 권한을 얻지 못한 target은 별도 instance를 만들지 않는다.
 - Missing, Creating과 Store failure를 negative cache하지 않는다.
-- Forwarding이 committed mapping과 bounded queue만 사용하고 operation identity를 보존한다.
+- Message Follow가 committed route와 bounded queue만 사용하고 operation identity를 보존한다.
 - Close가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.
 - User Spot Close가 active membership을 숨겨서 정리하지 않는다.
 - Remote User Spot Close가 exact `SpotRef`, owner generation, `StoreVersion`과 target
   lifecycle을 command 48에 고정하고 Location row 조회나 application control packet을
   completion으로 사용하지 않는다.
-- C++, .NET, JVM과 Node.js가 create 경쟁, logical messaging, cold activation, close와 stale forwarding에서 같은
+- C++, .NET, JVM과 Node.js가 create 경쟁, logical messaging, cold activation, close와 Message Follow에서 같은
   terminal 결과를 제공한다.

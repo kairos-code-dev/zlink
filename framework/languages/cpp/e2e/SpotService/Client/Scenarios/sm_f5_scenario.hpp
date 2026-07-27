@@ -25,11 +25,11 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
                     .timeout (std::chrono::milliseconds (3000))
                     .build ();
     const auto spot_key = std::string ("b-sm-f5-close");
-    const auto target_spot = user_spot_rid_for_key (spot_key);
+    const auto target_spot = user_spot_id_for_key (spot_key);
 
     auto create =
       play_b.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = target_spot})
+        .body (create_spot_req_t{.spot_id = target_spot})
         .submit_raw ()
         .result ();
     if (!create || create.value ().status >= 400) {
@@ -37,7 +37,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
     }
     const auto create_reply =
       nlohmann::json::parse (create.value ().body).get<create_spot_res_t> ();
-    if (!create_reply.created || create_reply.spot_rid != target_spot
+    if (!create_reply.created || create_reply.spot_id != target_spot
         || create_reply.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-F5 target Spot create reply mismatch");
     }
@@ -63,7 +63,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
     auto before_close =
       play.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = target_spot,
+                                       .spot_id = target_spot,
                                        .value = "spot-before-close-f5",
                                        .source_actor_id = "external-client"})
         .submit_raw ()
@@ -87,14 +87,14 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
     }
     const auto close_reply =
       nlohmann::json::parse (close.value ().body).get<close_spot_res_t> ();
-    if (!close_reply.closed || close_reply.spot_rid != target_spot) {
+    if (!close_reply.closed || close_reply.spot_id != target_spot) {
         throw std::runtime_error ("SM-F5 target Spot was not closed");
     }
 
     auto after_close =
       play.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = target_spot,
+                                       .spot_id = target_spot,
                                        .value = "spot-after-close-f5",
                                        .source_actor_id = "external-client"})
         .submit_raw ()

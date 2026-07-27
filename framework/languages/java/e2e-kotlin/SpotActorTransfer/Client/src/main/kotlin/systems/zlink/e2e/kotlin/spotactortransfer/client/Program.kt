@@ -5,7 +5,10 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
+import java.util.Properties
 import java.util.UUID
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -13,7 +16,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import systems.zlink.e2e.spotactortransfer.shared.Contracts
-import systems.zlink.e2e.spotactortransfer.shared.Env
 import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.stream.connector.ZLinkStreamCompression
@@ -22,20 +24,26 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver
 
-fun main() = runBlocking {
-    when (val scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all")) {
-        "ST-E1", "ST-E2" -> KotlinBoundSessionScenario(scenario).run()
-        else -> systems.zlink.e2e.spotactortransfer.client.Program.main()
+fun main(vararg args: String) = runBlocking {
+    require(args.size == 4 && args[0] == "--config" && args[2] == "--scenario") {
+        "Usage: spot-actor-transfer-kotlin-client --config <path> --scenario <selector>"
+    }
+    val scenario = args[3]
+    when (scenario) {
+        "ST-E1", "ST-E2" ->
+            KotlinBoundSessionScenario(scenario, loadOptions(args[1])).run()
+        else -> systems.zlink.e2e.spotactortransfer.client.Program.main(*args)
     }
 }
 
 private class KotlinBoundSessionScenario(
     private val scenario: String,
+    private val options: Properties,
 ) {
     private val json = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
-    private val nodeA = Env.require("ZLINK_JAVA_E2E_NODE_A_HTTP")
-    private val nodeB = Env.require("ZLINK_JAVA_E2E_NODE_B_HTTP")
+    private val nodeA = options.required("nodeAHttpEndpoint")
+    private val nodeB = options.required("nodeBHttpEndpoint")
 
     suspend fun run() {
         if (scenario == "ST-E1") {
@@ -152,7 +160,7 @@ private class KotlinBoundSessionScenario(
 
     private fun connector() = ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
-            URI.create(Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT")),
+            URI.create(options.required("streamAEndpoint")),
             ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(10),
             2,
@@ -177,3 +185,11 @@ private class KotlinBoundSessionScenario(
     private fun id(prefix: String): String =
         "$prefix-${UUID.randomUUID().toString().replace("-", "")}"
 }
+
+private fun loadOptions(path: String): Properties = Properties().also { properties ->
+    Files.newInputStream(Path.of(path)).use(properties::load)
+}
+
+private fun Properties.required(name: String): String =
+    getProperty(name)?.takeIf(String::isNotBlank)
+        ?: error("$name is required")

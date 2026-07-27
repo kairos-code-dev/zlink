@@ -12,8 +12,7 @@ internal sealed record GatewayOptions(
     string RedisKeyPrefix,
     string RouterEndpoint,
     string StreamEndpoint,
-    string EvidenceFile,
-    string[] RoutePeers)
+    string EvidenceFile)
 {
     public static GatewayOptions Parse(string[] args)
         => E2eConfiguration.Load<GatewayOptions>(args);

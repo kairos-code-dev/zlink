@@ -10,7 +10,7 @@ public sealed class LocationContracts
     [Fact]
     public void Location_contract_excludes_compatibility_lease_and_slot_allocation_surface()
     {
-        var assembly = typeof(IZLinkLocationStore).Assembly;
+        var assembly = typeof(IZLinkLocationRepository).Assembly;
         Assert.Null(assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkRoutingIdSlotAllocationStore"));
         Assert.Null(assembly.GetType(
@@ -33,19 +33,12 @@ public sealed class LocationContracts
         Assert.DoesNotContain("ListOwnerLeasesAsync", publicMethodNames);
         Assert.DoesNotContain("RemoveOwnerLeaseAsync", publicMethodNames);
 
-        var renew = Assert.Single(publicMethods.Where(
-            static method => method.Name == nameof(
-                IZLinkLocationStore.RenewOwnerLeaseAsync)));
-        Assert.Equal(
-            typeof(ZLinkLocationOwnerToken),
-            renew.GetParameters()[0].ParameterType);
-
-        var release = Assert.Single(publicMethods.Where(
-            static method => method.Name == nameof(
-                IZLinkLocationStore.ReleaseOwnerLeaseAsync)));
-        Assert.Equal(
-            typeof(ZLinkLocationOwnerToken),
-            release.GetParameters()[0].ParameterType);
+        Assert.DoesNotContain(
+            publicMethodNames,
+            name => name.Contains("OwnerLease", StringComparison.Ordinal)
+                    || name.Contains("Authority", StringComparison.Ordinal)
+                    || name.Contains("Aggregate", StringComparison.Ordinal)
+                    || name.Contains("Capacity", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -57,10 +50,9 @@ public sealed class LocationContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Location_store_combines_authority_and_owner_lease_transaction_domain()
     {
-        var assembly = typeof(IZLinkLocationStore).Assembly;
+        var assembly = typeof(IZLinkLocationRepository).Assembly;
         Assert.Null(assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkAuthorityStore"));
         Assert.Null(assembly.GetType(
@@ -73,25 +65,18 @@ public sealed class LocationContracts
             "Zlink.Framework.Contracts.Locations.IZLinkFanoutLocationStore"));
         Assert.Null(assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkLocationChangeStampStore"));
-        Assert.Equal(
-            new[]
-            {
-                nameof(IZLinkLocationStore),
-                nameof(IZLinkRelocationStore)
-            },
+        Assert.Empty(
             assembly.GetExportedTypes()
                 .Where(static type =>
                     type.IsInterface
                     && type.Namespace == "Zlink.Framework.Contracts.Locations"
                     && type.Name.EndsWith("Store", StringComparison.Ordinal))
-                .Select(static type => type.Name)
-                .Order(StringComparer.Ordinal)
                 .ToArray());
         Assert.Contains(
-            typeof(IZLinkLocationStore).GetMethods(),
-            static method => method.Name == nameof(IZLinkLocationStore.CompareExchangeAuthorityAsync));
+            typeof(IZLinkLocationRepository).GetMethods(),
+            static method => method.Name == nameof(IZLinkLocationRepository.CompareExchangeAuthorityAsync));
         Assert.DoesNotContain(
-            typeof(IZLinkLocationStore).GetMethods(),
+            typeof(IZLinkLocationRepository).GetMethods(),
             static method => method.Name.Contains(
                 "Preparing",
                 StringComparison.Ordinal));
@@ -115,26 +100,25 @@ public sealed class LocationContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task MeshNode_lists_are_paged_and_object_authority_is_opaque()
     {
         // One physical store registers for every role at once:
-        // AddLocationStore takes a single IZLinkLocationStore instance the
-        // way codecs take serializer instances — the framework surface
+        // AddLocationStore takes a single IZLinkLocationRepository instance the
+        // way codecs take serializer instances ??the framework surface
         // never names a concrete backend.
 
         var meshNodes = new ExampleMeshNodeLocationStore();
         await meshNodes.UpdateMeshNodeAsync(MakeDescriptor("owner-a"), ZLinkLocationWriteIntent.NewClaim);
 
         // Descriptor lists are one point-in-time snapshot per mesh by
-        // contract — reconcile diffs need one consistent list, never pages.
+        // contract ??reconcile diffs need one consistent list, never pages.
         var descriptors = await meshNodes.ListMeshNodesAsync(
             "play",
             new ZLinkPageRequest());
         Assert.Single(descriptors.Items);
 
         Assert.DoesNotContain(
-            typeof(IZLinkLocationStore).GetMethods(),
+            typeof(IZLinkLocationRepository).GetMethods(),
             static method => method.Name.Contains("Spot", StringComparison.Ordinal)
                              || method.Name.Contains("Actor", StringComparison.Ordinal));
 
@@ -142,18 +126,18 @@ public sealed class LocationContracts
         // authority surface. Object-specific projection stores are not part
         // of the public contract.
         Assert.DoesNotContain(
-            typeof(IZLinkLocationStore).GetMethods(),
+            typeof(IZLinkLocationRepository).GetMethods(),
             static method => method.Name is "ListSpotsAsync" or "ListActorsAsync");
-        Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
+        Assert.Null(typeof(IZLinkLocationRepository).Assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkInstanceSpotLocationStore"));
-        Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
+        Assert.Null(typeof(IZLinkLocationRepository).Assembly.GetType(
             "Zlink.Framework.Contracts.Locations.InstanceSpotLocation"));
     }
 
     [Fact]
     public void Object_and_mesh_routes_are_not_public_resolvers()
     {
-        var assembly = typeof(IZLinkLocationStore).Assembly;
+        var assembly = typeof(IZLinkLocationRepository).Assembly;
         Assert.Null(assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationResolver"));
         Assert.Null(assembly.GetType(
@@ -173,7 +157,7 @@ public sealed class LocationContracts
     [Fact]
     public void Runtime_location_projections_are_not_exported()
     {
-        var exportedTypeNames = typeof(IZLinkLocationStore).Assembly
+        var exportedTypeNames = typeof(IZLinkLocationRepository).Assembly
             .GetExportedTypes()
             .Select(static type => type.FullName)
             .ToHashSet(StringComparer.Ordinal);
@@ -188,8 +172,7 @@ public sealed class LocationContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkLocationRuntimeQuery),
-        typeof(IZLinkLocationReadiness),
-        typeof(IZLinkLocationStore))]
+        typeof(IZLinkLocationReadiness))]
     public async Task Runtime_query_reads_store_directly_and_change_stamp_is_optional()
     {
         var query = new ExampleLocationRuntimeQuery();

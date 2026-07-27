@@ -20,7 +20,7 @@ internal static class ZLinkActorHandoffIngress
                 var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
                 try
                 {
-                    if (ZLinkActorSessionForwarder.TryForward(
+                    if (ZLinkActorMessageFollowDispatcher.TryFollow(
                             runtime,
                             state,
                             frame.Actor,

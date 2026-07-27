@@ -28,12 +28,12 @@ inline multi_node_create_spot_res_t post_sm_q9_create (
 }
 
 inline state_res_t request_sm_q9_state (zlink::http_client::client_t &client,
-                                        const std::string &spot_rid,
+                                        const std::string &spot_id,
                                         int delta,
                                         const std::string &label)
 {
     auto raw = client.post ("/spot/state/request")
-                 .body (multi_node_state_route_req_t{.spot_rid = spot_rid, .delta = delta})
+                 .body (multi_node_state_route_req_t{.spot_id = spot_id, .delta = delta})
                  .submit_raw ()
                  .result ();
     if (raw && raw.value ().status < 400) {
@@ -57,12 +57,12 @@ inline evidence_snapshot_t fetch_sm_q9_evidence (zlink::http_client::client_t &c
 }
 
 inline int count_sm_q9_state_evidence (const evidence_snapshot_t &snapshot,
-                                       const std::string &spot_rid,
+                                       const std::string &spot_id,
                                        const std::string &value)
 {
     int count = 0;
     for (const auto &entry : snapshot.entries) {
-        if (entry.marker == "MultiStateRequest" && entry.spot_rid == spot_rid
+        if (entry.marker == "MultiStateRequest" && entry.spot_id == spot_id
             && entry.value == value) {
             ++count;
         }
@@ -98,7 +98,7 @@ inline void run_sm_q9_scenario (const std::string &multi_a_http_endpoint,
     constexpr auto spot_b = "spot-sm-q9-b-cpp";
 
     const auto created_a =
-      post_sm_q9_create (multi_a, multi_node_create_spot_req_t{.spot_rid = spot_a},
+      post_sm_q9_create (multi_a, multi_node_create_spot_req_t{.spot_id = spot_a},
                          "node A");
     const auto first_a = request_sm_q9_state (requester_a, spot_a, 11, "node A first");
     const auto direct_a = request_sm_q9_state (requester_a, spot_a, 0, "node A direct");
@@ -107,7 +107,7 @@ inline void run_sm_q9_scenario (const std::string &multi_a_http_endpoint,
     if (created_a.node_rid != "multi-a") {
         throw std::runtime_error ("SM-Q9 node A create reply node mismatch");
     }
-    if (first_a.value != 11 || direct_a.spot_rid != spot_a
+    if (first_a.value != 11 || direct_a.spot_id != spot_a
         || direct_a.owner_node_rid != "multi-a" || direct_a.value != 11) {
         throw std::runtime_error ("SM-Q9 node A route-to-spot reply mismatch");
     }
@@ -116,7 +116,7 @@ inline void run_sm_q9_scenario (const std::string &multi_a_http_endpoint,
     }
 
     const auto created_b =
-      post_sm_q9_create (multi_b, multi_node_create_spot_req_t{.spot_rid = spot_b},
+      post_sm_q9_create (multi_b, multi_node_create_spot_req_t{.spot_id = spot_b},
                          "node B");
     const auto first_b = request_sm_q9_state (requester_b, spot_b, 17, "node B first");
     const auto direct_b = request_sm_q9_state (requester_b, spot_b, 0, "node B direct");
@@ -125,7 +125,7 @@ inline void run_sm_q9_scenario (const std::string &multi_a_http_endpoint,
     if (created_b.node_rid != "multi-b") {
         throw std::runtime_error ("SM-Q9 node B create reply node mismatch");
     }
-    if (first_b.value != 17 || direct_b.spot_rid != spot_b
+    if (first_b.value != 17 || direct_b.spot_id != spot_b
         || direct_b.owner_node_rid != "multi-b" || direct_b.value != 17) {
         throw std::runtime_error ("SM-Q9 node B route-to-spot reply mismatch");
     }

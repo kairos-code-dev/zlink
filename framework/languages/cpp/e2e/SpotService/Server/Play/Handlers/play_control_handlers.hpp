@@ -29,12 +29,12 @@ class spot_lifecycle_handler_t
     e2e::lifecycle_res_t handle (const e2e::lifecycle_req_t &request,
                                  const zlink::framework::route_handler_context_t &)
     {
-        const auto rid = user_spot_rid (request.key);
+        const auto rid = user_spot_id (request.key);
         const auto created = _spots.get_or_create_spot (e2e::user_spot, rid, request);
         const auto closed = _spots.close_spot (rid).result ();
-        _state.record ("SpotLifecycleClosed", {}, std::string (rid.value ()),
+        _state.record ("SpotLifecycleClosed", {}, rid,
                        closed && closed.value () ? "closed" : "not-closed");
-        return {.spot_rid = std::string (created.spot_rid.value ()),
+        return {.spot_id = created.spot_id,
                 .created = created.state == zlink::framework::spot_create_state_t::created,
                 .closed = closed && closed.value ()};
     }
@@ -129,12 +129,12 @@ class create_spot_handler_t
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::create_spot_req_t> ();
-        const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+        const auto rid = (request.spot_id);
         const auto created = _spots.get_or_create_spot (e2e::user_spot, rid, request);
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::create_spot_res_t{
-                          .spot_rid = std::string (created.spot_rid.value ()),
+                          .spot_id = created.spot_id,
                           .owner_node_rid = _state.node_rid,
                           .created = created.state == zlink::framework::spot_create_state_t::created})
                           .dump ();
@@ -162,12 +162,12 @@ class create_alternate_spot_handler_t
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::create_spot_req_t> ();
-        const auto rid = zlink::framework::spot_rid_t::from_string (request.spot_rid);
+        const auto rid = (request.spot_id);
         const auto created = _spots.get_or_create_spot (e2e::alternate_spot, rid, request);
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::create_spot_res_t{
-                          .spot_rid = std::string (created.spot_rid.value ()),
+                          .spot_id = created.spot_id,
                           .owner_node_rid = _state.node_rid,
                           .created = created.state == zlink::framework::spot_create_state_t::created})
                           .dump ();
@@ -196,15 +196,15 @@ class lifecycle_spot_handler_t
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::lifecycle_req_t> ();
         const auto rid =
-          zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (request.key));
+          (e2e::user_spot_id_for_key (request.key));
         const auto created = _spots.get_or_create_spot (e2e::user_spot, rid, request);
         const auto closed = _spots.close_spot (rid).result ();
-        _state.record ("SpotLifecycleClosed", {}, std::string (rid.value ()),
+        _state.record ("SpotLifecycleClosed", {}, rid,
                        closed && closed.value () ? "closed" : "not-closed");
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (e2e::lifecycle_res_t{
-                          .spot_rid = std::string (created.spot_rid.value ()),
+                          .spot_id = created.spot_id,
                           .created = created.state == zlink::framework::spot_create_state_t::created,
                           .closed = closed && closed.value ()})
                           .dump ();
@@ -232,14 +232,14 @@ class close_spot_handler_t
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::close_spot_req_t> ();
         const auto rid =
-          zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (request.key));
+          (e2e::user_spot_id_for_key (request.key));
         const auto closed = _spots.close_spot (rid).result ();
-        _state.record ("SpotCloseRequested", {}, std::string (rid.value ()),
+        _state.record ("SpotCloseRequested", {}, rid,
                        closed && closed.value () ? "closed" : "not-closed");
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (
-                          e2e::close_spot_res_t{.spot_rid = std::string (rid.value ()),
+                          e2e::close_spot_res_t{.spot_id = rid,
                                                 .closed = closed && closed.value ()})
                           .dump ();
         return response;
@@ -269,7 +269,7 @@ class type_mismatch_spot_handler_t
     {
         const auto request = nlohmann::json::parse (http.body).get<e2e::type_mismatch_req_t> ();
         const auto rid =
-          zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (request.probe));
+          (e2e::user_spot_id_for_key (request.probe));
         const auto actor_id = "sm-a7-actor-" + request.probe;
         auto actor = _actors.get_or_create (e2e::actor_type, actor_id);
         if (!actor) {
@@ -346,7 +346,7 @@ class type_mismatch_spot_handler_t
                       observed.error () ? observed.error ()->what ()
                                         : "SM-A7 observe state failed");
                 }
-                _state.record ("SpotTypeMismatch", {}, std::string (rid.value ()), spot_name);
+                _state.record ("SpotTypeMismatch", {}, rid, spot_name);
 
                 zlink::framework::http_response_t response;
                 response.body = nlohmann::json (e2e::type_mismatch_res_t{

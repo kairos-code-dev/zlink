@@ -30,7 +30,7 @@ public sealed class ZLinkLocationOptions
         = TimeSpan.FromSeconds(3);
     public TimeSpan RouteCacheMaxAge { get; set; }
         = TimeSpan.FromSeconds(15);
-    public TimeSpan RelocationForwardingWindow { get; set; }
+    public TimeSpan MessageFollowDuration { get; set; }
         = TimeSpan.FromSeconds(30);
     public int MaxActiveOutboundRelocations { get; set; } = 64;
     public int MaxActiveInboundRelocations { get; set; } = 64;
@@ -53,8 +53,8 @@ OwnerLeaseRenewInterval + OwnerLeaseRenewTimeout
     < OwnerLeaseTtl - OwnerLeaseFencingMargin
 ```
 
-`RouteCacheMaxAge`와 `RelocationForwardingWindow`는 0 이상이다. 둘 다 양수이면 cache age가 forwarding
-window보다 최소 5초 작아야 한다. 0은 해당 기능을 끈다.
+`RouteCacheMaxAge`와 `MessageFollowDuration`은 0 이상이다. 둘 다 양수이면 cache age가 Message Follow
+duration보다 최소 5초 작아야 한다. 0은 해당 기능을 끈다.
 
 다섯 relocation 제한 option은 모두 양수다. Active outbound·inbound unit 기본 상한은 각각 64개,
 Capture·Restore callback 기본 상한은 각각 8개, process 전체 encoded payload in-flight 기본 상한은

@@ -74,6 +74,7 @@ export function decodeRemoteBoundSessionSealAck(payload: unknown): ZLinkRemoteBo
 
 export interface ZLinkRemoteBoundSessionOwnershipPayload {
   readonly actorId: string;
+  readonly meshName: string;
   readonly actorNodeRid: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
@@ -114,6 +115,7 @@ export function decodeRemoteBoundSessionOwnershipPayload(
     ((payload as { packetName?: unknown }).packetName !== undefined &&
       (payload as { packetName?: unknown }).packetName !== ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET) ||
     typeof (payload as { actorId?: unknown }).actorId !== 'string' ||
+    typeof (payload as { meshName?: unknown }).meshName !== 'string' ||
     typeof (payload as { actorNodeRid?: unknown }).actorNodeRid !== 'string' ||
     typeof (payload as { actorGeneration?: unknown }).actorGeneration !== 'string' ||
     typeof (payload as { previousActorOwnershipGeneration?: unknown }).previousActorOwnershipGeneration !== 'string' ||
@@ -130,6 +132,7 @@ export function decodeRemoteBoundSessionOwnershipPayload(
   }
   return {
     actorId: (payload as { actorId: string }).actorId,
+    meshName: (payload as { meshName: string }).meshName,
     actorNodeRid: (payload as { actorNodeRid: string }).actorNodeRid,
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: (payload as { actorGeneration: string }).actorGeneration,
@@ -193,6 +196,7 @@ export function decodeRemoteBoundSessionOwnershipAck(
 
 export function encodeRemoteBoundSessionSendPayload(input: {
   readonly actorId: string;
+  readonly actorMeshName?: string;
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
@@ -249,6 +253,7 @@ export function encodeRemoteBoundSessionErrorPayload(input: {
 
 export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   readonly actorId: string;
+  readonly actorMeshName?: string;
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
@@ -270,6 +275,7 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   }
   return {
     actorId: (payload as { actorId: string }).actorId,
+    actorMeshName: optionalString(payload, 'actorMeshName'),
     actorNodeRid: optionalString(payload, 'actorNodeRid'),
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: optionalString(payload, 'actorGeneration'),

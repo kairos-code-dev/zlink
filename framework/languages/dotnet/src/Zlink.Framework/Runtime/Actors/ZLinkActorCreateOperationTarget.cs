@@ -5,7 +5,7 @@ using Systems.Zlink.Framework.Runtime.Protocol;
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorOperationTarget(
-    IZLinkLocationStore authorityStore,
+    IZLinkLocationRepository authorityStore,
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendSpotNode node,
     string meshName,
@@ -29,7 +29,12 @@ internal sealed class ZLinkActorOperationTarget(
                 cancellationToken)
             .ConfigureAwait(false);
         if (replay is ZLinkCreationTerminalReadResult.Found retained)
-            return DecodeTerminal(retained.Record);
+        {
+            var retainedTerminal = DecodeTerminal(retained.Record);
+            await PublishCreatedActorAsync(operation, retainedTerminal, cancellationToken)
+                .ConfigureAwait(false);
+            return retainedTerminal;
+        }
 
         var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(operation.ActorId);
         var read = await authorityStore.ReadAuthorityAsync(key, cancellationToken)
@@ -147,14 +152,34 @@ internal sealed class ZLinkActorOperationTarget(
                 readyPayload,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (completed.Completion?.Result == ActorCreateResult.Created)
-            runtime.PublishReservedActor(operation.ActorId);
-        else
+        if (completed.Completion?.Result != ActorCreateResult.Created)
             await runtime.DiscardReservedActorAsync(
                     operation.ActorId,
                     CancellationToken.None)
                 .ConfigureAwait(false);
         return completed;
+    }
+
+    private async ValueTask PublishCreatedActorAsync(
+        ActorCreateOperation operation,
+        ActorCreateOperationTerminal terminal,
+        CancellationToken cancellationToken,
+        ZLinkAuthoritySnapshot? committedAuthority = null)
+    {
+        if (terminal.Completion is not
+            {
+                Result: ActorCreateResult.Created,
+                Actor: var committedActor
+            })
+            return;
+
+        await runtime.PublishCreatedReservedActorAsync(
+                operation.ActorId,
+                operation.StableType,
+                committedActor,
+                cancellationToken,
+                committedAuthority)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<ActorDestroyOperationTerminal> DestroyAsync(
@@ -273,19 +298,45 @@ internal sealed class ZLinkActorOperationTarget(
                 completion,
                 cancellationToken)
             .ConfigureAwait(false);
-        return result switch
+        switch (result)
         {
-            ZLinkObjectCreationCompleteResult.Created created =>
-                DecodeTerminal(created.Terminal),
-            ZLinkObjectCreationCompleteResult.Rejected rejected =>
-                DecodeTerminal(rejected.Terminal),
-            ZLinkObjectCreationCompleteResult.Failed failed =>
-                DecodeTerminal(failed.Terminal),
-            ZLinkObjectCreationCompleteResult.AlreadyCompleted existing =>
-                DecodeTerminal(existing.Terminal),
-            _ => await ReplayAfterConflictAsync(operationId, operation.ActorId)
-                .ConfigureAwait(false)
-        };
+            case ZLinkObjectCreationCompleteResult.Created created:
+            {
+                var createdTerminal = DecodeTerminal(created.Terminal);
+                await PublishCreatedActorAsync(
+                        operation,
+                        createdTerminal,
+                        CancellationToken.None,
+                        created.Snapshot)
+                    .ConfigureAwait(false);
+                return createdTerminal;
+            }
+            case ZLinkObjectCreationCompleteResult.Rejected rejected:
+                return DecodeTerminal(rejected.Terminal);
+            case ZLinkObjectCreationCompleteResult.Failed failed:
+                return DecodeTerminal(failed.Terminal);
+            case ZLinkObjectCreationCompleteResult.AlreadyCompleted existing:
+            {
+                var existingTerminal = DecodeTerminal(existing.Terminal);
+                await PublishCreatedActorAsync(
+                        operation,
+                        existingTerminal,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                return existingTerminal;
+            }
+            default:
+            {
+                var replay = await ReplayAfterConflictAsync(operationId, operation.ActorId)
+                    .ConfigureAwait(false);
+                await PublishCreatedActorAsync(
+                        operation,
+                        replay,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                return replay;
+            }
+        }
     }
 
     private async ValueTask<ActorCreateOperationTerminal> ReplayAfterConflictAsync(

@@ -85,7 +85,7 @@ import type { ZLinkAuthorityStore } from '../../packages/framework/src/runtime/l
 import { ZLinkAuthorityScanCursor } from '../../packages/framework/src/contracts/Locations/Authority';
 import type { ZLinkBackendMeshNode } from '../../packages/framework/src/runtime/backend/contracts';
 import type {
-  ZLinkRelocationReference,
+  ZLinkBlobReference,
   ZLinkRelocationStore
 } from '../../packages/framework/src/contracts/Locations/RelocationStore';
 
@@ -1563,10 +1563,10 @@ test('authority reconciliation restores the durable Instance inbox before startu
   const runtime = new ZLinkStatefulAuthorityRouteRuntime({
     store: new ReconcileAuthorityStore([['row:tenant:recover', snapshot]]),
     relocationStore: {
-      putRelocation: async () => assert.fail('Recovery must not write a second root.'),
-      getRelocation: async () => ({ kind: 'found', payload: recoveryEnvelope }),
-      renewRelocation: async () => ({ kind: 'missing' }),
-      deleteRelocation: async () => assert.fail('The authority adapter owns root deletion.')
+      put: async () => assert.fail('Recovery must not write a second root.'),
+      read: async () => foundBlob(recoveryEnvelope),
+      renew: async () => missingRenewal(),
+      delete: async () => assert.fail('The authority adapter owns root deletion.')
     },
     meshNodes: new Map([['mesh-a', node as unknown as ZLinkBackendMeshNode]]),
     pollingIntervalMs: 60_000,
@@ -1590,10 +1590,10 @@ test('authority reconciliation restores the durable Instance inbox before startu
   const staleDescriptorRuntime = new ZLinkStatefulAuthorityRouteRuntime({
     store: new ReconcileAuthorityStore([['row:tenant:recover', snapshot]]),
     relocationStore: {
-      putRelocation: async () => assert.fail('Recovery must not write a second root.'),
-      getRelocation: async () => ({ kind: 'found', payload: recoveryEnvelope }),
-      renewRelocation: async () => ({ kind: 'missing' }),
-      deleteRelocation: async () => assert.fail('The authority adapter owns root deletion.')
+      put: async () => assert.fail('Recovery must not write a second root.'),
+      read: async () => foundBlob(recoveryEnvelope),
+      renew: async () => missingRenewal(),
+      delete: async () => assert.fail('The authority adapter owns root deletion.')
     },
     meshNodes: new Map([
       ['mesh-a', staleDescriptorNode as unknown as ZLinkBackendMeshNode]
@@ -1647,10 +1647,10 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
   const runtime = new ZLinkStatefulAuthorityRouteRuntime({
     store: new ReconcileAuthorityStore([['row:tenant:pending', snapshot]]),
     relocationStore: {
-      putRelocation: async () => assert.fail('Recovery must not write a second root.'),
-      getRelocation: async () => ({ kind: 'found', payload: recoveryEnvelope }),
-      renewRelocation: async () => ({ kind: 'missing' }),
-      deleteRelocation: async () => assert.fail('The authority adapter owns root deletion.')
+      put: async () => assert.fail('Recovery must not write a second root.'),
+      read: async () => foundBlob(recoveryEnvelope),
+      renew: async () => missingRenewal(),
+      delete: async () => assert.fail('The authority adapter owns root deletion.')
     },
     meshNodes: new Map([['mesh-a', node as unknown as ZLinkBackendMeshNode]]),
     pollingIntervalMs: 60_000,
@@ -1690,25 +1690,23 @@ test('production Instance authority adapter writes schema ColdActivating then Re
     return await reserve(request, signal);
   };
   let storedRequest: Uint8Array | undefined;
-  const requestReference = {
-    value: 'relocation:first-message'
-  } as ZLinkRelocationReference;
+  let requestReference: ZLinkBlobReference | undefined;
   const relocationStore: ZLinkRelocationStore = {
-    putRelocation: async (payload) => {
+    put: async (reference, payload) => {
+      requestReference = reference;
       storedRequest = Buffer.from(payload);
       const now = new Date();
       return {
-        reference: requestReference,
-        checksumCrc32c: crc32c(payload),
+        kind: 'stored',
         expiresAt: new Date(now.getTime() + 60_000),
         storeNow: now
       };
     },
-    getRelocation: async () => storedRequest === undefined
-      ? { kind: 'missing' }
-      : { kind: 'found', payload: storedRequest },
-    renewRelocation: async () => ({ kind: 'missing' }),
-    deleteRelocation: async () => {
+    read: async () => storedRequest === undefined
+      ? missingBlob()
+      : foundBlob(storedRequest),
+    renew: async () => missingRenewal(),
+    delete: async () => {
       throw new Error('simulated orphan cleanup failure');
     }
   };
@@ -1748,7 +1746,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   if (creating.kind !== 'snapshot') throw new Error('Creating authority is missing.');
   assert.equal(decodeServiceReadySpotAuthority(creating.payload), undefined);
   assert.ok(storedRequest !== undefined);
-  assert.equal(recordedRequestReference, requestReference.value);
+  assert.equal(recordedRequestReference, requestReference?.value);
   assert.equal(
     decodeInstanceActivationRecoveryEnvelope(storedRequest!).targetMeshName,
     'mesh-a'
@@ -1795,7 +1793,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   if (committedSnapshot.kind !== 'snapshot') throw new Error('Ready authority is missing.');
   assert.equal(
     decodeServiceReadySpotAuthority(committedSnapshot.payload)?.activationRecovery?.reference,
-    requestReference.value
+    requestReference?.value
   );
   const ready = await resumedAuthority.read(target);
   assert.equal(ready.kind, 'ready');
@@ -1817,7 +1815,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   assert.deepEqual(
     decodeServiceReadySpotAuthority(terminalRecorded.payload)?.activationRecovery,
     {
-      reference: requestReference.value,
+      reference: requestReference?.value,
       sha256: createHash('sha256').update(storedRequest!).digest(),
       encodedSize: storedRequest!.byteLength,
       inboxSequence: 1n,
@@ -1875,29 +1873,26 @@ test('production Instance authority adapter writes schema ColdActivating then Re
 test('production Instance Ready commit Store rejection is exposed as RequestFailed with the original cause', async () => {
   const store = new ZLinkInMemoryAuthorityStore({ isTargetLive: () => true });
   const requestPayloads = new Map<string, Uint8Array>();
-  let sequence = 0;
   const relocationStore: ZLinkRelocationStore = {
-    putRelocation: async (payload) => {
-      const value = `relocation:commit-fault:${++sequence}`;
-      requestPayloads.set(value, Buffer.from(payload));
+    put: async (reference, payload) => {
+      requestPayloads.set(reference.value, Buffer.from(payload));
       const now = new Date();
       return {
-        reference: { value } as ZLinkRelocationReference,
-        checksumCrc32c: crc32c(payload),
+        kind: 'stored',
         expiresAt: new Date(now.getTime() + 60_000),
         storeNow: now
       };
     },
-    getRelocation: async (reference) => {
+    read: async (reference) => {
       const payload = requestPayloads.get(reference.value);
       return payload === undefined
-        ? { kind: 'missing' }
-        : { kind: 'found', payload };
+        ? missingBlob()
+        : foundBlob(payload);
     },
-    renewRelocation: async () => ({ kind: 'missing' }),
-    deleteRelocation: async (reference) => requestPayloads.delete(reference.value)
-      ? 'deleted'
-      : 'missing'
+    renew: async () => missingRenewal(),
+    delete: async (reference) => {
+      requestPayloads.delete(reference.value);
+    }
   };
   const authority = new ZLinkInstanceActivationAuthority({
     store,
@@ -1955,30 +1950,25 @@ test('production Instance Ready commit Store rejection is exposed as RequestFail
 test('concurrent Instance activation CAS loser joins Ready and returns the winner route', async () => {
   const store = new ZLinkInMemoryAuthorityStore({ isTargetLive: () => true });
   const roots = new Map<string, Buffer>();
-  let nextReference = 0;
   const relocationStore: ZLinkRelocationStore = {
-    putRelocation: async (payload) => {
-      const reference = {
-        value: `relocation:concurrent:${++nextReference}`
-      } as ZLinkRelocationReference;
+    put: async (reference, payload) => {
       const bytes = Buffer.from(payload);
       roots.set(reference.value, bytes);
       const now = new Date();
       return {
-        reference,
-        checksumCrc32c: crc32c(bytes),
+        kind: 'stored',
         expiresAt: new Date(now.getTime() + 60_000),
         storeNow: now
       };
     },
-    getRelocation: async (reference) => {
+    read: async (reference) => {
       const payload = roots.get(reference.value);
       return payload === undefined
-        ? { kind: 'missing' }
-        : { kind: 'found', payload };
+        ? missingBlob()
+        : foundBlob(payload);
     },
-    renewRelocation: async () => ({ kind: 'missing' }),
-    deleteRelocation: async () => {
+    renew: async () => missingRenewal(),
+    delete: async () => {
       throw new Error('simulated CAS-loser orphan cleanup failure');
     }
   };
@@ -2772,4 +2762,28 @@ class RecordingAuthorityNode {
   ): void {
     this.forgottenIntents.push({ spotId, authorityOwnerGeneration, storeVersion });
   }
+}
+
+function foundBlob(bytes: Uint8Array) {
+  const storeNow = new Date();
+  return {
+    kind: 'found' as const,
+    bytes: Buffer.from(bytes),
+    expiresAt: new Date(storeNow.getTime() + 60_000),
+    storeNow
+  };
+}
+
+function missingBlob() {
+  return {
+    kind: 'missing' as const,
+    storeNow: new Date()
+  };
+}
+
+function missingRenewal() {
+  return {
+    kind: 'missing' as const,
+    storeNow: new Date()
+  };
 }

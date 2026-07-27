@@ -27,7 +27,7 @@ struct location_options_t {
     std::chrono::milliseconds owner_lease_fencing_margin{5000};
     std::chrono::milliseconds owner_lease_renew_timeout{3000};
     std::chrono::milliseconds route_cache_max_age{15000};
-    std::chrono::milliseconds relocation_forwarding_window{30000};
+    std::chrono::milliseconds message_follow_duration{30000};
     std::size_t max_active_outbound_relocations = 64;
     std::size_t max_active_inbound_relocations = 64;
     std::size_t max_concurrent_relocation_captures = 8;

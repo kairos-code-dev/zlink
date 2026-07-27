@@ -15,16 +15,16 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 std::string run_atd_d2_remote_spot_await_scenario (TConnector &connector)
 {
-    const auto owner_spot_rid = unique_id ("await-remote-owner");
-    const auto target_spot_rid = unique_id ("await-remote-target");
+    const auto owner_spot_id = unique_id ("await-remote-owner");
+    const auto target_spot_id = unique_id ("await-remote-target");
     auto owner =
-      connector.request (ensure_spot_req_t{.spot_rid = owner_spot_rid})
+      connector.request (ensure_spot_req_t{.spot_id = owner_spot_id})
         .packet_name (ensure_spot_req_t::packet_name)
         .timeout (std::chrono::milliseconds (15000))
         .template submit<ensure_spot_res_t> ();
     ensure (static_cast<bool> (owner), "ATD-D2 owner spot ensure failed");
     auto target =
-      connector.request (ensure_spot_req_t{.spot_rid = target_spot_rid})
+      connector.request (ensure_spot_req_t{.spot_id = target_spot_id})
         .packet_name (ensure_spot_req_t::packet_name)
         .metadata (target_node_rid_metadata, "play-b")
         .timeout (std::chrono::milliseconds (15000))
@@ -33,10 +33,10 @@ std::string run_atd_d2_remote_spot_await_scenario (TConnector &connector)
     const auto request_id = unique_id ("ATD-D2");
     auto remote_reply =
       connector.request (remote_spot_await_req_t{.request_id = request_id,
-                                                 .target_spot_rid = target_spot_rid,
+                                                 .target_spot_id = target_spot_id,
                                                  .delay_ms = 350})
         .packet_name (remote_spot_await_req_t::packet_name)
-        .metadata (spot_rid_metadata, owner_spot_rid)
+        .metadata (spot_id_metadata, owner_spot_id)
         .timeout (std::chrono::milliseconds (30000))
         .template submit<automatic_turn_dispatch_res_t> ();
     ensure (static_cast<bool> (remote_reply), "ATD-D2 RemoteSpotYieldReq failed");
@@ -75,7 +75,7 @@ std::string run_atd_d2_remote_spot_await_scenario (TConnector &connector)
     bool saw_target_yield = false;
     for (const auto &line : target_evidence.value ().evidence) {
         if (line.find ("await-started|rid=play-b") != std::string::npos
-            && line.find ("spot=" + target_spot_rid) != std::string::npos) {
+            && line.find ("spot=" + target_spot_id) != std::string::npos) {
             saw_target_yield = true;
         }
         ensure (line.find ("remote-await-resumed|rid=play-b") == std::string::npos,

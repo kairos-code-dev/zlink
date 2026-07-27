@@ -1142,13 +1142,13 @@ class zlink_framework_options_t
     }
 
     zlink_framework_options_t &
-    set_actor_transfer_forward_window (std::chrono::milliseconds window)
+    set_message_follow_duration (std::chrono::milliseconds duration)
     {
-        if (window < std::chrono::milliseconds::zero ()) {
+        if (duration < std::chrono::milliseconds::zero ()) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "actor transfer forward window must not be negative");
+                                         "Message Follow duration must not be negative");
         }
-        _options->locations.relocation_forwarding_window = window;
+        _options->locations.message_follow_duration = duration;
         return *this;
     }
 

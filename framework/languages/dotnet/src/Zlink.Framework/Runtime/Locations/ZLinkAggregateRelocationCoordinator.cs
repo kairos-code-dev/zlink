@@ -38,8 +38,8 @@ internal sealed class ZLinkAuthorityGenerationExhaustedException(string operatio
         $"Authority generation was exhausted while {operation}.");
 
 internal sealed class ZLinkAggregateRelocationCoordinator(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore)
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore)
 {
     private const int MaxConflictRetries = 8;
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);

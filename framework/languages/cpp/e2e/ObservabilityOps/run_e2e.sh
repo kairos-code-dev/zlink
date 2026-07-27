@@ -184,17 +184,17 @@ ensure() {
 }
 
 write_trigger_config() {
-  local path="$1" scenario="$2" spot_rid="$3"
-  python3 - "$path" "$STREAM_ENDPOINT" "$scenario" "$spot_rid" <<'PY'
+  local path="$1" scenario="$2" spot_id="$3"
+  python3 - "$path" "$STREAM_ENDPOINT" "$scenario" "$spot_id" <<'PY'
 import json
 import os
 import stat
 import sys
 
-path, stream_endpoint, scenario, spot_rid = sys.argv[1:]
+path, stream_endpoint, scenario, spot_id = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"streamEndpoint": stream_endpoint,
-        "scenario": scenario, "spotRid": spot_rid}}, file, indent=2)
+        "scenario": scenario, "spotId": spot_id}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
@@ -221,10 +221,10 @@ PY
   "$CLIENT" --config="$path"
 }
 
-SPOT_RID="obs-room-1"
-WORKFLOW_SPOT_RID="obs-workflow-1"
+SPOT_ID="obs-room-1"
+WORKFLOW_SPOT_ID="obs-workflow-1"
 curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-  -d "{\"spotRid\":\"$SPOT_RID\"}" >"$LOG_DIR/create-room.json"
+  -d "{\"spotId\":\"$SPOT_ID\"}" >"$LOG_DIR/create-room.json"
 python3 - "$LOG_DIR/create-room.json" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -235,13 +235,13 @@ sleep "$ROUTE_SETTLE_SECONDS"
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "flow" ]]; then
   # OBS-A1 — one connector-generated flow id threads
   # trigger -> play-a session inbound -> play-b room-spot dispatch.
-  write_trigger_config "$CONFIG_DIR/trigger-flow.json" flow "$SPOT_RID"
+  write_trigger_config "$CONFIG_DIR/trigger-flow.json" flow "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-flow.json" >"$LOG_DIR/trigger-flow.log" 2>&1
   verify_scenario OBS-A1 sessionLog "$LOG_DIR/session-flow.log" \
     spotLog "$LOG_DIR/play-b-flow.log"
 
   # OBS-A2 — the dispatch error line carries flow= too.
-  write_trigger_config "$CONFIG_DIR/trigger-error.json" error "$SPOT_RID"
+  write_trigger_config "$CONFIG_DIR/trigger-error.json" error "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-error.json" >"$LOG_DIR/trigger-error.log" 2>&1
   verify_scenario OBS-A2 sessionLog "$LOG_DIR/session-flow.log"
 fi
@@ -249,9 +249,9 @@ fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "metrics" ]]; then
   # OBS-B subset — spot.created/spot.count with kind label and
   # channel.request.duration samples appear in the evidence collector.
-  write_trigger_config "$CONFIG_DIR/trigger-metrics.json" flow "$SPOT_RID"
+  write_trigger_config "$CONFIG_DIR/trigger-metrics.json" flow "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-metrics.json" >"$LOG_DIR/trigger-metrics.log" 2>&1
-  write_trigger_config "$CONFIG_DIR/trigger-metrics-error.json" error "$SPOT_RID"
+  write_trigger_config "$CONFIG_DIR/trigger-metrics-error.json" error "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-metrics-error.json" >"$LOG_DIR/trigger-metrics-error.log" 2>&1
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.metrics.evidence.json"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.metrics.evidence.json"
@@ -279,7 +279,7 @@ assert closed and all(
     for m in closed), closed
 net_active = sum(m["value"] for m in active)
 assert net_active == 0, f"active sessions should net to zero after triggers: {net_active}"
-forbidden = {"correlation_id", "flow_id", "actor_id", "spot_rid"}
+forbidden = {"correlation_id", "flow_id", "actor_id", "spot_id"}
 for sample in play_a + play_b + session:
     assert not (forbidden & set(sample["tags"])), f"high-cardinality label: {sample}"
 print("OBS-B(subset) PASS (spot/channel/stream instruments, closed labels)")
@@ -292,16 +292,16 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
   # flow id; a timer-originated publish starts a fresh flow (origin=timer).
   # OBS-B3 — fanout.published/received counters with the closed topic label.
   curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-room-sub"}' >"$LOG_DIR/create-room-sub.json"
+    -d '{"spotId":"obs-room-sub"}' >"$LOG_DIR/create-room-sub.json"
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-timer-room"}' >"$LOG_DIR/create-timer-room.json"
+    -d '{"spotId":"obs-timer-room"}' >"$LOG_DIR/create-timer-room.json"
   curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$LOG_DIR/create-workflow.json"
+    -d "{\"spotId\":\"$WORKFLOW_SPOT_ID\"}" >"$LOG_DIR/create-workflow.json"
   sleep "$ROUTE_SETTLE_SECONDS"
   curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.before.json"
   curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.before.json"
   curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"obs-a4\",\"value\":7}" \
+    -d "{\"spotId\":\"$WORKFLOW_SPOT_ID\",\"marker\":\"obs-a4\",\"value\":7}" \
     >"$LOG_DIR/workflow-action.json"
   sleep "$ROUTE_SETTLE_SECONDS"
   verify_scenario OBS-A4 publisherLog "$LOG_DIR/workflow-b-flow.log" \
@@ -334,7 +334,7 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "drain" ]]; then
   # C1 verifies continuity of an existing route, not a first lookup after the
   # owner has already stopped accepting new placement and route discovery.
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$SPOT_RID\",\"marker\":\"before-drain\",\"value\":1}" \
+    -d "{\"spotId\":\"$SPOT_ID\",\"marker\":\"before-drain\",\"value\":1}" \
     >"$LOG_DIR/action-before-drain.json"
   python3 - "$LOG_DIR/action-before-drain.json" <<'PY'
 import json, sys
@@ -375,7 +375,7 @@ print("OBS-C1 marker PASS (row retained + readiness flip + drain metric transiti
 PY
   for index in $(seq 1 8); do
     curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-      -d "{\"spotRid\":\"$SPOT_RID\",\"marker\":\"drain-$index\",\"value\":1}" \
+      -d "{\"spotId\":\"$SPOT_ID\",\"marker\":\"drain-$index\",\"value\":1}" \
       >"$LOG_DIR/drain-action-$index.json"
     python3 - "$LOG_DIR/drain-action-$index.json" "$index" <<'PY'
 import json, sys
@@ -401,7 +401,7 @@ PY
   # The typed create result must explicitly report rejection; transport failure
   # cannot stand in for this application-visible result.
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-room-rejected"}' >"$LOG_DIR/create-while-draining.json"
+    -d '{"spotId":"obs-room-rejected"}' >"$LOG_DIR/create-while-draining.json"
   python3 - "$LOG_DIR/create-while-draining.json" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -491,10 +491,10 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "handoff" || "$SCENARIO" == "metric
   # the transfer instruments fire, and the rolling drain ends Drained.
   relaunch_topology handoff
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-b2-room"}' >"$PHASE_LOG_DIR/create-room.json"
+    -d '{"spotId":"obs-b2-room"}' >"$PHASE_LOG_DIR/create-room.json"
   for index in $(seq 1 8); do
     curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-      -d "{\"spotRid\":\"obs-b2-room\",\"marker\":\"obs-b2-$index\",\"value\":1}" \
+      -d "{\"spotId\":\"obs-b2-room\",\"marker\":\"obs-b2-$index\",\"value\":1}" \
       >"$PHASE_LOG_DIR/room-action-$index.json"
   done
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/queue.evidence.json"
@@ -567,7 +567,7 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
   # only peer. This preserves the contract's ordering: a healthy bound session
   # exists first, then the topology loses every handoff target.
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d '{"spotRid":"obs-room-force"}' >"$PHASE_LOG_DIR/create.json"
+    -d '{"spotId":"obs-room-force"}' >"$PHASE_LOG_DIR/create.json"
   sleep "$SCENARIO_SETTLE_SECONDS"
   write_trigger_config "$CONFIG_DIR/trigger-hold-session.json" hold-session "obs-room-force"
   "$CLIENT" --config="$CONFIG_DIR/trigger-hold-session.json" \
@@ -624,14 +624,14 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fixed-drain" ]]; then
   # OBS-C3 — one fixed lifecycle: a normal request leaves its Spot active,
   # drain rejects new turns, then closes local user Spots and owner rows.
   relaunch_topology fixed-drain
-  FIXED_SPOT_RID="obs-c3-fixed-room"
+  FIXED_SPOT_ID="obs-c3-fixed-room"
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\"}" >"$PHASE_LOG_DIR/create.json"
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\",\"marker\":\"normal\",\"value\":1}" \
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\",\"marker\":\"normal\",\"value\":1}" \
     >"$PHASE_LOG_DIR/normal-action.json"
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/still-open.json"
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\"}" >"$PHASE_LOG_DIR/still-open.json"
   python3 - "$PHASE_LOG_DIR/still-open.json" <<'PY'
 import json, sys
 assert json.load(open(sys.argv[1], encoding="utf-8"))["state"] == "existing"
@@ -639,13 +639,13 @@ PY
   curl_local -fsS -X POST "$PLAY_B_HTTP/drain" -H 'Content-Type: application/json' \
     -d '{"deadlineMs":15000}' >/dev/null
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"obs-c3-rejected\"}" >"$PHASE_LOG_DIR/rejected-create.json"
+    -d "{\"spotId\":\"obs-c3-rejected\"}" >"$PHASE_LOG_DIR/rejected-create.json"
   drain_and_wait_terminal "$PLAY_B_HTTP" 15000 "$PHASE_LOG_DIR/drained.evidence.json"
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/close" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/close-after-drain.json"
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\"}" >"$PHASE_LOG_DIR/close-after-drain.json"
   stale_status=$(curl_local -sS -o "$PHASE_LOG_DIR/stale-action-response.json" -w '%{http_code}' \
     -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\",\"marker\":\"stale\",\"value\":1}" \
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\",\"marker\":\"stale\",\"value\":1}" \
     || true)
   [[ "$stale_status" != "200" ]] || {
     echo "OBS-C3 stale handle unexpectedly resolved after owner cleanup" >&2
@@ -653,7 +653,7 @@ PY
   }
   echo '{"accepted":false}' >"$PHASE_LOG_DIR/stale-action.json"
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$FIXED_SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
+    -d "{\"spotId\":\"$FIXED_SPOT_ID\"}" >"$PHASE_LOG_DIR/recreate.json"
   verify_scenario OBS-C3 normalAction "$PHASE_LOG_DIR/normal-action.json" \
     rejectedCreate "$PHASE_LOG_DIR/rejected-create.json" \
     drainedEvidence "$PHASE_LOG_DIR/drained.evidence.json" \
@@ -668,9 +668,9 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
   # unchanged with an empty evidence collector.
   relaunch_topology offnode off off
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
+    -d "{\"spotId\":\"$SPOT_ID\"}" >"$PHASE_LOG_DIR/create.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  write_trigger_config "$CONFIG_DIR/trigger-offnode-flow.json" flow "$SPOT_RID"
+  write_trigger_config "$CONFIG_DIR/trigger-offnode-flow.json" flow "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-offnode-flow.json" \
     >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
   verify_scenario OBS-A3 upstreamLog "$PHASE_LOG_DIR/session-flow.log" \

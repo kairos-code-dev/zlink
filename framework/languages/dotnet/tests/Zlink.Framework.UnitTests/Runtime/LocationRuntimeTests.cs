@@ -404,8 +404,8 @@ public sealed class LocationRuntimeTests
         Assert.NotNull(provider.GetRequiredService<IZLinkLocationRuntimeQuery>());
 
         // The unified store is registered as one shared service instance.
-        var first = provider.GetRequiredService<IZLinkLocationStore>();
-        var second = provider.GetRequiredService<IZLinkLocationStore>();
+        var first = provider.GetRequiredService<IZLinkLocationRepository>();
+        var second = provider.GetRequiredService<IZLinkLocationRepository>();
         Assert.Same(first, second);
     }
 
@@ -494,11 +494,11 @@ public sealed class LocationRuntimeTests
     }
 
     private static ZLinkLocationRuntime NewRuntime(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ManualTimeProvider time) =>
         new(new ZLinkLocationOptions(), store, time);
 
-    private sealed class FlakyOwnerLeaseStore(IZLinkLocationStore inner)
+    private sealed class FlakyOwnerLeaseStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         public bool Fail { get; set; }
@@ -527,7 +527,7 @@ public sealed class LocationRuntimeTests
             inner.ReleaseOwnerLeaseAsync(token, cancellationToken);
     }
 
-    private sealed class HangingOwnerLeaseStore(IZLinkLocationStore inner)
+    private sealed class HangingOwnerLeaseStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         private readonly TaskCompletionSource<ZLinkOwnerLeaseClaimResult> claim =
@@ -555,7 +555,7 @@ public sealed class LocationRuntimeTests
             inner.ReleaseOwnerLeaseAsync(token, cancellationToken);
     }
 
-    private sealed class BlockingHeartbeatStore(IZLinkLocationStore inner)
+    private sealed class BlockingHeartbeatStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         private int _renewCalls;
@@ -602,7 +602,7 @@ public sealed class LocationRuntimeTests
             inner.ReleaseOwnerLeaseAsync(token, cancellationToken);
     }
 
-    private sealed class CancelingOwnerCleanupStore(IZLinkLocationStore inner)
+    private sealed class CancelingOwnerCleanupStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         private int _renewCalls;
@@ -645,7 +645,7 @@ public sealed class LocationRuntimeTests
         }
     }
 
-    private sealed class FailOnceOwnerCleanupStore(IZLinkLocationStore inner)
+    private sealed class FailOnceOwnerCleanupStore(IZLinkLocationRepository inner)
         : ZLinkLocationStoreTestDouble
     {
         private int _fail = 1;

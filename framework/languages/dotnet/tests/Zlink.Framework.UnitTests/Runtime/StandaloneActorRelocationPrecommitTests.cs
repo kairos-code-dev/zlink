@@ -348,7 +348,7 @@ public sealed class StandaloneActorRelocationPrecommitTests
     };
 
     private sealed class LostStoredResponseAuthorityStore(
-        IZLinkLocationStore inner) : ZLinkLocationStoreTestDouble
+        IZLinkLocationRepository inner) : ZLinkLocationStoreTestDouble
     {
         private int _loseNext;
 

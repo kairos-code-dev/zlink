@@ -3,217 +3,120 @@ using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Configuration;
 
-/// <summary>
-///     Worked example for the host maintenance singleton. Per
-///     10-topology-monitoring §6, <see cref="IZLinkFrameworkRuntime" /> owns
-///     host state, readiness and the two terminal intents; it takes no
-///     MeshName or ChannelName because every topology is retired or shut down
-///     together.
-/// </summary>
 public sealed class FrameworkRuntimeContracts
 {
     [Fact]
-    public void Manual_topology_blocker_keeps_wire_value_nine()
+    public void Public_values_match_the_exact_contract()
     {
-        Assert.Equal(9, (int)ZLinkFrameworkTerminationReason.ManualTopologyUnsupported);
+        Assert.Equal(2, (int)ZLinkFrameworkRuntimeState.Relocating);
+        Assert.Equal(3, (int)ZLinkFrameworkRuntimeState.Relocated);
+        Assert.Equal(8, (int)ZLinkFrameworkRelocationReason.ManualTopologyUnsupported);
+        Assert.Equal(10, (int)ZLinkFrameworkRelocationReason.OperationInProgress);
     }
 
     [Fact]
     [ContractExample(typeof(IZLinkFrameworkRuntime))]
-    public async Task Host_runtime_retires_with_continuity_and_reports_one_terminal_result()
+    public async Task Relocation_and_shutdown_are_separate_host_operations()
     {
-        // A rolling deployment drains this pod: Retire moves the objects to a
-        // peer node so sessions keep their logical continuity, unlike Shutdown
-        // which only tears the host down.
         var runtime = new ExampleFrameworkRuntime();
 
-        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, runtime.State);
-        Assert.True(runtime.IsReady);
-
-        var serving = runtime.Snapshot();
-        Assert.Null(serving.EffectiveIntent);
-        Assert.False(serving.WorkSealed);
-        Assert.Equal(12UL, serving.PendingRequestCount);
-
-        var observed = new List<ZLinkFrameworkRuntimeEvent>();
-        var observer = Task.Run(async () =>
+        var relocated = await runtime.RelocateAsync(new ZLinkFrameworkRelocationOptions
         {
-            await foreach (var runtimeEvent in runtime.ObserveAsync(capacity: 64))
-                observed.Add(runtimeEvent);
+            Mode = ZLinkFrameworkRelocationMode.RollingUpdate,
+            TargetApplicationVersion = 8,
+            Deadline = TimeSpan.FromSeconds(30)
         });
 
-        var result = await runtime.RetireAsync(TimeSpan.FromSeconds(45));
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Retire, result.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.None, result.Reason);
+        Assert.Equal(ZLinkFrameworkRelocationOutcome.Relocated, relocated.Outcome);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Relocated, runtime.Status.State);
+        Assert.Null(runtime.Status.TerminationResult);
 
-        // A Shutdown that arrives after the host already moved to Draining
-        // joins the running operation instead of starting a second one: the
-        // effective intent and the deadline were fixed by the first caller.
-        var joined = await runtime.ShutdownAsync();
-        Assert.Equal(result, joined);
+        var stopped = await runtime.ShutdownAsync();
 
-        await observer;
-        Assert.Equal(
-            [ZLinkFrameworkRuntimeState.Retiring, ZLinkFrameworkRuntimeState.Draining,
-                ZLinkFrameworkRuntimeState.Stopped],
-            observed.Select(runtimeEvent => runtimeEvent.State));
-        Assert.Equal(
-            [1UL, 2UL, 3UL],
-            observed.Select(runtimeEvent => runtimeEvent.Sequence));
-        Assert.All(
-            observed,
-            runtimeEvent => Assert.Equal(
-                ZLinkFrameworkTerminationIntent.Retire,
-                runtimeEvent.EffectiveIntent));
-
-        var stopped = runtime.Snapshot();
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, stopped.State);
-        Assert.True(stopped.WorkSealed);
-        Assert.Equal(0UL, stopped.PendingRequestCount);
-        Assert.Equal(0UL, stopped.PendingRelocationCount);
-        Assert.Equal(result, stopped.TerminalResult);
-        Assert.False(runtime.IsReady);
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, stopped.Outcome);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, runtime.Status.State);
+        Assert.Equal(stopped, runtime.Status.TerminationResult);
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkFrameworkRuntime))]
-    public async Task Retire_before_readiness_is_blocked_while_shutdown_still_cleans_up()
+    public void Retire_surface_is_not_public()
     {
-        // Retire needs somewhere to hand the objects to, so a host that never
-        // reached Serving reports Blocked/RuntimeNotReady and leaves admission
-        // untouched. Shutdown has no such precondition.
-        var runtime = new ExampleFrameworkRuntime(ZLinkFrameworkRuntimeState.Preparing);
+        var contract = typeof(IZLinkFrameworkRuntime);
 
-        var blocked = await runtime.RetireAsync();
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Blocked, blocked.Outcome);
-        Assert.Equal(ZLinkFrameworkTerminationReason.RuntimeNotReady, blocked.Reason);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Preparing, runtime.State);
-
-        // Blocked is shared with the concurrent preflight waiters only; it is
-        // never stored as the host's terminal result.
-        Assert.Null(runtime.Snapshot().TerminalResult);
-
-        var stopped = await runtime.ShutdownAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(ZLinkFrameworkTerminationIntent.Shutdown, stopped.EffectiveIntent);
-        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, stopped.Outcome);
-        Assert.Equal(ZLinkFrameworkRuntimeState.Stopped, runtime.State);
-        Assert.Equal(stopped, runtime.Snapshot().TerminalResult);
+        Assert.NotNull(contract.GetProperty(nameof(IZLinkFrameworkRuntime.Status)));
+        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.RelocateAsync)));
+        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.ShutdownAsync)));
+        Assert.Null(contract.GetMethod("RetireAsync"));
+        Assert.Null(contract.GetMethod("DrainAsync"));
+        Assert.Null(contract.GetMethod("AwaitDrainedAsync"));
     }
 
-    private sealed class ExampleFrameworkRuntime(
-        ZLinkFrameworkRuntimeState initialState = ZLinkFrameworkRuntimeState.Serving)
-        : IZLinkFrameworkRuntime
+    private sealed class ExampleFrameworkRuntime : IZLinkFrameworkRuntime
     {
-        private static readonly DateTimeOffset ObservedAt =
-            new(2026, 7, 25, 9, 30, 0, TimeSpan.Zero);
-
-        private readonly List<ZLinkFrameworkRuntimeEvent> _events = [];
-        private ZLinkFrameworkTerminationIntent? _effectiveIntent;
-        private ZLinkFrameworkTerminationResult? _terminalResult;
-        private DateTimeOffset? _deadline;
-        private ulong _pendingRequests = 12;
-        private ulong _pendingRelocations = 2;
         private ulong _sequence;
 
-        public ZLinkFrameworkRuntimeState State { get; private set; } = initialState;
+        public ZLinkFrameworkRuntimeStatus Status { get; private set; } = Create(
+            ZLinkFrameworkRuntimeState.Serving,
+            sequence: 0);
 
-        public bool IsReady => State == ZLinkFrameworkRuntimeState.Serving;
-
-        public ZLinkFrameworkRuntimeSnapshot Snapshot() => new(
-            State,
-            _effectiveIntent,
-            _deadline,
-            WorkSealed: State is ZLinkFrameworkRuntimeState.Draining
-                or ZLinkFrameworkRuntimeState.Stopped,
-            BlockerReason: null,
-            _pendingRequests,
-            _pendingRelocations,
-            PendingStreamBarrierCount: 0,
-            _terminalResult,
-            _sequence,
-            ObservedAt);
-
-        public async IAsyncEnumerable<ZLinkFrameworkRuntimeEvent> ObserveAsync(
-            int capacity = 1024,
+        public async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
-            var index = 0;
-            while (State != ZLinkFrameworkRuntimeState.Stopped || index < _events.Count)
-            {
-                if (index == _events.Count)
-                {
-                    await Task.Yield();
-                    continue;
-                }
-
-                yield return _events[index++];
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return Status;
+            await Task.CompletedTask;
         }
 
-        public ValueTask<ZLinkFrameworkTerminationResult> RetireAsync(
-            TimeSpan? deadline = null,
-            CancellationToken cancellationToken = default) =>
-            TerminateAsync(ZLinkFrameworkTerminationIntent.Retire, deadline);
-
-        public ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
-            TimeSpan? deadline = null,
-            CancellationToken cancellationToken = default) =>
-            TerminateAsync(ZLinkFrameworkTerminationIntent.Shutdown, deadline);
-
-        private ValueTask<ZLinkFrameworkTerminationResult> TerminateAsync(
-            ZLinkFrameworkTerminationIntent intent,
-            TimeSpan? deadline)
+        public ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(
+            ZLinkFrameworkRelocationOptions options,
+            CancellationToken cancellationToken = default)
         {
-            // Once a terminal result exists, every later caller joins it
-            // regardless of the intent it asked for.
-            if (_terminalResult is { } terminal)
-                return ValueTask.FromResult(terminal);
-
-            if (intent == ZLinkFrameworkTerminationIntent.Retire
-                && State is ZLinkFrameworkRuntimeState.Preparing or ZLinkFrameworkRuntimeState.Error)
-            {
-                return ValueTask.FromResult(new ZLinkFrameworkTerminationResult(
-                    intent,
-                    ZLinkFrameworkTerminationOutcome.Blocked,
-                    ZLinkFrameworkTerminationReason.RuntimeNotReady));
-            }
-
-            // deadline == null means 30 seconds.
-            _deadline = ObservedAt + (deadline ?? TimeSpan.FromSeconds(30));
-            _effectiveIntent = intent;
-
-            if (intent == ZLinkFrameworkTerminationIntent.Retire)
-                Publish("zlink.runtime.framework.retiring", ZLinkFrameworkRuntimeState.Retiring);
-
-            Publish("zlink.runtime.framework.draining", ZLinkFrameworkRuntimeState.Draining);
-            _pendingRequests = 0;
-            _pendingRelocations = 0;
-
-            var result = new ZLinkFrameworkTerminationResult(
-                intent,
-                ZLinkFrameworkTerminationOutcome.Stopped,
-                ZLinkFrameworkTerminationReason.None);
-            _terminalResult = result;
-            Publish("zlink.runtime.framework.stopped", ZLinkFrameworkRuntimeState.Stopped, result);
+            cancellationToken.ThrowIfCancellationRequested();
+            var target = options.Mode == ZLinkFrameworkRelocationMode.RollingUpdate
+                ? options.TargetApplicationVersion
+                  ?? throw new ArgumentException("A target version is required.", nameof(options))
+                : 7;
+            var result = new ZLinkFrameworkRelocationResult(
+                options.Mode,
+                target,
+                ZLinkFrameworkRelocationOutcome.Relocated,
+                ZLinkFrameworkRelocationReason.None);
+            Status = Create(
+                ZLinkFrameworkRuntimeState.Relocated,
+                checked(++_sequence),
+                relocation: result);
             return ValueTask.FromResult(result);
         }
 
-        private void Publish(
-            string identifier,
-            ZLinkFrameworkRuntimeState state,
-            ZLinkFrameworkTerminationResult? result = null)
+        public ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
+            TimeSpan? deadline = null,
+            CancellationToken cancellationToken = default)
         {
-            State = state;
-            _events.Add(new ZLinkFrameworkRuntimeEvent(
-                identifier,
-                ++_sequence,
-                ObservedAt,
-                state,
-                _effectiveIntent,
-                result?.Outcome,
-                result?.Reason));
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = new ZLinkFrameworkTerminationResult(
+                ZLinkFrameworkTerminationOutcome.Stopped,
+                ZLinkFrameworkTerminationReason.None);
+            Status = Create(
+                ZLinkFrameworkRuntimeState.Stopped,
+                checked(++_sequence),
+                relocation: Status.RelocationResult,
+                termination: result);
+            return ValueTask.FromResult(result);
         }
+
+        private static ZLinkFrameworkRuntimeStatus Create(
+            ZLinkFrameworkRuntimeState state,
+            ulong sequence,
+            ZLinkFrameworkRelocationResult? relocation = null,
+            ZLinkFrameworkTerminationResult? termination = null) =>
+            new(
+                state,
+                state == ZLinkFrameworkRuntimeState.Serving,
+                state == ZLinkFrameworkRuntimeState.Serving,
+                null,
+                relocation,
+                termination,
+                sequence,
+                DateTimeOffset.UtcNow);
     }
 }

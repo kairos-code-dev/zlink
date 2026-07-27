@@ -21,20 +21,48 @@ internal sealed class AwaitEntrySpot(IZLinkEntrySpotContext context) : IZLinkEnt
         ValueTask.CompletedTask;
 }
 
-internal sealed class AwaitActorFactory : IZLinkActorFactory
+internal sealed class AwaitActorFactory(EvidenceStore evidence) : IZLinkActorFactory<AwaitActor>
 {
-    public ValueTask<IZLinkActor> CreateAsync(
+    public ValueTask<AwaitActor> CreateAsync(
         IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new AwaitActor(context.ActorId, context));
+        return ValueTask.FromResult(new AwaitActor(context.ActorId, context, evidence));
     }
 }
 
-internal sealed class AwaitActor(string actorId, IZLinkActorContext context) : IZLinkActor
+internal sealed class AwaitActor(
+    string actorId,
+    IZLinkActorContext context,
+    EvidenceStore evidence) : IZLinkActor
 {
+    private readonly Queue<(string RequestId, string Marker)> _pendingJoins = new();
+
     public string ActorId { get; } = actorId;
 
     public IZLinkActorContext Context { get; } = context;
+
+    public void TrackJoin(string requestId, string marker)
+    {
+        _pendingJoins.Enqueue((requestId, marker));
+    }
+
+    public ValueTask OnJoinCompletedAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var pending = _pendingJoins.Count == 0
+            ? (RequestId: "unknown", Marker: "actor-join")
+            : _pendingJoins.Dequeue();
+        var accepted = completion is ZLinkActorJoinCompletion.Accepted;
+        evidence.Add(
+            $"{pending.Marker}-resumed|rid={evidence.Rid}|spot={Context.SpotId}"
+            + $"|actor={ActorId}|request={pending.RequestId}|accepted={accepted}");
+        evidence.Add(
+            $"{pending.Marker}-completed|rid={evidence.Rid}|spot={Context.SpotId}"
+            + $"|actor={ActorId}|request={pending.RequestId}|accepted={accepted}");
+        return ValueTask.CompletedTask;
+    }
 }

@@ -15,12 +15,12 @@ import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmC1(options: ClientOptions): Promise<void> {
-  const spotRid = `spot-sm-c1-${Date.now()}`;
+  const spotId = `spot-sm-c1-${Date.now()}`;
   const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-    spotRid
+    spotId
   } satisfies CreateSpotReq);
   ensure(
-    created.spotRid === spotRid && created.nodeRid === 'play-a',
+    created.spotId === spotId && created.nodeRid === 'play-a',
     'SM-C1 spot was not created on play-a.'
   );
 
@@ -28,11 +28,11 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
   let viaChannel: StateRes | undefined;
   try {
     viaChannel = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
-      spotRid,
+      spotId,
       operation: 'noop',
       delta: 0
     } satisfies SpotStateRouteReq);
-    ensure(viaChannel.spotRid === spotRid, 'SM-C1 request reached the wrong spot.');
+    ensure(viaChannel.spotId === spotId, 'SM-C1 request reached the wrong spot.');
     ensure(viaChannel.nodeRid === 'play-a', 'SM-C1 request reached the wrong node.');
   } catch (error) {
     failures.push(`request=${formatError(error)}`);
@@ -40,7 +40,7 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
 
   try {
     const command = await postJson<SpotStateMsgRes>(options.playAUrl, '/spot/state/command', {
-      spotRid,
+      spotId,
       marker: 'sm-c1-send'
     } satisfies SpotStateMsgReq);
     ensure(command.accepted, 'SM-C1 external channel command was not accepted.');
@@ -50,7 +50,7 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
 
   try {
     const timeout = await postJson<SpotSlowRouteRes>(options.playAUrl, '/spot/slow/request', {
-      spotRid,
+      spotId,
       marker: 'sm-c1-timeout',
       delayMs: 1500,
       timeoutMs: 100
@@ -62,11 +62,11 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
 
   try {
     const afterTimeout = await postJson<StateRes>(options.playAUrl, '/spot/state/request', {
-      spotRid,
+      spotId,
       operation: 'add',
       delta: 1
     } satisfies SpotStateRouteReq);
-    ensure(afterTimeout.spotRid === spotRid, 'SM-C1 post-timeout request reached the wrong spot.');
+    ensure(afterTimeout.spotId === spotId, 'SM-C1 post-timeout request reached the wrong spot.');
     ensure(afterTimeout.nodeRid === 'play-a', 'SM-C1 post-timeout request reached the wrong node.');
     if (viaChannel !== undefined) {
       ensure(afterTimeout.value > viaChannel.value, 'SM-C1 post-timeout state did not advance.');
@@ -76,7 +76,7 @@ export async function runSmC1(options: ClientOptions): Promise<void> {
   }
 
   if (failures.length === 0) {
-    const expectedEvidence = [`spot-state-command|rid=play-a|spot=${spotRid}|marker=sm-c1-send`];
+    const expectedEvidence = [`spot-state-command|rid=play-a|spot=${spotId}|marker=sm-c1-send`];
     const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: expectedEvidence,
       timeoutMilliseconds: 10000

@@ -121,7 +121,7 @@ instance를 받는 overload도 제공하지 않는다.
 Bind가 성공하면 session owner는 검증된 Actor route를 binding에 저장한다. 이후
 `RelayAsync(...)`, disconnect 통지와 Actor에서 session으로 보내는 push는 이 binding
 정보를 사용한다. Message를 보낼 때마다 Location Store에서 Actor 위치를 조회하지
-않는다. 저장한 route가 더 이상 유효하지 않으면 active forwarding mapping으로 정확히
+않는다. 저장한 route가 더 이상 유효하지 않으면 active Message Follow route로 정확히
 한 번 전달하거나 typed stale error로 끝낸다. Location Store에서 새 `ActorRef`를 찾아
 같은 message를 다른 owner에게 자동으로 다시 보내지 않는다.
 
@@ -153,8 +153,8 @@ Session owner의 기존 binding도 바뀌지 않는다. 같은 owner에서 새 i
 identity를 이미 atomic하게 대체한 경우에는 이전 identity tombstone이 새 identity를
 제거하지 않는다.
 
-Target에 exact Actor가 없고 active committed forwarding mapping이 있으면 original bind control request와 reply
-route를 mapping target으로 relay한다. Mapping이 없거나 만료됐으면 `ActorLocationStale`, 같은 ActorId의
+Target에 exact Actor가 없고 active committed Message Follow route가 있으면 original bind control request와 reply
+route를 해당 route의 target으로 relay한다. Message Follow route가 없거나 만료됐으면 `ActorLocationStale`, 같은 ActorId의
 ObjectGeneration이 다르면 `ActorGenerationStale`, relocation pre-commit seal 중이면 `ActorMoving`으로 끝난다.
 Source는 Store에서 새 route를 찾아 같은 bind를 hidden retry하지 않는다. `BindOrGet`의 Get은 같은 session의
 exact ActorId·[ObjectGeneration](01-glossary.ko.md#objectgeneration) binding만 반환하며 다른 generation이나 directory Actor를 반환하지 않는다.
@@ -352,7 +352,7 @@ Actor owner host의 Relocate는 §5 barrier를 사용한다. Session owner host�
 |---|---|
 | Object `Client`·`Server` role이 없다. | Configuration error로 startup에 실패한다. |
 | [Location Store](01-glossary.ko.md#location-store)가 없다. | Configuration error로 startup에 실패한다. |
-| `ActorRef` 위치가 stale하고 forwarding mapping도 없다. | `ActorLocationStale`로 끝난다. |
+| `ActorRef` 위치가 stale하고 Message Follow route도 없다. | `ActorLocationStale`로 끝난다. |
 | `ObjectGeneration`이 다르다. | `ActorGenerationStale`로 끝난다. |
 | Actor가 relocation pre-commit seal 상태다. | `ActorMoving`으로 끝난다. |
 | 같은 packet key의 handler를 중복 등록했다. | Configuration error로 startup에 실패한다. |

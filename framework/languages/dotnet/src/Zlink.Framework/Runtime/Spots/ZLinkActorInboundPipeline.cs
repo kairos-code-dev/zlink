@@ -316,7 +316,7 @@ internal sealed class ZLinkActorInboundPipeline(
     {
         try
         {
-            if (!ZLinkActorSessionForwarder.TryForward(
+            if (!ZLinkActorMessageFollowDispatcher.TryFollow(
                     runtime,
                     state,
                     frame.Actor,

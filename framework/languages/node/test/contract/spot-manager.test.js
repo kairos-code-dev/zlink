@@ -148,7 +148,7 @@ test('Mesh actor ingress uses the current runtime owner for handoff capture', as
 
   assert.equal(fallbackActorRef.nodeRid, 'current-node');
   assert.equal(fallbackActorRef.generation, 3n);
-  assert.equal(fallbackActorRef.handoffForwarded, true);
+  assert.equal(fallbackActorRef.handoffMessageFollowed, true);
   assert.equal(fallbackActorRef.handoffTargetSpotId, String(currentSpotId));
 });
 

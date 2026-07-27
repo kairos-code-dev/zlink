@@ -18,14 +18,11 @@ consumer가 endpoint를 코드에 적지 않은 채 자동 연결하고, 프로�
 배포 컨텍스트 + 샘플 수준의 public API 사용"이다. 그래서 각 시나리오는 helper 없이 public
 contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름이 한눈에 보이게 쓴다.
 
-이 config에는 registry process가 없다. 위치 정보의 기준 저장소는 location store이고, 연결
-상태의 검증 기준도 registry topology 조회가 아니라 아래 두 가지다.
-
-- store descriptor: 등록한 `IZLinkLocationStore`의 `ListMeshNodesAsync(meshName)`로 같은 MeshName의
-  `ZLinkMeshNodeDescriptor`를 확인한다. descriptor의 `ChannelWeights`가 immutable ChannelName 집합과
-  현재 weight를 제공한다.
-- framework connection state: `IZLinkRouteMeshRuntime.Snapshot(meshName)`의 `Peers`와 `Channels`로
-  admission·ready member 상태를 확인하고, 실제 messaging과 각 역할 server의 evidence를 함께 단언한다.
+이 config에는 registry process가 없다. 위치 정보의 기준 저장소는 Location Store다. Application과
+E2E client는 Store provider를 직접 조회하거나 descriptor record를 해석하지 않는다. 연결 상태는
+`IZLinkRouteMeshRuntime.GetStatus(meshName)`이 반환한 peer·Channel status와 실제 messaging evidence를
+함께 사용해 검증한다. Store provider의 opaque record와 transaction은 Config 6의 provider contract
+시나리오에서 검증한다.
 
 location row 모델, owner lease, freshness 같은 계약 상세는 이 문서에서 반복하지 않는다.
 [location runtime spec](../spec/21-location-runtime.ko.md)을 기준으로 한다.
@@ -45,7 +42,7 @@ weight를 다르게 준 provider를 따로 시작한다(공유 provider는 기�
 | relocation store | 1 (`RM-C10` 전용) | Snapshot adapter capability bound를 검증하는 Object Server root가 등록하는 공식 Redis relocation store extension. Location Store와 별도 key prefix를 사용한다. 다른 시나리오의 `Disabled` factory는 이 Store를 요구하지 않는다. |
 | provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 lowercase canonical UUID v4를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
 | object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total limit `128`과 activation concurrency `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
-| consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Inbound가 필요한 MeshNode만 endpoint를 bind하며 양쪽에 endpoint가 있으면 pairwise initiator 한쪽만 연결을 시작한다. |
+| consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. 두 MeshNode 중 RID가 canonical byte order에서 더 작은 쪽만 connect를 시작한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Application 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있으며, 양쪽에서 시작한 중복 후보는 admission이 하나의 ready 연결로 수렴시킨다. |
 
 각 provider는 MeshName, RID, lifecycle generation, ROUTER endpoint와 `ChannelWeights`를 포함한
 MeshNode descriptor를 framework lifecycle을 통해 store에 게시한다. consumer는 MeshName과
@@ -102,11 +99,12 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 확인해 메시지를 보낼 수 있는가.
 
 - 절차: consumer가 endpoint 없이 channel을 등록하고 같은 location store(`AddLocationStore(...)`, 같은 key prefix)를 등록한 뒤, 자동 연결이 성립하면 `ProfileRequest`를 보낸다.
-- 검증: request가 `api-a`/`api-b` 중 하나에서 처리된다(reply의 provider RID로 확인). consumer는
-  endpoint를 코드에 지정하지 않는다. `ListMeshNodesAsync(meshName)`에서 owner lease가 유효한 두
-  descriptor를 확인하고, `IZLinkRouteMeshRuntime.Snapshot(meshName)`에서 두 peer의 `Ready=true`와
-  ChannelName의 `ReadyMemberCount=2`를 확인한다.
-- 세부 동작: descriptor 자동 게시 → store 조회/reconcile → endpoint를 지정하지 않은 messaging.
+- 검증: request가 `api-a`/`api-b` 중 하나에서 처리된다(reply의 provider RID로 확인). Consumer는
+  endpoint를 코드에 지정하지 않는다. `IZLinkRouteMeshRuntime.GetStatus(meshName)`에서 두 peer의 state가
+  `Ready`이고 ChannelName의 `ReadyTargetCount=2`인지 확인한다. Connection evidence는 각 MeshNode 쌍에서 RID가 작은
+  쪽의 connect attempt만 1건이고 반대쪽 attempt는 0건임을 보여 준다.
+- 세부 동작: descriptor 자동 게시 → Store 조회/reconcile → RID order로 connect initiator 결정 →
+  endpoint를 지정하지 않은 messaging.
 
 #### RM-A2 수동 endpoint 연결 (대조군)
 
@@ -115,9 +113,12 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **검증 질문:** location store 없이 endpoint를 직접 등록해도 자동 discovery와 같은 messaging 결과를
 제공하는가.
 
-- 절차: consumer가 location store 자동 연결 없이 provider endpoint를 언어별 peer-connection interface로 등록하고 request를 보낸다.
-- 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
-- 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
+- 절차: 첫 반복은 consumer 한쪽에만 provider endpoint를 등록한다. 두 번째 반복은 서로의 endpoint를
+  양쪽에 등록하고 connect를 동시에 시작한 뒤 request를 보낸다.
+- 검증: 두 반복 모두 지정한 provider에서 처리하며 automatic 경로와 같은 reply 의미를 제공한다.
+  양쪽 connect 반복은 handshake와 admission에서 같은 RID·lifecycle generation의 중복 후보를 확인하고
+  ready 연결 하나만 유지한다. Automatic reconcile은 manual endpoint를 제거하지 않는다.
+- 세부 동작: Manual topology의 one-sided·simultaneous connect와 duplicate admission.
 
 > ChannelName은 process-local egress index가 선택하고 MeshName을 호출자에게 요구하지 않는다.
 > Spot direct는 global Spot ID를 받고 current owner를 Location Store에서 resolve한다. `SpotRef`는
@@ -127,21 +128,21 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 
 우선순위: `P0`
 
-**검증 질문:** Automatic provider를 같은 application 역할의 새 process로 교체하면 새 RID·endpoint를
-발급하고, consumer가 이전 RID·endpoint로 계속 요청하지 않는가.
+**검증 질문:** Automatic provider를 같은 application 역할의 새 process로 교체하면 새 RID와 transport
+connection을 사용하고, consumer가 이전 connection으로 계속 요청하지 않는가.
 
-- 절차: provider v1을 automatic RID `api-a-<suffix1>`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1에 정상 종료를
-  요청 → host `Shutdown` terminal `Stopped/None`과 descriptor snapshot에서 v1 제외를 확인 → provider v2를
-  같은 `api-a` 역할 prefix와 새 automatic RID `api-a-<suffix2>`/endpoint p2로 시작 →
-  `ListMeshNodesAsync(meshName)` 결과가 새 RID와 p2를 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
+- 절차: Provider v1을 automatic RID `api-a-<suffix1>`과 runner가 기록한 bound endpoint p1로 시작 →
+  request로 v1 evidence 확인 → v1에 정상 종료를 요청 → host `Shutdown` terminal `Stopped/None`과 consumer
+  RouteMesh status에서 v1 제외를 확인 → provider v2를 같은 `api-a` 역할 prefix와 새 automatic RID
+  `api-a-<suffix2>`·bound endpoint p2로 시작 → consumer status에서 새 RID가 `Ready`가 될 때까지 대기 →
+  consumer 재시작 없이 다시 request.
   Crash 뒤 lease 만료를 거치는 replacement는
   Config 5 RL-A2가 별도로 검증한다. 별도 반복에서는 첫 descriptor `NewClaim`에 같은 `(MeshName, RID)`의
   active conflict를 주입하고 UUID 생성 횟수와 Store claim 횟수를 기록한다.
-- 검증: v2 시작 전 v1 descriptor가 성공 조회에서 제외된다. v2 시작 뒤
-  `ListMeshNodesAsync(meshName)` 결과에서 `suffix2 != suffix1`인 새 RID의 유효한 descriptor 하나가 보이고
-  두 suffix는 모두 RFC 4122 version 4·variant bit와 lowercase canonical `8-4-4-4-12` 형식을 만족하며
-  endpoint가 p2다.
-  교체 뒤 신규 request는 p2 evidence에 기록되고 consumer가 p1 stale endpoint로 요청하지 않는다. 이후
+- 검증: v2 시작 전 v1 Node RID가 ready peer에서 제외된다. v2 시작 뒤 public status에서
+  `suffix2 != suffix1`인 새 Node RID가 Ready이고 두 suffix는 모두 RFC 4122 version 4·variant bit와
+  lowercase canonical `8-4-4-4-12` 형식을 만족한다. Endpoint는 public status에 포함하지 않는다.
+  교체 뒤 신규 request는 v2 evidence에 기록되고 consumer의 이전 connection에는 새 write가 없다. 이후
   연속 20개 request가 모두 성공한다. Active conflict 반복은 기존 descriptor mutation 없이 startup
   `RoutingIdConflict`로 끝나고 두 번째 UUID 생성과 두 번째 descriptor claim은 0건이다.
 - 세부 동작: application 역할 replacement의 새 automatic identity 반영 + stale 회피. 이미 실행 중인 다른 provider가
@@ -158,10 +159,10 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 
 - 절차: 같은 location store에 서로 다른 MeshName의 provider가 descriptor를 게시하고, consumer가 각
   RouteMesh의 ChannelName으로 request를 보낸다.
-- 검증: `ListMeshNodesAsync(meshName)`는 지정한 MeshName의 descriptor만 반환한다. 같은 process가 두
-  MeshName에 참여해도 descriptor와 runtime snapshot은 MeshName별로 구분된다. 한 RouteMesh의 scale-in은
-  다른 RouteMesh의 descriptor와 routing에 영향을 주지 않는다.
-- 세부 동작: MeshName 기반 descriptor 격리.
+- 검증: `GetStatus("profile")`과 `GetStatus("workflow")`는 각 MeshName의 peer·Channel만 반환한다. 같은
+  process가 두 MeshName에 참여해도 status sequence와 ready target 수는 MeshName별로 구분된다. 한
+  RouteMesh의 scale-in은 다른 RouteMesh의 status와 routing에 영향을 주지 않는다.
+- 세부 동작: MeshName 기반 runtime 격리.
 
 #### RM-A7 global Actor·Spot identity 충돌
 
@@ -191,8 +192,8 @@ namespace 전체에서 authority 하나로 수렴하는가.
 **검증 질문:** 트래픽 처리 중 provider를 추가해도 consumer 재시작 없이 새 provider가 routing 대상에
 포함되는가.
 
-- 절차: provider A만으로 request를 보낸다 → provider B를 추가로 시작 → descriptor와 runtime
-  snapshot에 B가 ready member로 반영될 때까지 대기 → request를 여러 개 보낸다.
+- 절차: Provider A만으로 request를 보낸다 → provider B를 추가로 시작 → public RouteMesh status에 B가
+  ready peer·Channel target으로 반영될 때까지 대기 → request를 여러 개 보낸다.
 - 검증: B 추가 전엔 A만 처리. 반영 완료 뒤 검증 구간에선 A·B 모두 routing 대상. consumer 재시작 없음.
 - 세부 동작: 무중단 provider 증설 반영(descriptor 추가 → reconcile connect).
 
@@ -203,8 +204,8 @@ namespace 전체에서 authority 하나로 수렴하는가.
 **검증 질문:** provider 한 대를 정상 종료해 제외해도, consumer가 종료된 endpoint로 요청하지 않고 남은
 provider로만 처리하는가.
 
-- 절차: A·B로 분산을 확인 → B에 host `Shutdown` 요청 → terminal `Stopped/None`과 store/runtime snapshot에서
-  B가 제외된 것을 확인 → 다시 request.
+- 절차: A·B로 분산을 확인 → B에 host `Shutdown` 요청 → terminal `Stopped/None`과 public RouteMesh
+  status에서 B가 ready peer·Channel target에서 제외된 것을 확인 → 다시 request.
 - 검증: B 종료 뒤 request는 A로만 처리된다. 정상 종료이므로 B의 descriptor는 owner lease 만료를 기다리지
   않고 `Shutdown` 경로에서 제거된다. target 미지정 지속 request는 `Draining` 전파 구간을 포함해 모두 정상
   reply로 끝나며 오류와 pending이 남지 않는다. consumer가 종료된 endpoint로 timeout을 반복하지 않는다.
@@ -220,7 +221,7 @@ provider로만 처리하는가.
 - 절차: provider A·B가 모두 routing 대상임을 확인한다 → 처리 시간을 제어할 수 있는 request가 A
   handler에서 시작했다는 evidence가 기록되면 완료시키지 않은 상태에서 A를 `SIGKILL`한다 → consumer를
   재시작하지 않고 crash 전파 구간에 target 미지정 신규 request 20개를 보낸다 → owner lease 만료 뒤
-  store descriptor와 MeshNode runtime snapshot에서 A가 제외되는지 확인한다 → target 미지정 신규 request
+  public RouteMesh status에서 A가 ready peer·Channel target에서 제외되는지 확인한다 → target 미지정 신규 request
   20개를 보낸다 → 수동 peer 구성을 유지한 RouteMesh에서 `RequestToNode(A)`와 등록한 적 없는 rid
   `api-missing`을 대상으로 한 `RequestToNode`를 각각 한 건 보낸다.
 - 검증: A handler-start evidence가 있는 in-flight request는 연결 종료가 먼저 관측되면 retriable
@@ -301,14 +302,14 @@ member를 더 자주 선택하는가.
   설정한다. 실행 중 변경 시나리오는 `IZLinkRouteMeshRuntimeOptions.Channel(channelName).Weight`를
   사용한다. 별도 반복에서 startup과 runtime update에 `0`, 기본값 `100`, `10000`, `-1`, `10001`을
   적용하고, 많은 member의 `10000`을 합산해 32-bit 범위를 넘기는 fixture도 사용한다.
-  `ListMeshNodesAsync(meshName)`의 descriptor `ChannelWeights`와 local runtime option getter가 같은 값을
-  제공하는지 확인한 뒤 충분한 수의 request(예: 200개)를 보낸다.
+  각 설정 뒤 RouteMesh status의 ready target 수와 실제 request 분포를 확인하고 충분한 수의 request
+  (예: 200개)를 보낸다.
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와
   일치한다. 장기 분포는 `300:100`에 수렴하되 요청별 정확한 순서는 단언하지 않는다. `0`, `100`, `10000`은
   startup과 runtime update에서 허용하고 `-1`, `10001`은 descriptor mutation 없이 configuration error다.
   Weight `0`은 새 target에서 제외하고 이미 제출한 operation은 유지한다. 합계는 최소 64-bit로 계산해 overflow나
   음수 wrap 없이 모든 positive member를 선택 후보로 유지한다.
-- 세부 동작: descriptor의 ChannelName weight에 따른 select-one 부하 분산.
+- 세부 동작: ChannelName weight에 따른 select-one 부하 분산.
 
 > ChannelName select-one은 ready positive-weight member만 후보로 사용한다. weight `0`은 신규 select-one과
 > Logical Multicast remote target에서 해당 member를 제외하지만 기존 연결을 즉시 해제하지 않는다.
@@ -379,7 +380,8 @@ member를 더 자주 선택하는가.
 ## 5. 완료 기준
 
 - Track A·B·C의 `P0` 시나리오가 모두 통과한다. `RM-C10` 음성 startup case도 required다.
-- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다. store 상태는
-  `ListMeshNodesAsync(meshName)`, 연결 상태는 `IZLinkRouteMeshRuntime.Snapshot(meshName)`으로 검증한다.
+- 각 시나리오는 public contract만 직접 호출하고 `ensure`로 단언한다. 연결 상태는
+  `IZLinkRouteMeshRuntime.GetStatus(meshName)`으로 검증하며 Store provider를 application query API로
+  사용하지 않는다.
 - Redis를 쓰는 실행은 전용 key prefix로 격리하고, 실행 후 key cleanup 또는 disposable Redis instance를 사용한다.
 - 실패 시 store 연결 상태와 provider/consumer 로그·evidence로 원인 레이어를 분리한다.

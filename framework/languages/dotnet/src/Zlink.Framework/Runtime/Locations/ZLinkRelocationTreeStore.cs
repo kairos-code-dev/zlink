@@ -37,7 +37,7 @@ internal static class ZLinkRelocationTreeStore
     private static readonly byte[] ManifestMagic = "ZLTM"u8.ToArray();
 
     internal static async ValueTask<ZLinkRelocationTreeStored> PutAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         ZLinkRelocationEnvelope envelope,
         TimeSpan retention,
         CancellationToken cancellationToken)
@@ -162,7 +162,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     internal static async ValueTask<ZLinkRelocationEnvelope> GetAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         string rootReference,
         uint? expectedRootChecksum,
         CancellationToken cancellationToken)
@@ -177,7 +177,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     internal static async ValueTask<ZLinkRelocationTreeRead> ReadAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         string rootReference,
         uint? expectedRootChecksum,
         CancellationToken cancellationToken)
@@ -267,7 +267,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     internal static async ValueTask RenewTreeAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         string rootReference,
         uint expectedRootChecksum,
         TimeSpan retention,
@@ -308,7 +308,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     internal static async ValueTask DeleteTreeAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         string rootReference,
         CancellationToken cancellationToken)
     {
@@ -323,7 +323,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     private static async ValueTask RenewComponentAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         string reference,
         TimeSpan retention,
         CancellationToken cancellationToken)
@@ -340,7 +340,7 @@ internal static class ZLinkRelocationTreeStore
     }
 
     private static async ValueTask<ZLinkRelocationStored> PutVerifiedAsync(
-        IZLinkRelocationStore store,
+        IZLinkRelocationRepository store,
         ReadOnlyMemory<byte> encoded,
         TimeSpan retention,
         CancellationToken cancellationToken)

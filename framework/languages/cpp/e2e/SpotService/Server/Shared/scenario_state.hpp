@@ -18,12 +18,12 @@ class scenario_state_t
 
     void record (std::string marker,
                  std::string actor_id = {},
-                 std::string spot_rid = {},
+                 std::string spot_id = {},
                  std::string value = {})
     {
         std::lock_guard lock (_mutex);
         entries.push_back ({std::move (marker), node_rid, std::move (actor_id),
-                            std::move (spot_rid), std::move (value)});
+                            std::move (spot_id), std::move (value)});
     }
 
     zlink::framework::e2e::spot_service::evidence_snapshot_t snapshot () const

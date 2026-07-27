@@ -29,10 +29,10 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
     const created = await this.spots.getOrCreate(
       AutomaticTurnDispatchNames.spotChannel,
       AwaitProbeSpot,
-      request.spotRid
+      request.spotId
     );
     return {
-      spotRid: String(created.spotRid),
+      spotId: String(created.spotId),
       nodeRid: this.nodeRid
     };
   }
@@ -49,7 +49,7 @@ export class BindAwaitActorsControlHandler implements ZLinkRequestHandler<BindAw
         AutomaticTurnDispatchNames.spotChannel,
         actorId,
         AutomaticTurnDispatchNames.actorType,
-        ZLinkMessage.from({ spotRid: request.spotRid })
+        ZLinkMessage.from({ spotId: request.spotId })
       );
       return {
         actorId: actor.actorId,
@@ -58,7 +58,7 @@ export class BindAwaitActorsControlHandler implements ZLinkRequestHandler<BindAw
       };
     }));
     return {
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       actors
     };
   }

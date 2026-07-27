@@ -25,7 +25,7 @@ basic_spot_reply (const zlink::framework::spot_context_t &context,
 {
     return {.scenario_id = std::move (scenario_id),
             .request_id = std::move (request_id),
-            .spot_rid = std::string (context.spot_rid ().value ()),
+            .spot_id = context.spot_id (),
             .node_rid = evidence.node_rid,
             .marker = std::move (marker)};
 }
@@ -36,8 +36,8 @@ handle_basic_hold (zlink::framework::spot_context_t &context,
                    const std::string &request_id,
                    int delay_ms)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
-    evidence.add ("hold-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    const auto spot_id = context.spot_id ();
+    evidence.add ("hold-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
     co_await context.outbound ()
       .request (yd::delay_channel,
@@ -46,9 +46,9 @@ handle_basic_hold (zlink::framework::spot_context_t &context,
                                 .marker = "hold"})
       .timeout (std::chrono::milliseconds (5000))
       .submit<yd::delay_res_t> ();
-    evidence.add ("hold-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("hold-resumed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
-    evidence.add ("hold-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("hold-completed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
     co_return;
 }
@@ -60,8 +60,8 @@ handle_basic_yield (zlink::framework::spot_context_t &context,
                     int delay_ms,
                     const std::string &correlation_id)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
-    evidence.add ("await-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    const auto spot_id = context.spot_id ();
+    evidence.add ("await-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");
     auto call =
@@ -71,14 +71,14 @@ handle_basic_yield (zlink::framework::spot_context_t &context,
                                   .delay_ms = delay_ms,
                                   .marker = "await"})
         .timeout (std::chrono::milliseconds (5000));
-    evidence.add ("await-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("await-released|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");
     co_await call.submit<yd::delay_res_t> ();
-    evidence.add ("await-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("await-resumed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");
-    evidence.add ("await-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("await-completed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|correlation="
                   + correlation_id + "|handler=spot");
     co_return;
@@ -90,19 +90,19 @@ handle_basic_worker_yield (zlink::framework::spot_context_t &context,
                            const std::string &request_id,
                            int delay_ms)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
-    evidence.add ("worker-await-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    const auto spot_id = context.spot_id ();
+    evidence.add ("worker-await-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
     auto call = context.run_cpu_worker ([request_id, delay_ms] {
         std::this_thread::sleep_for (std::chrono::milliseconds (delay_ms));
         return request_id;
     });
-    evidence.add ("worker-await-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("worker-await-released|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
     co_await call.yield ();
-    evidence.add ("worker-await-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("worker-await-resumed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
-    evidence.add ("worker-await-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("worker-await-completed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|handler=spot");
     co_return;
 }
@@ -113,11 +113,11 @@ handle_basic_probe (zlink::framework::spot_context_t &context,
                     const std::string &request_id,
                     const std::string &marker)
 {
-    const auto spot_rid = std::string (context.spot_rid ().value ());
-    evidence.add ("probe-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    const auto spot_id = context.spot_id ();
+    evidence.add ("probe-started|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|marker=" + marker
                   + "|handler=spot");
-    evidence.add ("probe-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid
+    evidence.add ("probe-completed|rid=" + evidence.node_rid + "|spot=" + spot_id
                   + "|request=" + request_id + "|marker=" + marker
                   + "|handler=spot");
 }

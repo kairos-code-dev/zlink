@@ -139,7 +139,7 @@ export class ZLinkActorTransferRuntime {
       ?.nativeActorRef;
     const currentActorRef = targetActorRef === undefined
       ? actorRef
-      : toFrameworkActorRef(targetActorRef);
+      : toFrameworkActorRef(targetActorRef, actor.context.meshName);
     let current = root.cursor === 'prepared'
       ? await this.requireDeferredJoinJournal().markCommitted(root, currentActorRef, signal)
       : root;
@@ -755,9 +755,9 @@ export class ZLinkActorTransferRuntime {
     const targetActorRef = {
       ...actorRef,
       nodeRid: node.status().routingId,
-      generation: localActorRef.generation > 0n
+      objectGeneration: localActorRef.generation > 0n
         ? localActorRef.generation
-        : actorRef.generation
+        : actorRef.objectGeneration
     };
     this.options.actorManager()?.getState(actor.context.actorId)?.setNativeActorRef(
       targetActorRef as unknown as ZLinkBackendActorRef
@@ -810,7 +810,10 @@ export class ZLinkActorTransferRuntime {
       claim = await lifecycle.takeoverActorJoinedSpot(
         actorType,
         actor.context.actorId,
-        toFrameworkActorRef(state.nativeActorRef ?? location.actor as never),
+        toFrameworkActorRef(
+          state.nativeActorRef ?? location.actor as never,
+          spotMeshName
+        ),
         spotMeshName,
         spotId,
         spotGeneration,
@@ -1047,6 +1050,7 @@ export class ZLinkActorTransferRuntime {
     const sealId = target.relocationSealId;
     const payload = encodeRemoteBoundSessionOwnershipPayload({
       actorId,
+      meshName: actorPacketTarget?.routerChannelId ?? target.routerChannelId,
       actorNodeRid: String(actorRef.nodeRid),
       actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
       actorGeneration,
@@ -1131,7 +1135,7 @@ export class ZLinkActorTransferRuntime {
       actorGeneration: actorRef.generation,
       sealId: target.relocationSealId,
       acceptedHighWater: target.acceptedHighWater,
-      reference: { value: target.acceptedJournalReference } as import('../../contracts').ZLinkRelocationReference,
+      reference: { value: target.acceptedJournalReference } as import('../../contracts').ZLinkBlobReference,
       checksumCrc32c: target.acceptedJournalChecksumCrc32c
     });
   }

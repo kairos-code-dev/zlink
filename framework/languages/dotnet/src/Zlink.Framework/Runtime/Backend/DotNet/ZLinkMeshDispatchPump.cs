@@ -290,9 +290,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             targetNodeGeneration: record.TargetNodeGeneration,
             authorityOwnerGeneration: record.AuthorityOwnerGeneration,
             ownerLeaseGeneration: record.OwnerLeaseGeneration,
-            forwardingHopCount: record.ForwardingHopCount,
+            messageFollowHopCount: record.MessageFollowHopCount,
             sourceNodeGeneration: record.SourceBindingGeneration,
-            requestSource: requestSource == default ? null : requestSource);
+            requestSource: requestSource == default ? null : requestSource,
+            deadlineUnixMs: record.DeadlineUnixMs);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }
@@ -329,7 +330,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             record.TargetNodeGeneration,
             record.AuthorityOwnerGeneration,
             record.OwnerLeaseGeneration,
-            record.ForwardingHopCount,
+            record.MessageFollowHopCount,
             record.SourceBindingGeneration);
         var handler = _nodeRouteHandler;
         if (handler is null)

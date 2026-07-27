@@ -17,6 +17,7 @@
     <ItemGroup>
         <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
         <ProjectReference Include="../Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj"/>
+        <ProjectReference Include="../Zlink.Framework.Provider.Abstractions/Zlink.Framework.Provider.Abstractions.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

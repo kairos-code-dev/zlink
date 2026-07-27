@@ -19,8 +19,8 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
           "playHttpEndpoint and playBHttpEndpoint are required for SM-C3");
     }
 
-    constexpr auto source_spot_rid = "user:play-b:sm-c3-source";
-    constexpr auto target_spot_rid = "user:play-a:sm-c3-target";
+    constexpr auto source_spot_id = "user:play-b:sm-c3-source";
+    constexpr auto target_spot_id = "user:play-a:sm-c3-target";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
                     .build ();
@@ -30,7 +30,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
 
     auto target_created_raw =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = target_spot_rid})
+        .body (create_spot_req_t{.spot_id = target_spot_id})
         .submit_raw ()
         .result ();
     if (!target_created_raw || target_created_raw.value ().status >= 400) {
@@ -38,14 +38,14 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     }
     const auto target_created =
       nlohmann::json::parse (target_created_raw.value ().body).get<create_spot_res_t> ();
-    if (target_created.spot_rid != target_spot_rid
+    if (target_created.spot_id != target_spot_id
         || target_created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-C3 target spot was not created on play-a");
     }
 
     auto source_created_raw =
       play_b.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = source_spot_rid})
+        .body (create_spot_req_t{.spot_id = source_spot_id})
         .submit_raw ()
         .result ();
     if (!source_created_raw || source_created_raw.value ().status >= 400) {
@@ -53,16 +53,16 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     }
     const auto source_created =
       nlohmann::json::parse (source_created_raw.value ().body).get<create_spot_res_t> ();
-    if (source_created.spot_rid != source_spot_rid
+    if (source_created.spot_id != source_spot_id
         || source_created.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-C3 source spot was not created on play-b");
     }
 
     const auto route_request =
       spot_to_spot_route_req_t{.source_node_rid = "play-b",
-                               .source_spot_rid = source_spot_rid,
+                               .source_spot_id = source_spot_id,
                                .target_node_rid = "play-a",
-                               .target_spot_rid = target_spot_rid,
+                               .target_spot_id = target_spot_id,
                                .marker = "direct"};
     auto direct_raw =
       play_a.post ("/spot/to-spot/request").body (route_request).submit_raw ().result ();
@@ -74,8 +74,8 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     }
     const auto direct =
       nlohmann::json::parse (direct_raw.value ().body).get<spot_to_spot_route_res_t> ();
-    if (direct.source_spot_rid != source_spot_rid
-        || direct.target_spot_rid != target_spot_rid
+    if (direct.source_spot_id != source_spot_id
+        || direct.target_spot_id != target_spot_id
         || direct.target_value != "sm-c3-direct:reply") {
         throw std::runtime_error ("SM-C3 direct spot-to-spot reply mismatch");
     }
@@ -83,9 +83,9 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     auto timeout_raw =
       play_a.post ("/spot/to-spot/timeout")
         .body (spot_to_spot_route_req_t{.source_node_rid = "play-b",
-                                        .source_spot_rid = source_spot_rid,
+                                        .source_spot_id = source_spot_id,
                                         .target_node_rid = "play-a",
-                                        .target_spot_rid = target_spot_rid,
+                                        .target_spot_id = target_spot_id,
                                         .marker = "slow"})
         .submit_raw ()
         .result ();
@@ -99,17 +99,17 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     const auto timeout =
       nlohmann::json::parse (timeout_raw.value ().body)
         .get<spot_to_spot_timeout_route_res_t> ();
-    if (timeout.source_spot_rid != source_spot_rid
-        || timeout.target_spot_rid != target_spot_rid || !timeout.failed) {
+    if (timeout.source_spot_id != source_spot_id
+        || timeout.target_spot_id != target_spot_id || !timeout.failed) {
         throw std::runtime_error ("SM-C3 slow target request did not time out");
     }
 
     auto negative_raw =
       play_a.post ("/spot/to-spot/negative")
         .body (spot_to_spot_route_req_t{.source_node_rid = "play-b",
-                                        .source_spot_rid = source_spot_rid,
+                                        .source_spot_id = source_spot_id,
                                         .target_node_rid = "play-a",
-                                        .target_spot_rid = target_spot_rid,
+                                        .target_spot_id = target_spot_id,
                                         .marker = "missing"})
         .submit_raw ()
         .result ();
@@ -123,8 +123,8 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     const auto negative =
       nlohmann::json::parse (negative_raw.value ().body)
         .get<spot_to_spot_negative_route_res_t> ();
-    if (negative.source_spot_rid != source_spot_rid
-        || negative.target_spot_rid != target_spot_rid || !negative.request_failed) {
+    if (negative.source_spot_id != source_spot_id
+        || negative.target_spot_id != target_spot_id || !negative.request_failed) {
         throw std::runtime_error ("SM-C3 missing target handler request did not fail");
     }
 }

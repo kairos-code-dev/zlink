@@ -10,14 +10,14 @@ namespace
 inline void scenario_runner_t::run_st_f1_scenario ()
 {
     const auto actor_id = "actor-inflight-order-" + unique_suffix ();
-    const auto spot_rid = "spot-inflight-order-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid, "delay-joined");
+    const auto spot_id = "spot-inflight-order-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id, "delay-joined");
     create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 101);
     const auto old_ref = get_actor_ref (_nodes.a, actor_id);
 
     auto join_task = std::async (
-      std::launch::async, [&] { return join_actor (_nodes.a, actor_id, {"ST-F1", spot_rid}); });
-    wait_evidence (_nodes.b, {"ST-F1|" + actor_id + "|joined_wait|" + spot_rid});
+      std::launch::async, [&] { return join_actor (_nodes.a, actor_id, {"ST-F1", spot_id}); });
+    wait_evidence (_nodes.b, {"ST-F1|" + actor_id + "|joined_wait|" + spot_id});
     for (const auto *marker : {"P1", "P2", "P3"}) {
         send_ref (_nodes.a, actor_id, old_ref, {"ST-F1", marker});
     }
@@ -27,7 +27,7 @@ inline void scenario_runner_t::run_st_f1_scenario ()
                          "ST-F1 packet ran on the source node.");
     wait_evidence (_nodes.a, {"message_flow|" + actor_id + "|handoff_backlog|"});
 
-    release_joined_gate (_nodes.b, spot_rid);
+    release_joined_gate (_nodes.b, spot_id);
     require (join_task.get ().accepted, "ST-F1 transfer was rejected.");
     wait_evidence (_nodes.b, {"message_flow|" + actor_id + "|backlog_enqueued|",
                               "message_flow|" + actor_id + "|location_committed|"});

@@ -76,7 +76,7 @@ handler 동작(공유):
 **검증 질문:** entry spot에 join을 보내면, user spot이 새로 만들어지고 그 id가 reply로 돌아오는가.
 
 - 절차: consumer가 역할 server의 app endpoint로 요청하고 server가 startup evidence에 기록한 Entry Spot
-  RID로 `RequestToSpot(JoinReq)`를 보낸다.
+  ID로 `RequestToSpot(JoinReq)`를 보낸다.
 - 검증: entry Spot이 user Spot을 생성하고 reply에 Spot ID가 포함된다. Spot evidence에 생성 기록이
   남고, Spot manager `Find(SpotId)`가 Ready `SpotRef`의 owner RID·MeshName·ObjectGeneration을 반환한다.
 - 세부 동작: Entry Spot dispatch + Spot 생성 + Spot authority 등록.
@@ -111,7 +111,7 @@ owner에 도달하는가.
 - 절차: 앱이 entity key(예: order id, player id)에 대응하는 global Spot ID를 일관되게 사용해 request를 보낸다.
   Target MeshNode RID, endpoint와 owner generation은 호출 인자로 전달하지 않는다.
 - 검증: 같은 key의 호출은 같은 logical Spot identity를 사용하고 Location Store가 가리킨 current owner에 도달한다.
-  Scale-out만으로 owner는 바뀌지 않지만 `Relocate`·relocation으로 owner가 바뀐 후에는 같은 RID가 새 owner를
+  Scale-out만으로 owner는 바뀌지 않지만 `Relocate`·relocation으로 owner가 바뀐 후에는 같은 Spot ID가 새 owner를
   resolve한다. Application이 node owner 규칙을 계산하지 않는다.
 - 세부 동작: global Spot identity와 physical owner selection의 분리. Scale-out 뒤 기존 owner 유지와 신규 대상
   배치는 Track G의 SM-G2에서 다룬다.
@@ -147,10 +147,10 @@ current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부
 
 **검증 질문:** 이미 만든 spotId를 다른 spot 타입으로 다시 `GetOrCreate`하면, `SpotTypeMismatch`로 명확히 거부되는가.
 
-- 절차: stable type A와 RID로 User Spot `GetOrCreate`를 완료한 뒤, 같은 RID를 stable type B의
+- 절차: stable type A와 Spot ID로 User Spot `GetOrCreate`를 완료한 뒤, 같은 Spot ID를 stable type B의
   `GetOrCreate`로 다시 요청한다.
 - 검증: 두 번째 요청은 `SpotTypeMismatch` public error로 실패한다(`ZLinkFrameworkException`). 처음 만든 spot과 그 상태는 영향받지 않는다.
-- 세부 동작: 같은 rid 재사용 시 타입 일치 강제.
+- 세부 동작: 같은 Spot ID 재사용 시 타입 일치 강제.
 
 #### SM-A8 worker offload (`Context.RunCpuWorker`)
 
@@ -254,7 +254,7 @@ effect 전에 거부되는가.
   `SpotTypeMismatch` 또는 identity conflict로 끝난다. `MeshName`을 바꿔도 새 identity namespace가
   만들어지지 않는다.
 - 세부 동작: UTF-8 1..255-byte bound, case-sensitive exact equality, no normalization, global namespace와
-  v11 binary Spot RID clean break.
+  legacy binary Spot address 거부.
 
 ### Track B — actor join과 lifecycle
 
@@ -630,16 +630,16 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 우선순위: `P0`
 
 **검증 질문:** bind 뒤 relay·disconnect가 Location Store를 다시 읽지 않고 저장 route만 사용하며,
-stale route도 숨은 lookup이나 retry 없이 한 번의 forwarding 또는 typed stale 결과로 끝나는가.
+stale route도 숨은 lookup이나 retry 없이 한 번의 Message Follow 또는 typed stale 결과로 끝나는가.
 
 - 절차: exact `ActorRef` bind 직후 Location Store read counter를 기록하고 이후 read를 차단한다.
   Valid stored route로 request, push와 disconnect를 수행한다. 이어 stale route에 대해 active committed
-  forwarding mapping이 있는 경우와 mapping이 만료되거나 없는 경우를 각각 실행한다.
+  Message Follow route가 있는 경우와 route가 만료되거나 없는 경우를 각각 실행한다.
 - 검증: bind 이후 두 경우 모두 Location Store read counter 증가는 `0`이다. Valid route는 owner lease와
   local admission deadline 안에서 성공한다. Active mapping은 같은 exact identity를 최대 한 번
-  forwarding하고, expired/missing mapping은 typed stale 결과로 끝난다. Runtime은 fresh `ActorRef`를
+  Message Follow로 전달하고, expired/missing route는 typed stale 결과로 끝난다. Runtime은 fresh `ActorRef`를
   lookup하거나 Store 장애를 이유로 retry·deadline 연장을 하지 않는다.
-- 세부 동작: stored route no-Store dispatch와 single-forward stale mapping.
+- 세부 동작: stored route no-Store dispatch와 single-hop Message Follow route.
 
 #### SM-D5 physical session disconnect automatic fan-out
 
@@ -854,7 +854,7 @@ messaging target이 아니다.
 #### SM-F4 target Spot 없음과 stale generation
 
 - 절차: 존재하지 않는 Spot ID로 existing-only request와 send를 제출한다. User Spot을 닫고
-  같은 RID로 새 incarnation을 만든 뒤 이전 `SpotRef`로 exact `Close`를 시도한다.
+  같은 Spot ID로 새 incarnation을 만든 뒤 이전 `SpotRef`로 exact `Close`를 시도한다.
 - 검증: Missing request와 send는 target-not-found 계약으로 완료되고 Instance cold activation을 시작하지
   않는다. 이전 `SpotRef` close는 stale-generation으로 끝나며 새 incarnation을 닫지 않는다.
   정상 ChannelName과 RID direct messaging은 영향을 받지 않는다.

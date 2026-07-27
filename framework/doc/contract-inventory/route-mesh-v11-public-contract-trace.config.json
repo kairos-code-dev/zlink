@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3018,
-      "sha256": "2c42a3ceb7ea87300656b45cf21938bdd1bf1ea68dcb51cfdb768c22b669ff0e",
+      "count": 3062,
+      "sha256": "bd62ee64b282a0b34454c0750ab92380824e80cbdcffd75ae7e85937ed42136f",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 764,
-      "sha256": "43ecaf6a13eb178047df7827bf81d7f88a82aebf653031982105501f042c5764",
+      "count": 766,
+      "sha256": "5cbfc9bc63ac540988866e020bd336891272da2a0db32d0ecca1db80ea76b0c5",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1952,
-      "sha256": "25a8809e2b2cf5486c8f4e186246dffd87a7d8d95d1e651c1491ac157f6cd257",
+      "count": 1944,
+      "sha256": "f11defc22010a9708d82f72a4420ab0301b10086c876067b8037caf51643c249",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -3233,10 +3233,10 @@
       "id": "POSD-V11-04",
       "subject": "Actor relocation timing",
       "alternatives": [
-        "Actor-specific relocation timeout plus forwarding window",
-        "forwarding window plus host deadline"
+        "Actor-specific relocation timeout plus Message Follow duration",
+        "Message Follow duration plus host deadline"
       ],
-      "selected": "forwarding window plus host deadline",
+      "selected": "Message Follow duration plus host deadline",
       "callerBurden": "The application does not coordinate two overlapping relocation deadlines.",
       "informationHiding": "The host operation owns the terminal time bound."
     },

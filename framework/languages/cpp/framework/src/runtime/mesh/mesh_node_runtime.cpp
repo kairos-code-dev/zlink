@@ -866,7 +866,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     spot_runtime.emit_actor_transfer_marker (
       "commit_ack", actor, transfer_id, target_spot, target_node);
     spot_runtime.emit_actor_transfer_marker (
-      "forwarding_entry", actor, transfer_id, target_spot, target_node);
+      "message_follow_registered", actor, transfer_id, target_spot, target_node);
     return result_t<actor_join_reply_t>::success (
       actor_join_reply_t{
         joined.result_code, joined.actor,
@@ -1138,19 +1138,19 @@ result_t<void> mesh_node_runtime_t::notify_application_actor_disconnected (
 }
 
 std::optional<actor_ref_t>
-mesh_node_runtime_t::forward_straggler_actor (const actor_ref_t &actor)
+mesh_node_runtime_t::follow_relocated_actor (const actor_ref_t &actor)
 {
     spot_node_runtime_t runtime (_state->spot_state);
-    const auto forwarding = runtime.actor_forwarding_target (actor);
-    if (!forwarding) {
+    const auto follow_target = runtime.actor_message_follow_target (actor);
+    if (!follow_target) {
         runtime.emit_actor_transfer_marker (
-          "stale_fail_fast", actor, {}, std::nullopt, std::nullopt);
+          "message_follow_expired", actor, {}, std::nullopt, std::nullopt);
         return std::nullopt;
     }
     runtime.emit_actor_transfer_marker (
-      "straggler_forward", actor, {}, forwarding->route.spot_id,
-      forwarding->route.node_rid);
-    return forwarding->actor;
+      "message_follow_relay", actor, {}, follow_target->route.spot_id,
+      follow_target->route.node_rid);
+    return follow_target->actor;
 }
 
 result_t<mesh_node_runtime_t::operation_completion_t>

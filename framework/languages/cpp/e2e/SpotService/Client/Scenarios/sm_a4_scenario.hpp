@@ -24,7 +24,7 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                  .build ();
     auto raw =
       api.post ("/spot/state/request")
-        .body (spot_state_route_req_t{.spot_rid = context.spot_rid,
+        .body (spot_state_route_req_t{.spot_id = context.spot_id,
                                       .state = state_req_t{.op = "noop", .amount = 0}})
         .submit_raw ()
         .result ();
@@ -39,8 +39,8 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
     }
 
     const auto reply = nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
-    if (reply.spot_rid != context.spot_rid) {
-        throw std::runtime_error ("SM-A4 request reached wrong spot: " + reply.spot_rid);
+    if (reply.spot_id != context.spot_id) {
+        throw std::runtime_error ("SM-A4 request reached wrong spot: " + reply.spot_id);
     }
     if (reply.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A4 request reached wrong owner: "
@@ -81,8 +81,8 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                                   + joined.value ().body);
     }
     const auto created = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
-    const auto expected_spot = user_spot_rid_for_key ("sm-a4-owner");
-    if (created.spot_rid != expected_spot || created.owner_node_rid != "play-a") {
+    const auto expected_spot = user_spot_id_for_key ("sm-a4-owner");
+    if (created.spot_id != expected_spot || created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A4 initial owner mapping mismatch");
     }
 
@@ -107,8 +107,8 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
         }
 
         const auto reply = nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
-        if (reply.spot_rid != expected_spot) {
-            throw std::runtime_error ("SM-A4 request reached wrong spot: " + reply.spot_rid);
+        if (reply.spot_id != expected_spot) {
+            throw std::runtime_error ("SM-A4 request reached wrong spot: " + reply.spot_id);
         }
         if (reply.owner_node_rid != "play-a") {
             throw std::runtime_error ("SM-A4 request reached wrong owner: "

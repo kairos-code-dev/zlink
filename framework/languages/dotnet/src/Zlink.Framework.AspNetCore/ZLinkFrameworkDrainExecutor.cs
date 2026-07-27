@@ -48,19 +48,19 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         TimeSpan deadline,
         CancellationToken deadlineToken) =>
         ExecuteAsync(
-            ZLinkFrameworkTerminationIntent.Shutdown,
+            ZLinkFrameworkLifecycleIntent.Shutdown,
             deadline,
             deadlineToken);
 
     public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         CancellationToken deadlineToken)
         => await ExecuteAsync(intent, deadline, null, deadlineToken)
             .ConfigureAwait(false);
 
     public async ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached,
         CancellationToken deadlineToken)
@@ -72,7 +72,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             .ConfigureAwait(false)).ForceReason;
 
     public async ValueTask<ZLinkDrainExecutionResult> ExecuteWithProgressAsync(
-        ZLinkFrameworkTerminationIntent intent,
+        ZLinkFrameworkLifecycleIntent intent,
         TimeSpan deadline,
         Action? relocationDetached,
         CancellationToken deadlineToken)
@@ -80,10 +80,10 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         ulong committedUnitCount = 0;
         try
         {
-            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
                 _operations.SealApplicationAdmissions();
 
-            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
             {
                 if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
                     return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
@@ -92,7 +92,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                 await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
             }
 
-            if (intent == ZLinkFrameworkTerminationIntent.Shutdown)
+            if (intent == ZLinkFrameworkLifecycleIntent.Shutdown)
             {
                 await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
                     .ConfigureAwait(false);
@@ -107,7 +107,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                 committedUnitCount = checked(
                     committedUnitCount + actorDrain.CommittedUnitCount);
                 if (actorDrain.TerminalReason is not null)
-                    return intent == ZLinkFrameworkTerminationIntent.Retire
+                    return intent == ZLinkFrameworkLifecycleIntent.Relocate
                            && committedUnitCount == 0
                         ? await RollBackBlockedRetireAsync(
                                 actorDrain.TerminalReason.Value)
@@ -124,7 +124,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                 try
                 {
                     var spotDrain = await _operations.DrainSpots(
-                            intent == ZLinkFrameworkTerminationIntent.Retire,
+                            intent == ZLinkFrameworkLifecycleIntent.Relocate,
                             deadlineToken)
                         .ConfigureAwait(false);
                     committedUnitCount = checked(
@@ -133,10 +133,10 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                 }
                 catch (ZLinkAuthorityGenerationExhaustedException)
                 {
-                    return intent == ZLinkFrameworkTerminationIntent.Retire
+                    return intent == ZLinkFrameworkLifecycleIntent.Relocate
                            && committedUnitCount == 0
                         ? await RollBackBlockedRetireAsync(
-                                ZLinkFrameworkTerminationReason.RelocationFailed)
+                                ZLinkFrameworkRelocationReason.RelocationFailed)
                             .ConfigureAwait(false)
                         : Result(ZLinkDrainForceReason.RelocationFailed);
                 }
@@ -144,18 +144,11 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
                     await Task.Delay(_locationOptions.PollingInterval, deadlineToken).ConfigureAwait(false);
             }
 
-            if (intent == ZLinkFrameworkTerminationIntent.Retire)
+            if (intent == ZLinkFrameworkLifecycleIntent.Relocate)
             {
                 _operations.SealApplicationAdmissions();
                 relocationDetached?.Invoke();
-                if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
-                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
-                if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
-                    return Result(ZLinkDrainForceReason.DrainingStatePublishFailed);
-                await WaitForDescriptorPropagationAsync(deadlineToken).ConfigureAwait(false);
-                await _operations.WaitForAcceptedOperations().WaitAsync(deadlineToken)
-                    .ConfigureAwait(false);
-                await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
+                return Result(null);
             }
 
             if (!await _operations.DrainStreamSessions(deadlineToken).ConfigureAwait(false))
@@ -175,11 +168,11 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         }
         catch (OperationCanceledException) when (
             deadlineToken.IsCancellationRequested
-            && intent == ZLinkFrameworkTerminationIntent.Retire)
+            && intent == ZLinkFrameworkLifecycleIntent.Relocate)
         {
             return committedUnitCount == 0
                 ? await RollBackBlockedRetireAsync(
-                        ZLinkFrameworkTerminationReason.DeadlineExceeded)
+                        ZLinkFrameworkRelocationReason.DeadlineExceeded)
                     .ConfigureAwait(false)
                 : Result(ZLinkDrainForceReason.DeadlineExceeded);
         }
@@ -189,7 +182,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
     }
 
     private async ValueTask<ZLinkDrainExecutionResult> RollBackBlockedRetireAsync(
-        ZLinkFrameworkTerminationReason reason)
+        ZLinkFrameworkRelocationReason reason)
     {
         using var rollbackBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         try

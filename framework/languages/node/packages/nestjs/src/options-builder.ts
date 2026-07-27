@@ -183,10 +183,10 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return this;
   }
 
-  setActorTransferForwardWindow(timeoutMs: number): this {
+  setMessageFollowDuration(timeoutMs: number): this {
     this.state.additionalOptions = {
       ...this.state.additionalOptions,
-      actorTransferForwardWindowMs: framework.validateActorTransferForwardWindow(timeoutMs)
+      messageFollowDurationMs: framework.validateMessageFollowDuration(timeoutMs)
     };
     return this;
   }

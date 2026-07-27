@@ -14,8 +14,8 @@ internal sealed record ZLinkRelocationRecoveryCandidate(
 /// it must be idempotent for the aggregate identity.
 /// </summary>
 internal sealed class ZLinkRelocationStartupRecovery(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore)
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore)
 {
     private const int PageSize = 128;
     private static readonly string[] Prefixes = ["zla1:a:", "zla1:s:"];

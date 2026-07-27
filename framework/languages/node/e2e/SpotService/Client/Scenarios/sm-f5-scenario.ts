@@ -15,15 +15,15 @@ import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmF5(options: ClientOptions): Promise<void> {
-  const spotRid = `spot-sm-f5-${Date.now()}`;
+  const spotId = `spot-sm-f5-${Date.now()}`;
   const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-    spotRid
+    spotId
   } satisfies CreateSpotReq);
-  ensure(created.spotRid === spotRid, 'SM-F5 did not create the requested spot.');
+  ensure(created.spotId === spotId, 'SM-F5 did not create the requested spot.');
   ensure(created.nodeRid === 'play-a', 'SM-F5 created spot on the wrong node.');
 
   const mixed = await postJson<SpotMixedRouteRes>(options.playBUrl, '/spot/mixed-route/request', {
-    spotRid,
+    spotId,
     targetNodeRid: 'play-a',
     channelValue: 'sm-f5-before-close',
     delta: 13
@@ -32,7 +32,7 @@ export async function runSmF5(options: ClientOptions): Promise<void> {
   ensure(mixed.spotValue === 13, 'SM-F5 pre-close spot route reply mismatch.');
 
   const closed = await postJson<CloseSpotRes>(options.playAUrl, '/spot/close', {
-    spotRid
+    spotId
   } satisfies CloseSpotReq);
   ensure(closed.closed, 'SM-F5 did not close the spot.');
 
@@ -44,8 +44,8 @@ export async function runSmF5(options: ClientOptions): Promise<void> {
 
   const expectedEvidence = [
     'channel-echo|value=sm-f5-before-close',
-    `spot-state-request|rid=play-a|spot=${spotRid}|value=13`,
-    `spot-closing|rid=play-a|spot=${spotRid}`,
+    `spot-state-request|rid=play-a|spot=${spotId}|value=13`,
+    `spot-closing|rid=play-a|spot=${spotId}`,
     'channel-echo|value=sm-f5-after-close'
   ];
   const evidence = await postJson<string[]>(options.playAUrl, '/evidence/wait', {

@@ -22,19 +22,18 @@ namespace
 struct play_target_t
 {
     zlink::routing_id_t node_rid;
-    zlink::routing_id_t spot_rid;
+    std::string spot_id;
 };
 
-play_target_t play_spot_target (const std::string &node_rid, const std::string &spot_rid)
+play_target_t play_spot_target (const std::string &node_rid, const std::string &spot_id)
 {
-    return play_target_t{zlink::routing_id_t::from (node_rid),
-                         zlink::routing_id_t::from (spot_rid)};
+    return play_target_t{zlink::routing_id_t::from (node_rid), spot_id};
 }
 
 play_target_t play_spot_target (zlink::framework::node_rid_t node_rid,
-                                zlink::framework::spot_rid_t spot_rid)
+                                zlink::framework::spot_id_t spot_id)
 {
-    return play_spot_target (std::string (node_rid.value ()), std::string (spot_rid.value ()));
+    return play_spot_target (std::string (node_rid.value ()), spot_id);
 }
 
 class user_spot_t;
@@ -133,9 +132,9 @@ class user_spot_t : public zlink::framework::spot_t
 
     void on_initialize ()
     {
-        _state.record ("SpotInitialized", {}, std::string (_context.spot_rid ().value ()));
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
-        if (spot_rid.find ("sm-e2-timer") != std::string::npos) {
+        _state.record ("SpotInitialized", {}, _context.spot_id ());
+        const auto spot_id = _context.spot_id ();
+        if (spot_id.find ("sm-e2-timer") != std::string::npos) {
             _timer = _context.add_timer<user_spot_timer_handler_t> (
               "sm-e2-tick", std::chrono::milliseconds (100));
         }
@@ -168,7 +167,7 @@ class user_spot_t : public zlink::framework::spot_t
 
     void on_closing ()
     {
-        _state.record ("SpotClosing", {}, std::string (_context.spot_rid ().value ()));
+        _state.record ("SpotClosing", {}, _context.spot_id ());
     }
 
     zlink::framework::spot_actor_join_response_t
@@ -179,22 +178,22 @@ class user_spot_t : public zlink::framework::spot_t
             const auto request = request_message.decode<e2e::join_admitted_user_spot_actor_req_t> ();
             if (!request.allow) {
                 _state.record ("SpotActorJoinRejected", std::string (actor_id),
-                               std::string (_context.spot_rid ().value ()), request.reason);
+                               _context.spot_id (), request.reason);
                 return zlink::framework::spot_actor_join_response_t::reject (
                   e2e::join_admitted_user_spot_actor_res_t{
-                    .spot_rid = std::string (_context.spot_rid ().value ()),
+                    .spot_id = _context.spot_id (),
                     .actor_id = std::string (actor_id),
                     .accepted = false,
                     .generation = 0,
                     .error_kind = "ActorJoinRejected"});
             }
             _state.record ("SpotActorJoinAdmitted", std::string (actor_id),
-                           std::string (_context.spot_rid ().value ()), request.reason);
+                           _context.spot_id (), request.reason);
             _state.record ("SpotActorJoined", std::string (actor_id),
-                           std::string (_context.spot_rid ().value ()));
+                           _context.spot_id ());
             return zlink::framework::spot_actor_join_response_t::accept (
               e2e::join_admitted_user_spot_actor_res_t{
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .actor_id = std::string (actor_id),
                 .accepted = true,
                 .generation = 0,
@@ -206,7 +205,7 @@ class user_spot_t : public zlink::framework::spot_t
         const auto request = request_message.decode<e2e::join_req_t> ();
         _pending_joins[std::string (actor_id)] = request;
         return zlink::framework::spot_actor_join_response_t::accept (
-          e2e::join_res_t{.spot_rid = std::string (_context.spot_rid ().value ()),
+          e2e::join_res_t{.spot_id = _context.spot_id (),
                           .owner_node_rid = _state.node_rid,
                           .actor_id = std::string (actor_id),
                           .display_name = request.display_name,
@@ -225,24 +224,24 @@ class user_spot_t : public zlink::framework::spot_t
             actor.display_name = pending->second.display_name;
             actor.level = pending->second.level;
             _state.record ("ActorJoined", actor.actor_id,
-                           std::string (_context.spot_rid ().value ()), pending->second.key);
+                           _context.spot_id (), pending->second.key);
             _pending_joins.erase (pending);
         }
         _state.record ("ActorJoinedCallback", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()));
+                       _context.spot_id ());
         co_return;
     }
 
     zlink::framework::task_t<void> on_leave_actor (const scenario_actor_t &actor)
     {
-        _state.record ("ActorLeft", actor.actor_id, std::string (_context.spot_rid ().value ()));
+        _state.record ("ActorLeft", actor.actor_id, _context.spot_id ());
         co_return;
     }
 
     zlink::framework::task_t<void> on_disconnect_actor (const scenario_actor_t &actor)
     {
         _state.record ("ActorDisconnected", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()));
+                       _context.spot_id ());
         co_return;
     }
 
@@ -256,9 +255,9 @@ class user_spot_t : public zlink::framework::spot_t
             _value = request.amount;
         }
         ++_sequence;
-        _state.record ("StateMutated", actor.actor_id, std::string (_context.spot_rid ().value ()),
+        _state.record ("StateMutated", actor.actor_id, _context.spot_id (),
                        std::to_string (_value));
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = _state.node_rid,
                 .value = _value,
                 .sequence = _sequence};
@@ -269,11 +268,11 @@ class user_spot_t : public zlink::framework::spot_t
                                 const e2e::actor_ping_req_t &request)
     {
         ++actor.ping_seen;
-        _state.record ("ActorPing", actor.actor_id, std::string (_context.spot_rid ().value ()),
+        _state.record ("ActorPing", actor.actor_id, _context.spot_id (),
                        request.value + ":" + std::to_string (actor.ping_seen));
         return {.actor_id = actor.actor_id,
                 .node_rid = _state.node_rid,
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .value = request.value,
                 .seen = actor.ping_seen};
     }
@@ -285,11 +284,11 @@ class user_spot_t : public zlink::framework::spot_t
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
         ++actor.ping_seen;
         _state.record ("ActorSlowPing", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()),
+                       _context.spot_id (),
                        request.value + ":" + std::to_string (actor.ping_seen));
         return {.actor_id = actor.actor_id,
                 .node_rid = _state.node_rid,
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .value = request.value,
                 .seen = actor.ping_seen};
     }
@@ -298,7 +297,7 @@ class user_spot_t : public zlink::framework::spot_t
                                       zlink::framework::spot_actor_request_context_t &,
                                       const e2e::complex_actor_req_t &request)
     {
-        _state.record ("ActorComplex", actor.actor_id, std::string (_context.spot_rid ().value ()),
+        _state.record ("ActorComplex", actor.actor_id, _context.spot_id (),
                        request.display_name + "|" + std::to_string (request.level) + "|"
                          + request.attributes.at ("role") + "|" + request.attributes.at ("region"));
         return {.actor_id = actor.actor_id,
@@ -316,9 +315,9 @@ class user_spot_t : public zlink::framework::spot_t
             _value = request.amount;
         }
         ++_sequence;
-        _state.record ("StateRouted", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("StateRouted", {}, _context.spot_id (),
                        std::to_string (_value));
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = _state.node_rid,
                 .value = _value,
                 .sequence = _sequence};
@@ -327,7 +326,7 @@ class user_spot_t : public zlink::framework::spot_t
     void record_timer_tick (const zlink::framework::timer_tick_t &tick)
     {
         ++_timer_ticks;
-        _state.record ("SpotTimerTick", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotTimerTick", {}, _context.spot_id (),
                        tick.name + ":" + std::to_string (tick.delivery_index));
         if (_timer_ticks >= 2) {
             _timer.cancel ();
@@ -355,14 +354,14 @@ class user_spot_t : public zlink::framework::spot_t
             co_return;
         }
         auto closed = co_await _context.close ();
-        _state.record ("SpotIdleTimerClosed", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotIdleTimerClosed", {}, _context.spot_id (),
                        tick.name + ":closed=" + std::string (closed ? "true" : "false"));
     }
 
     void record_overrun_tick (const zlink::framework::timer_tick_t &tick)
     {
         ++_overrun_ticks;
-        _state.record ("SpotTimerOverrun", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotTimerOverrun", {}, _context.spot_id (),
                        tick.name + "|delivery=" + std::to_string (tick.delivery_index)
                          + "|scheduled=" + std::to_string (tick.scheduled_index)
                          + "|skipped=" + std::to_string (tick.skipped_ticks));
@@ -377,9 +376,9 @@ class user_spot_t : public zlink::framework::spot_t
     {
         _value += request.delta;
         ++_sequence;
-        _state.record ("StageRequest", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("StageRequest", {}, _context.spot_id (),
                        request.marker + ":" + std::to_string (_value));
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = _state.node_rid,
                 .value = _value,
                 .sequence = _sequence};
@@ -395,7 +394,7 @@ class user_spot_t : public zlink::framework::spot_t
     void record_stage_timer_tick (const zlink::framework::timer_tick_t &tick)
     {
         ++_stage_timer_ticks;
-        _state.record ("StageTimer", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("StageTimer", {}, _context.spot_id (),
                        tick.name + ":" + std::to_string (tick.delivery_index));
         if (_stage_timer_ticks >= 1) {
             _stage_timer.cancel ();
@@ -416,7 +415,7 @@ class user_spot_t : public zlink::framework::spot_t
         auto left = co_await _context.leave_actor (actor.actor_ref, actor);
         (void) left;
         _state.record ("ActorLeaveRequested", actor_id,
-                       std::string (_context.spot_rid ().value ()));
+                       _context.spot_id ());
         co_return e2e::leave_res_t{true, actor_id};
     }
 
@@ -425,7 +424,7 @@ class user_spot_t : public zlink::framework::spot_t
                                       const e2e::disconnect_req_t &request)
     {
         _state.record ("DisconnectRequested", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), request.reason);
+                       _context.spot_id (), request.reason);
         return {.disconnected = true, .actor_id = actor.actor_id};
     }
 
@@ -445,7 +444,7 @@ class user_spot_t : public zlink::framework::spot_t
         _context
           .publish (e2e::mesh_topic, e2e::mesh_msg_t{"evt-" + actor.actor_id, request.value})
           .submit ();
-        _state.record ("SpotOutbound", actor.actor_id, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotOutbound", actor.actor_id, _context.spot_id (),
                        reply.value);
         co_return e2e::outbound_res_t{reply.value, true, true};
     }
@@ -474,7 +473,7 @@ class user_spot_t : public zlink::framework::spot_t
         catch (...) {
             timed_out = true;
         }
-        _state.record ("SpotOutbound", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotOutbound", {}, _context.spot_id (),
                        reply.value + "|notify-" + request.value + "|timeout="
                          + std::string (timed_out ? "true" : "false"));
         co_return e2e::outbound_res_t{reply.value, true, true};
@@ -498,7 +497,7 @@ class user_spot_t : public zlink::framework::spot_t
           .send (e2e::api_channel,
                  e2e::missing_channel_msg_t{e2e::channel_msg_t{"missing-" + request.value}})
           .submit ();
-        _state.record ("SpotOutboundNegative", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotOutboundNegative", {}, _context.spot_id (),
                        std::string ("requestFailed=") + (request_failed ? "true" : "false"));
         co_return e2e::outbound_res_t{"missing-" + request.value, false, request_failed};
     }
@@ -509,7 +508,7 @@ class user_spot_t : public zlink::framework::spot_t
                 const e2e::worker_req_t &request)
     {
         const auto snapshot = _value;
-        _state.record ("WorkerStarted", actor.actor_id, std::string (_context.spot_rid ().value ()),
+        _state.record ("WorkerStarted", actor.actor_id, _context.spot_id (),
                        std::to_string (snapshot));
         auto worker_result =
           co_await _context
@@ -522,15 +521,15 @@ class user_spot_t : public zlink::framework::spot_t
         _value += request.delta;
         ++_sequence;
         _state.record ("WorkerCompleted", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), std::to_string (_value));
+                       _context.spot_id (), std::to_string (_value));
         co_return e2e::worker_res_t{snapshot, worker_result, _value, _sequence};
     }
 
     e2e::direct_spot_res_t direct_request (const e2e::direct_spot_req_t &request)
     {
         _state.record ("SpotToSpotRequest", request.source_actor_id,
-                       std::string (_context.spot_rid ().value ()), request.value);
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+                       _context.spot_id (), request.value);
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = _state.node_rid,
                 .value = request.value + ":reply"};
     }
@@ -538,8 +537,8 @@ class user_spot_t : public zlink::framework::spot_t
     zlink::framework::task_t<e2e::spot_worker_start_res_t>
     start_worker (const e2e::spot_worker_start_req_t &request)
     {
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
-        _state.record ("WorkerStarted", {}, spot_rid, request.marker);
+        const auto spot_id = _context.spot_id ();
+        _state.record ("WorkerStarted", {}, spot_id, request.marker);
         const auto completed = co_await _context
                                  .run_cpu_worker ([request] {
                                      std::this_thread::sleep_for (
@@ -550,23 +549,23 @@ class user_spot_t : public zlink::framework::spot_t
                                  .yield ();
         _value += 100;
         ++_sequence;
-        _state.record ("WorkerCompleted", {}, spot_rid, completed);
+        _state.record ("WorkerCompleted", {}, spot_id, completed);
         co_return e2e::spot_worker_start_res_t{
-          .spot_rid = spot_rid, .owner_node_rid = _state.node_rid, .marker = request.marker};
+          .spot_id = spot_id, .owner_node_rid = _state.node_rid, .marker = request.marker};
     }
 
     void direct_command (const e2e::direct_spot_msg_t &request)
     {
         _state.record ("SpotToSpotMsg", request.source_actor_id,
-                       std::string (_context.spot_rid ().value ()), request.value);
+                       _context.spot_id (), request.value);
     }
 
     e2e::direct_spot_res_t slow_request (const e2e::slow_spot_req_t &request)
     {
         std::this_thread::sleep_for (std::chrono::milliseconds (300));
-        _state.record ("SpotToSpotSlow", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("SpotToSpotSlow", {}, _context.spot_id (),
                        request.value);
-        return {.spot_rid = std::string (_context.spot_rid ().value ()),
+        return {.spot_id = _context.spot_id (),
                 .owner_node_rid = _state.node_rid,
                 .value = request.value + ":slow"};
     }
@@ -578,17 +577,17 @@ class user_spot_t : public zlink::framework::spot_t
     {
         const auto target_node =
           zlink::framework::node_rid_t::from_string (owner_for_key (request.target_key));
-        const auto target_spot = user_spot_rid (request.target_key);
+        const auto target_spot = user_spot_id (request.target_key);
         const auto target_ref = play_spot_target (target_node, target_spot);
         auto reply =
           co_await _context
             .request_to<e2e::direct_spot_res_t> (
-              target_ref.node_rid, target_ref.spot_rid,
+              target_ref.node_rid, target_ref.spot_id,
               e2e::direct_spot_req_t{actor.actor_id, request.value})
             .timeout (std::chrono::milliseconds (3000))
             .submit ();
         _context
-          .send_to (target_ref.node_rid, target_ref.spot_rid,
+          .send_to (target_ref.node_rid, target_ref.spot_id,
                     e2e::direct_spot_msg_t{actor.actor_id, request.value + ":command"})
           .submit ();
         _context
@@ -597,20 +596,20 @@ class user_spot_t : public zlink::framework::spot_t
           .submit ();
         auto missing = _context
                          .request_to<e2e::direct_spot_res_t> (
-                           target_ref.node_rid, target_ref.spot_rid,
+                           target_ref.node_rid, target_ref.spot_id,
                            e2e::unhandled_spot_req_t{request.value})
                          .timeout (std::chrono::milliseconds (1000))
                          .submit ()
                          .result ();
         auto timed_out = _context
                            .request_to<e2e::direct_spot_res_t> (
-                             target_ref.node_rid, target_ref.spot_rid,
+                             target_ref.node_rid, target_ref.spot_id,
                              e2e::slow_spot_req_t{request.value})
                            .timeout (std::chrono::milliseconds (50))
                            .submit ()
                            .result ();
         _state.record ("SpotToSpotOutbound", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), reply.value);
+                       _context.spot_id (), reply.value);
         co_return e2e::spot_to_spot_res_t{reply.value, true, true, !missing.has_value (),
                                           !timed_out.has_value ()};
     }
@@ -621,19 +620,19 @@ class user_spot_t : public zlink::framework::spot_t
         const auto target_node =
           zlink::framework::node_rid_t::from_string (request.target_node_rid);
         const auto target_spot =
-          zlink::framework::spot_rid_t::from_string (request.target_spot_rid);
+          (request.target_spot_id);
         const auto target_ref = play_spot_target (target_node, target_spot);
-        const auto source_spot = std::string (_context.spot_rid ().value ());
+        const auto source_spot = _context.spot_id ();
         const auto target_value = "sm-c3-" + request.marker;
         auto reply =
           co_await _context
             .request_to<e2e::direct_spot_res_t> (
-              target_ref.node_rid, target_ref.spot_rid,
+              target_ref.node_rid, target_ref.spot_id,
               e2e::direct_spot_req_t{source_spot, target_value})
             .timeout (std::chrono::milliseconds (3000))
             .submit ();
         _context
-          .send_to (target_ref.node_rid, target_ref.spot_rid,
+          .send_to (target_ref.node_rid, target_ref.spot_id,
                     e2e::direct_spot_msg_t{source_spot,
                                                "sm-c3-send-" + request.marker})
           .submit ();
@@ -642,10 +641,10 @@ class user_spot_t : public zlink::framework::spot_t
                     e2e::mesh_msg_t{"evt-sm-c3", "sm-c3-publish-" + request.marker})
           .submit ();
         _state.record ("SpotToSpotOutbound", {}, source_spot,
-                       "target=" + request.target_spot_rid + "|value=" + reply.value);
+                       "target=" + request.target_spot_id + "|value=" + reply.value);
         co_return e2e::spot_to_spot_route_res_t{
-          .source_spot_rid = source_spot,
-          .target_spot_rid = request.target_spot_rid,
+          .source_spot_id = source_spot,
+          .target_spot_id = request.target_spot_id,
           .target_value = reply.value};
     }
 
@@ -655,13 +654,13 @@ class user_spot_t : public zlink::framework::spot_t
         const auto target_node =
           zlink::framework::node_rid_t::from_string (request.target_node_rid);
         const auto target_spot =
-          zlink::framework::spot_rid_t::from_string (request.target_spot_rid);
+          (request.target_spot_id);
         const auto target_ref = play_spot_target (target_node, target_spot);
         bool failed = false;
         try {
             (void) co_await _context
               .request_to<e2e::direct_spot_res_t> (
-                target_ref.node_rid, target_ref.spot_rid,
+                target_ref.node_rid, target_ref.spot_id,
                 e2e::slow_spot_req_t{"sm-c3-" + request.marker})
               .timeout (std::chrono::milliseconds (50))
               .submit ();
@@ -669,13 +668,13 @@ class user_spot_t : public zlink::framework::spot_t
         catch (...) {
             failed = true;
         }
-        const auto source_spot = std::string (_context.spot_rid ().value ());
+        const auto source_spot = _context.spot_id ();
         _state.record ("SpotToSpotTimeout", {}, source_spot,
-                       "target=" + request.target_spot_rid + "|failed="
+                       "target=" + request.target_spot_id + "|failed="
                          + std::string (failed ? "true" : "false"));
         co_return e2e::spot_to_spot_timeout_route_res_t{
-          .source_spot_rid = source_spot,
-          .target_spot_rid = request.target_spot_rid,
+          .source_spot_id = source_spot,
+          .target_spot_id = request.target_spot_id,
           .failed = failed};
     }
 
@@ -685,14 +684,14 @@ class user_spot_t : public zlink::framework::spot_t
         const auto target_node =
           zlink::framework::node_rid_t::from_string (request.target_node_rid);
         const auto target_spot =
-          zlink::framework::spot_rid_t::from_string (request.target_spot_rid);
+          (request.target_spot_id);
         const auto target_ref = play_spot_target (target_node, target_spot);
-        const auto source_spot = std::string (_context.spot_rid ().value ());
+        const auto source_spot = _context.spot_id ();
         bool request_failed = false;
         try {
             (void) co_await _context
               .request_to<e2e::direct_spot_res_t> (
-                target_ref.node_rid, target_ref.spot_rid,
+                target_ref.node_rid, target_ref.spot_id,
                 e2e::direct_spot_req_t{source_spot, request.marker})
               .timeout (std::chrono::milliseconds (1000))
               .submit ();
@@ -701,15 +700,15 @@ class user_spot_t : public zlink::framework::spot_t
             request_failed = true;
         }
         _context
-          .send_to (target_ref.node_rid, target_ref.spot_rid,
+          .send_to (target_ref.node_rid, target_ref.spot_id,
                     e2e::direct_spot_msg_t{source_spot, "missing-" + request.marker})
           .submit ();
         _state.record ("SpotToSpotNegative", {}, source_spot,
-                       "target=" + request.target_spot_rid + "|requestFailed="
+                       "target=" + request.target_spot_id + "|requestFailed="
                          + std::string (request_failed ? "true" : "false"));
         co_return e2e::spot_to_spot_negative_route_res_t{
-          .source_spot_rid = source_spot,
-          .target_spot_rid = request.target_spot_rid,
+          .source_spot_id = source_spot,
+          .target_spot_id = request.target_spot_id,
           .request_failed = request_failed};
     }
 
@@ -719,14 +718,14 @@ class user_spot_t : public zlink::framework::spot_t
     {
         try {
             (void) _context.manager ().get_or_create_spot (e2e::alternate_spot,
-                                                           _context.spot_rid (), request);
+                                                           _context.spot_id (), request);
         }
         catch (const zlink::framework::framework_exception_t &error) {
             if (error.kind () == zlink::framework::framework_error_kind_t::spot_type_mismatch) {
                 const auto spot_name =
-                  _context.manager ().spot_name_for (_context.spot_rid ()).value_or ("");
+                  _context.manager ().spot_name_for (_context.spot_id ()).value_or ("");
                 _state.record ("SpotTypeMismatch", actor.actor_id,
-                               std::string (_context.spot_rid ().value ()), spot_name);
+                               _context.spot_id (), spot_name);
                 return {.rejected = true,
                         .error_kind = "spot_type_mismatch",
                         .spot_name = spot_name,
@@ -736,7 +735,7 @@ class user_spot_t : public zlink::framework::spot_t
         }
         return {.rejected = false,
                 .error_kind = "none",
-                .spot_name = _context.manager ().spot_name_for (_context.spot_rid ()).value_or (""),
+                .spot_name = _context.manager ().spot_name_for (_context.spot_id ()).value_or (""),
                 .value = _value};
     }
 
@@ -750,7 +749,7 @@ class user_spot_t : public zlink::framework::spot_t
             .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
             .submit ();
         _state.record ("ActorPushedSession", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), request.value);
+                       _context.spot_id (), request.value);
         co_return e2e::actor_push_res_t{true, actor.actor_id, actor.ping_seen};
     }
 
@@ -768,7 +767,7 @@ class user_spot_t : public zlink::framework::spot_t
 
     void on_mesh_event (const e2e::mesh_msg_t &event)
     {
-        _state.record ("MeshMsgReceived", {}, std::string (_context.spot_rid ().value ()),
+        _state.record ("MeshMsgReceived", {}, _context.spot_id (),
                        event.event_id + ":" + event.value);
     }
 
@@ -855,13 +854,13 @@ class entry_spot_t : public zlink::framework::entry_spot_t
 
     void on_create_actor (const scenario_actor_t &actor)
     {
-        _state.record ("ActorCreated", actor.actor_id, std::string (_context.spot_rid ().value ()));
+        _state.record ("ActorCreated", actor.actor_id, _context.spot_id ());
     }
 
     zlink::framework::task_t<void> on_actor_joined (const scenario_actor_t &actor)
     {
         _state.record ("EntryActorJoined", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()));
+                       _context.spot_id ());
         co_return;
     }
 
@@ -871,10 +870,10 @@ class entry_spot_t : public zlink::framework::entry_spot_t
           const e2e::join_req_t &request)
     {
         try {
-            const auto rid = user_spot_rid (request.key);
+            const auto rid = user_spot_id (request.key);
             _context.manager ().get_or_create_spot (e2e::user_spot, rid, request);
             _state.record ("EntryJoin", actor.actor_id,
-                           std::string (_context.spot_rid ().value ()), request.key);
+                           _context.spot_id (), request.key);
             auto joined =
               co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
             const auto *accepted =
@@ -917,21 +916,21 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         }
         auto joined =
           co_await actor.context
-            .join_spot (zlink::framework::spot_rid_t::from_string (request.spot_rid), request)
+            .join_spot ((request.spot_id), request)
             .async<e2e::join_admitted_user_spot_actor_res_t> ();
         const auto *joined_accepted =
           std::get_if<zlink::framework::actor_join_accepted_t<
             e2e::join_admitted_user_spot_actor_res_t>> (&joined);
         if (joined_accepted == nullptr) {
             co_return e2e::join_admitted_user_spot_actor_res_t{
-              .spot_rid = request.spot_rid,
+              .spot_id = request.spot_id,
               .actor_id = request.actor_id,
               .accepted = false,
               .generation = 0,
               .error_kind = "ActorJoinRejected"};
         }
         co_return e2e::join_admitted_user_spot_actor_res_t{
-          .spot_rid = request.spot_rid,
+          .spot_id = request.spot_id,
           .actor_id = std::string (joined_accepted->actor.actor_id ()),
           .accepted = true,
           .generation = joined_accepted->actor.generation (),
@@ -945,7 +944,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         co_await _context.destroy_actor (actor);
         _state.record ("ActorDestroyed", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), request.reason);
+                       _context.spot_id (), request.reason);
         co_return e2e::destroy_actor_res_t{true, actor.actor_id};
     }
 
@@ -955,11 +954,11 @@ class entry_spot_t : public zlink::framework::entry_spot_t
     {
         ++actor.ping_seen;
         _state.record ("EntryActorPing", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()),
+                       _context.spot_id (),
                        request.value + ":" + std::to_string (actor.ping_seen));
         return {.actor_id = actor.actor_id,
                 .node_rid = _state.node_rid,
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .value = request.value,
                 .seen = actor.ping_seen};
     }
@@ -971,11 +970,11 @@ class entry_spot_t : public zlink::framework::entry_spot_t
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
         ++actor.ping_seen;
         _state.record ("EntryActorSlowPing", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()),
+                       _context.spot_id (),
                        request.value + ":" + std::to_string (actor.ping_seen));
         return {.actor_id = actor.actor_id,
                 .node_rid = _state.node_rid,
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .value = request.value,
                 .seen = actor.ping_seen};
     }
@@ -990,7 +989,7 @@ class entry_spot_t : public zlink::framework::entry_spot_t
             .send (e2e::actor_push_notify_t{actor.actor_id, request.value, actor.ping_seen})
             .submit ();
         _state.record ("EntryActorPushedSession", actor.actor_id,
-                       std::string (_context.spot_rid ().value ()), request.value);
+                       _context.spot_id (), request.value);
         co_return e2e::actor_push_res_t{true, actor.actor_id, actor.ping_seen};
     }
 

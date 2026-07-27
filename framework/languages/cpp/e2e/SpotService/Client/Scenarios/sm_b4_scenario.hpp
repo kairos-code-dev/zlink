@@ -44,7 +44,7 @@ inline void run_sm_b4_scenario (const std::string &play_http_endpoint)
     const auto state_reply =
       nlohmann::json::parse (requested.value ().body).get<state_res_t> ();
     if (state_reply.owner_node_rid != "play-b"
-        || state_reply.spot_rid != "user:play-b:b-sm-b4-remote"
+        || state_reply.spot_id != "user:play-b:b-sm-b4-remote"
         || state_reply.value != 14 || state_reply.sequence != 1) {
         throw std::runtime_error ("SM-B4 remote actor request mismatch");
     }

@@ -16,13 +16,13 @@ void run_td_e2_user_to_user_spot_join_scenario (
   TConnector &connector,
   const await_actor_scenario_context_t &actors)
 {
-    bind_actor_to_user_spot (connector, actors.actor_a, actors.spot_rid);
-    const auto target_spot_rid = unique_id ("td-e2-target");
-    ensure_user_spot (connector, target_spot_rid);
+    bind_actor_to_user_spot (connector, actors.actor_a, actors.spot_id);
+    const auto target_spot_id = unique_id ("td-e2-target");
+    ensure_user_spot (connector, target_spot_id);
     const auto request_id = unique_id ("TD-E2");
     auto joined = connector.request (
                             actor_join_spot_req_t{.request_id = request_id,
-                                                  .target_spot_rid = target_spot_rid,
+                                                  .target_spot_id = target_spot_id,
                                                   .admission_delay_ms = 0})
                     .packet_name (actor_join_spot_req_t::packet_name)
                     .metadata (actor_id_metadata, actors.actor_a)

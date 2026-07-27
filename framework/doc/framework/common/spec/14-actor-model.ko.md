@@ -139,7 +139,7 @@ Handler turn, 비활성 barrier와 scope는 현재 process의 메모리에만 �
 completion을 재생하지 않으며 source authority와 membership을 그대로 유지한다.
 
 Registration 뒤 source seal 전 도착한 payload는 barrier 뒤 Actor queue에 수락하고 cross-node relocation에서는
-accepted journal·실행 전 queue와 함께 이관한다. Source seal 이후 CAS 전과 forwarding 구간의 payload만
+accepted journal·실행 전 queue와 함께 이관한다. Source seal 이후 CAS 전과 Message Follow 구간의 payload만
 bounded ingress hold에 보관한다.
 
 같은 handler가 barrier를 등록한 Actor에 request를 보내고 그 reply를 기다리면,

@@ -74,28 +74,34 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate) return _spots.Count == 0;
     }
 
-    internal ValueTask<ZLinkFrameworkTerminationReason?> PreflightRetireAsync(
+    internal ValueTask<ZLinkFrameworkRelocationReason?> PreflightRetireAsync(
         ZLinkRetirePreflightPlan plan,
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         (ZLinkSpotActivation Activation, bool Instance)[] units;
         lock (_gate)
         {
             if (_spots.Count == 0)
-                return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(null);
+                return ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(null);
             if (_retireScheduler is null)
-                return ValueTask.FromResult<ZLinkFrameworkTerminationReason?>(
-                    ZLinkFrameworkTerminationReason.RelocationDisabled);
+                return ValueTask.FromResult<ZLinkFrameworkRelocationReason?>(
+                    ZLinkFrameworkRelocationReason.RelocationDisabled);
             units = _spots.Values
                 .Select(activation => (
                     activation,
                     _instanceSpotTypes.ContainsKey(activation.SpotId)))
                 .ToArray();
         }
-        return _retireScheduler.PreflightAsync(units, plan, cancellationToken);
+        return _retireScheduler.PreflightAsync(
+            units,
+            plan,
+            selection,
+            cancellationToken);
     }
 
     internal async ValueTask<ZLinkSpotDrainResult> TryRelocateForRetireAsync(
+        ZLinkRelocationTargetSelection selection,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -132,6 +138,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 return await _retireScheduler.TryRelocateAsync(
                         unit.Activation,
                         unit.Instance,
+                        selection,
                         deadline,
                         CompleteRelocatedSourceAsync,
                         cancellationToken)
@@ -167,29 +174,35 @@ internal sealed class ZLinkSpotNodeCatalog(
             _instanceSpotTypes.Remove(activation.SpotId);
             _closing.Remove(activation.SpotId);
         }
-        var forwardingRemaining = activation.CommittedForwardingRemaining;
-        if (forwardingRemaining <= TimeSpan.Zero)
+        var messageFollowRemaining = activation.MessageFollowRemaining;
+        if (messageFollowRemaining <= TimeSpan.Zero)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
             await activation.DisposeAsync().ConfigureAwait(false);
         }
         else if (!runtime.TryRunDetached(
-                     "spot-relocation-forwarding-window",
+                     "spot-message-follow-duration",
                      async cancellationToken =>
                      {
                          try
                          {
                              await Task.Delay(
-                                     forwardingRemaining,
+                                     messageFollowRemaining,
                                      cancellationToken)
                                  .ConfigureAwait(false);
                          }
                          catch (OperationCanceledException)
                          {
                          }
+                         ZLinkFrameworkDebugLog.SpotDiscovery(
+                             $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
                          await activation.DisposeAsync()
                              .ConfigureAwait(false);
                      }))
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
             await activation.DisposeAsync().ConfigureAwait(false);
         }
         ZLinkRuntimeMetrics.RecordSpotClosed(
@@ -202,7 +215,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         ZLinkFrameworkRegistration registration)
     {
         var location = registration.Locations.ResolveStore();
-        var relocation = registration.Locations.RelocationStoreInstance;
+        var relocation = registration.Locations.ResolveRelocationStore();
         var target = services.GetService<IZLinkSpotRetireTarget>();
         return location is null || relocation is null || target is null
             ? null

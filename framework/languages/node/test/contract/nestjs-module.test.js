@@ -1445,18 +1445,18 @@ test('zlinkFramework preserves actor transfer adapters in the runtime registrati
   assert.equal(registration.actorTransferAdapters.get(PlayerActorFactory), PlayerActorTransferAdapter);
 });
 
-test('zlinkFramework preserves the formal actor transfer timeout settings', async () => {
+test('zlinkFramework preserves actor transfer timeout and Message Follow duration', async () => {
   const registration = await resolveFrameworkRegistration(
     nestjs.ZLinkModule.forRoot(
       nestjs.zlinkFramework()
         .setActorTransferTimeout(12_000)
-        .setActorTransferForwardWindow(4_000)
+        .setMessageFollowDuration(4_000)
         .build()
     )
   );
 
   assert.equal(registration.actorTransferTimeoutMs, 12_000);
-  assert.equal(registration.actorTransferForwardWindowMs, 4_000);
+  assert.equal(registration.messageFollowDurationMs, 4_000);
   assert.throws(
     () => nestjs.zlinkFramework().setActorTransferTimeout(0),
     /actor transfer timeout must be a positive safe integer/

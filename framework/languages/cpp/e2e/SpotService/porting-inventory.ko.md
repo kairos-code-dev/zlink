@@ -14,7 +14,7 @@
 | `Client/Program.cs` | `Client/main.cpp` | client | done | `.NET`과 같이 외부 client는 HTTP client와 stream connector만 사용한다. route client와 spot route 요청은 server HTTP endpoint 뒤에 둔다. |
 | `Client/Support/ClientOptions.cs` | `run_e2e.sh`, `Client/Support/client_options.hpp`, `Client/main.cpp` | support | done | `.NET`은 CLI argument parser로 endpoint와 scenario 값을 받지만, C++는 runner env 주입과 HTTP/stream endpoint option 객체로 같은 실행 계약을 유지한다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/client_support.hpp` | support | done | `ensure(...)` helper와 scenario별 예외로 대응 |
-| `Client/Support/SpotLifecycleOrderContext.cs` | `Client/Support/spot_lifecycle_order_context.hpp`, `Client/main.cpp` | support | done | `.NET`의 shared spot rid/current value context를 C++ grouped mode에서 같은 의미로 유지한다. |
+| `Client/Support/SpotLifecycleOrderContext.cs` | `Client/Support/spot_lifecycle_order_context.hpp`, `Client/main.cpp` | support | done | `.NET`의 shared spot id/current value context를 C++ grouped mode에서 같은 의미로 유지한다. |
 | `Client/Scenarios/SmA1Scenario.cs` | `Client/Scenarios/sm_a1_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A1 |
 | `Client/Scenarios/SmA2Scenario.cs` | `Client/Scenarios/sm_a2_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A2 |
 | `Client/Scenarios/SmA3Scenario.cs` | `Client/Scenarios/sm_a3_scenario.hpp`, `Client/main.cpp` | scenario | done | SM-A3 |

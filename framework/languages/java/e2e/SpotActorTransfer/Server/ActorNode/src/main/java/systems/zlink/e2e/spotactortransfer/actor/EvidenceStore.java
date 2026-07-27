@@ -15,7 +15,7 @@ public final class EvidenceStore {
     private static final Set<String> TRANSFER_MARKERS = Set.of(
         "commit_request",
         "location_committed",
-        "source_cleanup",
+        "message_follow_registered",
         "handoff_backlog",
         "backlog_enqueued",
         "target_backlog_replayed");

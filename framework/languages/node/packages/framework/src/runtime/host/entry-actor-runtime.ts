@@ -61,7 +61,12 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
     const committedState = this.options.actorManager()?.getState(actor.context.actorId);
     if (committedState?.actor === actor) {
       this.options.boundSessionRelay.clearRemoteActorPacketTarget(actor.context.actorId);
-      this.binder.bindEventually(actorRef as ActorRef);
+      this.binder.bindEventually({
+        actorId: actorRef.actorId,
+        objectGeneration: actorRef.generation,
+        meshName: actor.context.meshName,
+        nodeRid: actorRef.nodeRid
+      });
     }
     if (callbackError !== undefined) throw callbackError;
   }

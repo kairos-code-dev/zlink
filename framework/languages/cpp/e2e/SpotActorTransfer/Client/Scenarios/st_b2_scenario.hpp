@@ -10,12 +10,12 @@ namespace
 inline void scenario_runner_t::run_st_b2_scenario ()
 {
     const auto actor_id = "actor-cleanup-after-success-" + unique_suffix ();
-    const auto spot_rid = "spot-cleanup-after-success-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid);
+    const auto spot_id = "spot-cleanup-after-success-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id);
     create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 22);
 
     auto join_task = std::async (
-      std::launch::async, [&] { return join_actor (_nodes.a, actor_id, {"ST-B2", spot_rid}); });
+      std::launch::async, [&] { return join_actor (_nodes.a, actor_id, {"ST-B2", spot_id}); });
     wait_evidence (_nodes.a, {"message_flow|" + actor_id + "|commit_ack|"});
     const auto join = join_task.get ();
     require (join.accepted, "ST-B2 join was rejected.");
@@ -31,7 +31,7 @@ inline void scenario_runner_t::run_st_b2_scenario ()
     require (after.state_version == 22, "ST-B2 state changed after source cleanup loss: "
                                           + std::to_string (after.state_version));
     wait_evidence (_nodes.b, {
-                               "transfer|" + actor_id + "|joined|" + spot_rid + ":22",
+                               "transfer|" + actor_id + "|joined|" + spot_id + ":22",
                                "ST-B2|" + actor_id + "|packet_handler|after-source-cleanup-loss",
                              });
 }

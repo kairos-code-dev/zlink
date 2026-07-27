@@ -30,7 +30,7 @@ export * from './RegistrationTypes';
 import { validateFrameworkRegistration } from './RegistrationValidators';
 export { validateFrameworkRegistration };
 
-const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
+const DEFAULT_MESSAGE_FOLLOW_DURATION_MS = 30_000;
 
 export function createFrameworkRegistration(
   options: ZLinkFrameworkRegistrationOptions = {}
@@ -50,10 +50,10 @@ export function createFrameworkRegistration(
       options.actorTransferTimeoutMs,
       'actorTransferTimeoutMs'
     ),
-    actorTransferForwardWindowMs: normalizeNonNegativeInteger(
-      options.actorTransferForwardWindowMs,
-      'actorTransferForwardWindowMs',
-      DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS
+    messageFollowDurationMs: normalizeNonNegativeInteger(
+      options.messageFollowDurationMs,
+      'messageFollowDurationMs',
+      DEFAULT_MESSAGE_FOLLOW_DURATION_MS
     ),
     spotFactories: toSpotFactorySet(options.spotFactories, spotNodes),
     channels: toChannelMap(options.channels),

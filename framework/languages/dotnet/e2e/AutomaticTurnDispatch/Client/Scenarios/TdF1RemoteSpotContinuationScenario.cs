@@ -12,6 +12,8 @@ internal static class TdF1RemoteSpotContinuationScenario
         var reply = await context.SpotRequest(owner,
                 new RemoteSpotAwaitReq(ExecutionTurnScenarioContext.NewId("TD-F1"), target, 100))
             .Async<AutomaticTurnDispatchRes>();
-        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-a", "TD-F1 continuation did not return to the caller node.");
+        ZlinkStreamAssert.Ensure(
+            reply.NodeRid.StartsWith("play-a-", StringComparison.Ordinal),
+            "TD-F1 continuation did not return to the caller node.");
     }
 }

@@ -4,7 +4,7 @@
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| ST-A1 | 구현 | local join 승인 순서와 packet handler evidence를 client가 검증한다. |
+| ST-A1 | 구현 | 동일 stable type과 node-wide placement weight를 사용한 local join 승인 순서와 packet handler evidence를 실제 process `logs/20260727-230711-505861`에서 검증했다. |
 | ST-A2 | 구현 | local join 거절 뒤 actor 상태와 handler side effect가 없음을 검증한다. |
 | ST-A3 | 구현 | target joined callback 완료 전 packet dispatch가 시작되지 않음을 검증한다. |
 | ST-B1 | 전환 대상 | 기존 remote transfer 시나리오를 relocation admission, immutable payload, authority commit과 target Ready 순서로 전환해야 한다. |
@@ -23,8 +23,8 @@
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
 | ST-F3 | 구현 | 같은 session의 `S1,S2,S3,S4` 순서와 다른 session 진행 격리를 묶음 반복 `logs/20260720-042454-2074240`, `logs/20260720-042515-2075011`, `logs/20260720-042523-2076425`에서 검증했다. |
 | ST-F3A | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
-| ST-F4 | 전환 대상 | 이전 시나리오는 public Actor client에 old `ActorRef`를 직접 넘겼다. 현 계약에서는 caller가 global Actor ID만 사용하고 transport fixture가 이전 owner route의 delivery를 지연해야 한다. |
-| ST-F5 | 전환 대상 | 이전 시나리오는 old `ActorRef` 직접 주입에 의존했다. Transport fixture로 stale-source delivery와 node별 next-hop mapping 축출을 검증하도록 전환해야 한다. |
+| ST-F4 | fixture 구현·process 재검증 대기 | Internal transport delivery gate가 public resolver가 commit 전에 선택한 delivery 두 건을 operation ID별로 지연한다. Caller는 global Actor ID만 사용한다. Duration 안 release는 relay하고 route 제거 뒤 release는 `ActorLocationStale`로 끝나는지 검증한다. |
+| ST-F5 | fixture 구현·process 재검증 대기 | 첫 owner에서 선택한 delivery를 지연한 뒤 세 node로 두 번 relocation하고 release한다. 두 source의 next-hop Message Follow와 route 제거 뒤 stale 결과를 검증한다. Application은 owner RID나 ObjectGeneration을 제출하지 않는다. |
 | ST-F6 | 구현 | handoff 중 request의 원래 caller completion 상관관계와 늦은 reply timeout 격리를 같은 세 실행에서 검증했다. |
 | ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
 | ST-G2 | 미구현 | Actor 10,000개 inventory chunk와 typed capacity aggregate all-or-none E2E가 없다. |
@@ -39,12 +39,71 @@
 | ST-H4A | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
 | ST-H4B | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
 | ST-H5 | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
+| ST-I1 | 부분 구현·process blocker | Actor와 Instance Spot의 4 KiB·64 KiB·8 MiB·64 MiB, SpotWide의 64 KiB·1 MiB·32 MiB·64 MiB profile, deterministic SHA, opaque Store 총 byte·checksum과 peak RSS 측정을 연결했다. Actor target handler, Instance remote activation과 SpotWide relocation terminal blocker가 남아 있다. Queue·journal·timer, permit contention과 320 MiB·5-participant aggregate도 미검증이다. |
+| ST-I2 | 부분 구현·process 미구현 | Production `RelocateAsync(...)`와 DI, PlannedMaintenance same-version·RollingUpdate caller 지정 exact-version scheduler를 연결했다. 10,000 Recreate Actor와 1,000 Snapshot Actor host workload, control traffic과 interruption 측정은 아직 없다. |
+| ST-I3 | 부분 구현·process 미구현 | Exact-version Spot scheduler는 연결했지만 Instance Spot 1,000개와 SpotWide 100개 host workload, 같은 offered load 아래 control Actor·Spot throughput·p99와 accepted one-way 누락·중복 측정은 아직 없다. |
+| ST-I4 | Actor matrix 부분 구현 | Operation ID별 transport gate로 commit 뒤 `MF-AO-FOLLOW`와 `MF-AR-FOLLOW`의 실제 pre-resolved delivery를 검증한다. 현재 source 처리 반복은 relocation seal 직전 queue 경계를 만들지 않으므로 `MF-AO-QUEUE` 증거가 아니다. `MF-AO-QUEUE`, host relocation의 `MF-AR-HOLD`, Spot 네 case와 `MF-PA-SPLIT`는 남아 있다. |
+| ST-I5 | Actor safety 부분 구현·process blocker | Pre-resolved request의 역순 release, expiry와 original absolute deadline 검증 코드를 연결했다. 현재 remote deferred Join이 `RequestFailed`로 끝나 process 검증은 통과하지 않는다. Duplicate, 이전 generation, loop, 8-hop과 1,024 record·16 MiB bound 및 Spot 조합도 남아 있다. |
+| ST-I6 | Actor multi-hop 부분 구현 | 첫 source에서 선택한 request delivery를 두 번 relocation 뒤 release하고 source·중간 node relay와 route cleanup을 검증한다. Handler evidence에는 operation ID가 아직 없어 hop 전체 identity 보존 증거는 남아 있다. One-way, 세 번째 relocation으로 원래 node 복귀, Actor recovery와 Instance·SpotWide 조합도 남아 있다. |
 
 이전 전체 실행 `logs/20260720-044205-2109114`는 당시 기본 17개 시나리오와
 별도 process generation을 사용하는 `ST-B2`, `ST-C2`, `ST-C1`이 모두 통과했다.
 `ST-C1`은 공통 스펙에 따라 target의 `pending_admission_expired` marker를
 30초 이내에서 기다리며, 전체 runtime drain을 admission 정리 증거로 대신 사용하지 않는다.
 
-현재 `run_e2e.sh all`은 ST-G·ST-H와 ST-F3A를 실행하지 않는다. 따라서 위 과거 실행은
-현행 Config 10 전체 완료 증거가 아니다. Runtime M6 gate가 끝난 뒤 전환 대상 시나리오를 현재
-공개 API로 고치고, 미구현 행을 추가한 다음 전체 selector와 scenario registration을 다시 고정한다.
+현재 `run_e2e.sh all`은 19개 시나리오만 실행한다. Transport delivery fixture를 연결한
+`ST-F4/F5`, 부분 구현인 `ST-I1`·`ST-I4~I6`,
+`ST-F3A`, ST-G·ST-H와 `ST-I2/I3`은 실행하지 않는다. 따라서 위 과거 실행과 현재
+selector 모두 현행 Config 10 전체 완료 증거가 아니다. Runtime M6 gate가 끝난 뒤
+전환 대상 시나리오를 현재 공개 API로 고치고, 미구현 행을 추가한 다음 전체 selector와
+scenario registration을 다시 고정한다.
+
+## Transport delivery fixture 경계
+
+기존 transport에는 resolver가 선택한 delivery 하나만 멈추는 fault injection 표면이
+없었다. Backend node 전체를 decorator로 감싸면 multipart frame, request completion과
+socket 오류 변환을 fixture가 다시 구현해야 한다. 이 방식은 transport 내부 지식을 E2E에
+중복시킨다.
+
+선택한 방식은 Actor resolver가 route를 확정한 뒤 실제 submit 직전에 호출하는 internal
+gate다. E2E host만 friend assembly로 gate를 등록한다. Application call은 global Actor
+ID와 일반 metadata만 사용한다. Gate와 HTTP 응답에는 owner RID, `ActorRef`,
+ObjectGeneration과 Message Follow hop이 없다. 등록하지 않은 production host에서는
+delivery를 변경하지 않는다.
+
+## 현재 실행 blocker
+
+Public opaque Store 위에 provider-backed authority repository를 연결했다. Redis↔in-memory
+authority·generation parity와 실제 Redis 2-process focused test가 통과했고,
+AutomaticTurnDispatch는 `TD-A1~TD-C5`를 연속 통과했다.
+
+SpotActorTransfer의 User Spot actor handler는 sample과 같은 `Configure()` public
+registration으로 고쳤다. Reservation 기반 Actor creation commit의 authority를 local
+ownership coordinator에 연결하고 Actor publish를 그 뒤로 옮겼다. Actor와 User Spot을
+같은 owner에 만든 `ST-A1`은 `logs/20260727-224418-4175123`에서 통과했다.
+
+현재 User Spot fixture는 세 Actor node에 같은 stable type을 등록한다. Create DTO의
+`TargetNodeRid`는 제거했고 public node-wide placement weight를 바꾼 뒤 Location descriptor에
+반영됐는지 확인하고 global create를 실행한다. `ST-A1`은 이 경계에서 통과했다.
+`ST-B1`은 Actor를 actor-a, Spot을 actor-b에 배치했지만 deferred Join completion이
+`RequestFailed`로 끝났다(`logs/20260727-230926-521014`). 특정 Node RID 지정 문제는
+해소됐고 remote Join runtime gap이 남아 있다.
+
+Track I의 Relocate 기반 host workload에는 public lifecycle 구현 차이도 남아 있다.
+정식 .NET 계약은 mode를 받는 `RelocateAsync(...)`와 별도 `ShutdownAsync(...)`를
+정의하며 production singleton과 DI 연결도 완료됐다. Actor·Spot scheduler도
+`PlannedMaintenance`의 same-version과 `RollingUpdate`의 caller 지정 exact-version을
+preflight와 실제 relocation에 동일하게 적용한다. Track I의 host workload와 service
+continuity process 검증은 별도로 남아 있다.
+
+Relocation payload 측정용 wrapper는 구현했다. Wrapper는 private envelope나 Store key를
+해석하지 않고 public `IZLinkRelocationStore`의 opaque blob 크기와 SHA-256만 기록한다.
+ActorNode와 Client project build는 warning 0, error 0이다. `ST-I1`은 Actor target handler,
+Instance remote activation, SpotWide non-terminal과 남은 workload profile을 해결하기 전에는
+완료로 표시하지 않는다.
+
+현재 fixture는 Object role에 허용되지 않는 fixed RID·manual peer를 제거했다. Framework가
+`actor-a`·`actor-b`·`actor-c`와 Session prefix에 UUID suffix를 붙여 full RID를 발급하며,
+runner는 실제 automatic peer 연결과 owner RID를 관측한다. ActorNode·SessionGateway·Client는
+warning·error 0으로 build된다. 같은 stable type·caller 비지정 배치와 handler registration을
+정렬한 process 실행이 통과하기 전에는 Config 10 완료 증거가 아니다.

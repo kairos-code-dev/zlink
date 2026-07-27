@@ -68,16 +68,16 @@ RouteMesh 등록은 MeshName 하나를 받고 MeshNode builder를 반환한다. 
 - Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory
 - 모든 object [factory](01-glossary.ko.md#factory)에 명시하는 `Disabled`, `Recreate`, `Snapshot` relocation policy
 - node별 Actor·Spot 수와 Spot type별 capacity, node-wide placement weight
-- route cache age와 stale route forwarding window
+- route cache age와 Message Follow duration
 - Logical Multicast publish policy
 
 MeshName은 물리 mesh의 이름이고 ChannelName은 논리 [membership](01-glossary.ko.md#membership)이다. 같은 MeshNode에 ChannelName을 여러
 개 등록할 수 있다. `ChannelName` 호출은 별도 socket을 만들지 않는다. host가 시작된 뒤 MeshName,
 [routing ID](01-glossary.ko.md#routing-id), endpoint와 membership set은 바꿀 수 없다.
 
-Location option의 `RouteCacheMaxAge` 기본값은 15초이고 `RelocationForwardingWindow` 기본값은 30초다. 둘 다
-0이면 route cache와 forwarding을 끈다. 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다.
-실행 중 변경한 값은 새 cache entry와 새 relocation부터 적용한다. Forwarding window가 끝난 stale route는
+Location option의 `RouteCacheMaxAge` 기본값은 15초이고 `MessageFollowDuration` 기본값은 30초다. 둘 다
+0이면 route cache와 Message Follow를 끈다. 양수이면 cache age가 Message Follow duration보다 최소 5초 작아야 한다.
+실행 중 변경한 값은 새 cache entry와 새 relocation부터 적용한다. Message Follow duration이 끝난 stale route는
 stale-location 오류로 실패하며 Framework가 자동으로 다시 보내지 않는다.
 
 RouteMesh Channel builder는 `Client`와 `Server` 역할을 구분한다. `Client`는 ChannelName을 해당 MeshNode의
@@ -541,7 +541,7 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
-`ActorLocationStale`은 cached route와 forwarding mapping으로 current owner에 도달할 수 없는 상태다.
+`ActorLocationStale`은 cached route와 Message Follow route로 current owner에 도달할 수 없는 상태다.
 Generation stale은 exact ref가 current incarnation과 다른 상태이고 moving은 pre-commit seal이 새 application
 admission을 거부한 상태다. `RelocationDataLost`는 Location authority가 publish한 immutable Relocation root를 영구적으로
 읽을 수 없거나 checksum·inventory digest가 일치하지 않는 상태다. 이미 commit된 owner·membership을 source로
@@ -646,7 +646,7 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
   Instance Spot factory가 하나라도 있거나 `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
 - 분산 owner 또는 relocation을 사용할 때 authority CAS·store clock capability
 - placement reservation·aggregate commit capability와 object descriptor limit
-- route cache age·forwarding window 조합과 host termination deadline
+- route cache age·Message Follow duration 조합과 host termination deadline
 - application version, maintenance wave와 relocation adapter registration의 유효성
 - TLS certificate, key와 trust 설정의 완전성
 - bind host, advertised host와 실제 bound port로 만든 endpoint의 유효성

@@ -464,10 +464,14 @@ export function toFrameworkRoutingId(routingId: unknown): RoutingId {
   return routingId as unknown as RoutingId;
 }
 
-export function toFrameworkActorRef(actor: ZLinkBackendActorRef): ActorRef {
+export function toFrameworkActorRef(
+  actor: ZLinkBackendActorRef,
+  meshName: string
+): ActorRef {
   return {
-    nodeRid: toFrameworkRoutingId(actor.nodeRid),
     actorId: actor.actorId,
-    generation: actor.generation
+    objectGeneration: actor.generation,
+    meshName,
+    nodeRid: toFrameworkRoutingId(actor.nodeRid)
   };
 }

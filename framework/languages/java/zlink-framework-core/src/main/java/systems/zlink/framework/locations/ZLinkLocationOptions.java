@@ -10,7 +10,7 @@ public final class ZLinkLocationOptions {
     private Duration ownerLeaseFencingMargin = Duration.ofSeconds(5);
     private Duration ownerLeaseRenewTimeout = Duration.ofSeconds(3);
     private Duration routeCacheMaxAge = Duration.ofSeconds(15);
-    private Duration relocationForwardingWindow = Duration.ofSeconds(30);
+    private Duration messageFollowDuration = Duration.ofSeconds(30);
     private int maxActiveOutboundRelocations = 64;
     private int maxActiveInboundRelocations = 64;
     private int maxConcurrentRelocationCaptures = 8;
@@ -81,21 +81,21 @@ public final class ZLinkLocationOptions {
             "routeCacheMaxAge");
         validateRouteLifetimeRelationship(
             candidate,
-            relocationForwardingWindow);
+            messageFollowDuration);
         this.routeCacheMaxAge = candidate;
     }
 
-    public Duration relocationForwardingWindow() {
-        return relocationForwardingWindow;
+    public Duration messageFollowDuration() {
+        return messageFollowDuration;
     }
 
-    public void setRelocationForwardingWindow(
-        Duration relocationForwardingWindow) {
+    public void setMessageFollowDuration(
+        Duration messageFollowDuration) {
         Duration candidate = requireNonNegative(
-            relocationForwardingWindow,
-            "relocationForwardingWindow");
+            messageFollowDuration,
+            "messageFollowDuration");
         validateRouteLifetimeRelationship(routeCacheMaxAge, candidate);
-        this.relocationForwardingWindow = candidate;
+        this.messageFollowDuration = candidate;
     }
 
     public int maxActiveOutboundRelocations() {
@@ -174,14 +174,14 @@ public final class ZLinkLocationOptions {
 
     private static void validateRouteLifetimeRelationship(
         Duration routeCacheMaxAge,
-        Duration relocationForwardingWindow) {
+        Duration messageFollowDuration) {
         if (!routeCacheMaxAge.isZero()
-            && !relocationForwardingWindow.isZero()
+            && !messageFollowDuration.isZero()
             && routeCacheMaxAge.compareTo(
-                relocationForwardingWindow.minusSeconds(5)) > 0) {
+                messageFollowDuration.minusSeconds(5)) > 0) {
             throw new IllegalArgumentException(
                 "routeCacheMaxAge must be at least five seconds shorter than "
-                    + "relocationForwardingWindow when both values are enabled.");
+                    + "messageFollowDuration when both values are enabled.");
         }
     }
 

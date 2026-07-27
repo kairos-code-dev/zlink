@@ -131,7 +131,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                 throw new IllegalStateException("Actor creation was rejected");
         };
         writeJson(exchange, new Contracts.ActorCreateRes(
-            actor.actorId(), request.actorType(), actor.nodeRid().toString(), actor.generation()));
+            actor.actorId(), request.actorType(), actor.nodeRid().toString(),
+            actor.objectGeneration()));
     }
 
     private void joinActor(HttpExchange exchange, String actorId) throws Exception {
@@ -139,7 +140,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
             exchange.getRequestBody(), Contracts.JoinTargetReq.class);
         try {
             Contracts.JoinTargetRes result = actorClient
-                .requestToActor(requireActor(actorId), request)
+                .requestToActor(actorId, request)
                 .timeout(Duration.ofSeconds(12))
                 .submit(Contracts.JoinTargetRes.class).toCompletableFuture().join();
             if (result.accepted()) {
@@ -153,7 +154,8 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
                     awaitActorOwner(actorId, target.nodeRid());
                 evidence.add(
                     request.scenario(), actorId, "location_visible",
-                    resolved.nodeRid() + ":" + Long.toUnsignedString(resolved.generation()));
+                    resolved.nodeRid() + ":"
+                        + Long.toUnsignedString(resolved.objectGeneration()));
             }
             evidence.add(request.scenario(), actorId,
                 result.accepted() ? "success_reply" : "reject_reply", request.targetSpotRid());
@@ -189,7 +191,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         Contracts.ProbeReq request = json.readValue(
             exchange.getRequestBody(), Contracts.ProbeReq.class);
         Contracts.ProbeRes result = actorClient
-            .requestToActor(requireActor(actorId), request)
+            .requestToActor(actorId, request)
             .timeout(Duration.ofSeconds(10))
             .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
         writeJson(exchange, result);
@@ -201,7 +203,7 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         try {
             Contracts.ProbeRes result = actorClient
                 .requestToActor(
-                    requireActor(actorId),
+                    actorId,
                     new Contracts.ProbeReq(request.scenario(), request.marker()))
                 .timeout(Duration.ofMillis(request.timeoutMillis()))
                 .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
@@ -217,36 +219,23 @@ public final class ActorNodeHttpServer implements SmartLifecycle {
         writeJson(exchange, java.util.Map.of(
             "actorId", actor.actorId(),
             "nodeRid", actor.nodeRid().toString(),
-            "generation", actor.generation()));
+            "objectGeneration", actor.objectGeneration()));
     }
 
     private void probeActorRef(HttpExchange exchange, String actorId) throws Exception {
         Contracts.ProbeAtRefReq request = json.readValue(
             exchange.getRequestBody(), Contracts.ProbeAtRefReq.class);
-        try {
-            Contracts.ProbeRes result = actorClient
-                .requestToActor(
-                    new ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
-                    request.probe())
-                .timeout(Duration.ofSeconds(5))
-                .submit(Contracts.ProbeRes.class).toCompletableFuture().join();
-            writeJson(exchange, result);
-        } catch (RuntimeException error) {
-            evidence.add(request.probe().scenario(), actorId, "mapping_evicted", request.nodeRid());
-            evidence.add(request.probe().scenario(), actorId, "stale_fail_fast", errorKind(error));
-            throw error;
-        }
+        throw new UnsupportedOperationException(
+            "ST-F4/F5 require a transport delivery-delay fixture; public Actor messaging "
+                + "does not accept an owner route.");
     }
 
     private void sendActorRef(HttpExchange exchange, String actorId) throws Exception {
         Contracts.SendAtRefReq request = json.readValue(
             exchange.getRequestBody(), Contracts.SendAtRefReq.class);
-        actorClient.sendToActor(
-                new ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
-                request.message())
-            .submit();
-        evidence.add(request.message().scenario(), actorId, "straggler_forward", request.nodeRid());
-        writeJson(exchange, java.util.Map.of("sent", true));
+        throw new UnsupportedOperationException(
+            "ST-F4/F5 require a transport delivery-delay fixture; public Actor messaging "
+                + "does not accept an owner route.");
     }
 
     private ActorRef requireActor(String actorId) throws Exception {

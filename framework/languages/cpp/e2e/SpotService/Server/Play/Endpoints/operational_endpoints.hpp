@@ -38,7 +38,7 @@ class spot_locations_handler_t
             for (const auto &row : page.items) {
                 rows.push_back (nlohmann::json{
                   {"mesh_name", row.mesh_name},
-                  {"spot_rid", row.spot_rid.to_string ()},
+                  {"spot_id", row.spot_id.to_string ()},
                   {"spot_type", row.spot_type.value_or (std::string{})},
                   {"node_rid", row.node_rid.to_string ()},
                   {"spot_kind", row.spot_kind == zlink::spot_kind::user ? "user" : "unexpected"},

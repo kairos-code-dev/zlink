@@ -13,14 +13,19 @@ internal static class TdE3OppositeSpotJoinScenario
         await context.EnsureSpotAsync(spotB, "play-a");
         await context.EnsureActorInSpotAsync(actors.ActorA, spotA, "TD-E3-prepare-a");
         await context.EnsureActorInSpotAsync(actors.ActorB, spotB, "TD-E3-prepare-b");
+        var requestA = ExecutionTurnScenarioContext.NewId("TD-E3-A");
+        var requestB = ExecutionTurnScenarioContext.NewId("TD-E3-B");
         var moveA = context.ActorRequest(actors.ActorA,
-                new ActorJoinAwaitReq(ExecutionTurnScenarioContext.NewId("TD-E3-A"), spotB))
+                new ActorJoinAwaitReq(requestA, spotB))
             .Async<ActorAwaitRes>();
         var moveB = context.ActorRequest(actors.ActorB,
-                new ActorJoinAwaitReq(ExecutionTurnScenarioContext.NewId("TD-E3-B"), spotA))
+                new ActorJoinAwaitReq(requestB, spotA))
             .Async<ActorAwaitRes>();
         var replies = await Task.WhenAll(moveA.AsTask(), moveB.AsTask());
-        ZlinkStreamAssert.Ensure(replies.All(reply => reply.Marker == "actor-join-completed"),
-            "TD-E3 opposite joins did not both complete.");
+        ZlinkStreamAssert.Ensure(replies.All(reply => reply.Marker == "actor-join-deferred"),
+            "TD-E3 opposite joins were not both deferred.");
+        await Task.WhenAll(
+            context.AssertJoinCompletionAsync(requestA, "actor-join", spotB, "TD-E3-A"),
+            context.AssertJoinCompletionAsync(requestB, "actor-join", spotA, "TD-E3-B"));
     }
 }

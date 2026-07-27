@@ -357,7 +357,7 @@ deadline을 연장하지 않는다.
 - Actor owner와 target Entry Spot membership이 같은 commit에서 바뀐다.
 - Infrastructure relocation은 Entry·User Spot의 membership callback을 호출하지 않는다.
 - `SpotWide` User Spot aggregate는 하나의 commit을 사용하고, `PerActor` User Spot은 Spot authority를 먼저
-  바꾼 뒤 Actor별 current owner와 stale-route relay를 사용한다.
+  바꾼 뒤 Actor별 current owner와 Message Follow relay를 사용한다.
 - `Activated`부터 route ACK·steady normalization 전까지 target admission이 닫혀 있다.
 - Request terminal completion과 relay ACK가 같은 durable identity로 한 번만 수렴한다.
 - Preflight와 첫 commit 전 failure는 admission을 복원하고, 첫 commit 뒤 failure는 `ForceStopped`로 끝난다.

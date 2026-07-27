@@ -8,7 +8,7 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // completion in the node completion table.
 internal sealed class ZLinkBackendSpotWrapper :
     IZLinkBackendSpot,
-    IZLinkBackendCommittedSpotForwarder,
+    IZLinkBackendSpotMessageFollower,
     IZLinkBackendAuthorityObserver
 {
     private readonly IMeshNode _node;
@@ -218,7 +218,7 @@ internal sealed class ZLinkBackendSpotWrapper :
                && _completions.RegisterRequest(operationId, callback);
     }
 
-    public SubmitResult ForwardSendToSpot(
+    public SubmitResult MessageFollowSendToSpot(
         RoutingId targetRid,
         string spotId,
         ulong spotGeneration,
@@ -226,11 +226,11 @@ internal sealed class ZLinkBackendSpotWrapper :
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
         IReadOnlyList<Message> parts,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata) =>
-        RequireManagedNode().ForwardSendToSpot(
+        RequireManagedNode().MessageFollowSendToSpot(
             SpotId,
             targetRid,
             spotId,
@@ -239,12 +239,12 @@ internal sealed class ZLinkBackendSpotWrapper :
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
-            forwardingHopCount,
+            messageFollowHopCount,
             parts,
             flags,
             metadata);
 
-    public bool ForwardRequestToSpot(
+    public bool MessageFollowRequestToSpot(
         RoutingId targetRid,
         string spotId,
         ulong spotGeneration,
@@ -252,14 +252,15 @@ internal sealed class ZLinkBackendSpotWrapper :
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
-        byte forwardingHopCount,
+        byte messageFollowHopCount,
+        ulong deadlineUnixMs,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
         TimeSpan? timeout,
         ReadOnlyMemory<byte> metadata)
     {
-        var submit = RequireManagedNode().ForwardRequestToSpot(
+        var submit = RequireManagedNode().MessageFollowRequestToSpot(
             SpotId,
             targetRid,
             spotId,
@@ -268,7 +269,8 @@ internal sealed class ZLinkBackendSpotWrapper :
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
-            forwardingHopCount,
+            messageFollowHopCount,
+            deadlineUnixMs,
             parts,
             out var transportOperationId,
             timeout ?? default,
@@ -276,7 +278,7 @@ internal sealed class ZLinkBackendSpotWrapper :
             metadata);
         return AcceptRequestSubmit(
                    submit,
-                   $"forwarded SPOT '{spotId}' on node '{targetRid}'")
+                   $"Message Follow for Spot '{spotId}' on node '{targetRid}'")
                && _completions.RegisterRequest(
                    transportOperationId,
                    callback);

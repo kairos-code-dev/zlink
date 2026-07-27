@@ -26,7 +26,7 @@ inline void run_sm_f1_scenario (const std::string &play_http_endpoint,
                  .build ();
     auto raw =
       api.post ("/spot/state/request")
-        .body (spot_state_route_req_t{.spot_rid = context.spot_rid,
+        .body (spot_state_route_req_t{.spot_id = context.spot_id,
                                       .state = state_req_t{.op = "add", .amount = 7}})
         .submit_raw ()
         .result ();
@@ -40,7 +40,7 @@ inline void run_sm_f1_scenario (const std::string &play_http_endpoint,
                                   + raw.value ().body);
     }
     const auto state = nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
-    if (state.spot_rid != context.spot_rid || state.owner_node_rid != "play-a"
+    if (state.spot_id != context.spot_id || state.owner_node_rid != "play-a"
         || state.value != context.current_value + 7) {
         throw std::runtime_error ("SM-F1 state reply mismatch");
     }
@@ -49,7 +49,7 @@ inline void run_sm_f1_scenario (const std::string &play_http_endpoint,
     auto command =
       api.post ("/spot/state/command")
         .body (spot_state_command_route_req_t{.target_node_rid = "play-a",
-                                              .spot_rid = context.spot_rid,
+                                              .spot_id = context.spot_id,
                                               .marker = "sm-f1-command"})
         .submit_raw ()
         .result ();
@@ -79,7 +79,7 @@ inline void run_sm_f1_scenario (const std::string &play_http_endpoint,
     auto raw =
       api.post ("/spot/direct")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = remote_spot,
+                                       .spot_id = remote_spot,
                                        .value = "route-direct",
                                        .source_actor_id = "external-client"})
         .submit_raw ()
@@ -99,7 +99,7 @@ inline void run_sm_f1_scenario (const std::string &play_http_endpoint,
     auto command =
       api.post ("/spot/direct-command")
         .body (direct_spot_route_req_t{.target_node_rid = "play-b",
-                                       .spot_rid = remote_spot,
+                                       .spot_id = remote_spot,
                                        .value = "route-direct:command",
                                        .source_actor_id = "external-client"})
         .submit_raw ()

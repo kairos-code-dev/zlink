@@ -17,7 +17,7 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmB9(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
-  const spotRid = `spot-sm-b9-${suffix}`;
+  const spotId = `spot-sm-b9-${suffix}`;
   const acceptedActorId = `actor-sm-b9-accepted-${suffix}`;
   const rejectedActorId = `actor-sm-b9-reject-${suffix}`;
 
@@ -26,7 +26,7 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
   try {
     await local
       .request({
-        spotRid,
+        spotId,
         actorId: acceptedActorId,
         displayName: acceptedActorId,
         nodeRid: 'play-a'
@@ -35,7 +35,7 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
       .timeout(5000)
       .submit<AuthRes>();
     const accepted = await local
-      .request({ spotRid, actorId: acceptedActorId } satisfies JoinUserSpotActorReq)
+      .request({ spotId, actorId: acceptedActorId } satisfies JoinUserSpotActorReq)
       .packetName('JoinUserSpotActorReq')
       .timeout(5000)
       .submit<JoinUserSpotActorRes>();
@@ -46,7 +46,7 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
     try {
       await remoteRejected
         .request({
-          spotRid,
+          spotId,
           actorId: rejectedActorId,
           displayName: rejectedActorId,
           nodeRid: 'play-b'
@@ -55,7 +55,7 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
         .timeout(5000)
         .submit<AuthRes>();
       const rejected = await remoteRejected
-        .request({ spotRid, actorId: rejectedActorId } satisfies JoinUserSpotActorReq)
+        .request({ spotId, actorId: rejectedActorId } satisfies JoinUserSpotActorReq)
         .packetName('JoinUserSpotActorReq')
         .timeout(5000)
         .submit<JoinUserSpotActorRes>();
@@ -64,8 +64,8 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
       await remoteRejected.close();
     }
 
-    const acceptedEvidence = `spot-actor-joined|rid=play-a|spot=${spotRid}|actor=${acceptedActorId}`;
-    const rejectedEvidence = `spot-actor-join-rejected|rid=play-b|spot=${spotRid}|actor=${rejectedActorId}`;
+    const acceptedEvidence = `spot-actor-joined|rid=play-a|spot=${spotId}|actor=${acceptedActorId}`;
+    const rejectedEvidence = `spot-actor-join-rejected|rid=play-b|spot=${spotId}|actor=${rejectedActorId}`;
     const playA = await postJson<string[]>(options.playAUrl, '/evidence/wait', {
       containsAll: [acceptedEvidence],
       timeoutMilliseconds: 10000
@@ -80,7 +80,7 @@ export async function runSmB9(options: ClientOptions): Promise<void> {
       'SM-B9 rejected admission evidence mismatch.'
     );
     ensure(
-      playB.every((line) => !line.includes(`spot-actor-joined|rid=play-b|spot=${spotRid}|actor=${rejectedActorId}`)),
+      playB.every((line) => !line.includes(`spot-actor-joined|rid=play-b|spot=${spotId}|actor=${rejectedActorId}`)),
       'SM-B9 rejected actor joined the target spot.'
     );
   } finally {

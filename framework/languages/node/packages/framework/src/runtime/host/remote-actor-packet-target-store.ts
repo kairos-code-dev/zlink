@@ -71,7 +71,7 @@ export class ZLinkRemoteActorPacketTargetStore {
       this.sessionActorPacketTargets.delete(sessionActor);
       this.sessionActorPacketTargetsByActor.delete(sessionActorPacketTargetKey(sessionActor));
     }
-    const actorRef = state?.nativeActorRef as ActorRef | undefined;
+    const actorRef = state?.nativeActorRef;
     if (actorRef !== undefined) {
       this.sessionActorPacketTargetsByActor.delete(
         `${String(actorRef.nodeRid)}:${actorId}:${String(actorRef.generation)}`

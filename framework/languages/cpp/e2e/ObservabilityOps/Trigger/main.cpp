@@ -37,7 +37,7 @@ struct trigger_options_t
 {
     std::string scenario;
     std::string stream_endpoint;
-    std::string spot_rid;
+    std::string spot_id;
     std::optional<zlink::framework::e2e::observability_ops::client::verification_input_t>
       verification;
 };
@@ -70,7 +70,7 @@ trigger_options_t read_options (int argc, char **argv)
     }
     return {.scenario = section.at ("scenario").get<std::string> (),
             .stream_endpoint = section.at ("streamEndpoint").get<std::string> (),
-            .spot_rid = section.at ("spotRid").get<std::string> ()};
+            .spot_id = section.at ("spotId").get<std::string> ()};
 }
 
 void ensure (bool condition, const std::string &message)
@@ -91,7 +91,7 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
         }
         const auto &scenario = configured.scenario;
         const auto &stream_endpoint = configured.stream_endpoint;
-        const auto &spot_rid = configured.spot_rid;
+        const auto &spot_id = configured.spot_id;
         ensure (!stream_endpoint.empty (), "streamEndpoint is required");
 
         zlink::stream_connector::connector_options_t options;
@@ -106,7 +106,7 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
         if (scenario == "flow" || scenario == "fanout") {
             auto reply =
               client
-                .request (obs::obs_action_req_t{.spot_rid = spot_rid,
+                .request (obs::obs_action_req_t{.spot_id = spot_id,
                                                 .marker = scenario == "flow" ? "obs-a1" : "obs-a4",
                                                 .value = 7})
                 .packet_name (obs::obs_action_req_t::packet_name)
@@ -143,7 +143,7 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
             // one action proves the session is live before the drain begins
             auto warm = client
                           .request (obs::obs_action_req_t{
-                            .spot_rid = spot_rid, .marker = "obs-c4", .value = 1})
+                            .spot_id = spot_id, .marker = "obs-c4", .value = 1})
                           .packet_name (obs::obs_action_req_t::packet_name)
                           .timeout (std::chrono::milliseconds (10000))
                           .submit<obs::obs_action_res_t> ();

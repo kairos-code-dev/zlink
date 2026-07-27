@@ -22,7 +22,7 @@ export async function runStE1(): Promise<void> {
   const sourceNode = actorNode(source.nodeRid);
   const targetSpot = await createRemoteSpot(source.nodeRid);
   const targetNode = actorNode(targetSpot.nodeRid);
-  await waitSpotRef(sourceNode, targetSpot.spotRid, targetSpot.nodeRid);
+  await waitSpotRef(sourceNode, targetSpot.spotId, targetSpot.nodeRid);
   const transferId = uniqueShort('transfer');
   const connector = await connectAndBind(options.sessionAStreamEndpoint, 'ST-E1', source, transferId);
   try {
@@ -30,7 +30,7 @@ export async function runStE1(): Promise<void> {
     require(
       (await joinActor(sourceNode, actorId, {
         scenario: 'ST-E1',
-        targetSpotRid: targetSpot.spotRid,
+        targetSpotId: targetSpot.spotId,
         transferId
       })).accepted,
       'ST-E1 join failed.'

@@ -335,7 +335,7 @@ public sealed class LocationResolverTests
         Assert.Equal(RoutingId.From("node-1"), handle.Snapshot.NodeRid);
         Assert.Equal(handle.Snapshot.SpotId, handle.SpotId);
         Assert.Equal(ZLinkSpotKind.Entry, handle.Snapshot.SpotKind);
-        Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
+        Assert.Null(typeof(IZLinkLocationRepository).Assembly.GetType(
             "Zlink.Framework.Contracts.Locations.SpotHandle"));
     }
 

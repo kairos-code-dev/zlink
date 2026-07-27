@@ -70,55 +70,55 @@ final class ZLinkActorTransferHandoffTest {
     }
 
     @Test
-    void forwardingWindowEvictsMapping() throws Exception {
+    void messageFollowDurationRemovesRoute() throws Exception {
         ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
-        CountDownLatch retired = new CountDownLatch(1);
+        CountDownLatch removed = new CountDownLatch(1);
         handoff.retain("actor", ref("source", 1), ref("target", 2),
-            Duration.ofMillis(25), ignored -> retired.countDown());
+            Duration.ofMillis(25), ignored -> removed.countDown());
 
-        assertEquals(1, handoff.forwardingSourceCount());
-        assertTrue(retired.await(1, TimeUnit.SECONDS));
-        assertEquals(0, handoff.forwardingSourceCount());
+        assertEquals(1, handoff.messageFollowSourceCount());
+        assertTrue(removed.await(1, TimeUnit.SECONDS));
+        assertEquals(0, handoff.messageFollowSourceCount());
         handoff.close();
     }
 
     @Test
-    void repeatedMoveReplacesNodeMappingWithoutLeakingEntries() throws Exception {
+    void repeatedRelocationReplacesMessageFollowRouteWithoutLeakingEntries() throws Exception {
         ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
-        List<Long> retiredTargets = new CopyOnWriteArrayList<>();
-        CountDownLatch retired = new CountDownLatch(2);
+        List<Long> removedTargets = new CopyOnWriteArrayList<>();
+        CountDownLatch removed = new CountDownLatch(2);
         handoff.retain("actor", ref("source", 1), ref("target", 2),
             Duration.ofMillis(30), source -> {
-                retiredTargets.add(source.targetActorRef().generation());
-                retired.countDown();
+                removedTargets.add(source.targetActorRef().generation());
+                removed.countDown();
             });
         handoff.retain("actor", ref("source", 3), ref("target", 4),
             Duration.ofMillis(60), source -> {
-                retiredTargets.add(source.targetActorRef().generation());
-                retired.countDown();
+                removedTargets.add(source.targetActorRef().generation());
+                removed.countDown();
             });
 
-        assertEquals(1, handoff.forwardingSourceCount());
-        assertEquals(4, handoff.forwardingSource("actor").orElseThrow()
+        assertEquals(1, handoff.messageFollowSourceCount());
+        assertEquals(4, handoff.messageFollowSource("actor").orElseThrow()
             .targetActorRef().generation());
-        assertTrue(retired.await(1, TimeUnit.SECONDS));
-        assertEquals(List.of(2L, 4L), retiredTargets);
-        assertEquals(0, handoff.forwardingSourceCount());
+        assertTrue(removed.await(1, TimeUnit.SECONDS));
+        assertEquals(List.of(2L, 4L), removedTargets);
+        assertEquals(0, handoff.messageFollowSourceCount());
         handoff.close();
     }
 
     @Test
-    void closeRetiresOwnedForwardingSourcesImmediately() {
+    void closeRemovesOwnedMessageFollowRoutesImmediately() {
         ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
-        List<Long> retiredTargets = new CopyOnWriteArrayList<>();
+        List<Long> removedTargets = new CopyOnWriteArrayList<>();
         handoff.retain("actor", ref("source", 1), ref("target", 2),
             Duration.ofMinutes(1), source ->
-                retiredTargets.add(source.targetActorRef().generation()));
+                removedTargets.add(source.targetActorRef().generation()));
 
         handoff.close();
 
-        assertEquals(List.of(2L), retiredTargets);
-        assertEquals(0, handoff.forwardingSourceCount());
+        assertEquals(List.of(2L), removedTargets);
+        assertEquals(0, handoff.messageFollowSourceCount());
     }
 
     @Test
@@ -149,33 +149,33 @@ final class ZLinkActorTransferHandoffTest {
     }
 
     @Test
-    void committedForwardingMappingBoundsMessagesAndBytes() {
+    void committedMessageFollowRouteBoundsMessagesAndBytes() {
         ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
         handoff.retain(
             "actor", ref("source", 7), ref("target", 7),
             Duration.ofMinutes(1), ignored -> { });
         List<CompletableFuture<Void>> pending = new java.util.ArrayList<>();
         for (int index = 0;
-             index < ZLinkActorTransferHandoff.MAX_FORWARDING_MESSAGES;
+             index < ZLinkActorTransferHandoff.MAX_MESSAGE_FOLLOW_MESSAGES;
              index++) {
             CompletableFuture<Void> operation = new CompletableFuture<>();
             pending.add(operation);
-            handoff.forward("actor", 7, 1, () -> operation);
+            handoff.follow("actor", 7, 1, () -> operation);
         }
 
         assertThrows(CompletionException.class, () ->
-            handoff.forward(
+            handoff.follow(
                     "actor", 7, 1,
                     () -> CompletableFuture.completedFuture(null))
                 .toCompletableFuture().join());
         pending.forEach(value -> value.complete(null));
 
         CompletableFuture<Void> bytes = new CompletableFuture<>();
-        handoff.forward(
-            "actor", 7, ZLinkActorTransferHandoff.MAX_FORWARDING_BYTES,
+        handoff.follow(
+            "actor", 7, ZLinkActorTransferHandoff.MAX_MESSAGE_FOLLOW_BYTES,
             () -> bytes);
         assertThrows(CompletionException.class, () ->
-            handoff.forward(
+            handoff.follow(
                     "actor", 7, 1,
                     () -> CompletableFuture.completedFuture(null))
                 .toCompletableFuture().join());
@@ -184,14 +184,14 @@ final class ZLinkActorTransferHandoffTest {
     }
 
     @Test
-    void forwardingRejectsDifferentObjectGeneration() {
+    void messageFollowRejectsDifferentObjectGeneration() {
         ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
         handoff.retain(
             "actor", ref("source", 7), ref("target", 7),
             Duration.ofMinutes(1), ignored -> { });
 
         assertThrows(CompletionException.class, () ->
-            handoff.forward(
+            handoff.follow(
                     "actor", 8, 1,
                     () -> CompletableFuture.completedFuture(null))
                 .toCompletableFuture().join());

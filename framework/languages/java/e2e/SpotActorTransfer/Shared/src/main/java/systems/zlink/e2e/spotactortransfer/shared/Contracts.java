@@ -54,13 +54,13 @@ public final class Contracts {
         long timeoutMillis) {
     }
 
-    public record StragglerSendReq(String scenario, String marker) {
+    public record MessageFollowSendReq(String scenario, String marker) {
     }
 
     public record SendAtRefReq(
         String nodeRid,
         long generation,
-        StragglerSendReq message) {
+        MessageFollowSendReq message) {
     }
 
     public record ProbeRes(

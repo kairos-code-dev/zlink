@@ -13,7 +13,10 @@ import {
   ZLinkFrameworkException
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import type { ZLinkBackendMeshNode } from '../backend/contracts';
+import type {
+  ZLinkBackendActorRef,
+  ZLinkBackendMeshNode
+} from '../backend/contracts';
 import {
   closeMeshCompletion,
   type ZLinkMeshCompletionTable
@@ -150,7 +153,7 @@ export class ZLinkLocalNativeActorJoin {
         await prepared?.rollback();
         return {
           accepted: false,
-          actor: toFrameworkActorRef(control.actor as never),
+          actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
           reply: completion.parts[0]
         };
       } finally {
@@ -187,7 +190,11 @@ export class ZLinkLocalNativeActorJoin {
           timeoutMs,
           signal
         );
-        prepared?.commit(target, toFrameworkActorRef(control.actor as never), []);
+        prepared?.commit(
+          target,
+          toFrameworkActorRef(control.actor as never, actor.context.meshName),
+          []
+        );
         throw error;
       }
       await this.publishSourceLeaveTerminal(
@@ -200,7 +207,10 @@ export class ZLinkLocalNativeActorJoin {
         timeoutMs,
         signal
       );
-      const nativeTargetActorRef = toFrameworkActorRef(control.actor as never);
+      const nativeTargetActorRef = toFrameworkActorRef(
+        control.actor as never,
+        actor.context.meshName
+      );
       prepared?.commit(target, nativeTargetActorRef, []);
       try {
         await this.options.remoteActivationWaiter?.(
@@ -213,7 +223,11 @@ export class ZLinkLocalNativeActorJoin {
         this.options.postCommitErrorReporter?.(error);
       }
     } else {
-      prepared?.commit(target, toFrameworkActorRef(control.actor as never), []);
+      prepared?.commit(
+        target,
+        toFrameworkActorRef(control.actor as never, actor.context.meshName),
+        []
+      );
     }
     if (!remote && state.actorType !== undefined) {
       this.options.postCommitLocation?.joinedEventually(
@@ -226,11 +240,13 @@ export class ZLinkLocalNativeActorJoin {
         node.status().lifecycleGeneration
       );
     }
-    await this.options.postCommitBinder?.bind(toFrameworkActorRef(control.actor as never));
+    await this.options.postCommitBinder?.bind(
+      toFrameworkActorRef(control.actor as never, actor.context.meshName)
+    );
     try {
       return {
         accepted: true,
-        actor: toFrameworkActorRef(control.actor as never),
+        actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
         reply: completion.parts[0]
       };
     } finally {
@@ -301,7 +317,7 @@ export class ZLinkLocalNativeActorJoin {
     try {
       return {
         accepted: true,
-        actor: toFrameworkActorRef(control.actor as never),
+        actor: toFrameworkActorRef(control.actor as never, actor.context.meshName),
         reply: completion.parts[0]
       };
     } finally {
@@ -393,11 +409,11 @@ function isRetryableTerminalRouteFailure(error: unknown): boolean {
   );
 }
 
-function normalizeNativeActorRef(actor: ActorRef): ActorRef {
+function normalizeNativeActorRef(actor: ActorRef): ZLinkBackendActorRef {
   return {
     nodeRid: actor.nodeRid,
     actorId: actor.actorId,
-    generation: actor.generation
+    generation: actor.objectGeneration
   };
 }
 

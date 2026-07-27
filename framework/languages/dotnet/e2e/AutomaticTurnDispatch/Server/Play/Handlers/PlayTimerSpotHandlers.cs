@@ -24,7 +24,7 @@ internal sealed class TimerStartHandler(EvidenceStore evidence)
         if (!spot.TryAddTimerState(state))
         {
             evidence.Add(
-                $"timer-start-duplicate-ignored|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-start-duplicate-ignored|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
             return AwaitReplies.Reply("probe-C", request.RequestId, spot, "timer-started");
         }
@@ -35,7 +35,7 @@ internal sealed class TimerStartHandler(EvidenceStore evidence)
             new ZLinkTimerOptions { OverrunPolicy = ZLinkTimerOverrunPolicy.DelayNextTick },
             cancellationToken);
         evidence.Add(
-            $"timer-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"timer-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
         return AwaitReplies.Reply("probe-C", request.RequestId, spot, "timer-started");
     }
@@ -58,7 +58,7 @@ internal sealed class TimerStartCommandHandler(EvidenceStore evidence)
         if (!spot.TryAddTimerState(state))
         {
             evidence.Add(
-                $"timer-start-duplicate-ignored|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-start-duplicate-ignored|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
             return;
         }
@@ -69,7 +69,7 @@ internal sealed class TimerStartCommandHandler(EvidenceStore evidence)
             new ZLinkTimerOptions { OverrunPolicy = ZLinkTimerOverrunPolicy.DelayNextTick },
             cancellationToken);
         evidence.Add(
-            $"timer-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"timer-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|request={request.RequestId}|timer={request.TimerName}|mode={request.Mode}");
     }
 }
@@ -120,10 +120,10 @@ internal sealed class AwaitTimerHandler(
         if (string.Equals(state.Mode, "fast", StringComparison.Ordinal))
         {
             evidence.Add(
-                $"timer-fast-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-fast-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             evidence.Add(
-                $"timer-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-fast-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             return;
         }
@@ -134,22 +134,21 @@ internal sealed class AwaitTimerHandler(
         {
             var terminator = state.Mode.StartsWith("yield", StringComparison.Ordinal) ? "yield" : "async";
             evidence.Add(
-                $"timer-{terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             var call = routeClient.RequestToChannel(
-                    AutomaticTurnDispatchNames.DelayChannel,
                     AutomaticTurnDispatchNames.DelayChannel,
                     new DelayReq(state.RequestId, state.DelayMs, state.TimerName))
                 .Timeout(TimeSpan.FromSeconds(5));
             evidence.Add(
-                $"timer-{terminator}-{(terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-{(terminator == "yield" ? "released" : "held")}|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             await TurnTerminator.Complete<DelayRes>(call, terminator, cancellationToken);
             evidence.Add(
-                $"timer-{terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-resumed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             evidence.Add(
-                $"timer-{terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-{terminator}-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             return;
         }
@@ -159,10 +158,10 @@ internal sealed class AwaitTimerHandler(
             && tickNumber == 2)
         {
             evidence.Add(
-                $"timer-next-started|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-next-started|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
             evidence.Add(
-                $"timer-next-completed|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+                $"timer-next-completed|rid={evidence.Rid}|spot={spot.Context.SpotId}"
                 + $"|request={state.RequestId}|timer={state.TimerName}|tick={tickNumber}|handler=timer");
         }
     }

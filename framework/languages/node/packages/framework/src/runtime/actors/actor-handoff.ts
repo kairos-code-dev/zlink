@@ -12,14 +12,14 @@ import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transpor
 import { requestRoutedJsonReply } from './actor-routed-json-request';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
 import {
-  encodeForwardedRemoteActorPacketRelayPayload,
+  encodeMessageFollowRemoteActorPacketRelayPayload,
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET
 } from './actor-packet-relay-wire';
 
-export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 30_000;
-const MAX_FORWARDING_HOPS = 8;
-const MAX_FORWARDING_MESSAGES = 1024;
-const MAX_FORWARDING_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MESSAGE_FOLLOW_DURATION_MS = 30_000;
+const MAX_MESSAGE_FOLLOW_HOPS = 8;
+const MAX_MESSAGE_FOLLOW_MESSAGES = 1024;
+const MAX_MESSAGE_FOLLOW_BYTES = 16 * 1024 * 1024;
 const RELOCATION_REPLY_RETENTION_MS = 24 * 60 * 60 * 1_000;
 
 export interface ZLinkActorHandoffTarget {
@@ -35,7 +35,7 @@ export interface ZLinkActorHandoffPacket {
   readonly payload: string;
   readonly returnResponse: boolean;
   readonly operationId: string;
-  readonly forwardingHopCount: number;
+  readonly messageFollowHopCount: number;
   readonly source?: ZLinkActorHandoffRequestSource;
   readonly remoteBoundSessionTarget?: {
     readonly routerChannelId: string;
@@ -50,9 +50,10 @@ export interface ZLinkActorHandoffPacket {
     readonly acceptedJournalChecksumCrc32c?: number;
   };
   readonly fallbackActorRef?: {
-    readonly nodeRid: string;
     readonly actorId: string;
-    readonly generation: string;
+    readonly objectGeneration: string;
+    readonly meshName: string;
+    readonly nodeRid: string;
   };
 }
 
@@ -107,7 +108,7 @@ interface ActiveHandoff {
   pendingBytes: number;
 }
 
-interface ForwardingEntry {
+interface MessageFollowRoute {
   readonly oldGeneration: bigint;
   readonly target: ZLinkSpotRouteTarget;
   readonly targetActorRef: ActorRef;
@@ -120,7 +121,7 @@ interface ForwardingEntry {
 
 export interface ZLinkActorHandoffCoordinatorOptions {
   readonly routedTransport: ZLinkActorRoutedJoinTransport;
-  readonly forwardWindowMs?: number;
+  readonly messageFollowDurationMs?: number;
   readonly requestTimeoutMs?: number;
   readonly onMarker?: (marker: string, actorId: string, index?: number) => void;
   readonly onRequestFrame?: (
@@ -139,18 +140,18 @@ export interface ZLinkActorHandoffCoordinatorOptions {
   } | undefined;
 }
 
-/** Owns the packet-order boundary from moving start through forwarding cutoff. */
+/** Owns packet ordering from relocation start through Message Follow removal. */
 export class ZLinkActorHandoffCoordinator {
   private readonly active = new Map<string, ActiveHandoff>();
-  private readonly forwarding = new Map<string, ForwardingEntry>();
+  private readonly messageFollowRoutes = new Map<string, MessageFollowRoute>();
   private readonly staleGenerations = new Map<string, Set<bigint>>();
-  private readonly forwardWindowMs: number;
+  private readonly messageFollowDurationMs: number;
   private nextOperationId = 0n;
   private nextReplyRouteId = 0n;
   private readonly replyRoutes = new Map<string, ReplyRoute>();
 
   constructor(private readonly options: ZLinkActorHandoffCoordinatorOptions) {
-    this.forwardWindowMs = options.forwardWindowMs ?? DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS;
+    this.messageFollowDurationMs = options.messageFollowDurationMs ?? DEFAULT_MESSAGE_FOLLOW_DURATION_MS;
   }
 
   begin(actorId: string, oldGeneration: bigint): void {
@@ -196,7 +197,7 @@ export class ZLinkActorHandoffCoordinator {
         remoteBoundSessionTarget,
         fallbackActorRef,
         this.allocateOperationId(),
-        forwardedHopCount(fallbackActorRef)
+        messageFollowHopCount(fallbackActorRef)
       );
       this.admitBounded(handoff.pending.length, handoff.pendingBytes, packet);
       handoff.pendingBytes += packetBytes(packet);
@@ -230,21 +231,22 @@ export class ZLinkActorHandoffCoordinator {
       });
     }
 
-    const forwarding = this.forwarding.get(actorId);
-    const staleGeneration = fallbackActorRef?.generation;
+    const followRoute = this.messageFollowRoutes.get(actorId);
+    const staleGeneration = fallbackActorRef?.objectGeneration;
     if (
-      forwarding === undefined
+      followRoute === undefined
       &&
       staleGeneration !== undefined
       && this.staleGenerations.get(actorId)?.has(staleGeneration) === true
     ) {
-      this.options.onMarker?.('stale_fail_fast', actorId);
+      this.options.onMarker?.('message_follow_expired', actorId);
       return Promise.reject(actorLocationStale(actorId));
     }
     if (
-      forwarding !== undefined &&
+      followRoute !== undefined &&
       fallbackActorRef !== undefined &&
-      (fallbackActorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded === true &&
+      (fallbackActorRef as ActorRef & { handoffMessageFollowed?: boolean })
+        .handoffMessageFollowed === true &&
       this.options.isCurrentHandoffTarget?.(
         actorId,
         (fallbackActorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId ?? ''
@@ -252,16 +254,16 @@ export class ZLinkActorHandoffCoordinator {
     ) {
       return undefined;
     }
-    if (forwarding === undefined || !matchesGeneration(forwarding, fallbackActorRef)) {
+    if (followRoute === undefined || !matchesGeneration(followRoute, fallbackActorRef)) {
       if (this.options.isStaleActorRef?.(actorId, fallbackActorRef) === true) {
-        this.options.onMarker?.('stale_fail_fast', actorId);
+        this.options.onMarker?.('message_follow_rejected', actorId);
         return Promise.reject(actorLocationStale(actorId));
       }
       return undefined;
     }
-    if (Date.now() >= forwarding.expiresAt) {
-      this.evict(actorId, forwarding);
-      this.options.onMarker?.('stale_fail_fast', actorId);
+    if (Date.now() >= followRoute.expiresAt) {
+      this.removeMessageFollowRoute(actorId, followRoute);
+      this.options.onMarker?.('message_follow_rejected', actorId);
       return Promise.reject(actorLocationStale(actorId));
     }
     const packet = encodePacket(
@@ -270,11 +272,11 @@ export class ZLinkActorHandoffCoordinator {
       returnResponse,
       remoteBoundSessionTarget,
       fallbackActorRef,
-      forwardedOperationId(fallbackActorRef) ?? this.allocateOperationId(),
-      forwardedHopCount(fallbackActorRef)
+      messageFollowOperationId(fallbackActorRef) ?? this.allocateOperationId(),
+      messageFollowHopCount(fallbackActorRef)
     );
-    this.options.onMarker?.('straggler_forward', actorId);
-    return this.enqueueForward(forwarding, actorId, packet);
+    this.options.onMarker?.('message_follow_relay', actorId);
+    return this.enqueueMessageFollow(followRoute, actorId, packet);
   }
 
   snapshot(actorId: string): readonly ZLinkActorHandoffPacket[] {
@@ -318,7 +320,8 @@ export class ZLinkActorHandoffCoordinator {
       }
     }
 
-    const forwarding = this.installForwarding(actorId, handoff.oldGeneration, target, targetActorRef);
+    const followRoute =
+      this.installMessageFollowRoute(actorId, handoff.oldGeneration, target, targetActorRef);
     for (const pending of handoff.pending) {
       const source = pending.packet.source;
       if (source === undefined) continue;
@@ -333,12 +336,15 @@ export class ZLinkActorHandoffCoordinator {
       if (pending.packet.source !== undefined) {
         this.removeReplyRoute(pending.packet.source.replyRouteId);
       }
-      void this.enqueueForward(forwarding, actorId, pending.packet).then(pending.resolve, pending.reject);
+      void this.enqueueMessageFollow(followRoute, actorId, pending.packet)
+        .then(pending.resolve, pending.reject);
     }
   }
 
-  forwardingCount(actorId?: string): number {
-    return actorId === undefined ? this.forwarding.size : Number(this.forwarding.has(actorId));
+  messageFollowCount(actorId?: string): number {
+    return actorId === undefined
+      ? this.messageFollowRoutes.size
+      : Number(this.messageFollowRoutes.has(actorId));
   }
 
   pendingCount(actorId: string): number {
@@ -346,12 +352,12 @@ export class ZLinkActorHandoffCoordinator {
   }
 
   isKnownStale(actor: ActorRef): boolean {
-    return this.forwarding.has(actor.actorId) === false
-      && this.staleGenerations.get(actor.actorId)?.has(actor.generation) === true;
+    return this.messageFollowRoutes.has(actor.actorId) === false
+      && this.staleGenerations.get(actor.actorId)?.has(actor.objectGeneration) === true;
   }
 
   recordStaleFailure(actorId: string): void {
-    this.options.onMarker?.('stale_fail_fast', actorId);
+    this.options.onMarker?.('message_follow_rejected', actorId);
   }
 
   acceptRelocatedTerminal(
@@ -446,21 +452,21 @@ export class ZLinkActorHandoffCoordinator {
     return handoff;
   }
 
-  private installForwarding(
+  private installMessageFollowRoute(
     actorId: string,
     oldGeneration: bigint,
     target: ZLinkSpotRouteTarget,
     targetActorRef: ActorRef
-  ): ForwardingEntry {
+  ): MessageFollowRoute {
     let stale = this.staleGenerations.get(actorId);
     if (stale === undefined) {
       stale = new Set();
       this.staleGenerations.set(actorId, stale);
     }
     stale.add(oldGeneration);
-    const previous = this.forwarding.get(actorId);
+    const previous = this.messageFollowRoutes.get(actorId);
     if (previous !== undefined) clearTimeout(previous.deadline);
-    const expiresAt = Date.now() + this.forwardWindowMs;
+    const expiresAt = Date.now() + this.messageFollowDurationMs;
     const entry = {
       oldGeneration,
       target,
@@ -471,28 +477,31 @@ export class ZLinkActorHandoffCoordinator {
       queuedMessages: 0,
       queuedBytes: 0
     };
-    entry.deadline = setTimeout(() => this.evict(actorId, entry), this.forwardWindowMs);
+    entry.deadline = setTimeout(
+      () => this.removeMessageFollowRoute(actorId, entry),
+      this.messageFollowDurationMs
+    );
     entry.deadline.unref();
-    this.forwarding.set(actorId, entry);
-    this.options.onMarker?.('forwarding_mapped', actorId, this.forwardWindowMs);
+    this.messageFollowRoutes.set(actorId, entry);
+    this.options.onMarker?.('message_follow_registered', actorId, this.messageFollowDurationMs);
     return entry;
   }
 
-  private evict(actorId: string, entry: ForwardingEntry): void {
-    if (this.forwarding.get(actorId) !== entry) return;
+  private removeMessageFollowRoute(actorId: string, entry: MessageFollowRoute): void {
+    if (this.messageFollowRoutes.get(actorId) !== entry) return;
     clearTimeout(entry.deadline);
-    this.forwarding.delete(actorId);
-    this.options.onMarker?.('mapping_evicted', actorId);
+    this.messageFollowRoutes.delete(actorId);
+    this.options.onMarker?.('message_follow_route_removed', actorId);
   }
 
-  private enqueueForward(
-    entry: ForwardingEntry,
+  private enqueueMessageFollow(
+    entry: MessageFollowRoute,
     actorId: string,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
     const bytes = packetBytes(packet);
     this.admitBounded(entry.queuedMessages, entry.queuedBytes, packet);
-    if (packet.forwardingHopCount >= MAX_FORWARDING_HOPS) {
+    if (packet.messageFollowHopCount >= MAX_MESSAGE_FOLLOW_HOPS) {
       return Promise.reject(actorLocationStale(actorId));
     }
     entry.queuedMessages++;
@@ -505,7 +514,7 @@ export class ZLinkActorHandoffCoordinator {
     });
     entry.tail = entry.tail.then(async () => {
       try {
-        resolve(await this.forward(actorId, entry.target, entry.targetActorRef, packet));
+        resolve(await this.relayMessageFollow(actorId, entry.target, entry.targetActorRef, packet));
       } catch (error) {
         reject(error);
       } finally {
@@ -521,18 +530,21 @@ export class ZLinkActorHandoffCoordinator {
   }
 
   private admitBounded(messageCount: number, byteCount: number, packet: ZLinkActorHandoffPacket): void {
-    if (messageCount >= MAX_FORWARDING_MESSAGES || byteCount + packetBytes(packet) > MAX_FORWARDING_BYTES) {
-      throw actorLocationStale('forwarding-bound');
+    if (
+      messageCount >= MAX_MESSAGE_FOLLOW_MESSAGES
+      || byteCount + packetBytes(packet) > MAX_MESSAGE_FOLLOW_BYTES
+    ) {
+      throw actorLocationStale('message-follow-bound');
     }
   }
 
-  private async forward(
+  private async relayMessageFollow(
     actorId: string,
     target: ZLinkSpotRouteTarget,
     targetActorRef: ActorRef,
     packet: ZLinkActorHandoffPacket
   ): Promise<unknown> {
-    const payload = encodeForwardedRemoteActorPacketRelayPayload({
+    const payload = encodeMessageFollowRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,
       boundSessionTargetNodeRid: packet.remoteBoundSessionTarget?.targetNodeRid,
@@ -540,10 +552,10 @@ export class ZLinkActorHandoffCoordinator {
       header: packet.header,
       payload: packet.payload,
       actorNodeRid: String(targetActorRef.nodeRid),
-      actorGeneration: targetActorRef.generation.toString(),
+      actorGeneration: targetActorRef.objectGeneration.toString(),
       handoffTargetSpotId: String(target.spotId),
       operationId: packet.operationId,
-      forwardingHopCount: packet.forwardingHopCount + 1,
+      messageFollowHopCount: packet.messageFollowHopCount + 1,
       authorityOwnerGeneration: target.authorityOwnerGeneration?.toString(),
       ownerLeaseGeneration: target.ownerLeaseGeneration?.toString()
     });
@@ -558,7 +570,9 @@ export class ZLinkActorHandoffCoordinator {
         packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
         timeoutMs: this.options.requestTimeoutMs
       });
-      if (reply.ok === false) throw new Error(String(reply.error ?? 'Actor packet forwarding failed.'));
+      if (reply.ok === false) {
+        throw new Error(String(reply.error ?? 'Actor Message Follow relay failed.'));
+      }
       return reply.response;
     }
     return await requestRoutedJsonReply(
@@ -566,15 +580,19 @@ export class ZLinkActorHandoffCoordinator {
       target,
       payload,
       { timeoutMs: this.options.requestTimeoutMs },
-      `Actor packet forwarding raw request is not available for '${actorId}'.`,
+      `Actor Message Follow raw request is not available for '${actorId}'.`,
       (parts) => {
-        if (parts.length === 0) throw new Error(`Actor packet forwarding reply was empty for '${actorId}'.`);
+        if (parts.length === 0) {
+          throw new Error(`Actor Message Follow reply was empty for '${actorId}'.`);
+        }
         const reply = JSON.parse(parts[0].getString('utf8')) as {
           readonly ok?: boolean;
           readonly response?: unknown;
           readonly error?: unknown;
         };
-        if (reply.ok === false) throw new Error(String(reply.error ?? 'Actor packet forwarding failed.'));
+        if (reply.ok === false) {
+          throw new Error(String(reply.error ?? 'Actor Message Follow relay failed.'));
+        }
         return reply.response;
       }
     );
@@ -610,9 +628,10 @@ export function decodeHandoffPacket(packet: ZLinkActorHandoffPacket): {
     fallbackActorRef: packet.fallbackActorRef === undefined
       ? undefined
       : {
-          nodeRid: packet.fallbackActorRef.nodeRid,
           actorId: packet.fallbackActorRef.actorId,
-          generation: BigInt(packet.fallbackActorRef.generation)
+          objectGeneration: BigInt(packet.fallbackActorRef.objectGeneration),
+          meshName: packet.fallbackActorRef.meshName,
+          nodeRid: packet.fallbackActorRef.nodeRid
         }
   };
 }
@@ -659,7 +678,7 @@ function encodePacket(
   remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
   fallbackActorRef?: ActorRef,
   operationId = '',
-  forwardingHopCount = 0
+  messageFollowHopCount = 0
 ): ZLinkActorHandoffPacket {
   return {
     index,
@@ -667,7 +686,7 @@ function encodePacket(
     payload: Buffer.from(parts[1].data()).toString('base64'),
     returnResponse,
     operationId,
-    forwardingHopCount,
+    messageFollowHopCount,
     remoteBoundSessionTarget: remoteBoundSessionTarget === undefined
       ? undefined
       : {
@@ -687,9 +706,10 @@ function encodePacket(
     fallbackActorRef: fallbackActorRef === undefined
       ? undefined
       : {
-          nodeRid: String(fallbackActorRef.nodeRid),
           actorId: fallbackActorRef.actorId,
-          generation: fallbackActorRef.generation.toString()
+          objectGeneration: fallbackActorRef.objectGeneration.toString(),
+          meshName: fallbackActorRef.meshName,
+          nodeRid: String(fallbackActorRef.nodeRid)
         }
   };
 }
@@ -702,22 +722,22 @@ function packetBytes(packet: ZLinkActorHandoffPacket): number {
   return Buffer.byteLength(packet.header, 'base64') + Buffer.byteLength(packet.payload, 'base64');
 }
 
-function forwardedOperationId(actorRef: ActorRef | undefined): string | undefined {
+function messageFollowOperationId(actorRef: ActorRef | undefined): string | undefined {
   return (actorRef as ActorRef & { handoffOperationId?: string } | undefined)?.handoffOperationId;
 }
 
-function forwardedHopCount(actorRef: ActorRef | undefined): number {
-  return (actorRef as ActorRef & { handoffForwardingHopCount?: number } | undefined)
-    ?.handoffForwardingHopCount ?? 0;
+function messageFollowHopCount(actorRef: ActorRef | undefined): number {
+  return (actorRef as ActorRef & { handoffMessageFollowHopCount?: number } | undefined)
+    ?.handoffMessageFollowHopCount ?? 0;
 }
 
-function matchesGeneration(entry: ForwardingEntry, actorRef: ActorRef | undefined): boolean {
-  return actorRef === undefined || actorRef.generation === entry.oldGeneration;
+function matchesGeneration(entry: MessageFollowRoute, actorRef: ActorRef | undefined): boolean {
+  return actorRef === undefined || actorRef.objectGeneration === entry.oldGeneration;
 }
 
 function actorLocationStale(actorId: string): ZLinkFrameworkException {
   return new ZLinkFrameworkException(
     ZLinkFrameworkErrorKind.ActorLocationStale,
-    `Actor route '${actorId}' is stale after the transfer forwarding window.`
+    `Actor route '${actorId}' is stale after the Message Follow duration.`
   );
 }

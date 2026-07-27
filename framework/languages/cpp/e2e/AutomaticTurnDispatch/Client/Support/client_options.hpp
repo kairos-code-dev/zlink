@@ -20,7 +20,7 @@ struct client_options_t
     std::string session_b_stream_endpoint;
     std::string scenario;
     std::string request_id;
-    std::string spot_rid;
+    std::string spot_id;
 };
 
 inline client_options_t parse_client_options (int argc, char **argv)
@@ -50,7 +50,7 @@ inline client_options_t parse_client_options (int argc, char **argv)
             .session_b_stream_endpoint = value ("sessionBStreamEndpoint"),
             .scenario = value ("scenario"),
             .request_id = value ("requestId"),
-            .spot_rid = value ("spotRid")};
+            .spot_id = value ("spotId")};
 }
 
 inline zlink::stream_connector::connector_options_t

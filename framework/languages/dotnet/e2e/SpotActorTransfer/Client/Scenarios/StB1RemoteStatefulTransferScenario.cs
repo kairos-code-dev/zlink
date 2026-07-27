@@ -18,7 +18,7 @@ internal static class StB1RemoteStatefulTransferScenario
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-B1 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B1", "after-transfer"));
-        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-B1 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(SpotActorTransferScenarioContext.IsNode(probe.NodeRid, "actor-b"), $"ST-B1 probe expected actor-b, got {probe.NodeRid}.");
         ZlinkStreamAssert.Ensure(probe.StateVersion == 21, $"ST-B1 state version expected 21, got {probe.StateVersion}.");
 
         await context.WaitEvidenceAsync(context.NodeA, [

@@ -13,19 +13,19 @@ import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmE1(options: ClientOptions): Promise<void> {
-  const spotRid = `spot-sm-e1-${Date.now()}`;
+  const spotId = `spot-sm-e1-${Date.now()}`;
   const created = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-    spotRid
+    spotId
   } satisfies CreateSpotReq);
-  ensure(created.spotRid === spotRid && created.nodeRid === 'play-a', 'SM-E1 spot was not created on play-a.');
+  ensure(created.spotId === spotId && created.nodeRid === 'play-a', 'SM-E1 spot was not created on play-a.');
 
   const missingRequest = await postJson<SpotMissingHandlerRes>(options.playAUrl, '/spot/missing-handler/request', {
-    spotRid
+    spotId
   } satisfies SpotMissingHandlerReq);
   ensure(missingRequest.failed, 'SM-E1 missing handler request did not fail.');
 
   const missingCommand = await postJson<SpotMissingMsgRes>(options.playAUrl, '/spot/missing-handler/command', {
-    spotRid,
+    spotId,
     marker: 'missing-command'
   } satisfies SpotMissingMsgReq);
   ensure(missingCommand.sent, 'SM-E1 missing handler command was not sent.');

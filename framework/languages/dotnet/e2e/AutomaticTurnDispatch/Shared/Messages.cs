@@ -8,6 +8,7 @@ public static class AutomaticTurnDispatchNames
     public const string SpotRouteChannel = "await.spot.route";
     public const string StreamNode = "await.stream";
     public const string ActorType = "await.actor";
+    public const string SpotType = "await.spot.user";
     public const string ActorIdMetadata = "actor-id";
     public const string SpotRidMetadata = "spot-rid";
     public const string TargetNodeRidMetadata = "target-node-rid";

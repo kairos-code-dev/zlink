@@ -8,7 +8,7 @@ export class BasicTimerHandler implements ZLinkSpotTimerHandler<ScenarioUserSpot
   constructor(private readonly evidence: EvidenceStore) {}
 
   async handle(spot: ScenarioUserSpot, tick: ZLinkTimerTick): Promise<void> {
-    this.evidence.add(`timer-basic|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|name=${tick.name}`);
+    this.evidence.add(`timer-basic|rid=${this.evidence.rid}|spot=${spot.context.spotId}|name=${tick.name}`);
   }
 }
 
@@ -22,7 +22,7 @@ export class IdleCloseTimerHandler implements ZLinkSpotTimerHandler<ScenarioUser
     }
     const closed = await spot.context.close();
     this.evidence.add(
-      `timer-idle-close|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|name=${tick.name}|closed=${closed ? 'True' : 'False'}`
+      `timer-idle-close|rid=${this.evidence.rid}|spot=${spot.context.spotId}|name=${tick.name}|closed=${closed ? 'True' : 'False'}`
     );
   }
 }
@@ -33,7 +33,7 @@ export class OverrunTimerHandler implements ZLinkSpotTimerHandler<ScenarioUserSp
 
   async handle(spot: ScenarioUserSpot, tick: ZLinkTimerTick): Promise<void> {
     this.evidence.add(
-      `timer-overrun|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|name=${tick.name}`
+      `timer-overrun|rid=${this.evidence.rid}|spot=${spot.context.spotId}|name=${tick.name}`
       + `|delivery=${tick.deliveryIndex}|scheduled=${tick.scheduledIndex}|skipped=${tick.skippedTicks}`
     );
     await new Promise((resolve) => setTimeout(resolve, 90));

@@ -13,6 +13,7 @@ dependencies {
     implementation(zlinkLibs.zlink.bindings)
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.2")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
+    implementation(kotlin("reflect"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 }
 

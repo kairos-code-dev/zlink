@@ -10,8 +10,8 @@ namespace
 inline void scenario_runner_t::run_st_c2_scenario ()
 {
     const auto actor_id = "actor-source-down-after-commit-" + unique_suffix ();
-    const auto spot_rid = "spot-source-down-after-commit-" + unique_suffix ();
-    create_spot (_nodes.b, spot_rid);
+    const auto spot_id = "spot-source-down-after-commit-" + unique_suffix ();
+    create_spot (_nodes.b, spot_id);
     create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 61);
     const auto source_ref = get_actor_ref (_nodes.a, actor_id);
     bound_session_t bound (_nodes.b_stream_endpoint, "ST-C2", source_ref);
@@ -21,11 +21,11 @@ inline void scenario_runner_t::run_st_c2_scenario ()
              "ST-C2 pre-transfer bound push expected actor-a, got " + before_reply.node_rid);
     before_push.get ();
 
-    const auto join = join_actor (_nodes.a, actor_id, {"ST-C2", spot_rid});
+    const auto join = join_actor (_nodes.a, actor_id, {"ST-C2", spot_id});
     require (join.accepted, "ST-C2 join was rejected.");
     wait_evidence (_nodes.b, {
                                "transfer|" + actor_id + "|transfer_in|61",
-                               "transfer|" + actor_id + "|joined|" + spot_rid + ":61",
+                               "transfer|" + actor_id + "|joined|" + spot_id + ":61",
                              });
     const auto before_shutdown = get_actor_ref (_nodes.b, actor_id);
     require (before_shutdown.node_rid == "actor-b",
@@ -42,7 +42,7 @@ inline void scenario_runner_t::run_st_c2_scenario ()
 
     const auto probe = probe_actor (_nodes.b, actor_id, {"ST-C2", "after-source-down"});
     require (probe.node_rid == "actor-b", "ST-C2 probe expected actor-b, got " + probe.node_rid);
-    require (probe.spot_rid == spot_rid,
+    require (probe.spot_id == spot_id,
              "ST-C2 probe did not reach target spot after source shutdown.");
     auto pushed = bound.expect_push ("bound-after-source-down");
     const auto push_reply = bound_push (_nodes.b, actor_id, {"ST-C2", "bound-after-source-down"});

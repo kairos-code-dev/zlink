@@ -14,7 +14,7 @@ export {
   registerEntrySpot,
   registerSpotFactory,
   validateActorTransferTimeout,
-  validateActorTransferForwardWindow
+  validateMessageFollowDuration
 } from './contracts/Configuration/RegistrationBuilderPolicy';
 
 import type {

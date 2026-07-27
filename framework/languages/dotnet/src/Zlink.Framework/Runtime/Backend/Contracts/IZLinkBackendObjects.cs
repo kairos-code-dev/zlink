@@ -98,7 +98,7 @@ internal readonly record struct ZLinkBackendSpotActorLifecycleEvent(
 
 internal readonly record struct ZLinkBackendActorRouteContext(
     MeshOperationId OperationId,
-    byte ForwardingHopCount,
+    byte MessageFollowHopCount,
     ulong TargetNodeGeneration,
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,

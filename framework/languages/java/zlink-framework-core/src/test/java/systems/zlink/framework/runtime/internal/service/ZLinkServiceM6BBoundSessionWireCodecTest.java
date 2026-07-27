@@ -23,13 +23,13 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
             true, 0, 7L, 11, 12, 3, "source", spotRoute));
         assertEquals(11, spot.operationHigh());
         assertEquals(12, spot.operationLow());
-        assertEquals(3, spot.forwardingHopCount());
+        assertEquals(3, spot.messageFollowHopCount());
 
         var actor = codec.decodeActorHeader(codec.encodeActorHeader(
             false, 0, null, 21, 22, 4, null, route()));
         assertEquals(21, actor.operationHigh());
         assertEquals(22, actor.operationLow());
-        assertEquals(4, actor.forwardingHopCount());
+        assertEquals(4, actor.messageFollowHopCount());
     }
 
     @Test

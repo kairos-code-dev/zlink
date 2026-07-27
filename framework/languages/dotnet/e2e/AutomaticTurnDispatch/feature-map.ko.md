@@ -22,7 +22,7 @@
 | TD-D2 | 구현 | actor A의 `Yield` 구간에도 같은 actor A의 두 번째 handler가 재진입하지 않는지 확인한다. |
 | TD-D3 | 구현 | timer의 `Yield` 구간에도 같은 timer의 다음 tick이 이전 tick 완료 뒤 시작하는지 확인한다. |
 | TD-E1 | 구현 | Entry Spot actor handler의 `JoinSpot(...).Async(...)`가 user Spot join을 완료하는지 확인한다. |
-| TD-E2 | 구현 | user Spot actor handler의 `JoinSpot(...).Async(...)`가 다른 user Spot으로 이동을 완료하는지 확인한다. |
+| TD-E2 | 구현 | user Spot actor handler가 `JoinSpot(...).Defer()`로 이동을 등록하고 `OnJoinCompletedAsync(...)`에서 다른 user Spot으로 이동 완료를 받는지 확인한다. |
 | TD-E3 | 구현 | Cross-node Deferred Join의 `Accepted` completion은 Relocation Store의 immutable root와 authority reference에 `OperationId`, raw reply와 `Prepared → Committed → Delivered` cursor를 보존한다. Owner·membership commit 뒤 callback 실패나 target process 재시작이 발생하면 target Actor mailbox에서 같은 `OperationId`로 재시도한다. `Delivered` root는 source의 response loss retry를 dedupe할 수 있도록 recovery retention 동안 유지하며, cleanup은 authority reference를 먼저 해제한 뒤 root를 삭제한다. `DeferredActorJoinDurabilityTests`가 root recovery, callback retry, 중복 prepare와 cleanup 순서를 검증한다. |
 | TD-E3 | 구현 | 서로 반대 방향으로 시작한 두 user Spot join이 모두 timeout 없이 완료되는지 확인한다. |
 | TD-F1 | 구현 | 다른 노드의 Spot request를 기다린 continuation이 caller 노드로 돌아오는지 확인한다. |

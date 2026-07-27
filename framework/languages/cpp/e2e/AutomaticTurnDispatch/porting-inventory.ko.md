@@ -24,10 +24,10 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 | `Client/Program.cs` | `Client/main.cpp` | client | done | stream connector로 ATD-A1~ATD-A4, ATD-B1~ATD-B3, ATD-C1~ATD-C3, ATD-D2~ATD-D4, ATD-E1, ATD-E2 request를 시작하고 검증한다. `shutdown-wait`/`shutdown-recovery` mode로 ATD-E3도 실행한다. client option 파싱, evidence wait, assertion, actor context는 support/scenario-support header로 분리됐다. ATD-A2/A4는 yielded command와 probe/evidence 관측을 별도 connector로 분리한다. ATD-B1/B3/C3는 같은 session-a connector에서 in-flight actor/spot request를 겹쳐 `.NET`과 같은 교차 실행선 release를 검증한다. D2 owner evidence 관측은 public evidence snapshot polling을 쓴다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client_options.hpp` | support | done | session-a와 session-b stream endpoint, scenario 선택, shutdown flow option을 읽고 stream connector option을 만든다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario_assert.hpp`; `Client/Support/evidence_wait.hpp` | support | done | marker 순서 검증, request line fragment 검증, result error 출력, evidence snapshot polling helper가 있다. C++에서는 assertion과 evidence wait를 별도 support header로 나눈다. |
-| `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/await_actor_scenario_context.hpp` | scenario-support | done | actor binding과 session relay scenario가 공유하는 spot rid, actor A, actor B context를 분리했다. |
+| `Client/Scenarios/YieldActorScenarioContext.cs` | `Client/Scenarios/await_actor_scenario_context.hpp` | scenario-support | done | actor binding과 session relay scenario가 공유하는 spot id, actor A, actor B context를 분리했다. |
 | `Client/Scenarios/YdA1BasicTerminatorScenario.cs` | `Client/Scenarios/atd_a1_basic_terminator_scenario.hpp` | scenario | done | ATD-A1 flow는 별도 scenario header로 분리했고 runner로 통과했다. |
 | `Client/Scenarios/YdA2YieldTerminatorScenario.cs` | `Client/Scenarios/atd_a2_await_terminator_scenario.hpp` | scenario | done | ATD-A2 flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
-| `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/Scenarios/atd_a3_continuation_context_scenario.hpp` | scenario | done | request id, spot rid, correlation id, await continuation marker 순서를 별도 scenario header에서 runner로 검증한다. `.NET`도 stream metadata 직접 노출을 완료 조건에 넣지 않는다. |
+| `Client/Scenarios/YdA3ContinuationContextScenario.cs` | `Client/Scenarios/atd_a3_continuation_context_scenario.hpp` | scenario | done | request id, spot id, correlation id, await continuation marker 순서를 별도 scenario header에서 runner로 검증한다. `.NET`도 stream metadata 직접 노출을 완료 조건에 넣지 않는다. |
 | `Client/Scenarios/YdA4WorkerYieldScenario.cs` | `Client/Scenarios/atd_a4_worker_await_scenario.hpp` | scenario | done | public worker call `await()` flow는 별도 scenario header로 분리했고 runner로 통과했다. yielded request와 probe/evidence 관측은 별도 connector로 분리한다. |
 | `Client/Scenarios/YdB1OtherActorProgressScenario.cs` | `Client/Scenarios/atd_b1_other_actor_progress_scenario.hpp` | scenario | done | actor A await 중 actor B 진행은 별도 scenario header에서 runner로 통과했다. |
 | `Client/Scenarios/YdB2SameActorReentryScenario.cs` | `Client/Scenarios/atd_b2_same_actor_reentry_scenario.hpp` | scenario | done | 같은 stream connector session에서 같은 actor mailbox 재진입 금지 marker 순서를 runner로 검증한다. |
@@ -141,7 +141,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
 - 2026-06-30: `./framework/languages/cpp/e2e/AutomaticTurnDispatch/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260630-091449-3391388`
-  - 의미: ATD-A1~ATD-A4 Track A가 통과한다. A3는 `.NET`과 같은 완료 조건으로 request id, spot rid,
+  - 의미: ATD-A1~ATD-A4 Track A가 통과한다. A3는 `.NET`과 같은 완료 조건으로 request id, spot id,
     correlation id 보존과 await continuation marker 순서를 검증한다. A4는 public
     `spot_context_t::run_worker(...)` call object의 `await()`가 Spot turn을 반납하고 probe 뒤 원래
     Spot mailbox에서 continuation을 재개하는 marker 순서를 검증한다. runner 출력은
@@ -447,7 +447,7 @@ Spot/Entry Spot handler까지 도달해야 하므로, HTTP trigger나 direct Spo
   - 로그: `logs/20260630-153557-290422`
   - 의미: ATD-E3는 shutdown-wait client가 pending yield를 시작하고, runner가 play-a evidence log에서
     `await-released` marker를 확인한 뒤 play-a에 SIGTERM을 보내며, client가 request timeout이
-    아닌 public connector error를 받는지 검증한다. 이후 같은 spot rid로 play-a를 재시작하고 recovery
+    아닌 public connector error를 받는지 검증한다. 이후 같은 spot id로 play-a를 재시작하고 recovery
     probe marker를 확인한다. 같은 실행에서 ATD-E4 static gate도 통과한다. runner 출력은
     `automatic-turn-dispatch shutdown wait result=passed`, `automatic-turn-dispatch shutdown recovery result=passed`,
     `automatic-turn-dispatch e2e result=passed`다.

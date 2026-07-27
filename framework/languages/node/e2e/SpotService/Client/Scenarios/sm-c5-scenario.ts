@@ -12,27 +12,27 @@ import { ensure } from '../Support/scenario-assert';
 
 export async function runSmC5(options: ClientOptions): Promise<void> {
   const suffix = Date.now();
-  const sourceSpotRid = `spot-sm-c5-source-${suffix}`;
-  const targetSpotRid = `spot-sm-c5-target-${suffix}`;
+  const sourceSpotId = `spot-sm-c5-source-${suffix}`;
+  const targetSpotId = `spot-sm-c5-target-${suffix}`;
   const source = await postJson<CreateSpotRes>(options.playAUrl, '/spot/create', {
-    spotRid: sourceSpotRid
+    spotId: sourceSpotId
   } satisfies CreateSpotReq);
   const target = await postJson<CreateSpotRes>(options.playBUrl, '/spot/create', {
-    spotRid: targetSpotRid
+    spotId: targetSpotId
   } satisfies CreateSpotReq);
-  ensure(source.nodeRid === 'play-a' && source.spotRid === sourceSpotRid, 'SM-C5 source spot mismatch.');
-  ensure(target.nodeRid === 'play-b' && target.spotRid === targetSpotRid, 'SM-C5 target spot mismatch.');
+  ensure(source.nodeRid === 'play-a' && source.spotId === sourceSpotId, 'SM-C5 source spot mismatch.');
+  ensure(target.nodeRid === 'play-b' && target.spotId === targetSpotId, 'SM-C5 target spot mismatch.');
 
-  await waitForCrossNodeSubscription(options, sourceSpotRid, targetSpotRid, `sm-c5-ready-${suffix}`);
+  await waitForCrossNodeSubscription(options, sourceSpotId, targetSpotId, `sm-c5-ready-${suffix}`);
 
   const marker = `sm-c5-cross-node-${suffix}`;
   const publish = await postJson<SpotPublishRes>(options.playAUrl, '/spot/publish/local', {
-    spotRid: sourceSpotRid,
+    spotId: sourceSpotId,
     marker
   } satisfies SpotPublishReq);
   ensure(publish.publisherRid === 'play-a', 'SM-C5 publisher node mismatch.');
 
-  const expected = `spot-msg|rid=play-b|spot=${targetSpotRid}|marker=${marker}`;
+  const expected = `spot-msg|rid=play-b|spot=${targetSpotId}|marker=${marker}`;
   const evidence = await postJson<string[]>(options.playBUrl, '/evidence/wait', {
     containsAll: [expected],
     timeoutMilliseconds: 10000
@@ -44,16 +44,16 @@ export async function runSmC5(options: ClientOptions): Promise<void> {
 
 async function waitForCrossNodeSubscription(
   options: ClientOptions,
-  sourceSpotRid: string,
-  targetSpotRid: string,
+  sourceSpotId: string,
+  targetSpotId: string,
   marker: string
 ): Promise<void> {
-  const expected = `spot-msg|rid=play-b|spot=${targetSpotRid}|marker=${marker}`;
+  const expected = `spot-msg|rid=play-b|spot=${targetSpotId}|marker=${marker}`;
   const deadline = Date.now() + 30000;
   let last: unknown;
   while (Date.now() < deadline) {
     await postJson<SpotPublishRes>(options.playAUrl, '/spot/publish/local', {
-      spotRid: sourceSpotRid,
+      spotId: sourceSpotId,
       marker
     } satisfies SpotPublishReq);
     try {

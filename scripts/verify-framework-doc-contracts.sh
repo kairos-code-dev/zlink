@@ -2358,6 +2358,20 @@ for (const language of ['dotnet', 'java', 'kotlin', 'node', 'cpp']) {
   }
 }
 
+const messageFollowDocuments = [
+  ...markdownDocumentsUnder('framework/doc/framework/common/spec'),
+  ...markdownDocumentsUnder('framework/doc/framework/common/e2e'),
+  ...markdownDocumentsUnder('framework/doc/framework/common/internals'),
+];
+const removedMessageFollowTerms =
+  /\b(?:RelocationForwardingWindow|relocationForwardingWindow(?:Ms)?|relocation_forwarding_window|ActorTransferForwardWindow|actorTransferForwardWindow(?:Ms)?|actor_transfer_forward_window|straggler_forward|mapping_evicted)\b|stale-route forwarding|forwarding mapping/iu;
+for (const relative of messageFollowDocuments) {
+  const source = fs.readFileSync(path.join(root, relative), 'utf8');
+  if (removedMessageFollowTerms.test(source)) {
+    fail(`${relative} retains terminology replaced by Message Follow`);
+  }
+}
+
 if (failures.length) {
   process.stderr.write(`${failures.map(message => `FAIL: ${message}`).join('\n')}\n`);
   process.exit(1);

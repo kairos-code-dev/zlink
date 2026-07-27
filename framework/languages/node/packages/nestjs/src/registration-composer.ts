@@ -360,7 +360,7 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   return {
     actorTransferAdapters: options.actorTransferAdapters,
     actorTransferTimeoutMs: options.actorTransferTimeoutMs,
-    actorTransferForwardWindowMs: options.actorTransferForwardWindowMs,
+    messageFollowDurationMs: options.messageFollowDurationMs,
     channels,
     codecs: options.codecs,
     dispatch: options.dispatch,

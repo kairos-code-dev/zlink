@@ -10,10 +10,10 @@ import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.springframework.context.SmartLifecycle
-import systems.zlink.contracts.core.RoutingId
 import systems.zlink.e2e.spotactortransfer.shared.Contracts
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ZLinkActorClient
+import systems.zlink.framework.actors.ZLinkActorCreateResult
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.errors.ZLinkFrameworkException
 import systems.zlink.framework.messaging.ZLinkMessage
@@ -54,12 +54,14 @@ class ActorNodeHttpServer(
     private fun createSpot(exchange: HttpExchange) {
         val request = json.readValue(exchange.requestBody, Contracts.CreateSpotReq::class.java)
         val result = spots.getOrCreate(
-            TransferUserSpot::class.java,
-            RoutingId.from(request.spotRid()),
-            ZLinkMessage.of(request),
-        ).toCompletableFuture().get(5, TimeUnit.SECONDS)
+            request.spotRid(),
+            TransferUserSpot::class.java.name,
+        ).request(ZLinkMessage.of(request))
+            .timeout(Duration.ofSeconds(5))
+            .submit()
+            .toCompletableFuture().get(12, TimeUnit.SECONDS)
         writeJson(exchange, Contracts.CreateSpotRes(
-            result.spotRid().toString(), evidence.nodeRid, result.state().name,
+            result.spot().spotId(), result.spot().nodeRid().toString(), result.state().name,
         ))
     }
 
@@ -89,17 +91,24 @@ class ActorNodeHttpServer(
 
     private fun createActor(exchange: HttpExchange) {
         val request = json.readValue(exchange.requestBody, Contracts.ActorCreateReq::class.java)
-        val actor = actors.getOrCreate(request.actorId(), request.actorType(), request)
-            .toCompletableFuture().get(5, TimeUnit.SECONDS)
+        val result = actors.getOrCreate(request.actorId(), request.actorType(), request)
+            .toCompletableFuture().get(12, TimeUnit.SECONDS)
+        val actor = when (result) {
+            is ZLinkActorCreateResult.Created -> result.actor()
+            is ZLinkActorCreateResult.Existing -> result.actor()
+            is ZLinkActorCreateResult.Rejected ->
+                throw IllegalStateException("Actor creation was rejected")
+        }
         writeJson(exchange, Contracts.ActorCreateRes(
-            actor.actorId(), request.actorType(), actor.nodeRid().toString(), actor.generation(),
+            actor.actorId(), request.actorType(), actor.nodeRid().toString(),
+            actor.objectGeneration(),
         ))
     }
 
     private fun joinActor(exchange: HttpExchange, actorId: String) {
         val request = json.readValue(exchange.requestBody, Contracts.JoinTargetReq::class.java)
         try {
-            val result = actorClient.requestToActor(requireActor(actorId), request)
+            val result = actorClient.requestToActor(actorId, request)
                 .timeout(Duration.ofSeconds(12))
                 .submit(Contracts.JoinTargetRes::class.java).toCompletableFuture().get(12, TimeUnit.SECONDS)
             evidence.add(request.scenario(), actorId,
@@ -115,7 +124,7 @@ class ActorNodeHttpServer(
 
     private fun probeActor(exchange: HttpExchange, actorId: String) {
         val request = json.readValue(exchange.requestBody, Contracts.ProbeReq::class.java)
-        val result = actorClient.requestToActor(requireActor(actorId), request)
+        val result = actorClient.requestToActor(actorId, request)
             .timeout(Duration.ofSeconds(10))
             .submit(Contracts.ProbeRes::class.java).toCompletableFuture().get(10, TimeUnit.SECONDS)
         writeJson(exchange, result)
@@ -125,7 +134,7 @@ class ActorNodeHttpServer(
         val request = json.readValue(exchange.requestBody, Contracts.ProbeWithTimeoutReq::class.java)
         try {
             val result = actorClient.requestToActor(
-                requireActor(actorId),
+                actorId,
                 Contracts.ProbeReq(request.scenario(), request.marker()),
             ).timeout(Duration.ofMillis(request.timeoutMillis()))
                 .submit(Contracts.ProbeRes::class.java).toCompletableFuture()
@@ -142,34 +151,24 @@ class ActorNodeHttpServer(
         writeJson(exchange, mapOf(
             "actorId" to actor.actorId(),
             "nodeRid" to actor.nodeRid().toString(),
-            "generation" to actor.generation(),
+            "objectGeneration" to actor.objectGeneration(),
         ))
     }
 
     private fun probeActorRef(exchange: HttpExchange, actorId: String) {
-        val request = json.readValue(exchange.requestBody, Contracts.ProbeAtRefReq::class.java)
-        try {
-            val result = actorClient.requestToActor(
-                ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
-                request.probe(),
-            ).timeout(Duration.ofSeconds(5))
-                .submit(Contracts.ProbeRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS)
-            writeJson(exchange, result)
-        } catch (error: Exception) {
-            evidence.add(request.probe().scenario(), actorId, "mapping_evicted", request.nodeRid())
-            evidence.add(request.probe().scenario(), actorId, "stale_fail_fast", errorKind(error))
-            throw error
-        }
+        json.readValue(exchange.requestBody, Contracts.ProbeAtRefReq::class.java)
+        throw UnsupportedOperationException(
+            "ST-F4/F5 require a transport delivery-delay fixture; public Actor messaging "
+                + "does not accept an owner route.",
+        )
     }
 
     private fun sendActorRef(exchange: HttpExchange, actorId: String) {
-        val request = json.readValue(exchange.requestBody, Contracts.SendAtRefReq::class.java)
-        actorClient.sendToActor(
-            ActorRef(RoutingId.from(request.nodeRid()), actorId, request.generation()),
-            request.message(),
-        ).submit()
-        evidence.add(request.message().scenario(), actorId, "straggler_forward", request.nodeRid())
-        writeJson(exchange, mapOf("sent" to true))
+        json.readValue(exchange.requestBody, Contracts.SendAtRefReq::class.java)
+        throw UnsupportedOperationException(
+            "ST-F4/F5 require a transport delivery-delay fixture; public Actor messaging "
+                + "does not accept an owner route.",
+        )
     }
 
     private fun requireActor(actorId: String) = actors.find(actorId)

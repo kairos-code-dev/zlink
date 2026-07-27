@@ -350,8 +350,8 @@ internal sealed class ZLinkInstanceSpotOperationGate
 }
 
 internal sealed class ZLinkInstanceSpotActivationTarget(
-    IZLinkLocationStore authorityStore,
-    IZLinkRelocationStore relocationStore,
+    IZLinkLocationRepository authorityStore,
+    IZLinkRelocationRepository relocationStore,
     ZLinkSpotNodeCatalog catalog,
     IZLinkBackendSpotNode node,
     ZLinkSpotNodeRegistration registration,

@@ -32,9 +32,9 @@ std::string owner_for_key (const std::string &key)
     return e2e::owner_node_rid_for_key (key);
 }
 
-zlink::framework::spot_rid_t user_spot_rid (const std::string &key)
+zlink::framework::spot_id_t user_spot_id (const std::string &key)
 {
-    return zlink::framework::spot_rid_t::from_string (e2e::user_spot_rid_for_key (key));
+    return (e2e::user_spot_id_for_key (key));
 }
 
 } // namespace

@@ -25,7 +25,7 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint,
                  .build ();
     auto raw =
       api.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = context.spot_rid})
+        .body (create_spot_req_t{.spot_id = context.spot_id})
         .submit_raw ()
         .result ();
     if (!raw) {
@@ -36,8 +36,8 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint,
                                   + ": " + raw.value ().body);
     }
     auto created = nlohmann::json::parse (raw.value ().body).get<create_spot_res_t> ();
-    if (created.spot_rid != context.spot_rid) {
-        throw std::runtime_error ("SM-A1 spot rid mismatch: " + created.spot_rid);
+    if (created.spot_id != context.spot_id) {
+        throw std::runtime_error ("SM-A1 spot id mismatch: " + created.spot_id);
     }
     if (created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A1 owner mismatch: " + created.owner_node_rid);
@@ -71,8 +71,8 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
     }
     auto created = nlohmann::json::parse (raw.value ().body).get<join_res_t> ();
 
-    if (created.spot_rid != "user:play-a:a-room") {
-        throw std::runtime_error ("SM-A1 spot rid mismatch: " + created.spot_rid);
+    if (created.spot_id != "user:play-a:a-room") {
+        throw std::runtime_error ("SM-A1 spot id mismatch: " + created.spot_id);
     }
     if (created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A1 owner mismatch: " + created.owner_node_rid);
@@ -98,7 +98,7 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
     const auto rows = nlohmann::json::parse (location_raw.value ().body);
     const auto expected = std::find_if (rows.begin (), rows.end (), [&] (const auto &row) {
         return row.value ("mesh_name", "") == spot_mesh
-               && row.value ("spot_rid", "") == created.spot_rid
+               && row.value ("spot_id", "") == created.spot_id
                && row.value ("spot_type", "") == user_spot
                && row.value ("node_rid", "") == created.owner_node_rid
                && row.value ("spot_kind", "") == "user"

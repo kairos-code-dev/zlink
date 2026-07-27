@@ -666,8 +666,8 @@ Framework는 `Ready` 위치를 잠시 cache할 수 있다. Cache에는 ID,
 오류는 cache하지 않는다. 더 높은 `StoreVersion`이나 owner lease 만료를 확인하면
 즉시 제거한다.
 
-이동 직후 이전 owner로 들어온 message는 새 owner에게 전달할 수 있다. 이 전달
-기간인 `RelocationForwardingWindow`의 기본값은 30초다. 값이 0이면 각각 cache 또는
+이동 직후 이전 owner로 들어온 message는 새 owner에게 전달할 수 있다. 이 기능을
+Message Follow라고 하며, 기간인 `MessageFollowDuration`의 기본값은 30초다. 값이 0이면 각각 cache 또는
 전달을 끈다. 두 기능을 모두 사용하면 cache 보관 시간은 전달 기간보다 최소 5초
 짧아야 한다. 잘못된 설정은 configuration error다.
 

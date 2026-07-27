@@ -34,6 +34,10 @@ test('deployment identity builder publishes validated host-wide version and main
   );
 });
 
+test('Message Follow duration defaults to the common 30 second contract', () => {
+  assert.equal(framework.createFrameworkRegistration().messageFollowDurationMs, 30_000);
+});
+
 test('fixed drain seals admission, publishes draining, waits accepted work, then drains resources', async () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   const order = [];

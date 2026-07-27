@@ -101,63 +101,18 @@ public sealed class RedisTestFixture : IAsyncLifetime
         });
     }
 
-    public Task<bool> DeleteKeyAsync(string key) =>
-        _cleanupConnection!.GetDatabase().KeyDeleteAsync(key);
-
-    public Task<bool> HashSetAsync(
-        string key,
-        string field,
-        long value) =>
-        _cleanupConnection!.GetDatabase().HashSetAsync(key, field, value);
-
-    public async Task<long> HashGetInt64Async(
-        string key,
-        string field) =>
-        (long)(await _cleanupConnection!.GetDatabase()
-            .HashGetAsync(key, field));
-
-    public async Task<IReadOnlyDictionary<string, string>> HashGetAllAsync(
-        string key) =>
-        (await _cleanupConnection!.GetDatabase().HashGetAllAsync(key))
-        .ToDictionary(
-            entry => (string)entry.Name!,
-            entry => (string)entry.Value!,
-            StringComparer.Ordinal);
-
-    public async Task<IReadOnlyList<string>> SetMembersAsync(string key) =>
-        (await _cleanupConnection!.GetDatabase().SetMembersAsync(key))
-        .Select(static value => value.ToString())
-        .ToArray();
-
-    public Task<bool> KeyExistsAsync(string key) =>
-        _cleanupConnection!.GetDatabase().KeyExistsAsync(key);
-
-    public Task<TimeSpan?> KeyTimeToLiveAsync(string key) =>
-        _cleanupConnection!.GetDatabase().KeyTimeToLiveAsync(key);
-
-    public async Task<long> DeletePrefixAsync(string prefix)
+    public ZLinkRedisRelocationStore CreateRelocationStore()
     {
-        long removed = 0;
-        foreach (var endpoint in _cleanupConnection!.GetEndPoints())
-        {
-            var server = _cleanupConnection.GetServer(endpoint);
-            var keys = new List<RedisKey>();
-            await foreach (var key in server.KeysAsync(pattern: prefix + "*")) keys.Add(key);
-            if (keys.Count > 0) removed += await _cleanupConnection.GetDatabase().KeyDeleteAsync([.. keys]);
-        }
-        return removed;
+        var keyPrefix =
+            $"{RunKeyPrefix}:{Interlocked.Increment(ref _storeIndex)}";
+        return new ZLinkRedisRelocationStore(
+            new ZLinkRedisRelocationOptions
+            {
+                ConnectionString = ConnectionString,
+                KeyPrefix = keyPrefix
+            });
     }
 
-    public async Task<long> CountPrefixAsync(string prefix)
-    {
-        long count = 0;
-        foreach (var endpoint in _cleanupConnection!.GetEndPoints())
-        {
-            var server = _cleanupConnection.GetServer(endpoint);
-            await foreach (var _ in server.KeysAsync(pattern: prefix + "*")) count++;
-        }
-        return count;
-    }
 }
 
 [CollectionDefinition(Name)]

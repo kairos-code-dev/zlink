@@ -15,7 +15,7 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::client
 template <typename TConnector>
 void run_td_c3_io_worker_capacity_scenario (TConnector &connector,
                                             TConnector &observer,
-                                            const std::string &spot_rid)
+                                            const std::string &spot_id)
 {
     constexpr int operation_count = 32;
     const auto request_id = unique_id ("TD-C3");
@@ -24,7 +24,7 @@ void run_td_c3_io_worker_capacity_scenario (TConnector &connector,
                                               .operation_id = "io-" + std::to_string (index),
                                               .delay_ms = 300})
           .packet_name (io_worker_await_msg_t::packet_name)
-          .metadata (spot_rid_metadata, spot_rid)
+          .metadata (spot_id_metadata, spot_id)
           .submit ();
     };
     send_operation (0);
@@ -46,14 +46,14 @@ void run_td_c3_io_worker_capacity_scenario (TConnector &connector,
                                      .period_ms = 20,
                                      .delay_ms = 0})
       .packet_name (timer_start_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     for (int index = 1; index < operation_count; ++index) {
         send_operation (index);
     }
     observer.send (probe_msg_t{.request_id = request_id, .marker = "io-worker-probe"})
       .packet_name (probe_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
 
     await_evidence_res_t evidence;
@@ -92,7 +92,7 @@ void run_td_c3_io_worker_capacity_scenario (TConnector &connector,
             "TD-C3 timer did not progress while I/O workers yielded");
     observer.send (timer_stop_msg_t{.request_id = request_id})
       .packet_name (timer_stop_msg_t::packet_name)
-      .metadata (spot_rid_metadata, spot_rid)
+      .metadata (spot_id_metadata, spot_id)
       .submit ();
     std::cout << "scenario TD-C3 passed\n";
 }

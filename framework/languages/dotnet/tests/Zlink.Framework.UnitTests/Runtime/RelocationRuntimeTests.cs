@@ -1546,7 +1546,7 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public void HeldIngressRequiresStrictSequenceAndForwardingBounds()
+    public void HeldIngressRequiresStrictSequenceAndBoundedCapacity()
     {
         ZLinkSpotRetireTargetRuntime.ValidateHeldRecords(
         [
@@ -1774,10 +1774,10 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public void CommittedSpotForwardingEnforcesMessageAndByteBounds()
+    public void SpotMessageFollowEnforcesMessageAndByteBounds()
     {
         var owner = new ZLinkLocationOwnerToken("owner", 3);
-        var messages = new ZLinkCommittedSpotForwarding(
+        var messages = new ZLinkSpotMessageFollow(
             RoutingId.From("target"),
             5,
             11,
@@ -1787,7 +1787,7 @@ public sealed class RelocationRuntimeTests
             owner,
             owner,
             DateTimeOffset.UtcNow.AddSeconds(30));
-        var messageLeases = new List<ZLinkCommittedSpotForwarding.AdmissionLease>();
+        var messageLeases = new List<ZLinkSpotMessageFollow.AdmissionLease>();
         for (var index = 0; index < 1_024; index++)
         {
             Assert.True(messages.TryAcquire(0, out var lease));
@@ -1797,7 +1797,7 @@ public sealed class RelocationRuntimeTests
         foreach (var lease in messageLeases)
             lease.Dispose();
 
-        var bytes = new ZLinkCommittedSpotForwarding(
+        var bytes = new ZLinkSpotMessageFollow(
             RoutingId.From("target"),
             5,
             11,
@@ -1813,11 +1813,11 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public void CommittedSpotForwardingCountsWireHeaderMetadataAndPayloadAtByteBoundary()
+    public void SpotMessageFollowCountsWireHeaderMetadataAndPayloadAtByteBoundary()
     {
         var owner = new ZLinkLocationOwnerToken("source-owner", 3);
         var targetOwner = new ZLinkLocationOwnerToken("target-owner", 4);
-        var forwarding = new ZLinkCommittedSpotForwarding(
+        var messageFollow = new ZLinkSpotMessageFollow(
             RoutingId.From("target-node"),
             5,
             11,
@@ -1834,7 +1834,7 @@ public sealed class RelocationRuntimeTests
                     ["trace"] = new string('x', 900)
                 }));
         using var empty = new Message();
-        var fixedBytes = ZLinkServiceWireCodec.MeasureForwardedSpotEncodedBytes(
+        var fixedBytes = ZLinkServiceWireCodec.MeasureSpotMessageFollowEncodedBytes(
             request: true,
             new MeshOperationId(1, 2),
             "source-spot",
@@ -1850,7 +1850,7 @@ public sealed class RelocationRuntimeTests
         using var payload = new Message(checked((int)(
             ZLinkBoundedIngressAdmission.SourceIngressHoldByteCapacity
             - fixedBytes)));
-        var encodedBytes = ZLinkServiceWireCodec.MeasureForwardedSpotEncodedBytes(
+        var encodedBytes = ZLinkServiceWireCodec.MeasureSpotMessageFollowEncodedBytes(
             request: true,
             new MeshOperationId(1, 2),
             "source-spot",
@@ -1867,19 +1867,19 @@ public sealed class RelocationRuntimeTests
         Assert.Equal(
             ZLinkBoundedIngressAdmission.SourceIngressHoldByteCapacity,
             encodedBytes);
-        Assert.True(forwarding.TryAcquire(encodedBytes, out var lease));
-        Assert.Equal((1, encodedBytes), forwarding.AdmissionSnapshot());
+        Assert.True(messageFollow.TryAcquire(encodedBytes, out var lease));
+        Assert.Equal((1, encodedBytes), messageFollow.AdmissionSnapshot());
         lease!.Dispose();
-        Assert.False(forwarding.TryAcquire(encodedBytes + 1, out _));
+        Assert.False(messageFollow.TryAcquire(encodedBytes + 1, out _));
     }
 
     [Fact]
-    public void CommittedSpotForwardingRejectsExpiredAndLoopedSourceRoutesAndClosesFullAdmission()
+    public void SpotMessageFollowRejectsExpiredAndLoopedSourceRoutesAndClosesFullAdmission()
     {
         var owner = new ZLinkLocationOwnerToken("source-owner", 3);
         var targetOwner = new ZLinkLocationOwnerToken("target-owner", 4);
         var now = DateTimeOffset.UtcNow;
-        var forwarding = new ZLinkCommittedSpotForwarding(
+        var messageFollow = new ZLinkSpotMessageFollow(
             RoutingId.From("target-node"),
             5,
             11,
@@ -1890,23 +1890,23 @@ public sealed class RelocationRuntimeTests
             targetOwner,
             now.AddSeconds(30),
             new ZLinkBoundedIngressAdmission(1, 64));
-        using var current = ForwardedSpotReceived(forwardingHopCount: 1);
-        using var looped = ForwardedSpotReceived(forwardingHopCount: 8);
+        using var current = MessageFollowSpotReceived(messageFollowHopCount: 1);
+        using var looped = MessageFollowSpotReceived(messageFollowHopCount: 8);
 
-        Assert.True(forwarding.MatchesSourceRoute(current, 5, owner, now));
-        Assert.False(forwarding.MatchesSourceRoute(current, 5, owner,
+        Assert.True(messageFollow.MatchesSourceRoute(current, 5, owner, now));
+        Assert.False(messageFollow.MatchesSourceRoute(current, 5, owner,
             now.AddSeconds(31)));
-        Assert.False(forwarding.MatchesSourceRoute(looped, 5, owner, now));
-        Assert.True(forwarding.TryAcquire(64, out var lease));
-        Assert.False(forwarding.TryAcquire(0, out _));
+        Assert.False(messageFollow.MatchesSourceRoute(looped, 5, owner, now));
+        Assert.True(messageFollow.TryAcquire(64, out var lease));
+        Assert.False(messageFollow.TryAcquire(0, out _));
         lease!.Dispose();
     }
 
     [Fact]
-    public void CommittedSpotForwardingRequestSubmitExceptionReleasesAdmissionAndDisposesIngress()
+    public void SpotMessageFollowRequestSubmitExceptionReleasesAdmissionAndDisposesIngress()
     {
         var owner = new ZLinkLocationOwnerToken("source-owner", 3);
-        var forwarding = new ZLinkCommittedSpotForwarding(
+        var messageFollow = new ZLinkSpotMessageFollow(
             RoutingId.From("target-node"),
             5,
             11,
@@ -1917,7 +1917,7 @@ public sealed class RelocationRuntimeTests
             new ZLinkLocationOwnerToken("target-owner", 4),
             DateTimeOffset.UtcNow.AddSeconds(30),
             new ZLinkBoundedIngressAdmission(1, 64));
-        Assert.True(forwarding.TryAcquire(64, out var lease));
+        Assert.True(messageFollow.TryAcquire(64, out var lease));
         var payload = new Message((ReadOnlySpan<byte>)new byte[] { 1, 2, 3 });
         var received = new ZLinkBackendRouteReceived(
             [payload],
@@ -1930,18 +1930,87 @@ public sealed class RelocationRuntimeTests
             ZlinkSubmitException.ErrorCode.NotConnected);
 
         var thrown = Assert.Throws<ZlinkSubmitException>(
-            () => ZLinkSpotActivation.SubmitCommittedSpotForwardingRequest(
+            () => ZLinkSpotActivation.SubmitSpotMessageFollowRequest(
                 received,
                 lease!,
                 _ => throw failure));
 
         Assert.Same(failure, thrown);
-        Assert.Equal((0, 0L), forwarding.AdmissionSnapshot());
+        Assert.Equal((0, 0L), messageFollow.AdmissionSnapshot());
         Assert.ThrowsAny<Exception>(() => payload.ToArray());
     }
 
     [Fact]
-    public void StaleCommittedSpotForwardingReturnsTypedGenerationError()
+    public void SpotMessageFollowPreservesRemainingDeadlineAndDropsLateReply()
+    {
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(4_102_444_800_000);
+        var deadline = checked((ulong)now.AddMilliseconds(1_250)
+            .ToUnixTimeMilliseconds());
+        using var timed = new ZLinkBackendRouteReceived(
+            [new Message((ReadOnlySpan<byte>)new byte[] { 1 })],
+            RoutingId.From("caller-node"),
+            "source-spot",
+            7,
+            static (_, _) => SubmitResult.Ok,
+            operationId: new MeshOperationId(1, 2),
+            deadlineUnixMs: deadline);
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(1_250),
+            ZLinkSpotActivation.RemainingRequestTimeout(timed, now));
+        Assert.Equal(
+            TimeSpan.Zero,
+            ZLinkSpotActivation.RemainingRequestTimeout(
+                timed,
+                now.AddMilliseconds(1_250)));
+
+        var owner = new ZLinkLocationOwnerToken("source-owner", 3);
+        var messageFollow = new ZLinkSpotMessageFollow(
+            RoutingId.From("target-node"),
+            5,
+            11,
+            12,
+            7,
+            8,
+            owner,
+            new ZLinkLocationOwnerToken("target-owner", 4),
+            DateTimeOffset.UtcNow.AddSeconds(30),
+            new ZLinkBoundedIngressAdmission(1, 64));
+        Assert.True(messageFollow.TryAcquire(64, out var lease));
+        var replyCount = 0;
+        var expired = new ZLinkBackendRouteReceived(
+            [new Message((ReadOnlySpan<byte>)new byte[] { 2 })],
+            RoutingId.From("caller-node"),
+            "source-spot",
+            8,
+            (_, _) =>
+            {
+                replyCount++;
+                return SubmitResult.Ok;
+            },
+            operationId: new MeshOperationId(1, 3),
+            deadlineUnixMs: checked((ulong)DateTimeOffset.UtcNow
+                .AddSeconds(-1)
+                .ToUnixTimeMilliseconds()));
+        RequestCallback? callback = null;
+        Assert.True(ZLinkSpotActivation.SubmitSpotMessageFollowRequest(
+            expired,
+            lease!,
+            candidate =>
+            {
+                callback = candidate;
+                return true;
+            }));
+        Assert.NotNull(callback);
+        callback!(
+            RequestResult.Ok,
+            [new Message((ReadOnlySpan<byte>)new byte[] { 3 })]);
+
+        Assert.Equal(0, replyCount);
+        Assert.Equal((0, 0L), messageFollow.AdmissionSnapshot());
+    }
+
+    [Fact]
+    public void StaleSpotMessageFollowReturnsTypedGenerationError()
     {
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
@@ -1964,7 +2033,7 @@ public sealed class RelocationRuntimeTests
                 return SubmitResult.Ok;
             });
 
-        ZLinkSpotActivationDispatcher.RejectApplicationRouteForStaleForwarding(
+        ZLinkSpotActivationDispatcher.RejectApplicationRouteForStaleMessageFollow(
             received,
             "mesh");
 
@@ -1974,8 +2043,8 @@ public sealed class RelocationRuntimeTests
             replyHeader!.ErrorCode);
     }
 
-    private static ZLinkBackendRouteReceived ForwardedSpotReceived(
-        byte forwardingHopCount) => new(
+    private static ZLinkBackendRouteReceived MessageFollowSpotReceived(
+        byte messageFollowHopCount) => new(
         [new Message((ReadOnlySpan<byte>)new byte[] { 1 })],
         RoutingId.From("caller-node"),
         "source-spot",
@@ -1985,7 +2054,7 @@ public sealed class RelocationRuntimeTests
         targetNodeGeneration: 11,
         authorityOwnerGeneration: 7,
         ownerLeaseGeneration: 3,
-        forwardingHopCount: forwardingHopCount);
+        messageFollowHopCount: messageFollowHopCount);
 
     [Fact]
     public void ActorRelocationUsesSeparateUnitCaptureAndMeasuredPayloadLeases()
@@ -2700,10 +2769,10 @@ public sealed class RelocationRuntimeTests
     public void PublicRelocationContractsMatchTargetShape()
     {
         Assert.Contains(
-            typeof(IZLinkRelocationStore).GetMethods(),
+            typeof(IZLinkRelocationRepository).GetMethods(),
             static method => method.Name == "PutRelocationAsync");
         Assert.Contains(
-            typeof(IZLinkLocationStore).GetMethods(),
+            typeof(IZLinkLocationRepository).GetMethods(),
             static method => method.Name == "PrepareAggregateAsync");
         Assert.Contains(
             typeof(IZLinkFrameworkOptions).GetMethods(),
@@ -2736,7 +2805,7 @@ public sealed class RelocationRuntimeTests
 
         options.AddRelocationStore(relocation);
 
-        Assert.Same(relocation, registration.Locations.RelocationStoreInstance);
+        Assert.Same(relocation, registration.Locations.ResolveRelocationStore());
         Assert.Null(registration.Locations.StoreInstance);
         Assert.Throws<ZLinkConfigurationException>(
             () => options.AddRelocationStore(new RecordingRelocationStore()));
@@ -2953,7 +3022,7 @@ public sealed class RelocationRuntimeTests
             targetNodeGeneration: 12,
             authorityOwnerGeneration: 13,
             ownerLeaseGeneration: 14,
-            forwardingHopCount: 2,
+            messageFollowHopCount: 2,
             sourceNodeGeneration: 15,
             requestSource: new ZLinkServiceWireCodec.RequestSourceFence(
                 "source-owner", 16, RoutingId.From("source-node"), 15));
@@ -2974,7 +3043,7 @@ public sealed class RelocationRuntimeTests
         Assert.Equal<ulong>(12, restored.TargetNodeGeneration);
         Assert.Equal<ulong>(13, restored.AuthorityOwnerGeneration);
         Assert.Equal<ulong>(14, restored.OwnerLeaseGeneration);
-        Assert.Equal<byte>(2, restored.ForwardingHopCount);
+        Assert.Equal<byte>(2, restored.MessageFollowHopCount);
         Assert.Equal("abc", restored.Metadata.Find("trace"));
         Assert.Equal(new byte[] { 1, 2 }, restored.Parts[0].ToArray());
         Assert.Equal(new byte[] { 3 }, restored.Parts[1].ToArray());
@@ -3977,7 +4046,7 @@ public sealed class RelocationRuntimeTests
         }
     }
 
-    private sealed class RecordingRelocationStore : IZLinkRelocationStore
+    private sealed class RecordingRelocationStore : IZLinkRelocationRepository
     {
         internal Dictionary<string, byte[]> Payloads { get; } =
             new(StringComparer.Ordinal);
@@ -4042,7 +4111,7 @@ public sealed class RelocationRuntimeTests
         }
     }
 
-    private sealed class AsyncOnlyRelocationStore : IZLinkRelocationStore
+    private sealed class AsyncOnlyRelocationStore : IZLinkRelocationRepository
     {
         private readonly Dictionary<string, byte[]> _payloads =
             new(StringComparer.Ordinal);
@@ -4113,7 +4182,7 @@ public sealed class RelocationRuntimeTests
         }
     }
 
-    private sealed class GoldenRelocationStore : IZLinkRelocationStore
+    private sealed class GoldenRelocationStore : IZLinkRelocationRepository
     {
         private int _putCount;
         internal Dictionary<string, byte[]> Payloads { get; } =

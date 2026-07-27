@@ -141,7 +141,7 @@ class spot_node_builder_state_t
       const actor_ref_t &, const runtime::messaging::envelope_header_t &,
       const zlink::message_t &,
       std::chrono::milliseconds)>
-      actor_packet_forwarder;
+      actor_message_follow_relay;
     std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
                                                 node_rid_t,
                                                 const zlink::message_t &,
@@ -150,9 +150,9 @@ class spot_node_builder_state_t
     std::map<std::string, actor_factory_registration_t> actor_factories;
     std::map<std::string, actor_transfer_registration_t> actor_transfers;
     actor_transfer_coordinator_t actor_transfer_coordinator;
-    // A committed source route may relay stragglers only for this bounded
-    // interval. The common object-routing contract fixes the default at 30s.
-    std::chrono::milliseconds actor_transfer_forward_window{30000};
+    // A committed source route follows messages to the relocated actor only
+    // for this bounded duration. The common contract fixes the default at 30s.
+    std::chrono::milliseconds message_follow_duration{30000};
     std::map<std::string, std::shared_ptr<void>> actor_instances;
     std::set<std::pair<std::uint64_t, std::uint64_t>>
       committed_join_locations;
@@ -439,8 +439,8 @@ class spot_node_runtime_t
     std::optional<spot_id_t> actor_spot (const actor_ref_t &actor_ref) const;
     void record_actor_spot (const actor_ref_t &actor_ref, spot_id_t spot_id);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
-    std::optional<actor_forwarding_target_t>
-    actor_forwarding_target (const actor_ref_t &actor_ref) const;
+    std::optional<actor_message_follow_target_t>
+    actor_message_follow_target (const actor_ref_t &actor_ref) const;
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
     std::optional<std::string> actor_route_transport_name () const;
     void request_stop () noexcept;
@@ -523,11 +523,11 @@ class spot_node_runtime_t
                                                                serializer_registry_t &,
                                                                spot_inbound_message_t)>
         relay);
-    void on_actor_packet_forward (
+    void on_actor_message_follow (
       std::function<result_t<std::optional<zlink::message_t>> (
         const actor_ref_t &, const runtime::messaging::envelope_header_t &,
         const zlink::message_t &,
-        std::chrono::milliseconds)> forwarder);
+        std::chrono::milliseconds)> relay);
     spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
       const actor_ref_t &actor_ref,
@@ -594,7 +594,7 @@ class spot_node_runtime_t
     std::vector<handoff_packet_t> take_actor_handoff_backlog (const actor_ref_t &actor_ref);
     bool actor_transfer_in_progress (const actor_ref_t &actor_ref) const;
     bool actor_transfer_in_progress (std::string_view actor_id) const;
-    void set_actor_transfer_forward_window (std::chrono::milliseconds window);
+    void set_message_follow_duration (std::chrono::milliseconds duration);
     void bind_relocation_store (
       std::shared_ptr<runtime::stateful::relocation_store_port_t> store);
     void bind_relocation_authority (

@@ -24,10 +24,10 @@ fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 
 [Redis relocation store spec](../spec/23-relocation-store-redis.ko.md)을 기준으로 하고 이 문서에서
 반복하지 않는다.
 
-판정은 public 표면으로만 한다. 등록한 `IZLinkLocationStore`의 bounded descriptor page를 끝까지 읽고 각
-descriptor의 owner ID를 `ReadOwnerLeaseAsync(ownerId)`로 exact 조회해 descriptor와 lease를 확인한다.
-`IZLinkRouteMeshRuntime.Snapshot(meshName)`의 `Location`, `Peers`, `Channels`로 runtime 상태를 확인한다.
-실제 messaging 성공과 각 역할 server의 evidence도 함께 단언한다.
+Application 판정은 public RouteMesh status와 실제 messaging 결과를 사용한다. Location Store와
+Relocation Store는 Framework가 사용하는 provider SPI이며 application query API가 아니다. E2E client가
+descriptor·owner lease record를 직접 읽거나 의미를 해석하지 않는다. Store 호출 순서가 필요한 provider
+시나리오는 opaque key·bytes와 transaction 결과만 기록하는 instrumented provider evidence를 사용한다.
 
 ## 1. 목적과 범위
 
@@ -48,8 +48,8 @@ descriptor의 owner ID를 `ReadOwnerLeaseAsync(ownerId)`로 exact 조회해 desc
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 location key prefix를 사용한다. Harness가 이 capability만 정지·지연·복구할 수 있다. |
 | relocation store | 1 | 공식 Redis relocation store extension. 기본 topology는 같은 Redis deployment를 공유하되 별도 relocation key prefix와 별도 Store instance를 등록한다. Track F에서는 이 capability만 독립적으로 정지·지연·복구할 수 있다. |
 | provider (api·object server 노드) | 2 (`api-a`, `api-b`) | ChannelName handler와 Object Server 역할을 함께 등록한다. `RecoveryActor`와 `RecoverySnapshotSpot`에는 `Snapshot` policy와 kind별 Relocation Adapter를, `RecoveryInstanceSpot`에는 adapter 없는 `Recreate` policy를 등록하고 별도 negative type에만 `Disabled`를 사용한다. 모든 stable factory type은 explicit policy와 positive placement capacity를 제공한다. `AddLocationStore(...)`와 `AddRelocationStore(...)`를 각각 호출하며 `/evidence`·`/health`와 runtime query endpoint를 제공한다. |
-| consumer | 1 | Object Client 역할과 두 Store를 별도 등록하고 descriptor 기반 automatic discovery로 provider와 연결한다. 지속 request와 Track F의 object operation으로 연결·authority 상태를 관측하고 MeshNode runtime snapshot을 HTTP endpoint로 노출한다. |
-| probe | 시나리오별 | 각 역할 server의 runtime snapshot과 store descriptor·lease 조회 결과를 확인하는 client 흐름. |
+| consumer | 1 | Object Client 역할과 두 Store를 별도 등록하고 descriptor 기반 automatic discovery로 provider와 연결한다. 지속 request와 Track F의 object operation으로 연결·authority 상태를 관측하고 public RouteMesh status를 HTTP endpoint로 노출한다. |
+| probe | 시나리오별 | 각 역할 server의 public status, structured log와 실제 messaging 결과를 확인하는 client 흐름. Store provider protocol 시나리오에서는 별도의 opaque operation evidence를 확인한다. |
 
 시간 관련 option(owner lease renew interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: lease renew 1초, lease TTL 3초,
@@ -84,9 +84,9 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
 **검증 질문:** store가 정상일 때 자동 연결, descriptor 등록과 runtime 상태가 모두 정상인가.
 
 - 절차: Redis store + provider 2 + consumer로 자동 연결을 만들고 request를 보낸다. probe가 각 노드의 runtime query를 조회한다.
-- 검증: `ListMeshNodesAsync(meshName)`에 owner lease가 유효한 두 provider descriptor가 포함된다.
-  request는 둘 중 하나에서 처리된다. `Snapshot(meshName).Location`은 정상 상태와 최근 성공 시각을,
-  `Peers`는 두 provider의 `Ready=true`를 제공한다(Config 1 RM-A1과 같은 baseline).
+- 검증: Request는 두 provider 중 하나에서 처리된다. Public RouteMesh status는 `Ready`이고 두 provider
+  Node RID의 peer state가 `Ready`이며 Channel의 `ReadyTargetCount=2`다(Config 1 RM-A1과 같은 baseline).
+  Descriptor revision, endpoint, owner lease와 Store 성공 시각은 public status에 포함하지 않는다.
 - 세부 동작: store 기반 자동 연결 + runtime status 기준값.
 
 #### SF-A2 polling fallback (watch 없는 store)
@@ -98,7 +98,7 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
 - 절차: watch를 구현하지 않은 Location Store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서,
   provider 하나를 추가로 시작했다가 정상 종료한다. Relocation Store는 별도 `AddRelocationStore(instance)`로
   등록하며 polling discovery 검증에는 장애를 주입하지 않는다([40 §3](../spec/21-location-runtime.ko.md)).
-- 검증: watch event 없이 polling만으로 추가·제거가 peer intent와 runtime snapshot에 반영된다.
+- 검증: Watch event 없이 polling만으로 추가·제거가 peer intent와 public RouteMesh status에 반영된다.
   추가 후 polling interval 몇 tick 안에 새 provider가 ready member가 되고, 제거 후 그 provider를
   선택하지 않는다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다.
 - 세부 동작: polling이 correctness 경로임을 고정(watch는 선택 최적화).
@@ -112,9 +112,10 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
 **검증 질문:** store 연결이 중단되어도 admitted peer 연결과 messaging이 유지되는가.
 
 - 절차: SF-A1 상태에서 consumer가 지속 request를 보내는 동안 harness가 Redis를 정지한다. lease TTL보다 짧은 시간 뒤 상태를 관측한다.
-- 검증: store 장애 중에도 기존 연결로 request가 계속 성공한다. consumer는 disconnect diff 계산을
-  중단하고 provider 연결을 유지한다. `Snapshot(meshName).Location`은 실패 상태와 최근 실패 시각을
-  제공하고, store failure evidence가 오류 원인을 기록한다.
+- 검증: Store 장애 중에도 기존 연결로 request가 계속 성공한다. Consumer는 disconnect diff 계산을
+  중단하고 provider 연결을 유지한다. RouteMesh status는 필요하면 `Degraded`와
+  `LocationUnavailable` reason을 제공하고 structured log의 `zlink.runtime.location.store_changed`가
+  오류 원인을 기록한다. Public status에 최근 Store 실패 시각이나 provider record를 추가하지 않는다.
 - 세부 동작: fail-static — 마지막 성공 desired set 유지 + 장애 관측.
 
 #### SF-B2 store failure grace 초과
@@ -156,9 +157,9 @@ descriptor가 성공 결과에서 제외되고 consumer가 연결을 정리하�
 
 - 절차: store는 정상인 상태에서 `api-b`를 `SIGKILL`한다. owner lease TTL 경과를 기다린 뒤
   descriptor snapshot과 routing을 관측한다.
-- 검증: lease 만료 전에는 `api-b` descriptor가 조회될 수 있지만, TTL 경과 후
-  `ListMeshNodesAsync(meshName)`의 성공 결과와 MeshNode runtime snapshot에서 제외된다. consumer의
-  peer intent에서 `api-b`가 제외되어 연결이 해제되고 follow-up request는 `api-a`에서만 처리된다.
+- 검증: Lease 만료 전에는 stale discovery 정보가 남을 수 있지만, TTL 경과 후 public RouteMesh status의
+  ready peer와 Channel ready target에서 `api-b` Node RID가 제외된다. Consumer의 peer intent에서
+  `api-b`가 제외되어 연결이 해제되고 follow-up request는 `api-a`에서만 처리된다.
   이전 endpoint에 반복 timeout이 발생하지 않는다.
 - 세부 동작: descriptor remove 없는 crash 전파 — owner lease 만료로 stale descriptor 제외.
 
@@ -172,9 +173,9 @@ descriptor가 성공 결과에서 제외되고 consumer가 연결을 정리하�
 - 절차: `api-b` host에서 public `Shutdown`을 요청한다. Host가 `Draining`을 게시한 동안 새 요청이
   `api-b`에 배정되지 않는지 확인하고, 30초 기본 deadline 안에 process가 강제 종료 없이 종료되는지
   기다린다. terminal `Stopped/None` 직후 owner descriptor가 사라지는지 확인한다.
-- 검증: `Draining` 중에는 descriptor를 유지해 이미 수락한 작업과 resource를 정리하지만 신규 배정에서는
-  제외된다. `Shutdown`이 `Stopped/None`으로 완료되면 `ListMeshNodesAsync(meshName)`에서 `api-b`
-  descriptor가 별도 lease 만료 대기 없이 사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리
+- 검증: `Draining` 중에는 이미 수락한 작업과 resource를 정리하지만 신규 배정에서는 제외된다.
+  `Shutdown`이 `Stopped/None`으로 완료되면 consumer의 public status에서 `api-b`가 ready peer·target에서
+  별도 lease 만료 대기 없이 제외되고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리
   강제 종료나 lease 만료만으로 통과시키지 않는다.
 - 세부 동작: `Shutdown` admission seal → `Draining` 게시 → accepted work와 resource의 bounded cleanup →
   owner 단위 descriptor bulk remove와 lease 제거 → `Stopped/None`.
@@ -238,10 +239,12 @@ script 실행 없이 bounded page로 reconcile하는가.
 **검증 질문:** store가 grace 안에 복구되면 기존 연결을 유지한 채 다음 성공 조회로 reconcile되고
 mesh 전체의 불필요한 재연결이 발생하지 않는가.
 
-- 절차: SF-B1 상태에서 lease TTL보다 짧게 store를 정지했다가 재기동한다. 복구 후 지속 request와 descriptor snapshot를 관측한다.
+- 절차: SF-B1 상태에서 lease TTL보다 짧게 Store를 정지했다가 재기동한다. 복구 후 지속 request와
+  public RouteMesh status를 관측한다.
 - 검증: 복구 후 첫 성공 조회로 reconcile이 재개되고, 정상 provider와의 기존 연결은 유지된다.
   각 provider evidence에 불필요한 disconnect/reconnect marker가 없어야 한다.
-  `Snapshot(meshName).Location`은 정상 상태와 갱신된 최근 성공 시각을 제공하며 request는 전 구간에서 성공한다.
+  RouteMesh status는 다시 `Ready`로 수렴하고 request는 전 구간에서 성공한다. Store 최근 성공 시각은
+  public status로 제공하지 않는다.
 - 세부 동작: 짧은 장애의 무해 통과(fail-static → fresh descriptor snapshot reconcile).
 
 #### SF-D2 긴 장애 복구 — 재등록 우선과 owner lease renew 유예
@@ -254,24 +257,26 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
 - 절차: store 장애를 owner lease TTL보다 길게 유지한다. 장애 중 `api-b`를 `SIGKILL`하고 store를
   재기동해 복구 흐름을 관측한다.
 - 검증: 복구 직후 각 노드가 조회보다 먼저 owner lease와 local MeshNode descriptor를 다시 upsert한다.
-  Bounded MeshNode descriptor page와 각 descriptor owner ID의 exact owner lease read로 재등록을 확인한다.
+  이 순서는 instrumented Location Store의 opaque transaction evidence와 structured log로 확인한다.
   Disconnect diff는
   owner lease renew interval 한 번의 유예 후 적용된다. `api-a`와 consumer 사이의 연결은 유지되고 request가
   전 구간에서 성공한다. 유예 후에도 재등록되지 않은 `api-b`만 peer intent에서 제외된다.
 - 세부 동작: 복구 순서 — owner lease/local MeshNode descriptor 재등록 → owner lease renew interval 유예 → 빠진 target만 disconnect.
 
-#### SF-D3 runtime status 전이 관측
+#### SF-D3 public topology status 전이 관측
 
 우선순위: `P1`
 
-**검증 질문:** 장애→복구 한 사이클 동안 runtime status가 실제 상태 전이(healthy → unhealthy/last error → healthy/last refresh)를 정확히 보여주는가.
+**검증 질문:** 장애→복구 한 사이클 동안 public topology status가
+`Ready → Degraded(LocationUnavailable) → Ready`로 수렴하는가.
 
-- 절차: SF-D1 또는 SF-D2 실행 중 probe가 각 노드의 `Snapshot(meshName)`과 store lease를 단계별로 조회한다.
-- 검증: 정상 구간에는 `Location.LastSuccessAt`, 장애 구간에는 실패 `State`와
-  `Location.LastFailureAt`, 복구 후에는 정상 `State`와 갱신된 `LastSuccessAt`이 순서대로 관측된다.
-  owner lease 갱신 결과는 current descriptor owner ID의 exact owner lease read와 store failure evidence로
-  확인한다.
-- 세부 동작: `ZLinkLocationRuntimeSnapshot`과 owner lease의 장애 사이클 반영.
+- 절차: SF-D1 또는 SF-D2 실행 중 probe가 각 노드의 RouteMesh status stream과 structured log를 단계별로
+  조회한다.
+- 검증: 정상 구간의 `Ready`, 장애 구간의 `Degraded/LocationUnavailable`, 복구 후 `Ready`가 같은
+  source의 증가하는 sequence로 관측된다. Structured log에는
+  `zlink.runtime.location.store_changed`가 장애와 복구에 각각 기록된다. Last success·failure 시각,
+  descriptor owner ID와 owner lease는 public status에 포함하지 않는다.
+- 세부 동작: Public topology status와 Store 장애 사이클 반영.
 
 ### Track E — store 응답 지연(장애 아님) 중 비블로킹
 
@@ -287,7 +292,7 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
   프로세스로 location store와 무관한 concurrent request를 계속 보낸다. 지연 주입 없는 harness에서는
   이 시나리오를 "미구현(하네스 대기)"로 둔다.
 - 검증: 지연 중에도 무관 request의 p99 latency가 SF-A1 baseline 대비 유의미하게 증가하지 않는다
-  (예: baseline의 N배 이내로 사전 정의). `Snapshot(meshName)` 조회 자체도 무관 요청 경로를 막지
+  (예: baseline의 N배 이내로 사전 정의). Public `GetStatus(meshName)` 조회 자체도 무관 요청 경로를 막지
   않는다. 이 결과로 store client가 스레드나 이벤트 루프를 점유하지 않고 실제 비동기·논블로킹으로
   I/O를 수행함을 실측으로 증명한다. 비동기 실행 계약은
   [공통 비동기 실행 정책](../spec/05-async-execution-policy.ko.md)을 따른다.
@@ -503,8 +508,9 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
 ## 5. 완료 기준
 
 - `P0` 시나리오(SF-A1·B1·B3·C1·C3·C4·C5·D1·D2·F1·F2·F4·F5·F6·F7·F8·F9·F10·F11·G1·G2·G3)가 모두 통과한다.
-- 판정은 public 표면으로만 한다. `Snapshot(meshName).Location`, `ListMeshNodesAsync(meshName)`,
-  descriptor owner ID의 `ReadOwnerLeaseAsync(ownerId)`, 실제 messaging과 역할 server evidence를 사용한다.
+- Application 판정은 public RouteMesh status, 실제 messaging과 역할 server evidence를 사용한다.
+  Provider protocol 검증은 Store SPI의 opaque operation evidence만 사용하며 E2E client가 descriptor,
+  owner lease나 authority bytes를 해석하지 않는다.
 - stale descriptor 판정은 "성공 결과에서 제외"로 검증한다. 물리 삭제 시점은 background cleanup의
   책임이므로 단언하지 않는다.
 - 장애·복구 시나리오는 복구 후 messaging 정상화 + stale descriptor 부재 + 정상 peer 연결 보존을

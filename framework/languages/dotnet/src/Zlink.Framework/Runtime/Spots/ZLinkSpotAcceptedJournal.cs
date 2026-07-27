@@ -15,7 +15,7 @@ internal sealed record ZLinkSpotAcceptedJournalRecord(
     ulong TargetNodeGeneration,
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,
-    byte ForwardingHopCount,
+    byte MessageFollowHopCount,
     ZLinkMessageMetadata Metadata,
     IReadOnlyList<ReadOnlyMemory<byte>> Parts);
 
@@ -86,7 +86,7 @@ internal static class ZLinkSpotAcceptedJournal
         writer.Write(received.TargetNodeGeneration);
         writer.Write(received.AuthorityOwnerGeneration);
         writer.Write(received.OwnerLeaseGeneration);
-        writer.Write(received.ForwardingHopCount);
+        writer.Write(received.MessageFollowHopCount);
         WriteBytes(writer, ZLinkMeshMetadataCodec.Encode(received.Metadata).Span);
         if (received.Parts.Count > MaxParts)
             throw new InvalidOperationException(
@@ -145,7 +145,7 @@ internal static class ZLinkSpotAcceptedJournal
         var targetNodeGeneration = reader.ReadUInt64();
         var authorityOwnerGeneration = reader.ReadUInt64();
         var ownerLeaseGeneration = reader.ReadUInt64();
-        var forwardingHopCount = reader.ReadByte();
+        var messageFollowHopCount = reader.ReadByte();
         if (operationId == default
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
@@ -153,7 +153,7 @@ internal static class ZLinkSpotAcceptedJournal
             || replyRouteId != 0
             && (requestSequence != replyRouteId
                 || operationId.Low != replyRouteId)
-            || forwardingHopCount > 8)
+            || messageFollowHopCount > 8)
             throw new InvalidDataException(
                 "The accepted Spot journal authority fence is invalid.");
         var metadataFrame = ReadBytes(reader);
@@ -181,7 +181,7 @@ internal static class ZLinkSpotAcceptedJournal
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
-            forwardingHopCount,
+            messageFollowHopCount,
             metadata,
             parts);
     }

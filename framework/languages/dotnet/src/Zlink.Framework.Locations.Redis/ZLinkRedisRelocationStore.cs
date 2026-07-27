@@ -1,5 +1,8 @@
 using System.Security.Cryptography;
+using System.Text;
 using StackExchange.Redis;
+
+#pragma warning disable CS1066
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -8,6 +11,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// payloads. Location authority remains in <see cref="ZLinkRedisLocationStore"/>.
 /// </summary>
 public sealed class ZLinkRedisRelocationStore :
+    IZLinkRelocationRepository,
     IZLinkRelocationStore,
     IAsyncDisposable
 {
@@ -18,11 +22,26 @@ public sealed class ZLinkRedisRelocationStore :
         local time = redis.call('TIME')
         local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
         local current = redis.call('GET', KEYS[1])
-        if current and current ~= ARGV[1] then
-            return { 'collision', nowMs }
+        if current then
+            if current ~= ARGV[1] then
+                return { 'collision', nowMs }
+            end
+            redis.call('PEXPIRE', KEYS[1], ARGV[2])
+            return { 'already', nowMs }
         end
         redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
         return { 'stored', nowMs }
+        """;
+
+    private const string ReadScript = """
+        if redis.replicate_commands then redis.replicate_commands() end
+        local time = redis.call('TIME')
+        local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+        local current = redis.call('GET', KEYS[1])
+        if not current then
+            return { 'missing', nowMs }
+        end
+        return { 'found', nowMs, current, redis.call('PTTL', KEYS[1]) }
         """;
 
     private const string RenewScript = """
@@ -66,7 +85,99 @@ public sealed class ZLinkRedisRelocationStore :
     {
     }
 
-    public async ValueTask<ZLinkRelocationStored> PutRelocationAsync(
+    public async ValueTask<ZLinkBlobPutResult> PutAsync(
+        ZLinkBlobReference reference,
+        ReadOnlyMemory<byte> payload,
+        TimeSpan retention,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateReference(reference.Value);
+        ValidatePayload(payload);
+        var retentionMs = ValidateRetention(retention);
+        var result = await ExecuteAsync(
+                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
+                    PutScript,
+                    [PayloadKey(reference.Value)],
+                    [payload.ToArray(), retentionMs]).ConfigureAwait(false))!,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        return (string)result[0]! switch
+        {
+            "stored" => new ZLinkBlobPutResult.Stored(
+                storeNow + TimeSpan.FromMilliseconds(retentionMs),
+                storeNow),
+            "already" => new ZLinkBlobPutResult.AlreadyStored(
+                storeNow + TimeSpan.FromMilliseconds(retentionMs),
+                storeNow),
+            "collision" => new ZLinkBlobPutResult.Conflict(storeNow),
+            _ => throw new InvalidDataException(
+                "Redis returned an unknown relocation put result.")
+        };
+    }
+
+    public async ValueTask<ZLinkBlobReadResult> ReadAsync(
+        ZLinkBlobReference reference,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateReference(reference.Value);
+        var result = await ExecuteAsync(
+                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
+                    ReadScript,
+                    [PayloadKey(reference.Value)],
+                    []).ConfigureAwait(false))!,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        if ((string)result[0]! == "missing")
+            return new ZLinkBlobReadResult.Missing(storeNow);
+        var ttl = (long)result[3];
+        if (ttl < 0)
+            throw new InvalidDataException(
+                "A relocation payload must have a positive retention.");
+        return new ZLinkBlobReadResult.Found(
+            (byte[])result[2]!,
+            storeNow + TimeSpan.FromMilliseconds(ttl),
+            storeNow);
+    }
+
+    public async ValueTask<ZLinkBlobRenewResult> RenewAsync(
+        ZLinkBlobReference reference,
+        TimeSpan retention,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateReference(reference.Value);
+        var retentionMs = ValidateRetention(retention);
+        var result = await ExecuteAsync(
+                async database => (RedisResult[])(await database.ScriptEvaluateAsync(
+                    RenewScript,
+                    [PayloadKey(reference.Value)],
+                    [retentionMs]).ConfigureAwait(false))!,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[1]);
+        return (string)result[0]! switch
+        {
+            "renewed" => new ZLinkBlobRenewResult.Renewed(
+                storeNow + TimeSpan.FromMilliseconds(retentionMs),
+                storeNow),
+            "missing" => new ZLinkBlobRenewResult.Missing(storeNow),
+            _ => throw new InvalidDataException(
+                "Redis returned an unknown relocation renew result.")
+        };
+    }
+
+    public async ValueTask DeleteAsync(
+        ZLinkBlobReference reference,
+        CancellationToken cancellationToken = default)
+    {
+        _ = await ((IZLinkRelocationRepository)this).DeleteRelocationAsync(
+                reference.Value,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    async ValueTask<ZLinkRelocationStored> IZLinkRelocationRepository.PutRelocationAsync(
         ReadOnlyMemory<byte> payload,
         TimeSpan retention,
         CancellationToken cancellationToken = default)
@@ -83,7 +194,7 @@ public sealed class ZLinkRedisRelocationStore :
                     [payload.ToArray(), retentionMs]).ConfigureAwait(false))!,
                 cancellationToken)
             .ConfigureAwait(false);
-        if ((string)result[0]! != "stored")
+        if ((string)result[0]! == "collision")
         {
             throw new InvalidDataException(
                 $"Redis already contains different bytes for relocation reference '{reference}'.");
@@ -97,7 +208,7 @@ public sealed class ZLinkRedisRelocationStore :
             storeNow);
     }
 
-    public async ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
+    async ValueTask<ZLinkRelocationReadResult> IZLinkRelocationRepository.GetRelocationAsync(
         string reference,
         CancellationToken cancellationToken = default)
     {
@@ -113,7 +224,7 @@ public sealed class ZLinkRedisRelocationStore :
             : new ZLinkRelocationReadResult.Found((byte[])payload!);
     }
 
-    public async ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
+    async ValueTask<ZLinkRelocationRenewResult> IZLinkRelocationRepository.RenewRelocationAsync(
         string reference,
         TimeSpan retention,
         CancellationToken cancellationToken = default)
@@ -135,7 +246,7 @@ public sealed class ZLinkRedisRelocationStore :
             storeNow);
     }
 
-    public async ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
+    async ValueTask<ZLinkRelocationDeleteResult> IZLinkRelocationRepository.DeleteRelocationAsync(
         string reference,
         CancellationToken cancellationToken = default)
     {
@@ -274,19 +385,16 @@ public sealed class ZLinkRedisRelocationStore :
 
     private static void ValidatePayload(ReadOnlyMemory<byte> payload)
     {
-        if (payload.IsEmpty || payload.Length > MaximumPayloadSize)
+        if (payload.Length > MaximumPayloadSize)
             throw new ArgumentOutOfRangeException(nameof(payload));
     }
 
     private static void ValidateReference(string reference)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
-        if (reference.Length != 64
-            || reference.Any(static value =>
-                !char.IsAsciiHexDigit(value)
-                || char.IsAsciiLetterUpper(value)))
+        var bytes = Encoding.UTF8.GetByteCount(reference ?? string.Empty);
+        if (bytes is < 1 or > 4096)
             throw new ArgumentException(
-                "Relocation references must be lowercase SHA-256 hex.",
+                "Relocation references must contain 1..4096 UTF-8 bytes.",
                 nameof(reference));
     }
 
@@ -316,3 +424,5 @@ public sealed class ZLinkRedisRelocationStore :
             Interlocked.Exchange(ref _owner, null)?.ExitOperation();
     }
 }
+
+#pragma warning restore CS1066

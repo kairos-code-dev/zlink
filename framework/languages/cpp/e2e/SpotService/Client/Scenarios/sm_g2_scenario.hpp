@@ -28,11 +28,11 @@ inline evidence_snapshot_t fetch_sm_g2_evidence (zlink::http_client::client_t &c
 }
 
 inline bool sm_g2_has_spot_request (const evidence_snapshot_t &snapshot,
-                                    const std::string &spot_rid,
+                                    const std::string &spot_id,
                                     const std::string &value)
 {
     for (const auto &entry : snapshot.entries) {
-        if (entry.marker == "SpotToSpotRequest" && entry.spot_rid == spot_rid
+        if (entry.marker == "SpotToSpotRequest" && entry.spot_id == spot_id
             && entry.value == value) {
             return true;
         }
@@ -81,7 +81,7 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
 
     auto first_created_raw =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = first_owner_spot})
+        .body (create_spot_req_t{.spot_id = first_owner_spot})
         .submit_raw ()
         .result ();
     if (!first_created_raw || first_created_raw.value ().status >= 400) {
@@ -89,7 +89,7 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     }
     const auto first_created =
       nlohmann::json::parse (first_created_raw.value ().body).get<create_spot_res_t> ();
-    if (first_created.spot_rid != first_owner_spot
+    if (first_created.spot_id != first_owner_spot
         || first_created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-G2 first owner was not created on play-a");
     }
@@ -97,17 +97,17 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     const auto first_reply = post_sm_g2_direct_request (
       play_b,
       direct_spot_route_req_t{.target_node_rid = "play-a",
-                              .spot_rid = first_owner_spot,
+                              .spot_id = first_owner_spot,
                               .value = "sm-g2-before-remap",
                               .source_actor_id = "sm-g2-client"},
       "first owner request");
-    if (first_reply.spot_rid != first_owner_spot || first_reply.owner_node_rid != "play-a") {
+    if (first_reply.spot_id != first_owner_spot || first_reply.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-G2 first owner request reached the wrong node");
     }
 
     auto remapped_created_raw =
       play_b.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = remapped_owner_spot})
+        .body (create_spot_req_t{.spot_id = remapped_owner_spot})
         .submit_raw ()
         .result ();
     if (!remapped_created_raw || remapped_created_raw.value ().status >= 400) {
@@ -115,7 +115,7 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     }
     const auto remapped_created =
       nlohmann::json::parse (remapped_created_raw.value ().body).get<create_spot_res_t> ();
-    if (remapped_created.spot_rid != remapped_owner_spot
+    if (remapped_created.spot_id != remapped_owner_spot
         || remapped_created.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-G2 remapped owner was not created on play-b");
     }
@@ -123,11 +123,11 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     const auto remapped_reply = post_sm_g2_direct_request (
       play_a,
       direct_spot_route_req_t{.target_node_rid = "play-b",
-                              .spot_rid = remapped_owner_spot,
+                              .spot_id = remapped_owner_spot,
                               .value = "sm-g2-after-remap",
                               .source_actor_id = "sm-g2-client"},
       "remapped owner request");
-    if (remapped_reply.spot_rid != remapped_owner_spot
+    if (remapped_reply.spot_id != remapped_owner_spot
         || remapped_reply.owner_node_rid != "play-b") {
         throw std::runtime_error ("SM-G2 remapped owner request reached the wrong node");
     }

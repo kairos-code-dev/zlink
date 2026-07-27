@@ -50,7 +50,7 @@ export {
   ZLinkActorDispatchMailboxSet
 } from './actor-mailbox';
 export {
-  DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS,
+  DEFAULT_MESSAGE_FOLLOW_DURATION_MS,
   ZLinkActorHandoffCoordinator,
   decodeHandoffPacket,
   type ZLinkActorHandoffPacket,
@@ -186,7 +186,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     const state = this.states.get(actor.actorId);
     if (state?.actor === undefined) return false;
     const current = this.actorRefForState(state);
-    if (current.generation !== actor.generation) {
+    if (current.objectGeneration !== actor.objectGeneration) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.ActorGenerationStale,
         `Actor '${actor.actorId}' generation is stale.`
@@ -660,15 +660,27 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   private actorRefForState(state: ZLinkActorRuntimeState): ActorRef {
     const nativeActorRef = state.nativeActorRef;
     if (nativeActorRef !== undefined) {
-      return toFrameworkActorRef(nativeActorRef);
+      return toFrameworkActorRef(nativeActorRef, requireStateMeshName(state));
     }
     return {
-      nodeRid: this.options.actorCreatedNodeRidProvider?.() ?? BindingRoutingId.from('local') as unknown as RoutingId,
       actorId: state.actorId,
-      generation: 0n
+      objectGeneration: 1n,
+      meshName: requireStateMeshName(state),
+      nodeRid: this.options.actorCreatedNodeRidProvider?.()
+        ?? BindingRoutingId.from('local') as unknown as RoutingId
     };
   }
 
+}
+
+function requireStateMeshName(state: ZLinkActorRuntimeState): string {
+  const meshName = state.meshName;
+  if (meshName === undefined || meshName.length === 0) {
+    throw new ZLinkConfigurationException(
+      `Actor '${state.actorId}' has no RouteMesh identity.`
+    );
+  }
+  return meshName;
 }
 
 interface ZLinkActorCreateCallOptions {

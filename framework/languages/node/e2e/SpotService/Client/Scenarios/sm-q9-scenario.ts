@@ -16,15 +16,15 @@ export async function runSmQ9(options: ClientOptions): Promise<void> {
   const spotB = `spot-sm-q9-b-${uniqueId()}`;
 
   const createdA = await postJson<MultiNodeCreateSpotRes>(options.multiAUrl, '/spot/create-local', {
-    spotRid: spotA,
+    spotId: spotA,
     delta: 0
   } satisfies MultiNodeCreateSpotReq);
   const firstA = await postJson<StateRes>(options.multiAUrl, '/spot/state/request', {
-    spotRid: spotA,
+    spotId: spotA,
     delta: 11
   } satisfies MultiNodeStateRouteReq);
   const directA = await postJson<StateRes>(options.multiAUrl, '/spot/state/request', {
-    spotRid: spotA,
+    spotId: spotA,
     delta: 0
   } satisfies MultiNodeStateRouteReq);
   const evidenceA = await postJson<string[]>(options.multiAUrl, '/evidence/wait', {
@@ -33,15 +33,15 @@ export async function runSmQ9(options: ClientOptions): Promise<void> {
   } satisfies EvidenceWaitReq);
 
   const createdB = await postJson<MultiNodeCreateSpotRes>(options.multiBUrl, '/spot/create-local', {
-    spotRid: spotB,
+    spotId: spotB,
     delta: 0
   } satisfies MultiNodeCreateSpotReq);
   const firstB = await postJson<StateRes>(options.multiBUrl, '/spot/state/request', {
-    spotRid: spotB,
+    spotId: spotB,
     delta: 17
   } satisfies MultiNodeStateRouteReq);
   const directB = await postJson<StateRes>(options.multiBUrl, '/spot/state/request', {
-    spotRid: spotB,
+    spotId: spotB,
     delta: 0
   } satisfies MultiNodeStateRouteReq);
   const evidenceB = await postJson<string[]>(options.multiBUrl, '/evidence/wait', {
@@ -62,12 +62,12 @@ export async function runSmQ9(options: ClientOptions): Promise<void> {
 
   ensure(createdA.nodeRid === SpotServiceNames.multiSpotNodeA, 'SM-Q9 node A create reply node mismatch.');
   ensure(firstA.value === 11, 'SM-Q9 node A route-to-spot reply value mismatch.');
-  ensure(directA.spotRid === spotA, 'SM-Q9 node A direct spot reply target mismatch.');
+  ensure(directA.spotId === spotA, 'SM-Q9 node A direct spot reply target mismatch.');
   ensure(directA.nodeRid === SpotServiceNames.multiSpotNodeA, 'SM-Q9 node A direct spot reply node mismatch.');
   ensure(directA.value === 11, 'SM-Q9 node A direct spot reply value mismatch.');
   ensure(createdB.nodeRid === SpotServiceNames.multiSpotNodeB, 'SM-Q9 node B create reply node mismatch.');
   ensure(firstB.value === 17, 'SM-Q9 node B route-to-spot reply value mismatch.');
-  ensure(directB.spotRid === spotB, 'SM-Q9 node B direct spot reply target mismatch.');
+  ensure(directB.spotId === spotB, 'SM-Q9 node B direct spot reply target mismatch.');
   ensure(directB.nodeRid === SpotServiceNames.multiSpotNodeB, 'SM-Q9 node B direct spot reply node mismatch.');
   ensure(directB.value === 17, 'SM-Q9 node B direct spot reply value mismatch.');
 

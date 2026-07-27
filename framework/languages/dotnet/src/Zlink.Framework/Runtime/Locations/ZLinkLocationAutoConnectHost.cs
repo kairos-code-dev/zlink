@@ -20,7 +20,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly ZLinkLocationOptions _options;
-    private readonly IZLinkLocationStore _store;
+    private readonly IZLinkLocationRepository _store;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
     private readonly TimeProvider _time;
@@ -45,7 +45,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         IZLinkLocationWatchStore? watchStore = null,
         TimeProvider? timeProvider = null,
         ZLinkOwnerLeaseTracker? leaseTracker = null,
-        IZLinkLocationStore? store = null)
+        IZLinkLocationRepository? store = null)
     {
         _runtime = runtime;
         _peers = peers;

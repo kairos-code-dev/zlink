@@ -127,14 +127,14 @@ test('two host owners exchange canonical relocation reservation publish replay a
       }
     }),
     relocationStore: () => ({
-      getRelocation: async (reference: { readonly value: string }) =>
+      read: async (reference: { readonly value: string }) =>
         reference.value === root.reference
-          ? { kind: 'found' as const, payload: encodedEnvelope }
+          ? foundBlob(encodedEnvelope)
           : reference.value === zeroRoot.reference
-            ? { kind: 'found' as const, payload: encodedZeroEnvelope }
+            ? foundBlob(encodedZeroEnvelope)
           : reference.value === abortRoot.reference
-            ? { kind: 'found' as const, payload: encodedAbortEnvelope }
-          : { kind: 'missing' as const }
+            ? foundBlob(encodedAbortEnvelope)
+          : { kind: 'missing' as const, storeNow: new Date() }
     }),
     currentOwner: () => ({ ownerId: 'owner-target', leaseGeneration: 8n }),
     liveDescriptors: async () => [],
@@ -595,7 +595,7 @@ function relocationEnvelope(): ServiceRelocationEnvelope {
           payload: Buffer.from('payload').toString('base64'),
           returnResponse: false,
           operationId: '0:1',
-          forwardingHopCount: 0
+          messageFollowHopCount: 0
         })) }], timers: [] }
     ], memberships: [{ actorKey, spotKey, spotObjectGeneration: 1n, membershipEpoch: 1n }] };
 }
@@ -613,4 +613,14 @@ function relocationAuthority(
       descriptorLifecycleGeneration: 11n,
       capacity: objectKind === 'actor' ? { actors: 1, spots: 0 } : { actors: 0, spots: 1 } },
     storeNow: new Date(1) };
+}
+
+function foundBlob(bytes: Uint8Array) {
+  const storeNow = new Date();
+  return {
+    kind: 'found' as const,
+    bytes,
+    expiresAt: new Date(storeNow.getTime() + 60_000),
+    storeNow
+  };
 }

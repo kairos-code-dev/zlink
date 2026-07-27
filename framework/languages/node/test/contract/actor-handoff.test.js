@@ -27,15 +27,15 @@ function targetActorRef(name = 'target', generation = 2n) {
   return { nodeRid: zlink.RoutingId.from(`${name}-node`), actorId: 'actor-1', generation };
 }
 
-function harness(forwardWindowMs = 30) {
-  const forwarded = [];
-  const forwardedPayloads = [];
+function harness(messageFollowDurationMs = 30) {
+  const followed = [];
+  const messageFollowPayloads = [];
   const markers = [];
   let currentGeneration = 2n;
   const transport = {
     async sendToSpot(_target, payload) {
-      forwardedPayloads.push(payload);
-      forwarded.push(Buffer.from(payload.payload, 'base64').toString());
+      messageFollowPayloads.push(payload);
+      followed.push(Buffer.from(payload.payload, 'base64').toString());
     },
     async requestToSpot() {
       return { ok: true };
@@ -43,7 +43,7 @@ function harness(forwardWindowMs = 30) {
   };
   const coordinator = new framework.ZLinkActorHandoffCoordinator({
     routedTransport: transport,
-    forwardWindowMs,
+    messageFollowDurationMs,
     isStaleActorRef: (_actorId, ref) => ref.generation !== currentGeneration,
     isCurrentHandoffTarget: (_actorId, spotId) => spotId === 'target-spot',
     requestSource: () => ({
@@ -56,8 +56,8 @@ function harness(forwardWindowMs = 30) {
   });
   return {
     coordinator,
-    forwarded,
-    forwardedPayloads,
+    followed,
+    messageFollowPayloads,
     markers,
     setCurrentGeneration(value) { currentGeneration = value; }
   };
@@ -82,25 +82,25 @@ test('in-flight handoff preserves moving packet arrival order in the commit back
   ]);
 });
 
-test('forwarding preserves operation identity and increments a bounded hop count', async () => {
-  const { coordinator, forwardedPayloads } = harness();
+test('Message Follow preserves operation identity and increments a bounded hop count', async () => {
+  const { coordinator, messageFollowPayloads } = harness();
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
   const ref = Object.assign(actorRef(1n), {
     handoffOperationId: 'source-op-7',
-    handoffForwardingHopCount: 7
+    handoffMessageFollowHopCount: 7
   });
   const parts = frame('last-hop');
   await coordinator.capture('actor-1', parts, false, undefined, ref);
   parts.forEach((part) => part.close());
-  assert.equal(forwardedPayloads[0].operationId, 'source-op-7');
-  assert.equal(forwardedPayloads[0].forwardingHopCount, 8);
+  assert.equal(messageFollowPayloads[0].operationId, 'source-op-7');
+  assert.equal(messageFollowPayloads[0].messageFollowHopCount, 8);
 
   const loop = frame('loop');
   const exhausted = Object.assign(actorRef(1n), {
     handoffOperationId: 'source-op-8',
-    handoffForwardingHopCount: 8
+    handoffMessageFollowHopCount: 8
   });
   await assert.rejects(
     coordinator.capture('actor-1', loop, false, undefined, exhausted),
@@ -109,10 +109,10 @@ test('forwarding preserves operation identity and increments a bounded hop count
   loop.forEach((part) => part.close());
 });
 
-test('forwarding mapping rejects a queue above 1024 messages without a Store lookup or retry', async () => {
+test('Message Follow route rejects a queue above 1024 messages without a Store lookup or retry', async () => {
   const coordinator = new framework.ZLinkActorHandoffCoordinator({
     routedTransport: { sendToSpot: async () => new Promise(() => {}) },
-    forwardWindowMs: 1000
+    messageFollowDurationMs: 1000
   });
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
@@ -130,8 +130,8 @@ test('forwarding mapping rejects a queue above 1024 messages without a Store loo
   overflow.forEach((part) => part.close());
 });
 
-test('packets captured after the commit snapshot are forwarded only after backlog completion', async () => {
-  const { coordinator, forwarded } = harness();
+test('packets captured after the commit snapshot use Message Follow after backlog completion', async () => {
+  const { coordinator, followed } = harness();
   coordinator.begin('actor-1', 1n);
   const backlogParts = frame('B1');
   await coordinator.capture('actor-1', backlogParts, false, undefined, actorRef());
@@ -141,7 +141,7 @@ test('packets captured after the commit snapshot are forwarded only after backlo
   const directParts = frame('D1');
   await coordinator.capture('actor-1', directParts, false, undefined, actorRef());
   directParts.forEach((part) => part.close());
-  assert.deepEqual(forwarded, []);
+  assert.deepEqual(followed, []);
 
   coordinator.complete(
     'actor-1',
@@ -150,11 +150,11 @@ test('packets captured after the commit snapshot are forwarded only after backlo
     backlog.map((packet) => ({ index: packet.index, ok: true }))
   );
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(forwarded, ['D1']);
+  assert.deepEqual(followed, ['D1']);
 });
 
-test('bound-session packets keep one sequence across snapshot and forwarding activation', async () => {
-  const { coordinator, forwarded } = harness();
+test('bound-session packets keep one sequence across snapshot and Message Follow activation', async () => {
+  const { coordinator, followed } = harness();
   const sessionTarget = {
     routerChannelId: 'session-mesh',
     targetNodeRid: zlink.RoutingId.from('session-node'),
@@ -182,14 +182,14 @@ test('bound-session packets keep one sequence across snapshot and forwarding act
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(
-    backlog.map((packet) => Buffer.from(packet.payload, 'base64').toString()).concat(forwarded),
+    backlog.map((packet) => Buffer.from(packet.payload, 'base64').toString()).concat(followed),
     ['S1', 'S2', 'S3', 'S4']
   );
   assert.equal(backlog[0].remoteBoundSessionTarget.routerChannelId, 'session-mesh');
 });
 
-test('stragglers forward inside the window and fail fast after mapping eviction', async () => {
-  const { coordinator, forwarded, markers } = harness(10);
+test('Message Follow relays before duration expiry and rejects after route removal', async () => {
+  const { coordinator, followed, markers } = harness(10);
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
@@ -197,7 +197,7 @@ test('stragglers forward inside the window and fail fast after mapping eviction'
   const inside = frame('G1');
   await coordinator.capture('actor-1', inside, false, undefined, actorRef(1n));
   inside.forEach((part) => part.close());
-  assert.deepEqual(forwarded, ['G1']);
+  assert.deepEqual(followed, ['G1']);
 
   await new Promise((resolve) => setTimeout(resolve, 20));
   const outside = frame('G2');
@@ -206,12 +206,12 @@ test('stragglers forward inside the window and fail fast after mapping eviction'
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
   outside.forEach((part) => part.close());
-  assert.equal(markers.some((entry) => entry.marker === 'mapping_evicted'), true);
-  assert.equal(markers.some((entry) => entry.marker === 'stale_fail_fast'), true);
+  assert.equal(markers.some((entry) => entry.marker === 'message_follow_route_removed'), true);
+  assert.equal(markers.some((entry) => entry.marker === 'message_follow_expired'), true);
 });
 
-test('a Core-routed packet owned by the current actor bypasses an older forwarding mapping', async () => {
-  const { coordinator, forwarded, markers } = harness();
+test('a Core-routed packet owned by the current actor bypasses an older Message Follow route', async () => {
+  const { coordinator, followed, markers } = harness();
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
@@ -223,18 +223,18 @@ test('a Core-routed packet owned by the current actor bypasses an older forwardi
   );
   current.forEach((part) => part.close());
 
-  assert.deepEqual(forwarded, []);
-  assert.equal(markers.some((entry) => entry.marker === 'straggler_forward'), false);
+  assert.deepEqual(followed, []);
+  assert.equal(markers.some((entry) => entry.marker === 'message_follow_relay'), false);
 });
 
 test('a Core-routed packet marked with the current target bypasses stale owner generation', async () => {
-  const { coordinator, forwarded, markers } = harness();
+  const { coordinator, followed, markers } = harness();
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target(), targetActorRef());
 
   const owner = Object.assign(actorRef(1n), {
-    handoffForwarded: true,
+    handoffMessageFollowed: true,
     handoffTargetSpotId: 'target-spot'
   });
   const current = frame('current-target');
@@ -244,28 +244,28 @@ test('a Core-routed packet marked with the current target bypasses stale owner g
   );
   current.forEach((part) => part.close());
 
-  assert.deepEqual(forwarded, []);
-  assert.equal(markers.some((entry) => entry.marker === 'straggler_forward'), false);
+  assert.deepEqual(followed, []);
+  assert.equal(markers.some((entry) => entry.marker === 'message_follow_relay'), false);
 });
 
-test('chained movement replaces the node-local mapping and leaves no retained entry after cutoff', async () => {
-  const { coordinator, forwarded } = harness(10);
+test('chained relocation replaces the local Message Follow route and removes it after cutoff', async () => {
+  const { coordinator, followed } = harness(10);
   coordinator.begin('actor-1', 1n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target('first'), targetActorRef('first'));
-  assert.equal(coordinator.forwardingCount('actor-1'), 1);
+  assert.equal(coordinator.messageFollowCount('actor-1'), 1);
 
   coordinator.begin('actor-1', 2n);
   coordinator.snapshot('actor-1');
   coordinator.complete('actor-1', target('second'), targetActorRef('second', 3n));
-  assert.equal(coordinator.forwardingCount('actor-1'), 1);
+  assert.equal(coordinator.messageFollowCount('actor-1'), 1);
   const packet = frame('chain');
   await coordinator.capture('actor-1', packet, false, undefined, actorRef(2n));
   packet.forEach((part) => part.close());
-  assert.deepEqual(forwarded, ['chain']);
+  assert.deepEqual(followed, ['chain']);
 
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(coordinator.forwardingCount('actor-1'), 0);
+  assert.equal(coordinator.messageFollowCount('actor-1'), 0);
 });
 
 test('in-flight request preserves framing, reply correlation, and the caller timeout', async () => {

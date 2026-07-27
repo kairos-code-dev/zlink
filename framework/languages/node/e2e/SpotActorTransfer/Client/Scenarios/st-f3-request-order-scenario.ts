@@ -4,12 +4,12 @@ import { SpotActorTransferNames, options, nodeA, nodeB, connectAndBind, createSp
 
 export async function runStF3(): Promise<void> {
   const actorId = uniqueShort('actor-handoff-gate-f3');
-  const spotRid = unique('spot-handoff-bound');
-  await createSpot(nodeB, spotRid);
+  const spotId = unique('spot-handoff-bound');
+  await createSpot(nodeB, spotId);
   const source = await createActor(nodeA, actorId, SpotActorTransferNames.actorTypeStateful, 103);
   const connector = await connectAndBind(options.sessionAStreamEndpoint, 'ST-F3', source, uniqueShort('transfer'));
   try {
-    const join = joinActor(nodeA, actorId, { scenario: 'ST-F3', targetSpotRid: spotRid });
+    const join = joinActor(nodeA, actorId, { scenario: 'ST-F3', targetSpotId: spotId });
     await waitEvidence(nodeA, [`ST-F3|${actorId}|before_commit_gate|103`]);
     await connector.send({ scenario: 'ST-F3', marker: 'S1' } satisfies ProbeReq)
       .packetName(SpotActorTransferNames.packetHandoff).submit();

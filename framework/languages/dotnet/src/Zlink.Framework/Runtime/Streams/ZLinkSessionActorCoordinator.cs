@@ -534,7 +534,7 @@ internal sealed class ZLinkSessionActorCoordinator(
                          && header.RequestSeq is { } requestSeq
             ? new ZLinkBackendActorRouteContext(
                 OperationId: default,
-                ForwardingHopCount: 0,
+                MessageFollowHopCount: 0,
                 TargetNodeGeneration: route.TargetNodeGeneration,
                 AuthorityOwnerGeneration: route.AuthorityOwnerGeneration,
                 OwnerLeaseGeneration: route.OwnerLeaseGeneration,

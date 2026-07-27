@@ -1,4 +1,6 @@
-using System.Text.Json;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
@@ -11,7 +13,8 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class TransferActor(
         string actorId,
         IZLinkActorContext context,
-        EvidenceStore evidence) : IZLinkActor
+        EvidenceStore evidence,
+        JoinCompletionStore joinCompletions) : IZLinkActor
     {
         private readonly Queue<JoinTargetReq> _pendingJoins = new();
 
@@ -20,6 +23,8 @@ namespace SpotActorTransfer.ActorNode
         public string ActorType { get; set; } = SpotActorTransferNames.ActorTypeStateful;
 
         public int StateVersion { get; set; }
+
+        public byte[] ApplicationState { get; set; } = [];
 
         public IZLinkActorContext Context { get; } = context;
 
@@ -53,11 +58,21 @@ namespace SpotActorTransfer.ActorNode
                 ? failed.Kind.ToString()
                 : targetSpotId;
             evidence.Add(scenario, ActorId, kind, terminalValue);
+            joinCompletions.Complete(
+                ActorId,
+                scenario,
+                new JoinCompletionOutcome(
+                    reply,
+                    completion is ZLinkActorJoinCompletion.Failed failure
+                        ? failure.Kind.ToString()
+                        : null));
             return ValueTask.CompletedTask;
         }
     }
 
-    internal sealed class TransferActorFactory(EvidenceStore evidence) : IZLinkActorFactory<TransferActor>
+    internal sealed class TransferActorFactory(
+        EvidenceStore evidence,
+        JoinCompletionStore joinCompletions) : IZLinkActorFactory<TransferActor>
     {
         public ValueTask<TransferActor> CreateAsync(
             IZLinkActorContext context,
@@ -67,7 +82,11 @@ namespace SpotActorTransfer.ActorNode
             if (evidence.NodeRid == "actor-b"
                 && context.ActorId.StartsWith("actor-no-adapter-", StringComparison.Ordinal))
                 evidence.Add("transfer", context.ActorId, "transfer_in_empty_default", "actor-factory");
-            return ValueTask.FromResult(new TransferActor(context.ActorId, context, evidence));
+            return ValueTask.FromResult(new TransferActor(
+                context.ActorId,
+                context,
+                evidence,
+                joinCompletions));
         }
     }
 
@@ -93,7 +112,17 @@ namespace SpotActorTransfer.ActorNode
                 return [];
             }
 
-            evidence.Add("transfer", actor.ActorId, "transfer_out", actor.StateVersion.ToString());
+            var payload = TransferActorStateCodec.Encode(actor);
+            evidence.Add(
+                "transfer",
+                actor.ActorId,
+                "transfer_out",
+                actor.StateVersion.ToString());
+            evidence.Add(
+                "transfer",
+                actor.ActorId,
+                "application_payload",
+                $"bytes={payload.Length};sha256={TransferActorStateCodec.Sha256(payload)}");
             if (actor.ActorId.StartsWith("actor-source-down-before-commit-", StringComparison.Ordinal))
             {
                 evidence.Add("ST-C1", actor.ActorId, "before_commit_gate", actor.StateVersion.ToString());
@@ -101,8 +130,7 @@ namespace SpotActorTransfer.ActorNode
                     .ConfigureAwait(false);
             }
 
-            return JsonSerializer.SerializeToUtf8Bytes(
-                new TransferStateDto(actor.ActorId, actor.StateVersion));
+            return payload;
         }
 
         public ValueTask RestoreAsync(
@@ -119,18 +147,27 @@ namespace SpotActorTransfer.ActorNode
                 return ValueTask.CompletedTask;
             }
 
-            var dto = JsonSerializer.Deserialize<TransferStateDto>(payload.Span)
-                      ?? throw new InvalidDataException(
-                          "Actor relocation state is empty.");
+            var state = TransferActorStateCodec.Decode(actorId, payload.Span);
             if (actorId.StartsWith("actor-fail-transfer-in-", StringComparison.Ordinal))
             {
-                evidence.Add("ST-C3", actorId, "transfer_in_failed", dto.StateVersion.ToString());
+                evidence.Add(
+                    "ST-C3",
+                    actorId,
+                    "transfer_in_failed",
+                    state.StateVersion.ToString());
                 throw new InvalidOperationException("injected transfer in failure");
             }
 
             actor.ActorType = SpotActorTransferNames.ActorTypeStateful;
-            actor.StateVersion = dto.StateVersion;
+            actor.StateVersion = state.StateVersion;
+            actor.ApplicationState = state.ApplicationState;
             evidence.Add("transfer", actorId, "transfer_in", actor.StateVersion.ToString());
+            evidence.Add(
+                "transfer",
+                actorId,
+                "application_state_restored",
+                $"bytes={actor.ApplicationState.Length};sha256="
+                + TransferActorStateCodec.Sha256(actor.ApplicationState));
             return ValueTask.CompletedTask;
         }
     }
@@ -153,6 +190,9 @@ namespace SpotActorTransfer.ActorNode
                 var request = createRequest.Decode<ActorCreateReq>();
                 actor.ActorType = request.ActorType;
                 actor.StateVersion = request.StateVersion;
+                actor.ApplicationState = TransferActorStateCodec.CreateState(
+                    actor.ActorId,
+                    request.ApplicationStateBytes);
                 if (actor.ActorType == SpotActorTransferNames.ActorTypeEmptyState)
                     domainState.Save(actor.ActorId, actor.StateVersion);
             }
@@ -198,6 +238,98 @@ namespace SpotActorTransfer.ActorNode
         }
     }
 
+    internal static class TransferActorStateCodec
+    {
+        private const uint Magic = 0x5a4c5331;
+
+        internal static byte[] CreateState(string actorId, int size)
+        {
+            if (size < 0)
+                throw new ArgumentOutOfRangeException(nameof(size));
+            if (size == 0)
+                return [];
+
+            var result = new byte[size];
+            var seed = SHA256.HashData(Encoding.UTF8.GetBytes(actorId));
+            ulong state = BinaryPrimitives.ReadUInt64LittleEndian(seed);
+            for (var index = 0; index < result.Length; index++)
+            {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                result[index] = (byte)state;
+            }
+            return result;
+        }
+
+        internal static byte[] Encode(TransferActor actor)
+        {
+            var actorId = Encoding.UTF8.GetBytes(actor.ActorId);
+            var payload = new byte[
+                sizeof(uint)
+                + sizeof(int)
+                + sizeof(int)
+                + actorId.Length
+                + actor.ApplicationState.Length];
+            var span = payload.AsSpan();
+            BinaryPrimitives.WriteUInt32LittleEndian(span, Magic);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                span[sizeof(uint)..],
+                actor.StateVersion);
+            BinaryPrimitives.WriteInt32LittleEndian(
+                span[(sizeof(uint) + sizeof(int))..],
+                actorId.Length);
+            actorId.CopyTo(span[(sizeof(uint) + sizeof(int) + sizeof(int))..]);
+            actor.ApplicationState.CopyTo(
+                span[(sizeof(uint) + sizeof(int) + sizeof(int) + actorId.Length)..]);
+            return payload;
+        }
+
+        internal static (
+            int StateVersion,
+            byte[] ApplicationState) Decode(
+            string expectedActorId,
+            ReadOnlySpan<byte> payload)
+        {
+            const int headerSize = sizeof(uint) + sizeof(int) + sizeof(int);
+            if (payload.Length < headerSize
+                || BinaryPrimitives.ReadUInt32LittleEndian(payload) != Magic)
+            {
+                throw new InvalidDataException(
+                    "Actor relocation state header is invalid.");
+            }
+
+            var stateVersion = BinaryPrimitives.ReadInt32LittleEndian(
+                payload[sizeof(uint)..]);
+            var actorIdLength = BinaryPrimitives.ReadInt32LittleEndian(
+                payload[(sizeof(uint) + sizeof(int))..]);
+            if (actorIdLength < 0
+                || headerSize + actorIdLength > payload.Length)
+            {
+                throw new InvalidDataException(
+                    "Actor relocation identity length is invalid.");
+            }
+
+            var actorId = Encoding.UTF8.GetString(
+                payload.Slice(headerSize, actorIdLength));
+            if (!string.Equals(
+                    actorId,
+                    expectedActorId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "Actor relocation identity does not match the target Actor.");
+            }
+
+            return (
+                stateVersion,
+                payload[(headerSize + actorIdLength)..].ToArray());
+        }
+
+        internal static string Sha256(ReadOnlySpan<byte> payload) =>
+            Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+    }
+
     internal sealed class TransferUserSpot(
         IZLinkSpotContext context,
         EvidenceStore evidence,
@@ -208,6 +340,18 @@ namespace SpotActorTransfer.ActorNode
         private readonly Dictionary<string, string> _joinScenarios = new(StringComparer.Ordinal);
 
         public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddActorPacket<UserSpotJoinTargetHandler, TransferActor>(
+                nameof(JoinTargetReq));
+            Context.Handlers.AddActorPacket<ProbeHandler, TransferActor>(
+                nameof(ProbeReq));
+            Context.Handlers.AddActorPacket<HandoffPacketHandler, TransferActor>(
+                nameof(HandoffPacket));
+            Context.Handlers.AddActorPacket<BoundPushHandler, TransferActor>(
+                nameof(BoundPushReq));
+        }
 
         public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
             ZLinkMessage request,
@@ -366,9 +510,15 @@ namespace SpotActorTransfer.ActorNode
             _ = context;
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add(request.Scenario, actor.ActorId, "packet_handler", request.Marker);
-            if (request.Scenario == "ST-F6" && request.Marker == "late-reply")
+            if ((request.Scenario == "ST-F6"
+                    && request.Marker == "late-reply")
+                || (request.Scenario == "ST-I5"
+                    && request.Marker == "deadline"))
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                var delay = request.Scenario == "ST-I5"
+                    ? TimeSpan.FromSeconds(7)
+                    : TimeSpan.FromSeconds(1);
+                await Task.Delay(delay, cancellationToken);
                 evidence.Add(request.Scenario, actor.ActorId, "late_reply_created", request.Marker);
             }
             return new ProbeRes(
@@ -461,6 +611,137 @@ namespace SpotActorTransfer.ActorNode
                 spot.Context.NodeRid.ToString(),
                 request.Marker,
                 actor.StateVersion);
+        }
+    }
+
+    internal sealed class RelocationPayloadUserSpot(
+        IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        internal string Scenario { get; private set; } = "ST-I1";
+        internal byte[] ApplicationState { get; set; } = [];
+
+        public ValueTask<ZLinkSpotCreateResponse> OnCreateAsync(
+            ZLinkMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var profile = request.Decode<RelocationPayloadSpotReq>();
+            Scenario = profile.Scenario;
+            ApplicationState = TransferActorStateCodec.CreateState(
+                Context.SpotId,
+                profile.ApplicationStateBytes);
+            return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
+        }
+    }
+
+    internal sealed class RelocationPayloadInstanceSpot(
+        IZLinkInstanceSpotContext context) : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context { get; } = context;
+
+        internal string Scenario { get; set; } = "ST-I1";
+        internal byte[] ApplicationState { get; set; } = [];
+
+        public void Configure() =>
+            Context.Handlers.AddPacket<RelocationPayloadInstanceSpotHandler>();
+    }
+
+    internal sealed class RelocationPayloadInstanceSpotHandler
+        : IZLinkSpotRequestHandler<
+            RelocationPayloadInstanceSpot,
+            RelocationPayloadSpotReq,
+            RelocationPayloadSpotRes>
+    {
+        public ValueTask<RelocationPayloadSpotRes> HandleAsync(
+            RelocationPayloadInstanceSpot spot,
+            RelocationPayloadSpotReq request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (spot.ApplicationState.Length == 0)
+            {
+                spot.Scenario = request.Scenario;
+                spot.ApplicationState = TransferActorStateCodec.CreateState(
+                    spot.Context.SpotId,
+                    request.ApplicationStateBytes);
+            }
+            return ValueTask.FromResult(new RelocationPayloadSpotRes(
+                spot.Context.SpotId,
+                spot.Context.NodeRid.ToString(),
+                spot.ApplicationState.Length,
+                TransferActorStateCodec.Sha256(spot.ApplicationState)));
+        }
+    }
+
+    internal sealed class RelocationPayloadUserSpotAdapter(
+        EvidenceStore evidence)
+        : IZLinkSpotRelocationAdapter<RelocationPayloadUserSpot>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            RelocationPayloadUserSpot spot,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(
+                spot.Scenario,
+                spot.Context.SpotId,
+                "spot_application_payload",
+                $"kind=spotwide;bytes={spot.ApplicationState.Length};sha256="
+                + TransferActorStateCodec.Sha256(spot.ApplicationState));
+            return ValueTask.FromResult(spot.ApplicationState);
+        }
+
+        public ValueTask RestoreAsync(
+            RelocationPayloadUserSpot spot,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            spot.ApplicationState = payload.ToArray();
+            evidence.Add(
+                "ST-I1",
+                spot.Context.SpotId,
+                "spot_application_state_restored",
+                $"kind=spotwide;bytes={payload.Length};sha256="
+                + TransferActorStateCodec.Sha256(payload.Span));
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    internal sealed class RelocationPayloadInstanceSpotAdapter(
+        EvidenceStore evidence)
+        : IZLinkSpotRelocationAdapter<RelocationPayloadInstanceSpot>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            RelocationPayloadInstanceSpot spot,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            evidence.Add(
+                spot.Scenario,
+                spot.Context.SpotId,
+                "spot_application_payload",
+                $"kind=instance;bytes={spot.ApplicationState.Length};sha256="
+                + TransferActorStateCodec.Sha256(spot.ApplicationState));
+            return ValueTask.FromResult(spot.ApplicationState);
+        }
+
+        public ValueTask RestoreAsync(
+            RelocationPayloadInstanceSpot spot,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            spot.ApplicationState = payload.ToArray();
+            evidence.Add(
+                "ST-I1",
+                spot.Context.SpotId,
+                "spot_application_state_restored",
+                $"kind=instance;bytes={payload.Length};sha256="
+                + TransferActorStateCodec.Sha256(payload.Span));
+            return ValueTask.CompletedTask;
         }
     }
 }

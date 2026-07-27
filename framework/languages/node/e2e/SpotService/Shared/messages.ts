@@ -20,11 +20,11 @@ export const SpotServiceNames = {
 } as const;
 
 export interface CreateSpotReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface CreateSpotRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly state: string;
 }
@@ -53,11 +53,11 @@ export interface ScaleOutActorProbeRes {
 }
 
 export interface CloseSpotReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface CloseSpotRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly closed: boolean;
 }
 
@@ -67,25 +67,25 @@ export interface StateReq {
 }
 
 export interface StateRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly value: number;
 }
 
 export interface MultiNodeCreateSpotReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly delta: number;
 }
 
 export interface MultiNodeCreateSpotRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly state: string;
   readonly value: number;
 }
 
 export interface MultiNodeStateRouteReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly delta: number;
 }
 
@@ -94,28 +94,28 @@ export interface StateMsg {
 }
 
 export interface SpotOnlyMeshReq {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly marker: string;
 }
 
 export interface SpotOnlyMeshRes {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly targetValue: number;
   readonly marker: string;
 }
 
 export class SpotOnlyJoinReq {
   constructor(
-    readonly targetSpotRid: string,
+    readonly targetSpotId: string,
     readonly actorId: string,
     readonly marker: string
   ) {}
 }
 
 export interface SpotOnlyJoinRes {
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly actorId: string;
   readonly accepted: boolean;
   readonly marker: string;
@@ -144,87 +144,87 @@ export interface SpotOutboundNegativeMsg {
 }
 
 export interface SpotOutboundRouteReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
 export interface SpotOutboundRouteRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly accepted: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotToSpotReq {
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
 export interface SpotToSpotRes {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly targetValue: number;
 }
 
 export interface SpotToSpotRouteReq {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly marker: string;
 }
 
 export interface SpotToSpotTimeoutReq {
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
 export interface SpotToSpotTimeoutRes {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly failed: boolean;
 }
 
 export interface SpotToSpotTimeoutRouteReq {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly marker: string;
 }
 
 export interface SpotToSpotNegativeReq {
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly targetSpot: SpotHandle;
   readonly marker: string;
 }
 
 export interface SpotToSpotNegativeRes {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly requestFailed: boolean;
 }
 
 export interface SpotToSpotNegativeRouteReq {
-  readonly sourceSpotRid: string;
-  readonly targetSpotRid: string;
+  readonly sourceSpotId: string;
+  readonly targetSpotId: string;
   readonly marker: string;
 }
 
 export interface SpotPublishReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
 export interface SpotPublishRes {
   readonly operation: string;
   readonly publisherRid: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly evidence: readonly string[];
 }
 
 export interface SpotPublishObserveRes {
   readonly operation: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly received: boolean;
   readonly evidence: readonly string[];
@@ -252,14 +252,14 @@ export interface ChannelRouteRes {
 }
 
 export interface SpotMixedRouteReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly targetNodeRid: string;
   readonly channelValue: string;
   readonly delta: number;
 }
 
 export interface SpotMixedRouteRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly channelReply: string;
   readonly spotValue: number;
 }
@@ -309,7 +309,7 @@ export interface SlowActorPingReq {
 export interface ActorPingRes {
   readonly actorId: string;
   readonly nodeRid: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly value: string;
   readonly seen: number;
 }
@@ -378,19 +378,19 @@ export interface DestroyActorRes {
 }
 
 export interface UserSpotAuthReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actorId: string;
   readonly displayName: string;
   readonly nodeRid: string;
 }
 
 export interface JoinUserSpotActorReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actorId: string;
 }
 
 export interface JoinUserSpotActorRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly actorId: string;
   readonly accepted: boolean;
   readonly generation: string;
@@ -421,77 +421,77 @@ export interface ComplexActorRes {
 }
 
 export interface SpotStateRouteReq extends StateReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface SpotStateMsgReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
 export interface SpotStateMsgRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly accepted: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotStageProbeReq extends StageProbeReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface SpotStageTimerReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly periodMs: number;
 }
 
 export interface SpotStageTimerRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly started: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotMissingHandlerReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface SpotMissingHandlerRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly failed: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotMissingMsgReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
 export interface SpotMissingMsgRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly sent: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotMissingTargetReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface SpotMissingTargetRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly failed: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotMissingTargetMsgReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
 export interface SpotMissingTargetMsgRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly sent: boolean;
   readonly evidence: readonly string[];
@@ -503,38 +503,38 @@ export interface SlowSpotReq {
 }
 
 export interface SlowSpotRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly marker: string;
 }
 
 export interface SpotSlowRouteReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly delayMs: number;
   readonly timeoutMs: number;
 }
 
 export interface SpotSlowRouteRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly timedOut: boolean;
 }
 
 export interface SpotWorkerStartReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly delayMs: number;
 }
 
 export interface WorkerStartRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly marker: string;
 }
 
 export interface SpotWorkerCompleteReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
 }
 
@@ -550,53 +550,53 @@ export class SpotAdminReq {
 }
 
 export interface SpotAdminRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly nodeRid: string;
   readonly marker?: string;
 }
 
 export interface SpotWorkerCompleteRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly marker: string;
   readonly completed: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotTimerStartReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly periodMs: number;
 }
 
 export interface SpotTimerStartRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly started: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotIdleCloseReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly periodMs: number;
 }
 
 export interface SpotIdleCloseRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly closed: boolean;
   readonly evidence: readonly string[];
 }
 
 export interface SpotOverrunStartReq {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly policy: string;
   readonly periodMs: number;
 }
 
 export interface SpotOverrunStartRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly name: string;
   readonly policy: string;
   readonly started: boolean;
@@ -604,11 +604,11 @@ export interface SpotOverrunStartRes {
 }
 
 export interface SpotTypeMismatchReq {
-  readonly spotRid: string;
+  readonly spotId: string;
 }
 
 export interface SpotTypeMismatchRes {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly failed: boolean;
   readonly errorKind: string;
   readonly state: string;

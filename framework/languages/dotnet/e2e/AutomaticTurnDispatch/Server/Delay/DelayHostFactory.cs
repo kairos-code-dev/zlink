@@ -31,7 +31,7 @@ internal static class DelayHostFactory
             var mesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.DelayChannel)
                 .Listen(options.DelayEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
-            mesh.ChannelName(AutomaticTurnDispatchNames.DelayChannel)
+            mesh.Channel(AutomaticTurnDispatchNames.DelayChannel).Server()
                 .AddRequestHandler<DelayHandler, DelayReq, DelayRes>("DelayReq");
         });
 

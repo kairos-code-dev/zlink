@@ -3,6 +3,7 @@ import {
   ActorTransferRole,
   type ActorTransferControlPayload
 } from '../foundation/service-runtime-contracts';
+import type { ServiceActorRef } from '../foundation/service-stateful-registry';
 import type {
   ActorRef,
   RoutingId
@@ -86,7 +87,7 @@ export class ZLinkActorTransferAuthorityRuntime {
     meshName: string,
     actorId: string,
     transferId: string,
-    nativeTarget: ActorRef,
+    nativeTarget: ServiceActorRef,
     membershipEpoch: bigint,
     signal?: AbortSignal
   ): Promise<void> {
@@ -94,7 +95,7 @@ export class ZLinkActorTransferAuthorityRuntime {
     if (location === undefined) {
       throw new Error(`Actor transfer '${transferId}' has no source location row.`);
     }
-    const target = toFrameworkActorRef(nativeTarget as never);
+    const target = toFrameworkActorRef(nativeTarget as never, meshName);
     validateTarget(location, target, membershipEpoch, transferId);
     const result = await store.prepareActorTransfer({
       meshName,
@@ -102,7 +103,7 @@ export class ZLinkActorTransferAuthorityRuntime {
       transferId,
       source: location.actorRef,
       target,
-      expectedActorGeneration: location.actorRef.generation,
+      expectedActorGeneration: location.actorRef.objectGeneration,
       expectedMembershipEpoch: location.membershipEpoch,
       participants: new Set<RoutingId>([
         location.actorRef.nodeRid,
@@ -188,7 +189,7 @@ function validateTarget(
 ): void {
   if (
     target.actorId !== location.actorId
-    || target.generation !== location.actorRef.generation
+    || target.objectGeneration !== location.actorRef.objectGeneration
     || membershipEpoch !== location.membershipEpoch
   ) {
     throw new Error(`Actor transfer '${transferId}' does not match the source Actor generation and membership epoch.`);

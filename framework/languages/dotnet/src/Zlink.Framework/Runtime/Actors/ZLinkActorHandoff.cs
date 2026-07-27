@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Actors;
 internal enum ZLinkActorFrameRoute
 {
     Current,
-    Forward,
+    MessageFollow,
+    MessageFollowExpired,
     Stale
 }
 

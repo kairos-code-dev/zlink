@@ -51,7 +51,7 @@ export class MultiNodeSpotA implements ZLinkSpot {
 
   async onInitialize(): Promise<void> {
     MultiNodeSpotA.requireEvidence()
-      .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeA}|spot=${this.context.spotRid}`);
+      .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeA}|spot=${this.context.spotId}`);
   }
 
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
@@ -87,7 +87,7 @@ export class MultiNodeSpotB implements ZLinkSpot {
 
   async onInitialize(): Promise<void> {
     MultiNodeSpotB.requireEvidence()
-      .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeB}|spot=${this.context.spotRid}`);
+      .add(`multi-spot-initialize|node=${SpotServiceNames.multiSpotNodeB}|spot=${this.context.spotId}`);
   }
 
   async onActorJoin(): Promise<{ accepted: boolean }> { return { accepted: true }; }
@@ -175,12 +175,12 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
 
   async onInitialize(): Promise<void> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-initialize|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}`);
+      .add(`spot-initialize|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotId}`);
   }
 
   async onCreate(request: ZLinkMessage): Promise<{ accepted: boolean }> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-created|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}`);
+      .add(`spot-created|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotId}`);
     const command = request.decode<SpotOnlyMeshReq | undefined>(Object as never);
     if (command !== undefined) {
       await this.requestSend(command);
@@ -189,7 +189,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   }
 
   async requestSend(request: SpotOnlyMeshReq): Promise<StateRes> {
-    const target = await SpotOnlyUserSpot.requireRefs().find(request.targetSpotRid);
+    const target = await SpotOnlyUserSpot.requireRefs().find(request.targetSpotId);
     const reply = await requestSpotOnlyState(
       this.context.outbound,
       target,
@@ -201,21 +201,21 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
       { marker: `sm-f6-send-${request.marker}` } satisfies StateMsg
     );
     SpotOnlyUserSpot.requireEvidence().add(
-      `spot-only-request|rid=${SpotOnlyUserSpot.requireEvidence().rid}|source=${this.context.spotRid}`
-      + `|target=${request.targetSpotRid}|value=${reply.value}|marker=${request.marker}`
+      `spot-only-request|rid=${SpotOnlyUserSpot.requireEvidence().rid}|source=${this.context.spotId}`
+      + `|target=${request.targetSpotId}|value=${reply.value}|marker=${request.marker}`
     );
     return reply;
   }
 
   async onActorJoin(actor: ZLinkActorJoinRequest): Promise<{ accepted: boolean }> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-actor-admitted|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
+      .add(`spot-actor-admitted|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
     return { accepted: true };
   }
 
   async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     SpotOnlyUserSpot.requireEvidence()
-      .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotRid}|actor=${actor.actor.actorId}`);
+      .add(`spot-actor-joined|rid=${SpotOnlyUserSpot.requireEvidence().rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
   }
 
   async onLeaveActor(): Promise<void> {}
@@ -254,7 +254,7 @@ export class ScaleOutActorProbeHandler
   ): Promise<ScaleOutActorProbeRes> {
     void context;
     this.evidence.add(
-      `scale-out-actor-probe|rid=${this.evidence.rid}|spot=${actor.context.spotRid ?? this.evidence.rid}`
+      `scale-out-actor-probe|rid=${this.evidence.rid}|spot=${actor.context.spotId ?? this.evidence.rid}`
       + `|actor=${actor.actorId}|marker=${request.marker}`
     );
     return { actorId: actor.actorId, nodeRid: this.evidence.rid, marker: request.marker };
@@ -302,12 +302,12 @@ export class MultiNodeCreateSpotAHandler implements ZLinkRouteRequestHandler<Mul
     const result = await this.spots.getOrCreate(
       SpotServiceNames.multiSpotNodeA,
       MultiNodeSpotA,
-      request.spotRid
+      request.spotId
     );
-    const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelA, request.spotRid, request.delta);
-    this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeA}|spot=${result.spotRid}|state=${result.state}`);
+    const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelA, request.spotId, request.delta);
+    this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeA}|spot=${result.spotId}|state=${result.state}`);
     return {
-      spotRid: String(result.spotRid),
+      spotId: String(result.spotId),
       nodeRid: SpotServiceNames.multiSpotNodeA,
       state: String(result.state),
       value: state.value
@@ -329,12 +329,12 @@ export class MultiNodeCreateSpotBHandler implements ZLinkRouteRequestHandler<Mul
     const result = await this.spots.getOrCreate(
       SpotServiceNames.multiSpotNodeB,
       MultiNodeSpotB,
-      request.spotRid
+      request.spotId
     );
-    const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelB, request.spotRid, request.delta);
-    this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeB}|spot=${result.spotRid}|state=${result.state}`);
+    const state = await requestState(this.routes, SpotServiceNames.multiRouteChannelB, request.spotId, request.delta);
+    this.evidence.add(`multi-create-spot|node=${SpotServiceNames.multiSpotNodeB}|spot=${result.spotId}|state=${result.state}`);
     return {
-      spotRid: String(result.spotRid),
+      spotId: String(result.spotId),
       nodeRid: SpotServiceNames.multiSpotNodeB,
       state: String(result.state),
       value: state.value
@@ -350,9 +350,9 @@ export class MultiNodeStateAHandler implements ZLinkSpotRequestHandler<MultiNode
   async handle(spot: MultiNodeSpotA, request: StateReq, context: ZLinkHandlerContext): Promise<StateRes> {
     void context;
     const value = spot.add(request.operation === 'add' ? request.delta : 0);
-    this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeA}|spot=${spot.context.spotRid}|value=${value}`);
+    this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeA}|spot=${spot.context.spotId}|value=${value}`);
     return {
-      spotRid: String(spot.context.spotRid),
+      spotId: String(spot.context.spotId),
       nodeRid: String(spot.context.nodeRid),
       value
     };
@@ -367,9 +367,9 @@ export class MultiNodeStateBHandler implements ZLinkSpotRequestHandler<MultiNode
   async handle(spot: MultiNodeSpotB, request: StateReq, context: ZLinkHandlerContext): Promise<StateRes> {
     void context;
     const value = spot.add(request.operation === 'add' ? request.delta : 0);
-    this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeB}|spot=${spot.context.spotRid}|value=${value}`);
+    this.evidence.add(`multi-state-request|node=${SpotServiceNames.multiSpotNodeB}|spot=${spot.context.spotId}|value=${value}`);
     return {
-      spotRid: String(spot.context.spotRid),
+      spotId: String(spot.context.spotId),
       nodeRid: String(spot.context.nodeRid),
       value
     };
@@ -384,9 +384,9 @@ export class SpotOnlyStateReqHandler implements ZLinkSpotRequestHandler<SpotOnly
   async handle(spot: SpotOnlyUserSpot, request: StateReq, context: ZLinkHandlerContext): Promise<StateRes> {
     void context;
     const value = spot.add(request.operation === 'add' ? request.delta : 0);
-    this.evidence.add(`spot-state-request|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|value=${value}`);
+    this.evidence.add(`spot-state-request|rid=${this.evidence.rid}|spot=${spot.context.spotId}|value=${value}`);
     return {
-      spotRid: String(spot.context.spotRid),
+      spotId: String(spot.context.spotId),
       nodeRid: String(spot.context.nodeRid),
       value
     };
@@ -400,7 +400,7 @@ export class SpotOnlyStateMsgHandler implements ZLinkSpotPacketHandler<SpotOnlyU
 
   async handle(spot: SpotOnlyUserSpot, message: StateMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    this.evidence.add(`spot-state-command|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${message.marker}`);
+    this.evidence.add(`spot-state-command|rid=${this.evidence.rid}|spot=${spot.context.spotId}|marker=${message.marker}`);
   }
 }
 
@@ -417,15 +417,15 @@ export class MultiNodeSpotOnlyJoinHandler
   ): Promise<SpotOnlyJoinRes> {
     void context;
     const joined = await actor.context
-      .joinSpot(request.targetSpotRid, {})
+      .joinSpot(request.targetSpotId, {})
       .timeout(10000)
       .submit();
     this.evidence.add(
       `spot-only-actor-join|rid=${this.evidence.rid}|actor=${actor.actorId}`
-      + `|target=${request.targetSpotRid}|accepted=${joined.status === 'accepted'}|marker=${request.marker}`
+      + `|target=${request.targetSpotId}|accepted=${joined.status === 'accepted'}|marker=${request.marker}`
     );
     return {
-      targetSpotRid: request.targetSpotRid,
+      targetSpotId: request.targetSpotId,
       actorId: actor.actorId,
       accepted: joined.status === 'accepted',
       marker: request.marker
@@ -437,14 +437,14 @@ export async function createLocalMultiNodeSpot(
   spots: ZLinkSpotManager,
   evidence: EvidenceStore,
   nodeRid: string,
-  spotRid: string
+  spotId: string
 ): Promise<MultiNodeCreateSpotRes> {
   const created = nodeRid === SpotServiceNames.multiSpotNodeA
-    ? await spots.getOrCreate(nodeRid, MultiNodeSpotA, spotRid)
-    : await spots.getOrCreate(nodeRid, MultiNodeSpotB, spotRid);
-  evidence.add(`multi-create-spot|node=${nodeRid}|spot=${created.spotRid}|state=${created.state}`);
+    ? await spots.getOrCreate(nodeRid, MultiNodeSpotA, spotId)
+    : await spots.getOrCreate(nodeRid, MultiNodeSpotB, spotId);
+  evidence.add(`multi-create-spot|node=${nodeRid}|spot=${created.spotId}|state=${created.state}`);
   return {
-    spotRid: String(created.spotRid),
+    spotId: String(created.spotId),
     nodeRid,
     state: String(created.state),
     value: 0
@@ -454,11 +454,11 @@ export async function createLocalMultiNodeSpot(
 export async function requestState(
   routes: ZLinkRouteClient,
   channelName: string,
-  spotRid: string,
+  spotId: string,
   delta: number
 ): Promise<StateRes> {
   return await routes
-    .requestToNode(channelName, spotRid, spotServicePacket(StateReq, { operation: 'add', delta }))
+    .requestToNode(channelName, spotId, spotServicePacket(StateReq, { operation: 'add', delta }))
     .timeout(2000)
     .submit<StateRes>();
 }
@@ -467,12 +467,12 @@ export async function requestStateViaSpotOutbound(
   outbound: ZLinkSpotOutbound,
   spotRefs: ZLinkSpotManager,
   _meshName: string,
-  spotRid: string,
+  spotId: string,
   delta: number
 ): Promise<StateRes> {
-  const spot = await spotRefs.find(spotRid);
+  const spot = await spotRefs.find(spotId);
   if (spot === undefined) {
-    throw new Error(`SpotRef '${spotRid}' was not found.`);
+    throw new Error(`SpotRef '${spotId}' was not found.`);
   }
   return await outbound
     .requestToSpot(spot, spotServicePacket(StateReq, { operation: 'add', delta }))

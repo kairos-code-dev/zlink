@@ -292,7 +292,7 @@ export class ZLinkStoreLocationResolvers implements
       || decoded.actor.actorId !== actorId
       || decoded.owner.ownerId !== current.ownerId
       || decoded.owner.leaseGeneration !== current.ownerLeaseGeneration
-      || decoded.actor.generation !== current.objectGeneration
+      || decoded.actor.objectGeneration !== current.objectGeneration
       || decoded.ownerNodeGeneration !== current.allocation.descriptorLifecycleGeneration
     ) return undefined;
     const remainingLeaseMs = await this.options.leaseTracker.remainingOwnerTokenLeaseMs(
@@ -409,7 +409,7 @@ export class ZLinkStoreLocationResolvers implements
       (candidate) => candidate.ownerId,
       signal,
       (candidate) =>
-        candidate.actorRef.generation > 0n
+        candidate.actorRef.objectGeneration > 0n
         && candidate.ownerNodeGeneration > 0n
         && candidate.membershipEpoch > 0n
     );

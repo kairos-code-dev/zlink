@@ -95,7 +95,7 @@ internal static class ZLinkMeshRecordAdapters
                 i + 1 < parts.Length,
                 RouteContext: new ZLinkBackendActorRouteContext(
                     record.OperationId,
-                    record.ForwardingHopCount,
+                    record.MessageFollowHopCount,
                     record.TargetNodeGeneration,
                     record.AuthorityOwnerGeneration,
                     record.OwnerLeaseGeneration,

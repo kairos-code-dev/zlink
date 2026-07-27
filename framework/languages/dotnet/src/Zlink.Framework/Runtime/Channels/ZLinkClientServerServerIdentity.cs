@@ -79,7 +79,7 @@ internal sealed class ZLinkClientServerServerIdentity(
     }
 
     internal Snapshot MarkRetiring() => SetLifecycleState(
-        ZLinkFrameworkRuntimeState.Retiring);
+        ZLinkFrameworkRuntimeState.Relocating);
 
     internal Snapshot MarkServing() => SetLifecycleState(
         ZLinkFrameworkRuntimeState.Serving);

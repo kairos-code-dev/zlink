@@ -82,8 +82,9 @@ function lifecycleSource(actor: ZLinkActor): ZLinkActorLifecycleSnapshotSource {
 
 function immutableActorRef(actorRef: ActorRef): ActorRef {
   return Object.freeze({
-    nodeRid: actorRef.nodeRid,
     actorId: actorRef.actorId,
-    generation: actorRef.generation
+    objectGeneration: actorRef.objectGeneration,
+    meshName: actorRef.meshName,
+    nodeRid: actorRef.nodeRid
   });
 }

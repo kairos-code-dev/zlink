@@ -77,13 +77,13 @@ class await_probe_spot_t : public zlink::framework::spot_t
                    const zlink::framework::message_t &request_message)
     {
         const auto request = request_message.decode<yd::delay_req_t> ();
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto spot_id = _context.spot_id ();
         _evidence.add ("actor-join-target-started|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + std::string (actor_id) + "|request="
+                       + spot_id + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|turn=" + current_turn_id () + "|handler=spot");
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + std::string (actor_id) + "|request="
+                       + spot_id + "|actor=" + std::string (actor_id) + "|request="
                        + request.request_id + "|turn=" + current_turn_id () + "|handler=spot");
         return zlink::framework::spot_actor_join_response_t::accept (
           yd::delay_res_t{.request_id = request.request_id,
@@ -95,7 +95,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-source-left|rid=" + _evidence.node_rid + "|spot="
-                           + std::string (_context.spot_rid ().value ()) + "|actor="
+                           + _context.spot_id () + "|actor="
                            + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
                            + current_turn_id ());
         }
@@ -106,7 +106,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
     {
         if (!actor.join_request_id.empty ()) {
             _evidence.add ("actor-join-target-joined|rid=" + _evidence.node_rid + "|spot="
-                           + std::string (_context.spot_rid ().value ()) + "|actor="
+                           + _context.spot_id () + "|actor="
                            + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
                            + current_turn_id ());
         }
@@ -212,9 +212,9 @@ class await_probe_spot_t : public zlink::framework::spot_t
                      zlink::framework::spot_actor_request_context_t &,
                      const yd::actor_await_req_t &request)
     {
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto spot_id = _context.spot_id ();
         const auto mailbox = "actor:" + actor.actor_id;
-        _evidence.add ("actor-await-started|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-await-started|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
         auto call =
@@ -224,14 +224,14 @@ class await_probe_spot_t : public zlink::framework::spot_t
                                       .delay_ms = request.delay_ms,
                                       .marker = "actor-" + actor.actor_id})
             .timeout (std::chrono::milliseconds (3000));
-        _evidence.add ("actor-await-released|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-await-released|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
         co_await call.submit<yd::delay_res_t> ();
-        _evidence.add ("actor-await-resumed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-await-resumed|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
-        _evidence.add ("actor-await-completed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-await-completed|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
         co_return actor_reply ("ATD-B", request.request_id, actor.actor_id,
@@ -242,12 +242,12 @@ class await_probe_spot_t : public zlink::framework::spot_t
                                           zlink::framework::spot_actor_request_context_t &,
                                           const yd::actor_fast_req_t &request)
     {
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto spot_id = _context.spot_id ();
         const auto mailbox = "actor:" + actor.actor_id;
-        _evidence.add ("actor-fast-started|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-fast-started|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|marker=" + request.marker + "|handler=actor");
-        _evidence.add ("actor-fast-completed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
+        _evidence.add ("actor-fast-completed|rid=" + _evidence.node_rid + "|spot=" + spot_id
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|marker=" + request.marker + "|handler=actor");
         return actor_reply ("ATD-B", request.request_id, actor.actor_id, request.marker);
@@ -258,10 +258,10 @@ class await_probe_spot_t : public zlink::framework::spot_t
                           zlink::framework::spot_actor_request_context_t &,
                           const yd::actor_join_await_req_t &request)
     {
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto spot_id = _context.spot_id ();
         const auto mailbox = "actor:" + actor.actor_id;
         _evidence.add ("actor-join-await-started|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|handler=actor");
         auto call = actor.context
@@ -272,7 +272,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                                                         .marker = "join"})
                       .timeout (std::chrono::milliseconds (3000));
         _evidence.add ("actor-join-await-released|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|handler=actor");
         const auto joined = co_await call.async<yd::delay_res_t> ();
@@ -282,12 +282,12 @@ class await_probe_spot_t : public zlink::framework::spot_t
             ? "true"
             : "false";
         _evidence.add ("actor-join-await-resumed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|accepted=" + accepted
                        + "|handler=actor");
         _evidence.add ("actor-join-await-completed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|target_node="
                        + request.target_node_rid + "|accepted=" + accepted
                        + "|handler=actor");
@@ -302,12 +302,12 @@ class await_probe_spot_t : public zlink::framework::spot_t
     {
         actor.join_request_id = request.request_id;
         _evidence.add ("actor-join-started|rid=" + _evidence.node_rid + "|spot="
-                       + std::string (_context.spot_rid ().value ()) + "|actor="
+                       + _context.spot_id () + "|actor="
                        + actor.actor_id + "|request=" + request.request_id + "|target="
-                       + request.target_spot_rid + "|turn=" + current_turn_id ());
+                       + request.target_spot_id + "|turn=" + current_turn_id ());
         const auto joined =
           co_await actor.context
-            .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
+            .join_spot ((request.target_spot_id),
                         yd::delay_req_t{.request_id = request.request_id,
                                         .delay_ms = request.admission_delay_ms,
                                         .marker = "join"})
@@ -316,7 +316,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
           std::holds_alternative<
             zlink::framework::actor_join_accepted_t<yd::delay_res_t>> (joined);
         _evidence.add ("actor-join-completed|rid=" + _evidence.node_rid + "|spot="
-                       + request.target_spot_rid + "|actor=" + actor.actor_id + "|request="
+                       + request.target_spot_id + "|actor=" + actor.actor_id + "|request="
                        + request.request_id + "|accepted=" + (accepted ? "true" : "false")
                        + "|turn=" + current_turn_id ());
         actor.join_request_id.clear ();
@@ -329,10 +329,10 @@ class await_probe_spot_t : public zlink::framework::spot_t
                           zlink::framework::spot_actor_request_context_t &,
                           const yd::actor_push_await_req_t &request)
     {
-        const auto spot_rid = std::string (_context.spot_rid ().value ());
+        const auto spot_id = _context.spot_id ();
         const auto mailbox = "actor:" + actor.actor_id;
         _evidence.add ("actor-push-await-started|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
         auto call =
           _context.outbound ()
@@ -342,11 +342,11 @@ class await_probe_spot_t : public zlink::framework::spot_t
                                       .marker = "actor-push-" + actor.actor_id})
             .timeout (std::chrono::milliseconds (3000));
         _evidence.add ("actor-push-await-released|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
         co_await call.submit<yd::delay_res_t> ();
         _evidence.add ("actor-push-await-resumed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
           actor.context.bound_session ()
             .send (yd::actor_push_notify_t{.actor_id = actor.actor_id,
@@ -355,7 +355,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
                                            .node_rid = _evidence.node_rid})
             .submit ();
         _evidence.add ("actor-push-await-completed|rid=" + _evidence.node_rid + "|spot="
-                       + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
+                       + spot_id + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
         co_return actor_reply ("ATD-D4", request.request_id, actor.actor_id,
                                "actor-push-await-completed");
@@ -384,7 +384,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
         return {.scenario_id = std::move (scenario_id),
                 .request_id = std::move (request_id),
                 .actor_id = std::move (actor_id),
-                .spot_rid = std::string (_context.spot_rid ().value ()),
+                .spot_id = _context.spot_id (),
                 .node_rid = _evidence.node_rid,
                 .marker = std::move (marker)};
     }

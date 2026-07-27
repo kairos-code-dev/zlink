@@ -7,7 +7,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkOwnerLeaseTracker
 {
-    private readonly IZLinkLocationStore _store;
+    private readonly IZLinkLocationRepository _store;
     private readonly ZLinkLocationOptions _options;
     private readonly TimeProvider _time;
     private readonly ZLinkLocationStoreHealth? _health;
@@ -19,7 +19,7 @@ internal sealed class ZLinkOwnerLeaseTracker
     internal TimeProvider TimeProvider => _time;
 
     internal ZLinkOwnerLeaseTracker(
-        IZLinkLocationStore store,
+        IZLinkLocationRepository store,
         ZLinkLocationOptions options,
         TimeProvider? timeProvider = null,
         ZLinkLocationStoreHealth? health = null)

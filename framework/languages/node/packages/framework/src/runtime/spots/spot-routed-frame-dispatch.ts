@@ -99,7 +99,8 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly bindRemoteSession?: (
     actor: ActorRef,
     sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
+    sourceSessionRid: RoutingId,
+    declaredTarget?: ZLinkRemoteBoundSessionTarget
   ) => void;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;

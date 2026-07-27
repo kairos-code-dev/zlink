@@ -21,8 +21,8 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
           "playHttpEndpoint and gatewayHttpEndpoint are required for SM-C4");
     }
 
-    constexpr auto subscribed_spot_rid = "user:play-a:sm-c4-subscribed";
-    constexpr auto unsubscribed_spot_rid = "user:play-a:sm-c4-unsubscribed";
+    constexpr auto subscribed_spot_id = "user:play-a:sm-c4-subscribed";
+    constexpr auto unsubscribed_spot_id = "user:play-a:sm-c4-unsubscribed";
     constexpr auto marker = "sm-c4-publish";
     auto play_a = zlink::http_client::client_t::create ()
                     .base_url (play_http_endpoint)
@@ -33,7 +33,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
 
     auto subscribed_created_raw =
       play_a.post ("/spot/create")
-        .body (create_spot_req_t{.spot_rid = subscribed_spot_rid})
+        .body (create_spot_req_t{.spot_id = subscribed_spot_id})
         .submit_raw ()
         .result ();
     if (!subscribed_created_raw || subscribed_created_raw.value ().status >= 400) {
@@ -41,14 +41,14 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     }
     const auto subscribed_created =
       nlohmann::json::parse (subscribed_created_raw.value ().body).get<create_spot_res_t> ();
-    if (subscribed_created.spot_rid != subscribed_spot_rid
+    if (subscribed_created.spot_id != subscribed_spot_id
         || subscribed_created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-C4 subscribed spot was not created on play-a");
     }
 
     auto unsubscribed_created_raw =
       play_a.post ("/spot/create-alternate")
-        .body (create_spot_req_t{.spot_rid = unsubscribed_spot_rid})
+        .body (create_spot_req_t{.spot_id = unsubscribed_spot_id})
         .submit_raw ()
         .result ();
     if (!unsubscribed_created_raw || unsubscribed_created_raw.value ().status >= 400) {
@@ -56,14 +56,14 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     }
     const auto unsubscribed_created =
       nlohmann::json::parse (unsubscribed_created_raw.value ().body).get<create_spot_res_t> ();
-    if (unsubscribed_created.spot_rid != unsubscribed_spot_rid
+    if (unsubscribed_created.spot_id != unsubscribed_spot_id
         || unsubscribed_created.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-C4 unsubscribed spot was not created on play-a");
     }
 
     auto publish_raw =
       gateway.post ("/spot/publish")
-        .body (spot_publish_route_req_t{.spot_rid = subscribed_spot_rid, .marker = marker})
+        .body (spot_publish_route_req_t{.spot_id = subscribed_spot_id, .marker = marker})
         .submit_raw ()
         .result ();
     if (!publish_raw || publish_raw.value ().status >= 400) {
@@ -81,7 +81,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
 
     auto observed_raw =
       play_a.post ("/spot/publish/wait")
-        .body (spot_publish_route_req_t{.spot_rid = subscribed_spot_rid, .marker = marker})
+        .body (spot_publish_route_req_t{.spot_id = subscribed_spot_id, .marker = marker})
         .submit_raw ()
         .result ();
     if (!observed_raw || observed_raw.value ().status >= 400) {
@@ -93,12 +93,12 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     }
     const auto observed =
       nlohmann::json::parse (observed_raw.value ().body).get<spot_publish_observe_res_t> ();
-    if (!observed.received || observed.spot_rid != subscribed_spot_rid
+    if (!observed.received || observed.spot_id != subscribed_spot_id
         || observed.marker != marker) {
         throw std::runtime_error ("SM-C4 publish wait reply mismatch");
     }
     for (const auto &entry : observed.evidence.entries) {
-        if (entry.marker == "MeshMsgReceived" && entry.spot_rid == unsubscribed_spot_rid
+        if (entry.marker == "MeshMsgReceived" && entry.spot_id == unsubscribed_spot_id
             && entry.value == "evt-sm-c4:sm-c4-publish") {
             throw std::runtime_error ("SM-C4 unsubscribed spot received publish event");
         }

@@ -287,7 +287,7 @@ final class JavaTargetContractGapTest {
             "ownerLeaseRenewInterval",
             "ownerLeaseFencingMargin",
             "routeCacheMaxAge",
-            "relocationForwardingWindow",
+            "messageFollowDuration",
             "maxActiveOutboundRelocations",
             "maxActiveInboundRelocations",
             "maxConcurrentRelocationCaptures",

@@ -99,10 +99,7 @@ public interface IZLinkFrameworkOptions
     TimeSpan DefaultRequestTimeout { get; set; }
 
     /// <summary>
-    ///     Gets or sets how long a source node forwards packets sent through
-    ///     the actor reference that was current before a remote transfer. The
-    ///     default is five seconds. Zero disables forwarding after the commit;
-    ///     negative values are rejected.
+    ///     Gets or sets the default timeout used while submitting a socket send.
     /// </summary>
     TimeSpan DefaultSocketSendTimeout { get; set; }
 
@@ -139,9 +136,9 @@ public interface IZLinkFrameworkOptions
     /// addressing, or Actor transfer must register a store or host startup
     /// fails fast.
     /// </summary>
-    void AddLocationStore(Locations.IZLinkLocationStore store);
+    void AddLocationStore(LocationProvider.IZLinkLocationStore store);
 
-    void AddRelocationStore(Locations.IZLinkRelocationStore store);
+    void AddRelocationStore(LocationProvider.IZLinkRelocationStore store);
 
     Locations.ZLinkLocationOptions ConfigureLocations();
 

@@ -43,10 +43,10 @@ public sealed class ZLinkLocationOptions
     public TimeSpan RouteCacheMaxAge { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// Maximum lifetime of a committed source-to-target relocation forwarding mapping.
-    /// Zero disables forwarding.
+    /// Maximum time that Message Follow relays traffic from the previous owner.
+    /// Zero disables Message Follow.
     /// </summary>
-    public TimeSpan RelocationForwardingWindow { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan MessageFollowDuration { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Maximum number of source relocation units that may be active in this process.

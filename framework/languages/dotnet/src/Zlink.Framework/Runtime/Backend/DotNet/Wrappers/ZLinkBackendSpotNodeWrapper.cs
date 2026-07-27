@@ -941,7 +941,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             return await completion.Task.ConfigureAwait(false);
     }
 
-    // Straggler bound-session reply with no active binding. Spec 31 §5: once a
+    // Relocated Actor Message Follow reply with no active binding. Spec 31 §5: once a
     // session closes, a late Actor reply is not delivered to a new session or
     // binding, and the 10.0.0 bound-session surface (spec 31 §6) provides only a
     // one-way push to the *current* binding plus close — there is no MeshNode
@@ -963,7 +963,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         return false;
     }
 
-    // Forwards a straggler bound-session frame to the actor's currently bound
+    // Forwards a relocated Actor Message Follow frame to the actor's currently bound
     // STREAM session via IMeshNode.SendBoundSession (spec 31 §6 one-way push). The
     // 9.x fine-grained (sourceNodeRid, sourceSessionRid) SNDMORE targeting has no
     // MeshNode equivalent — the target is the actor's current binding, resolved by
@@ -972,7 +972,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     // (hasMore == false) arrives, so header+body framing is preserved. On a failed
     // flush the buffered prefix is retained so the caller's retry re-submits the
     // same multipart message without duplicating parts. Forwarding for a given
-    // actor is serial (the straggler forwarder submits header then body in order).
+    // actor is serial (the Message Follow worker submits header then body in order).
     public bool ForwardActorBoundSessionPart(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,

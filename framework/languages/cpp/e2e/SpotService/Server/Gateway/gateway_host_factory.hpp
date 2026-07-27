@@ -75,7 +75,7 @@ class gateway_publish_handler_t
               published.error_kind (),
               published.error () ? published.error ()->what () : "SM-C4 publish failed");
         }
-        _state.record ("SpotPublish", {}, request.spot_rid,
+        _state.record ("SpotPublish", {}, request.spot_id,
                        "publisher=" + _state.node_rid + "|marker=" + request.marker);
 
         zlink::framework::http_response_t response;

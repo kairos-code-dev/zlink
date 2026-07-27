@@ -41,14 +41,14 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     ensure_http_success (lifecycle.value (), "SM-A6 lifecycle");
     const auto lifecycle_reply =
       nlohmann::json::parse (lifecycle.value ().body).get<lifecycle_res_t> ();
-    if (lifecycle_reply.spot_rid != user_spot_rid_for_key ("sm-a6-life")
+    if (lifecycle_reply.spot_id != user_spot_id_for_key ("sm-a6-life")
         || !lifecycle_reply.created || !lifecycle_reply.closed) {
         throw std::runtime_error ("SM-A6 lifecycle reply mismatch");
     }
     auto lifecycle_evidence =
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{
-          .contains_all = {"SpotLifecycleClosed", user_spot_rid_for_key ("sm-a6-life")},
+          .contains_all = {"SpotLifecycleClosed", user_spot_id_for_key ("sm-a6-life")},
           .timeout_milliseconds = 5000})
         .submit_raw ()
         .result ();
@@ -79,7 +79,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     }
     ensure_http_success (joined.value (), "SM-A6 join");
     const auto join_reply = nlohmann::json::parse (joined.value ().body).get<join_res_t> ();
-    if (join_reply.spot_rid != user_spot_rid_for_key ("sm-a6-busy")
+    if (join_reply.spot_id != user_spot_id_for_key ("sm-a6-busy")
         || join_reply.owner_node_rid != "play-a") {
         throw std::runtime_error ("SM-A6 busy spot join mismatch");
     }
@@ -96,7 +96,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     ensure_http_success (close_busy.value (), "SM-A6 close");
     const auto close_reply =
       nlohmann::json::parse (close_busy.value ().body).get<close_spot_res_t> ();
-    if (close_reply.spot_rid != user_spot_rid_for_key ("sm-a6-busy") || close_reply.closed) {
+    if (close_reply.spot_id != user_spot_id_for_key ("sm-a6-busy") || close_reply.closed) {
         throw std::runtime_error ("SM-A6 joined actor close was not rejected");
     }
 }

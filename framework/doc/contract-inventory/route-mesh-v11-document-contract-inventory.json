@@ -247,7 +247,7 @@
       "minimum_documents": 8,
       "minimum_code_blocks": 8,
       "required_fragments": [
-        "Kotlin은 Java의 `ZLinkMeshNodeState`",
+        "Kotlin은 Java의 `ZLinkTopologyState`",
         "fun ZLinkMeshNodeBuilder.channel(",
         "CompletionStage<T>.await()",
         "fun ZLinkDispatchOptions.onMessageFlow(",

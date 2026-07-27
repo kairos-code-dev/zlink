@@ -1506,7 +1506,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       _state->zlink.message_bus (), channel_snapshot, _state->handlers,
       _state->serializers,
       options.client_server_server_advertise_hosts (),
-      options.route_mesh_client_channels (), mesh_nodes));
+      options.route_mesh_client_channels (), mesh_nodes,
+      [mesh_node_service] {
+          return mesh_node_service == nullptr
+                 || mesh_node_service->republish_after_store_recovery ();
+      }));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->handlers, _state->serializers));

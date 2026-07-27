@@ -1793,6 +1793,39 @@ bool mesh_node_host_service_t::publish_descriptor_state (
     }
 }
 
+bool mesh_node_host_service_t::republish_after_store_recovery () noexcept
+{
+    std::lock_guard lock (_descriptor_publish_mutex);
+    if (!_location_store || !_location_owner)
+        return _published_mesh_descriptors.empty ();
+    try {
+        for (std::size_t index = 0;
+             index < _published_mesh_descriptors.size ();
+             ++index) {
+            auto descriptor = _published_mesh_descriptors[index];
+            if (descriptor.descriptor_revision
+                == std::numeric_limits<std::uint64_t>::max ()) {
+                return false;
+            }
+            ++descriptor.descriptor_revision;
+            const auto written =
+              _location_store
+                ->update_mesh_node (
+                  descriptor, location_write_intent_t::renew)
+                .result ()
+                .value ();
+            if (written.status != location_write_status_t::stored)
+                return false;
+            _published_mesh_descriptors[index] =
+              std::move (descriptor);
+        }
+        return true;
+    }
+    catch (...) {
+        return false;
+    }
+}
+
 void mesh_node_host_service_t::stop () noexcept
 {
     request_stop ();

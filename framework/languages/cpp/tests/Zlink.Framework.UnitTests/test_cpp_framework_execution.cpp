@@ -86,6 +86,8 @@ class controlled_worker_scheduler_t final : public zlink::framework::detail::wor
 class test_spot_context_t : public zlink::framework::spot_context_t
 {
   public:
+    test_spot_context_t () : zlink::framework::spot_context_t () {}
+
     explicit test_spot_context_t (
       std::shared_ptr<zlink::framework::detail::spot_context_state_t> state) :
         zlink::framework::spot_context_t (std::move (state))
@@ -272,7 +274,7 @@ int main ()
         return 5;
     }
 
-    zlink::framework::spot_context_t context;
+    test_spot_context_t context;
     auto async_call = context.run_cpu_worker ([] { return 1; });
     auto async_result = async_call.submit ().result ();
     if (async_result
@@ -481,6 +483,124 @@ int main ()
                  != zlink::framework::framework_error_kind_t::request_failed
             || failed_result->retryable) {
             return 34;
+        }
+
+        auto completion_state =
+          std::make_shared<
+            zlink::framework::detail::spot_node_builder_state_t> (
+            "completion-node");
+        zlink::framework::detail::spot_node_runtime_t completion_runtime (
+          completion_state);
+        const zlink::framework::actor_ref_t completion_actor (
+          zlink::framework::node_rid_t::from_string ("completion-node"),
+          "player", "completion-actor", 7);
+        const std::string completion_key = "player:completion-actor";
+        auto completion_instance = std::make_shared<int> (42);
+        completion_state->actor_instances.emplace (
+          completion_key, completion_instance);
+        completion_state->actor_generations.emplace (
+          completion_key, completion_actor.generation ());
+        completion_state->actor_spot_ids.emplace (
+          completion_key,
+          zlink::framework::spot_id_t ("source-spot"));
+
+        int completion_callback_count = 0;
+        bool fail_completion_once = false;
+        auto completion_error_kind =
+          zlink::framework::framework_error_kind_t::request_failed;
+        bool completion_retryable = true;
+        std::vector<
+          zlink::framework::detail::actor_join_completion_outcome_t>
+          completion_outcomes;
+        zlink::framework::detail::spot_node_builder_state_t::
+          actor_factory_registration_t completion_factory;
+        completion_factory.actor_type = std::type_index (typeid (int));
+        completion_factory.on_join_completed =
+          [&] (void *actor,
+               zlink::framework::detail::actor_join_completion_outcome_t outcome,
+               std::uint64_t,
+               std::uint64_t,
+               const zlink::framework::actor_ref_t *,
+               const std::optional<zlink::framework::message_t> &,
+               zlink::framework::framework_error_kind_t error_kind,
+               bool retryable) {
+              if (actor != completion_instance.get ()) {
+                  return zlink::framework::task_t<void> (
+                    zlink::framework::result_t<void>::failure (
+                      zlink::framework::framework_error_kind_t::
+                        invalid_configuration,
+                      "completion callback received another Actor"));
+              }
+              ++completion_callback_count;
+              completion_outcomes.push_back (outcome);
+              completion_error_kind = error_kind;
+              completion_retryable = retryable;
+              if (fail_completion_once) {
+                  fail_completion_once = false;
+                  return zlink::framework::task_t<void> (
+                    zlink::framework::result_t<void>::failure (
+                      zlink::framework::framework_error_kind_t::
+                        request_failed,
+                      "completion callback failed"));
+              }
+              return zlink::framework::task_t<void> (
+                zlink::framework::result_t<void>::success ());
+          };
+        completion_state->actor_factories.emplace (
+          "player", std::move (completion_factory));
+
+        const auto first_operation =
+          completion_runtime.actor_join_operation_id ("transfer-1");
+        const auto repeated_operation =
+          completion_runtime.actor_join_operation_id ("transfer-1");
+        const auto second_operation =
+          completion_runtime.actor_join_operation_id ("transfer-2");
+        if ((first_operation.first == 0 && first_operation.second == 0)
+            || first_operation != repeated_operation
+            || first_operation == second_operation) {
+            return 70;
+        }
+
+        const zlink::framework::actor_join_completion_t rejected_completion =
+          zlink::framework::actor_join_rejected_t{
+            first_operation.first, first_operation.second,
+            zlink::framework::message_t::from (
+              std::string ("rejected"))};
+        if (!completion_runtime.deliver_actor_join_completion (
+              completion_actor, rejected_completion,
+              zlink::framework::spot_id_t ("source-spot"))
+            || !completion_runtime.deliver_actor_join_completion (
+              completion_actor, rejected_completion,
+              zlink::framework::spot_id_t ("source-spot"))
+            || completion_callback_count != 1
+            || completion_outcomes
+                 != std::vector{
+                   zlink::framework::detail::
+                     actor_join_completion_outcome_t::rejected}) {
+            return 71;
+        }
+
+        fail_completion_once = true;
+        const zlink::framework::actor_join_completion_t failed_completion =
+          zlink::framework::actor_join_failed_t{
+            second_operation.first, second_operation.second,
+            zlink::framework::framework_error_kind_t::request_failed,
+            false};
+        if (completion_runtime.deliver_actor_join_completion (
+              completion_actor, failed_completion,
+              zlink::framework::spot_id_t ("source-spot"))
+            || !completion_runtime.deliver_actor_join_completion (
+              completion_actor, failed_completion,
+              zlink::framework::spot_id_t ("source-spot"))
+            || completion_callback_count != 3
+            || completion_outcomes.back ()
+                 != zlink::framework::detail::
+                      actor_join_completion_outcome_t::failed
+            || completion_error_kind
+                 != zlink::framework::framework_error_kind_t::
+                      request_failed
+            || completion_retryable) {
+            return 72;
         }
 
         zlink::framework::runtime::offload_executor_t target_executor (1);

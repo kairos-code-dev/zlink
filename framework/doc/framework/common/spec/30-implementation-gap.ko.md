@@ -791,9 +791,13 @@ relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap�
 하나의 가용성은 host lifecycle과 분리된 `TopologyState`·`TopologyReason`으로
 표현한다.
 
+다섯 언어 exact interface는 host 상태의 `Relocated`와 topology 상태의
+`TopologyState` 이름을 사용한다. C++의 이전 `drain_state_t`와 `drain_event_t`는 host
+lifecycle 조회를 중복하므로 public contract에서 제거했다.
+
 현재 네 runtime의 public source는 이전 `Retiring`·termination 통합 계약을 사용하거나
-topology별 상태를 서로 다른 snapshot으로 제공한다. 다섯 언어 public type, runtime
-전이, metric label과 contract test를 새 exact interface에 맞춘 뒤 이 차이를 닫는다.
+topology별 상태를 서로 다른 snapshot으로 제공한다. Public source, runtime 전이,
+metric label과 contract test를 exact interface에 맞춘 뒤 이 차이를 닫는다.
 
 ## 13. 샘플 계약 차이
 

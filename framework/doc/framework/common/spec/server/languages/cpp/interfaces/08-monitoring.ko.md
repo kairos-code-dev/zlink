@@ -8,8 +8,8 @@ descriptor가 사용하는 값과 같다. C++에서는 signed `int`의 `0..10000
 
 ## 1. Host lifecycle 관측
 
-Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `mesh_node_state_t`는 MeshNode 상태를
-나타내며 host termination 상태로 재사용하지 않는다.
+Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `topology_state_t`는 등록한
+topology 하나의 가용성을 나타내며 host lifecycle 상태로 재사용하지 않는다.
 
 ```cpp
 struct framework_runtime_status_t {
@@ -292,16 +292,6 @@ struct runtime_event_base_t {
     std::string node_name;
     std::string correlation_id;
     health_status_t health = health_status_t::healthy;
-};
-
-enum class drain_state_t {
-    serving,
-    draining,
-    drained,
-    force_stopping
-};
-struct drain_event_t : runtime_event_base_t {
-    drain_state_t state = drain_state_t::serving;
 };
 
 struct socket_event_payload_t : runtime_event_base_t {

@@ -409,7 +409,7 @@ public sealed class RegressionTests
         var locationStore = File.ReadAllText(Path.Combine(
             GetDotNetContractDocRoot(),
             "interfaces",
-            "08-location-maintenance.ko.md"));
+            "08-authority-relocation.ko.md"));
 
         Assert.Contains("public interface IZLinkMeshNodeBuilder", routeMesh, StringComparison.Ordinal);
         Assert.Contains("public interface IZLinkMeshPeerConnections", routeMesh, StringComparison.Ordinal);
@@ -427,14 +427,29 @@ public sealed class RegressionTests
         var deletedSpecRoot = Path.GetFullPath(Path.Combine(specRoot, "..", "..", "spec"));
         var required = new[]
         {
-            "10-channel-topology.ko.md",
-            "22-actor-model.ko.md",
-            "31-session-actor-dispatch.ko.md",
-            "55-transport-liveness.ko.md"
+            "07-channel-topology.ko.md",
+            "14-actor-model.ko.md",
+            "20-session-actor-dispatch.ko.md",
+            "29-transport-liveness.ko.md"
         };
+        var writingGuide = Path.GetFullPath(Path.Combine(
+            specRoot,
+            "..",
+            "..",
+            "..",
+            "..",
+            "..",
+            "doc",
+            "principal",
+            "documentation",
+            "00-spec-writing-guide.ko.md"));
 
         Assert.False(Directory.Exists(deletedSpecRoot));
         Assert.All(required, file => Assert.True(File.Exists(Path.Combine(specRoot, file)), file));
+        Assert.True(File.Exists(writingGuide), writingGuide);
+        Assert.False(File.Exists(Path.Combine(
+            specRoot,
+            "00-spec-writing-guide.ko.md")));
         Assert.True(Directory.Exists(Path.Combine(GetDotNetContractDocRoot(), "interfaces")));
     }
 

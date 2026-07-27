@@ -38,12 +38,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
       serializer_registry_t &serializers,
       std::map<std::string, std::string> client_server_advertise_hosts = {},
       std::set<std::string> route_mesh_client_channels = {},
-      std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes = {}) :
+      std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes = {},
+      std::function<bool ()> republish_after_store_recovery = {}) :
         _bus (std::move (bus)), _channels (std::move (channels)),
         _handlers (&handlers), _serializers (&serializers),
         _client_server_advertise_hosts (std::move (client_server_advertise_hosts)),
         _route_mesh_client_channels (std::move (route_mesh_client_channels)),
-        _mesh_nodes (std::move (mesh_nodes))
+        _mesh_nodes (std::move (mesh_nodes)),
+        _republish_after_store_recovery (
+          std::move (republish_after_store_recovery))
     {
     }
 
@@ -53,6 +56,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     {
         _runtime = &services.get_required<location_runtime_t> ();
         _store = &services.get_required<location_store_t> ();
+        _live_store = &services.get_required<live_location_reader_t> ();
         if (auto route_cache = services.get<store_location_resolvers_t> ())
             _route_cache = &route_cache->get ();
 
@@ -220,16 +224,30 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::vector<mesh_node_descriptor_t> descriptors;
         location_page_request_t page;
         do {
-            auto result = _store->list_mesh_nodes (loop.mesh_name, page).result ().value ();
+            auto result =
+              _live_store->list_mesh_nodes (loop.mesh_name, page)
+                .result ()
+                .value ();
             descriptors.insert (descriptors.end (), result.items.begin (), result.items.end ());
             page.continuation_token = result.continuation_token;
         } while (page.continuation_token);
 
         if (loop.recovering_from_store_failure) {
+            /* A successful read can precede the owner heartbeat that restores
+             * the local lease. Keep existing connections until that lease and
+             * every local descriptor have been published again. The next
+             * polling tick then computes a diff from a complete live view. */
+            if (!_runtime->owner_lease_healthy ()
+                || (_republish_after_store_recovery
+                    && !_republish_after_store_recovery ())) {
+                retry_pending_targets (loop);
+                return;
+            }
             loop.recovering_from_store_failure = false;
             loop.failure_started_at.reset ();
             if (_route_cache)
                 _route_cache->invalidate_all_routes_after_store_recovery ();
+            return;
         }
 
         auto desired = compute_desired (loop, descriptors);
@@ -321,11 +339,13 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;
     location_store_t *_store = nullptr;
+    live_location_reader_t *_live_store = nullptr;
     store_location_resolvers_t *_route_cache = nullptr;
     std::atomic_bool _stop{false};
     std::vector<loop_t> _loops;
     std::unique_ptr<client_server::client_server_location_runtime_t> _client_server;
     std::unique_ptr<fanout::fanout_location_runtime_t> _fanout;
+    std::function<bool ()> _republish_after_store_recovery;
 };
 
 } // namespace zlink::framework::runtime

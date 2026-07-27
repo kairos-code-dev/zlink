@@ -26,7 +26,7 @@ MeshName을 받는 partial termination operation은 제공하지 않는다. Loca
 만드는 opaque record에 대한 read, version 조건부 atomic batch와 bounded snapshot scan을 제공한다.
 Relocation provider는 Framework가 미리 발급한 reference에 immutable blob을 저장한다.
 
-`ZLinkMeshNodeState`는 MeshNode 상태를, `ZLinkFrameworkRuntimeState`는 host 전체 상태를 나타낸다. Channel
+`ZLinkTopologyState`는 등록한 topology의 가용성을, `ZLinkFrameworkRuntimeState`는 host 전체 상태를 나타낸다. Channel
 호출은 process-local ChannelName만 받는다. Node를 직접 지정하는
 `sendToNode(String, RoutingId, Object)`의 첫 번째 인자는 [MeshName](../../../../01-glossary.ko.md#meshname)이다.
 

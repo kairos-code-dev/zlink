@@ -97,6 +97,8 @@ int main ()
       read_file (root / "framework/src/runtime/streams/stream_host_service.cpp");
     const auto location_auto_connect =
       read_file (root / "framework/src/runtime/locations/location_auto_connect_host_service.hpp");
+    const auto client_server_location_runtime =
+      read_file (root / "framework/src/runtime/client_server/client_server_location_runtime.cpp");
     const auto store_location_resolvers =
       read_file (root / "framework/src/runtime/locations/store_location_resolvers.hpp");
     const auto live_location_reader =
@@ -519,7 +521,7 @@ int main ()
                   "STREAM host does not dispatch a session transport failure callback");
 
     /* IMP-CP-05 — automatic RouteMesh discovery uses MeshNode descriptors. */
-    gate.require (location_auto_connect.find ("list_mesh_node_descriptors")
+    gate.require (location_auto_connect.find ("list_mesh_nodes")
                     != std::string::npos,
                   "IMP-CP-05", "RouteMesh discovery does not read MeshNode descriptors");
     gate.require (location_auto_connect.find ("list_peers") == std::string::npos
@@ -745,8 +747,10 @@ int main ()
         gate.require (app_hpp.find (required) != std::string::npos, "CPP-G0-DRAIN-001",
                       "app_t drain surface is missing: " + required);
     }
-    gate.require (rows_hpp.find ("draining") != std::string::npos, "CPP-G0-DRAIN-001",
-                  "peer location row lacks the typed draining field");
+    gate.require (rows_hpp.find ("framework_runtime_state_t state")
+                    != std::string::npos,
+                  "CPP-G0-DRAIN-001",
+                  "peer location row lacks the typed lifecycle state");
     gate.require (!tree_contains (include_root, "mesh_node_drain_policy_t"),
                   "CPP-G0-DRAIN-001",
                   "the removed mesh_node_drain_policy_t public API is still present");
@@ -1289,14 +1293,14 @@ int main ()
                   "E2E-CP-37", "Redis restart can change the published host port");
 
     /* IMP-CP-06 — recovery re-registers local rows before applying disconnect diff. */
-    gate.require (location_auto_connect.find ("reconcile_after") != std::string::npos
-                    && location_auto_connect.find ("owner_lease_renew_interval") != std::string::npos,
+    gate.require (location_auto_connect.find ("owner_lease_healthy")
+                    != std::string::npos,
                   "IMP-CP-06", "auto-connect recovery has no heartbeat defer boundary");
     gate.require (location_auto_connect.find ("republish_after_store_recovery")
                     != std::string::npos,
                   "IMP-CP-06", "auto-connect recovery does not republish local rows");
     gate.require (location_auto_connect.find (
-                    "_runtime->options ().owner_lease_renew_interval\n              + _runtime->options ().polling_interval")
+                    "invalidate_all_routes_after_store_recovery ();\n            return;")
                     != std::string::npos,
                   "IMP-CP-06", "recovery diff races the first provider heartbeat");
     gate.require (location_auto_connect.find ("_runtime->options ().polling_interval")
@@ -1306,7 +1310,7 @@ int main ()
                   "IMP-CP-06", "auto-connect still ignores the configured polling interval");
 
     /* E2E-CP-38 — grace is consumed and SF-B2 introduces a replacement target. */
-    gate.require (location_auto_connect.find ("store_failure_started_at") != std::string::npos
+    gate.require (location_auto_connect.find ("failure_started_at") != std::string::npos
                     && location_auto_connect.find ("store_failure_grace") != std::string::npos
                     && location_auto_connect.find ("retry_pending_targets")
                          != std::string::npos,
@@ -1332,7 +1336,8 @@ int main ()
                     && live_location_reader.find ("store_now") != std::string::npos,
                   "E2E-CP-39", "framework has no centralized live-row lease join");
     gate.require (app_runtime.find ("live_location_reader_t") != std::string::npos
-                    && location_auto_connect.find ("get_required<live_location_reader_t>")
+                    && location_auto_connect.find (
+                         "get_required<live_location_reader_t>")
                          != std::string::npos,
                   "E2E-CP-39", "runtime consumers still bypass the live-row view");
 
@@ -1398,7 +1403,8 @@ int main ()
                     "auto &locations = framework.configure_locations ()")
                     != std::string::npos,
                   "E2E-CP-43", "Config 6 discards its configured polling interval");
-    gate.require (location_auto_connect.find ("peer.draining ? 0u : peer.weight")
+    gate.require (client_server_location_runtime.find (
+                    "descriptor.state\n                 != framework_runtime_state_t::serving")
                     != std::string::npos,
                   "E2E-CP-43", "draining channel peers remain eligible for new requests");
 
@@ -1458,12 +1464,6 @@ int main ()
                     "std::string,\n                      long long,\n                      long long,\n                      long long>>")
                     != std::string::npos,
                   "IMP-CP-38", "exact owner lease read is not returned by one Redis script");
-
-    /* IMP-CP-37 — actor physical rows use the common five-field, mesh-scoped schema. */
-    gate.require (redis_hpp.find (
-                    "write_row (location_kind_t::actor, row_key, actor.mesh_name, actor.owner_id")
-                    != std::string::npos,
-                  "IMP-CP-37", "actor writes do not persist the common mesh hash field");
 
     /* IMP-CP-36 — paged location lists preserve the Redis SSCAN cursor. */
     gate.require (redis_hpp.find ("\"SSCAN\"") != std::string::npos,

@@ -81,6 +81,57 @@ public sealed class ServiceWireRelocationCodecTests
     }
 
     [Fact]
+    public void Relocation_ready_roles_keep_offer_and_accept_participants_separate()
+    {
+        var participants = Participants();
+        var common = new ZLinkServiceWireCodec.RelocationReadyRecord(
+            new ZLinkServiceWireCodec.RelocationWireId(4, 5),
+            6,
+            1,
+            Coordinator(),
+            Candidate(),
+            Object(),
+            2,
+            2,
+            128,
+            [],
+            11,
+            12,
+            13,
+            new ZLinkServiceWireCodec.RelocationRootRecord(
+                "relocation-root", 0x12345678),
+            1,
+            [
+                new ZLinkServiceWireCodec.RelocationParticipantProgressRecord(
+                    1, 2, 0),
+                new ZLinkServiceWireCodec.RelocationParticipantProgressRecord(
+                    2, 0, 0)
+            ]);
+
+        _ = ZLinkServiceWireCodec.EncodeRelocationReady(common);
+        _ = ZLinkServiceWireCodec.EncodeRelocationReady(common with
+        {
+            Role = 1,
+            OfferedMessages = 0,
+            OfferedBytes = 0,
+            Participants = participants
+        });
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeRelocationReady(common with
+            {
+                Participants = participants
+            }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ZLinkServiceWireCodec.EncodeRelocationReady(common with
+            {
+                Role = 1,
+                OfferedMessages = 0,
+                OfferedBytes = 0
+            }));
+    }
+
+    [Fact]
     public void Relocation_data_accepts_every_closed_phase_and_rejects_unknown_phase()
     {
         for (byte phase = 0; phase <= 9; phase++)

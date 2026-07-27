@@ -3345,6 +3345,184 @@ std::string spot_node_runtime_t::next_actor_transfer_id ()
       detail::effective_spot_node_rid (_state->snapshot));
 }
 
+std::pair<std::uint64_t, std::uint64_t>
+spot_node_runtime_t::actor_join_operation_id (
+  std::string_view transfer_id) const
+{
+    /*
+     * Actor Join completion replay needs an ID that is independent from the
+     * relocation ID. Derive two 64-bit words with independent FNV-1a domains
+     * from the source-generated transfer ID. The transfer ID already includes
+     * the source node identity and a monotonically increasing sequence.
+     */
+    constexpr std::uint64_t fnv_prime = 1099511628211ULL;
+    auto hash = [] (std::string_view value,
+                    std::uint64_t seed) {
+        constexpr std::uint64_t prime = 1099511628211ULL;
+        auto result = seed;
+        for (const auto byte : value) {
+            result ^= static_cast<unsigned char> (byte);
+            result *= prime;
+        }
+        return result;
+    };
+    auto high = hash (transfer_id, 14695981039346656037ULL);
+    auto low = hash (transfer_id, 1099511628211ULL);
+    low ^= static_cast<std::uint64_t> (transfer_id.size ());
+    low *= fnv_prime;
+    if (high == 0 && low == 0)
+        low = 1;
+    return {high, low};
+}
+
+result_t<std::shared_ptr<deferred_barrier_t>>
+spot_node_runtime_t::reserve_actor_join_barrier (
+  const actor_ref_t &actor_ref)
+{
+    if (actor_ref.empty ()) {
+        return result_t<std::shared_ptr<deferred_barrier_t>>::failure (
+          framework_error_kind_t::actor_route_not_found,
+          "Actor join barrier source is empty");
+    }
+
+    std::shared_ptr<runtime::serial_execution_queue_t> queue;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        const auto key = actor_key (actor_ref);
+        auto &slot = _state->actor_execution_queues[key];
+        if (!slot) {
+            slot = std::make_shared<runtime::serial_execution_queue_t> (
+              *framework_worker_executor (_state), 4096);
+        }
+        queue = slot;
+    }
+    return queue->reserve_barrier_next ("deferred-actor-join");
+}
+
+result_t<void>
+spot_node_runtime_t::deliver_actor_join_completion (
+  const actor_ref_t &actor_ref,
+  const actor_join_completion_t &completion,
+  std::optional<spot_id_t> source_spot_id)
+{
+    /*
+     * A commit-preceding failure can arrive after the source membership has
+     * been sealed or removed. The Actor instance and generation are the
+     * completion fence; source_spot_id is only a caller routing hint.
+     */
+    (void) source_spot_id;
+    const auto operation = std::visit (
+      [] (const auto &value) {
+          return std::pair<std::uint64_t, std::uint64_t>{
+            value.operation_id_high, value.operation_id_low};
+      },
+      completion);
+    if (operation.first == 0 && operation.second == 0) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "Actor Join completion operation ID must be non-zero");
+    }
+
+    actor_join_completion_callback_t callback;
+    std::shared_ptr<void> actor;
+    std::shared_ptr<std::mutex> mailbox;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        if (_state->delivered_join_completions.contains (operation)
+            || _state->delivering_join_completions.contains (operation)) {
+            return result_t<void>::success ();
+        }
+
+        const auto key = actor_key (actor_ref);
+        const auto generation = _state->actor_generations.find (key);
+        if (generation != _state->actor_generations.end ()
+            && generation->second != actor_ref.generation ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::actor_generation_stale,
+              "Actor Join completion generation is stale");
+        }
+        const auto factory =
+          _state->actor_factories.find (std::string (actor_ref.actor_type ()));
+        const auto instance = _state->actor_instances.find (key);
+        if (factory == _state->actor_factories.end ()
+            || instance == _state->actor_instances.end ()
+            || !instance->second) {
+            return result_t<void>::failure (
+              framework_error_kind_t::actor_route_not_found,
+              "Actor Join completion Actor is not registered");
+        }
+        callback = factory->second.on_join_completed;
+        actor = instance->second;
+        auto &mailbox_slot = _state->actor_mailboxes[key];
+        if (!mailbox_slot)
+            mailbox_slot = std::make_shared<std::mutex> ();
+        mailbox = mailbox_slot;
+        _state->delivering_join_completions.insert (operation);
+    }
+
+    auto release_delivery = [&] (bool delivered) {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        _state->delivering_join_completions.erase (operation);
+        if (delivered)
+            _state->delivered_join_completions.insert (operation);
+    };
+
+    try {
+        std::unique_lock actor_mailbox_lock (*mailbox);
+        if (callback) {
+            auto completed = callback (
+              actor.get (),
+              std::holds_alternative<actor_join_accepted_t> (completion)
+                ? actor_join_completion_outcome_t::accepted
+                : (std::holds_alternative<actor_join_rejected_t> (completion)
+                     ? actor_join_completion_outcome_t::rejected
+                     : actor_join_completion_outcome_t::failed),
+              operation.first, operation.second,
+              std::get_if<actor_join_accepted_t> (&completion)
+                ? &std::get<actor_join_accepted_t> (completion).actor
+                : nullptr,
+              std::holds_alternative<actor_join_accepted_t> (completion)
+                ? std::get<actor_join_accepted_t> (completion).reply
+                : (std::holds_alternative<actor_join_rejected_t> (completion)
+                     ? std::get<actor_join_rejected_t> (completion).reply
+                     : std::optional<message_t>{}),
+              std::holds_alternative<actor_join_failed_t> (completion)
+                ? std::get<actor_join_failed_t> (completion).error_kind
+                : framework_error_kind_t::request_failed,
+              std::holds_alternative<actor_join_failed_t> (completion)
+                && std::get<actor_join_failed_t> (completion).retryable)
+                               .result ();
+            if (!completed) {
+                release_delivery (false);
+                return result_t<void>::failure (
+                  completed.error_kind (),
+                  completed.error () != nullptr
+                    ? completed.error ()->what ()
+                    : "Actor Join completion callback failed",
+                  completed.error () != nullptr
+                    && completed.error ()->is_retriable ());
+            }
+        }
+        release_delivery (true);
+        return result_t<void>::success ();
+    }
+    catch (const framework_exception_t &error) {
+        release_delivery (false);
+        return detail::result_access_t::failure<void> (error);
+    }
+    catch (const std::exception &error) {
+        release_delivery (false);
+        return result_t<void>::failure (
+          framework_error_kind_t::request_failed, error.what ());
+    }
+    catch (...) {
+        release_delivery (false);
+        return result_t<void>::failure (
+          framework_error_kind_t::request_failed,
+          "Actor Join completion callback failed");
+    }
+}
+
 result_t<void> spot_node_runtime_t::leave_actor_for_remote_transfer (const actor_ref_t &actor_ref)
 {
     std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);

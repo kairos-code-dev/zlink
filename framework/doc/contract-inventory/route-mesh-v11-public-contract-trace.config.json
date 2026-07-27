@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3009,
-      "sha256": "57e753183f708dac0b0d1be179d46a64e3f060080b7292c56a990f5ee2b14fbd",
+      "count": 3021,
+      "sha256": "a30aaeab545eed3743869ca85b10c9ae2ca46f645ae549820e2c5e71a7c18f3d",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 762,
-      "sha256": "5b72b30299fe27301529ba77ac1e385ebc1646afa2f9dd21726b64a600aec8a7",
+      "count": 764,
+      "sha256": "43ecaf6a13eb178047df7827bf81d7f88a82aebf653031982105501f042c5764",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1928,
-      "sha256": "cfdba91927032d7702860e29e124b4bdaf20e1fc0e85604d805f610cad7a0df0",
+      "count": 1949,
+      "sha256": "c9520a5aceddbb779586ff32250e6b05aa4983d916d1cbf5ad6f1ab96d235a0e",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -389,6 +389,22 @@
         "baselineSignatureSha256": "7fc7f1cd604fe801f8231541afabbabc5f72855edc0629907bcc955a117665a8",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_descriptor_t.updated_at#c83fd1d6b1ed4683",
         "targetSignatureSha256": "c83fd1d6b1ed468300a903f21641ff5cc9e89a327b9e511f0584fc9dab8548a4",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_snapshot_t.state#408faa65fc288e9a",
+        "baselineSignatureSha256": "408faa65fc288e9a551e7d7b3eb25cba37562c10bb6623c56181b9f02767bd78",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_snapshot_t.state#4d4caec974aee2a2",
+        "targetSignatureSha256": "4d4caec974aee2a2d128ef26aa2cec5e8734a627b1f703ff57879ebc2f6508af",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_runtime_event_t.state#0f3bd2a09d8928cb",
+        "baselineSignatureSha256": "0f3bd2a09d8928cbc0d042110692e3bed70bf56c63fca6cc8d617a26a62fb343",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_runtime_event_t.state#ec17099a31c54991",
+        "targetSignatureSha256": "ec17099a31c54991d024a66c22cc868aab4545b77cc2f1914b3bac00e26f1746",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1785,58 +1801,18 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Drained#6b4deeed4897b71e",
-        "baselineSignatureSha256": "6b4deeed4897b71e5e52ec014926a0545c72bbdae7db8789e04738cea32292c1",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Drained#ae805b17acedfc2f",
-        "targetSignatureSha256": "ae805b17acedfc2f3f1eb5a94edd38b254059048a1e5fbe21bf72d3dfd69da02",
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeSnapshot.state#d12297358730ad86",
+        "baselineSignatureSha256": "d12297358730ad860f93fc3b8283ab909e4d484cf383ed06c7806791633d1959",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeSnapshot.state#a79b888fdb73d14d",
+        "targetSignatureSha256": "a79b888fdb73d14d7c8856a07adc52db15cf85d3a71222e50b3d9a1530334c55",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Draining#6fcf4ae0d3a59ecf",
-        "baselineSignatureSha256": "6fcf4ae0d3a59ecf2ea05c10ba710c926a01b43d96d5458478f5dc9a308e09b5",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Draining#09809aa01b0e7879",
-        "targetSignatureSha256": "09809aa01b0e7879c46c8cc45d56a9ab068d1e729db9429f08b5531b670310e5",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Faulted#717ec40662d73789",
-        "baselineSignatureSha256": "717ec40662d73789bd9cdb43235e48f78b498381c3680de50de422ab2b26db00",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Faulted#6423d899cf8790fa",
-        "targetSignatureSha256": "6423d899cf8790fae2ac54d9180c51e39d488a77eaff17a56c13f26ea35cac92",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.ForceStopping#249def01812fd9e2",
-        "baselineSignatureSha256": "249def01812fd9e201c78f032845fc74ddaf2cb24f69c712c326747a79813063",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.ForceStopping#9112dab3e7dbb838",
-        "targetSignatureSha256": "9112dab3e7dbb83821272be6facc19b0bbc32ed7a1369d309578cebb5b7fab90",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Serving#7582a564926d8521",
-        "baselineSignatureSha256": "7582a564926d852102ed17f268c54d197c6943348771f90f60e0a9b79d130cd3",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Serving#d501b09d974ddcf7",
-        "targetSignatureSha256": "d501b09d974ddcf7a0b50215339ab48b71764f87d93bf5975921fc09472fdd82",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Starting#da34635001ebea62",
-        "baselineSignatureSha256": "da34635001ebea622038cdac9965be947bffac04aceafcf6920485206c2deb4d",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Starting#84f6a75f3a1f81fd",
-        "targetSignatureSha256": "84f6a75f3a1f81fd8c05b8d6aea842aa9ddfd3e7908b58ad5619956f08ff0050",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Stopped#93c9adbb81b38435",
-        "baselineSignatureSha256": "93c9adbb81b38435b3ae092c3d6e0e7fe7d9c84253a980d381111e7a07daeea4",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Stopped#ec35d59c7fb80682",
-        "targetSignatureSha256": "ec35d59c7fb8068264bd64227a063c27d5017b8983566f55efd4affce2b666df",
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshRuntimeEvent.state#e1fc5ff38e4a24bb",
+        "baselineSignatureSha256": "e1fc5ff38e4a24bbbde48a40ac051c0e673567c67b2bf93a582691128d4d9e30",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshRuntimeEvent.state#81456309bd6ba6c9",
+        "targetSignatureSha256": "81456309bd6ba6c9617c8f858cfe3aeae4ccc89765c0a80a3d4d1770588ce3e9",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },

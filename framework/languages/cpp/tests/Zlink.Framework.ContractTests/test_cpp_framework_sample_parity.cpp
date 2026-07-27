@@ -1509,7 +1509,7 @@ TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
       cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
     EXPECT_EQ (contracts.find ("support_actor_ref_snapshot_t"), std::string::npos);
     EXPECT_NE (contracts.find ("actor_ref_snapshot_t actor;"), std::string::npos);
-    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor_ref)"), std::string::npos);
+    EXPECT_NE (support.find ("snapshot_of (actor.value ().ref ())"), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeStatePreservesNullableWireFields)

@@ -2,7 +2,7 @@
 
 [인터페이스 목차](README.ko.md) · [Java 공통 runtime](../../java/interfaces/common-runtime.ko.md)
 
-Kotlin은 Java의 `ZLinkMeshNodeState`, `ZLinkFrameworkRuntimeState`,
+Kotlin은 Java의 `ZLinkTopologyState`, `ZLinkFrameworkRuntimeState`,
 `ZLinkFrameworkRelocationMode`, `ZLinkFrameworkRelocationOptions`, relocation·termination
 outcome·reason·result와 `ZLinkFrameworkRuntime`을 그대로 사용한다. 같은 enum, options, result wrapper와
 runtime facade를 추가하지 않는다. 별도 drain facade와 MeshName을 받는 partial termination member는 없으며,

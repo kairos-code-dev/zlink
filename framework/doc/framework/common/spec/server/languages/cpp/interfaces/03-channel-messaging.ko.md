@@ -179,14 +179,13 @@ public:
 
 };
 
-enum class mesh_node_state_t {
+enum class topology_state_t {
     starting,
-    serving,
-    draining,
-    drained,
-    force_stopping,
+    ready,
+    degraded,
+    stopping,
     stopped,
-    faulted
+    failed
 };
 
 struct mesh_peer_snapshot_t {
@@ -243,7 +242,7 @@ struct mesh_node_snapshot_t {
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
-    mesh_node_state_t state;
+    topology_state_t state;
     object_role_t object_role;
     std::int64_t application_version;
     int placement_weight;
@@ -275,7 +274,7 @@ struct mesh_runtime_event_t {
     std::optional<std::string> claim_domain;
     std::optional<std::string> message_kind;
     std::optional<std::string> reason;
-    std::optional<mesh_node_state_t> state;
+    std::optional<topology_state_t> state;
 };
 
 class mesh_runtime_observation_t {

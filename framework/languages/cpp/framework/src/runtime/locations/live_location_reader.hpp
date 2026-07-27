@@ -68,7 +68,12 @@ class live_location_reader_t final
     task_t<location_page_t<mesh_node_descriptor_t>>
     list_mesh_nodes (std::string mesh_name, location_page_request_t page = {})
     {
-        return _store->list_mesh_nodes (std::move (mesh_name), std::move (page));
+        auto result =
+          _store->list_mesh_nodes (std::move (mesh_name), std::move (page))
+            .result ()
+            .value ();
+        filter_live (result.items);
+        return completed (std::move (result));
     }
 
     task_t<authority_read_result_t> read_authority (authority_key_t key)

@@ -293,17 +293,16 @@ Version filter를 capability·capacity·weight보다 먼저 적용하므로 다�
 ## 5. RouteMesh runtime 상태와 readiness
 
 `meshName`은 조회할 RouteMesh를 지정한다. 등록되지 않은 이름은 새 상태를 만들지 않고 typed route error로
-실패한다. `isReady(...)`는 해당 MeshNode가 `Serving` 상태이고 runtime에 연결된 경우에만 `true`다.
+실패한다. `isReady(...)`는 host가 `Serving`이고 해당 RouteMesh topology가 `Ready`일 때만 `true`다.
 
 ```ts
-export enum ZLinkMeshNodeState {
+export enum ZLinkTopologyState {
   Starting = 0,
-  Serving = 1,
-  Draining = 2,
-  Drained = 3,
-  ForceStopping = 4,
-  Stopped = 5,
-  Faulted = 6
+  Ready = 1,
+  Degraded = 2,
+  Stopping = 3,
+  Stopped = 4,
+  Failed = 5
 }
 
 export interface ZLinkMeshPeerSnapshot {
@@ -369,7 +368,7 @@ export interface ZLinkMeshNodeSnapshot {
   readonly placementReservationFailureCount: bigint;
   readonly lastPlacementReservationFailure?: string;
   readonly objectCapabilities: readonly ZLinkObjectCapability[];
-  readonly state: ZLinkMeshNodeState;
+  readonly state: ZLinkTopologyState;
   readonly sequence: bigint;
   readonly observedAt: Date;
   readonly descriptorSources: readonly string[];
@@ -405,7 +404,7 @@ export interface ZLinkMeshRuntimeEvent {
   readonly populationCapacity?: ZLinkMeshNodeSnapshot['populationCapacity'];
   readonly activationConcurrency?: ZLinkMeshNodeSnapshot['activationConcurrency'];
   readonly reason?: string;
-  readonly state?: ZLinkMeshNodeState;
+  readonly state?: ZLinkTopologyState;
 }
 
 export interface ZLinkRouteMeshRuntime {

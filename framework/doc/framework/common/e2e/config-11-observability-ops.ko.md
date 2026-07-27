@@ -78,7 +78,7 @@ message-flow가 켜진 발원점에서 자동 생성되며 별도 설정을
 ```
 
 `kind`는 `counter|updown|observable|histogram`, runtime state label은
-`serving|relocating|drained|draining|stopped|error` 소문자 값으로 고정한다. histogram은 raw sample 또는 provider
+`serving|relocating|relocated|draining|stopped|error` 소문자 값으로 고정한다. histogram은 raw sample 또는 provider
 snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실행 안에서 기준값과 비교한다.
 
 ## 4. 시나리오
@@ -204,7 +204,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 ### Track C — Host Relocate, Shutdown & Handoff
 
-#### OBS-C1 relocating·drained 마커 — 연결 유지 + 배치 제외
+#### OBS-C1 relocating·relocated 마커 — 연결 유지 + 배치 제외
 
 우선순위: `P0`
 
@@ -215,7 +215,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: `play-a` MeshNode descriptor의 relocation 제외 상태와 runtime snapshot의
   `State=Relocating`이 관측되어 신규 room/actor 배정에서 제외된다. 완료 뒤 `State=Relocated`가
   되고 host connection과 infrastructure는 유지된다. `zlink.host.state` gauge가
-  `state=serving`→`state=relocating`→`state=drained`로 전이한다
+  `state=serving`→`state=relocating`→`state=relocated`로 전이한다
   ([Host maintenance §13](../spec/28-graceful-drain-handoff.ko.md#13-관측-정보)).
   descriptor는 `Relocating`과 `Relocated` 중 유지되므로 기존
   연결이 유지되고, 전파 지연 창에 기존 연결로 온 request가 정상 처리된다

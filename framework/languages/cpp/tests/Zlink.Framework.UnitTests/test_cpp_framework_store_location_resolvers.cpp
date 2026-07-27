@@ -1636,6 +1636,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverFiltersExpiredMeshNodeDescri
     location_options_t options;
     options.polling_interval = std::chrono::milliseconds::zero ();
     zlink::framework::runtime::live_location_reader_t live_reader (store, options);
+    const auto live_rows =
+      live_reader.list_mesh_nodes ("mesh-a").result ().value ().items;
+    ASSERT_EQ (1u, live_rows.size ());
+    EXPECT_EQ ("node-live", live_rows.front ().rid.to_string ());
+
     store_location_resolvers_t resolvers (live_reader);
     const auto resolver_rows =
       resolvers.list_live_mesh_nodes ("mesh-a").result ().value ();
@@ -1647,7 +1652,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverFiltersExpiredMeshNodeDescri
     store_location_runtime_query_t query (live_reader, runtime, options);
     const auto query_rows = query.list_mesh_node_descriptors ("mesh-a").result ().value ();
 
-    ASSERT_EQ (2u, query_rows.items.size ());
+    ASSERT_EQ (1u, query_rows.items.size ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsHealthyStoreStatus)

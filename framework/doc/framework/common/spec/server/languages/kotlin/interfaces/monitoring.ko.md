@@ -14,7 +14,7 @@ publish target 수 또는 target별 수락·실패 field가 없다. Kotlin 전�
 
 ClientServer server 상태는 Java `ZLinkClientServerServerState`, fanout publisher 연결 상태는
 `ZLinkFanoutPublisherConnectionState`를 그대로 사용한다. Host의 `ZLinkFrameworkRuntimeState`나 MeshNode의
-`ZLinkMeshNodeState`를 이 두 connection 상태에 대신 사용하지 않는다.
+`ZLinkTopologyState`를 이 두 connection 상태에 대신 사용하지 않는다.
 같은 ChannelName에 Client와 Server를 함께 등록한 [snapshot](../../../../01-glossary.ko.md#snapshot)의 local role은 Java
 `ZLinkClientServerRole.CLIENT_AND_SERVER`로 나타낸다. 이는 별도 role registration 두 개의 aggregate
 projection일 뿐 builder role이나 registration key가 아니다. Kotlin 전용 enum이나 변환 값을 만들지 않는다.

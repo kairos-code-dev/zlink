@@ -1747,6 +1747,29 @@ public final class ZLinkSpotRuntime
         ZLinkActorAcceptedJournal.Record record) {
         ZLinkActor actor = preparedActor.actor();
         Object spotSurface = spotLifecycle.preparedSpot(preparedSpot);
+        return replayPreparedActorOnSurface(
+            spotSurface, preparedActor, record);
+    }
+
+    CompletionStage<Optional<byte[]>> replayPreparedActorAtSpot(
+        String spotId,
+        ZLinkActorRuntime.PreparedTransferredActor preparedActor,
+        ZLinkActorAcceptedJournal.Record record) {
+        Object spotSurface = spotSurfaceFor(spotId);
+        if (spotSurface == null) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "target execution Spot is unavailable: " + spotId));
+        }
+        return replayPreparedActorOnSurface(
+            spotSurface, preparedActor, record);
+    }
+
+    private CompletionStage<Optional<byte[]>> replayPreparedActorOnSurface(
+        Object spotSurface,
+        ZLinkActorRuntime.PreparedTransferredActor preparedActor,
+        ZLinkActorAcceptedJournal.Record record) {
+        ZLinkActor actor = preparedActor.actor();
         boolean request = record.header().requestSequence().isPresent();
         SpotActorPacketHandlerRegistration handler = resolveActorPacketHandler(
             record.header().packetName(),

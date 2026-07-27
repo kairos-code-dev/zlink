@@ -9,7 +9,7 @@
 #include <zlink/framework/contracts/configuration/app.hpp>
 #include <zlink/framework/contracts/configuration/configuration.hpp>
 #include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
-#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/configuration/lifecycle.hpp>
 #include <zlink/framework/contracts/configuration/detail/framework_options_state.hpp>
 #include <zlink/framework/contracts/configuration/detail/framework_options_validation.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
@@ -445,13 +445,26 @@ static_assert (
                              .is_ready (std::declval<std::string> ())),
                  bool>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_runtime_t &> ().drain (
-                   std::declval<std::string> (), std::declval<std::chrono::milliseconds> ())),
-                 zlink::framework::task_t<zlink::framework::drain_result_t>>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::app_t &> ().relocate (
+      std::declval<zlink::framework::relocation_options_t> (),
+      std::declval<std::stop_token> ())),
+    zlink::framework::task_t<zlink::framework::relocation_result_t>>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::route_mesh_runtime_t &> ()
-                             .await_drained (std::declval<std::string> ())),
-                 zlink::framework::task_t<zlink::framework::drain_result_t>>);
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::app_t &> ().shutdown (
+      std::declval<std::chrono::milliseconds> (),
+      std::declval<std::stop_token> ())),
+    zlink::framework::task_t<zlink::framework::termination_result_t>>);
+static_assert (
+  static_cast<int> (zlink::framework::framework_runtime_state_t::relocating)
+  == 2);
+static_assert (
+  static_cast<int> (zlink::framework::framework_runtime_state_t::relocated)
+  == 3);
+static_assert (
+  static_cast<int> (zlink::framework::termination_outcome_t::force_stopped)
+  == 1);
 
 static_assert (std::is_same_v<decltype (zlink::http_client::client_t::create ()
                                           .base_url ("http://127.0.0.1:18080")

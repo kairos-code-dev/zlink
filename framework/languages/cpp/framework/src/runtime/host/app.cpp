@@ -46,6 +46,7 @@
 #include <typeindex>
 #include <typeinfo>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace zlink::framework::detail
@@ -250,15 +251,16 @@ class app_state_t
         }
     }
 
-    struct termination_waiter_t :
-        public std::enable_shared_from_this<termination_waiter_t>
+    template <typename TResult>
+    struct lifecycle_waiter_t :
+        public std::enable_shared_from_this<lifecycle_waiter_t<TResult>>
     {
-        task_completion_source_t<termination_result_t> completion;
+        task_completion_source_t<TResult> completion;
         std::atomic_bool completed = false;
         std::optional<std::stop_callback<std::function<void ()>>>
           cancellation;
 
-        task_t<termination_result_t> task ()
+        task_t<TResult> task ()
         {
             return completion.task ();
         }
@@ -267,8 +269,8 @@ class app_state_t
         {
             if (!token.stop_possible ())
                 return;
-            std::weak_ptr<termination_waiter_t> weak =
-              shared_from_this ();
+            std::weak_ptr<lifecycle_waiter_t<TResult>> weak =
+              this->shared_from_this ();
             cancellation.emplace (
               token, [weak] {
                   if (auto waiter = weak.lock ())
@@ -276,12 +278,12 @@ class app_state_t
               });
         }
 
-        void complete (termination_result_t result)
+        void complete (TResult result)
         {
             if (completed.exchange (true, std::memory_order_acq_rel))
                 return;
             completion.complete (
-              result_t<termination_result_t>::success (result));
+              result_t<TResult>::success (std::move (result)));
         }
 
         void cancel ()
@@ -289,9 +291,31 @@ class app_state_t
             if (completed.exchange (true, std::memory_order_acq_rel))
                 return;
             completion.complete (
-              detail::boundary_failure<termination_result_t> (
+              detail::boundary_failure<TResult> (
                 detail::boundary_error_t::cancelled,
-                "termination waiter was cancelled"));
+                "lifecycle waiter was cancelled"));
+        }
+    };
+
+    using relocation_waiter_t = lifecycle_waiter_t<relocation_result_t>;
+    using termination_waiter_t = lifecycle_waiter_t<termination_result_t>;
+
+    struct relocation_operation_t
+    {
+        std::mutex mutex;
+        bool started = false;
+        bool terminal = false;
+        bool shutdown_requested = false;
+        relocation_options_t options{};
+        relocation_result_t result{};
+        std::chrono::milliseconds deadline{30000};
+        std::vector<std::shared_ptr<relocation_waiter_t>> waiters;
+        std::thread worker;
+
+        ~relocation_operation_t ()
+        {
+            if (worker.joinable ())
+                worker.join ();
         }
     };
 
@@ -300,8 +324,6 @@ class app_state_t
         std::mutex mutex;
         bool started = false;
         bool terminal = false;
-        termination_intent_t effective_intent =
-          termination_intent_t::shutdown;
         termination_result_t result{};
         std::chrono::milliseconds deadline{30000};
         std::vector<std::shared_ptr<termination_waiter_t>> waiters;
@@ -318,6 +340,7 @@ class app_state_t
     std::shared_ptr<std::atomic_bool> draining = std::make_shared<std::atomic_bool> (false);
     std::atomic<framework_runtime_state_t> runtime_state =
       framework_runtime_state_t::preparing;
+    relocation_operation_t relocation_operation;
     termination_operation_t termination_operation;
     std::mutex termination_teardown_mutex;
     std::condition_variable termination_teardown_changed;
@@ -404,12 +427,6 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
 
 namespace zlink::framework
 {
-
-namespace
-{
-task_t<drain_result_t>
-to_drain_task (task_t<termination_result_t> termination);
-}
 
 app_t::app_t () : _state (std::make_unique<detail::app_state_t> ())
 {
@@ -879,10 +896,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           std::make_shared<runtime::route_mesh_runtime_service_t> (
             mesh_nodes,
             location_runtime ? &location_runtime->get () : nullptr,
-            [this] (std::chrono::milliseconds deadline) {
-                return to_drain_task (shutdown (deadline));
-            },
-            [this] { return to_drain_task (shutdown ()); },
             location_store ? &location_store->get () : nullptr);
         _state->services.add_factory<route_mesh_runtime_t> (
           [mesh_runtime] (service_provider_t &) {
@@ -1665,6 +1678,24 @@ int app_t::run (int argc, char **argv)
 namespace
 {
 
+enum class shutdown_force_reason_t
+{
+    deadline_exceeded,
+    teardown_failed
+};
+
+struct shutdown_completed_t
+{
+};
+
+struct shutdown_forced_t
+{
+    shutdown_force_reason_t reason;
+};
+
+using shutdown_progress_t =
+  std::variant<shutdown_completed_t, shutdown_forced_t>;
+
 const char *drain_state_name (drain_state_t state) noexcept
 {
     switch (state) {
@@ -1680,58 +1711,22 @@ const char *drain_state_name (drain_state_t state) noexcept
     return "unknown";
 }
 
-task_t<drain_result_t>
-to_drain_task (task_t<termination_result_t> termination)
-{
-    auto source =
-      std::make_shared<detail::task_completion_source_t<drain_result_t>> ();
-    auto output = source->task ();
-    auto observed =
-      std::make_shared<task_t<termination_result_t>> (
-        std::move (termination));
-    detail::observe_task_completion (
-      *observed,
-      [source, observed] (const result_t<termination_result_t> &result) {
-          if (!result) {
-              source->complete (
-                detail::propagate_failure<drain_result_t> (
-                  result, "shutdown failed"));
-              return;
-          }
-          const auto terminal = result.value ();
-          if (terminal.outcome == termination_outcome_t::stopped) {
-              source->complete (
-                result_t<drain_result_t>::success (drained_t{}));
-              return;
-          }
-          drain_force_reason_t reason =
-            drain_force_reason_t::teardown_failed;
-          if (terminal.reason == termination_reason_t::deadline_exceeded)
-              reason = drain_force_reason_t::deadline_exceeded;
-          else if (terminal.reason
-                   == termination_reason_t::relocation_failed)
-              reason = drain_force_reason_t::relocation_failed;
-          source->complete (
-            result_t<drain_result_t>::success (
-              force_stopped_t{reason}));
-      });
-    return output;
-}
-
-bool capacity_available_for_retire (const capacity_usage_t &usage)
+bool capacity_available_for_relocation (const capacity_usage_t &usage)
 {
     return usage.limit == 0
            || usage.active + usage.reserved
                 < static_cast<std::uint64_t> (usage.limit);
 }
 
-bool supports_retiring_source (const mesh_node_descriptor_t &source,
-                               const mesh_node_descriptor_t &candidate)
+bool supports_relocation_source (
+  const mesh_node_descriptor_t &source,
+  const mesh_node_descriptor_t &candidate,
+  std::int64_t target_application_version)
 {
     if (candidate.state != framework_runtime_state_t::serving
         || candidate.object_role != object_role_t::server
         || candidate.placement_weight <= 0
-        || candidate.application_version < source.application_version
+        || candidate.application_version != target_application_version
         || (source.maintenance_wave
             && candidate.maintenance_wave == source.maintenance_wave)) {
         return false;
@@ -1750,10 +1745,10 @@ bool supports_retiring_source (const mesh_node_descriptor_t &source,
         if (supported == candidate.object_capabilities.end ())
             return false;
         if (required.object_kind == placement_object_kind_t::actor) {
-            if (!capacity_available_for_retire (candidate.capacity.actors))
+            if (!capacity_available_for_relocation (candidate.capacity.actors))
                 return false;
         } else {
-            if (!capacity_available_for_retire (candidate.capacity.spots))
+            if (!capacity_available_for_relocation (candidate.capacity.spots))
                 return false;
             const auto typed = std::find_if (
               candidate.capacity.spot_types.begin (),
@@ -1763,7 +1758,7 @@ bool supports_retiring_source (const mesh_node_descriptor_t &source,
                          && value.stable_type == required.stable_type;
               });
             if (typed != candidate.capacity.spot_types.end ()
-                && !capacity_available_for_retire (typed->usage)) {
+                && !capacity_available_for_relocation (typed->usage)) {
                 return false;
             }
         }
@@ -1774,14 +1769,22 @@ bool supports_retiring_source (const mesh_node_descriptor_t &source,
                     candidate.activation_concurrency.limit);
 }
 
-std::optional<termination_reason_t>
-retire_topology_blocker (detail::app_state_t &state)
+struct relocation_preflight_t
+{
+    std::optional<relocation_reason_t> blocker;
+    std::int64_t effective_target_application_version = 0;
+};
+
+relocation_preflight_t
+relocation_topology_preflight (
+  detail::app_state_t &state,
+  const relocation_options_t &options)
 {
     if (state.has_manual_service_topology
         && state.has_manual_service_topology ())
-        return termination_reason_t::manual_topology_unsupported;
+        return {relocation_reason_t::manual_topology_unsupported, 0};
     if (state.route_mesh_nodes.empty ())
-        return std::nullopt;
+        return {relocation_reason_t::target_unavailable, 0};
 
     try {
         auto provider = state.services.build_provider ();
@@ -1789,6 +1792,7 @@ retire_topology_blocker (detail::app_state_t &state)
         auto &live = provider.get_required<runtime::live_location_reader_t> ();
 
         std::set<std::string> local_rids;
+        std::optional<std::int64_t> source_application_version;
         for (const auto &node : state.route_mesh_nodes) {
             if (node) {
                 if (const auto rid = node->routing_id ())
@@ -1802,7 +1806,7 @@ retire_topology_blocker (detail::app_state_t &state)
             const auto local_rid = node->routing_id ();
             const auto status = node->status ();
             if (!local_rid || status.lifecycle_generation () == 0)
-                return termination_reason_t::runtime_not_ready;
+                return {relocation_reason_t::runtime_not_ready, 0};
 
             std::vector<mesh_node_descriptor_t> descriptors;
             location_page_request_t page;
@@ -1828,8 +1832,25 @@ retire_topology_blocker (detail::app_state_t &state)
               });
             if (source == descriptors.end ()
                 || !live.owner_admission_lifetime (source->owner_id)) {
-                return termination_reason_t::store_unavailable;
+                return {relocation_reason_t::store_unavailable, 0};
             }
+            if (source_application_version
+                && *source_application_version
+                     != source->application_version) {
+                return {relocation_reason_t::state_incompatible, 0};
+            }
+            source_application_version = source->application_version;
+            if (options.mode == relocation_mode_t::rolling_update
+                && *options.target_application_version
+                     <= source->application_version) {
+                throw std::invalid_argument (
+                  "rolling update target application version must be greater "
+                  "than the source version");
+            }
+            const auto target_application_version =
+              options.mode == relocation_mode_t::planned_maintenance
+                ? source->application_version
+                : *options.target_application_version;
 
             const auto replacement = std::any_of (
               descriptors.begin (), descriptors.end (),
@@ -1838,18 +1859,29 @@ retire_topology_blocker (detail::app_state_t &state)
                          && candidate.lifecycle_generation != 0
                          && live.owner_admission_lifetime (
                               candidate.owner_id)
-                         && supports_retiring_source (*source, candidate)
+                         && supports_relocation_source (
+                              *source, candidate,
+                              target_application_version)
                          && node->has_admitted_peer (
                               candidate.rid,
                               candidate.lifecycle_generation);
               });
             if (!replacement)
-                return termination_reason_t::target_unavailable;
+                return {
+                  relocation_reason_t::target_unavailable,
+                  target_application_version};
         }
-        return std::nullopt;
+        const auto effective =
+          options.mode == relocation_mode_t::planned_maintenance
+            ? *source_application_version
+            : *options.target_application_version;
+        return {std::nullopt, effective};
+    }
+    catch (const std::invalid_argument &) {
+        throw;
     }
     catch (...) {
-        return termination_reason_t::store_unavailable;
+        return {relocation_reason_t::store_unavailable, 0};
     }
 }
 
@@ -1881,61 +1913,271 @@ framework_runtime_state_t app_t::runtime_state () const noexcept
     return _state->runtime_state.load (std::memory_order_acquire);
 }
 
-task_t<drain_result_t> app_t::await_drained ()
-{
-    return to_drain_task (shutdown ());
-}
-
-task_t<drain_result_t> app_t::drain ()
-{
-    return to_drain_task (shutdown ());
-}
-
-task_t<drain_result_t> app_t::drain (std::chrono::milliseconds deadline)
-{
-    return to_drain_task (shutdown (deadline));
-}
-
-task_t<termination_result_t> app_t::retire (
-  std::chrono::milliseconds deadline,
+task_t<relocation_result_t> app_t::relocate (
+  relocation_options_t options,
   std::stop_token wait_cancellation)
 {
-    return terminate (
-      termination_intent_t::retire, deadline, wait_cancellation);
+    if (options.mode == relocation_mode_t::planned_maintenance
+        && options.target_application_version) {
+        throw std::invalid_argument (
+          "planned maintenance does not accept a target application version");
+    }
+    if (options.mode == relocation_mode_t::rolling_update
+        && !options.target_application_version) {
+        throw std::invalid_argument (
+          "rolling update requires a target application version");
+    }
+    const auto deadline =
+      options.deadline.value_or (std::chrono::seconds (30));
+    if (deadline <= std::chrono::milliseconds::zero ())
+        throw std::invalid_argument ("relocation deadline must be greater than zero");
+    options.deadline = deadline;
+
+    relocation_preflight_t preflight;
+    if (runtime_state () != framework_runtime_state_t::serving) {
+        preflight.blocker = relocation_reason_t::runtime_not_ready;
+    } else {
+        preflight = relocation_topology_preflight (*_state, options);
+        if (!preflight.blocker
+            && (!_state->services.contains (
+                  std::type_index (typeid (relocation_store_t)))
+                || !_state->services.contains (
+                  std::type_index (typeid (location_store_t))))) {
+            preflight.blocker = relocation_reason_t::store_unavailable;
+        }
+    }
+
+    auto &operation = _state->relocation_operation;
+    std::shared_ptr<detail::app_state_t::relocation_waiter_t> waiter;
+    task_t<relocation_result_t> task (
+      result_t<relocation_result_t>::success ({}));
+    {
+        std::lock_guard lock (operation.mutex);
+        if (operation.started && !operation.terminal) {
+            if (operation.options != options) {
+                return task_t<relocation_result_t> (
+                  result_t<relocation_result_t>::success (
+                    {options.mode,
+                     preflight.effective_target_application_version != 0
+                       ? preflight.effective_target_application_version
+                       : operation.result
+                           .effective_target_application_version,
+                     relocation_outcome_t::blocked,
+                     relocation_reason_t::operation_in_progress}));
+            }
+        } else if (operation.terminal) {
+            return task_t<relocation_result_t> (
+              result_t<relocation_result_t>::success (operation.result));
+        } else {
+            if (preflight.blocker) {
+                return task_t<relocation_result_t> (
+                  result_t<relocation_result_t>::success (
+                    {options.mode,
+                     preflight.effective_target_application_version,
+                     relocation_outcome_t::blocked,
+                     *preflight.blocker}));
+            }
+            if (!publish_mesh_descriptor_state (
+                  *_state, framework_runtime_state_t::relocating)) {
+                (void) publish_mesh_descriptor_state (
+                  *_state, framework_runtime_state_t::serving);
+                return task_t<relocation_result_t> (
+                  result_t<relocation_result_t>::success (
+                    {options.mode,
+                     preflight.effective_target_application_version,
+                     relocation_outcome_t::blocked,
+                     relocation_reason_t::store_unavailable}));
+            }
+            operation.started = true;
+            operation.options = options;
+            operation.deadline = deadline;
+            operation.result.mode = options.mode;
+            operation.result.effective_target_application_version =
+              preflight.effective_target_application_version;
+            _state->runtime_state.store (
+              framework_runtime_state_t::relocating,
+              std::memory_order_release);
+            auto *state = _state.get ();
+            operation.worker =
+              std::thread ([state] { run_shared_relocation (*state); });
+        }
+        waiter =
+          std::make_shared<detail::app_state_t::relocation_waiter_t> ();
+        task = waiter->task ();
+        operation.waiters.push_back (waiter);
+    }
+    waiter->arm (wait_cancellation);
+    return task;
+}
+
+void app_t::run_shared_relocation (
+  detail::app_state_t &state) noexcept
+{
+    auto &operation = state.relocation_operation;
+    const auto deadline_at =
+      std::chrono::steady_clock::now () + operation.deadline;
+    relocation_result_t terminal{
+      operation.options.mode,
+      operation.result.effective_target_application_version,
+      relocation_outcome_t::blocked,
+      relocation_reason_t::relocation_failed};
+
+    auto shutdown_requested = [&] {
+        std::lock_guard lock (operation.mutex);
+        return operation.shutdown_requested;
+    };
+    auto complete = [&] (relocation_result_t result) {
+        std::unique_lock lock (operation.mutex);
+        const bool interrupted = operation.shutdown_requested;
+        if (interrupted) {
+            result.outcome = relocation_outcome_t::blocked;
+            result.reason = relocation_reason_t::shutdown_requested;
+        }
+        if (result.outcome == relocation_outcome_t::relocated
+            && !interrupted) {
+            if (!publish_mesh_descriptor_state (
+                  state, framework_runtime_state_t::relocated)) {
+                result.outcome = relocation_outcome_t::blocked;
+                result.reason = relocation_reason_t::store_unavailable;
+            }
+        }
+        if (result.outcome == relocation_outcome_t::relocated) {
+            state.runtime_state.store (
+              framework_runtime_state_t::relocated,
+              std::memory_order_release);
+        } else if (!interrupted) {
+            (void) publish_mesh_descriptor_state (
+              state, framework_runtime_state_t::serving);
+            state.runtime_state.store (
+              framework_runtime_state_t::serving,
+              std::memory_order_release);
+        }
+
+        std::vector<std::shared_ptr<detail::app_state_t::relocation_waiter_t>>
+          waiters;
+        operation.terminal = true;
+        operation.result = result;
+        waiters = std::move (operation.waiters);
+        operation.waiters.clear ();
+        lock.unlock ();
+        for (auto &waiter : waiters)
+            waiter->complete (result);
+    };
+
+    try {
+        auto provider = state.services.build_provider ();
+        auto peers =
+          provider.get<runtime::store_location_resolvers_t> ();
+        if (!peers) {
+            terminal.reason = relocation_reason_t::store_unavailable;
+            complete (terminal);
+            return;
+        }
+
+        std::vector<runtime::mesh_node_host_service_t *> mesh_services;
+        for (const auto &service : state.hosted_services) {
+            if (auto *mesh =
+                  dynamic_cast<runtime::mesh_node_host_service_t *> (
+                    service.get ())) {
+                mesh_services.push_back (mesh);
+            }
+        }
+
+        for (auto *mesh_service : mesh_services) {
+            for (const auto &node : mesh_service->nodes ()) {
+                auto spot_runtime = detail::spot_node_runtime_t::from (
+                  state.zlink, node->mesh_name ());
+                if (!spot_runtime)
+                    continue;
+                const auto actors = spot_runtime->local_actor_refs ();
+                if (actors.empty ())
+                    continue;
+
+                auto live = peers->get ()
+                              .list_live_mesh_nodes (node->mesh_name ())
+                              .result ()
+                              .value ();
+                const auto local_rid = node->routing_id ();
+                for (const auto &actor : actors) {
+                    if (shutdown_requested ()) {
+                        terminal.reason =
+                          relocation_reason_t::shutdown_requested;
+                        complete (terminal);
+                        return;
+                    }
+                    const auto now = std::chrono::steady_clock::now ();
+                    if (now >= deadline_at) {
+                        terminal.reason =
+                          relocation_reason_t::deadline_exceeded;
+                        complete (terminal);
+                        return;
+                    }
+                    const auto target = std::find_if (
+                      live.begin (), live.end (), [&] (const auto &peer) {
+                          return peer.state
+                                   == framework_runtime_state_t::serving
+                                 && peer.application_version
+                                      == terminal.effective_target_application_version
+                                 && (!local_rid
+                                     || peer.rid.to_hex ()
+                                          != local_rid->to_hex ())
+                                 && std::any_of (
+                                   peer.object_capabilities.begin (),
+                                   peer.object_capabilities.end (),
+                                   [&] (const auto &capability) {
+                                       return capability.object_kind
+                                                == placement_object_kind_t::actor
+                                              && capability.stable_type
+                                                   == actor.actor_type ();
+                                   });
+                      });
+                    if (target == live.end ()) {
+                        terminal.reason =
+                          relocation_reason_t::target_unavailable;
+                        complete (terminal);
+                        return;
+                    }
+                    const auto remaining =
+                      std::max (
+                        std::chrono::milliseconds (1),
+                        std::chrono::duration_cast<std::chrono::milliseconds> (
+                          deadline_at - now));
+                    auto moved =
+                      node->join_application_actor_to_entry_spot (
+                        actor,
+                        node_rid_t::from_string (
+                          target->rid.to_string ()),
+                        zlink::message_t{}, remaining);
+                    if (!moved || moved.value ().result_code != 0) {
+                        terminal.reason =
+                          relocation_reason_t::relocation_failed;
+                        complete (terminal);
+                        return;
+                    }
+                }
+            }
+        }
+        terminal.outcome = relocation_outcome_t::relocated;
+        terminal.reason = relocation_reason_t::none;
+    }
+    catch (...) {
+        terminal.reason = relocation_reason_t::store_unavailable;
+    }
+    complete (terminal);
 }
 
 task_t<termination_result_t> app_t::shutdown (
   std::chrono::milliseconds deadline,
   std::stop_token wait_cancellation)
 {
-    return terminate (
-      termination_intent_t::shutdown, deadline, wait_cancellation);
-}
-
-task_t<termination_result_t> app_t::terminate (
-  termination_intent_t intent,
-  std::chrono::milliseconds deadline,
-  std::stop_token wait_cancellation)
-{
-    if (deadline <= std::chrono::milliseconds::zero ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "termination deadline must be greater than zero");
-    }
-    std::optional<termination_reason_t> blocker;
-    if (intent == termination_intent_t::retire) {
-        if (runtime_state () != framework_runtime_state_t::serving) {
-            blocker = termination_reason_t::runtime_not_ready;
-        } else if (_state->has_manual_service_topology
-                   && _state->has_manual_service_topology ()) {
-            blocker = termination_reason_t::manual_topology_unsupported;
-        } else if (const auto topology = retire_topology_blocker (*_state)) {
-            blocker = topology;
-        } else if (
-          !_state->services.contains (
-            std::type_index (typeid (relocation_store_t)))
-          || !_state->services.contains (
-            std::type_index (typeid (location_store_t)))) {
-            blocker = termination_reason_t::store_unavailable;
+    if (deadline <= std::chrono::milliseconds::zero ())
+        throw std::invalid_argument ("shutdown deadline must be greater than zero");
+    {
+        std::lock_guard relocation_lock (
+          _state->relocation_operation.mutex);
+        if (_state->relocation_operation.started
+            && !_state->relocation_operation.terminal) {
+            _state->relocation_operation.shutdown_requested = true;
         }
     }
     auto &operation = _state->termination_operation;
@@ -1950,36 +2192,15 @@ task_t<termination_result_t> app_t::terminate (
                 operation.result));
         }
         if (!operation.started) {
-            if (blocker) {
-                return task_t<termination_result_t> (
-                  result_t<termination_result_t>::success (
-                    {termination_intent_t::retire,
-                     termination_outcome_t::blocked,
-                     *blocker}));
-            }
-            if (intent == termination_intent_t::retire
-                && !publish_mesh_descriptor_state (
-                  *_state, framework_runtime_state_t::retiring)) {
-                (void) publish_mesh_descriptor_state (
-                  *_state, framework_runtime_state_t::serving);
-                return task_t<termination_result_t> (
-                  result_t<termination_result_t>::success (
-                    {termination_intent_t::retire,
-                     termination_outcome_t::blocked,
-                     termination_reason_t::store_unavailable}));
-            }
             operation.started = true;
-            operation.effective_intent = intent;
             operation.deadline = deadline;
             _state->draining->store (true, std::memory_order_release);
             _state->runtime_state.store (
-              intent == termination_intent_t::retire
-                ? framework_runtime_state_t::retiring
-                : framework_runtime_state_t::draining,
+              framework_runtime_state_t::draining,
               std::memory_order_release);
             auto *state = _state.get ();
             operation.worker =
-              std::thread ([state] { run_shared_termination (*state); });
+              std::thread ([state] { run_shared_shutdown (*state); });
         }
         waiter =
           std::make_shared<detail::app_state_t::termination_waiter_t> ();
@@ -1990,14 +2211,12 @@ task_t<termination_result_t> app_t::terminate (
     return task;
 }
 
-void app_t::run_shared_termination (
+void app_t::run_shared_shutdown (
   detail::app_state_t &state) noexcept
 {
     const auto started_at = std::chrono::steady_clock::now ();
     const auto deadline_at =
       started_at + state.termination_operation.deadline;
-    const auto effective_intent =
-      state.termination_operation.effective_intent;
     auto monitoring = detail::monitoring_runtime_t::from (state.monitoring);
     auto emit_state = [&] (drain_state_t drain_state) {
         try {
@@ -2016,17 +2235,37 @@ void app_t::run_shared_termination (
 
     emit_state (drain_state_t::draining);
 
-    drain_result_t result = drained_t{};
+    shutdown_progress_t result = shutdown_completed_t{};
     bool force_state_emitted = false;
-    auto force = [&] (drain_force_reason_t reason) {
-        if (!std::holds_alternative<drained_t> (result))
+    auto force = [&] (shutdown_force_reason_t reason) {
+        if (!std::holds_alternative<shutdown_completed_t> (result))
             return;
-        result = force_stopped_t{reason};
+        result = shutdown_forced_t{reason};
         if (!force_state_emitted) {
             force_state_emitted = true;
             emit_state (drain_state_t::force_stopping);
         }
     };
+
+    while (std::chrono::steady_clock::now () < deadline_at) {
+        bool relocation_active = false;
+        {
+            std::lock_guard lock (state.relocation_operation.mutex);
+            relocation_active =
+              state.relocation_operation.started
+              && !state.relocation_operation.terminal;
+        }
+        if (!relocation_active)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    {
+        std::lock_guard lock (state.relocation_operation.mutex);
+        if (state.relocation_operation.started
+            && !state.relocation_operation.terminal) {
+            force (shutdown_force_reason_t::deadline_exceeded);
+        }
+    }
 
     std::vector<runtime::mesh_node_host_service_t *> mesh_services;
     for (const auto &service : state.hosted_services) {
@@ -2069,7 +2308,7 @@ void app_t::run_shared_termination (
             }
         }
         if (!marker_published) {
-            force (drain_force_reason_t::teardown_failed);
+            force (shutdown_force_reason_t::teardown_failed);
             return;
         }
 
@@ -2101,20 +2340,20 @@ void app_t::run_shared_termination (
             if (std::chrono::steady_clock::now () + propagation_bound
                 > deadline_at) {
                 std::this_thread::sleep_until (deadline_at);
-                force (drain_force_reason_t::deadline_exceeded);
+                force (shutdown_force_reason_t::deadline_exceeded);
             } else {
                 std::this_thread::sleep_for (propagation_bound);
             }
         }
         catch (...) {
-            force (drain_force_reason_t::teardown_failed);
+            force (shutdown_force_reason_t::teardown_failed);
         }
     };
 
     /* Admission is sealed before this barrier. Each callback accepted before
      * the seal owns a pending/active count until its terminal reply or send
      * completion, so a normal request completion cannot close its Spot. */
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         auto outbound_pending = [&state] () -> bool {
             try {
                 return detail::channel_runtime_t::from (state.zlink.message_bus ())
@@ -2127,142 +2366,50 @@ void app_t::run_shared_termination (
         while (outbound_pending () && std::chrono::steady_clock::now () < deadline_at)
             std::this_thread::sleep_for (std::chrono::milliseconds (50));
         if (outbound_pending ()) {
-            force (drain_force_reason_t::deadline_exceeded);
+            force (shutdown_force_reason_t::deadline_exceeded);
         } else {
             for (auto *mesh : mesh_services) {
                 if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
-                    force (drain_force_reason_t::deadline_exceeded);
+                    force (shutdown_force_reason_t::deadline_exceeded);
                     break;
                 }
             }
         }
     }
 
-    if (effective_intent == termination_intent_t::retire
-        && std::holds_alternative<drained_t> (result)) {
-        bool actors_completed = false;
-        try {
-            auto provider = state.services.build_provider ();
-            while (std::chrono::steady_clock::now () < deadline_at) {
-                bool pass_completed = true;
-                auto peers = provider.get<runtime::store_location_resolvers_t> ();
-                for (auto *mesh_service : mesh_services) {
-                    for (const auto &node : mesh_service->nodes ()) {
-                        auto spot_runtime = detail::spot_node_runtime_t::from (
-                          state.zlink, node->mesh_name ());
-                        if (!spot_runtime)
-                            continue;
-                        const auto actors = spot_runtime->local_actor_refs ();
-                        if (actors.empty ())
-                            continue;
-                        if (!peers) {
-                            pass_completed = false;
-                            continue;
-                        }
-                        std::vector<mesh_node_descriptor_t> live;
-                        try {
-                            live = peers->get ()
-                                     .list_live_mesh_nodes (node->mesh_name ())
-                                     .result ()
-                                     .value ();
-                        }
-                        catch (...) {
-                            pass_completed = false;
-                            continue;
-                        }
-                        const auto local_rid = node->routing_id ();
-                        for (const auto &actor : actors) {
-                            const auto target = std::find_if (
-                              live.begin (), live.end (), [&] (const auto &peer) {
-                                  return peer.state != framework_runtime_state_t::retiring
-                                         && peer.state != framework_runtime_state_t::draining
-                                         && (!local_rid
-                                             || peer.rid.to_hex ()
-                                                  != local_rid->to_hex ())
-                                         && std::any_of (
-                                           peer.object_capabilities.begin (),
-                                           peer.object_capabilities.end (),
-                                           [&] (const auto &capability) {
-                                               return capability.object_kind
-                                                        == placement_object_kind_t::actor
-                                                      && capability.stable_type
-                                                           == actor.actor_type ();
-                                           });
-                              });
-                            if (target == live.end ()) {
-                                pass_completed = false;
-                                continue;
-                            }
-                            const auto now = std::chrono::steady_clock::now ();
-                            if (now >= deadline_at) {
-                                pass_completed = false;
-                                break;
-                            }
-                            const auto remaining =
-                              std::max (std::chrono::milliseconds (1),
-                                        std::chrono::duration_cast<std::chrono::milliseconds> (
-                                          deadline_at - now));
-                            auto moved = node->join_application_actor_to_entry_spot (
-                              actor,
-                              node_rid_t::from_string (target->rid.to_string ()),
-                              zlink::message_t{}, remaining);
-                            if (!moved || moved.value ().result_code != 0)
-                                pass_completed = false;
-                        }
-                    }
-                }
-                if (pass_completed) {
-                    actors_completed = true;
-                    break;
-                }
-                std::this_thread::sleep_until (
-                  std::min (deadline_at, std::chrono::steady_clock::now ()
-                                           + std::chrono::milliseconds (25)));
-            }
-        }
-        catch (...) {
-        }
-        if (!actors_completed)
-            force (std::chrono::steady_clock::now () >= deadline_at
-                     ? drain_force_reason_t::deadline_exceeded
-                     : drain_force_reason_t::relocation_failed);
-    }
-
-    if (effective_intent == termination_intent_t::retire
-        && std::holds_alternative<drained_t> (result)
+    if (std::holds_alternative<shutdown_completed_t> (result)
         && !publish_mesh_descriptor_state (
           state, framework_runtime_state_t::draining)) {
-        force (drain_force_reason_t::teardown_failed);
+        force (shutdown_force_reason_t::teardown_failed);
     }
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         state.runtime_state.store (
           framework_runtime_state_t::draining,
           std::memory_order_release);
-        publish_draining_markers (
-          effective_intent == termination_intent_t::retire);
+        publish_draining_markers (false);
     }
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         for (auto *mesh : mesh_services) {
             if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
-                force (drain_force_reason_t::deadline_exceeded);
+                force (shutdown_force_reason_t::deadline_exceeded);
                 break;
             }
         }
     }
 
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         for (const auto &service : state.hosted_services) {
             if (auto *stream = dynamic_cast<runtime::stream_host_service_t *> (service.get ());
                 stream && !stream->drain_sessions_until (deadline_at)) {
                 force (std::chrono::steady_clock::now () >= deadline_at
-                         ? drain_force_reason_t::deadline_exceeded
-                         : drain_force_reason_t::teardown_failed);
+                         ? shutdown_force_reason_t::deadline_exceeded
+                         : shutdown_force_reason_t::teardown_failed);
                 break;
             }
         }
     }
 
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         bool spots_closed = true;
         for (const auto &snapshot : detail::spot_node_runtime_t::snapshots (state.zlink)) {
             auto runtime = detail::spot_node_runtime_t::from (state.zlink, snapshot.name);
@@ -2273,25 +2420,25 @@ void app_t::run_shared_termination (
         }
         if (!spots_closed)
             force (std::chrono::steady_clock::now () >= deadline_at
-                     ? drain_force_reason_t::deadline_exceeded
-                     : drain_force_reason_t::teardown_failed);
+                     ? shutdown_force_reason_t::deadline_exceeded
+                     : shutdown_force_reason_t::teardown_failed);
     }
 
-    if (std::holds_alternative<drained_t> (result)) {
+    if (std::holds_alternative<shutdown_completed_t> (result)) {
         try {
             auto provider = state.services.build_provider ();
             if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
                 if (!location_runtime->get ().cleanup_owner ()) {
-                    force (drain_force_reason_t::teardown_failed);
+                    force (shutdown_force_reason_t::teardown_failed);
                 }
             }
         }
         catch (...) {
-            force (drain_force_reason_t::teardown_failed);
+            force (shutdown_force_reason_t::teardown_failed);
         }
     }
 
-    const bool force_stopped = std::holds_alternative<force_stopped_t> (result);
+    const bool force_stopped = std::holds_alternative<shutdown_forced_t> (result);
     if (force_stopped) {
         /* graceful-drain-handoff §7: active sessions receive the reason code
          * before forced teardown; the notification is bounded and never
@@ -2331,21 +2478,17 @@ void app_t::run_shared_termination (
     }
 
     termination_reason_t terminal_reason = termination_reason_t::none;
-    if (const auto *forced = std::get_if<force_stopped_t> (&result)) {
+    if (const auto *forced = std::get_if<shutdown_forced_t> (&result)) {
         switch (forced->reason) {
-        case drain_force_reason_t::deadline_exceeded:
+        case shutdown_force_reason_t::deadline_exceeded:
             terminal_reason = termination_reason_t::deadline_exceeded;
             break;
-        case drain_force_reason_t::relocation_failed:
-            terminal_reason = termination_reason_t::relocation_failed;
-            break;
-        case drain_force_reason_t::teardown_failed:
+        case shutdown_force_reason_t::teardown_failed:
             terminal_reason = termination_reason_t::teardown_failed;
             break;
         }
     }
     termination_result_t terminal{
-      effective_intent,
       force_stopped ? termination_outcome_t::force_stopped
                     : termination_outcome_t::stopped,
       terminal_reason};

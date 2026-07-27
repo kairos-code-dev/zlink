@@ -41,9 +41,6 @@ export function validateFrameworkRegistration(
   validateWorkerOptions(registration.worker);
   validateMonitoring(registration);
   validateLocationRegistration(registration);
-  validateClientServerLocationStore(registration);
-  validateFanoutLocationStore(registration);
-  validateActorTransferAuthority(registration);
 }
 
 function validateChannelTopologyNames(registration: ZLinkFrameworkRegistration): void {
@@ -126,6 +123,15 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
       'In-memory location stores cannot be combined with explicit location store registrations.'
     );
   }
+  const store = locations.storeInstance;
+  if (store !== undefined
+    && (typeof store.read !== 'function'
+      || typeof store.write !== 'function'
+      || typeof store.scan !== 'function')) {
+    throw new ZLinkConfigurationException(
+      'Location Store must implement read, write, and scan.'
+    );
+  }
   const options = { ...zlinkDefaultLocationOptions, ...locations.options };
   for (const [name, value] of Object.entries({
     routeCacheMaxAgeMs: options.routeCacheMaxAgeMs,
@@ -154,74 +160,6 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
     if (!Number.isSafeInteger(value) || value <= 0) {
       throw new ZLinkConfigurationException(`${name} must be a positive safe integer.`);
     }
-  }
-}
-
-function validateClientServerLocationStore(registration: ZLinkFrameworkRegistration): void {
-  const requiresDedicatedStore = [...registration.channels.values()].some((channel) =>
-    channel.server !== undefined
-    || (channel.client !== undefined && (channel.client.manualConnections?.length ?? 0) === 0));
-  if (!requiresDedicatedStore || registration.locations.useInMemoryStores) return;
-  const store = registration.locations.storeInstance as Partial<Record<
-    'updateClientServer' | 'removeClientServer' | 'listClientServers',
-    unknown
-  >> | undefined;
-  if (store === undefined) return;
-  if (typeof store.updateClientServer !== 'function'
-    || typeof store.removeClientServer !== 'function'
-    || typeof store.listClientServers !== 'function') {
-    throw new ZLinkConfigurationException(
-      'ClientServer automatic discovery requires dedicated ClientServer descriptor store operations.'
-    );
-  }
-}
-
-function validateFanoutLocationStore(registration: ZLinkFrameworkRegistration): void {
-  const hasStore = hasLocationStores(registration);
-  const requiresDedicatedStore = [...registration.channels.values()].some((channel) =>
-    (channel.publisher !== undefined && hasStore)
-    || (channel.subscriber !== undefined
-      && (channel.subscriber.manualConnections?.length ?? 0) === 0));
-  if (!requiresDedicatedStore || registration.locations.useInMemoryStores) return;
-  const store = registration.locations.storeInstance as Partial<Record<
-    'updateFanoutPublisher' | 'removeFanoutPublisher' | 'listFanoutPublishers',
-    unknown
-  >> | undefined;
-  if (store === undefined) return;
-  if (typeof store.updateFanoutPublisher !== 'function'
-    || typeof store.removeFanoutPublisher !== 'function'
-    || typeof store.listFanoutPublishers !== 'function') {
-    throw new ZLinkConfigurationException(
-      'Classic fanout automatic discovery requires dedicated fanout publisher descriptor store operations.'
-    );
-  }
-}
-
-function validateActorTransferAuthority(registration: ZLinkFrameworkRegistration): void {
-  if (registration.actorTransferAdapters.size === 0) {
-    return;
-  }
-  const store = registration.locations.storeInstance as {
-    prepareActorTransfer?: unknown;
-    commitActorTransfer?: unknown;
-    activateActorTransfer?: unknown;
-    abortActorTransfer?: unknown;
-    takeOverActorTransfer?: unknown;
-    resolveActorTransfer?: unknown;
-  } | undefined;
-  if (
-    registration.locations.useInMemoryStores
-    || store === undefined
-    || typeof store.prepareActorTransfer !== 'function'
-    || typeof store.commitActorTransfer !== 'function'
-    || typeof store.activateActorTransfer !== 'function'
-    || typeof store.abortActorTransfer !== 'function'
-    || typeof store.takeOverActorTransfer !== 'function'
-    || typeof store.resolveActorTransfer !== 'function'
-  ) {
-    throw new ZLinkConfigurationException(
-      'Actor transfer adapters require a durable location store with Actor transfer authority.'
-    );
   }
 }
 

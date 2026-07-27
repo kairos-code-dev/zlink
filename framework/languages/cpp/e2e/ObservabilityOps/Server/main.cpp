@@ -680,7 +680,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
     auto drain_control_owner = std::make_unique<drain_control_t> ();
     auto *drain_control = drain_control_owner.get ();
     drain_control->start_drain = [&app] (std::chrono::milliseconds deadline) {
-        (void) app.drain (deadline);
+        (void) app.shutdown (deadline);
     };
     drain_control->is_ready = [&app] { return app.is_ready (); };
 

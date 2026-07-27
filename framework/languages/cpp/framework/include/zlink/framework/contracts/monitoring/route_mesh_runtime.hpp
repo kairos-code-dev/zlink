@@ -2,7 +2,7 @@
 #pragma once
 
 #include <zlink/Contracts/Core/routing_id.hpp>
-#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/configuration/lifecycle.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/locations/rows.hpp>
 
@@ -153,10 +153,6 @@ class route_mesh_runtime_t
              std::size_t capacity,
              std::function<void (const mesh_runtime_event_t &)> observer) = 0;
     virtual bool is_ready (std::string mesh_name) const = 0;
-    virtual task_t<drain_result_t>
-    drain (std::string mesh_name,
-           std::chrono::milliseconds deadline = std::chrono::seconds (30)) = 0;
-    virtual task_t<drain_result_t> await_drained (std::string mesh_name) = 0;
 };
 
 } // namespace zlink::framework

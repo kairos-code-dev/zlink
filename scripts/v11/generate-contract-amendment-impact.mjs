@@ -13,6 +13,8 @@ import {
   removedMemberBehavior,
   removedMemberParityKey,
   replacementParitySignature,
+  reviewedRegistrationHashes,
+  reviewedRegressionReplacements,
   semanticMemberKey,
   sourceJvmParityExpectation,
 } from './contract-amendment-impact-policy.mjs';
@@ -149,6 +151,49 @@ const addExecutionDisabledReviewedSourceEntry = entry => {
       : 'pending-disabled-reviewed-source',
   });
 };
+const addReviewedRegistrationEntry = entry => {
+  const approvedHash = reviewedRegistrationHashes[entry.path];
+  if (approvedHash === undefined) {
+    addBaselineEntry(entry);
+    return;
+  }
+  const current = currentTrackedHash(entry.path);
+  if (current !== approvedHash) {
+    throw new Error(
+      `reviewed registration changed without review: ${entry.path}`
+      + ` expected=${approvedHash} actual=${current}`,
+    );
+  }
+  entries.push({
+    ...entry,
+    baselineHash: baselineHash(entry.path),
+    approvedHash,
+    quarantineStatus: 'pending-disabled-reviewed-source',
+  });
+};
+
+const addReviewedRegressionEntry = entry => {
+  const replacement = reviewedRegressionReplacements[entry.path];
+  if (replacement === undefined) {
+    addBaselineEntry(entry);
+    return;
+  }
+  const current = currentTrackedHash(replacement.path);
+  if (current !== replacement.approvedHash) {
+    throw new Error(
+      `reviewed regression replacement changed without review: ${replacement.path}`
+      + ` expected=${replacement.approvedHash} actual=${current}`,
+    );
+  }
+  entries.push({
+    ...entry,
+    path: replacement.path,
+    baselinePath: entry.path,
+    baselineHash: baselineHash(entry.path),
+    approvedHash: replacement.approvedHash,
+    quarantineStatus: 'active-regression',
+  });
+};
 
 const languageRoots = [
   {language: 'cpp', e2e: ['framework/languages/cpp/e2e'], samples: ['framework/languages/cpp/samples']},
@@ -209,11 +254,7 @@ for (const scope of languageRoots) {
           activationStage: stage,
           quarantineStatus: 'pending-disabled-by-contract-amendment',
         };
-        if (suite === 'RuntimeMonitoring') {
-          addExecutionDisabledReviewedSourceEntry(registrationEntry);
-        } else {
-          addBaselineEntry(registrationEntry);
-        }
+        addReviewedRegistrationEntry(registrationEntry);
       }
     }
   }
@@ -235,7 +276,7 @@ for (const scope of languageRoots) {
         quarantineStatus: 'pending-disabled-by-contract-amendment',
       });
       for (const registration of registrationFiles(samplePath)) {
-        addBaselineEntry({
+        addReviewedRegistrationEntry({
           id: `registration:sample:${scope.language}:${sample}:${sha256(registration.path).slice(0, 12)}`,
           kind: 'sample-registration',
           language: scope.language,
@@ -316,7 +357,7 @@ for (const [language, regressionPath] of regressionRoots) {
     quarantineStatus: 'active-regression',
   });
   for (const regression of regressionFiles(regressionPath, language)) {
-    addBaselineEntry({
+    addReviewedRegressionEntry({
       id: `regression-test:${language}:${sha256(regression.path).slice(0, 16)}`,
       kind: 'regression-test',
       language,
@@ -625,7 +666,7 @@ const manifest = {
   schemaVersion: 1,
   version: '11.0.0',
   baselineRevision,
-  contractDecisionRange: 'CA-D01..CA-D77',
+  contractDecisionRange: 'CA-D01..CA-D79',
   publicContractTraceDelta: {
     path: traceRelativePath,
     baselineSha256: sha256(baselineTraceSource),

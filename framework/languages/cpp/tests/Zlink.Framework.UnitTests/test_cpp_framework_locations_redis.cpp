@@ -1177,7 +1177,7 @@ TEST (ZLinkFrameworkLocationsRedis,
 
     target_descriptor.descriptor_revision = 3;
     target_descriptor.state =
-      framework_runtime_state_t::retiring;
+      framework_runtime_state_t::relocating;
     EXPECT_EQ (
       location_write_status_t::stored,
       store

@@ -5,7 +5,6 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   ZLinkObjectRole,
-  type ZLinkLocationStore,
   type ZLinkActorLocation,
   type ZLinkAggregateAbortResult,
   type ZLinkAggregateCommitResult,
@@ -67,6 +66,7 @@ import type {
   ZLinkActorTransferWriteResult
 } from '../../contracts/Locations/ActorTransfer';
 import type { ZLinkFanoutLocationStore } from './internal-store-contracts';
+import type { ZLinkDomainLocationStore } from './domain-store-contract';
 import { ZLinkInMemoryAuthorityStore } from './in-memory-authority-store';
 import { encodeAuthorityKey } from './authority-key-codec';
 import { ZLinkLocationKeyCodec } from './key-codec';
@@ -78,7 +78,7 @@ import {
 } from '../../location-store-integration';
 
 export class ZLinkInMemoryLocationStore implements
-  ZLinkLocationStore,
+  ZLinkDomainLocationStore,
   ZLinkFanoutLocationStore {
   private readonly leases = new Map<string, InMemoryOwnerLease>();
   private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();

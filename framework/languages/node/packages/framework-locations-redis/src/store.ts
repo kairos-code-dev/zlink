@@ -50,7 +50,6 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   ZLinkFrameworkRuntimeState,
-  type ZLinkLocationStore,
   type ZLinkClientServerServerDescriptor,
   type ZLinkClientServerServerDescriptorKey,
   type ZLinkFanoutPublisherDescriptor,
@@ -98,6 +97,7 @@ import {
   type ZLinkOwnerLeaseRenewResult,
   type ZLinkPageRequest,
 } from '@zlink-systems/framework';
+import type { ZLinkDomainLocationStore as ZLinkLocationStore } from '../../framework/src/runtime/locations/domain-store-contract';
 import type {
   ZLinkActorLocation,
   ZLinkPeerLocation,

@@ -61,9 +61,13 @@ const isKotlinSourcePackageMember = member => member.language === 'kotlin'
   && member.ownerIdentity.includes('::<package>');
 
 export const closedCatchAllExpectations = {
+  'host-lifecycle-topology-state-separation': {
+    count: 67,
+    identitySetSha256: 'bb3863b31e09ed67900adcc696533d830e91d51cd7ba1a9f1a87a62b1cc82075',
+  },
   'public-boundary-internal-surface-cleanup': {
-    count: 1661,
-    identitySetSha256: '4a5cd92944fa57411b4ba3dc04ff5b925cc29ecb0b6a0e99c1d2d48051895bd3',
+    count: 1635,
+    identitySetSha256: '3fea348cb01f6b3deda0d19a3bc34ea6bd298aa962a484552e101e06cd5c5513',
   },
   'kotlin-reviewed-contract-set': {
     count: 126,
@@ -79,6 +83,88 @@ export const sourceJvmParityExpectation = {
   groups: 48,
   recoveredPairs: 48,
   identitySetSha256: '2dc995b16bbea555d030fe1643b534134213642205e98bc203d94aa5393f0dcc',
+};
+
+// These runners were reviewed after their public-contract call sites changed.
+// Pin exact hashes so a later runner edit cannot silently refresh the quarantine baseline.
+export const reviewedRegistrationHashes = {
+  'framework/languages/cpp/e2e/ObservabilityOps/run_e2e.sh': '8998d293234afcaad7a4d4d84cdbb3003fe41e6754258df98b572237400f88c6',
+  'framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh': '33d051a3d372eeaf249e5ffd3549c2311390c1f7aecff1b3214d331ae98328cc',
+  'framework/languages/cpp/e2e/SpotService/run_e2e.sh': 'd5abc973d1d9da1ffefe68cd80ad07bb8d913e73a3ebfbbf97b44d1c939e7cfb',
+  'framework/languages/cpp/e2e/SubmitAdmission/run_e2e.sh': 'fece0f5772d41f6f7b772953f7902e6a3c841668449ce855e38a87302e509bf1',
+  'framework/languages/dotnet/e2e/LocationMessaging/run_e2e.sh': '99e861afdade3eb919214114f12b1ab0b51dfb1d0eb5545deeac50ff572e5178',
+  'framework/languages/dotnet/e2e/RuntimeMonitoring/Client/RuntimeMonitoring.Client.csproj': '4f563f907d7d4f41293ee5728ebc376e757677f4063be4ec200ee42b7e044e46',
+  'framework/languages/dotnet/e2e/RuntimeMonitoring/run_e2e.sh': '0ba055183ce22a935cc3fc59d0d4f7894d9ac5797e4bbf3e55c730d45249aa8a',
+  'framework/languages/dotnet/e2e/SpotActorTransfer/run_e2e.sh': '436ba2af7ea90323f59d266fd14bf0fd69ba7f7ee1ae980ed37251347fd025a7',
+  'framework/languages/dotnet/e2e/SpotService/run_e2e.sh': '5d7022adb65acfbe084d05bb4d2e5dd15827bd7764ae80e8e68e5e82eb4c10e1',
+  'framework/languages/java/e2e/ObservabilityOps/run_e2e.sh': '1e466b927242ecd761c5ef81b8d4e3de9370cb88b4f9d53db2f3bea69b0fcf72',
+  'framework/languages/java/e2e/RuntimeMonitoring/Client/build.gradle.kts': '0ef1a89959b0570b7a71dda85fae82de50d3ab6a34a9b750b1bf73ea2b17338f',
+  'framework/languages/java/e2e/RuntimeMonitoring/run_e2e.sh': '4754c3a62f32543caddeefb1ecdb31a48b4e882dd508120184d3b76f64c65d48',
+  'framework/languages/java/e2e/SpotActorTransfer/run_e2e.sh': '0028445c9631926b4deb8c773289592e3b5fad2b4fa40dd651a08d6a1b6d2b6c',
+  'framework/languages/java/e2e-kotlin/ObservabilityOps/run_e2e.sh': '008e1562134fa4b7424e9a1bcd3ec84aeae123b083a81b29b8f6ef354260ba3a',
+  'framework/languages/node/e2e/SpotService/run_e2e.sh': '8217f26dfc6c8e6647381ea68738ecd5e0f7d4c6493dea603a506a1904d15f37',
+  'framework/languages/node/e2e/SubmitAdmission/run_e2e.sh': '6e282d43354e1237edb99b888d1ba2405393c0f5373bff3a2ac3fa6f0d8d7624',
+  'framework/languages/cpp/samples/Bingo/run_sample.sh': 'e4878971773cce8228318f4afad8d7249bb11a5942ec01af283a697458d121b0',
+  'framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh': 'e4524f8c6277bd01dd94458d9403488d86697c3a2e3a223f97ef4282acee343b',
+  'framework/languages/cpp/samples/TicTacToe/run_sample.ps1': 'a876209333e27d768e9f3f54a631f44dea5a7e22e3544b53247d81f22ecd1830',
+  'framework/languages/cpp/samples/TicTacToe/run_sample.sh': '4cfa92043fa93ecf3d9bf798dcd93748827cb8fb5e9093c13d2009fa79b8dc5c',
+  'framework/languages/dotnet/samples/DeliveryDispatch/run_sample.ps1': '0d54f36961f0dac4aca1f8f24bb60b6f8d606f9d202014a47efeebd993997afe',
+  'framework/languages/dotnet/samples/DeliveryDispatch/run_sample.sh': 'baba59a6df06b3b00efa412eed8b3c7e7fc0ed4e1967352be9f830586d2148b8',
+  'framework/languages/dotnet/samples/ShoppingMall/run_sample.ps1': '6ecd5cff6e613a56e5b1751eefde5c62669239356445c271993b980133bf981d',
+  'framework/languages/dotnet/samples/ShoppingMall/run_sample.sh': '3177b62edf24174142c52481d50f4baa40f15c4c1bd63137582b94c49f352238',
+  'framework/languages/dotnet/samples/TicTacToe/run_sample.ps1': 'b3ccc2d17e50143d3b47d7b25f22269a6d39cb5754b1d512d8b5ba0332ce2583',
+  'framework/languages/dotnet/samples/TicTacToe/run_sample.sh': '05545a4730a5d0de79798bd552d2f78d92a664d79a160d0b7424a34a9a43bd13',
+  'framework/languages/dotnet/samples/ZoneWorld/run_sample.sh': '682d2399c88c49d4d394c6ca93b1275898383a83cfdbbdaf4f2c2ff2a29817bd',
+  'framework/languages/java/samples/java/Bingo/run_sample.ps1': '1c99bf748d9ccf6f7b928ca2927ac569578349c1160357d2575ed8e0319ee531',
+  'framework/languages/java/samples/java/DeliveryDispatch/run_sample.sh': 'f686c7de588df549640c934f9b18c33599f4abd085fcc6f3ce231a977b95b7b9',
+  'framework/languages/java/samples/java/SupportChat/run_sample.sh': '5b02f3598786cb6cf75effb494a2c94f646fcb69da072bdce8fec8eeef2c00d1',
+  'framework/languages/java/samples/java/TicTacToe/run_sample.ps1': '06e8b960d9dd2d8075766d68db8665f837bb525a5dc0425cc01e30cd584107d6',
+  'framework/languages/java/samples/java/TicTacToe/run_sample.sh': '0a2b50a17fa4b14e33a83f9ac6a00d4655368c523f5991ef84499cf2c6bdf2f3',
+  'framework/languages/java/samples/kotlin/SupportChat/run_sample.ps1': 'a534d1f52f8d80b43845f0702c2e093af5f51c8027afabeebbe70854091f039d',
+  'framework/languages/java/samples/kotlin/SupportChat/run_sample.sh': '76aaa5eb40ae6f0ed98fb5b914af4ad1a1fcc7cf62175c78cdd4d386172204aa',
+  'framework/languages/java/samples/kotlin/TicTacToe/run_sample.ps1': 'a84811ab46c95d5dcbd62aa6e80bc100d354157a813fea68f0fc055f82e276be',
+  'framework/languages/java/samples/kotlin/TicTacToe/run_sample.sh': '4f6e3986834be11a61497013d4abcd182229f43c94eb859a54f728fec1bee422',
+};
+
+// Baseline regression files that were renamed or replaced by a stronger test.
+// Each replacement keeps the old path as provenance and pins the reviewed new file.
+export const reviewedRegressionReplacements = {
+  'framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/ActorTransferTests.cs': {
+    path: 'framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/ActorRelocationProtocolTests.cs',
+    approvedHash: 'ca6f99e1a6b2926ab00b4707653e2bfff06f424187ee0a49246504d41edbe8ab',
+  },
+  'framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/LocationEventEmitterTests.cs': {
+    path: 'framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/LocationRuntimePollingDiffTests.cs',
+    approvedHash: '3be2b3b04e70153feb103ccd6873eefcd7ee0676ad265a2b58c87525c163883c',
+  },
+  'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/service/ZLinkServiceMailboxSchedulerTest.java': {
+    path: 'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/internal/service/ZLinkServiceMailboxSchedulerTest.java',
+    approvedHash: '86b06555982b2ed295d56023c02c984444d1a7e8e5f39c214085932a08ef18ab',
+  },
+  'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/service/ZLinkServiceOperationRegistryTest.java': {
+    path: 'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/internal/service/ZLinkServiceOperationRegistryTest.java',
+    approvedHash: '10ffcb52a495aac920194f274f135b164ab5573131448f38cbf53016b2980134',
+  },
+  'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/service/ZLinkServiceWireCodecTest.java': {
+    path: 'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/internal/service/ZLinkServiceWireCodecTest.java',
+    approvedHash: '1336e86cd00d17b5c8e45b3ed98189c65f7f710dfc33bda4bfb3d05473e9bc62',
+  },
+  'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/locations/ZLinkAllocatedRoutingIdRuntimeTest.java': {
+    path: 'framework/languages/java/zlink-framework-core/src/test/java/systems/zlink/framework/runtime/mesh/ZLinkMeshNodeRuntimeTest.java',
+    approvedHash: 'a6ebe4658a7ce58e06f4c2fc2d370b5d0b2af056aace4b3e45ad81b7040def62',
+  },
+  'framework/languages/java/zlink-framework-locations-redis/src/test/java/systems/zlink/framework/locations/redis/ZLinkRedisCrossLanguageTest.java': {
+    path: 'framework/languages/java/zlink-framework-locations-redis/src/test/java/systems/zlink/framework/locations/redis/ZLinkRedisLocationRowJsonTest.java',
+    approvedHash: '498d28b7c002217ff81249f0f2a71dbfc5db041f098138d1898a43f17a68ae36',
+  },
+  'framework/languages/node/test/contract/routing-id-allocation.test.js': {
+    path: 'framework/languages/node/test/contract/sample-bingo-routing-id-allocation-gate.test.js',
+    approvedHash: '5db245b6d0e7e4a4e10993981d741cf7363cd471356eedb27be707255f882c2b',
+  },
+  'framework/languages/node/test/contract/sample-zoneworld-routing.test.js': {
+    path: 'framework/languages/node/test/contract/sample-zoneworld-gate.test.js',
+    approvedHash: '25fb3bee4563be59ae5dc12bb54566d360dc163c341a9a5b0de2e11aaf612ca4',
+  },
 };
 
 const rules = [
@@ -196,6 +282,23 @@ const rules = [
     matches: value => /transfer/u.test(value)
       && !/checkpoint|transferstore|transferreference|transferstored|redis|forward|routecache/u.test(value),
     decisions: ['CA-D36', 'CA-D37', 'CA-D38', 'CA-D39', 'CA-D40', 'CA-D41', 'CA-D42', 'CA-D43'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'host-lifecycle-topology-state-separation',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      return /(?:drainstate|drainevent|meshnodestate|operationalstate|operationalreason)(?:t)?$/u
+        .test(owner)
+        || (/drainforcereasont$/u.test(owner)
+          && /^(?:deadlineexceeded|teardownfailed)$/u.test(name))
+        || (/forcestoppedt$/u.test(owner) && name === 'reason')
+        || (/appt$/u.test(owner) && name === 'deprecated')
+        || (/(?:frameworkruntimestate|frameworkrelocationoutcome)(?:t)?$/u.test(owner)
+          && name === 'drained');
+    },
+    decisions: ['CA-D79'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {

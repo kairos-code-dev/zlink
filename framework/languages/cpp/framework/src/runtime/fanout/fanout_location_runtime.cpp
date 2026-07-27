@@ -36,7 +36,8 @@ mesh::service_node_state_t service_state (
             return mesh::service_node_state_t::preparing;
         case framework_runtime_state_t::serving:
             return mesh::service_node_state_t::serving;
-        case framework_runtime_state_t::retiring:
+        case framework_runtime_state_t::relocating:
+        case framework_runtime_state_t::relocated:
         case framework_runtime_state_t::draining:
             return mesh::service_node_state_t::draining;
         case framework_runtime_state_t::stopped:

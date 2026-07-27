@@ -150,8 +150,6 @@ struct route_mesh_runtime_service_t::state_t :
     std::map<std::string, std::shared_ptr<hub_t>> hubs;
     location_runtime_query_t *location_runtime = nullptr;
     location_store_t *location_store = nullptr;
-    drain_callback_t drain_callback;
-    await_drained_callback_t await_drained_callback;
     mutable std::mutex sequence_mutex;
     mutable std::map<std::string, std::uint64_t> sequences;
     mutable std::mutex drain_mutex;
@@ -173,15 +171,6 @@ struct route_mesh_runtime_service_t::state_t :
         if (found == hubs.end ())
             throw invalid_runtime_call ("RouteMesh is not configured: " + mesh_name);
         return found->second;
-    }
-
-    void require_mesh_scoped_drain_supported () const
-    {
-        if (hubs.size () != 1) {
-            throw invalid_runtime_call (
-              "mesh-scoped drain is unavailable when this host contains multiple "
-              "RouteMesh instances");
-        }
     }
 
     void broadcast (hub_t &hub, const mesh_runtime_event_t &event)
@@ -322,15 +311,11 @@ class observation_t final : public mesh_runtime_observation_t
 route_mesh_runtime_service_t::route_mesh_runtime_service_t (
   std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes,
   location_runtime_query_t *location_runtime,
-  drain_callback_t drain,
-  await_drained_callback_t await_drained,
   location_store_t *location_store) :
     _state (std::make_shared<state_t> ())
 {
     _state->location_runtime = location_runtime;
     _state->location_store = location_store;
-    _state->drain_callback = std::move (drain);
-    _state->await_drained_callback = std::move (await_drained);
     for (auto &node : nodes)
         _state->hubs.emplace (node->mesh_name (),
                               std::make_shared<state_t::hub_t> (node));
@@ -574,39 +559,6 @@ route_mesh_runtime_service_t::observe (
 bool route_mesh_runtime_service_t::is_ready (std::string mesh_name) const
 {
     return native_ready (_state->require_hub (mesh_name)->node->status ().state);
-}
-
-task_t<drain_result_t>
-route_mesh_runtime_service_t::drain (std::string mesh_name,
-                                     std::chrono::milliseconds deadline)
-{
-    _state->require_hub (mesh_name);
-    if (deadline < std::chrono::milliseconds::zero ())
-        throw invalid_runtime_call ("deadline must not be negative");
-    _state->require_mesh_scoped_drain_supported ();
-    {
-        std::lock_guard lock (_state->drain_mutex);
-        if (!_state->drain_deadline)
-            _state->drain_deadline = std::chrono::system_clock::now () + deadline;
-    }
-    auto task = _state->drain_callback (deadline);
-    const auto state = _state;
-    observe_task_completion (
-      task, [state] (const result_t<drain_result_t> &result) {
-          if (result) {
-              std::lock_guard lock (state->drain_mutex);
-              state->work_sealed = true;
-          }
-      });
-    return task;
-}
-
-task_t<drain_result_t>
-route_mesh_runtime_service_t::await_drained (std::string mesh_name)
-{
-    _state->require_hub (mesh_name);
-    _state->require_mesh_scoped_drain_supported ();
-    return _state->await_drained_callback ();
 }
 
 route_mesh_runtime_host_service_t::route_mesh_runtime_host_service_t (

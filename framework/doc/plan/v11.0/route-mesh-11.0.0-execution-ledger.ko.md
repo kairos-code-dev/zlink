@@ -74,6 +74,32 @@ commit·push한다. `framework/doc/plan/log/`는 이 작업에서 수정하지 �
 Impact manifest quarantine과 mixed-language process relocation E2E는 아직 통과하지 않는다. 이
 checkpoint는 해당 두 gate를 승인하거나 완료로 바꾸지 않는다.
 
+### 0.0.4 2026-07-27 M6 runtime 병렬 구현 checkpoint
+
+현재 변경은 `115d34281f` 이후의 C++·JVM·Node.js M6 runtime 작업을 묶는다.
+
+- C++은 host lifecycle을 `Relocate`와 `Shutdown`으로 분리했다. Relocation 성공 뒤 runtime은
+  `Relocated` 상태로 유지되며 Shutdown이 별도로 resource를 정리한다. 이전 `retire`·`drain`·
+  `await_drained`와 per-Mesh drain 공개 API는 제거했다. Framework build, host lifecycle,
+  contract header와 target contract는 각각 통과했고 Store resolver 37/37, Redis 16/16도 통과했다.
+  이전 Store SPI와 Spot factory를 사용하는 일부 broad E2E compile gap은 계속 진행 상태다.
+- JVM은 Entry Spot Actor relocation의 source capture와 target staging owner를 production runtime에
+  연결했다. Target은 restore와 accepted journal replay를 live registry 밖에서 수행한 뒤 publish한다.
+  Java core 587/587과 Kotlin 46/46가 통과했다. 실제 host endpoint, aggregate finalize와 two-owner
+  recovery E2E는 `BLK-043`의 남은 조건이다.
+- Node.js는 공개 Location Store를 opaque `read`·`write`·`scan`·`dispose` SPI로 줄이고 domain operation을
+  Framework private repository로 옮겼다. Owner lease와 MeshNode descriptor의 production vertical
+  slice는 이 SPI만 사용한다. NestJS HTTP client runtime도 scheduler error가 발생할 때만 lazy resolve한다.
+  Typecheck와 location·NestJS focused regression 81/81이 통과했다.
+- Public contract trace는 document 51개, declaration owner 1,248개, member 4,383개이며 unclassified와
+  ambiguous 항목은 0이다. Impact manifest는 6,381개를 생성했고 quarantine은 pending 5,649,
+  executed 0, skipped 0으로 통과했다. 삭제된 regression과 변경된 runner는 검토한 대체 파일과 exact
+  hash로 고정했다. Framework document contract gate도 통과했다.
+
+이 checkpoint는 C++ broad E2E, JVM two-owner recovery, Node production host 전체 연결과
+mixed-language process relocation을 완료로 판정하지 않는다. 해당 작업은 기존 M6 행과
+`BLK-043`·`BLK-044`에서 계속 관리한다.
+
 ### 0.0.2 2026-07-27 전체 진행 상태 checkpoint
 
 현재 상태 기준 revision은 `f26ff5945b1dde46cacfd632c588cfcdfbdcccd5`다. 아래 수치는 이 revision을

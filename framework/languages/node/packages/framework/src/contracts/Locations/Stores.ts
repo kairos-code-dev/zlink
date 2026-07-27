@@ -1,164 +1,92 @@
-import type {
-  ZLinkLocationOwnerToken,
-  ZLinkLocationPage,
-  ZLinkLocationWriteIntent,
-  ZLinkLocationWriteResult,
-  ZLinkLocationWriteStatus,
-  ZLinkMeshNodeDescriptor,
-  ZLinkMeshNodeDescriptorKey,
-  ZLinkClientServerServerDescriptor,
-  ZLinkClientServerServerDescriptorKey,
-  ZLinkFanoutPublisherDescriptor,
-  ZLinkFanoutPublisherDescriptorKey,
-  ZLinkOwnerLeaseClaimResult,
-  ZLinkOwnerLeaseReadResult,
-  ZLinkOwnerLeaseReleaseResult,
-  ZLinkOwnerLeaseRenewResult,
-  ZLinkPageRequest,
-} from './Models';
-import type {
-  ZLinkAggregateAbortResult,
-  ZLinkAggregateCommitResult,
-  ZLinkAggregateFence,
-  ZLinkAggregatePrepareRequest,
-  ZLinkAggregatePrepareResult,
-  ZLinkAuthorityCompareExchangeResult,
-  ZLinkAuthorityKey,
-  ZLinkAuthorityMutation,
-  ZLinkAuthorityReadResult,
-  ZLinkAuthorityScanCursor,
-  ZLinkAuthorityScanResult,
-  ZLinkAuthorityStoreVersion,
-  ZLinkCreationOperationIdentity,
-  ZLinkCreationTerminalReadResult,
-  ZLinkObjectAbortRequest,
-  ZLinkObjectAbortResult,
-  ZLinkObjectCommitRequest,
-  ZLinkObjectCommitResult,
-  ZLinkObjectCreationCompleteRequest,
-  ZLinkObjectCreationCompleteResult,
-  ZLinkObjectReserveRequest,
-  ZLinkObjectReserveResult,
-  ZLinkRelocationCapacityAbortResult,
-  ZLinkRelocationCapacityFence,
-  ZLinkRelocationCapacityReservationRequest,
-  ZLinkRelocationCapacityReserveResult
-} from './Authority';
+declare const zlinkStoreKeyBrand: unique symbol;
+declare const zlinkStoreVersionBrand: unique symbol;
+declare const zlinkStoreScanCursorBrand: unique symbol;
 
-/**
- * Complete provider SPI for descriptors, owner leases, object authority,
- * reservations, and aggregate publication. Applications use the framework
- * object APIs and operational queries instead of composing partial stores.
- */
+export interface ZLinkStoreKey {
+  readonly value: string;
+  readonly [zlinkStoreKeyBrand]: true;
+}
+
+export interface ZLinkStoreVersion {
+  readonly value: string;
+  readonly [zlinkStoreVersionBrand]: true;
+}
+
+export interface ZLinkStoreScanCursor {
+  readonly value: string;
+  readonly [zlinkStoreScanCursorBrand]: true;
+}
+
+export interface ZLinkStoreValue {
+  readonly bytes: Uint8Array;
+  readonly version: ZLinkStoreVersion;
+  readonly expiresAt?: Date;
+  readonly storeNow: Date;
+}
+
+export type ZLinkStoreReadResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | { readonly kind: 'found'; readonly value: ZLinkStoreValue };
+
+export type ZLinkStoreCondition =
+  | { readonly kind: 'missing'; readonly key: ZLinkStoreKey }
+  | {
+      readonly kind: 'version';
+      readonly key: ZLinkStoreKey;
+      readonly expected: ZLinkStoreVersion;
+    };
+
+export type ZLinkStoreMutation =
+  | {
+      readonly kind: 'put';
+      readonly key: ZLinkStoreKey;
+      readonly bytes: Uint8Array;
+      readonly retentionMs?: number;
+    }
+  | { readonly kind: 'delete'; readonly key: ZLinkStoreKey };
+
+export interface ZLinkStoreWriteRequest {
+  readonly conditions: readonly ZLinkStoreCondition[];
+  readonly mutations: readonly ZLinkStoreMutation[];
+}
+
+export interface ZLinkStorePutVersion {
+  readonly key: ZLinkStoreKey;
+  readonly version: ZLinkStoreVersion;
+}
+
+export type ZLinkStoreWriteResult =
+  | {
+      readonly kind: 'applied';
+      readonly putVersions: readonly ZLinkStorePutVersion[];
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'conflict'; readonly storeNow: Date };
+
+export interface ZLinkStoreScanRequest {
+  readonly prefix: string;
+  readonly cursor?: ZLinkStoreScanCursor;
+  readonly limit: number;
+}
+
+export interface ZLinkStoreScanItem {
+  readonly key: ZLinkStoreKey;
+  readonly value: ZLinkStoreValue;
+}
+
+export interface ZLinkStoreScanPage {
+  readonly items: readonly ZLinkStoreScanItem[];
+  readonly nextCursor?: ZLinkStoreScanCursor;
+  readonly storeNow: Date;
+}
+
+export type ZLinkStoreScanResult =
+  | { readonly kind: 'page'; readonly value: ZLinkStoreScanPage }
+  | { readonly kind: 'expired' };
+
 export interface ZLinkLocationStore {
-  updateMeshNode(
-    descriptor: ZLinkMeshNodeDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-  removeMeshNode(
-    key: ZLinkMeshNodeDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-  listMeshNodes(
-    meshName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>;
-
-  updateClientServer(
-    descriptor: ZLinkClientServerServerDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-  removeClientServer(
-    key: ZLinkClientServerServerDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-  listClientServers(
-    channelName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>;
-  updateFanoutPublisher(
-    descriptor: ZLinkFanoutPublisherDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-  removeFanoutPublisher(
-    key: ZLinkFanoutPublisherDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-  listFanoutPublishers(
-    channelName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>;
-  claimOwnerLease(
-    ownerId: string,
-    leaseTtlMs: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseClaimResult>;
-  readOwnerLease(
-    ownerId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseReadResult>;
-  renewOwnerLease(
-    token: ZLinkLocationOwnerToken,
-    leaseTtlMs: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseRenewResult>;
-  releaseOwnerLease(
-    token: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseReleaseResult>;
-
-  readAuthority(key: ZLinkAuthorityKey, signal?: AbortSignal): Promise<ZLinkAuthorityReadResult>;
-  compareExchangeAuthority(
-    key: ZLinkAuthorityKey,
-    expectedStoreVersion: ZLinkAuthorityStoreVersion,
-    mutation: ZLinkAuthorityMutation,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityCompareExchangeResult>;
-  listAuthorities(
-    prefix: string,
-    cursor: ZLinkAuthorityScanCursor | undefined,
-    limit: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityScanResult>;
-
-  readCreationTerminal(
-    operation: ZLinkCreationOperationIdentity,
-    signal?: AbortSignal
-  ): Promise<ZLinkCreationTerminalReadResult>;
-  reserve(request: ZLinkObjectReserveRequest, signal?: AbortSignal): Promise<ZLinkObjectReserveResult>;
-  commit(request: ZLinkObjectCommitRequest, signal?: AbortSignal): Promise<ZLinkObjectCommitResult>;
-  completeCreation(
-    request: ZLinkObjectCreationCompleteRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkObjectCreationCompleteResult>;
-  abort(request: ZLinkObjectAbortRequest, signal?: AbortSignal): Promise<ZLinkObjectAbortResult>;
-
-  reserveRelocationCapacity(
-    request: ZLinkRelocationCapacityReservationRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationCapacityReserveResult>;
-  abortRelocationCapacity(
-    fence: ZLinkRelocationCapacityFence,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationCapacityAbortResult>;
-  prepareAggregate(
-    request: ZLinkAggregatePrepareRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkAggregatePrepareResult>;
-  commitAggregate(fence: ZLinkAggregateFence, signal?: AbortSignal): Promise<ZLinkAggregateCommitResult>;
-  abortAggregate(fence: ZLinkAggregateFence, signal?: AbortSignal): Promise<ZLinkAggregateAbortResult>;
-
-  removeAllByOwner(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<bigint>;
-
-  /** Optional wake-up hint. Undefined means the runtime polls descriptors. */
-  getMeshNodeChangeStamp?(meshName: string, signal?: AbortSignal): Promise<bigint | undefined>;
+  read(key: ZLinkStoreKey, signal?: AbortSignal): Promise<ZLinkStoreReadResult>;
+  write(request: ZLinkStoreWriteRequest, signal?: AbortSignal): Promise<ZLinkStoreWriteResult>;
+  scan(request: ZLinkStoreScanRequest, signal?: AbortSignal): Promise<ZLinkStoreScanResult>;
+  dispose?(): void | Promise<void>;
 }

@@ -2,7 +2,7 @@ import {
   zlinkRuntimeDefaultLocationOptions,
   type ZLinkLocationOptionOverrides
 } from '../../contracts/Locations/Options';
-import type { ZLinkLocationStore } from './internal-location-contracts';
+import type { ZLinkDomainLocationStore as ZLinkLocationStore } from './domain-store-contract';
 import type { ZLinkOwnerLeaseTracker } from './lease-tracker';
 import type { ZLinkAutoConnectLocal } from './auto-connect-types';
 import type { ZLinkAutoConnectReconciler } from './auto-connect-reconciler';

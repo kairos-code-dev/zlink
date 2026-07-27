@@ -12,9 +12,8 @@ Application은 `relocate()`를 호출할 때 목적을 반드시 지정한다. `
 version의 다른 node로 object를 이전한 뒤 현재 host를 점검하거나 재시작할 때 사용한다.
 `rolling_update`는 application이 지정한 더 높은 version으로만 object를 이전할 때 사용한다.
 
-기존 `drain()`과 `await_drained()`는 source compatibility를 위해 남긴 deprecated facade다. 이 facade는
-`shutdown()`과 같은 shared operation을 사용하고 legacy 결과 형식으로만 변환한다. `stop()`과
-`request_stop()`도 host의 `shutdown()`을 시작한다. MeshName을 받는 component lifecycle operation은
+기존 `retire()`, `drain()`과 `await_drained()`는 공개 interface에서 제거한다. `stop()`과
+`request_stop()`은 host의 `shutdown()`을 시작한다. MeshName을 받는 component lifecycle operation은
 제공하지 않는다.
 
 ```cpp
@@ -155,14 +154,6 @@ relocation을 중단한다. Relocation waiter는 `blocked/shutdown_requested`를
 ```cpp
 namespace zlink::framework {
 
-enum class drain_force_reason_t {
-    deadline_exceeded,
-    teardown_failed
-};
-struct drained_t {};
-struct force_stopped_t { drain_force_reason_t reason; };
-using drain_result_t = std::variant<drained_t, force_stopped_t>;
-
 class app_t {
 public:
     app_t();
@@ -187,12 +178,6 @@ public:
     app_t &add_zlink_framework(TArgs &&...args);
     app_t &add_hosted_service(std::unique_ptr<hosted_service_t> service);
 
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> drain(std::chrono::milliseconds deadline);
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> drain();
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> await_drained();
     bool is_ready() const noexcept;
     app_t &set_message_flow_mode(message_flow_log_mode_t mode) noexcept;
     message_flow_log_mode_t message_flow_mode() const noexcept;
@@ -211,13 +196,6 @@ public:
 
 } // namespace zlink::framework
 ```
-
-Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다. `stopped/none`은 `drained_t`로
-변환한다. `force_stopped/deadline_exceeded`와 `force_stopped/teardown_failed`는 각각 같은 이름의
-`drain_force_reason_t`를 담은 `force_stopped_t`로 변환한다. 이 목록은 허용된 Shutdown terminal result
-전체를 포함한다. 인자 없는
-`drain()`과 `await_drained()`도 기본 30초의 같은 Shutdown operation을 시작하거나 이미 시작한 operation에
-합류한다. 이 facade는 state transition, admission 또는 cleanup 순서를 별도로 소유하지 않는다.
 
 `run`은 `int`를 반환한다. 반환값은 process exit code로 사용할 수 있어야 한다.
 handler 예외, runtime 오류, signal shutdown은 host가 수집하고 종료 경로를 닫는다.

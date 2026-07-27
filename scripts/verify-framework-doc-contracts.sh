@@ -866,33 +866,15 @@ for (const [language, contract] of [
 }
 
 const cppTerminationContract = readExactContract(root, 'cpp', ['cpp']);
-const cppDrainReasonMatch = cppTerminationContract.code.match(
-  /enum class drain_force_reason_t\s*\{([\s\S]*?)\};/u);
-if (!cppDrainReasonMatch) {
-  fail('C++ deprecated drain_force_reason_t declaration is missing');
-} else {
-  const actualReasons = cppDrainReasonMatch[1]
-    .split(',')
-    .map(value => value.trim())
-    .filter(Boolean);
-  const expectedReasons = ['deadline_exceeded', 'teardown_failed'];
-  if (JSON.stringify(actualReasons) !== JSON.stringify(expectedReasons)) {
-    fail(`C++ deprecated drain reasons are not the closed Shutdown mapping: actual=${actualReasons.join(',')}`);
-  }
-}
 const cppTerminationNormalized = cppTerminationContract.source.replace(/\s+/gu, ' ');
-for (const fragment of [
-  'Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다.',
-  '`stopped/none`은 `drained_t`로 변환한다.',
-  '`force_stopped/deadline_exceeded`와 `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
-  '이 목록은 허용된 Shutdown terminal result 전체를 포함한다.',
-]) {
-  if (!cppTerminationNormalized.includes(fragment)) {
-    fail(`C++ deprecated drain facade is missing total Shutdown mapping: ${fragment}`);
-  }
+if (/\b(?:drain_force_reason_t|drain_result_t|drained_t|force_stopped_t)\b/u
+  .test(cppTerminationContract.code)
+  || /\b(?:drain|await_drained)\s*\(/u.test(cppTerminationContract.code)) {
+  fail('C++ exact contract retains a removed deprecated drain facade');
 }
-if (/\b(?:drain_state_publish_failed|owner_cleanup_failed)\b/u.test(cppTerminationContract.code)) {
-  fail('C++ deprecated drain facade retains a stale non-isomorphic failure reason');
+if (!cppTerminationNormalized.includes(
+  '기존 `retire()`, `drain()`과 `await_drained()`는 공개 interface에서 제거한다.')) {
+  fail('C++ exact contract is missing the deprecated lifecycle removal statement');
 }
 
 const terminationOwnerNegativeFixtures = [

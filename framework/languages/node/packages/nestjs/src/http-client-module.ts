@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import type { DynamicModule, InjectionToken, ModuleMetadata, OnModuleDestroy, Provider } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   ZLinkHttpClient,
   type HttpResponse,
@@ -54,8 +55,17 @@ class ZLinkHttpClientRegistry implements OnModuleDestroy {
 
   constructor(
     registrations: readonly ZLinkNamedHttpClientOptions[],
-    runtime: ZLinkNestIntegrationRuntimeHost
+    moduleRef: ModuleRef
   ) {
+    const runtime = new Proxy({} as ZLinkNestIntegrationRuntimeHost, {
+      get: (_target, property) => {
+        const current = moduleRef.get<ZLinkNestIntegrationRuntimeHost>(
+          ZLINK_FRAMEWORK_RUNTIME,
+          { strict: false }
+        );
+        return Reflect.get(current as object, property);
+      }
+    });
     const scheduler = framework.createIntegrationHttpExecutionScheduler(runtime);
     for (const registration of registrations) {
       const name = registration.name.trim();
@@ -89,9 +99,9 @@ export class ZLinkHttpClientModule {
     validateRegistrations(options.clients);
     const registry: Provider = {
       provide: ZLINK_HTTP_CLIENT_REGISTRY,
-      inject: [ZLINK_FRAMEWORK_RUNTIME],
-      useFactory: (runtime: ZLinkNestIntegrationRuntimeHost) =>
-        new ZLinkHttpClientRegistry(options.clients, runtime)
+      inject: [ModuleRef],
+      useFactory: (moduleRef: ModuleRef) =>
+        new ZLinkHttpClientRegistry(options.clients, moduleRef)
     };
     const clients: Provider[] = options.clients.map((registration) => ({
       provide: zlinkHttpClientToken(registration.name),

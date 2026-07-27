@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/configuration/lifecycle.hpp>
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/configuration/endpoint_connections.hpp>
 #include <zlink/framework/contracts/codecs/serializer.hpp>

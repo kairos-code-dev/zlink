@@ -65,10 +65,10 @@ class blocking_stop_service_t final :
     bool _release = false;
 };
 
-bool verify_retire_blocker (
+bool verify_relocation_blocker (
   std::string_view label,
   std::function<void (zlink::framework::zlink_framework_options_t &)> configure,
-  zlink::framework::termination_reason_t expected)
+  zlink::framework::relocation_reason_t expected)
 {
     auto app = zlink::framework::app_t::create ();
     app.add_zlink_framework (std::move (configure));
@@ -88,15 +88,19 @@ bool verify_retire_blocker (
         std::this_thread::yield ();
 
     const auto result =
-      app.retire (std::chrono::seconds (1)).result ().value ();
+      app.relocate (
+           {.mode =
+              zlink::framework::relocation_mode_t::planned_maintenance,
+            .deadline = std::chrono::seconds (1)})
+        .result ()
+        .value ();
     const bool matched =
-      result == zlink::framework::termination_result_t{
-                  zlink::framework::termination_intent_t::retire,
-                  zlink::framework::termination_outcome_t::blocked,
-                  expected}
+      result.outcome == zlink::framework::relocation_outcome_t::blocked
+      && result.reason == expected
       && app.is_ready ();
     if (!matched)
-        std::cerr << label << " must block Retire without changing Serving\n";
+        std::cerr << label
+                  << " must block Relocate without changing Serving\n";
 
     auto shutdown = app.shutdown (std::chrono::seconds (2));
     service_view->wait_stop_entered ();
@@ -113,17 +117,17 @@ bool verify_retire_blocker (
 
 int main ()
 {
-    if (!verify_retire_blocker (
+    if (!verify_relocation_blocker (
           "manual ClientServer topology",
           [] (zlink::framework::zlink_framework_options_t &options) {
               options.add_client_server_channel ("manual-orders")
                 .client ()
                 .connect ("tcp://127.0.0.1:29999");
           },
-          zlink::framework::termination_reason_t::manual_topology_unsupported)) {
+          zlink::framework::relocation_reason_t::manual_topology_unsupported)) {
         return EXIT_FAILURE;
     }
-    if (!verify_retire_blocker (
+    if (!verify_relocation_blocker (
           "manual RouteMesh topology",
           [] (zlink::framework::zlink_framework_options_t &options) {
               auto node = options.add_route_mesh ("retire-manual-mesh");
@@ -134,10 +138,10 @@ int main ()
               node.peer_connections ().connect (
                 "tcp://127.0.0.1:29998");
           },
-          zlink::framework::termination_reason_t::manual_topology_unsupported)) {
+          zlink::framework::relocation_reason_t::manual_topology_unsupported)) {
         return EXIT_FAILURE;
     }
-    if (!verify_retire_blocker (
+    if (!verify_relocation_blocker (
           "automatic RouteMesh without a replacement",
           [] (zlink::framework::zlink_framework_options_t &options) {
               auto node = options.add_route_mesh ("retire-single-mesh");
@@ -146,7 +150,7 @@ int main ()
                     zlink::routing_id_t::from ("retire-single-node"))
                 .listen ("inproc://cpp-retire-single-node");
           },
-          zlink::framework::termination_reason_t::target_unavailable)) {
+          zlink::framework::relocation_reason_t::target_unavailable)) {
         return EXIT_FAILURE;
     }
 
@@ -157,21 +161,47 @@ int main ()
         return EXIT_FAILURE;
     }
 
-    const auto retire = app.retire ().result ().value ();
-    if (retire
-        != zlink::framework::termination_result_t{
-          zlink::framework::termination_intent_t::retire,
-          zlink::framework::termination_outcome_t::blocked,
-          zlink::framework::termination_reason_t::runtime_not_ready}) {
-        std::cerr << "Retire before Serving must return Blocked/RuntimeNotReady\n";
+    bool planned_target_rejected = false;
+    try {
+        (void) app.relocate (
+          {.mode =
+             zlink::framework::relocation_mode_t::planned_maintenance,
+           .target_application_version = 2});
+    }
+    catch (const std::invalid_argument &) {
+        planned_target_rejected = true;
+    }
+    bool rolling_target_required = false;
+    try {
+        (void) app.relocate (
+          {.mode = zlink::framework::relocation_mode_t::rolling_update});
+    }
+    catch (const std::invalid_argument &) {
+        rolling_target_required = true;
+    }
+    if (!planned_target_rejected || !rolling_target_required) {
+        std::cerr << "Relocate mode must validate its target version option\n";
+        return EXIT_FAILURE;
+    }
+
+    const auto relocation =
+      app.relocate (
+           {.mode =
+              zlink::framework::relocation_mode_t::planned_maintenance})
+        .result ()
+        .value ();
+    if (relocation.outcome
+          != zlink::framework::relocation_outcome_t::blocked
+        || relocation.reason
+             != zlink::framework::relocation_reason_t::runtime_not_ready) {
+        std::cerr
+          << "Relocate before Serving must return Blocked/RuntimeNotReady\n";
         return EXIT_FAILURE;
     }
 
     const auto shutdown =
       app.shutdown (std::chrono::seconds (1)).result ().value ();
-    if (shutdown.effective_intent
-          != zlink::framework::termination_intent_t::shutdown
-        || shutdown.outcome
+    if (shutdown.outcome
              != zlink::framework::termination_outcome_t::stopped
         || shutdown.reason
              != zlink::framework::termination_reason_t::none
@@ -180,8 +210,17 @@ int main ()
         std::cerr << "Shutdown must complete the shared termination operation\n";
         return EXIT_FAILURE;
     }
-    if (app.retire ().result ().value () != shutdown) {
-        std::cerr << "later intent must observe the shared terminal result\n";
+    const auto after_shutdown =
+      app.relocate (
+           {.mode =
+              zlink::framework::relocation_mode_t::planned_maintenance})
+        .result ()
+        .value ();
+    if (after_shutdown.outcome
+          != zlink::framework::relocation_outcome_t::blocked
+        || after_shutdown.reason
+             != zlink::framework::relocation_reason_t::runtime_not_ready) {
+        std::cerr << "Relocate after Shutdown must report RuntimeNotReady\n";
         return EXIT_FAILURE;
     }
 
@@ -201,14 +240,20 @@ int main ()
            && std::chrono::steady_clock::now () < serving_deadline)
         std::this_thread::yield ();
 
-    const auto unavailable_retire =
-      running.retire (std::chrono::seconds (2)).result ().value ();
-    if (unavailable_retire.outcome
-          != zlink::framework::termination_outcome_t::blocked
-        || unavailable_retire.reason
-             != zlink::framework::termination_reason_t::store_unavailable
+    const auto unavailable_relocation =
+      running
+        .relocate (
+          {.mode =
+             zlink::framework::relocation_mode_t::planned_maintenance,
+           .deadline = std::chrono::seconds (2)})
+        .result ()
+        .value ();
+    if (unavailable_relocation.outcome
+          != zlink::framework::relocation_outcome_t::blocked
+        || unavailable_relocation.reason
+             != zlink::framework::relocation_reason_t::target_unavailable
         || !running.is_ready ()) {
-        std::cerr << "Retire preflight blocker must preserve Serving\n";
+        std::cerr << "Relocation preflight blocker must preserve Serving\n";
         running.stop ();
         service_view->release ();
         run_thread.join ();

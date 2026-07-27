@@ -6,8 +6,8 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 3021,
-      "sha256": "a30aaeab545eed3743869ca85b10c9ae2ca46f645ae549820e2c5e71a7c18f3d",
+      "count": 3018,
+      "sha256": "2c42a3ceb7ea87300656b45cf21938bdd1bf1ea68dcb51cfdb768c22b669ff0e",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
@@ -16,8 +16,8 @@
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1949,
-      "sha256": "c9520a5aceddbb779586ff32250e6b05aa4983d916d1cbf5ad6f1ab96d235a0e",
+      "count": 1952,
+      "sha256": "25a8809e2b2cf5486c8f4e186246dffd87a7d8d95d1e651c1491ac157f6cd257",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {

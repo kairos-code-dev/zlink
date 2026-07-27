@@ -81,7 +81,7 @@ import type {
   ZLinkAuthorityKey,
   ZLinkAuthoritySnapshot
 } from '../../packages/framework/src/contracts/Locations/Authority';
-import type { ZLinkLocationStore } from '../../packages/framework/src/contracts/Locations/Stores';
+import type { ZLinkAuthorityStore } from '../../packages/framework/src/runtime/locations/internal-store-contracts';
 import { ZLinkAuthorityScanCursor } from '../../packages/framework/src/contracts/Locations/Authority';
 import type { ZLinkBackendMeshNode } from '../../packages/framework/src/runtime/backend/contracts';
 import type {
@@ -89,10 +89,6 @@ import type {
   ZLinkRelocationStore
 } from '../../packages/framework/src/contracts/Locations/RelocationStore';
 
-type ZLinkAuthorityStore = Pick<
-  ZLinkLocationStore,
-  'readAuthority' | 'compareExchangeAuthority' | 'listAuthorities'
->;
 import {
   DefaultZLinkSpotManager,
   DefaultZLinkSpotOutbound,

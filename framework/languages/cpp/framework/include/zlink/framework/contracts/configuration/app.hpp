@@ -2,7 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/configuration/configuration.hpp>
-#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/configuration/lifecycle.hpp>
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/logging.hpp>
@@ -18,7 +18,6 @@
 #include <memory>
 #include <stop_token>
 #include <utility>
-#include <variant>
 
 namespace zlink::framework
 {
@@ -87,14 +86,8 @@ class app_t
 
     int run (int argc, char **argv);
 
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> drain (std::chrono::milliseconds deadline);
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> drain ();
-    [[deprecated("use shutdown()")]]
-    task_t<drain_result_t> await_drained ();
-    task_t<termination_result_t> retire (
-      std::chrono::milliseconds deadline = std::chrono::seconds (30),
+    task_t<relocation_result_t> relocate (
+      relocation_options_t options,
       std::stop_token wait_cancellation = {});
     task_t<termination_result_t> shutdown (
       std::chrono::milliseconds deadline = std::chrono::seconds (30),
@@ -108,11 +101,8 @@ class app_t
   private:
     friend class app_advanced_t;
 
-    static void run_shared_termination (detail::app_state_t &state) noexcept;
-    task_t<termination_result_t> terminate (
-      termination_intent_t intent,
-      std::chrono::milliseconds deadline,
-      std::stop_token wait_cancellation);
+    static void run_shared_relocation (detail::app_state_t &state) noexcept;
+    static void run_shared_shutdown (detail::app_state_t &state) noexcept;
 
     service_collection_t &_services () noexcept;
     handler_registry_t &_handlers () noexcept;

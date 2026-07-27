@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.mesh;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +18,18 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
 class ZLinkMeshNodeRuntimeTest {
+    @Test
+    void automaticRoutingIdUsesStablePrefixAndCanonicalUuid() {
+        MeshNodeRegistration registration = new MeshNodeRegistration("game");
+        registration.setRoutingIdPrefix("play");
+
+        RoutingId first = registration.routingId();
+
+        assertEquals(first, registration.routingId());
+        assertTrue(first.toString().matches(
+            "play-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
+    }
+
     @Test
     void startAppliesIdentityTopologyAndPeersBeforeOwningLifecycle() {
         MeshNodeRegistration registration = new MeshNodeRegistration("game");

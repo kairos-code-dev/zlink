@@ -380,20 +380,24 @@ gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 �
 
 ### 12.36 C++ 11.0 host maintenance public surface 미구현
 
-[C++ exact interface](server/languages/cpp/interfaces/README.ko.md)는 rolling maintenance의 정식 진입점을
-`Relocate`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 현재 install-tree header에는
-`app_t::drain`, `await_drained`, `stop`, `request_stop`이 존재하지만 다음 목표 member는 아직 없다.
+**C++ 부분 충족.** Install-tree public header와 application host runtime은
+`relocate(relocation_options_t)`와 `shutdown(...)`을 별도 operation으로 제공한다.
+Host state는 `Preparing → Serving → Relocating → Relocated`와
+`Serving|Relocated → Draining → Stopped`를 구분한다. `retire`, `drain_result_t`,
+`drain`과 `await_drained` 공개 표면은 제거했다. Relocation 성공은 host와
+infrastructure connection을 종료하지 않으며, 이후 `shutdown`이 별도로 resource를
+정리한다.
 
-- continuity를 준비한 뒤 종료하는 `relocate`와 새 relocation 없이 bounded 종료를 수행하는 `shutdown`
-- terminal intent·outcome·reason·result와 Framework runtime state
+[C++ exact interface](server/languages/cpp/interfaces/README.ko.md)는 rolling maintenance의 정식 진입점을
+`Relocate`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 다음 항목은 아직
+완료되지 않았다.
+
 - Actor와 Instance Spot factory에 연결하는 typed relocation policy와 Snapshot state adapter
 - opaque authority CAS와 Relocation Store capability
 - Framework runtime maintenance snapshot과 event
 
-`Relocate`와 `Shutdown` 외의 기존 lifecycle 호출을 source compatibility 때문에 유지해야 하면 새 state나 결과를
-소유하지 않는 deprecated facade로만 둘 수 있다. 새 guide와 sample은 facade를 사용하지 않는다. 별도 Actor
-relocation registry, phase별 Store와 public operation state machine은 추가하지 않는다. Install-tree header와 clean
-consumer contract test가 exact interface와 일치해야 한다.
+별도 Actor relocation registry, phase별 Store와 public operation state machine은 추가하지 않는다.
+Install-tree header와 clean consumer contract test가 exact interface와 일치해야 한다.
 
 ### 12.37 .NET IZLinkRouteMeshRuntime snapshot의 Core 미노출 필드
 
@@ -795,9 +799,10 @@ relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap�
 `TopologyState` 이름을 사용한다. C++의 이전 `drain_state_t`와 `drain_event_t`는 host
 lifecycle 조회를 중복하므로 public contract에서 제거했다.
 
-현재 네 runtime의 public source는 이전 `Retiring`·termination 통합 계약을 사용하거나
-topology별 상태를 서로 다른 snapshot으로 제공한다. Public source, runtime 전이,
-metric label과 contract test를 exact interface에 맞춘 뒤 이 차이를 닫는다.
+C++ public source와 host runtime은 `Relocating`·`Relocated` 상태와 분리된
+`Relocate`·`Shutdown` operation을 사용한다. Java·Kotlin·Node.js public source와
+runtime 전이, metric label과 contract test를 exact interface에 맞춘 뒤 나머지
+차이를 닫는다.
 
 ## 13. 샘플 계약 차이
 

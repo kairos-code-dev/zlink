@@ -742,10 +742,25 @@ int main ()
                       "metric_event_payload_t catalog field is missing: " + required);
     }
 
-    /* CPP-G0-DRAIN-001 — graceful drain surface. */
-    for (const std::string required : {"drain_result_t", "await_drained", "is_ready"}) {
+    /* CPP-G0-DRAIN-001 — host-level Relocate and Shutdown surface. */
+    for (const std::string required : {"relocate", "shutdown", "is_ready"}) {
         gate.require (app_hpp.find (required) != std::string::npos, "CPP-G0-DRAIN-001",
-                      "app_t drain surface is missing: " + required);
+                      "app_t lifecycle surface is missing: " + required);
+    }
+    for (const std::string required : {
+           "relocation_options_t", "relocation_result_t",
+           "termination_result_t"}) {
+        gate.require (
+          tree_contains (include_root, required),
+          "CPP-G0-DRAIN-001",
+          "host lifecycle contract type is missing: " + required);
+    }
+    for (const std::string forbidden : {
+           "drain_result_t", "await_drained", "retire ("}) {
+        gate.require (
+          app_hpp.find (forbidden) == std::string::npos,
+          "CPP-G0-DRAIN-001",
+          "legacy host lifecycle surface is still public: " + forbidden);
     }
     gate.require (rows_hpp.find ("framework_runtime_state_t state")
                     != std::string::npos,
@@ -757,16 +772,17 @@ int main ()
     gate.require (!tree_contains (include_root, "use_drain_policy"), "CPP-G0-DRAIN-001",
                   "the removed use_drain_policy public API is still present");
     const auto accepted_barrier = app_runtime.find ("wait_for_accepted_callbacks_until");
-    const auto actor_barrier =
-      app_runtime.find ("join_application_actor_to_entry_spot", accepted_barrier);
-    const auto stream_barrier = app_runtime.find ("drain_sessions_until", actor_barrier);
+    const auto relocation_dispatch =
+      app_runtime.find ("join_application_actor_to_entry_spot");
+    const auto stream_barrier = app_runtime.find ("drain_sessions_until", accepted_barrier);
     const auto spot_close = app_runtime.find ("close_all_user_spots", stream_barrier);
     const auto owner_cleanup = app_runtime.find ("cleanup_owner", spot_close);
-    gate.require (accepted_barrier != std::string::npos
-                    && accepted_barrier < actor_barrier && actor_barrier < stream_barrier
+    gate.require (relocation_dispatch != std::string::npos
+                    && accepted_barrier != std::string::npos
+                    && accepted_barrier < stream_barrier
                     && stream_barrier < spot_close && spot_close < owner_cleanup,
                   "CPP-G0-DRAIN-001",
-                  "fixed drain runtime phases are missing or out of order");
+                  "Relocate dispatch or fixed Shutdown phases are missing or out of order");
     gate.require (tree_contains (include_root, "stream_close_reason_t"), "CPP-G0-DRAIN-001",
                   "stream_close_reason_t is missing");
     gate.require (tree_contains (root / "connector/core", "close_reason"), "CPP-G0-DRAIN-001",
@@ -1390,12 +1406,12 @@ int main ()
                     && store_failure_client.find ("SF-C2 api-b did not publish draining=true")
                          != std::string::npos,
                   "E2E-CP-43", "SF-C2 drops or never asserts the typed draining marker");
-    gate.require (store_failure_provider_lifecycle.find ("_app.drain (deadline)")
+    gate.require (store_failure_provider_lifecycle.find ("_app.shutdown (deadline)")
                     != std::string::npos
                     && store_failure_provider.find ("drain_handler_t") != std::string::npos
-                    && store_failure_client.find ("SF-C2 drain did not complete as drained")
+                    && store_failure_client.find ("SF-C2 Shutdown did not complete as Stopped")
                          != std::string::npos,
-                  "E2E-CP-43", "SF-C2 has no framework drain terminal-result proof");
+                  "E2E-CP-43", "SF-C2 has no Framework Shutdown terminal-result proof");
     gate.require (app_runtime.find ("drain propagation bound") != std::string::npos
                     && app_runtime.find ("std::chrono::seconds (5)") != std::string::npos,
                   "E2E-CP-43", "drain removes owner rows before the polling propagation bound");

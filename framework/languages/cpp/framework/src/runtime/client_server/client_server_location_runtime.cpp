@@ -57,7 +57,8 @@ mesh::service_node_state_t client_server_service_state (
             return mesh::service_node_state_t::preparing;
         case framework_runtime_state_t::serving:
             return mesh::service_node_state_t::serving;
-        case framework_runtime_state_t::retiring:
+        case framework_runtime_state_t::relocating:
+        case framework_runtime_state_t::relocated:
         case framework_runtime_state_t::draining:
             return mesh::service_node_state_t::draining;
         case framework_runtime_state_t::stopped:
@@ -79,7 +80,7 @@ framework_runtime_state_t client_server_framework_state (
         case mesh::service_node_state_t::serving:
             return framework_runtime_state_t::serving;
         case mesh::service_node_state_t::retiring:
-            return framework_runtime_state_t::retiring;
+            return framework_runtime_state_t::relocating;
         case mesh::service_node_state_t::draining:
             return framework_runtime_state_t::draining;
         case mesh::service_node_state_t::stopped:

@@ -1834,14 +1834,16 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ (framework_runtime_state_t::serving,
                round_trip (framework_runtime_state_t::serving));
     EXPECT_EQ (framework_runtime_state_t::draining,
-               round_trip (framework_runtime_state_t::retiring));
+               round_trip (framework_runtime_state_t::relocating));
+    EXPECT_EQ (framework_runtime_state_t::draining,
+               round_trip (framework_runtime_state_t::relocated));
     EXPECT_EQ (framework_runtime_state_t::draining,
                round_trip (framework_runtime_state_t::draining));
     EXPECT_EQ (framework_runtime_state_t::stopped,
                round_trip (framework_runtime_state_t::stopped));
     EXPECT_EQ (framework_runtime_state_t::error,
                round_trip (framework_runtime_state_t::error));
-    EXPECT_EQ (framework_runtime_state_t::retiring,
+    EXPECT_EQ (framework_runtime_state_t::relocating,
                client_server_framework_state (
                  service_node_state_t::retiring));
 }

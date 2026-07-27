@@ -24,15 +24,9 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
   public:
     struct state_t;
 
-    using drain_callback_t =
-      std::function<task_t<drain_result_t> (std::chrono::milliseconds)>;
-    using await_drained_callback_t = std::function<task_t<drain_result_t> ()>;
-
     route_mesh_runtime_service_t (
       std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes,
       location_runtime_query_t *location_runtime,
-      drain_callback_t drain,
-      await_drained_callback_t await_drained,
       location_store_t *location_store = nullptr);
     ~route_mesh_runtime_service_t ();
 
@@ -42,9 +36,6 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
              std::size_t capacity,
              std::function<void (const mesh_runtime_event_t &)> observer) override;
     bool is_ready (std::string mesh_name) const override;
-    task_t<drain_result_t>
-    drain (std::string mesh_name, std::chrono::milliseconds deadline) override;
-    task_t<drain_result_t> await_drained (std::string mesh_name) override;
 
     void start ();
     void stop () noexcept;

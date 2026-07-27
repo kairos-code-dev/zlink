@@ -4,7 +4,6 @@ import type {
   ZLinkActorLocationKey,
   ZLinkLocationOwnerToken,
   ZLinkLocationPage,
-  ZLinkLocationStore,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteResult,
   ZLinkLocationWriteStatus,
@@ -19,13 +18,14 @@ import type {
   ZLinkSpotLocationFilter,
   ZLinkSpotLocationKey
 } from './internal-location-contracts';
+import type { ZLinkDomainLocationStore } from './domain-store-contract';
 
-export type ZLinkAuthorityStore = Pick<ZLinkLocationStore,
+export type ZLinkAuthorityStore = Pick<ZLinkDomainLocationStore,
   | 'readAuthority'
   | 'compareExchangeAuthority'
   | 'listAuthorities'>;
 
-export type ZLinkObjectCreationStore = Pick<ZLinkLocationStore,
+export type ZLinkObjectCreationStore = Pick<ZLinkDomainLocationStore,
   | 'readCreationTerminal'
   | 'reserve'
   | 'commit'
@@ -35,27 +35,27 @@ export type ZLinkObjectCreationStore = Pick<ZLinkLocationStore,
   | 'commitAggregate'
   | 'abortAggregate'>;
 
-export type ZLinkRelocationCapacityStore = Pick<ZLinkLocationStore,
+export type ZLinkRelocationCapacityStore = Pick<ZLinkDomainLocationStore,
   | 'reserveRelocationCapacity'
   | 'abortRelocationCapacity'>;
 
-export type ZLinkOwnerLeaseStore = Pick<ZLinkLocationStore,
+export type ZLinkOwnerLeaseStore = Pick<ZLinkDomainLocationStore,
   | 'claimOwnerLease'
   | 'readOwnerLease'
   | 'renewOwnerLease'
   | 'releaseOwnerLease'>;
 
-export type ZLinkMeshNodeLocationStore = Pick<ZLinkLocationStore,
+export type ZLinkMeshNodeLocationStore = Pick<ZLinkDomainLocationStore,
   | 'updateMeshNode'
   | 'removeMeshNode'
   | 'listMeshNodes'>;
 
-export type ZLinkClientServerLocationStore = Pick<ZLinkLocationStore,
+export type ZLinkClientServerLocationStore = Pick<ZLinkDomainLocationStore,
   | 'updateClientServer'
   | 'removeClientServer'
   | 'listClientServers'>;
 
-export type ZLinkFanoutLocationStore = Pick<ZLinkLocationStore,
+export type ZLinkFanoutLocationStore = Pick<ZLinkDomainLocationStore,
   | 'updateFanoutPublisher'
   | 'removeFanoutPublisher'
   | 'listFanoutPublishers'>;

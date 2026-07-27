@@ -2,7 +2,7 @@
 #pragma once
 
 #include <zlink/Contracts/Core/routing_id.hpp>
-#include <zlink/framework/contracts/configuration/drain.hpp>
+#include <zlink/framework/contracts/configuration/lifecycle.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 
 #include <chrono>

@@ -1177,7 +1177,8 @@ drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
         for (const auto &actor_ref : actors) {
             std::vector<node_rid_t> eligible;
             for (const auto &peer : mesh_peers) {
-                if (peer.state == framework_runtime_state_t::retiring
+                if (peer.state == framework_runtime_state_t::relocating
+                    || peer.state == framework_runtime_state_t::relocated
                     || peer.state == framework_runtime_state_t::draining) {
                     continue;
                 }

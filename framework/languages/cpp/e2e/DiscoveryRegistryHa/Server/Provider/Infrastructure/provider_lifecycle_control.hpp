@@ -18,10 +18,13 @@ class provider_lifecycle_control_t
 
     operation_status_t drain_and_stop (std::chrono::milliseconds deadline)
     {
-        const auto result = _app.drain (deadline).result ().value ();
+        const auto result = _app.shutdown (deadline).result ().value ();
         request_stop_after_response ();
-        return {.status = std::holds_alternative<drained_t> (result) ? "drained"
-                                                                    : "force_stopped"};
+        return {
+          .status =
+            result.outcome == termination_outcome_t::stopped
+              ? "stopped"
+              : "force_stopped"};
     }
 
     void request_stop_after_response ()

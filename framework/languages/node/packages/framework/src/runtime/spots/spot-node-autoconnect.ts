@@ -1,7 +1,7 @@
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
-  ZLinkLocationStore,
 } from '../../contracts';
+import type { ZLinkDomainLocationStore as ZLinkLocationStore } from '../locations/domain-store-contract';
 import type { ZLinkPeerLocation } from '../../contracts/Locations/Rows';
 import { ZLinkLocationAutoConnectType } from '../../contracts/Locations/Values';
 import { ZLinkLocationRole } from '../../contracts';

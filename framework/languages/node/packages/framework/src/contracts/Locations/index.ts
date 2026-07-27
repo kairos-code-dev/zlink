@@ -1,7 +1,21 @@
 export type { ZLinkLocationOptions } from './Options';
 export { zlinkDefaultLocationOptions } from './Options';
 export type {
-  ZLinkLocationStore
+  ZLinkLocationStore,
+  ZLinkStoreCondition,
+  ZLinkStoreKey,
+  ZLinkStoreMutation,
+  ZLinkStorePutVersion,
+  ZLinkStoreReadResult,
+  ZLinkStoreScanCursor,
+  ZLinkStoreScanItem,
+  ZLinkStoreScanPage,
+  ZLinkStoreScanRequest,
+  ZLinkStoreScanResult,
+  ZLinkStoreValue,
+  ZLinkStoreVersion,
+  ZLinkStoreWriteRequest,
+  ZLinkStoreWriteResult
 } from './Stores';
 export {
   ZLinkLocationKind,

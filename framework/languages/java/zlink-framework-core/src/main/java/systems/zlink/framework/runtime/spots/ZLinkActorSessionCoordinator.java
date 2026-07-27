@@ -110,6 +110,42 @@ final class ZLinkActorSessionCoordinator {
         return requireActors().currentRef(actor);
     }
 
+    CompletionStage<ZLinkActorRuntime.PreparedTransferredActor>
+        prepareRelocatedActor(
+            String actorId,
+            String actorType,
+            byte[] state,
+            boolean restoreSnapshot,
+            systems.zlink.framework.runtime.internal.relocation
+                .ZLinkRelocationAdapterRegistry adapters,
+            systems.zlink.framework.actors.ZLinkRelocationCancellation
+                cancellation,
+            ZLinkBackendActorRef actorRef) {
+        return requireActors().prepareRelocatedActor(
+            actorId,
+            actorType,
+            state,
+            restoreSnapshot,
+            adapters,
+            cancellation,
+            actorRef);
+    }
+
+    void publishRelocatedActor(
+        ZLinkActorRuntime.PreparedTransferredActor actor) {
+        requireActors().publishPreparedTransferredActor(actor);
+    }
+
+    void openRelocatedActorAdmission(
+        ZLinkActorRuntime.PreparedTransferredActor actor) {
+        requireActors().completePreparedTransferredActor(actor);
+    }
+
+    CompletionStage<Void> discardRelocatedActor(
+        ZLinkActorRuntime.PreparedTransferredActor actor) {
+        return requireActors().discardPreparedTransferredActor(actor);
+    }
+
     boolean hasBoundSession(String actorId) {
         ZLinkActor actor = localActor(actorId).orElseThrow(() ->
             new ZLinkConfigurationException(

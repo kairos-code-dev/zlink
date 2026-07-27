@@ -286,7 +286,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             if (descriptor.mesh_name != loop.mesh_name || descriptor.endpoint.empty ()
                 || (loop.local_rid
                     && descriptor.rid.to_hex () == loop.local_rid->to_hex ())
-                || descriptor.state == framework_runtime_state_t::retiring
+                || descriptor.state == framework_runtime_state_t::relocating
+                || descriptor.state == framework_runtime_state_t::relocated
                 || descriptor.state == framework_runtime_state_t::draining
                 || descriptor.state == framework_runtime_state_t::stopped
                 || descriptor.state == framework_runtime_state_t::error)

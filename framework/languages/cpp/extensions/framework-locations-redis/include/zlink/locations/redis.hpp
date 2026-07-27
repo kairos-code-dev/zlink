@@ -3666,8 +3666,10 @@ class redis_location_row_codec_t
             return "Preparing";
         case framework_runtime_state_t::serving:
             return "Serving";
-        case framework_runtime_state_t::retiring:
-            return "Retiring";
+        case framework_runtime_state_t::relocating:
+            return "Relocating";
+        case framework_runtime_state_t::relocated:
+            return "Relocated";
         case framework_runtime_state_t::draining:
             return "Draining";
         case framework_runtime_state_t::stopped:
@@ -3686,8 +3688,10 @@ class redis_location_row_codec_t
             return framework_runtime_state_t::preparing;
         if (state == "Serving")
             return framework_runtime_state_t::serving;
-        if (state == "Retiring")
-            return framework_runtime_state_t::retiring;
+        if (state == "Relocating")
+            return framework_runtime_state_t::relocating;
+        if (state == "Relocated")
+            return framework_runtime_state_t::relocated;
         if (state == "Draining")
             return framework_runtime_state_t::draining;
         if (state == "Stopped")

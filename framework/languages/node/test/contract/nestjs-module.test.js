@@ -173,7 +173,10 @@ test('ZLinkHttpClientModule registers named server clients through Nest DI', asy
     })]
   })(AppModule);
 
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    abortOnError: false,
+    logger: false
+  });
   try {
     const client = app.get(profilesToken);
     const response = await client.get('/profile').async();
@@ -246,7 +249,7 @@ test('ZLinkModule.forRoot exposes capability providers only when registration en
     }
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addLocationStore(new framework.ZLinkInMemoryLocationStore())
+    .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
     .options({ spotPublisherClients: ['events'] })
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
@@ -299,7 +302,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
     onMessageFlow() {}
   }
   const builder = nestjs.zlinkFramework();
-  builder.addLocationStore(new framework.ZLinkInMemoryLocationStore());
+  builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
   builder.configureDispatch().setMessageFlowObserver(DispatchObserver);
   const module = nestjs.ZLinkModule.forRoot(builder
     .addRouteMesh('game')
@@ -321,7 +324,7 @@ test('ZLinkModule.forRoot creates Spot manager before runtime bootstrap', async 
 
 test('ZLinkModule.forRoot public DI clients expose callable framework contracts', async () => {
   const builder = nestjs.zlinkFramework()
-    .addLocationStore(new framework.ZLinkInMemoryLocationStore())
+    .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
     .options({ spotPublisherClients: ['spot-events'] });
   const mesh = builder.addRouteMesh('actors')
     .listen('tcp://127.0.0.1:0')
@@ -992,7 +995,7 @@ test('ZLinkModule.forRoot with grouped handlers exposes capability providers thr
   class HandlerModule {}
   Module({
     imports: [nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-      .addLocationStore(new framework.ZLinkInMemoryLocationStore())
+      .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
       .options({ spotPublisherClients: ['events'] })
       .addRouteMesh('game')
         .listen(spotEndpoint)
@@ -1062,7 +1065,7 @@ test('ZLinkModule.forRoot exposes exact create calls for registered Spot factori
     }
   }
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
-    .addLocationStore(new framework.ZLinkInMemoryLocationStore())
+    .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
     .options({ spotFactories: [StageSpot] })
     .addRouteMesh('game')
       .listen('tcp://127.0.0.1:0')
@@ -1429,7 +1432,7 @@ test('zlinkFramework preserves actor transfer adapters in the runtime registrati
   class PlayerActorFactory {}
   class PlayerActorTransferAdapter {}
   const builder = nestjs.zlinkFramework()
-    .addLocationStore(new framework.ZLinkInMemoryLocationStore());
+    .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
   const mesh = builder.addRouteMesh('game')
     .listen('inproc://actor-transfer')
     .routingId('game-node')
@@ -1511,7 +1514,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
   };
 
   const options = framework.createFrameworkOptions((builder) => {
-    builder.addLocationStore(new framework.ZLinkInMemoryLocationStore());
+    builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
     builder.configureStreamCompression().use(streamCompressionCodec);
     const events = builder.addFanoutChannel('events');
     events.enablePublisher('tcp://0.0.0.0:9402');
@@ -1782,7 +1785,7 @@ test('ZLinkModule.forRoot registers explicit MeshNode publisher clients', async 
 });
 
 test('ZLinkModule.forRoot maps one location store into runtime registration', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore();
+  const store = new framework.ZLinkInMemoryProviderLocationStore();
   const registration = await resolveFrameworkRegistration(nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addLocationStore(store)
     .build()));
@@ -1791,7 +1794,7 @@ test('ZLinkModule.forRoot maps one location store into runtime registration', as
 });
 
 test('ZLinkModule.forRoot exposes only the public Spot manager capability', async () => {
-  const store = new framework.ZLinkInMemoryLocationStore();
+  const store = new framework.ZLinkInMemoryProviderLocationStore();
   class ManagedSpot {}
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addLocationStore(store)
@@ -1824,7 +1827,7 @@ test('ZLinkModule.forRootFactory exposes capability providers through the real N
   const module = nestjs.ZLinkModule.forRootFactory({
     async useFactory() {
       return nestjs.zlinkFramework()
-        .addLocationStore(new framework.ZLinkInMemoryLocationStore())
+        .addLocationStore(new framework.ZLinkInMemoryProviderLocationStore())
         .options({ spotPublisherClients: ['game-events'] })
         .addRouteMesh('game')
           .listen(spotEndpoint)

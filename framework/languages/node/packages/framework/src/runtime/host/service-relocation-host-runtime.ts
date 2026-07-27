@@ -9,7 +9,6 @@ import type {
   ZLinkAuthoritySnapshot,
   ZLinkLocationOwnerToken,
   ZLinkMeshNodeDescriptor,
-  ZLinkLocationStore,
   ZLinkRelocationCapacityFence,
   ZLinkRelocationReference,
   ZLinkRelocationStore,
@@ -17,6 +16,7 @@ import type {
   ZLinkSpotRelocationAdapter,
   ZLinkInstanceSpot
 } from '../../contracts';
+import type { ZLinkDomainLocationStore as ZLinkLocationStore } from '../locations/domain-store-contract';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {

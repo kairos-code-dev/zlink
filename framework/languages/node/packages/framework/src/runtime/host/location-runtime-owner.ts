@@ -1,31 +1,19 @@
-import type {
-  RoutingId,
-  ZLinkLocationStore
-} from '../../contracts';
+import type { RoutingId } from '../../contracts';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type { ZLinkActorTransferStore } from '../../contracts/Locations/ActorTransfer';
-import type {
-  ZLinkActorLocationStore,
-  ZLinkClientServerLocationStore,
-  ZLinkFanoutLocationStore,
-  ZLinkPeerLocationStore,
-  ZLinkRouteLocationStore,
-  ZLinkSpotLocationStore
-} from '../locations/internal-store-contracts';
-import {
-  ZLinkConfigurationException,
-  type ZLinkFrameworkRegistration
-} from '../configuration';
+import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import {
-  ZLinkInMemoryLocationStore,
+  ZLinkInMemoryProviderLocationStore,
   ZLinkLocationLifecycle,
   ZLinkLocationRuntime,
+  ZLinkLocationStoreRepository,
   ZLinkLocationSpotRouteResolver,
   ZLinkOwnerLeaseTracker,
   ZLinkStoreLocationResolvers,
   type ZLinkLocationEventSink,
-  type ZLinkLocationRuntimeStores
+  type ZLinkLocationRuntimeStores,
+  type ZLinkDomainLocationStore
 } from '../locations';
 import type { ZLinkSpotNodeRuntimeManager } from '../spots';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
@@ -79,7 +67,7 @@ export class ZLinkLocationRuntimeOwner {
     return isActorTransferStore(store) ? store : undefined;
   }
 
-  locationStore(): ZLinkLocationStore | undefined {
+  locationStore(): ZLinkDomainLocationStore | undefined {
     return this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
   }
 
@@ -231,7 +219,8 @@ export class ZLinkLocationRuntimeOwner {
   private createRuntimeStores(): ZLinkLocationRuntimeStores | undefined {
     const locations = this.options.registration.locations;
     if (locations.useInMemoryStores) {
-      const store = new ZLinkInMemoryLocationStore();
+      const provider = new ZLinkInMemoryProviderLocationStore();
+      const store = new ZLinkLocationStoreRepository(provider);
       return {
         locationStore: store,
         authorityStore: store,
@@ -244,18 +233,18 @@ export class ZLinkLocationRuntimeOwner {
         ownerLeaseStore: store
       };
     }
-    const store = locations.storeInstance;
-    if (store !== undefined) {
-      const runtimeStore = requireOperationalLocationStore(store);
+    const provider = locations.storeInstance;
+    if (provider !== undefined) {
+      const store = new ZLinkLocationStoreRepository(provider);
       return {
         locationStore: store,
         authorityStore: store,
-        clientServerStore: isClientServerLocationStore(store) ? store : undefined,
-        fanoutStore: isFanoutLocationStore(store) ? store : undefined,
-        peerStore: runtimeStore,
-        spotStore: runtimeStore,
-        actorStore: runtimeStore,
-        routeStore: runtimeStore,
+        clientServerStore: store,
+        fanoutStore: store,
+        peerStore: store,
+        spotStore: store,
+        actorStore: store,
+        routeStore: store,
         ownerLeaseStore: store
       };
     }
@@ -285,47 +274,6 @@ export class ZLinkLocationRuntimeOwner {
   }
 }
 
-type ZLinkOperationalLocationStore = ZLinkLocationStore
-  & ZLinkSpotLocationStore
-  & ZLinkActorLocationStore
-  & ZLinkPeerLocationStore
-  & ZLinkRouteLocationStore;
-
-function requireOperationalLocationStore(store: ZLinkLocationStore): ZLinkOperationalLocationStore {
-  const candidate = store as ZLinkLocationStore
-    & Partial<ZLinkSpotLocationStore>
-    & Partial<ZLinkActorLocationStore>
-    & Partial<ZLinkPeerLocationStore>
-    & Partial<ZLinkRouteLocationStore>;
-  if (
-    candidate.updatePeer === undefined
-    || candidate.removePeer === undefined
-    || candidate.listPeers === undefined
-    || candidate.updateSpot === undefined
-    || candidate.removeSpot === undefined
-    || candidate.resolveSpot === undefined
-    || candidate.updateActor === undefined
-    || candidate.removeActor === undefined
-    || candidate.resolveActor === undefined
-    || candidate.updateRoute === undefined
-    || candidate.removeRoute === undefined
-    || candidate.resolveRoute === undefined
-    || candidate.listRoutes === undefined
-  ) {
-    throw new ZLinkConfigurationException(
-      'The configured location store does not provide the operational peer and route capabilities required by this runtime.'
-    );
-  }
-  return candidate as ZLinkOperationalLocationStore;
-}
-
-function isFanoutLocationStore(value: unknown): value is ZLinkFanoutLocationStore {
-  const store = value as Partial<ZLinkFanoutLocationStore> | undefined;
-  return typeof store?.updateFanoutPublisher === 'function'
-    && typeof store.removeFanoutPublisher === 'function'
-    && typeof store.listFanoutPublishers === 'function';
-}
-
 function isActorTransferStore(value: unknown): value is ZLinkActorTransferStore {
   const store = value as Partial<Record<
     | 'prepareActorTransfer'
@@ -342,16 +290,4 @@ function isActorTransferStore(value: unknown): value is ZLinkActorTransferStore 
     && typeof store.abortActorTransfer === 'function'
     && typeof store.takeOverActorTransfer === 'function'
     && typeof store.resolveActorTransfer === 'function';
-}
-
-function isClientServerLocationStore(
-  value: unknown
-): value is ZLinkClientServerLocationStore {
-  const store = value as Partial<Record<
-    'updateClientServer' | 'removeClientServer' | 'listClientServers',
-    unknown
-  >> | undefined;
-  return typeof store?.updateClientServer === 'function'
-    && typeof store.removeClientServer === 'function'
-    && typeof store.listClientServers === 'function';
 }

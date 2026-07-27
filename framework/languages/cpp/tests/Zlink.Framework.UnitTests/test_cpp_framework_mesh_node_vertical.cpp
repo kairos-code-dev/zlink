@@ -111,7 +111,7 @@ class faulting_mesh_location_store_t final :
             std::lock_guard lock (_fault_gate);
             _state_history.push_back (descriptor.state);
             if (descriptor.state
-                  == zlink::framework::framework_runtime_state_t::retiring
+                  == zlink::framework::framework_runtime_state_t::relocating
                 && ++_retiring_write == _fail_retiring_write) {
                 _fail_retiring_write = 0;
                 return zlink::framework::task_t<
@@ -403,7 +403,7 @@ void verify_descriptor_retire_order_and_pre_seal_rollback ()
     // selectable and the local runtime unchanged.
     store.fail_next_retiring_write (2);
     assert (!service.publish_descriptor_state (
-      framework_runtime_state_t::retiring));
+      framework_runtime_state_t::relocating));
     assert (service.publish_descriptor_state (
       framework_runtime_state_t::serving));
     assert (read_mesh_state (store, "vertical-order", *first->routing_id)
@@ -414,10 +414,10 @@ void verify_descriptor_retire_order_and_pre_seal_rollback ()
     // Once preflight succeeds, the externally visible order is Retiring
     // before the dispatch seal and Draining only after relocation succeeds.
     assert (service.publish_descriptor_state (
-      framework_runtime_state_t::retiring));
+      framework_runtime_state_t::relocating));
     service.seal_application_dispatch ();
     assert (read_mesh_state (store, "vertical-order", *first->routing_id)
-            == framework_runtime_state_t::retiring);
+            == framework_runtime_state_t::relocating);
     assert (service.publish_descriptor_state (
       framework_runtime_state_t::draining));
     assert (read_mesh_state (store, "vertical-order", *first->routing_id)
@@ -425,7 +425,7 @@ void verify_descriptor_retire_order_and_pre_seal_rollback ()
 
     const auto history = store.state_history ();
     const auto first_retiring = std::find (
-      history.begin (), history.end (), framework_runtime_state_t::retiring);
+      history.begin (), history.end (), framework_runtime_state_t::relocating);
     const auto first_draining = std::find (
       first_retiring, history.end (), framework_runtime_state_t::draining);
     assert (first_retiring != history.end ());
@@ -626,16 +626,6 @@ void verify_public_runtime_surface ()
         std::vector<std::shared_ptr<zlink::framework::detail::mesh_node_runtime_t>>{
           node},
         nullptr,
-        [] (std::chrono::milliseconds) {
-            return zlink::framework::task_t<zlink::framework::drain_result_t> (
-              zlink::framework::result_t<zlink::framework::drain_result_t>::success (
-                zlink::framework::drained_t{}));
-        },
-        [] {
-            return zlink::framework::task_t<zlink::framework::drain_result_t> (
-              zlink::framework::result_t<zlink::framework::drain_result_t>::success (
-                zlink::framework::drained_t{}));
-        },
         &monitoring_store);
     runtime->start ();
     zlink::framework::runtime::route_mesh_runtime_options_service_t runtime_options (
@@ -715,8 +705,6 @@ void verify_public_runtime_surface ()
     }
     assert (rejected_mesh);
     assert (runtime->is_ready ("vertical-mesh"));
-    assert (std::holds_alternative<zlink::framework::drained_t> (
-      runtime->drain ("vertical-mesh", 1s).result ().value ()));
 
     runtime->stop ();
     node->stop ();
@@ -745,52 +733,6 @@ void verify_fixed_drain_callback_barrier ()
     completion.join ();
     assert (node->pending_application_callbacks () == 0);
     assert (node->active_application_callbacks () == 0);
-}
-
-void verify_multi_mesh_drain_fails_before_global_callback ()
-{
-    auto first = std::make_shared<zlink::framework::detail::mesh_node_runtime_t> (
-      make_named_node ("mesh-a", "runtime-a"));
-    auto second = std::make_shared<zlink::framework::detail::mesh_node_runtime_t> (
-      make_named_node ("mesh-b", "runtime-b"));
-    int drain_calls = 0;
-    int await_calls = 0;
-    zlink::framework::runtime::route_mesh_runtime_service_t runtime (
-      {first, second}, nullptr,
-      [&drain_calls] (std::chrono::milliseconds) {
-          ++drain_calls;
-          return zlink::framework::task_t<zlink::framework::drain_result_t> (
-            zlink::framework::result_t<zlink::framework::drain_result_t>::success (
-              zlink::framework::drained_t{}));
-      },
-      [&await_calls] {
-          ++await_calls;
-          return zlink::framework::task_t<zlink::framework::drain_result_t> (
-            zlink::framework::result_t<zlink::framework::drain_result_t>::success (
-              zlink::framework::drained_t{}));
-      });
-
-    bool drain_rejected = false;
-    try {
-        (void) runtime.drain ("mesh-a", 1s);
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        drain_rejected =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
-    }
-    assert (drain_rejected);
-    assert (drain_calls == 0);
-
-    bool await_rejected = false;
-    try {
-        (void) runtime.await_drained ("mesh-b");
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        await_rejected =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
-    }
-    assert (await_rejected);
-    assert (await_calls == 0);
 }
 
 #if defined(__unix__)
@@ -1136,7 +1078,6 @@ int main ()
 {
     verify_public_runtime_surface ();
     verify_fixed_drain_callback_barrier ();
-    verify_multi_mesh_drain_fails_before_global_callback ();
     verify_descriptor_retire_order_and_pre_seal_rollback ();
     verify_local_node_submit_bridge ();
 #if defined(__unix__)

@@ -12,7 +12,6 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   type ZLinkLocationRuntimeQuery,
-  type ZLinkLocationStore,
   type ZLinkLocationOwnerToken,
   type ZLinkOwnerLeaseRenewed,
   type ZLinkActorLocation,
@@ -50,6 +49,7 @@ import type {
   ZLinkSpotLocationStore,
   ZLinkSpotLocationQueryStore
 } from './internal-store-contracts';
+import type { ZLinkDomainLocationStore } from './domain-store-contract';
 import {
   zlinkLocationAutoConnectTypeName,
   zlinkLocationRoleName
@@ -62,7 +62,7 @@ import {
 import type { ZLinkOwnershipLostEvent } from './lifecycle-runtime';
 
 export interface ZLinkLocationRuntimeStores {
-  readonly locationStore: ZLinkLocationStore;
+  readonly locationStore: ZLinkDomainLocationStore;
   readonly authorityStore: ZLinkAuthorityStore;
   readonly clientServerStore?: ZLinkClientServerLocationStore;
   readonly fanoutStore?: ZLinkFanoutLocationStore;

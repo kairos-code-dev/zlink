@@ -847,18 +847,18 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     LABELS "framework-unit;framework-m6-runtime;maintenance;relocation;recovery;resource"
     TIMEOUT 30)
 
-  add_executable(test_cpp_framework_termination_facade
-    tests/Zlink.Framework.UnitTests/test_cpp_framework_termination_facade.cpp)
-  target_compile_features(test_cpp_framework_termination_facade PRIVATE cxx_std_20)
-  target_include_directories(test_cpp_framework_termination_facade PRIVATE
+  add_executable(test_cpp_framework_host_lifecycle
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_host_lifecycle.cpp)
+  target_compile_features(test_cpp_framework_host_lifecycle PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_host_lifecycle PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
-  target_link_libraries(test_cpp_framework_termination_facade PRIVATE
+  target_link_libraries(test_cpp_framework_host_lifecycle PRIVATE
     zlink_framework
     Threads::Threads)
-  add_test(NAME test_cpp_framework_termination_facade
-    COMMAND test_cpp_framework_termination_facade)
-  set_tests_properties(test_cpp_framework_termination_facade PROPERTIES
-    LABELS "framework-unit;framework-m6-runtime;maintenance;termination"
+  add_test(NAME test_cpp_framework_host_lifecycle
+    COMMAND test_cpp_framework_host_lifecycle)
+  set_tests_properties(test_cpp_framework_host_lifecycle PROPERTIES
+    LABELS "framework-unit;framework-m6-runtime;maintenance;relocation;shutdown"
     TIMEOUT 30)
 
 endif()

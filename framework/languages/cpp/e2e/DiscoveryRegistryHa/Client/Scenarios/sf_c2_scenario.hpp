@@ -41,7 +41,9 @@ inline void run_sf_c2_scenario (const options_t &options)
                        "SF-C2 draining provider remained eligible for new requests");
 
     const auto drain_result = drain.get ();
-    sf_client::ensure (drain_result.status == "drained", "SF-C2 drain did not complete as drained");
+    sf_client::ensure (
+      drain_result.status == "stopped",
+      "SF-C2 Shutdown did not complete as Stopped");
     sf_client::wait_down (options.provider_b_url);
     const auto removal_started = std::chrono::steady_clock::now ();
     sf_client::wait_peers (

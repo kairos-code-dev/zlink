@@ -13,7 +13,8 @@ internal static class StI1RelocationPayloadMeasurementScenario
     [
         ("small", 4 * 1024),
         ("normal", 64 * 1024),
-        ("large", 8 * 1024 * 1024)
+        ("large", 8 * 1024 * 1024),
+        ("boundary-single", 64 * 1024 * 1024)
     ];
 
     private static readonly (string Name, int InstanceBytes, int SpotWideBytes)[]
@@ -32,7 +33,78 @@ internal static class StI1RelocationPayloadMeasurementScenario
                 context,
                 profile.Name,
                 profile.ApplicationBytes);
-        await RunSpotProfilesAsync(context);
+        await RunSpotProfilesAsync(context, includeInstance: true);
+    }
+
+    internal static Task RunSpotWideRelocationOnlyAsync(
+        SpotActorTransferScenarioContext context) =>
+        RunSpotProfilesAsync(context, includeInstance: false);
+
+    internal static Task RunActorBoundaryRelocationOnlyAsync(
+        SpotActorTransferScenarioContext context) =>
+        RunActorProfileAsync(
+            context,
+            "boundary-single",
+            64 * 1024 * 1024);
+
+    internal static Task RunSpotWideSmallRelocationOnlyAsync(
+        SpotActorTransferScenarioContext context) =>
+        RunSpotProfilesAsync(
+            context,
+            includeInstance: false,
+            profiles: SpotProfiles.Where(static profile =>
+                profile.Name == "small").ToArray());
+
+    internal static Task RunSpotWideBoundaryRelocationOnlyAsync(
+        SpotActorTransferScenarioContext context) =>
+        RunSpotProfilesAsync(
+            context,
+            includeInstance: false,
+            profiles: SpotProfiles.Where(static profile =>
+                profile.Name == "boundary-single").ToArray());
+
+    internal static async Task RunInstanceActivationOnlyAsync(
+        SpotActorTransferScenarioContext context)
+    {
+        foreach (var profile in SpotProfiles)
+        {
+            RelocationPayloadSpotRes? activated = null;
+            for (var attempt = 0; attempt < 24; attempt++)
+            {
+                var spotId =
+                    $"payload-instance-{profile.Name}-{Guid.NewGuid():N}";
+                var request = new RelocationPayloadSpotReq(
+                    $"ST-I1-instance-{profile.Name}",
+                    profile.InstanceBytes);
+                var candidate = await context.ActivatePayloadInstanceSpotAsync(
+                    context.NodeC,
+                    spotId,
+                    request);
+                if (!SpotActorTransferScenarioContext.IsNode(
+                        candidate.NodeRid,
+                        "actor-c"))
+                {
+                    activated = candidate;
+                    break;
+                }
+            }
+            ZlinkStreamAssert.Ensure(
+                activated is not null,
+                $"ST-I1 Instance {profile.Name} did not exercise remote "
+                + "automatic activation.");
+            var expected = CreateExpectedState(
+                activated!.SpotId,
+                profile.InstanceBytes);
+            ZlinkStreamAssert.Ensure(
+                activated.ApplicationStateBytes == profile.InstanceBytes
+                && activated.ApplicationStateSha256 == Sha256(expected),
+                $"ST-I1 Instance {profile.Name} state did not match the "
+                + "deterministic payload.");
+            Console.WriteLine(
+                $"ST-I1 instance_activation profile={profile.Name}"
+                + $" bytes={profile.InstanceBytes}"
+                + $" owner={activated.NodeRid}");
+        }
     }
 
     private static async Task RunActorProfileAsync(
@@ -43,6 +115,16 @@ internal static class StI1RelocationPayloadMeasurementScenario
         var scenario = $"ST-I1-{profile}";
         var actorId =
             $"actor-payload-{profile}-{Guid.NewGuid():N}";
+        if (profile == "boundary-single")
+        {
+            // The public 64 MiB bound applies to the bytes returned by the
+            // adapter. This fixture adds its own deterministic header.
+            applicationBytes = 64 * 1024 * 1024
+                - sizeof(uint)
+                - sizeof(int)
+                - sizeof(int)
+                - Encoding.UTF8.GetByteCount(actorId);
+        }
         var spotId =
             $"spot-payload-{profile}-{Guid.NewGuid():N}";
 
@@ -173,7 +255,10 @@ internal static class StI1RelocationPayloadMeasurementScenario
     }
 
     private static async Task RunSpotProfilesAsync(
-        SpotActorTransferScenarioContext context)
+        SpotActorTransferScenarioContext context,
+        bool includeInstance,
+        IReadOnlyList<(string Name, int InstanceBytes, int SpotWideBytes)>?
+            profiles = null)
     {
         const string desiredSource = "actor-a";
         var fixtures = new List<(
@@ -183,14 +268,17 @@ internal static class StI1RelocationPayloadMeasurementScenario
             int Bytes,
             string Sha256)>();
 
-        foreach (var profile in SpotProfiles)
+        foreach (var profile in profiles ?? SpotProfiles)
         {
-            fixtures.Add(await CreateOnSourceAsync(
-                context,
-                "instance",
-                profile.Name,
-                profile.InstanceBytes,
-                desiredSource));
+            if (includeInstance)
+            {
+                fixtures.Add(await CreateOnSourceAsync(
+                    context,
+                    "instance",
+                    profile.Name,
+                    profile.InstanceBytes,
+                    desiredSource));
+            }
             fixtures.Add(await CreateOnSourceAsync(
                 context,
                 "spotwide",
@@ -294,9 +382,10 @@ internal static class StI1RelocationPayloadMeasurementScenario
             + " aggregate_320_mib_five_participants=not_exercised");
 
         foreach (var fixture in fixtures)
-            await context.ClosePayloadSpotAsync(
-                context.NodeC,
-                fixture.SpotId);
+            if (fixture.Kind != "instance")
+                await context.ClosePayloadSpotAsync(
+                    context.NodeC,
+                    fixture.SpotId);
     }
 
     private static async Task<(
@@ -311,8 +400,17 @@ internal static class StI1RelocationPayloadMeasurementScenario
         int bytes,
         string desiredSource)
     {
-        for (var attempt = 0; attempt < 48; attempt++)
+        var placementNode = desiredSource switch
         {
+            "actor-a" => context.NodeA,
+            "actor-b" => context.NodeB,
+            "actor-c" => context.NodeC,
+            _ => throw new ArgumentOutOfRangeException(nameof(desiredSource))
+        };
+        return await context.WithPlacementNodeAsync(
+            placementNode,
+            async () =>
+            {
             var spotId =
                 $"payload-{kind}-{profile}-{Guid.NewGuid():N}";
             var request = new RelocationPayloadSpotReq(
@@ -320,31 +418,26 @@ internal static class StI1RelocationPayloadMeasurementScenario
                 bytes);
             var created = kind == "instance"
                 ? await context.ActivatePayloadInstanceSpotAsync(
-                    context.NodeC,
+                    placementNode,
                     spotId,
                     request)
                 : await context.CreatePayloadUserSpotAsync(
-                    context.NodeC,
+                    placementNode,
                     spotId,
                     request);
-            if (SpotActorTransferScenarioContext.IsNode(
+            ZlinkStreamAssert.Ensure(
+                SpotActorTransferScenarioContext.IsNode(
                     created.NodeRid,
-                    desiredSource))
-            {
-                return (
-                    kind,
-                    profile,
-                    spotId,
-                    bytes,
-                    created.ApplicationStateSha256);
-            }
-            await context.ClosePayloadSpotAsync(
-                context.NodeC,
-                spotId);
-        }
-        throw new InvalidOperationException(
-            $"ST-I1 could not observe automatic placement of {kind}/"
-            + $"{profile} on {desiredSource} after 48 attempts.");
+                    desiredSource),
+                $"ST-I1 {kind}/{profile} placement weight did not select "
+                + $"{desiredSource}.");
+            return (
+                kind,
+                profile,
+                spotId,
+                bytes,
+                created.ApplicationStateSha256);
+            });
     }
 
     private static async Task<long> ReadPeakWorkingSetAsync(

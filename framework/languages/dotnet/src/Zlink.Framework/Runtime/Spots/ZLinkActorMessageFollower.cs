@@ -9,6 +9,9 @@ internal sealed class ZLinkActorMessageFollower
     private readonly SemaphoreSlim _admissionSlots;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<MessageFollowKey, ActorQueue>
         _queues = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<
+        DirectReplyKey,
+        PendingDirectReply> _directReplies = new();
 
     public ZLinkActorMessageFollower(
         ZLinkFrameworkRuntime runtime,
@@ -29,7 +32,8 @@ internal sealed class ZLinkActorMessageFollower
         ZlinkStreamHeader header,
         Message body,
         ulong sourceNodeGeneration = 0,
-        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
         _runtime.ShutdownToken.ThrowIfCancellationRequested();
         if (!_admissionSlots.Wait(0))
@@ -37,8 +41,42 @@ internal sealed class ZLinkActorMessageFollower
                 ZLinkFrameworkErrorKind.ActorLocationStale,
                 $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' could not use Message Follow because its queue is full.");
         MessageFollowFrame? frame = null;
+        DirectReplyKey? directReplyKey = null;
         try
         {
+            if (directReply is not null
+                && header.Kind == ZlinkStreamMessageKind.Request)
+            {
+                var capability = Guid.NewGuid().ToString("N");
+                var replyKey = new DirectReplyKey(
+                    messageFollowRoute.SourceActor.ActorId,
+                    requestId,
+                    capability);
+                var pending = new PendingDirectReply(
+                    directReply,
+                    messageFollowRoute.Lease);
+                if (_directReplies.Count >= Capacity
+                    || !_directReplies.TryAdd(replyKey, pending))
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorLocationStale,
+                        $"Actor ref '{messageFollowRoute.SourceActor.ActorId}' could not preserve its Message Follow reply route.");
+                directReplyKey = replyKey;
+                routeContext = routeContext with
+                {
+                    ReplyRequestId = requestId,
+                    ReplyFlags = flags,
+                    ReplyCapability = capability
+                };
+                if (!_runtime.TryRunDetached(
+                        "actor Message Follow reply expiry",
+                        ct => ExpireDirectReplyAsync(
+                            replyKey,
+                            pending,
+                            ct)))
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.RuntimeShutdown,
+                        "The runtime stopped before the Message Follow reply route was registered.");
+            }
             frame = new MessageFollowFrame(
                 messageFollowRoute,
                 sourceNodeRid,
@@ -73,12 +111,58 @@ internal sealed class ZLinkActorMessageFollower
         }
         catch
         {
+            if (directReplyKey is { } key)
+                _directReplies.TryRemove(key, out _);
             if (frame is null)
                 _admissionSlots.Release();
             else
                 frame.ReleaseAdmission();
             throw;
         }
+    }
+
+    public bool TryCompleteDirectReply(
+        string actorId,
+        ulong requestId,
+        uint flags,
+        string replyCapability,
+        RoutingId authenticatedResponder,
+        RoutingId declaredResponder,
+        byte[] frame)
+    {
+        if (flags != ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind
+            || authenticatedResponder.IsEmpty
+            || authenticatedResponder != declaredResponder)
+            return false;
+        var key = new DirectReplyKey(
+            actorId,
+            requestId,
+            replyCapability);
+        if (!_directReplies.TryRemove(key, out var pending))
+            return false;
+        using var reply = Message.From(frame);
+        _ = pending.Reply([reply], SendFlags.DontWait);
+        return true;
+    }
+
+    private async ValueTask ExpireDirectReplyAsync(
+        DirectReplyKey key,
+        PendingDirectReply pending,
+        CancellationToken cancellationToken)
+    {
+        while (pending.Lease.IsActive)
+            await Task.Delay(
+                    TimeSpan.FromMilliseconds(100),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        await Task.Delay(
+                _runtime.Registration.DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+        _directReplies.TryRemove(
+            new KeyValuePair<DirectReplyKey, PendingDirectReply>(
+                key,
+                pending));
     }
 
     internal static ZLinkBackendActorRouteContext AdvanceRoute(
@@ -95,7 +179,8 @@ internal sealed class ZLinkActorMessageFollower
                 messageFollowRoute.TargetOwnerLeaseGeneration,
                 requestId,
                 flags,
-                routeContext.ReplyCapability)
+                routeContext.ReplyCapability,
+                routeContext.DeadlineUnixMs)
             : routeContext.ReplyRequestId != 0
                 ? new ZLinkBackendActorRouteContext(
                     default,
@@ -105,7 +190,8 @@ internal sealed class ZLinkActorMessageFollower
                     messageFollowRoute.TargetOwnerLeaseGeneration,
                     requestId,
                     flags,
-                    routeContext.ReplyCapability)
+                    routeContext.ReplyCapability,
+                    routeContext.DeadlineUnixMs)
                 : default;
 
     private async ValueTask FollowAsync(MessageFollowFrame frame, CancellationToken cancellationToken)
@@ -353,4 +439,13 @@ internal sealed class ZLinkActorMessageFollower
         ulong TargetAuthorityOwnerGeneration,
         ulong SourceOwnerLeaseGeneration,
         ulong TargetOwnerLeaseGeneration);
+
+    private readonly record struct DirectReplyKey(
+        string ActorId,
+        ulong RequestId,
+        string Capability);
+
+    private sealed record PendingDirectReply(
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult> Reply,
+        ZLinkActorMessageFollowLease Lease);
 }

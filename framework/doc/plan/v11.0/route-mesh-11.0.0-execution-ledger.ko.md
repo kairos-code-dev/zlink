@@ -114,10 +114,10 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   전환했다. Relocation 성공은 stateful workload만 source dispatch에서 분리하고
   infrastructure를 종료하지 않는다. Shutdown을 별도로 호출해야 `Draining → Stopped`로
   전이한다. AspNetCore build는 warning·error 0, public contract 67/67과 lifecycle focused
-  unit test 40/40, 전체 Unit 1,065/1,065가 통과했다. 다만 Actor·Spot target scheduler는 아직 source version
-  이상인 후보를 허용하므로 PlannedMaintenance의 same-version과 RollingUpdate의 caller 지정
-  exact-version 조건을 실제 후보 선택에 연결해야 한다. ST-I2·I3 process E2E와 전체 unit
-  regression 완료 전까지 lifecycle 행은 진행 상태로 유지한다.
+  unit test 40/40이 통과했다. Actor·Spot target scheduler도 PlannedMaintenance의
+  same-version과 RollingUpdate의 caller 지정 exact-version 조건을 preflight와 실제 후보
+  선택에 동일하게 적용한다. ST-I2·I3 process E2E와 최신 전체 unit regression 완료 전까지
+  lifecycle 행은 진행 상태로 유지한다.
 - JVM은 Entry Spot standalone Actor를 production relocation control 경로에 연결했다. Hidden target
   restore, source freeze, authority commit, accepted journal replay, source cleanup, steady authority
   normalization과 target admission 개방을 순서대로 수행한다. Relocation 전후 object generation은
@@ -167,11 +167,13 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   relocation 중 Shutdown의 current-unit barrier와 owner descriptor cleanup 정렬은 남아 있다.
 - 공통 E2E 1~14와 다섯 언어 runner·feature map을 다시 대조했다. 사용자 요구를 반영해 Config 10은
   payload·대량 relocation·서비스 연속성·Message Follow `ST-I1~I6`을 추가한 41개가 정본이다.
-  실제 selector 등록은 C++ 20개, .NET 25개, Java 20개, Kotlin 20개, Node.js 20개다.
+  실제 selector 등록은 C++ 20개, .NET 33개, Java 20개, Kotlin 20개, Node.js 20개다.
   `.NET all`은 process 검증 전 F4/F5와 부분 Track I을 제외해 19개만 실행한다. `.NET`은
-  `ST-I1`·`ST-I4~I6` scaffold를 연결했지만 process 완료 증거는 아직 없다.
-  `ST-I2/I3`은 production `RelocateAsync(...)`와 DI까지 연결했지만 mode별 exact-version
-  target selection이 남아 개별 Join 반복으로 우회하지 않았다. 다른 네 언어의 I track은 아직 없다.
+  `ST-I1~I6` selector와 fixture를 연결했다. Instance Spot payload 네 profile,
+  SpotWide 64 KiB와 Actor Message Follow 일부 조합은 process에서 통과했다.
+  `ST-I2/I3` 축소 실행은 control traffic만 통과하고 relocation terminal에 도달하지
+  못했으므로 `diagnostic_only`다. 정본 규모, 실제 per-unit terminal, SpotWide member
+  aggregate와 Spot Message Follow 전체 조합은 남아 있다. 다른 네 언어의 I track은 아직 없다.
   Java/Kotlin·Node.js·C++의 공식 `all`은 old route 직접 주입에 의존하는 전환 대상
   F4/F5도 실행하므로 해당 결과를 현행 F4/F5 완료 증거로 사용하지 않는다.
   Config 11 정본 19개 중 다섯 언어 모두
@@ -237,29 +239,68 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
 - `.NET` SpotActorTransfer는 Track I payload 관측을 위해 public
   `IZLinkRelocationStore` wrapper를 추가했다. Wrapper는 private envelope와 Store key를
   해석하지 않고 opaque blob의 byte 수, payload SHA-256과 opaque reference SHA-256만
-  기록한다. `ST-I1`은 4 KiB·64 KiB·8 MiB deterministic Actor state, `ST-I4`는 commit
+  기록한다. `ST-I1`은 4 KiB·64 KiB·8 MiB·64 MiB payload profile, `ST-I4`는 commit
   뒤 Actor one-way·request, `ST-I5`는 correlation·expiry,
   `ST-I6`은 Actor multi-hop과 route cleanup scaffold를 실제 public API로 연결한다.
   I1은 profile마다 Store 측정을 reset하고 expected application·encoded Capture·restore
   byte SHA를 독립 계산해 대조한다. I4~I6은 resolver가 선택한 delivery를 actual submit
   직전에 operation ID별로 지연하므로 relocation 뒤 fresh resolve로 바뀌지 않는다.
+  `ST-I2`와 `ST-I3`에는 Actor 10,000+1,000개, Instance Spot 1,000개,
+  SpotWide 100개×Actor 100개의 정본 workload와 control traffic 측정을 연결했다.
   다만 I4의 source baseline은 seal 직전 queue 경계가 아니고, I5 absolute deadline과
   I6 handler operation identity 증거는 아직 없다. ActorNode와 Client build는 warning 0,
   error 0이다. Mode별 exact-version target selection은 Actor·Spot preflight와 실제
   scheduler까지 연결했다. PlannedMaintenance는 source와 같은 version,
   RollingUpdate는 caller가 지정한 더 높은 exact version만 허용하고 `>=` fallback은
-  제거했다. 관련 relocation test 159/159와 전체 Unit test 1,073/1,073이 통과했다.
-  이 네 행과 실제 host workload가 없는 `ST-I2/I3`은 계속 `부분 구현`이다.
+  제거했다. 관련 relocation test 159/159와 최신 전체 Unit test 1,077/1,077이 통과했다.
+  Track I는 process terminal과 전체 matrix가 남아 계속 `부분 구현`이다.
   `ProbeRefAsync`·`SendRefAsync`와 route-bearing HTTP DTO는 제거했다. Node별 endpoint는
   submitting process를 선택할 뿐이며 public Actor call에는 global Actor ID, message와
   timeout만 전달한다. Message Follow duration은 fixture에서 7초, stale route cache는 2초로
   두 값의 최소 5초 차이를 지킨다. Expiry와 이전 generation delivery는 commit 전에
   선택된 route delivery를 보존하는 transport fixture가 생길 때까지 완료로 판정하지 않는다.
-  I1은 Instance Spot 4 KiB·64 KiB·8 MiB·64 MiB와 SpotWide
+  I1 Instance Spot 4 KiB·64 KiB·8 MiB·64 MiB는
+  `logs/20260727-232318-914304`에서 자동 remote placement, byte 수와 SHA-256을 통과했다.
+  SpotWide
   64 KiB·1 MiB·32 MiB·64 MiB adapter, opaque Store 총 byte·checksum과 peak RSS까지
-  확장했다. Actor remote handler 누락(`logs/20260727-230114-301824`), Instance remote
-  activation `SpotCreateFailed`(`logs/20260727-230242-334194`), SpotWide relocation
-  300초 non-terminal(`logs/20260727-230343-373526`)이 남아 `all`에서 제외한다.
+  확장했다. Remote `ST-B1`은 identity·phase·source release·unbound completion fence를
+  고친 뒤 `logs/20260727-235500-1282505`,
+  `logs/20260727-235556-1284429`에서 연속 통과했다.
+  SpotWide commit 직후 public lookup이 canonical target route를 해석하도록 고쳤다.
+  `logs/20260728-000859-1518859`는 65,536 B application state, 66,247 B Store put,
+  711 B envelope overhead와 restore checksum을 통과했다.
+  Actor adapter가 정확히 64 MiB를 반환하는 독립 selector도 추가했다. 첫 실행
+  `logs/20260728-004839-2032371`은 fixture header 74 bytes를 잘못 더해 adapter
+  limit을 넘긴 문제를 찾았고 fixture를 수정했다. 수정 뒤 process evidence는 아직 없다.
+  SpotWide 64 MiB 실행 `logs/20260728-003937-1922103`은 typed failure 없이 relocation
+  진행 중 외부 5분 execution limit에 도달했으므로 완료 증거가 아니다.
+  I4 source dispatch와 request reply relay를 고친 뒤
+  `logs/20260728-001043-1662047`에서 Actor held one-way·request,
+  Message Follow route 등록·relay·제거가 통과했다. I5도
+  `logs/20260728-002118-1750005`에서 correlation A/B 역순 release,
+  original deadline, late reply 폐기와 expiry stale rejection이 통과했다.
+  I6 첫 hop의 benign lease-renewal StoreVersion conflict는 latest snapshot으로
+  commit을 재시도하도록 고쳤다. 단독 `logs/20260728-003822-1911426`은 두 번째
+  target restore·location commit 뒤 source cleanup completion이 끝나지 않아
+  multi-hop 완료 증거가 아니다.
+  축소 I2 `logs/20260728-000226-1408117`과 I3 Instance
+  `logs/20260728-000501-1448286`은 control baseline을 오류 없이 처리했지만 relocation
+  terminal과 target restore에 도달하지 못했다. 정본 규모의 시간·연속성 증거로 사용하지
+  않으며 Track I 전체를 `all`에서 제외한다.
+  E2E 교차 리뷰 뒤 scale 실행은 `diagnostic_only`로 분리하고 request·one-way를
+  각각 독립 open-loop pacer로 바꿨다. 생성 count를 완료 수로 출력하던 부분도
+  제거했다. Operation ID·absolute deadline·request correlation, relocation 전후
+  public 위치, terminal callback과 handler admission 순서를 대조하며 SpotWide member
+  전체의 최종 owner도 확인한다. Authority owner generation, Spot transport
+  correlation과 aggregate 단일 CAS publication은 현재 public 관측 표면으로 증명할 수
+  없어 이름을 붙인 gap으로 실패한다. Internal metadata와
+  E2E friend assembly를 사용하는 Actor delivery gate도 public-only 완료 증거가 아니다.
+  Scale 진단 terminal, 독립 open-loop 부하, 실제 relocation evidence와 외부 transport
+  harness로 교체한 뒤 정본 gate를 실행한다.
+  최신 회귀는 `.NET` Unit 1,077/1,077, public Contract 67/67, Redis provider
+  25/25가 통과했다. SpotActorTransfer ActorNode·Client·SessionGateway build도
+  warning·error 0이며 `verify-framework-doc-contracts.sh`와 `git diff --check`가
+  통과했다.
 - E2E source의 Spot identity도 다시 조사했다. Production framework는 `SpotId`로 바뀌었지만
   E2E source·fixture·DTO에는 이전 `SpotRid` 계열 이름이 C++ 107개 파일, .NET 84개,
   Java/Kotlin 57개, Node.js 164개 파일에 남아 있다. 일부 Java fixture는 Spot ID를

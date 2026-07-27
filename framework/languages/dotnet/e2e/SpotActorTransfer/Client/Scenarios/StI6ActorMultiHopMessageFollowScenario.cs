@@ -34,8 +34,12 @@ internal static class StI6ActorMultiHopMessageFollowScenario
                     ? "actor-b"
                     : "actor-c";
 
-        await context.CreateSpotAsync(firstTarget, firstSpotId);
-        await context.CreateSpotAsync(secondTarget, secondSpotId);
+        var firstSpot = await context.CreateSpotAsync(
+            firstTarget,
+            firstSpotId);
+        var secondSpot = await context.CreateSpotAsync(
+            secondTarget,
+            secondSpotId);
         var operationId = Guid.NewGuid().ToString("N");
         await context.ArmTransportDeliveryAsync(
             source,
@@ -56,12 +60,26 @@ internal static class StI6ActorMultiHopMessageFollowScenario
                 actorId,
                 new JoinTargetReq(scenario, firstSpotId))).Accepted,
             $"{scenario} first relocation was rejected.");
+        await context.WaitEvidenceAsync(
+            firstTarget,
+            [$"{scenario}|{actorId}|success_reply|{firstSpotId}"]);
+        _ = await context.WaitActorOwnerAsync(
+            firstTarget,
+            actorId,
+            firstSpot.NodeRid);
         ZlinkStreamAssert.Ensure(
             (await context.JoinAsync(
                 firstTarget,
                 actorId,
                 new JoinTargetReq(scenario, secondSpotId))).Accepted,
             $"{scenario} second relocation was rejected.");
+        await context.WaitEvidenceAsync(
+            secondTarget,
+            [$"{scenario}|{actorId}|success_reply|{secondSpotId}"]);
+        _ = await context.WaitActorOwnerAsync(
+            secondTarget,
+            actorId,
+            secondSpot.NodeRid);
 
         await context.ReleaseTransportDeliveryAsync(source, operationId);
         var delayedResult = await delayedRequest;

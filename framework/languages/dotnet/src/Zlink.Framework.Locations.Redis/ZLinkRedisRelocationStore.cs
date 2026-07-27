@@ -15,7 +15,10 @@ public sealed class ZLinkRedisRelocationStore :
     IZLinkRelocationStore,
     IAsyncDisposable
 {
-    private const int MaximumPayloadSize = 64 * 1024 * 1024;
+    // A 64 MiB relocation data chunk is stored with the Framework's 23-byte
+    // immutable chunk envelope. The application adapter limit remains 64 MiB.
+    private const int MaximumEncodedBlobSize =
+        64 * 1024 * 1024 + 23;
 
     private const string PutScript = """
         if redis.replicate_commands then redis.replicate_commands() end
@@ -385,7 +388,7 @@ public sealed class ZLinkRedisRelocationStore :
 
     private static void ValidatePayload(ReadOnlyMemory<byte> payload)
     {
-        if (payload.Length > MaximumPayloadSize)
+        if (payload.Length > MaximumEncodedBlobSize)
             throw new ArgumentOutOfRangeException(nameof(payload));
     }
 

@@ -467,7 +467,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             }
             pending = new PendingRelocationReservation(prepare, fingerprint,
                 () => RunCanonicalRelocationReservationAsync(
-                    peer, prepare, timeout));
+                    peer, prepare, timeout, cancellationToken));
             if (_pendingRelocationReservations.TryAdd(key, pending))
             {
                 _ = pending.Operation.Value.ContinueWith(
@@ -506,7 +506,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (!_pendingRelocationAttempts.TryAdd(key, pending))
             throw new InvalidDataException(
                 "A canonical relocation stage is already active.");
-        var effectiveTimeout = timeout <= TimeSpan.Zero
+        var effectiveTimeout = timeout == Timeout.InfiniteTimeSpan
+            ? timeout
+            : timeout <= TimeSpan.Zero
             ? TimeSpan.FromSeconds(30) : timeout;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
@@ -627,11 +629,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         RunCanonicalRelocationReservationAsync(
             Peer peer,
             ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
-            TimeSpan timeout)
+            TimeSpan timeout,
+            CancellationToken cancellationToken)
     {
-        var effectiveTimeout = timeout <= TimeSpan.Zero
+        var effectiveTimeout = timeout == Timeout.InfiniteTimeSpan
+            ? timeout
+            : timeout <= TimeSpan.Zero
             ? TimeSpan.FromSeconds(30) : timeout;
-        using var deadline = new CancellationTokenSource(effectiveTimeout);
+        using var deadline = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(effectiveTimeout);
         try
         {
             await SendCanonicalRelocationControlAsync(peer, prepare, deadline.Token);
@@ -651,6 +658,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             await SendCanonicalRelocationControlAsync(peer, acceptance, deadline.Token);
             return await pending.Reserved.Task.WaitAsync(deadline.Token)
                 .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -2369,7 +2381,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 authority.TargetNodeGeneration,
                 authority.AuthorityOwnerGeneration,
                 authority.OwnerLeaseGeneration,
-                hasMetadata: false);
+                hasMetadata: false,
+                deadlineUnixMs: request
+                    ? operation?.DeadlineUnixMs
+                      ?? throw new InvalidOperationException(
+                          "Actor requests require an absolute deadline.")
+                    : 0);
             return SubmitStatefulWire(
                 peer,
                 head,
@@ -2432,7 +2449,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             targetNodeGeneration: localAuthority.TargetNodeGeneration,
             authorityOwnerGeneration: localAuthority.AuthorityOwnerGeneration,
             ownerLeaseGeneration: localAuthority.OwnerLeaseGeneration,
-            replyRouteId: request ? operation?.OperationId.Low ?? 0 : 0);
+            replyRouteId: request ? operation?.OperationId.Low ?? 0 : 0,
+            deadlineUnixMs: request
+                ? operation?.DeadlineUnixMs
+                  ?? throw new InvalidOperationException(
+                      "Actor requests require an absolute deadline.")
+                : 0);
         EnqueueOwned(
             MailboxKey.ForActor(actor, MeshReadyDomains.Application),
             record,
@@ -3464,7 +3486,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     SendFlags.DontWait);
             return;
         }
-        if (stateful.Command == ServiceWireConstants.Command.SpotRequest
+        if (request
             && stateful.DeadlineUnixMs
                <= checked((ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
         {

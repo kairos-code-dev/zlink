@@ -281,6 +281,7 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     ulong ReplyRequestId,
     uint ReplyFlags,
     string? ReplyCapability,
+    ulong DeadlineUnixMs,
     byte[] Header,
     byte[] Body);
 
@@ -327,6 +328,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 message.ReplyRequestId,
                 message.ReplyFlags,
                 message.ReplyCapability,
+                message.DeadlineUnixMs,
                 message.Header,
                 message.Body,
                 cancellationToken)

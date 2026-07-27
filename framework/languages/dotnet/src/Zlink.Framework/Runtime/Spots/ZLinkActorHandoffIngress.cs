@@ -32,7 +32,8 @@ internal static class ZLinkActorHandoffIngress
                             frame.Header,
                             frame.Body,
                             frame.SourceNodeGeneration,
-                            frame.RequestSource))
+                            frame.RequestSource,
+                            frame.DirectReply))
                     {
                         frame.Dispose();
                         continue;

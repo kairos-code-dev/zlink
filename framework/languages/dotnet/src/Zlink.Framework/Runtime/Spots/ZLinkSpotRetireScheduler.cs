@@ -381,7 +381,9 @@ internal sealed class ZLinkSpotRetireScheduler(
                         actualPayloadBytes
                         + SourceIngressHoldReservationBytes)))
                     throw new InvalidOperationException(
-                        $"SPOT '{activation.SpotId}' relocation payload exceeded its sealed reservation.");
+                        $"SPOT '{activation.SpotId}' relocation payload exceeded its sealed reservation"
+                        + $" (actual={actualPayloadBytes + SourceIngressHoldReservationBytes},"
+                        + $" reserved={permit.ReservedPayloadBytes}).");
 
                 await target.StageAsync(
                         reservation,
@@ -670,6 +672,9 @@ internal sealed class ZLinkSpotRetireScheduler(
             frameworkBytes
             + ZLinkSpotRetireCompletionMarker.CreatePending().LongLength
             + SourceIngressHoldReservationBytes
+            + (long)ZLinkCanonicalParticipantRecoveryCodec
+                .MaximumEncodedBytesWithEmptyMembership
+              * participantKeys.Count
             + SnapshotReservationBytes * snapshotParticipantCount);
     }
 

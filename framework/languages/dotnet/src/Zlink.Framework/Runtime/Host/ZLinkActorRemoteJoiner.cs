@@ -377,7 +377,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         ZLinkRuntimeMetrics.ZLinkRelocationMetricOperation relocationMetric,
         CancellationToken cancellationToken)
     {
-        var sourceSpotId = ResolveSourceSpotId(actorState);
+        var sourceSpotId = ResolveSourceSpotId(sourceAuthority);
 
         var admissionDeadline = DateTimeOffset.UtcNow + registration.DefaultRequestTimeout;
         var admission = await ZLinkSpotHandleRequestExecution.ExecuteAsync(
@@ -660,17 +660,26 @@ internal sealed class ZLinkActorRemoteJoiner(
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{actor.Context.ActorId}' target changed ObjectGeneration during handoff.");
-        var actorLocations = ZLinkFrameworkRuntime
-            .RequireActorRelocationLocationLifecycle(
-                runtime.LocationLifecycle,
-                actor.Context.ActorId)
-            .ActorOwnership;
-        await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
-                actor.Context.ActorId,
-                resultActorRef.ToNative(sourceAuthority.MeshName),
-                Guid.ParseExact(handoffId, "N"),
+        var publishedAuthority = await authorityStore.ReadAuthorityAsync(
+                authorityKey,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        if (publishedAuthority is not ZLinkAuthorityReadResult.Found published)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RelocationDataLost,
+                $"Actor '{actor.Context.ActorId}' relocation authority disappeared after target commit.",
+                isRetriable: false);
+        var targetOwner = new ZLinkLocationOwnerToken(
+            published.Snapshot.OwnerId,
+            published.Snapshot.OwnerLeaseGeneration);
+        var progress = new ZLinkStandaloneActorRelocationProgressCoordinator(
+            authorityStore,
+            relocationStore);
+        await progress.AdvancePhaseAsync(
+                prepared.Envelope,
                 ZLinkActorRelocationAuthorityPhase.Activated,
                 ZLinkActorRelocationAuthorityPhase.Cleaning,
+                targetOwner,
                 CancellationToken.None)
             .ConfigureAwait(false);
         var trailingFrames = actorState.Handoff.CutoverCaptureToMessageFollow(
@@ -692,6 +701,12 @@ internal sealed class ZLinkActorRemoteJoiner(
                 actorState,
                 CancellationToken.None)
             .ConfigureAwait(false);
+        if (!prepared.Envelope.CanonicalLogicalStream.IsEmpty)
+            await progress.CompleteSourceCleanupAsync(
+                    prepared.Envelope,
+                    targetOwner,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
         actorState.Handoff.CommitMessageFollow(
             registration.Locations.Options.MessageFollowDuration);
         await ReconcileCommittedSourceHandoffAsync(
@@ -700,12 +715,11 @@ internal sealed class ZLinkActorRemoteJoiner(
                 resultActorRef,
                 CancellationToken.None)
             .ConfigureAwait(false);
-        await actorLocations.AdvanceTransferredActorAuthorityPhaseAsync(
-                actor.Context.ActorId,
-                resultActorRef.ToNative(sourceAuthority.MeshName),
-                Guid.ParseExact(handoffId, "N"),
+        await progress.AdvancePhaseAsync(
+                prepared.Envelope,
                 ZLinkActorRelocationAuthorityPhase.Cleaning,
                 ZLinkActorRelocationAuthorityPhase.Completed,
+                targetOwner,
                 CancellationToken.None)
             .ConfigureAwait(false);
         await ReconcileTargetHandoffCompletionAsync(
@@ -1051,19 +1065,13 @@ internal sealed class ZLinkActorRemoteJoiner(
         }
     }
 
-    private string ResolveSourceSpotId(ZLinkActorRuntimeState actorState)
+    internal static string ResolveSourceSpotId(
+        ZLinkActorAuthorityPayload sourceAuthority)
     {
-        if (actorState.LiveActivation is { } activation) return activation.SpotId;
-
-        var sourceNodeRid = actorState.NativeActorRef?.NodeRid;
-        var entry = registration.SpotNodes.Values.FirstOrDefault(
-            spotNode => !string.IsNullOrEmpty(spotNode.EntrySpotId)
-                        && (sourceNodeRid is null
-                            || spotNode.RoutingId == sourceNodeRid.Value));
-        if (entry is not null) return entry.EntrySpotId;
-
-        throw new InvalidOperationException(
-            $"Actor '{actorState.ActorId}' has no Entry Spot ID mapping.");
+        ArgumentNullException.ThrowIfNull(sourceAuthority);
+        return ZLinkSpotId.Require(
+            sourceAuthority.CurrentSpotId,
+            nameof(sourceAuthority.CurrentSpotId));
     }
 
     private ulong ResolveSessionOwnerNodeGeneration(RoutingId nodeRid)

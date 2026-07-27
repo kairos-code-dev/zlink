@@ -18,6 +18,14 @@ internal static class ZLinkCanonicalParticipantRecoveryCodec
     private const uint Magic = 0x5a4c5250; // ZLRP
     private const byte Version = 1;
     private const int MaximumFieldBytes = 1024 * 1024;
+    // Current Spot relocation recovery records keep MembershipMutation empty.
+    // The three Text16 fields can each contain ushort.MaxValue UTF-8 bytes.
+    internal const int MaximumEncodedBytesWithEmptyMembership =
+        sizeof(uint) + sizeof(byte)
+        + 3 * (sizeof(ushort) + ushort.MaxValue)
+        + sizeof(byte) + 2 * sizeof(ulong)
+        + sizeof(uint) + MaximumFieldBytes
+        + sizeof(uint);
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     internal static byte[] Encode(ZLinkCanonicalParticipantRecovery value)

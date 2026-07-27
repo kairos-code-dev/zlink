@@ -34,10 +34,10 @@ internal static class ActorNodeHostFactory
         builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(runtimeEvidence);
         builder.Services.AddSingleton(relocationBlobs);
+        builder.Services.AddSingleton<RelocationUnitTerminalStore>();
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
         builder.Services.AddSingleton<TransferGateStore>();
-        builder.Services.AddSingleton<JoinCompletionStore>();
         builder.Services.AddSingleton<TransportDeliveryGate>();
         builder.Services.AddSingleton<IZLinkActorTransportDeliveryGate>(
             services => services.GetRequiredService<TransportDeliveryGate>());
@@ -72,7 +72,9 @@ internal static class ActorNodeHostFactory
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
             var mesh28 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
-                .SetRoutingIdPrefix(options.Rid);
+                .SetRoutingIdPrefix(options.Rid)
+                .SetActorLimit(30_000)
+                .SetSpotLimit(5_000);
             mesh28.Objects().Server()
                 .AddEntrySpot<TransferEntrySpot>()
                 .AddActorFactory<TransferActor, TransferActorFactory>(

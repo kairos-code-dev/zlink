@@ -122,7 +122,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             });
     }
 
-    private async Task<T> WithPlacementNodeAsync<T>(
+    internal async Task<T> WithPlacementNodeAsync<T>(
         ZLinkHttpClient placementNode,
         Func<Task<T>> action)
     {
@@ -161,6 +161,43 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             result.Weight == weight,
             $"Placement weight expected {weight}, got {result.Weight}.");
     }
+
+    public async Task SetExclusivePlacementAsync(
+        ZLinkHttpClient placementNode)
+    {
+        foreach (var node in ActorNodes())
+            await SetPlacementWeightAsync(
+                node,
+                ReferenceEquals(node, placementNode) ? 100 : 0);
+    }
+
+    public async Task RestoreDefaultPlacementAsync()
+    {
+        foreach (var node in ActorNodes())
+            await SetPlacementWeightAsync(node, 100);
+    }
+
+    public async Task<RelocationBulkActorCreateRes> CreateBulkActorsAsync(
+        ZLinkHttpClient coordinator,
+        RelocationBulkActorCreateReq request) =>
+        (await coordinator.Post("/workload/actors/create-bulk")
+                .Body(request)
+                .Timeout(TimeSpan.FromMinutes(5))
+                .Async<RelocationBulkActorCreateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Bulk Actor creation response was null.");
+
+    public async Task<RelocationBulkSpotCreateRes> CreateBulkSpotsAsync(
+        ZLinkHttpClient coordinator,
+        RelocationBulkSpotCreateReq request) =>
+        (await coordinator.Post("/workload/spots/create-bulk")
+                .Body(request)
+                .Timeout(TimeSpan.FromMinutes(5))
+                .Async<RelocationBulkSpotCreateRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Bulk Spot creation response was null.");
 
     private void EnsurePlacementOwner(
         ZLinkHttpClient placementNode,
@@ -265,6 +302,40 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Actor ref response was null.");
     }
 
+    public async Task<ActorRefSnapshotRes> WaitActorOwnerAsync(
+        ZLinkHttpClient client,
+        string actorId,
+        string expectedNodeRid,
+        TimeSpan? timeout = null)
+    {
+        var deadline = DateTimeOffset.UtcNow
+                       + (timeout ?? TimeSpan.FromSeconds(5));
+        ActorRefSnapshotRes? current = null;
+        do
+        {
+            try
+            {
+                current = await GetActorRefAsync(client, actorId);
+                if (string.Equals(
+                        current.NodeRid,
+                        expectedNodeRid,
+                        StringComparison.Ordinal))
+                    return current;
+            }
+            catch (ZLinkFrameworkException)
+            {
+                // The target callback can complete just before its public
+                // location view observes the committed owner.
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20));
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        throw new InvalidOperationException(
+            $"Actor '{actorId}' owner expected '{expectedNodeRid}', "
+            + $"got '{current?.NodeRid ?? "<not-found>"}'.");
+    }
+
     public async Task<ActorDestroyRes> DestroyActorAsync(
         ZLinkHttpClient client,
         string actorId)
@@ -355,6 +426,69 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             .Body
         ?? throw new InvalidOperationException(
             "Host relocation response was null.");
+
+    public async Task<RelocationWorkloadReply> RequestActorWorkloadAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        (await submittingNode.Post("/workload/actors/request")
+                .Body(request)
+                .Timeout(TimeSpan.FromMilliseconds(
+                    request.TimeoutMilliseconds))
+                .Async<RelocationWorkloadReply>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Actor workload reply was null.");
+
+    public Task SendActorWorkloadAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        submittingNode.Post("/workload/actors/send")
+            .Body(request)
+            .AsyncRaw()
+            .AsTask();
+
+    public async Task<RelocationWorkloadReply> RequestSpotWorkloadAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        (await submittingNode.Post("/workload/spots/request")
+                .Body(request)
+                .Timeout(TimeSpan.FromMilliseconds(
+                    request.TimeoutMilliseconds))
+                .Async<RelocationWorkloadReply>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Spot workload reply was null.");
+
+    public Task SendSpotWorkloadAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        submittingNode.Post("/workload/spots/send")
+            .Body(request)
+            .AsyncRaw()
+            .AsTask();
+
+    public async Task<IReadOnlyList<RelocationLocationSnapshot>>
+        GetRelocationLocationsAsync(
+            ZLinkHttpClient coordinator,
+            IReadOnlyCollection<string> actorIds,
+            IReadOnlyCollection<string> spotIds) =>
+        (await coordinator.Post("/workload/locations")
+                .Body(new RelocationLocationQueryReq(
+                    actorIds.ToArray(),
+                    spotIds.ToArray()))
+                .Timeout(TimeSpan.FromMinutes(2))
+                .Async<IReadOnlyList<RelocationLocationSnapshot>>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Relocation location response was null.");
+
+    public async Task<IReadOnlyList<RelocationUnitTerminalEvidence>>
+        GetRelocationTerminalsAsync(ZLinkHttpClient node) =>
+        (await node.Get("/workload/relocation-terminals")
+                .Async<IReadOnlyList<RelocationUnitTerminalEvidence>>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Relocation terminal evidence response was null.");
 
     public async Task<ProcessMemoryRes> GetProcessMemoryAsync(
         ZLinkHttpClient client) =>

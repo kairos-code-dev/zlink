@@ -61,7 +61,34 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
     /// </summary>
     internal async ValueTask<ZLinkPreparedAggregateRelocation> PrepareAsync(
         ZLinkAggregateRelocationRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await PrepareCoreAsync(
+                request,
+                acceptedRelocation: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// Reserves the authority aggregate against an immutable root that the
+    /// source already stored and verified. The target must not write a second
+    /// root because relocation references are opaque and need not be
+    /// content-addressed.
+    /// </summary>
+    internal async ValueTask<ZLinkPreparedAggregateRelocation>
+        PrepareExistingAsync(
+            ZLinkAggregateRelocationRequest request,
+            ZLinkRelocationStored acceptedRelocation,
+            CancellationToken cancellationToken = default) =>
+        await PrepareCoreAsync(
+                request,
+                acceptedRelocation,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    private async ValueTask<ZLinkPreparedAggregateRelocation> PrepareCoreAsync(
+        ZLinkAggregateRelocationRequest request,
+        ZLinkRelocationStored? acceptedRelocation,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         Validate(request);
@@ -76,13 +103,14 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
             request.Participants
                 .Select(static participant => participant.Envelope)
                 .ToArray());
-        var tree = await ZLinkRelocationTreeStore.PutAsync(
-                relocationStore,
-                envelope,
-                Retention,
-                cancellationToken)
-            .ConfigureAwait(false);
-        var stored = tree.Root;
+        var ownsStoredRoot = acceptedRelocation is null;
+        var stored = acceptedRelocation
+            ?? (await ZLinkRelocationTreeStore.PutAsync(
+                    relocationStore,
+                    envelope,
+                    Retention,
+                    cancellationToken)
+                .ConfigureAwait(false)).Root;
         var fence = new ZLinkAggregateFence(
             request.AggregateId,
             request.AggregateGeneration);
@@ -198,7 +226,7 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                     safeToDelete = false;
                 }
             }
-            if (safeToDelete)
+            if (safeToDelete && ownsStoredRoot)
                 await DeleteOrphanAsync(stored.Reference).ConfigureAwait(false);
             throw;
         }

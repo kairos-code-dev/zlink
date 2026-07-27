@@ -29,7 +29,13 @@ internal sealed class EvidenceStore(string nodeRid, string path)
 
     public void Add(string scenario, string actorId, string kind, string value)
     {
-        var item = new ActorEvidence(scenario, actorId, kind, value, NodeRid);
+        var item = new ActorEvidence(
+            scenario,
+            actorId,
+            kind,
+            value,
+            NodeRid,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         _items.Enqueue(item);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.AppendAllLines(path, [$"{item.Scenario}|{item.ActorId}|{item.Kind}|{item.Value}|{item.NodeRid}"]);
@@ -79,47 +85,25 @@ internal sealed class RuntimeEvidenceStore
     }
 }
 
-internal sealed record JoinCompletionOutcome(
-    JoinTargetRes? Reply,
-    string? ErrorKind);
-
-internal sealed class JoinCompletionStore
+internal sealed class RelocationUnitTerminalStore
 {
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<JoinCompletionOutcome>>
-        _pending = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<RelocationUnitTerminalEvidence>
+        _items = new();
 
-    public Task<JoinCompletionOutcome> Register(
-        string actorId,
-        string scenario)
-    {
-        var key = Key(actorId, scenario);
-        var completion = new TaskCompletionSource<JoinCompletionOutcome>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pending.TryAdd(key, completion))
-            throw new InvalidOperationException(
-                $"Join completion '{scenario}' for Actor '{actorId}' is already pending.");
-        return completion.Task;
-    }
+    public void Add(
+        string objectKind,
+        string objectId,
+        ulong objectGeneration,
+        string nodeRid) =>
+        _items.Enqueue(new RelocationUnitTerminalEvidence(
+            objectKind,
+            objectId,
+            checked((long)objectGeneration),
+            nodeRid,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 
-    public void Complete(
-        string actorId,
-        string scenario,
-        JoinCompletionOutcome outcome)
-    {
-        if (_pending.TryRemove(Key(actorId, scenario), out var completion))
-            completion.TrySetResult(outcome);
-    }
-
-    public void Cancel(
-        string actorId,
-        string scenario)
-    {
-        if (_pending.TryRemove(Key(actorId, scenario), out var completion))
-            completion.TrySetCanceled();
-    }
-
-    private static string Key(string actorId, string scenario) =>
-        actorId + "\n" + scenario;
+    public RelocationUnitTerminalEvidence[] Snapshot() =>
+        _items.ToArray();
 }
 
 internal sealed class TransportDeliveryGate

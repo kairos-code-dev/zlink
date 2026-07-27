@@ -107,7 +107,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                     spotParticipant.ObjectGeneration,
                     targetOwnerGeneration,
                     ZLinkMessage.Empty,
-                    cancellationToken)
+                    cancellationToken,
+                    invokeCreate: false)
                 .ConfigureAwait(false);
         }
 
@@ -237,10 +238,9 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask PublishInboundSpotAggregateAsync(
         TargetStage stage,
-        Func<CancellationToken, ValueTask> normalizeAuthority,
+        Func<CancellationToken, ValueTask>? normalizeAuthority,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(normalizeAuthority);
         await stage.PublishGate.WaitAsync(cancellationToken)
             .ConfigureAwait(false);
         var spotParticipant = stage.Envelope.Participants.Single(
@@ -293,7 +293,9 @@ internal sealed partial class ZLinkFrameworkRuntime
                         stage.Node.Catalog.PublishRelocatedReserved(
                             stage.Spot);
                     },
-                    () => normalizeAuthority(cancellationToken))
+                    normalizeAuthority is null
+                        ? null
+                        : () => normalizeAuthority(cancellationToken))
                 .ConfigureAwait(false);
             foreach (var (actorState, sessionCommit) in sessionCommits)
             {
@@ -319,17 +321,17 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal static async ValueTask PublishCatalogBeforeNormalizationAsync(
         TargetStage stage,
         Action publishCatalog,
-        Func<ValueTask> normalizeAuthority)
+        Func<ValueTask>? normalizeAuthority)
     {
         ArgumentNullException.ThrowIfNull(stage);
         ArgumentNullException.ThrowIfNull(publishCatalog);
-        ArgumentNullException.ThrowIfNull(normalizeAuthority);
         if (Volatile.Read(ref stage.LocalCatalogPublished) == 0)
         {
             publishCatalog();
             Volatile.Write(ref stage.LocalCatalogPublished, 1);
         }
-        await normalizeAuthority().ConfigureAwait(false);
+        if (normalizeAuthority is not null)
+            await normalizeAuthority().ConfigureAwait(false);
     }
 
     internal async ValueTask PrepareInboundSpotAggregateAsync(

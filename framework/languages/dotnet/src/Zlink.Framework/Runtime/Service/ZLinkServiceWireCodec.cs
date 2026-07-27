@@ -733,7 +733,8 @@ internal static partial class ZLinkServiceWireCodec
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
         bool hasMetadata,
-        byte messageFollowHopCount = 0)
+        byte messageFollowHopCount = 0,
+        ulong deadlineUnixMs = 0)
     {
         var request = command == ServiceWireConstants.Command.ActorRequest;
         if (command is not (ServiceWireConstants.Command.ActorSend
@@ -747,11 +748,16 @@ internal static partial class ZLinkServiceWireCodec
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0
-            || messageFollowHopCount > 8)
+            || messageFollowHopCount > 8
+            || request != (deadlineUnixMs != 0)
+            || deadlineUnixMs > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(command));
         var body = new WireWriter();
         if (request)
+        {
             body.U64(correlation);
+            body.U64(deadlineUnixMs);
+        }
         body.U64(operationId.High);
         body.U64(operationId.Low);
         body.U8(messageFollowHopCount);
@@ -884,7 +890,7 @@ internal static partial class ZLinkServiceWireCodec
             error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
             return false;
         }
-        if (command == ServiceWireConstants.Command.SpotRequest
+        if (request
             && (!reader.TryU64(out deadlineUnixMs)
                 || deadlineUnixMs is 0 or > long.MaxValue))
         {

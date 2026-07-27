@@ -23,7 +23,7 @@ internal static class StI5MessageFollowSafetyScenario
         var source = context.NodeForRid(created.NodeRid);
         var (target, targetPrefix) =
             context.OtherActorNode(created.NodeRid);
-        await context.CreateSpotAsync(target, spotId);
+        var targetSpot = await context.CreateSpotAsync(target, spotId);
 
         var correlationA = Guid.NewGuid().ToString("N");
         var correlationB = Guid.NewGuid().ToString("N");
@@ -73,12 +73,26 @@ internal static class StI5MessageFollowSafetyScenario
                 actorId,
                 new JoinTargetReq(scenario, spotId))).Accepted,
             $"{scenario} relocation was rejected.");
+        await context.WaitEvidenceAsync(
+            target,
+            [$"{scenario}|{actorId}|success_reply|{spotId}"]);
+        _ = await context.WaitActorOwnerAsync(
+            target,
+            actorId,
+            targetSpot.NodeRid);
 
+        // Release the two stale requests in reverse order and verify each
+        // terminal before admitting the deadline probe. This keeps the
+        // correlation assertion independent from the Actor's serial handler
+        // queue while still proving that Message Follow does not exchange
+        // reply capabilities.
         await context.ReleaseTransportDeliveryAsync(source, correlationB);
+        var secondReply = await second;
         await context.ReleaseTransportDeliveryAsync(source, correlationA);
+        var firstReply = await first;
         await context.ReleaseTransportDeliveryAsync(
             source, deadlineOperation);
-        var replies = await Task.WhenAll(first, second);
+        var replies = new[] { firstReply, secondReply };
         ZlinkStreamAssert.Ensure(
             replies[0].Succeeded
             && replies[1].Succeeded
@@ -90,7 +104,12 @@ internal static class StI5MessageFollowSafetyScenario
                 SpotActorTransferScenarioContext.IsNode(
                     result.Reply.NodeRid,
                     targetPrefix)),
-            $"{scenario} request correlation crossed between followed calls.");
+            $"{scenario} request correlation crossed between followed calls: "
+            + string.Join(
+                ";",
+                replies.Select(result =>
+                    $"success={result.Succeeded},error={result.ErrorKind},"
+                    + $"marker={result.Reply?.Marker},node={result.Reply?.NodeRid}")));
 
         var deadlineResult = await deadline;
         ZlinkStreamAssert.Ensure(

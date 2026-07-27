@@ -23,7 +23,7 @@ internal static class StI4ActorMessageFollowMatrixScenario
         var source = context.NodeForRid(created.NodeRid);
         var (target, targetPrefix) =
             context.OtherActorNode(created.NodeRid);
-        await context.CreateSpotAsync(target, spotId);
+        var targetSpot = await context.CreateSpotAsync(target, spotId);
 
         var queueOperation = Guid.NewGuid().ToString("N");
         await context.ArmTransportDeliveryAsync(
@@ -70,6 +70,13 @@ internal static class StI4ActorMessageFollowMatrixScenario
         ZlinkStreamAssert.Ensure(
             joined.Accepted,
             $"{scenario} relocation was rejected.");
+        await context.WaitEvidenceAsync(
+            target,
+            [$"{scenario}|{actorId}|success_reply|{spotId}"]);
+        _ = await context.WaitActorOwnerAsync(
+            target,
+            actorId,
+            targetSpot.NodeRid);
 
         await context.ReleaseTransportDeliveryAsync(
             source, oneWayOperation);

@@ -774,8 +774,18 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         private static bool BoundSessionRouteMatches(
             ZLinkRemoteActorJoinRequest left,
-            ZLinkRemoteActorHandoffCompletionRequest right) =>
-            (left.BoundSessionNodeRid ?? []).AsSpan()
+            ZLinkRemoteActorHandoffCompletionRequest right)
+        {
+            var leftHasRoute = left.BoundSessionNodeRid is { Length: > 0 }
+                               || left.BoundSessionRid is { Length: > 0 }
+                               || !string.IsNullOrEmpty(left.BoundSessionBindingToken);
+            var rightHasRoute = right.BoundSessionNodeRid is { Length: > 0 }
+                                || right.BoundSessionRid is { Length: > 0 }
+                                || !string.IsNullOrEmpty(right.BoundSessionBindingToken);
+            if (!leftHasRoute && !rightHasRoute) return true;
+            if (leftHasRoute != rightHasRoute) return false;
+
+            return (left.BoundSessionNodeRid ?? []).AsSpan()
                 .SequenceEqual(right.BoundSessionNodeRid ?? [])
             && (left.BoundSessionRid ?? []).AsSpan()
                 .SequenceEqual(right.BoundSessionRid ?? [])
@@ -799,6 +809,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 == right.BoundSessionOwnerNodeGeneration
             && left.BoundSessionAcceptedHighWater
                 == right.BoundSessionAcceptedHighWater;
+        }
 
         private static bool BoundSessionRouteMatches(
             ZLinkRemoteActorHandoffCompletionRequest left,

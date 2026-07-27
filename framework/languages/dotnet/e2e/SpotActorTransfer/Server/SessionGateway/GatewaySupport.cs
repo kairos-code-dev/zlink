@@ -24,7 +24,13 @@ internal sealed class GatewayEvidenceStore(string nodeRid, string path)
 
     public void Add(string scenario, string actorId, string kind, string value)
     {
-        var item = new ActorEvidence(scenario, actorId, kind, value, nodeRid);
+        var item = new ActorEvidence(
+            scenario,
+            actorId,
+            kind,
+            value,
+            nodeRid,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         _items.Enqueue(item);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.AppendAllLines(path, [$"{item.Scenario}|{item.ActorId}|{item.Kind}|{item.Value}|{item.NodeRid}"]);

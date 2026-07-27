@@ -14,7 +14,8 @@ internal static class ZLinkActorMessageFollowDispatcher
         ZlinkStreamHeader header,
         Message body,
         ulong sourceNodeGeneration = 0,
-        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
         var route = actorState.Handoff.RouteFrame(
             actorState.NativeActorRef,
@@ -33,7 +34,8 @@ internal static class ZLinkActorMessageFollowDispatcher
                 header,
                 body,
                 sourceNodeGeneration,
-                requestSource);
+                requestSource,
+                directReply);
         }
         if (route is ZLinkActorFrameRoute.Stale
             or ZLinkActorFrameRoute.MessageFollowExpired)

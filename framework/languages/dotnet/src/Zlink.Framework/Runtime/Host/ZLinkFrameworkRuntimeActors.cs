@@ -2385,6 +2385,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ulong replyRequestId,
         uint replyFlags,
         string? replyCapability,
+        ulong deadlineUnixMs,
         byte[] header,
         byte[] body,
         CancellationToken cancellationToken)
@@ -2393,7 +2394,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         // the incoming stale route instead of reading NativeActorRef: during
         // a chained transfer that state already points at the next owner, and
         // replacing the incoming identity would bypass this node's Message
-        // Follow route and attempt blocked local dispatch.
+        // Use the Message Follow route before attempting blocked local dispatch.
         var targetNode = GetSpotNodeRuntime(targetNodeRid).Node;
         if (targetNode.MeshStatus().LifecycleGeneration != targetNodeGeneration
             || authorityOwnerGeneration == 0
@@ -2425,7 +2426,8 @@ internal sealed partial class ZLinkFrameworkRuntime
             ownerLeaseGeneration,
             replyRequestId,
             replyFlags,
-            replyCapability);
+            replyCapability,
+            deadlineUnixMs);
         ValidateRemoteActorFrameSource(
             actorId,
             routeContext,
@@ -2490,7 +2492,11 @@ internal sealed partial class ZLinkFrameworkRuntime
             var prior = _remoteFrameChains.TryGetValue(actorId, out var chain)
                 ? chain
                 : Task.CompletedTask;
-            chained = DispatchRemoteFrameAfterAsync(prior, batch, cancellationToken);
+            chained = DispatchRemoteFrameAfterAsync(
+                prior,
+                batch,
+                deadlineUnixMs,
+                cancellationToken);
             _remoteFrameChains[actorId] = chained;
         }
 
@@ -2512,6 +2518,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     private async Task DispatchRemoteFrameAfterAsync(
         Task prior,
         ZLinkSpotActorFrameBatch batch,
+        ulong deadlineUnixMs,
         CancellationToken cancellationToken)
     {
         try
@@ -2523,8 +2530,30 @@ internal sealed partial class ZLinkFrameworkRuntime
             // The prior frame reported its own failure; the chain continues.
         }
 
-        await new ZLinkActorInboundPipeline(this, new ZLinkEntrySpotActorInboundEndpoint(this))
-            .DispatchAsync(batch, cancellationToken)
+        if (deadlineUnixMs == 0)
+        {
+            await new ZLinkActorInboundPipeline(
+                    this,
+                    new ZLinkEntrySpotActorInboundEndpoint(this))
+                .DispatchAsync(batch, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var remaining = checked((long)deadlineUnixMs)
+                        - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (remaining <= 0)
+        {
+            batch.Dispose();
+            return;
+        }
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromMilliseconds(remaining));
+        await new ZLinkActorInboundPipeline(
+                this,
+                new ZLinkEntrySpotActorInboundEndpoint(this))
+            .DispatchAsync(batch, deadline.Token)
             .ConfigureAwait(false);
     }
 
@@ -2592,6 +2621,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             routeContext.ReplyRequestId,
             routeContext.ReplyFlags,
             routeContext.ReplyCapability,
+            routeContext.DeadlineUnixMs,
             header,
             body);
         var envelope = ZLinkClientCallCodec.CreateEnvelope(
@@ -2936,6 +2966,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         byte[] frame,
         CancellationToken cancellationToken)
     {
+        if (_actorMessageFollower.TryCompleteDirectReply(
+                actorId,
+                requestId,
+                flags,
+                replyCapability,
+                sourceNodeRid,
+                responderNodeRid,
+                frame))
+            return;
         if (!_actorBoundSessionCoordinator.TryClaimRemoteSessionReply(
                 actorId,
                 requestId,

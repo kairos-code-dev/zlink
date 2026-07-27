@@ -381,6 +381,58 @@ internal sealed class ZLinkSpotRuntimeManager(
                     stableType,
                     StringComparison.Ordinal))
                 throw SpotTypeMismatch(spotId, stableType);
+            if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    current.Payload.Span,
+                    out var relocation))
+            {
+                if (!ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
+                        relocation.SteadyAuthorityPayload.Span,
+                        out var steady)
+                    || !string.Equals(
+                        steady.SpotId,
+                        spotId,
+                        StringComparison.Ordinal)
+                    || !string.Equals(
+                        steady.StableType,
+                        stableType,
+                        StringComparison.Ordinal))
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.SpotMoving,
+                        $"User Spot '{spotId}' relocation authority is invalid.",
+                        true);
+                if (current.Allocation.State
+                        == ZLinkPlacementAllocationState.Active
+                    && relocation.Phase >= 4
+                    && !string.IsNullOrWhiteSpace(
+                        relocation.State.TargetNodeRid))
+                    return new ZLinkSpotCreateResult(
+                        new SpotRef(
+                            spotId,
+                            current.ObjectGeneration,
+                            steady.MeshName,
+                            RoutingId.FromHex(
+                                relocation.State.TargetNodeRid)),
+                        ZLinkSpotCreateState.Existing,
+                        null);
+                if (DateTimeOffset.UtcNow >= deadline)
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.DeadlineExceeded,
+                        $"Timed out while joining relocating User Spot '{spotId}'.",
+                        true);
+                await Task.Delay(
+                        TimeSpan.FromMilliseconds(10),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                var relocatingRead = await _locationStore!.ReadAuthorityAsync(
+                        ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (relocatingRead is not ZLinkAuthorityReadResult.Found
+                    relocatingFound)
+                    return null;
+                current = relocatingFound.Snapshot;
+                continue;
+            }
             if (!ZLinkUserSpotAuthorityPayloadCodec.TryDecode(
                     current.Payload.Span, out var authority))
                 throw new ZLinkFrameworkException(

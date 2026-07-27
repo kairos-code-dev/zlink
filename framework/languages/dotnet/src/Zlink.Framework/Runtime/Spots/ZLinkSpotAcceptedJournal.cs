@@ -202,10 +202,14 @@ internal static class ZLinkSpotAcceptedJournal
 
     private static void WriteSpotId(BinaryWriter writer, string? value)
     {
-        writer.Write(value is not null);
-        if (value is null) return;
+        // Node-originated Instance Spot intents have no source Spot. The
+        // service wire represents that optional value as an empty string;
+        // preserve it in the durable journal as an absent Spot ID.
+        var present = !string.IsNullOrEmpty(value);
+        writer.Write(present);
+        if (!present) return;
         WriteBytes(writer, Encoding.UTF8.GetBytes(
-            ZLinkSpotId.Require(value, nameof(value))));
+            ZLinkSpotId.Require(value!, nameof(value))));
     }
 
     private static void WriteText(BinaryWriter writer, string value) =>

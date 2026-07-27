@@ -528,7 +528,7 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
         std::lock_guard<std::recursive_mutex> node_lock (state->mutex);
         // A lost claim races with a completed transfer: after this node hands the
         // actor to another node it records the newer generation and Message
-        // Follow route. A loss notification for an older generation is stale
+        // Message Follow route. A loss notification for an older generation is stale
         // and must not erase that newer record.
         const auto recorded = state->actor_generations.find (key);
         if (recorded != state->actor_generations.end ()

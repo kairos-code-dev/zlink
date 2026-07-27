@@ -91,7 +91,8 @@ Provider가 해석해야 하는 값은 reference, payload, retention뿐이다.
 | 항목 | 계약 |
 |---|---|
 | Reference | Framework가 `Put` 전에 발급하는 opaque UTF-8 `1..4096` bytes다. 대소문자를 구분하여 전체 값이 정확히 같은지 비교한다. |
-| Blob | Reference 하나에 저장하는 최대 64 MiB의 immutable bytes다. |
+| Application data chunk | Framework가 나누기 전 application bytes 기준으로 최대 64 MiB다. |
+| Redis encoded blob | Data chunk와 Framework가 붙이는 immutable envelope를 합친 provider 입력이다. 공식 Redis provider의 최대 크기는 `64 MiB + 23 bytes`다. |
 | 여러 blob으로 나눈 payload | Framework가 여러 blob으로 구성할 수 있는 전체 payload다. 최대 크기는 256 GiB다. |
 | Chunk 수 | 전체 payload의 맨 앞 목록이 가리키는 data chunk는 최대 4,096개다. |
 | `StoreNow` | Provider가 `Put`·`Read`·`Renew` 결과에 넣는 현재 시각이다. 만료 여부는 이 시각과 provider clock으로 판단한다. |
@@ -99,7 +100,10 @@ Provider가 해석해야 하는 값은 reference, payload, retention뿐이다.
 Provider는 reference를 만들거나 바꾸지 않는다. 같은 content라도 Framework가 서로 다른 reference를
 지정하면 별개의 value로 저장한다. 삭제되거나 만료된 reference를 다른 bytes에 다시 사용해서는 안 된다.
 
-Framework는 64 MiB보다 큰 payload를 최대 64 MiB인 data chunk로 나눈다. 별도의 맨 앞
+Framework는 64 MiB보다 큰 payload를 application bytes 기준 최대 64 MiB인 data chunk로
+나눈다. 각 chunk에는 checksum과 복구에 필요한 23-byte immutable envelope를 붙인 뒤
+Redis provider에 전달한다. 따라서 application data 제한과 provider가 받는 encoded blob
+제한은 23 bytes만큼 다르다. 별도의 맨 앞
 목록에는 format version, 전체 길이, checksum, chunk 순서와 각 chunk의
 reference·길이·checksum을 기록한다. Provider는 이 목록도 일반 bytes로 저장한다. 목록의
 내용이나 chunk 관계는 Framework가 확인한다.
@@ -207,7 +211,8 @@ Location Store와 Relocation Store는 같은 Redis deployment에서 서로 다�
 구현과 언어별 contract test는 다음 결과를 확인해야 한다.
 
 - 같은 reference와 같은 bytes를 다시 `Put`하면 `AlreadyStored`, 다른 bytes를 저장하면 `Conflict`다.
-- 64 MiB blob과 최대 4,096개 data chunk로 구성한 256 GiB 전체 payload 계약을 지원한다.
+- 64 MiB application data와 23-byte envelope로 구성한 encoded blob, 최대 4,096개
+  data chunk와 256 GiB 전체 payload 계약을 지원한다.
 - `Put` 결과를 받지 못한 뒤 exact `Read`나 같은 입력의 `Put`으로 저장 여부를 재구성할 수 있다.
 - `Read`가 반환한 bytes는 consumer가 사용하는 동안 변경되지 않는다.
 - `Renew`와 `Delete`를 다시 실행해도 payload가 달라지지 않으며, expiry는 provider clock으로 계산한다.

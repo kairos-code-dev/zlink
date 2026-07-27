@@ -7,6 +7,15 @@ source "$ROOT_DIR/../redis-common.sh"
 
 # The ST-F markers (handoff_backlog, message_follow_relay, ...) are runtime
 # diagnostics behind this gate; the runner asserts them, so it owns the gate.
+# Builds and process fixtures share output directories. Serialize complete
+# runner invocations so concurrent scenarios cannot corrupt or invalidate
+# each other's evidence.
+RUNNER_LOCK="${TMPDIR:-/tmp}/zlink-spot-actor-transfer-e2e.lock"
+exec 9>"$RUNNER_LOCK"
+flock -w 600 9 || {
+  echo "timed out waiting for the SpotActorTransfer runner lock" >&2
+  exit 1
+}
 
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"

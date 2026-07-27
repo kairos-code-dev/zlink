@@ -328,7 +328,8 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame.Header,
                     frame.Body,
                     frame.SourceNodeGeneration,
-                    frame.RequestSource))
+                    frame.RequestSource,
+                    frame.DirectReply))
                 return false;
         }
         catch (ZLinkFrameworkException exception)

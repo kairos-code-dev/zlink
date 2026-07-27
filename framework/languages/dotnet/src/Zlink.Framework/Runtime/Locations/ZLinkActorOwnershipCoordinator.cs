@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Zlink.Framework.Runtime.Actors;
 
 namespace Zlink.Framework.Runtime.Locations;
@@ -517,6 +518,24 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             .ConfigureAwait(false);
         if (reserve is ZLinkRelocationCapacityReserveResult.Conflict reserveConflict)
         {
+            if (CanRetryTransferredActorCommit(
+                    reserveConflict.Current,
+                    snapshot,
+                    authority))
+                return await CommitTransferredActorAuthorityAsync(
+                        actorId,
+                        actorRef,
+                        meshName,
+                        spotId,
+                        spotGeneration,
+                        spotKind,
+                        relocationId,
+                        boundSessionRoute,
+                        relocationReference,
+                        deactivate,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
             if (TryResolveCommittedAuthority(
                     reserveConflict.Current,
                     actorRef,
@@ -541,7 +560,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             }
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
-                $"Actor '{actorId}' authority changed during handoff.",
+                $"Actor '{actorId}' authority changed during handoff capacity reservation.",
                 true);
         }
         if (reserve is ZLinkRelocationCapacityReserveResult.PlacementCapacityExhausted)
@@ -657,7 +676,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     }
                     throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.ActorLocationStale,
-                        $"Actor '{actorId}' authority changed during handoff.",
+                        $"Actor '{actorId}' authority changed during handoff commit.",
                         true);
 
                 case ZLinkAuthorityCompareExchangeResult.GenerationExhausted:
@@ -690,6 +709,46 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         out ZLinkAuthoritySnapshot snapshot,
         out ZLinkActorAuthorityPayload authority)
     {
+        if (current is ZLinkAuthorityReadResult.Found canonicalFound
+            && canonicalFound.Snapshot.ObjectGeneration
+               == actorRef.ObjectGeneration
+            && ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                canonicalFound.Snapshot.Payload.Span,
+                out var canonical))
+        {
+            Span<byte> relocationBytes = stackalloc byte[16];
+            relocationId.TryWriteBytes(
+                relocationBytes,
+                bigEndian: true,
+                out _);
+            var relocationMatches =
+                BinaryPrimitives.ReadUInt64BigEndian(relocationBytes)
+                == canonical.RelocationHigh
+                && BinaryPrimitives.ReadUInt64BigEndian(relocationBytes[8..])
+                == canonical.RelocationLow;
+            if (relocationMatches
+                && string.Equals(
+                    canonical.RelocationReference,
+                    relocationReference.Reference,
+                    StringComparison.Ordinal)
+                && canonical.RelocationChecksumCrc32c
+                   == relocationReference.ChecksumCrc32c
+                && ZLinkActorAuthorityPayloadCodec.TryDecode(
+                    canonical.SteadyAuthorityPayload.Span,
+                    out authority)
+                && authority.NodeRid == actorRef.NodeRid
+                && string.Equals(
+                    authority.CurrentSpotId,
+                    spotId,
+                    StringComparison.Ordinal)
+                && authority.CurrentSpotGeneration == spotGeneration
+                && authority.CurrentSpotKind == spotKind)
+            {
+                snapshot = canonicalFound.Snapshot;
+                return true;
+            }
+        }
+
         if (current is ZLinkAuthorityReadResult.Found found
             && found.Snapshot.ObjectGeneration == actorRef.ObjectGeneration
             && TryDecodeRelocationPhase(
@@ -1140,11 +1199,23 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     new ZLinkAuthorityMutation.Delete(),
                     CancellationToken.None)
                 .ConfigureAwait(false);
+            var transferred = result is ZLinkAuthorityCompareExchangeResult.Conflict
+                {
+                    Current: ZLinkAuthorityReadResult.Found transferredRead
+                }
+                && transferredRead.Snapshot.ObjectGeneration == snapshot.ObjectGeneration
+                && transferredRead.Snapshot.AuthorityOwnerGeneration
+                   > snapshot.AuthorityOwnerGeneration
+                && TryDecodeCurrentActorAuthority(
+                    transferredRead.Snapshot.Payload.Span,
+                    out var currentAuthority)
+                && currentAuthority.NodeRid != tracked.Payload.NodeRid;
             if (result is not (ZLinkAuthorityCompareExchangeResult.Deleted
                 or ZLinkAuthorityCompareExchangeResult.Conflict
                 {
                     Current: ZLinkAuthorityReadResult.Missing
-                }))
+                })
+                && !transferred)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorLocationStale,
                     $"Actor '{canonical}' authority changed before release.",
@@ -1161,6 +1232,49 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         {
             tracked.WriteGate.Release();
         }
+    }
+
+    private static bool CanRetryTransferredActorCommit(
+        ZLinkAuthorityReadResult current,
+        ZLinkAuthoritySnapshot expectedSnapshot,
+        ZLinkActorAuthorityPayload expectedAuthority)
+    {
+        return current is ZLinkAuthorityReadResult.Found found
+               && found.Snapshot.ObjectGeneration
+               == expectedSnapshot.ObjectGeneration
+               && found.Snapshot.AuthorityOwnerGeneration
+               == expectedSnapshot.AuthorityOwnerGeneration
+               && TryDecodeCurrentActorAuthority(
+                   found.Snapshot.Payload.Span,
+                   out var authority)
+               && authority.NodeRid == expectedAuthority.NodeRid
+               && authority.NodeGeneration == expectedAuthority.NodeGeneration
+               && authority.OwnerLeaseGeneration
+               == expectedAuthority.OwnerLeaseGeneration
+               && authority.CurrentSpotGeneration
+               == expectedAuthority.CurrentSpotGeneration
+               && authority.CurrentSpotKind == expectedAuthority.CurrentSpotKind
+               && string.Equals(
+                   authority.CurrentSpotId,
+                   expectedAuthority.CurrentSpotId,
+                   StringComparison.Ordinal);
+    }
+
+    private static bool TryDecodeCurrentActorAuthority(
+        ReadOnlySpan<byte> payload,
+        out ZLinkActorAuthorityPayload authority)
+    {
+        if (ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                payload,
+                out authority))
+            return true;
+
+        return ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                   payload,
+                   out var canonical)
+               && ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                   canonical.SteadyAuthorityPayload.Span,
+                   out authority);
     }
 
     private static ReadOnlyMemory<byte> EncodeAuthorityPayload(

@@ -1130,6 +1130,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 replyRequestId: 83,
                 replyFlags: 1,
                 replyCapability: "reply-capability",
+                deadlineUnixMs: 0,
                 ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray(),
                 Encoding.UTF8.GetBytes("payload"),
                 CancellationToken.None);
@@ -1179,6 +1180,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     RoutingId.From("unauthenticated-relay"), relayNode, 61,
                     RoutingId.From("caller-node"), 72, default, source,
                     new MeshOperationId(81, 82), 1, 83, 1, "reply-capability",
+                    0,
                     ZLinkStreamProtocolDefaults.EncodeHeader(CreateHeader("request")).ToArray(),
                     Encoding.UTF8.GetBytes("payload"),
                     CancellationToken.None).AsTask());
@@ -1190,6 +1192,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     relayNode, relayNode, 61,
                     RoutingId.From("caller-node"), 72, default, source,
                     new MeshOperationId(81, 82), 1, 83, 1, "reply-capability",
+                    0,
                     ZLinkStreamProtocolDefaults.EncodeHeader(CreateHeader("request")).ToArray(),
                     Encoding.UTF8.GetBytes("payload"),
                     CancellationToken.None).AsTask());

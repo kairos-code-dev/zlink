@@ -161,7 +161,8 @@ public sealed record ActorEvidence(
     string ActorId,
     string Kind,
     string Value,
-    string NodeRid);
+    string NodeRid,
+    long ObservedUnixTimeMilliseconds);
 
 public sealed record RelocationBlobMeasurement(
     string Operation,
@@ -191,6 +192,89 @@ public sealed record RelocateHostRes(
 public sealed record ProcessMemoryRes(
     long WorkingSetBytes,
     long PeakWorkingSetBytes);
+
+public sealed record RelocationWorkloadRequest(
+    string Scenario,
+    long Sequence,
+    string OperationId,
+    long SentUnixTimeMilliseconds,
+    long AbsoluteDeadlineUnixTimeMilliseconds);
+
+public sealed record RelocationWorkloadReply(
+    string Scenario,
+    long Sequence,
+    string OperationId,
+    string? CorrelationId,
+    string TargetId,
+    string NodeRid,
+    long ObjectGeneration,
+    bool WithinDeadline,
+    long HandledUnixTimeMilliseconds);
+
+public sealed record RelocationWorkloadPacket(
+    string Scenario,
+    long Sequence,
+    string OperationId,
+    long SentUnixTimeMilliseconds,
+    long AbsoluteDeadlineUnixTimeMilliseconds);
+
+public sealed record RelocationWorkloadCallReq(
+    string TargetId,
+    string Scenario,
+    long Sequence,
+    string OperationId,
+    long SentUnixTimeMilliseconds,
+    long AbsoluteDeadlineUnixTimeMilliseconds,
+    int TimeoutMilliseconds = 5000);
+
+public sealed record RelocationLocationQueryReq(
+    string[] ActorIds,
+    string[] SpotIds);
+
+public sealed record RelocationLocationSnapshot(
+    string ObjectKind,
+    string ObjectId,
+    long ObjectGeneration,
+    string NodeRid);
+
+public sealed record RelocationUnitTerminalEvidence(
+    string ObjectKind,
+    string ObjectId,
+    long ObjectGeneration,
+    string NodeRid,
+    long ObservedUnixTimeMilliseconds);
+
+public static class RelocationWorkloadMetadata
+{
+    public const string OperationId =
+        "zlink-e2e-relocation-operation-id";
+}
+
+public sealed record RelocationBulkActorCreateReq(
+    string Scenario,
+    string ActorIdPrefix,
+    string ActorType,
+    int Count,
+    int ApplicationStateBytes,
+    int MaxConcurrency = 64);
+
+public sealed record RelocationBulkActorCreateRes(
+    string[] ActorIds,
+    string[] NodeRids);
+
+public sealed record RelocationBulkSpotCreateReq(
+    string Scenario,
+    string SpotIdPrefix,
+    int Count,
+    int ApplicationStateBytes,
+    bool InstanceSpot,
+    int MaxConcurrency = 64,
+    int ActorsPerSpot = 0);
+
+public sealed record RelocationBulkSpotCreateRes(
+    string[] SpotIds,
+    string[] NodeRids,
+    string[] ActorIds);
 
 public sealed record TransportDeliveryArmReq(
     string ActorId,

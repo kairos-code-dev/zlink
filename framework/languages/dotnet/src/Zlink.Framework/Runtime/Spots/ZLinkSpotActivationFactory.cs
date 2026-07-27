@@ -15,7 +15,39 @@ internal sealed class ZLinkSpotActivationFactory(
         IZLinkBackendSpot nativeSpot,
         string spotId,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        await CreateUserSpotAsync(
+                spotType,
+                nativeSpot,
+                spotId,
+                request,
+                invokeCreate: true,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask<ZLinkSpotActivation>
+        CreateForRelocationAsync(
+            Type spotType,
+            IZLinkBackendSpot nativeSpot,
+            string spotId,
+            CancellationToken cancellationToken) =>
+        (await CreateUserSpotAsync(
+                spotType,
+                nativeSpot,
+                spotId,
+                ZLinkMessage.Empty,
+                invokeCreate: false,
+                cancellationToken)
+            .ConfigureAwait(false)).Activation;
+
+    private async ValueTask<ZLinkSpotActivationCreateResult>
+        CreateUserSpotAsync(
+            Type spotType,
+            IZLinkBackendSpot nativeSpot,
+            string spotId,
+            ZLinkMessage request,
+            bool invokeCreate,
+            CancellationToken cancellationToken)
     {
         AsyncServiceScope spotScope = default;
         var scopeCreated = false;
@@ -53,7 +85,10 @@ internal sealed class ZLinkSpotActivationFactory(
 
             spot.Configure();
             await activation.BindDescriptorsAsync(cancellationToken).ConfigureAwait(false);
-            var response = await activation.InitializeAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = invokeCreate
+                ? await activation.InitializeAsync(request, cancellationToken)
+                    .ConfigureAwait(false)
+                : ZLinkSpotCreateResponse.Accept();
             return new ZLinkSpotActivationCreateResult(activation, response);
         }
         catch (Exception initializationFailure)

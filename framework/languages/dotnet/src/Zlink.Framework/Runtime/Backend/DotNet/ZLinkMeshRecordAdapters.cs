@@ -100,7 +100,8 @@ internal static class ZLinkMeshRecordAdapters
                     record.AuthorityOwnerGeneration,
                     record.OwnerLeaseGeneration,
                     requestId,
-                    flags),
+                    flags,
+                    DeadlineUnixMs: record.DeadlineUnixMs),
                 SourceNodeGeneration: record.SourceBindingGeneration,
                 RequestSource: requestSource,
                 DirectReply: i == 0 ? directReply : null);

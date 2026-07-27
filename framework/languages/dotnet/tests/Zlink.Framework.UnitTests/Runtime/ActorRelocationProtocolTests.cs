@@ -1,13 +1,39 @@
 ﻿using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Host;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
 public sealed class ActorRelocationProtocolTests
 {
+    [Fact]
+    public void Remote_join_uses_the_authoritative_current_spot_id()
+    {
+        const string entrySpotId =
+            "actor-a-entry-01234567-89ab-4cde-8fab-0123456789ab";
+        var authority = new ZLinkActorAuthorityPayload(
+            ZLinkActorAuthorityState.Ready,
+            "player",
+            "actor-1",
+            entrySpotId,
+            7,
+            ZLinkSpotKind.Entry,
+            "owner-1",
+            3,
+            "mesh",
+            RoutingId.From("actor-a"),
+            7);
+
+        var sourceSpotId = ZLinkActorRemoteJoiner.ResolveSourceSpotId(authority);
+
+        Assert.Equal(entrySpotId, sourceSpotId);
+    }
+
     [Fact]
     public async Task Relocation_admission_commit_and_target_continuation_keep_one_root_flow()
     {

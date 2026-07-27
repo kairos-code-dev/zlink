@@ -276,9 +276,10 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
             }
             if (ObjectKind(slot.Prepare.Object.Kind)
                 == ZLinkPlacementObjectKind.UserSpot)
-                expectedRecords = await ReadExpectedRecordsAsync(
-                        slot.Prepare, acceptanceToken)
-                    .ConfigureAwait(false);
+                expectedRecords = BuildExpectedRecords(
+                    prepared?.Envelope
+                    ?? throw Conflict(
+                        "User SPOT relocation lost its verified root."));
             var reserved = new ZLinkServiceWireCodec.RelocationReservedRecord(
                 acceptance.RelocationId, acceptance.TargetAttemptGeneration,
                 acceptance.RoundKind, acceptance.Coordinator,
@@ -816,6 +817,17 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                     cancellationToken)
                 .ConfigureAwait(false);
         }
+        else if (terminal.Prepare.Object.Kind is 2 or 3)
+        {
+            if (_targetRuntime is null)
+                throw Conflict(
+                    "SPOT target completion is not configured.");
+            await _targetRuntime.CompleteCanonicalInboundAsync(
+                    terminal.Prepare,
+                    authenticatedSourceNodeRid,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private static void ValidateAttempt(
@@ -943,8 +955,14 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
         if (objectKind is ZLinkPlacementObjectKind.Actor
             or ZLinkPlacementObjectKind.InstanceSpot)
             ValidateStandaloneRoot(prepare, tree.Envelope, objectKind);
+        return BuildExpectedRecords(tree.Envelope);
+    }
+
+    private static IReadOnlyDictionary<ulong, IReadOnlyList<byte[]>>
+        BuildExpectedRecords(ZLinkRelocationEnvelope envelope)
+    {
         var result = new Dictionary<ulong, IReadOnlyList<byte[]>>();
-        foreach (var participant in tree.Envelope.Participants)
+        foreach (var participant in envelope.Participants)
         {
             if (participant.CanonicalParticipantId == 0
                 || !result.TryAdd(participant.CanonicalParticipantId,
@@ -1433,7 +1451,8 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                 spot.Envelope.ObjectKind, spotRecovery.StableType, 1));
         var coordinator = new ZLinkAggregateRelocationCoordinator(
             _store, _relocationStore!);
-        var prepared = await coordinator.PrepareAsync(
+        var now = _timeProvider.GetUtcNow();
+        var prepared = await coordinator.PrepareExistingAsync(
                 new ZLinkAggregateRelocationRequest(
                     tree.Envelope.AggregateId,
                     tree.Envelope.AggregateGeneration,
@@ -1446,6 +1465,11 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                         prepare.Candidate.OwnerId,
                         prepare.Candidate.OwnerLeaseGeneration),
                     tree.Envelope),
+                new ZLinkRelocationStored(
+                    root.Reference,
+                    root.ChecksumCrc32c,
+                    now + TimeSpan.FromHours(24),
+                    now),
                 cancellationToken)
             .ConfigureAwait(false);
         if (prepared.Relocation.Reference != root.Reference

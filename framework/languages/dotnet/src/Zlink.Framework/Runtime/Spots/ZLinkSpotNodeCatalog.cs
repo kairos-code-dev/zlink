@@ -583,7 +583,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         ulong objectGeneration,
         ulong authorityOwnerGeneration,
         ZLinkMessage request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool invokeCreate = true)
     {
         ArgumentNullException.ThrowIfNull(request);
         var pending = new PendingSpotCreation(spotType);
@@ -620,10 +621,29 @@ internal sealed class ZLinkSpotNodeCatalog(
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
                     $"SPOT '{requestedSpotId}' is already materialized.");
-            var creation = await _activationFactory.CreateAsync(
-                    spotType, nativeSpot, requestedSpotId, request, cancellationToken)
-                .ConfigureAwait(false);
-            activation = creation.Activation;
+            ZLinkSpotCreateResponse? response;
+            if (invokeCreate)
+            {
+                var creation = await _activationFactory.CreateAsync(
+                        spotType,
+                        nativeSpot,
+                        requestedSpotId,
+                        request,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                activation = creation.Activation;
+                response = creation.Response;
+            }
+            else
+            {
+                activation = await _activationFactory.CreateForRelocationAsync(
+                        spotType,
+                        nativeSpot,
+                        requestedSpotId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                response = null;
+            }
             lock (_gate)
             {
                 _pending.Remove(requestedSpotId);
@@ -633,7 +653,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             return new PreparedReservedSpot(
                 activation,
                 false,
-                creation.Response);
+                response);
         }
         catch
         {

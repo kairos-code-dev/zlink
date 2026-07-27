@@ -244,6 +244,17 @@ public sealed record RelocationUnitTerminalEvidence(
     string NodeRid,
     long ObservedUnixTimeMilliseconds);
 
+public sealed record RelocationMessageFlowEvidence(
+    long ObservedUnixTimeMilliseconds,
+    string? Phase,
+    string Surface,
+    string MessageKind,
+    string? PacketName,
+    string? SpotId,
+    string? ActorId,
+    string? CorrelationId,
+    string? FlowId);
+
 public static class RelocationWorkloadMetadata
 {
     public const string OperationId =

@@ -287,14 +287,23 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   `logs/20260728-000501-1448286`은 control baseline을 오류 없이 처리했지만 relocation
   terminal과 target restore에 도달하지 못했다. 정본 규모의 시간·연속성 증거로 사용하지
   않으며 Track I 전체를 `all`에서 제외한다.
+  I2 최소 1 Recreate+1 Snapshot 반복 `logs/20260728-005525-2344250`과 30초 진단
+  `logs/20260728-010329-2556033`도 target preflight 뒤 source relocation 내부에서
+  nonterminal이었다. Target Restore·admission은 0이며 remote workload reply는
+  reply capability 누락으로 retry됐다. 두 현상의 인과를 분리해 수정해야 한다.
   E2E 교차 리뷰 뒤 scale 실행은 `diagnostic_only`로 분리하고 request·one-way를
   각각 독립 open-loop pacer로 바꿨다. 생성 count를 완료 수로 출력하던 부분도
   제거했다. Operation ID·absolute deadline·request correlation, relocation 전후
   public 위치, terminal callback과 handler admission 순서를 대조하며 SpotWide member
-  전체의 최종 owner도 확인한다. Authority owner generation, Spot transport
-  correlation과 aggregate 단일 CAS publication은 현재 public 관측 표면으로 증명할 수
-  없어 이름을 붙인 gap으로 실패한다. Internal metadata와
+  전체의 최종 owner도 확인한다. Spot request correlation은 public
+  `IZLinkRuntimeMessageFlowObserver`의 `received`·`replied` event를 대조한다.
+  Authority owner generation과 aggregate 단일 CAS publication은 현재 public 관측
+  표면으로 증명할 수 없어 이름을 붙인 gap으로 실패한다. Internal metadata와
   E2E friend assembly를 사용하는 Actor delivery gate도 public-only 완료 증거가 아니다.
+  Spot public call은 terminal 실행 안에서 route를 찾고 pre-resolved opaque route를
+  보존하지 않는다. 만료 뒤 global-ID call도 current owner를 다시 찾으므로 commit 뒤
+  이전 physical route와 expiry를 public caller만으로 결정적으로 만들 수 없다.
+  Process 밖 transport harness가 runtime frame을 resolve 뒤 지연·복제해야 한다.
   Scale 진단 terminal, 독립 open-loop 부하, 실제 relocation evidence와 외부 transport
   harness로 교체한 뒤 정본 gate를 실행한다.
   최신 회귀는 `.NET` Unit 1,077/1,077, public Contract 67/67, Redis provider

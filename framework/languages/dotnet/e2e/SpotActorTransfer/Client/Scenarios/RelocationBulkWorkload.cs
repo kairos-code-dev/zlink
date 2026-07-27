@@ -562,18 +562,18 @@ internal static class RelocationBulkWorkloadVerification
             }
         }
 
+        var messageFlows = (await Task.WhenAll(
+                context.GetRelocationMessageFlowsAsync(context.NodeA),
+                context.GetRelocationMessageFlowsAsync(context.NodeB),
+                context.GetRelocationMessageFlowsAsync(context.NodeC)))
+            .SelectMany(static items => items)
+            .ToArray();
+        VerifySpotRequestCorrelation(messageFlows, traffic);
+
         var gaps = new List<string>
         {
             "authority_owner_generation_unobservable"
         };
-        if (traffic.Any(result =>
-                result.TargetKind == "spot"
-                && result.RequestSucceeded > 0
-                && result.RequestCorrelationIds.Count
-                   != result.RequestSucceeded))
-        {
-            gaps.Add("spot_request_transport_correlation_unobservable");
-        }
         if (requireSpotWideAggregatePublication)
         {
             var finalOwners = final
@@ -590,8 +590,45 @@ internal static class RelocationBulkWorkloadVerification
         throw new InvalidOperationException(
             "evidence_gap=" + string.Join(',', gaps)
             + "; public ActorRef/SpotRef omit authority owner generation, "
-            + "Spot handlers omit transport correlation context, and "
-            + "per-object FindAsync cannot prove aggregate CAS visibility.");
+            + "and per-object FindAsync cannot prove aggregate CAS "
+            + "visibility.");
+    }
+
+    private static void VerifySpotRequestCorrelation(
+        IReadOnlyCollection<RelocationMessageFlowEvidence> messageFlows,
+        IReadOnlyCollection<RelocationBulkWorkloadResult> traffic)
+    {
+        foreach (var result in traffic.Where(static item =>
+                     item.TargetKind == "spot"
+                     && item.RequestSucceeded > 0))
+        {
+            var targetIds = result.AcceptedRequests.Keys.ToHashSet(
+                StringComparer.Ordinal);
+            var flows = messageFlows.Where(item =>
+                    item.Surface == "spot"
+                    && item.MessageKind == "request"
+                    && item.PacketName
+                       == nameof(RelocationWorkloadRequest)
+                    && item.SpotId is not null
+                    && targetIds.Contains(item.SpotId)
+                    && item.CorrelationId is { Length: > 0 })
+                .ToArray();
+            var received = flows
+                .Where(static item => item.Phase == "received")
+                .Select(static item => item.CorrelationId!)
+                .ToHashSet(StringComparer.Ordinal);
+            var replied = flows
+                .Where(static item => item.Phase == "replied")
+                .Select(static item => item.CorrelationId!)
+                .ToHashSet(StringComparer.Ordinal);
+            ZlinkStreamAssert.Ensure(
+                received.Count >= result.RequestSucceeded
+                && received.SetEquals(replied),
+                $"Spot request public message-flow correlation evidence "
+                + $"is incomplete for '{result.Scenario}': "
+                + $"succeeded={result.RequestSucceeded}, "
+                + $"received={received.Count}, replied={replied.Count}.");
+        }
     }
 
     private static string LocationKey(
@@ -601,6 +638,20 @@ internal static class RelocationBulkWorkloadVerification
 
 internal static class RelocationWorkloadEnvironment
 {
+    internal static bool Enabled(string name, bool fallback)
+    {
+        var raw = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(raw))
+            return fallback;
+        return raw switch
+        {
+            "1" or "true" or "TRUE" => true,
+            "0" or "false" or "FALSE" => false,
+            _ => throw new InvalidOperationException(
+                $"{name} must be a boolean.")
+        };
+    }
+
     internal static int Count(string name, int canonical) =>
         PositiveInt(name, canonical);
 

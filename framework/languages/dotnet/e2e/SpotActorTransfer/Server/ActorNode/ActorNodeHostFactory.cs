@@ -5,6 +5,7 @@ using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Runtime.Actors;
 
@@ -31,9 +32,12 @@ internal static class ActorNodeHostFactory
         var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
         var cleanupGates = new ActorCleanupGateStore(evidence);
         var relocationBlobs = new RelocationBlobObserver();
+        var relocationMessageFlows =
+            new RelocationMessageFlowEvidenceStore();
         builder.Services.AddSingleton(evidence);
         builder.Services.AddSingleton(runtimeEvidence);
         builder.Services.AddSingleton(relocationBlobs);
+        builder.Services.AddSingleton(relocationMessageFlows);
         builder.Services.AddSingleton<RelocationUnitTerminalStore>();
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
@@ -46,6 +50,9 @@ internal static class ActorNodeHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
+            framework.ConfigureDispatch()
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
+                .SetRuntimeMessageFlowObserver(relocationMessageFlows);
             // The common ST-F4/F5 contract permits a short controller duration so
             // the E2E verifies cutoff semantics without coupling the scenario to
             // the independently tested owner-lease TTL.

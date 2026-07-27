@@ -905,6 +905,11 @@ relocation에 동일하게 적용한다. `PlannedMaintenance`는 source와 같�
 - `logs/20260728-000226-1408117`: Recreate Actor 4개와 Snapshot Actor 2개를 만든 뒤
   control Actor·Spot request와 one-way baseline은 오류 0으로 통과했다. Host relocation은
   target admission 없이 Snapshot Actor Capture를 반복하고 terminal을 반환하지 않았다.
+- `logs/20260728-005525-2344250`, `logs/20260728-010329-2556033`: Recreate Actor 1개와
+  Snapshot Actor 1개에서도 같은 nonterminal을 재현했다. Target preflight는 완료됐지만
+  source relocation 내부에서 target Restore·admission은 0이었다. 동시에 remote workload
+  reply가 reply capability를 보존하지 못해 retry됐다. 이 reply terminal과 source
+  relocation 정지의 인과를 분리해 수정해야 한다.
 - `logs/20260728-000501-1448286`: Instance Spot 2개와 같은 control traffic baseline은
   통과했다. 두 Spot Capture가 반복됐지만 target restore와 terminal에 도달하지 못했다.
 - concurrent setup은 `logs/20260728-000118-1347500`에서 서로 다른 Actor creation
@@ -927,9 +932,9 @@ relocation에 동일하게 적용한다. `PlannedMaintenance`는 source와 같�
   없어 `authority_owner_generation_unobservable` gap으로 실패한다.
 - SpotWide는 모든 member Actor의 최종 owner를 확인한다. 다만 per-object `Find`만으로
   같은 aggregate CAS의 원자적 공개를 증명할 수 없어
-  `spotwide_atomic_publication_unobservable` gap으로 실패한다. Spot handler에는
-  transport correlation을 읽는 public context가 없어
-  `spot_request_transport_correlation_unobservable` gap도 남아 있다.
+  `spotwide_atomic_publication_unobservable` gap으로 실패한다. Spot request correlation은
+  public `IZLinkRuntimeMessageFlowObserver`의 `received`·`replied` event를 대조하도록
+  고쳐 별도 handler context나 private transport metadata 없이 관찰한다.
 - 현재 Actor delivery gate는 E2E assembly의 `InternalsVisibleTo`, internal metadata와
   production DI hook에 의존한다. 이 결과는 application이 public API만 사용하는 최종
   Message Follow 증거가 아니다. 외부 transport harness가 Framework가 생성한 operation을
@@ -960,6 +965,13 @@ Track I 완료 증거로 사용하지 않는다.
 Message Follow hop마다 남은 시간만 전달하도록 수정했다. 만료된 ingress는 handler queue
 전에 `TimedOut`으로 끝내며 late reply를 폐기한다. Focused runtime·relocation·Message Follow
 test는 통과했지만, 실제 process에서 relay 중 deadline을 넘기는 `MF-DEADLINE` 반복은 아직 없다.
+
+Spot public call은 Spot ID만 받고 terminal 실행 안에서 route를 찾는다. Relocation 전에
+선택한 opaque route를 보존해 commit 뒤 제출하는 public operation은 없다. Message Follow가
+만료된 뒤 새 global-ID call은 cache 수명 계약에 따라 current owner를 다시 찾으므로
+만료된 이전 physical route delivery도 만들 수 없다. Private resolved handle, owner RID나
+generation을 E2E에 노출하지 않는다. 따라서 Spot commit 후·expiry matrix는 process 밖
+transport harness가 runtime이 만든 frame을 resolve 뒤 지연·복제하는 방식으로 검증해야 한다.
 
 - Actor와 Spot의 one-way·request를 authority commit 전후에 각각 보낸다.
 - operation identity, generation, deadline, correlation과 reply route를 유지한다.

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using SpotActorTransfer.Shared;
+using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Runtime.Actors;
 
 namespace SpotActorTransfer.ActorNode;
@@ -103,6 +104,41 @@ internal sealed class RelocationUnitTerminalStore
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 
     public RelocationUnitTerminalEvidence[] Snapshot() =>
+        _items.ToArray();
+}
+
+internal sealed class RelocationMessageFlowEvidenceStore
+    : IZLinkRuntimeMessageFlowObserver
+{
+    private readonly ConcurrentQueue<RelocationMessageFlowEvidence>
+        _items = new();
+
+    public ValueTask OnMessageFlowAsync(
+        ZLinkRuntimeMessageFlowEvent flow,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (flow.Surface == "spot"
+            && flow.MessageKind == "request"
+            && flow.PacketName == nameof(RelocationWorkloadRequest)
+            && flow.Phase is "received" or "replied")
+        {
+            _items.Enqueue(new RelocationMessageFlowEvidence(
+                flow.Timestamp.ToUnixTimeMilliseconds(),
+                flow.Phase,
+                flow.Surface,
+                flow.MessageKind,
+                flow.PacketName,
+                flow.SpotId,
+                flow.ActorId,
+                flow.CorrelationId,
+                flow.FlowId));
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public RelocationMessageFlowEvidence[] Snapshot() =>
         _items.ToArray();
 }
 

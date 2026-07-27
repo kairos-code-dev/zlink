@@ -41,6 +41,10 @@ internal static class StI3BulkSpotRelocationScenario
             RelocationWorkloadEnvironment.Count(
                 "ZLINK_E2E_RELOCATION_SETUP_CONCURRENCY",
                 64);
+        var relocationDeadline =
+            RelocationWorkloadEnvironment.Duration(
+                "ZLINK_E2E_RELOCATION_DEADLINE_SECONDS",
+                300);
         var label = instanceSpot ? "instance" : "spotwide";
         var runId = Guid.NewGuid().ToString("N");
 
@@ -181,7 +185,7 @@ internal static class StI3BulkSpotRelocationScenario
         var relocationWatch = Stopwatch.StartNew();
         var relocation = await context.RelocateAsync(
             context.NodeA,
-            TimeSpan.FromMinutes(5));
+            relocationDeadline);
         relocationWatch.Stop();
         relocationTraffic.Cancel();
         var during = await Task.WhenAll(traffic);

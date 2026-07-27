@@ -30,6 +30,14 @@ internal static class StI2BulkActorRelocationScenario
             RelocationWorkloadEnvironment.Count(
                 "ZLINK_E2E_RELOCATION_SETUP_CONCURRENCY",
                 64);
+        var relocationDeadline =
+            RelocationWorkloadEnvironment.Duration(
+                "ZLINK_E2E_RELOCATION_DEADLINE_SECONDS",
+                300);
+        var movingTrafficEnabled =
+            RelocationWorkloadEnvironment.Enabled(
+                "ZLINK_E2E_RELOCATION_MOVING_TRAFFIC",
+                true);
         var runId = Guid.NewGuid().ToString("N");
 
         var controlSpotId = $"st-i2-control-spot-{runId}";
@@ -138,23 +146,25 @@ internal static class StI2BulkActorRelocationScenario
             "actor",
             movingActorIds,
             rate);
-        var trafficTasks = new[]
+        var trafficTasks = new List<Task<RelocationBulkWorkloadResult>>
         {
             relocationActor.RunAsync(
                 TimeSpan.FromMinutes(6),
                 relocationTraffic.Token),
             relocationSpot.RunAsync(
                 TimeSpan.FromMinutes(6),
-                relocationTraffic.Token),
-            movingActors.RunAsync(
-                TimeSpan.FromMinutes(6),
                 relocationTraffic.Token)
         };
+        if (movingTrafficEnabled)
+            trafficTasks.Add(
+                movingActors.RunAsync(
+                    TimeSpan.FromMinutes(6),
+                    relocationTraffic.Token));
 
         var relocationWatch = Stopwatch.StartNew();
         var relocation = await context.RelocateAsync(
             context.NodeA,
-            TimeSpan.FromMinutes(5));
+            relocationDeadline);
         relocationWatch.Stop();
         relocationTraffic.Cancel();
         var during = await Task.WhenAll(trafficTasks);

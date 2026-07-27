@@ -260,6 +260,9 @@ internal static class ActorNodeEndpoints
         app.MapGet("/workload/relocation-terminals", (
             RelocationUnitTerminalStore terminals) =>
             Results.Ok(terminals.Snapshot()));
+        app.MapGet("/workload/message-flow", (
+            RelocationMessageFlowEvidenceStore flows) =>
+            Results.Ok(flows.Snapshot()));
         app.MapPost("/workload/locations", async (
             RelocationLocationQueryReq request,
             IZLinkActorManager actors,

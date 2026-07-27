@@ -159,33 +159,34 @@ MeshNode readiness와 peer 상태는 `ZLinkRouteMeshRuntime.snapshot()`과 `obse
 option은 같은 정보를 Spot polling event로 중복 발행하지 않는다. Spot event는 application이 대응해야 하는
 timer handler 실패 두 종류만 제공한다.
 
-## 4. Host termination runtime
+## 4. Host relocation과 termination runtime
 
-Host 전체의 `Retire`와 `Shutdown`은 `ZLinkFrameworkRuntime`에서 시작한다. RouteMesh topology runtime은
-상태 조회만 제공하며 host lifecycle을 변경하지 않는다.
+Object relocation과 host 종료는 `ZLinkFrameworkRuntime`의 `relocate(options)`와 `shutdown()`으로 각각
+시작한다.
+RouteMesh topology runtime은 상태 조회만 제공하며 host lifecycle을 변경하지 않는다.
 
 ```ts
 export enum ZLinkFrameworkRuntimeState {
   Preparing = 0,
   Serving = 1,
-  Retiring = 2,
-  Draining = 3,
-  Stopped = 4,
-  Error = 5
+  Relocating = 2,
+  Drained = 3,
+  Draining = 4,
+  Stopped = 5,
+  Error = 6
 }
 
-export enum ZLinkTerminationIntent {
-  Retire = 0,
-  Shutdown = 1
+export enum ZLinkFrameworkRelocationOutcome {
+  Drained = 0,
+  Blocked = 1
 }
 
-export enum ZLinkTerminationOutcome {
-  Stopped = 0,
-  Blocked = 1,
-  ForceStopped = 2
+export enum ZLinkFrameworkRelocationMode {
+  PlannedMaintenance = 0,
+  RollingUpdate = 1
 }
 
-export enum ZLinkTerminationReason {
+export enum ZLinkFrameworkRelocationReason {
   None = 0,
   TargetUnavailable = 1,
   StoreUnavailable = 2,
@@ -193,55 +194,101 @@ export enum ZLinkTerminationReason {
   StateIncompatible = 4,
   DeadlineExceeded = 5,
   RelocationFailed = 6,
-  TeardownFailed = 7,
-  RuntimeNotReady = 8,
-  ManualTopologyUnsupported = 9
+  RuntimeNotReady = 7,
+  ManualTopologyUnsupported = 8,
+  ShutdownRequested = 9,
+  OperationInProgress = 10
 }
 
-export interface ZLinkTerminationResult {
-  readonly effectiveIntent: ZLinkTerminationIntent;
-  readonly outcome: ZLinkTerminationOutcome;
-  readonly reason: ZLinkTerminationReason;
-}
-
-export interface ZLinkTerminationOptions {
+export interface ZLinkFrameworkRelocationOptions {
+  readonly mode: ZLinkFrameworkRelocationMode;
+  readonly targetApplicationVersion?: bigint;
   readonly deadlineMs?: number;
   readonly signal?: AbortSignal;
 }
 
-export interface ZLinkFrameworkRuntimeSnapshot {
+export interface ZLinkFrameworkRelocationResult {
+  readonly mode: ZLinkFrameworkRelocationMode;
+  readonly effectiveTargetApplicationVersion: bigint;
+  readonly outcome: ZLinkFrameworkRelocationOutcome;
+  readonly reason: ZLinkFrameworkRelocationReason;
+}
+
+export enum ZLinkFrameworkTerminationOutcome {
+  Stopped = 0,
+  ForceStopped = 1
+}
+
+export enum ZLinkFrameworkTerminationReason {
+  None = 0,
+  DeadlineExceeded = 1,
+  TeardownFailed = 2
+}
+
+export interface ZLinkFrameworkTerminationResult {
+  readonly outcome: ZLinkFrameworkTerminationOutcome;
+  readonly reason: ZLinkFrameworkTerminationReason;
+}
+
+export interface ZLinkFrameworkLifecycleOptions {
+  readonly deadlineMs?: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface ZLinkFrameworkRuntimeStatus {
   readonly state: ZLinkFrameworkRuntimeState;
-  readonly effectiveIntent?: ZLinkTerminationIntent;
+  readonly isReady: boolean;
+  readonly acceptingWork: boolean;
   readonly deadline?: Date;
-  readonly workSealed: boolean;
-  readonly blockerReason?: ZLinkTerminationReason;
-  readonly pendingRequestCount: bigint;
-  readonly pendingRelocationCount: bigint;
-  readonly pendingStreamBarrierCount: bigint;
-  readonly terminalResult?: ZLinkTerminationResult;
+  readonly relocationResult?: ZLinkFrameworkRelocationResult;
+  readonly terminationResult?: ZLinkFrameworkTerminationResult;
   readonly sequence: bigint;
   readonly observedAt: Date;
 }
 
-export interface ZLinkFrameworkRuntimeEvent {
-  readonly identifier: 'zlink.runtime.host.termination_changed';
-  readonly sequence: bigint;
-  readonly timestamp: Date;
-  readonly state: ZLinkFrameworkRuntimeState;
-  readonly effectiveIntent?: ZLinkTerminationIntent;
-  readonly outcome?: ZLinkTerminationOutcome;
-  readonly reason?: ZLinkTerminationReason;
-}
-
 export interface ZLinkFrameworkRuntime {
-  readonly state: ZLinkFrameworkRuntimeState;
-  readonly isReady: boolean;
-  snapshot(): ZLinkFrameworkRuntimeSnapshot;
-  observe(capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeEvent>;
-  retire(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult>;
-  shutdown(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult>;
+  readonly status: ZLinkFrameworkRuntimeStatus;
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus>;
+  relocate(options: ZLinkFrameworkRelocationOptions): Promise<ZLinkFrameworkRelocationResult>;
+  shutdown(options?: ZLinkFrameworkLifecycleOptions): Promise<ZLinkFrameworkTerminationResult>;
 }
 ```
+
+`relocate(options)`가 성공하면 runtime은 `Drained` 상태가 되고 process와 infrastructure connection은 유지된다.
+호출자는 결과가 `Drained`인지 확인한 뒤 `shutdown()`을 호출할 수 있으며, relocation이 필요하지 않으면
+`shutdown()`만 호출한다. `Relocating`에서 `shutdown()`을 호출하면 실행 중인 atomic relocation unit만
+terminal 상태까지 확정하고 나머지 relocation을 중단한다. 이때 relocation waiter는
+`Blocked/ShutdownRequested`를 받는다.
+`signal`은 해당 Promise의 대기만 취소한다. 이미 시작된 shared relocation 또는 shutdown operation과
+다른 waiter에는 영향을 주지 않는다.
+
+호출자는 relocation mode를 생략할 수 없다. `PlannedMaintenance`는 같은 application version을 유지하는
+node 점검이나 재부팅에 사용한다. 이 mode에서 `targetApplicationVersion`을 지정하면 Promise는 application
+admission을 변경하기 전에 `TypeError`로 reject된다. 유효한 호출의
+`effectiveTargetApplicationVersion`은 source host의 application version이다.
+
+`RollingUpdate`는 `targetApplicationVersion`이 필수이며 source version보다 커야 한다. 값이 없거나 source
+version 이하이면 같은 방식으로 `TypeError`로 reject된다. Framework는 지정한 version과 정확히 같은 node만
+후보로 사용하고 중간 version이나 더 높은 다른 version으로 대체하지 않는다.
+
+Target 후보는 다음 순서로 줄인다.
+
+1. 같은 Mesh에서 `Serving` 상태인 Object Server를 찾는다.
+2. Planned maintenance이면 source version, rolling update이면 지정한 target version과 정확히 같은
+   node만 남긴다.
+3. Source와 같은 maintenance wave에 속한 node를 제외한다.
+4. stable type, relocation policy와 adapter capability가 맞는지 확인한다.
+5. population capacity와 reservation 가능 여부를 확인한다.
+6. 남은 후보에 node-wide placement weight를 적용한다.
+
+Version filter를 capability·capacity·weight보다 먼저 적용하므로 다른 version으로 fallback하지 않는다.
+조건을 만족하는 Ready target이 없으면 `Blocked/TargetUnavailable`이다.
+
+같은 shared relocation이 실행 중일 때 mode와 effective target version이 같은 호출은 기존 operation에
+참여하고 같은 terminal result를 받는다. 첫 호출의 `deadlineMs`가 shared operation deadline을 고정하며
+뒤에 참여한 호출은 이를 변경하지 않는다. Mode 또는 target version이 다른 호출은 실행 중인 operation을
+변경하거나 대기열에 넣지 않고 `Blocked/OperationInProgress`를 반환한다. 이 결과에는 거부된 호출이
+요청한 mode와 effective target version을 기록한다.
 
 ## 5. RouteMesh runtime 상태와 readiness
 

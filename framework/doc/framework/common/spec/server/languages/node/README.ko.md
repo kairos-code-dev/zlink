@@ -11,6 +11,10 @@ package export, public declaration과 contract test는 이 계약을 따라야 �
 **기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유한다.** 이 디렉토리는 그 의미가
 이 언어에서 갖는 **정확한 public API**만 고정한다.
 
+Host relocation은 mode를 반드시 지정한다. Planned maintenance는 source와 같은 application version을,
+rolling update는 호출자가 지정한 더 높은 application version과 정확히 일치하는 target만 사용한다.
+Host 종료는 별도 `shutdown()` operation이다.
+
 ## 취소 인자
 
 Node.js public interface는 **일반 handler에 취소 인자를 자동으로 추가하지 않는다.** 호출자가

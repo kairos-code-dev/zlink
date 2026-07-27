@@ -333,7 +333,7 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   relocation renew가 발생하지 않게 한 뒤 Store를 복구한다. Location Store에는 current authority가
   이미 publish한 relocation reference를 그대로 유지한다.
 - 검증: Published reference가 가리키는 payload가 retention 이후 영구적으로 없으면 Runtime은 새 state를
-  추측하거나 이전 owner로 rollback하지 않고 non-retriable `RelocationDataLost`로 끝낸다. 진행 중인 `Retire`는
+  추측하거나 이전 owner로 rollback하지 않고 non-retriable `RelocationDataLost`로 끝낸다. 진행 중인 `Relocate`는
   `ForceStopped/RelocationFailed`로 terminal 완료하고 detail에 `RelocationDataLost`를 보존한다. Metric·event에는
   object kind, phase와 relocation reference hash를 기록한다. Authority에 publish되지 않은 orphan expiry는 이
   data-loss 결과로 분류하지 않는다.

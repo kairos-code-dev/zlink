@@ -19,7 +19,7 @@ bound session이 연결되는 배포다. 이 구성을 한 번 시작한 뒤 spo
   entry/user Spot 생성과 상태, actor join과 remote actor, bound session push, stream session,
   MeshNode direct·Spot direct 혼재 트래픽의 에러 계약과 소유권 독립, MeshNode scale-out 때 기존 owner
   유지와 신규 배치.
-- 여기서 다루지 않는 것(다른 config로): codec 변주, channel provider의 scale·failover(Config 1), resilience(Config 5), location store 장애/복구(Config 6), 기존 actor owner의 명시적 relocation(Config 10), `Retire` handoff(Config 11).
+- 여기서 다루지 않는 것(다른 config로): codec 변주, channel provider의 scale·failover(Config 1), resilience(Config 5), location store 장애/복구(Config 6), 기존 actor owner의 명시적 relocation(Config 10), `Relocate` handoff(Config 11).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -111,7 +111,7 @@ owner에 도달하는가.
 - 절차: 앱이 entity key(예: order id, player id)에 대응하는 global Spot ID를 일관되게 사용해 request를 보낸다.
   Target MeshNode RID, endpoint와 owner generation은 호출 인자로 전달하지 않는다.
 - 검증: 같은 key의 호출은 같은 logical Spot identity를 사용하고 Location Store가 가리킨 current owner에 도달한다.
-  Scale-out만으로 owner는 바뀌지 않지만 `Retire`·relocation으로 owner가 바뀐 후에는 같은 RID가 새 owner를
+  Scale-out만으로 owner는 바뀌지 않지만 `Relocate`·relocation으로 owner가 바뀐 후에는 같은 RID가 새 owner를
   resolve한다. Application이 node owner 규칙을 계산하지 않는다.
 - 세부 동작: global Spot identity와 physical owner selection의 분리. Scale-out 뒤 기존 owner 유지와 신규 대상
   배치는 Track G의 SM-G2에서 다룬다.
@@ -940,7 +940,7 @@ eligible placement target을 선택하는가.
   대상이 동시에 정상 처리되고 node 추가만으로 기존 owner가 이동·자동 재분배되었다고
   단언하지 않는다.
 - 세부 동작: MeshNode 증설 발견 + 기존 owner 유지 + 신규 global object remote placement.
-  기존 owner를 바꾸는 동작은 Config 10의 Actor relocation 또는 Config 11의 `Retire` handoff에서
+  기존 owner를 바꾸는 동작은 Config 10의 Actor relocation 또는 Config 11의 `Relocate` handoff에서
   검증한다.
 
 #### SM-G3 동시 join/leave 경합

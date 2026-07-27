@@ -48,7 +48,14 @@ public static class ServiceCollectionExtensions
 Host startup은 구성 검증과 public listener 준비가 완료되어 application callback을 받을 수 있을 때
 정상 완료한다. Application callback은 handler와 owner queue가 준비된 뒤에만 실행한다. Hosting stop은
 `IZLinkFrameworkRuntime.ShutdownAsync(...)`를 호출한다. Application이 logical continuity를 요구하면 stop 전에
-`RetireAsync(...)`를 명시적으로 호출한다.
+`RelocateAsync(...)`의 `Drained` 결과를 확인한 뒤 `ShutdownAsync(...)`를 호출한다.
+
+Application version을 유지하는 계획 점검에서는 `PlannedMaintenance`를 사용한다. 이 mode는 source와
+version이 정확히 같은 node만 target으로 선택한다. 준비한 새 version으로 전환할 때는
+`RollingUpdate`와 source보다 큰 exact target version을 함께 지정한다. 요청한 version의 eligible node가
+없으면 Framework는 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`을 반환하며 다른 version으로
+자동 전환하지 않는다. 정확한 option과 결과 타입은
+[Host monitoring](10-topology-monitoring.ko.md)이 소유한다.
 
 ## 4. DI public service
 
@@ -64,11 +71,10 @@ Framework를 등록하면 다음 service가 public DI surface로 제공된다.
 | `IZLinkActorClient` | singleton | global ActorId direct send/request |
 | `IZLinkActorManager` | singleton | Actor 생성, resolve와 종료 |
 | `IZLinkRouteMeshRuntimeOptions` | singleton | Mesh placement weight와 ChannelName [weight](../../../../01-glossary.ko.md#weight) 조회·설정 |
-| `IZLinkFrameworkRuntime` | singleton | host state, readiness, `Retire`와 `Shutdown` |
-| `IZLinkRouteMeshRuntime` | singleton | MeshNode snapshot과 typed event |
-| `IZLinkClientServerRuntime` | singleton | ClientServer Channel [snapshot](../../../../01-glossary.ko.md#snapshot)과 typed event |
-| `IZLinkFanoutRuntime` | singleton | automatic fanout Channel snapshot과 publisher lifecycle event |
-| `IZLinkMessageFlowRuntime` | singleton | message flow mode와 observer event |
+| `IZLinkFrameworkRuntime` | singleton | host state, readiness, `Relocate`와 `Shutdown` |
+| `IZLinkRouteMeshRuntime` | singleton | RouteMesh 운영 status |
+| `IZLinkClientServerRuntime` | singleton | ClientServer Channel 운영 status |
+| `IZLinkFanoutRuntime` | singleton | automatic fanout Channel 운영 status |
 
 등록되지 않은 MeshName이나 runtime capability를 조회하면 `ZLinkConfigurationException`이 발생한다.
 Channel send/request의 등록되지 않은 ChannelName은 `RequestTargetNotFound`로 완료한다.

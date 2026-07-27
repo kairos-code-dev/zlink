@@ -83,7 +83,7 @@ endpoint를 지정해 선택하지 않고 Location authority CAS가 결정한다
 | `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `Disabled` policy를 제공한다. Entry Spot과 같은 Spot ID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
 | `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global Spot ID 중복이 하나의 authority로 수렴함을 검증한다 |
 | Redis Location Store | 1 | Descriptor, owner lease, Instance authority와 CAS를 제공한다 |
-| Redis Relocation Store | 1 | Retire의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
+| Redis Relocation Store | 1 | Relocate의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
 | External State Store | 1 | Factory 복구와 reference sample의 domain state를 보존한다 |
 | `AdminAndEvidence` | 1 | Process pause·resume·crash, barrier와 bounded evidence wait를 제어하며 Framework message를 대신 보내지 않는다 |
 
@@ -116,7 +116,7 @@ type capacity의 reserved count 증가를 확인한다. Barrier를 열면 `Ready
 
 Stale owner 검증은 owner process를 실제로 중지했다가 local monotonic authority deadline 뒤에
 재개한다. Crash 시나리오는 정상 maintenance endpoint를 사용하지 않고 process를 종료한다.
-정상 `Retire`·`Shutdown` 결과와 crash recovery evidence를 섞지 않는다.
+정상 `Relocate`·`Shutdown` 결과와 crash recovery evidence를 섞지 않는다.
 
 ### 3.4 Call deadline
 
@@ -150,7 +150,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-F10` | 재제출 경계 | CAS loser redirect 한 번 외의 hidden retry·replay가 없음 |
 | `IS-F11` | Lease fence | Local monotonic deadline 뒤 stale message·timer·factory completion·CAS를 application admission 전에 거부 |
 | `IS-F12` | Takeover | Background cleanup이 owner를 선택하지 않고 expiry 뒤 새 caller claim만 더 높은 authority owner generation과 store version으로 교체. Exact owner의 recovery scan은 기존 `Creating` claim만 재개 |
-| `IS-F13` | Maintenance | `Retire`는 compatible target에 Instance authority·state를 이전하고 source에 `OnClosing(RelocationOut)`을 전달함. `Shutdown`은 새 relocation 없이 `OnClosing(HostShutdown)`과 bounded release를 수행하며 두 경로 모두 host deadline과 terminal-once를 지킴 |
+| `IS-F13` | Maintenance | `Relocate`는 compatible target에 Instance authority·state를 이전하고 source에 `OnClosing(RelocationOut)`을 전달함. `Shutdown`은 새 relocation 없이 `OnClosing(HostShutdown)`과 bounded release를 수행하며 두 경로 모두 host deadline과 terminal-once를 지킴 |
 | `IS-F14` | Observability | Activation 결과·시간, bounded pending, conflict, takeover과 one-way drop을 bounded label로 기록 |
 | `IS-F15` | Async-only | Instance send에도 async submit 하나만 제공하고 `TrySubmit` 계열을 제공하지 않음 |
 
@@ -197,7 +197,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-04` | Different RID | 여러 RID가 eligible node에 분산되고 RID별 serial queue가 서로를 차단하지 않음 |
 | `IS-E2E-05` | `Ready` owner crash | Lease 만료 전에는 새 owner가 없고 expiry 뒤 새 call만 같은 object generation과 더 높은 authority owner generation으로 복구 |
 | `IS-E2E-06` | `Creating` owner crash | Pending request가 claim에서 발급한 같은 nonzero object generation과 owner fence의 terminal failure로 완료되고 lease expiry 뒤 새 call만 activation을 시작 |
-| `IS-E2E-07` | Normal `Retire` | 신규 placement에서 A를 제외하고 accepted turn·owner commit 뒤 B가 같은 object generation과 더 높은 authority owner generation으로 materialize |
+| `IS-E2E-07` | Normal `Relocate` | 신규 placement에서 A를 제외하고 accepted turn·owner commit 뒤 B가 같은 object generation과 더 높은 authority owner generation으로 materialize |
 | `IS-E2E-08` | Close and reactivate | `Closing` 중 신규 activation을 막고 release 뒤 새 call만 더 높은 object·authority owner generation을 사용 |
 | `IS-E2E-09` | Concurrent takeover | 만료 row를 신고한 두 caller 중 CAS winner의 factory·handler만 실행 |
 | `IS-E2E-10` | Stale owner resume | A를 deadline 뒤 재개해도 message·timer·factory completion·CAS·release를 수행하지 못함 |
@@ -219,8 +219,8 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-26` | Concurrent claim | 서로 다른 target에 도착한 envelope 중 Store CAS winner 하나만 factory·`Ready`·barrier open을 수행하고 loser target은 local instance를 만들지 않음 |
 | `IS-E2E-27` | Deadline isolation | 짧은 request만 timeout되고 긴 request·send와 shared activation은 계속됨 |
 | `IS-E2E-28` | Close·admission 경쟁 | Internal seal과 `Closing` CAS 사이 cached submit을 handler queue에 수락하지 않음 |
-| `IS-E2E-29` | Cross-Mesh in-flight `Retire` | Mesh B가 수락한 completion·claim release 뒤 Mesh A의 원래 Spot turn이 재개 |
-| `IS-E2E-30` | Multi-Mesh concurrent `Retire` | 새 dependency 없이 shared deadline 안에 완료하거나 각 terminal result를 한 번만 반환 |
+| `IS-E2E-29` | Cross-Mesh in-flight `Relocate` | Mesh B가 수락한 completion·claim release 뒤 Mesh A의 원래 Spot turn이 재개 |
+| `IS-E2E-30` | Multi-Mesh concurrent `Relocate` | 새 dependency 없이 shared deadline 안에 완료하거나 각 terminal result를 한 번만 반환 |
 | `IS-E2E-31` | Remote CAS loser | 서로 다른 target의 reservation 경쟁에서 loser가 별도 owner object를 만들지 않고 `Ready` winner route로 한 번만 redirect하며 operation identity·correlation·payload·deadline을 보존 |
 | `IS-E2E-32` | Activation crash boundary | Source가 activation envelope admission 전에 종료되면 authority row와 factory가 0건이다. Target이 reservation을 획득한 뒤 종료되면 exact target owner의 bounded scan이 Pending creation projection과 complete recovery envelope로 factory·durable inbox·Ready barrier를 한 번 재개하고 row가 고착되지 않음 |
 | `IS-E2E-33` | Cold activation failure release | Factory·initialize·`Ready` 각 실패에서 current request는 typed terminal 하나, accepted one-way는 drop·event 하나로 끝나고 application handler는 실행되지 않음. Exact fenced delete의 응답 손실은 row read로 재확인하며 Missing 또는 current replacement가 확인될 때까지 registry는 failed·sealed를 유지한다. Missing 뒤의 다음 caller만 새 object·authority owner generation으로 새 factory를 시작하고 이전 registry는 hidden rerun하지 않음 |

@@ -7,7 +7,7 @@
 
 운영 중인 배포에서 새 관측·운영 표면 세 가지를 실제 배포 조건(공유 store·다중 노드·프로세스
 경계)에서 검증한다. 세 표면의 계약은 각각 [메시지 흐름 상관관계](../spec/53-flow-correlation.ko.md),
-[런타임 메트릭](../spec/51-runtime-metrics.ko.md), [Host Retire, Shutdown & Handoff](../spec/54-graceful-drain-handoff.ko.md)이
+[런타임 메트릭](../spec/51-runtime-metrics.ko.md), [Host Relocate, Shutdown & Handoff](../spec/54-graceful-drain-handoff.ko.md)이
 소유하고, 이 config는 그 계약이 배포 현장에서 의도대로 동작하는지를 확인한다.
 
 기존 [Config 7 — Runtime Monitoring](config-7-monitoring.ko.md)이 MeshNode의 snapshot과 typed runtime
@@ -17,8 +17,8 @@ event를 다룬다면, 이 config는 (1) 한 흐름을 노드 경계 너머로 �
 ## 1. 목적과 범위
 
 - 다룬다: `flow=` 로그가 STREAM→actor→spot 경계를 관통하는지, 메트릭 계기가 실제 사건과 일치하는지,
-  `Retire`가 배치 제외·핸드오프·고정된 Spot 종료 순서를, `Shutdown`이 relocation 없는
-  bounded cleanup을 계약대로 수행하는지.
+  `Relocate`가 배치 제외·핸드오프 뒤 `Drained`에서 host를 유지하는지, `Shutdown`이 relocation과
+  독립적으로 bounded cleanup을 수행하는지.
 - 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), MeshNode runtime snapshot·event
   관찰(Config 7), 대시보드·exporter 구성(앱 몫,
   [Runtime Metrics §8](../spec/51-runtime-metrics.ko.md#8-reader와-성능)).
@@ -33,7 +33,7 @@ Bingo형 3역할에 owner-spot 서비스를 더한 구성을 쓴다.
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 key prefix. |
 | relocation store | 1 | 공식 Redis relocation store extension. location store와 같은 Redis deployment를 쓰되 별도 key prefix를 사용한다. |
 | `Session` | 1 | Location Store를 등록한 Object Client. client STREAM endpoint, global Actor binding과 packet relay를 제공하며 factory와 placement target은 제공하지 않는다. STREAM 세션이 CCU·재접속 계기의 소스다. |
-| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `Snapshot` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, Actor total·Spot total limit `128`, 두 Spot stable type별 limit `128`과 activation concurrency `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Retire` handoff의 source·target이다. |
+| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `Snapshot` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, Actor total·Spot total limit `128`, 두 Spot stable type별 limit `128`과 activation concurrency `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Relocate` handoff의 source·target이다. |
 | `OrderWorkflow` | 2 | Location Store를 등록한 Object Server. Stable User Spot type `order.workflow` factory를 명시적 `Disabled` policy, placement weight `100`, Actor total·Spot total·`order.workflow` stable type limit `64`, activation concurrency `16`으로 등록하고 event-sourcing owner Spot과 projection fan-out을 제공한다. 이 역할은 Play의 maintenance relocation target이 아니다. |
 | trigger client | 시나리오별 | STREAM 접속·게임 진행·주문 흐름·연결 해제를 유발한다. |
 
@@ -45,7 +45,7 @@ factory·adapter kind를 게시하고 source inventory보다 큰 Actor total, Sp
 `Active+Reserved+Requested` headroom을 유지한다.
 
 각 host는 기존 message-flow 설정, 언어별 표준 meter/registry와 host framework runtime을 사용한다.
-`Retire` 또는 `Shutdown`으로 `Draining` 중에는 새 ChannelName·Logical Multicast 선택에서 해당
+`Relocating`, `Drained` 또는 `Draining` 중에는 새 ChannelName·Logical Multicast 선택에서 해당
 membership을 제외한다. flow id는
 message-flow가 켜진 발원점에서 자동 생성되며 별도 설정을
 추가하지 않는다. client 시나리오는
@@ -72,13 +72,13 @@ message-flow가 켜진 발원점에서 자동 생성되며 별도 설정을
 ```json
 {
   "metrics": [{"name":"...","kind":"counter","value":1,"unit":"{event}","tags":{}}],
-  "terminationEvents": [{"sequence":1,"state":"draining","intent":"retire"}],
+  "lifecycleEvents": [{"sequence":1,"state":"relocating","operation":"relocate"}],
   "peerRows": [{"nodeRid":"...","draining":true,"generation":1}]
 }
 ```
 
-`kind`는 `counter|updown|observable|histogram`, termination state label은
-`serving|draining|stopped|error` 소문자 값으로 고정한다. histogram은 raw sample 또는 provider
+`kind`는 `counter|updown|observable|histogram`, runtime state label은
+`serving|relocating|drained|draining|stopped|error` 소문자 값으로 고정한다. histogram은 raw sample 또는 provider
 snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실행 안에서 기준값과 비교한다.
 
 ## 4. 시나리오
@@ -199,21 +199,22 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   `RMETRIC-009`가 소유하며 이 config에서 단언하지 않는다.
 - 세부 동작: 비활성 계측의 최소 비용.
 
-### Track C — Host Retire, Shutdown & Handoff
+### Track C — Host Relocate, Shutdown & Handoff
 
-#### OBS-C1 draining 마커 — 연결 유지 + 배치 제외
+#### OBS-C1 relocating·drained 마커 — 연결 유지 + 배치 제외
 
 우선순위: `P0`
 
-**검증 질문:** `play-a`에 `Retire`를 시작하면 신규 배정에서 제외되고 이미 수락한
+**검증 질문:** `play-a`에 `Relocate`를 시작하면 신규 배정에서 제외되고 이미 수락한
 작업은 terminal 결과까지 유지되는가.
 
-- 절차: 룸과 bound actor가 유지 중인 `play-a`에 host `Retire`를 요청한다.
-- 검증: `play-a` MeshNode descriptor의 `Draining=true`와 runtime snapshot의
-  `State=Draining`이 관측되어 신규 room/actor 배정에서 제외된다. `zlink.termination.state` gauge가
-  `state=serving`→`state=draining`으로 전이한다
+- 절차: 룸과 bound actor가 유지 중인 `play-a`에 `PlannedMaintenance` mode로 host `Relocate`를 요청한다.
+- 검증: `play-a` MeshNode descriptor의 relocation 제외 상태와 runtime snapshot의
+  `State=Relocating`이 관측되어 신규 room/actor 배정에서 제외된다. 완료 뒤 `State=Drained`가
+  되고 host connection과 infrastructure는 유지된다. `zlink.host.state` gauge가
+  `state=serving`→`state=relocating`→`state=drained`로 전이한다
   ([Host maintenance §9](../spec/54-graceful-drain-handoff.ko.md#9-observability)).
-  descriptor는 `Draining` 중 유지되므로 기존
+  descriptor는 `Relocating`과 `Drained` 중 유지되므로 기존
   연결이 유지되고, 전파 지연 창에 기존 연결로 온 request가 정상 처리된다
   ([Host maintenance §4~6](../spec/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)). owner lease는
   draining 동안 계속 갱신된다([§8](../spec/54-graceful-drain-handoff.ko.md#8-location과-resource-cleanup)).
@@ -223,9 +224,10 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 우선순위: `P0`
 
-**검증 질문:** `Retire` 중인 actor를 `play-b`로 이동시키고, 이동 중에도 bound session이 이어지는가.
+**검증 질문:** `Relocate` 중인 actor를 `play-b`로 이동시키고, 이동 중에도 bound session이 이어지는가.
 
-- 절차: `play-a`의 host `Retire` 중 bound actor가 `play-b`로 relocation된다.
+- 절차: `play-a`에 `PlannedMaintenance` mode의 host `Relocate`를 요청하고, bound actor가
+  `play-b`로 relocation되게 한다.
 - 검증: relocation이 [Spot Actor §4](../spec/23-spot-actor.ko.md#4-join-의미와-commit-순서) 완료 조건까지
   진행되고 committed Actor authority가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
   `play-b` Actor로 이어진다.
@@ -236,30 +238,31 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   [Host maintenance §4](../spec/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)).
 - 세부 동작: 핸드오프 + FIFO 연속성.
 
-#### OBS-C3 User Spot aggregate Retire handoff
+#### OBS-C3 User Spot aggregate Relocate handoff
 
 우선순위: `P0`
 
-**검증 질문:** User Spot과 member Actor가 `Retire`에서 하나의 aggregate로 target에 이전되고 logical identity와
+**검증 질문:** User Spot과 member Actor가 `Relocate`에서 하나의 aggregate로 target에 이전되고 logical identity와
 ObjectGeneration을 유지하는가.
 
 - 절차:
   1. `play-a`에 Snapshot policy의 room User Spot과 member Actor를 만들고 Spot·Actor의 global ID,
-     ObjectGeneration, AuthorityOwnerGeneration, bounded participant set과 inventory digest를 기록한다.
-  2. Spot turn과 Actor request 하나를 각각 수락한 뒤 bounded gate에서 완료를 막고 `play-a` `Retire`를 시작한다.
+     ObjectGeneration, AuthorityOwnerGeneration, participant count, inventory root와 digest를 기록한다.
+  2. Spot turn과 Actor request 하나를 각각 수락한 뒤 bounded gate에서 완료를 막고 `play-a`에
+     `PlannedMaintenance` mode의 `Relocate`를 시작한다.
      Source admission seal 뒤 같은 object의 신규 request가 handler에 들어가지 않는지 확인하고 accepted gate는
      deadline 안에 해제한다.
   3. `play-b`의 target factory·adapter `Restore`, participant별 staging과 모든 `Prepared`가 끝난 뒤에만
-     `Draining`이 게시되는지 확인한다. Location Store의 aggregate commit 전에는 target handler를 열지 않는다.
+     `Drained`가 게시되는지 확인한다. Location Store의 aggregate commit 전에는 target handler를 열지 않는다.
   4. Aggregate commit 뒤 같은 global Spot ID와 Actor ID로 request를 보내 `play-b` handler에서 처리되는지
      확인하고 bound STREAM route ACK와 steady normalization까지 기다린다.
 - 검증: User Spot과 모든 member Actor는 ObjectGeneration을 유지하고 AuthorityOwnerGeneration만 증가한다.
-  Location Store의 canonical participant set·membership·owner와 aggregate generation은 한 commit에서 target으로
-  전환되고 Relocation manifest의 inventory digest와 일치한다. Source Spot에는 `OnClosing(RelocationOut)`이 한 번
+  Location Store의 aggregate owner·generation·inventory root는 한 CAS에서 target으로
+  전환되고 Relocation manifest의 participant count와 inventory digest가 일치한다. Source Spot에는 `OnClosing(RelocationOut)`이 한 번
   전달되지만 logical authority row를 삭제하거나 같은 RID를 새 generation으로 재생성하지 않는다. Target
   factory와 `Restore`는 retry-safe하게 at-least-once 실행될 수 있지만 stale attempt는 commit·admission을
   수행하지 못한다. Current relocation fence의 accepted message·journal은 application handler에 중복 적용되지
-  않는다. 한 `Retire` operation의 terminal result와 terminal lifecycle event는 각각 정확히 한 번 기록된다.
+  않는다. 한 `Relocate` operation의 terminal result와 terminal lifecycle event는 각각 정확히 한 번 기록된다.
   OBS-C1의 배치 제외,
   OBS-C2의 bound-session 연속성, OBS-C4의 `Shutdown` closing과 OBS-C5의 target blocker 판단은 각 scenario
   evidence를 barrier로 사용한다.
@@ -281,20 +284,22 @@ ObjectGeneration을 유지하는가.
   유효하고 callback 완료 뒤에만 scope·authority·listener를 정리한다. Actor별 closing callback은 없다.
   활성 STREAM 세션은 versioned `session-closing` 제어 프레임의 `ServerDrain`을 저장한 뒤 disconnect
   event를 내보내고 client는 공개 `closeReason`으로 확인한다. Terminal result는
-  `EffectiveIntent=Shutdown`, `Outcome=Stopped`, `Reason=None`이다.
+  `Outcome=Stopped`, `Reason=None`이다.
 - 세부 동작: relocation 없는 host cleanup과 Spot closing lifecycle.
 
-#### OBS-C5 Retire eligible target 부재
+#### OBS-C5 Relocate eligible target 부재
 
 우선순위: `P1`
 
-**검증 질문:** continuity를 받을 eligible target이 없으면 `Retire`가 source를 유지한 채
+**검증 질문:** continuity를 받을 eligible target이 없으면 `Relocate`가 source를 유지한 채
 종료 전에 차단되는가.
 
-- 절차: Actor와 User·Instance Spot을 `play-a`에 둔다. 다른 node는 시작하지 않거나 모두
-  `Draining`, 낮은 application version, type capability 부족, maintenance wave 일치 실패 또는 capacity
-  소진 중 하나로 만든 뒤 `play-a` `Retire`를 호출한다.
-- 검증: terminal result는 admission seal 전 `Blocked/TargetUnavailable` 또는 해당 compatibility
+- 절차: Actor와 User·Instance Spot을 `play-a`에 둔다. 첫 반복은 같은 version node를 시작하지 않고
+  `PlannedMaintenance`를 호출한다. 두 번째 반복은 source보다 큰 requested version을 지정해
+  `RollingUpdate`를 호출하되 그 version node를 시작하지 않는다. 별도 반복에서는 candidate를
+  `Draining`, type capability 부족, maintenance wave 일치 실패 또는 capacity 소진 중 하나로 만든다.
+- 검증: 두 mode 모두 요청한 exact version의 eligible target이 나타날 때까지 deadline 안에서 기다린다.
+  Deadline 뒤 terminal result는 admission seal 전 `Blocked/TargetUnavailable` 또는 해당 compatibility
   blocker의 `Blocked/StateIncompatible`이다. Host state·descriptor·readiness·object authority·membership과
   handler admission이 모두 유지되고 relocation root, reservation, closing callback은 0건이다. `Shutdown`을
   숨은 fallback으로 시작하지 않는다.
@@ -305,18 +310,20 @@ ObjectGeneration을 유지하는가.
 우선순위: `P0`
 
 **검증 질문:** 새 application version node를 먼저 Serving으로 준비한 뒤 기존 version host를
-`Retire`하면 stateful object와 session continuity를 유지하면서 새 version으로 전환되는가.
+`Relocate`하면 stateful object와 session continuity를 유지하면서 새 version으로 전환되는가.
 
 - 절차: `ApplicationVersion=N` source에 Actor·User Spot aggregate·Instance Spot과 bound STREAM session을
   만든다. 호환되는 adapter·type capability와 충분한 capacity를 갖춘
   `ApplicationVersion=N+1` target만 새로 Serving 상태로 준비한다. 지속 request와 push를 보내는
-  중 source에 `Retire`를 호출한다.
-- 검증: source가 `Draining`을 publish하기 전 모든 target restore와 `Prepared`가 끝난다. Actor·Spot
+  중 `Mode=RollingUpdate`, `TargetApplicationVersion=N+1`로 source `Relocate`를 호출한다.
+- 검증: source가 `Drained`를 publish하기 전 모든 target restore와 `Prepared`가 끝난다. Actor·Spot
   generation, accepted journal, participant inventory digest와 bound session ordering이 유지되고 committed owner는
-  `N+1` target을 가리킨다. Source는 `Stopped/None`으로 끝나며 전환 구간의 request는 원래 reply,
+  `N+1` target을 가리킨다. Relocation result는 `Drained/None`,
+  `Mode=RollingUpdate`, effective `TargetApplicationVersion=N+1`이고 source infrastructure와 connection은
+  유지된다. 이어서 `Shutdown`을 호출하면 source는 `Stopped/None`으로 끝난다. 전환 구간의 request는 원래 reply,
   명시적 moving 결과 또는 caller timeout 중 하나로 유한 완료되고 hidden retry는 없다. 완료 뒤
   신규 request·push evidence는 `N+1` target에서만 남는다.
-- 세부 동작: 새 version target 선행 배치→source `Retire`→stateful continuity 전환.
+- 세부 동작: 새 version target 선행 배치→source `Relocate`→stateful continuity 전환.
 
 #### OBS-C7 동일 version planned maintenance
 
@@ -327,10 +334,12 @@ continuity를 이전한 뒤 source를 종료할 수 있는가.
 
 - 절차: source와 target을 모두 `ApplicationVersion=N`으로 시작하고 target의 type capability, wave와
   capacity를 호환 상태로 둔다. Source에 stateful object와 accepted request가 있는 상태에서
-  `Retire`를 호출한다.
+  `Mode=PlannedMaintenance`, `TargetApplicationVersion=null`로 `Relocate`를 호출한다.
 - 검증: 새 application version node가 없어도 동일 version target이 eligible하면 preflight가 통과한다.
   Accepted work가 완료되고 Actor·Spot·session continuity가 target으로 이전된 뒤 source는
-  `Stopped/None`으로 종료된다. Target은 종료 전·후 같은 `ApplicationVersion=N`을 관측한다.
+  `Drained/None`, `Mode=PlannedMaintenance`, effective `TargetApplicationVersion=N`을 반환하고 host를
+  유지한다. 이어서 `Shutdown`을 호출하면 `Stopped/None`으로
+  종료된다. Target은 종료 전·후 같은 `ApplicationVersion=N`을 관측한다.
 - 세부 동작: application version 변경 없는 node 점검 handoff.
 
 #### OBS-C8 Shutdown deadline과 bounded teardown
@@ -346,8 +355,8 @@ continuity를 이전한 뒤 source를 종료할 수 있는가.
 - 검증: callback에 전달하는 absolute deadline이 host deadline과 같다. 해당 언어가 표준 cleanup
   cancellation을 지원하면 deadline에 signal이 전환되고, 지원하지 않으면 Framework가 callback
   completion 대기를 끝낸다. Host state는 `Stopped`, terminal result는
-  `EffectiveIntent=Shutdown`, `Outcome=ForceStopped`, `Reason=DeadlineExceeded`이며
-  `zlink.termination.forced{intent=shutdown,reason=deadline_exceeded}`가 한 번 계수된다. Callback을
+  `Outcome=ForceStopped`, `Reason=DeadlineExceeded`이며
+  `zlink.host.shutdown.forced{reason=deadline_exceeded}`가 한 번 계수된다. Callback을
   기다리는 동안 relocation을 시작하지 않고 기존 handler cancellation signal을 cleanup에 재사용하지 않는다.
 - 세부 동작: deadline 기반 cooperative cleanup과 bounded forced teardown.
 
@@ -355,35 +364,75 @@ continuity를 이전한 뒤 source를 종료할 수 있는가.
 
 우선순위: `P0`
 
-**검증 질문:** `Retire`가 automatic RouteMesh의 실제 peer readiness를 확인한 뒤에만 시작되고, Framework가
+**검증 질문:** `Relocate`가 automatic RouteMesh의 실제 peer readiness를 확인한 뒤에만 시작되고, Framework가
 replacement 연결을 증명할 수 없는 manual topology는 source를 변경하지 않은 채 차단되는가.
 
 - 절차:
   1. Automatic source와 green target을 시작하되 green descriptor publication 뒤 RouteMesh handshake admission을
-     bounded gate에서 막는다. Source에 `Retire`를 호출하고 descriptor, connect intent와 source Core peer table을
+     bounded gate에서 막는다. Source에 `PlannedMaintenance` mode의 `Relocate`를 호출하고 descriptor,
+     connect intent와 source Core peer table을
      함께 기록한다.
   2. Gate를 해제해 exact green RID·lifecycle generation이 source Core peer table에서 admitted·ready가 되게 한다.
-     Stateful object 하나를 이전하고 source의 descriptor release와 peer disconnect까지 관찰한다.
+     Stateful object 하나를 이전하고 `Drained` result까지 관찰한 뒤 `Shutdown`을 호출해 source의
+     descriptor release와 peer disconnect까지 관찰한다.
   3. 별도 process 반복에서 local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint,
      Location Store에 descriptor를 게시하지 않는 manual fanout publisher를 각각 하나씩 구성한다. 각 host에
-     `Retire`를 호출한 뒤 같은 host에 `Shutdown`을 호출한다.
+     `PlannedMaintenance` mode의 `Relocate`를 호출한 뒤 같은 host에 `Shutdown`을 호출한다.
 - 검증: descriptor와 connect intent만 존재하는 동안 source state는 `Serving`, readiness와 application admission은
-  그대로이고 relocation root와 reservation은 0건이다. Exact peer가 `Ready`가 된 뒤에만 old `Retiring`,
-  relocation, old `Draining`과 accepted barrier, descriptor·owner lease release, disconnect 순서로 진행하고
-  `Stopped/None`으로 끝난다. 네 manual 반복의 `Retire`는 모두
+  그대로이고 relocation root와 reservation은 0건이다. Exact peer가 `Ready`가 된 뒤에만 old `Relocating`,
+  relocation, old `Drained`, 명시적 `Shutdown`, old `Draining`과 accepted barrier,
+  descriptor·owner lease release, disconnect 순서로 진행한다. Relocation은 `Drained/None`,
+  Shutdown은 `Stopped/None`으로 끝난다. 네 manual 반복의 `Relocate`는 모두
   `Blocked/ManualTopologyUnsupported`이며 state, readiness, manual connection과 handler admission을 바꾸지 않는다.
   이어서 호출한 `Shutdown`은 manual topology를 blocker로 사용하지 않고 `Stopped` 또는 `ForceStopped`로 유한
   완료된다.
 - 세부 동작: descriptor와 physical readiness의 구분, automatic replacement ordering과 manual topology의
   precommit 차단.
 
+#### OBS-C10 Relocation mode의 exact version 선택
+
+우선순위: `P0`
+
+**검증 질문:** 같은 topology에 여러 application version이 있어도 mode가 정한 exact version만
+target으로 선택되는가.
+
+- 절차: `ApplicationVersion=N` source와 충분한 capacity를 가진 `N`, `N+1`, `N+2` target을 모두
+  Serving으로 준비한다. 모든 target은 같은 stable type, policy와 adapter capability를 제공하고 서로 다른
+  maintenance wave를 사용한다. 첫 반복은 `PlannedMaintenance`를 호출하고, 두 번째 반복은 새 source workload에
+  `Mode=RollingUpdate`, `TargetApplicationVersion=N+1`을 호출한다. Candidate weight는 의도한 version이 가장
+  낮고 제외되어야 하는 version이 가장 높도록 구성한다.
+- 검증: planned maintenance의 모든 committed owner는 `N` target만 가리키고, rolling update의 모든 committed
+  owner는 `N+1` target만 가리킨다. `N+2`는 requested version보다 더 높아도 rolling update 후보가 아니며,
+  `N`은 rolling update 후보가 아니다. Version filter 뒤 남은 후보에만 capacity와 weight를 적용한다.
+  각 result의 mode와 effective target application version이 요청과 일치한다.
+- 세부 동작: mode별 exact version filter가 weight·capacity selection보다 먼저 적용되는지 검증한다.
+
+#### OBS-C11 Concurrent Relocate option 충돌
+
+우선순위: `P0`
+
+**검증 질문:** concurrent caller가 같은 relocation intent에는 합류하고 다른 intent로 진행 중인 operation을
+변경하지 못하는가.
+
+- 절차: `RollingUpdate`, `TargetApplicationVersion=N+1`의 첫 `Relocate`를 target readiness gate에서
+  대기시킨다. 같은 mode와 target version의 두 번째 호출, `PlannedMaintenance` 호출, target version `N+2`를
+  지정한 `RollingUpdate` 호출을 차례로 시작한다. 그 뒤 readiness gate를 해제한다.
+- 검증: 같은 mode와 effective target version의 두 번째 호출은 최초 deadline을 사용하는 shared operation에
+  합류하고 두 waiter가 동일한 terminal result를 받는다. 다른 두 호출은 즉시
+  `Blocked/OperationInProgress`를 받고 host state, target selection과 최초 deadline을 변경하지 않는다.
+  `OperationInProgress`의 reason 값은 `10`이고 `ShutdownRequested=9`는 유지된다. 첫 operation이 끝난 뒤에는
+  새 option으로 별도의 `Relocate`를 시작할 수 있다.
+- 세부 동작: 같은 intent의 single-flight와 다른 intent의 deterministic rejection.
+
 ## 5. 완료 기준
 
-- OBS-A1~A4, OBS-B1~B4, OBS-C1~C9를 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
+- OBS-A1~A4, OBS-B1~B4, OBS-C1~C11을 모두 통과한다. 우선순위는 실행 순서만 정하며 완료 범위를
   줄이지 않는다.
 - flow 로그는 노드 경계를 관통하고 error 라인에도 `flow=`가 있다.
 - 메트릭 계기는 실제 사건과 일치하고 고카디널리티 라벨이 없다.
-- `Retire`는 automatic peer의 exact readiness와 모든 eligible target을 준비한 뒤 배치를 제외하고 accepted
-  turn·Actor·Spot·STREAM continuity 뒤 source를 종료한다. Manual topology는 precommit blocker이며 `Shutdown`은
-  새 relocation 없이 Spot closing callback과 bounded cleanup을 수행한다.
+- `Relocate`는 mode가 정한 exact application version과 automatic peer의 exact readiness를 만족하는 target을
+  준비한 뒤 배치를 제외하고 accepted turn·Actor·Spot·STREAM continuity를 옮겨 source를 `Drained`로 유지한다.
+  Manual topology는 precommit
+  blocker이며 `Shutdown`은 `Serving` 또는 `Drained`에서 새 relocation 없이 Spot closing callback과 bounded
+  cleanup을 수행한다.
 - 공개 표면만 직접 사용하고 `ensure`로 단언한다.

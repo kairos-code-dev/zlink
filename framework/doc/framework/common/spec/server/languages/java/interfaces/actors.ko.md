@@ -96,7 +96,7 @@ attempt의 instance를 새 attempt에 재사용하지 않으며 같은 attempt�
 Capture stage가 exception으로 끝나면 authority publication 전에 attempt를 abort하고 source authority와 admission을
 유지한다. Restore stage가 exception으로 끝나면 target admission을 sealed 상태로 유지하고 같은 immutable payload의
 retry 또는 target replacement를 수행한다. Exception을 빈 payload나 정상 completion으로 바꾸지 않는다. Capture의
-null stage와 null `byte[]`, Restore의 null stage는 adapter contract 위반이다. Host Retire에서 deadline이 먼저
+null stage와 null `byte[]`, Restore의 null stage는 adapter contract 위반이다. Host relocation에서 deadline이 먼저
 확정되지 않은 precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`로 분류한다. [Deadline](../../../../01-glossary.ko.md#deadline)이
 먼저 확정되면 `Blocked/DeadlineExceeded`를 사용하며 stale target attempt의 cancellation은 terminal result를
 commit하지 못한다. Adapter는
@@ -110,12 +110,12 @@ accepted record에 저장한 exact request-source lease expiry만 terminal accou
 
 Source는 connection-bound one-way를 포함해 admission한 모든 connection-bound work가 terminal accounting에
 도달한 뒤에만 `CAPTURED`를 commit한다. Durable accepted journal은 exact owner lease가 있는 source에서만
-사용한다. Pre-`CAPTURED` drain이 deadline 안에 끝나지 않으면 relocation을 abort하고 host Retire를
+사용한다. Pre-`CAPTURED` drain이 deadline 안에 끝나지 않으면 relocation을 abort하고 host relocation을
 `BLOCKED/DEADLINE_EXCEEDED`로 끝낸다. Durable abort와 source normalization이 끝나기 전에 source admission을
 열지 않는다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
 
 Standalone relocation의 Actor는 source Entry Spot member여야 한다. User Spot member Actor는 standalone relocation으로
-분리하지 않고 Spot과 current member 전체를 bounded aggregate로 함께 옮긴다. User Spot membership 자체는 Retire
+분리하지 않고 Spot과 current member 전체를 하나의 aggregate로 함께 옮긴다. User Spot membership 자체는 relocation
 blocker가 아니며 participant 하나라도 `Disabled`이거나 호환 target을 확보할 수 없을 때만 aggregate 전체를
 차단한다. `Disabled` participant는 `BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
 `BLOCKED/TARGET_UNAVAILABLE`, application version·type·[Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter capability 불일치는

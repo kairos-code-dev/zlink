@@ -326,8 +326,8 @@ Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다�
 `OnActorJoin`, `OnJoinedActor`와 `OnLeaveActor`도 호출하지 않는다.
 
 Join과 host maintenance가 동시에 시작되면 먼저 seal하거나 claim한 작업을 따른다.
-Join claim이 `Retire`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지
-기다린다. `Retire` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이
+Join claim이 `Relocate`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지
+기다린다. `Relocate` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이
 먼저면 `RuntimeShutdown`으로 끝난다.
 
 같은 handler가 barrier를 등록한 Actor에 request를 보내고 reply를 기다리면
@@ -478,7 +478,7 @@ notification을 사용한다. User Spot에서 Entry Spot으로 복귀하면 targ
 target Entry Spot의 joined와 source User Spot의 leave notification을 호출한다. 두 일반 join 모두 물리적으로
 Actor를 복원했다는 이유로 maintenance 전용 `OnActorRelocated` callback을 추가로 호출하지 않는다.
 
-Entry Spot 자체는 relocation participant가 아니다. Host `Retire`로 source Entry Spot의 Actor가 target node의
+Entry Spot 자체는 relocation participant가 아니다. Host `Relocate`로 source Entry Spot의 Actor가 target node의
 Entry Spot으로 이동하면 Framework는 target Actor의 `Restore`를 끝내고 owner·membership을 commit한 뒤
 target Entry Spot의 `OnActorRelocated` callback과 source Entry Spot의 `OnLeaveActor` callback을 호출한다. 두 callback이
 완료될 때까지 target Actor dispatch를 열지 않는다. 어느 callback이 실패해도 commit을 되돌리지 않고 current
@@ -543,25 +543,56 @@ Policy와 adapter registration은 startup 뒤 바뀌지 않는다.
 
 ## 6. User Spot과 member Actor를 함께 이동하는 maintenance aggregate
 
-Host `Retire`가 User Spot을 이전할 때는 해당 Spot과 seal 시점의 current member
+Host `Relocate`가 User Spot을 이전할 때는 해당 Spot과 seal 시점의 current member
 Actor 전체를 하나의 aggregate로 처리한다. Application은 aggregate에 포함할
 participant나 relocation phase를 선택하지 않는다.
 
-Host가 `Retiring`으로 전환되면 Framework는 aggregate의 Spot control queue에 infrastructure intent notification을
+Host가 `Relocating`으로 전환되면 Framework는 aggregate의 Spot control queue에 infrastructure intent notification을
 예약한다. 이 notification은 application callback이 아니다. Notification을 처리한 turn 경계에서 permit을 얻지 못하면
 seal하지 않고 다음 notification을 예약하므로 Spot과 member Actor는 application message와 timer를 계속 처리한다.
 
-Aggregate ID는 non-zero 128-bit value다. Aggregate record는 최대 1024 participants와 encoded 최대 1 MiB이며
-각 participant의 object kind, global key, ObjectGeneration, owner fence와 policy를 보존한다.
+Aggregate ID는 non-zero 128-bit value다. Aggregate에 포함할 수 있는 Actor 총수에는
+고정 상한을 두지 않는다. 실제 총수는 source에 존재하는 membership과 target이 광고한
+population capacity로 제한한다.
+
+Framework는 participant 전체를 record 하나에 넣지 않는다. Object kind, global key,
+ObjectGeneration, owner fence와 policy를 정렬한 뒤 Location Store에 여러 immutable
+inventory chunk로 저장한다. Leaf chunk 하나에는 최대 1,024개를 저장하며 encoded
+크기는 1 MiB를 넘지 않는다. 목록이 leaf 하나에 들어가지 않으면 index chunk를
+추가하여 tree를 만든다. Aggregate authority에는 다음 값만 둔다.
+
+| 값 | 용도 |
+|---|---|
+| `AggregateId`와 generation | 같은 User Spot 이동과 그 commit 세대를 식별한다. |
+| Participant count | Tree에 들어 있는 Spot과 Actor의 전체 수다. |
+| Inventory root와 digest | Location Store가 authority로 사용하는 전체 목록을 가리킨다. |
+| Owner와 relocation root | 현재 owner와 복원할 payload를 가리킨다. |
+
+```mermaid
+flowchart LR
+    Members["User Spot과 member Actor 전체"] --> Split["최대 1,024개씩 나눈다"]
+    Split --> C1["Inventory leaf 1"]
+    Split --> C2["Inventory leaf 2"]
+    Split --> CN["Inventory leaf N"]
+    C1 --> Root["Inventory root<br/>count와 digest"]
+    C2 --> Root
+    CN --> Root
+    Root --> CAS["Aggregate authority CAS"]
+    CAS --> Visible["Spot과 모든 Actor가<br/>새 owner를 사용한다"]
+```
+
+User Spot에 속한 Actor의 현재 owner는 User Spot aggregate authority를 따른다. Actor별
+membership record는 해당 aggregate를 가리키며 relocation 때 owner를 하나씩 공개하지
+않는다.
 
 1. Spot queue turn 경계에서 aggregate의 active unit, callback과 예상 payload byte permit을 모두 얻은 뒤 source
    User Spot의 join·leave와 모든 participant admission을 reversible하게 seal한다.
-2. Exact participant inventory를 aggregate record에 고정한다.
+2. Exact participant inventory를 immutable tree로 저장하고 root·count·digest를 검증한다.
 3. 모든 policy, target type·[Snapshot](01-glossary.ko.md#relocation-policy) adapter capability와 active·pending capacity를 preflight한다.
 4. `Snapshot` participant의 모든 state, 실행하지 않은 message queue, accepted journal과 timer logical
    registration·pending tick을 capture하고 target reservation·factory·restore를 admission이 닫힌 상태로 준비한다.
-5. Generic Store transaction이 Spot owner, 모든 Actor owner와 membership visibility를 하나의 commit generation으로
-   전환한다.
+5. Location Store의 단일 CAS가 aggregate owner, generation, inventory root와 capacity를
+   전환한다. 이 CAS가 성공하면 Spot과 모든 member Actor가 함께 새 owner를 사용한다.
 6. Authority commit 뒤 target lifecycle callback, accepted message·journal replay와 Framework timer 자동
    복원을 끝낸다. Durable source cleanup과 Completed authority CAS 뒤 aggregate에 포함된 bound Actor마다
    Session owner에 해당 route를 target으로 바꿔 달라고 요청하고 확인을 받는다(`command 44·45`). 같은 Session의 aggregate 밖 Actor
@@ -572,9 +603,10 @@ Aggregate ID는 non-zero 128-bit value다. Aggregate record는 최대 1024 parti
 이동하므로 target에서 `OnJoinedActor`·`OnActorRelocated`를 호출하거나 source에서 `OnLeaveActor`를 호출하지
 않는다. Spot·Actor adapter의 restore와 Spot lifecycle callback만 target admission 전에 끝낸다.
 
-Commit 전 individual owner update는 resolver에 보이지 않는다. Participant 하나라도 commit 전에 실패하면
-target staging을 폐기하고 aggregate 전체 source 상태를 유지한다. Commit 뒤에는 일부 participant만 source로
-되돌리지 않고 같은 aggregate identity와 relocation root로 전체 target recovery를 계속한다.
+Commit 전 새 inventory tree와 target staging은 resolver에 보이지 않는다. Participant
+하나라도 commit 전에 실패하면 target staging을 폐기하고 aggregate 전체 source 상태를
+유지한다. Commit 뒤에는 일부 participant만 source로 되돌리지 않고 같은 aggregate
+identity, inventory root와 relocation root로 전체 target recovery를 계속한다.
 
 ## 7. 실패와 recovery
 
@@ -655,7 +687,7 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
   job보다 continuation을 먼저 완료한다.
 - Barrier가 걸린 Actor를 같은 handler에서 awaited request하면
   `InvalidConfiguration`으로 거부한다.
-- Join과 Retire·Shutdown 경합에서 먼저 확정한 claim·seal에 따라 wait,
+- Join과 Relocate·Shutdown 경합에서 먼저 확정한 claim·seal에 따라 wait,
   `ActorMoving` 또는 `RuntimeShutdown`으로 끝난다.
 - Same-target User Spot Join과 Entry Spot Actor의 `JoinEntrySpot`을 Store mutation과
   lifecycle callback이 없는 `Accepted`로 완료한다.

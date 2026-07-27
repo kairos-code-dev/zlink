@@ -291,7 +291,7 @@ callback을 취소하면 `DeadlineExceeded`로 분류한다. Current exact owner
 admission을 열 수 있으며 callback에는 relocation ID를 제공하지 않는다.
 
 Relocation을 시작하기 전에 이미 수락한 connection-bound work가 deadline 안에 끝나지 않으면 relocation을
-중단하고 host Retire는 `Blocked/DeadlineExceeded`로 완료한다. 이를 직접 확인하거나 조작하는 public ACK나
+중단하고 `RelocateAsync(...)`는 `Blocked/DeadlineExceeded`로 완료한다. 이를 직접 확인하거나 조작하는 public ACK나
 phase API는 제공하지 않는다.
 
 Entry Spot maintenance와 일반 join에서 실행하는 lifecycle callback의 순서, callback 실패 뒤 sealed retry와 whole

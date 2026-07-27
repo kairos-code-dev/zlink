@@ -117,7 +117,7 @@ STREAM frame의 앞쪽 2바이트는 `header_size`다.
   ([03 message model](../03-message-model.ko.md)의 "reply 상관관계").
 - metadata는 `u16 meta_len + metadata bytes`, correlation id는 `u8 len + bytes`로 이어진다.
 - flow 필드는 **36바이트 `flow_id`와 1바이트 `flow_origin`이 항상 함께** 존재하거나 함께 없다.
-  의미는 [메시지 흐름 상관관계 §3](../53-flow-correlation.ko.md#3-형식)이 소유한다.
+  의미는 [메시지 흐름 상관관계 §3](../53-flow-correlation.ko.md#3-형식과-소유권)이 소유한다.
 - **모든 multi-byte 정수는 network byte order**다.
 
 application code는 이 header를 직접 만들거나 수정하지 않는다. connector runtime이 소유한다.
@@ -133,7 +133,7 @@ application code는 이 header를 직접 만들거나 수정하지 않는다. co
 | has flow id | `0x10` | `flow_id`·`flow_origin` 필드가 있다 |
 
 `Control` packet에는 `has flow id`를 세우지 않는다
-([flow-correlation §3](../53-flow-correlation.ko.md#3-형식)).
+([flow-correlation §3](../53-flow-correlation.ko.md#3-형식과-소유권)).
 
 ### 4.4 metadata
 
@@ -192,7 +192,7 @@ control frame은 `Raw` codec, request sequence 없음, metadata 없음, flow fla
 
 `session-closing`은 서버가 세션을 닫기 직전에 보내는 control packet이며, client는 이를 읽어
 `closeReason`을 확정한다
-([graceful-drain-handoff §7](../54-graceful-drain-handoff.ko.md#7-stream-barrier)).
+([Host Relocate와 Shutdown §9](../54-graceful-drain-handoff.ko.md#9-queue-timer와-session-handoff)).
 
 ```text
 +------------+-------------------+----------------+--------------------+
@@ -421,7 +421,7 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
 ### 6.3 종료 사유
 
 연결이 끊기면 connector는 **종료 사유**를 노출한다. 값 집합은 서버 측 `close_reason`
-([runtime-metrics §4](../51-runtime-metrics.ko.md#4-object와-stream-계기))과 정합하는 **닫힌 집합**이며, wire 인코딩은
+([runtime-metrics §4](../51-runtime-metrics.ko.md#4-object와-stream))과 정합하는 **닫힌 집합**이며, wire 인코딩은
 §4.6의 `session-closing` control packet이 소유한다.
 
 | 사유 | 의미 |
@@ -434,7 +434,7 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
 | `TransportError` | transport 수준 실패로 끊겼다 |
 
 `ServerDrain`을 받은 client는 이 값을 보고 **재접속과 백오프를 결정한다**
-([Graceful Drain & Handoff §7](../54-graceful-drain-handoff.ko.md#7-stream-barrier)). **서버가 대체 endpoint를
+([Host Relocate와 Shutdown §9](../54-graceful-drain-handoff.ko.md#9-queue-timer와-session-handoff)). **서버가 대체 endpoint를
 지정하는 기능은 이 계약에 포함하지 않는다.**
 
 언어별 문서는 이 사유를 표현하는 **타입 이름과 노출 방식**(속성인지 이벤트 인자인지)만

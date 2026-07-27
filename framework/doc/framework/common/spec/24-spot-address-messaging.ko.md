@@ -380,13 +380,13 @@ participant mapping을 commit 전에 current route로 공개하지 않는다.
 
 Relocation unit을 seal한 뒤 source route로 도착한 ingress는 bounded hold에 넣고 application handler를 실행하지
 않는다. Owner commit 전 abort에서는 source queue에 arrival order로 복원하고, commit 뒤에는 stale-route mapping과
-같은 operation ID·generation·reply route를 유지해 target으로 relay한다. Permit을 기다리는 `Retiring` unit은 seal된
+같은 operation ID·generation·reply route를 유지해 target으로 relay한다. Permit을 기다리는 `Relocating` unit은 seal된
 상태가 아니므로 기존 [owner route](01-glossary.ko.md#owner-route)에서 application message와 timer를 계속 수락한다.
 
 ## 7. Close와 generation 경계
 
 Spot manager의 public `Close`는 User Spot의 exact `SpotRef`를 받는다. Instance Spot은 application handler나
-timer가 자신의 lifecycle context에서 local `Close`를 요청한다. Host shutdown과 `Retire`는 별도 운영
+timer가 자신의 lifecycle context에서 local `Close`를 요청한다. Host shutdown과 `Relocate`는 별도 운영
 lifecycle로 Instance Spot을 정리하거나 이동할 수 있다.
 
 1. Expected owner와 ObjectGeneration을 검증해 authority를 `Closing`으로 전이한다.
@@ -421,7 +421,7 @@ generation과 moving conflict는 typed failure다. Source는 current ref를 다�
 
 ## 8. Maintenance materialization
 
-이미 존재하는 Spot owner의 이동은 명시적인 host `Retire` transaction만 시작한다. [Object Server](01-glossary.ko.md#object-client와-object-server-role) factory는
+이미 존재하는 Spot owner의 이동은 명시적인 host `Relocate` transaction만 시작한다. [Object Server](01-glossary.ko.md#object-client와-object-server-role) factory는
 `Disabled`, `Recreate`, `Snapshot` 중 하나의 policy를 반드시 등록한다. 생략 overload와 compatibility
 default는 제공하지 않는다. [Snapshot](01-glossary.ko.md#relocation-policy)은 Spot type에 맞는 `SpotRelocationAdapter`를 요구한다. Adapter는
 application이 형식과 version을 관리하는 opaque byte sequence를 capture·restore한다.
@@ -437,7 +437,7 @@ registration·pending tick은 relocation payload에 포함하며 target Framewor
 
 - Object role Mesh 후보가 없거나 여러 개인 create와 cold activation은 §3·§4의 typed error로 끝난다.
 - Ready authority가 없으면 not-found, exact generation이나 [owner fence](01-glossary.ko.md#owner-fence)가 다르면 typed stale error다.
-- `Closing`, relocation seal 이후 또는 `Draining` owner는 신규 admission을 거부한다. `Retiring`이지만 아직 seal하지
+- `Closing`, relocation seal 이후 또는 `Draining` owner는 신규 admission을 거부한다. `Relocating`이지만 아직 seal하지
   않은 unit은 기존 owner admission을 유지한다.
 - Request failure를 다른 Spot ID, MeshName이나 owner로 우회하지 않는다.
 - Expired owner는 신규 message·timer admission과 location update를 수행할 수 없다.

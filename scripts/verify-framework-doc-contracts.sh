@@ -33,7 +33,7 @@ const {
 const failures = [];
 const fail = message => failures.push(message);
 let javaKotlinSemanticNegativeTestCount = 0;
-let terminationContractNegativeTestCount = 0;
+let hostLifecycleContractNegativeTestCount = 0;
 if (!fs.existsSync(inventoryPath)) fail(`missing v11 document inventory: ${inventoryPath}`);
 const inventory = fs.existsSync(inventoryPath)
   ? JSON.parse(fs.readFileSync(inventoryPath, 'utf8'))
@@ -96,37 +96,44 @@ if (!Array.isArray(inventory.consolidated_internal_document_sets)
 if (!inventory.plan_consolidation || typeof inventory.plan_consolidation !== 'object') {
   fail('v11 document inventory plan_consolidation object is missing');
 }
-const expectedTerminationMembers = ['retire', 'shutdown'];
+const expectedTerminationMembers = ['relocate', 'shutdown'];
 const expectedTerminationOwners = ['ZLinkFrameworkRuntime'];
 const expectedTopologyOwners = [
   'ZLinkRouteMeshRuntime',
   'ZLinkClientServerRuntime',
   'ZLinkFanoutRuntime',
 ];
-const terminationOwnerPolicy = inventory.java_kotlin_termination_owners || {};
+const terminationOwnerPolicy = inventory.java_kotlin_host_lifecycle_owners || {};
 if (JSON.stringify(terminationOwnerPolicy.members)
     !== JSON.stringify(expectedTerminationMembers)
     || JSON.stringify(terminationOwnerPolicy.allowed)
     !== JSON.stringify(expectedTerminationOwners)
     || JSON.stringify(terminationOwnerPolicy.forbidden_topologies)
     !== JSON.stringify(expectedTopologyOwners)) {
-  fail('Java/Kotlin termination owner policy differs from the host-only contract');
+  fail('Java/Kotlin host lifecycle owner policy differs from the host-only contract');
 }
 
-const expectedTerminationResultContract = {
+const expectedHostLifecycleContract = {
   formal_path: 'framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md',
   e2e_path: 'framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md',
-  outcomes: [
-    { name: 'Stopped', wire_value: 0, reasons: ['None'] },
+  states: [
+    { name: 'Preparing', wire_value: 0 },
+    { name: 'Serving', wire_value: 1 },
+    { name: 'Relocating', wire_value: 2 },
+    { name: 'Drained', wire_value: 3 },
+    { name: 'Draining', wire_value: 4 },
+    { name: 'Stopped', wire_value: 5 },
+    { name: 'Error', wire_value: 6 },
+  ],
+  relocation_outcomes: [
+    { name: 'Drained', wire_value: 0, reasons: ['None'] },
     { name: 'Blocked', wire_value: 1, reasons: [
       'TargetUnavailable', 'StoreUnavailable', 'RelocationDisabled', 'StateIncompatible',
-      'DeadlineExceeded', 'RuntimeNotReady', 'ManualTopologyUnsupported',
-    ] },
-    { name: 'ForceStopped', wire_value: 2, reasons: [
-      'DeadlineExceeded', 'RelocationFailed', 'TeardownFailed',
+      'DeadlineExceeded', 'RelocationFailed', 'RuntimeNotReady', 'ManualTopologyUnsupported',
+      'ShutdownRequested', 'OperationInProgress',
     ] },
   ],
-  reasons: [
+  relocation_reasons: [
     { name: 'None', wire_value: 0 },
     { name: 'TargetUnavailable', wire_value: 1 },
     { name: 'StoreUnavailable', wire_value: 2 },
@@ -134,20 +141,47 @@ const expectedTerminationResultContract = {
     { name: 'StateIncompatible', wire_value: 4 },
     { name: 'DeadlineExceeded', wire_value: 5 },
     { name: 'RelocationFailed', wire_value: 6 },
-    { name: 'TeardownFailed', wire_value: 7 },
-    { name: 'RuntimeNotReady', wire_value: 8 },
-    { name: 'ManualTopologyUnsupported', wire_value: 9 },
+    { name: 'RuntimeNotReady', wire_value: 7 },
+    { name: 'ManualTopologyUnsupported', wire_value: 8 },
+    { name: 'ShutdownRequested', wire_value: 9 },
+    { name: 'OperationInProgress', wire_value: 10 },
+  ],
+  termination_outcomes: [
+    { name: 'Stopped', wire_value: 0, reasons: ['None'] },
+    { name: 'ForceStopped', wire_value: 1, reasons: ['DeadlineExceeded', 'TeardownFailed'] },
+  ],
+  termination_reasons: [
+    { name: 'None', wire_value: 0 },
+    { name: 'DeadlineExceeded', wire_value: 1 },
+    { name: 'TeardownFailed', wire_value: 2 },
   ],
   checkpoint_ceiling_pair: 'Blocked/StateIncompatible',
-  forbidden_fragments: ['CheckpointTooLarge', '| `Completed` |', '| `Failed` |'],
+  forbidden_fragments: [
+    'CheckpointTooLarge', 'Retire', 'Retiring', '| `Completed` |', '| `Failed` |',
+  ],
 };
-const terminationResultContract = inventory.termination_result_contract || {};
-if (JSON.stringify(terminationResultContract)
-    !== JSON.stringify(expectedTerminationResultContract)) {
-  fail('termination result inventory differs from the closed formal contract');
+const hostLifecycleContract = inventory.host_lifecycle_contract || {};
+if (JSON.stringify(hostLifecycleContract)
+    !== JSON.stringify(expectedHostLifecycleContract)) {
+  fail('host lifecycle inventory differs from the closed formal contract');
 }
 
-const parseTerminationOutcomeTable = source => {
+const parseNamedValueTable = (source, headerPattern) => {
+  const lines = source.split(/\r?\n/u);
+  const header = lines.findIndex(line => headerPattern.test(line));
+  if (header < 0) return [];
+  const rows = [];
+  for (let index = header + 2; index < lines.length && lines[index].startsWith('|'); index += 1) {
+    const cells = lines[index].split('|').slice(1, -1).map(cell => cell.trim());
+    if (cells.length < 2) continue;
+    const name = /^`([^`]+)`$/u.exec(cells[1])?.[1];
+    const wireValue = /^(0|[1-9][0-9]*)$/u.test(cells[0]) ? Number(cells[0]) : NaN;
+    rows.push({ name, wire_value: wireValue });
+  }
+  return rows;
+};
+
+const parseRelocationOutcomeTable = source => {
   const lines = source.split(/\r?\n/u);
   const header = lines.findIndex(line => /^\|\s*값\s*\|\s*Outcome\s*\|\s*허용 reason\s*\|/u.test(line));
   if (header < 0) return [];
@@ -163,8 +197,8 @@ const parseTerminationOutcomeTable = source => {
   return rows;
 };
 
-const parseTerminationReasonValues = source => {
-  const start = source.indexOf('Reason wire 값은');
+const parseRelocationReasonValues = source => {
+  const start = source.indexOf('Reason은 `None=0`');
   if (start < 0) return [];
   const end = source.indexOf('이다.', start);
   if (end < 0) return [];
@@ -172,62 +206,96 @@ const parseTerminationReasonValues = source => {
     .map(match => ({ name: match[1], wire_value: Number(match[2]) }));
 };
 
-const terminationDocumentFailures = (source, label) => {
+const parseShutdownValues = source => {
+  const match = /Shutdown outcome은([\s\S]*?)다\./u.exec(source);
+  if (!match) return { outcomes: [], reasons: [] };
+  const reasonIndex = match[1].indexOf('reason은');
+  if (reasonIndex < 0) return { outcomes: [], reasons: [] };
+  const parse = value => [...value.matchAll(/`([A-Za-z][A-Za-z0-9]*)=(\d+)`/gu)]
+    .map(entry => ({ name: entry[1], wire_value: Number(entry[2]) }));
+  return {
+    outcomes: parse(match[1].slice(0, reasonIndex)),
+    reasons: parse(match[1].slice(reasonIndex)),
+  };
+};
+
+const hostLifecycleDocumentFailures = (source, label) => {
   const messages = [];
-  if (JSON.stringify(parseTerminationOutcomeTable(source))
-      !== JSON.stringify(expectedTerminationResultContract.outcomes)) {
+  const states = parseNamedValueTable(
+    source, /^\|\s*값\s*\|\s*State\s*\|\s*의미\s*\|/u);
+  if (JSON.stringify(states) !== JSON.stringify(expectedHostLifecycleContract.states)) {
+    messages.push(`${label} host lifecycle state wire values differ`);
+  }
+  if (JSON.stringify(parseRelocationOutcomeTable(source))
+      !== JSON.stringify(expectedHostLifecycleContract.relocation_outcomes)) {
+    messages.push(`${label} relocation outcome/reason pairs differ`);
+  }
+  if (JSON.stringify(parseRelocationReasonValues(source))
+      !== JSON.stringify(expectedHostLifecycleContract.relocation_reasons)) {
+    messages.push(`${label} relocation reason wire values differ`);
+  }
+  const shutdown = parseShutdownValues(source);
+  const terminationOutcomes = shutdown.outcomes.map(outcome => ({
+    ...outcome,
+    reasons: outcome.name === 'Stopped' ? ['None'] : ['DeadlineExceeded', 'TeardownFailed'],
+  }));
+  if (JSON.stringify(terminationOutcomes)
+      !== JSON.stringify(expectedHostLifecycleContract.termination_outcomes)) {
     messages.push(`${label} termination outcome/reason pairs differ`);
   }
-  if (JSON.stringify(parseTerminationReasonValues(source))
-      !== JSON.stringify(expectedTerminationResultContract.reasons)) {
+  if (JSON.stringify(shutdown.reasons)
+      !== JSON.stringify(expectedHostLifecycleContract.termination_reasons)) {
     messages.push(`${label} termination reason wire values differ`);
   }
-  for (const fragment of expectedTerminationResultContract.forbidden_fragments) {
+  for (const fragment of expectedHostLifecycleContract.forbidden_fragments) {
     if (source.includes(fragment)) messages.push(`${label} contains forbidden ${fragment}`);
   }
   return messages;
 };
 
-const terminationSources = new Map();
+const hostLifecycleSources = new Map();
 for (const [label, relative] of [
-  ['formal', expectedTerminationResultContract.formal_path],
+  ['formal', expectedHostLifecycleContract.formal_path],
 ]) {
   const absolute = path.join(root, relative);
   if (!fs.existsSync(absolute)) {
-    fail(`termination ${label} document is missing: ${relative}`);
+    fail(`host lifecycle ${label} document is missing: ${relative}`);
     continue;
   }
   const source = fs.readFileSync(absolute, 'utf8');
-  terminationSources.set(label, source);
-  for (const message of terminationDocumentFailures(source, label)) fail(message);
+  hostLifecycleSources.set(label, source);
+  for (const message of hostLifecycleDocumentFailures(source, label)) fail(message);
 }
-const terminationE2ePath = path.join(root, expectedTerminationResultContract.e2e_path);
+const terminationE2ePath = path.join(root, expectedHostLifecycleContract.e2e_path);
 if (!fs.existsSync(terminationE2ePath)) {
-  fail(`termination E2E document is missing: ${expectedTerminationResultContract.e2e_path}`);
+  fail(`host lifecycle E2E document is missing: ${expectedHostLifecycleContract.e2e_path}`);
 } else {
   const source = fs.readFileSync(terminationE2ePath, 'utf8');
-  if (!source.includes(`\`${expectedTerminationResultContract.checkpoint_ceiling_pair}\``)) {
-    fail(`termination E2E checkpoint ceiling must use ${expectedTerminationResultContract.checkpoint_ceiling_pair}`);
+  if (!source.includes(`\`${expectedHostLifecycleContract.checkpoint_ceiling_pair}\``)) {
+    fail(`host lifecycle E2E checkpoint ceiling must use ${expectedHostLifecycleContract.checkpoint_ceiling_pair}`);
   }
-  for (const fragment of expectedTerminationResultContract.forbidden_fragments) {
-    if (source.includes(fragment)) fail(`termination E2E contains forbidden ${fragment}`);
+  for (const fragment of expectedHostLifecycleContract.forbidden_fragments) {
+    if (source.includes(fragment)) fail(`host lifecycle E2E contains forbidden ${fragment}`);
   }
 }
 
-const terminationNegativeFixtures = [
-  ['Blocked deadline omitted', 'formal', source => source.replace(', `DeadlineExceeded`, `RuntimeNotReady`', ', `RuntimeNotReady`')],
-  ['manual topology reason omitted', 'formal', source => source.replace(', `ManualTopologyUnsupported` |', ' |')],
+const hostLifecycleNegativeFixtures = [
+  ['Relocating state removed', 'formal', source => source.replace('| 2 | `Relocating` |', '| 2 | `Serving` |')],
+  ['Blocked deadline omitted', 'formal', source => source.replace(', `DeadlineExceeded`, `RelocationFailed`', ', `RelocationFailed`')],
+  ['operation conflict reason omitted', 'formal', source => source.replace(', `OperationInProgress` |', ' |')],
   ['checkpoint reason widened', 'formal', source => source.replace('`StateIncompatible`', '`CheckpointTooLarge`')],
-  ['teardown outcome widened', 'formal', source => source.replace('| 2 | `ForceStopped` |', '| 2 | `Failed` |')],
+  ['termination outcome widened', 'formal', source => source.replace('`ForceStopped=1`', '`Failed=1`')],
+  ['termination reason renumbered', 'formal', source => source.replace('`TeardownFailed=2`', '`TeardownFailed=3`')],
 ];
-for (const [fixture, label, mutate] of terminationNegativeFixtures) {
-  const source = terminationSources.get(label);
+for (const [fixture, label, mutate] of hostLifecycleNegativeFixtures) {
+  const source = hostLifecycleSources.get(label);
   if (!source) continue;
   const candidate = mutate(source);
-  if (candidate === source || terminationDocumentFailures(candidate, `${label}:${fixture}`).length === 0) {
-    fail(`termination contract negative self-test did not reject ${fixture}`);
+  if (candidate === source
+      || hostLifecycleDocumentFailures(candidate, `${label}:${fixture}`).length === 0) {
+    fail(`host lifecycle contract negative self-test did not reject ${fixture}`);
   }
-  terminationContractNegativeTestCount += 1;
+  hostLifecycleContractNegativeTestCount += 1;
 }
 
 const filesUnder = relativeDirectory => {
@@ -394,31 +462,44 @@ const terminationOwnerFailures = (entries, language) => {
   return messages;
 };
 
-const frameworkSnapshotFailures = source => {
+const frameworkStatusFailures = source => {
   const masked = maskCodeLiterals(source);
   const records = declarationSpans(source, 'java')
     .filter(declaration => declaration.kind === 'record'
-      && declaration.name === 'ZLinkFrameworkRuntimeSnapshot');
+      && declaration.name === 'ZLinkFrameworkRuntimeStatus');
   const messages = [];
   if (records.length !== 1) {
-    messages.push(`snapshot record declaration count differs: actual=${records.length}`);
+    messages.push(`status record declaration count differs: actual=${records.length}`);
     return messages;
   }
   const record = records[0];
   const header = masked.slice(record.nameEnd, record.open);
   const body = masked.slice(record.open + 1, record.close);
-  const componentCount = [
-    ...header.matchAll(/\bOptional\s*<\s*ZLinkTerminationResult\s*>\s+terminalResult\b/gu),
-  ].length;
-  const nameCount = [...header.matchAll(/\bterminalResult\b/gu)].length;
-  const explicitMemberCount = [...body.matchAll(/\bterminalResult\s*\(/gu)].length;
-  if (componentCount !== 1 || nameCount !== 1) {
-    messages.push(
-      `snapshot terminalResult component count differs: typed=${componentCount} named=${nameCount}`);
+  const requiredComponents = [
+    [/\bZLinkFrameworkRuntimeState\s+state\b/gu, 'state'],
+    [/\bboolean\s+isReady\b/gu, 'isReady'],
+    [/\bboolean\s+acceptingWork\b/gu, 'acceptingWork'],
+    [/\bOptional\s*<\s*ZLinkFrameworkRelocationResult\s*>\s+relocationResult\b/gu,
+      'relocationResult'],
+    [/\bOptional\s*<\s*ZLinkFrameworkTerminationResult\s*>\s+terminationResult\b/gu,
+      'terminationResult'],
+    [/\blong\s+sequence\b/gu, 'sequence'],
+    [/\bInstant\s+observedAt\b/gu, 'observedAt'],
+  ];
+  for (const [pattern, name] of requiredComponents) {
+    const typedCount = [...header.matchAll(pattern)].length;
+    const nameCount = [...header.matchAll(new RegExp(`\\b${name}\\b`, 'gu'))].length;
+    if (typedCount !== 1 || nameCount !== 1) {
+      messages.push(
+        `status ${name} component count differs: typed=${typedCount} named=${nameCount}`);
+    }
   }
-  if (explicitMemberCount !== 0) {
-    messages.push(
-      `snapshot repeats generated terminalResult accessor: actual=${explicitMemberCount}`);
+  const explicitAccessorCount = [
+    ...body.matchAll(
+      /\b(?:state|isReady|acceptingWork|relocationResult|terminationResult|sequence|observedAt)\s*\(/gu),
+  ].length;
+  if (explicitAccessorCount !== 0) {
+    messages.push(`status repeats generated accessor: actual=${explicitAccessorCount}`);
   }
   return messages;
 };
@@ -664,8 +745,8 @@ for (const heading of javaSourceHeadings) {
 const javaHostObservation = javaSourceBlocks.get(
   'Host runtime observation exact source signature');
 if (javaHostObservation) {
-  for (const message of frameworkSnapshotFailures(javaHostObservation.source)) {
-    fail(`Java host runtime snapshot contract: ${javaMonitoringRelative}:${javaHostObservation.startLine}: ${message}`);
+  for (const message of frameworkStatusFailures(javaHostObservation.source)) {
+    fail(`Java host runtime status contract: ${javaMonitoringRelative}:${javaHostObservation.startLine}: ${message}`);
   }
 }
 
@@ -688,8 +769,11 @@ for (const accessor of ['routeMeshRuntime', 'clientServerRuntime', 'fanoutRuntim
 }
 const javaCommonNormalized = javaCommonCode.replace(/\s+/gu, ' ');
 for (const fragment of [
-  'implements AutoCloseable, ZLinkMessageFlowControl, ZLinkRuntimeQuery',
-  'public static final Duration DEFAULT_TERMINATION_DEADLINE = Duration.ofSeconds(30);',
+  'implements AutoCloseable, ZLinkMessageFlowControl',
+  'public ZLinkFrameworkRuntimeStatus status();',
+  'public Flow.Publisher<ZLinkFrameworkRuntimeStatus> observe();',
+  'public CompletionStage<ZLinkFrameworkRelocationResult> relocate(',
+  'public CompletionStage<ZLinkFrameworkTerminationResult> shutdown();',
 ]) {
   if (!javaCommonNormalized.includes(fragment)) {
     fail(`Java canonical runtime declaration is missing: ${fragment}`);
@@ -772,7 +856,7 @@ for (const [language, contract] of [
   for (const message of terminationOwnerFailures(contract.entries, language)) {
     fail(`host-only termination owner: ${message}`);
   }
-  const terminationPattern = /\b(?:drain|awaitDrained|retire|shutdown)\s*\(([^)]*)\)/gu;
+  const terminationPattern = /\b(?:relocate|shutdown)\s*\(([^)]*)\)/gu;
   for (const match of contract.code.matchAll(terminationPattern)) {
     const parameters = match[1];
     if (/\b(?:java\.lang\.)?String\b|\b[Mm]eshName\b|\btarget\b/u.test(parameters)) {
@@ -791,7 +875,7 @@ if (!cppDrainReasonMatch) {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean);
-  const expectedReasons = ['deadline_exceeded', 'relocation_failed', 'teardown_failed'];
+  const expectedReasons = ['deadline_exceeded', 'teardown_failed'];
   if (JSON.stringify(actualReasons) !== JSON.stringify(expectedReasons)) {
     fail(`C++ deprecated drain reasons are not the closed Shutdown mapping: actual=${actualReasons.join(',')}`);
   }
@@ -800,8 +884,8 @@ const cppTerminationNormalized = cppTerminationContract.source.replace(/\s+/gu, 
 for (const fragment of [
   'Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다.',
   '`stopped/none`은 `drained_t`로 변환한다.',
-  '`force_stopped/deadline_exceeded`, `force_stopped/relocation_failed`, `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
-  '`blocked`는 Shutdown 결과가 아니므로 `drain_result_t`에 추가하지 않는다.',
+  '`force_stopped/deadline_exceeded`와 `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
+  '이 목록은 허용된 Shutdown terminal result 전체를 포함한다.',
 ]) {
   if (!cppTerminationNormalized.includes(fragment)) {
     fail(`C++ deprecated drain facade is missing total Shutdown mapping: ${fragment}`);
@@ -823,9 +907,9 @@ const terminationOwnerNegativeFixtures = [
     source: 'fun ZLinkRouteMeshRuntime.shutdown(): Unit = Unit',
   },
   {
-    label: 'generated Kotlin extension retire',
+    label: 'generated Kotlin extension relocate',
     tag: 'java',
-    source: 'public final class ZLinkRuntimeExtensionsKt { public static java.lang.Object retire(); }',
+    source: 'public final class ZLinkRuntimeExtensionsKt { public static java.lang.Object relocate(); }',
   },
 ];
 for (const fixture of terminationOwnerNegativeFixtures) {
@@ -841,7 +925,7 @@ for (const fixture of terminationOwnerNegativeFixtures) {
 }
 for (const fixture of [
   'public final class ZLinkFrameworkRuntime { public void shutdown(); }',
-  'public final class ZLinkFrameworkRuntime { public void retire(); }',
+  'public final class ZLinkFrameworkRuntime { public void relocate(); }',
 ]) {
   const messages = terminationOwnerFailures([{
     relative: '<allowed:host termination>',
@@ -852,26 +936,32 @@ for (const fixture of [
   }
 }
 
-const validSnapshotFixture = `
-public record ZLinkFrameworkRuntimeSnapshot(
-    Optional<ZLinkTerminationResult> terminalResult,
-    long sequence) {}`;
-const snapshotNegativeFixtures = [
-  validSnapshotFixture.replace(
-    '    Optional<ZLinkTerminationResult> terminalResult,\n', ''),
-  validSnapshotFixture.replace(
-    '    Optional<ZLinkTerminationResult> terminalResult,',
-    '    Optional<ZLinkTerminationResult> terminalResult,\n'
-      + '    Optional<ZLinkTerminationResult> terminalResult,'),
-  validSnapshotFixture.replace('{}',
-    '{ public Optional<ZLinkTerminationResult> terminalResult() { return terminalResult; } }'),
+const validStatusFixture = `
+public record ZLinkFrameworkRuntimeStatus(
+    ZLinkFrameworkRuntimeState state,
+    boolean isReady,
+    boolean acceptingWork,
+    Optional<Instant> deadline,
+    Optional<ZLinkFrameworkRelocationResult> relocationResult,
+    Optional<ZLinkFrameworkTerminationResult> terminationResult,
+    long sequence,
+    Instant observedAt) {}`;
+const statusNegativeFixtures = [
+  validStatusFixture.replace(
+    '    Optional<ZLinkFrameworkRelocationResult> relocationResult,\n', ''),
+  validStatusFixture.replace(
+    '    Optional<ZLinkFrameworkTerminationResult> terminationResult,',
+    '    Optional<ZLinkFrameworkTerminationResult> terminationResult,\n'
+      + '    Optional<ZLinkFrameworkTerminationResult> terminationResult,'),
+  validStatusFixture.replace('{}',
+    '{ public boolean isReady() { return isReady; } }'),
 ];
-if (frameworkSnapshotFailures(validSnapshotFixture).length !== 0) {
-  fail('Java host snapshot positive self-test rejected the required record component');
+if (frameworkStatusFailures(validStatusFixture).length !== 0) {
+  fail('Java host status positive self-test rejected the required record components');
 }
-for (const [index, fixture] of snapshotNegativeFixtures.entries()) {
-  if (frameworkSnapshotFailures(fixture).length === 0) {
-    fail(`Java host snapshot negative self-test did not reject mutation ${index + 1}`);
+for (const [index, fixture] of statusNegativeFixtures.entries()) {
+  if (frameworkStatusFailures(fixture).length === 0) {
+    fail(`Java host status negative self-test did not reject mutation ${index + 1}`);
   } else {
     javaKotlinSemanticNegativeTestCount += 1;
   }
@@ -2309,6 +2399,6 @@ process.stdout.write(
   + ` ledger_execution_cards=${ledgerExecutionCardCount}`
   + ` ledger_final_unreachable=${ledgerFinalUnreachableCount}`
   + ` java_kotlin_negative_mutations=${javaKotlinSemanticNegativeTestCount}`
-  + ` termination_negative_mutations=${terminationContractNegativeTestCount}`
+  + ` host_lifecycle_negative_mutations=${hostLifecycleContractNegativeTestCount}`
   + ` redis_fixtures=${redisFixtureCount} legacy_plan_absent=${forbiddenLegacyPlanCount}\n`);
 NODE

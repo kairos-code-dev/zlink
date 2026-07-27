@@ -49,17 +49,17 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 
 ## Location Store와 relocation
 
-- [40 Location runtime](40-location-runtime.ko.md)
-- [41 Location Store provider와 공식 Redis 구현](41-location-store-redis.ko.md)
-- [42 Relocation Store provider와 공식 Redis 구현](42-relocation-store-redis.ko.md)
+- [40 Location runtime](40-location-runtime.ko.md) — Framework가 object 위치, authority와 두 Store를 사용하는 순서를 정의한다.
+- [41 Location Store provider SPI와 공식 Redis 구현](41-location-store-redis.ko.md) — Provider가 구현할 atomic key/value와 scan 계약을 정의한다.
+- [42 Relocation Store provider SPI와 공식 Redis 구현](42-relocation-store-redis.ko.md) — Provider가 구현할 immutable payload 저장 계약을 정의한다.
 
 ## 관측과 종료
 
-- [50 Runtime monitoring](50-runtime-monitoring.ko.md)
-- [51 Runtime metrics](51-runtime-metrics.ko.md)
-- [52 Message flow tracing](52-message-flow-tracing.ko.md)
-- [53 Flow correlation](53-flow-correlation.ko.md)
-- [54 Host Retire, Shutdown과 handoff](54-graceful-drain-handoff.ko.md)
+- [50 Runtime 상태와 운영 진단](50-runtime-monitoring.ko.md) — Application이 읽는 health, topology status와 structured log를 정의한다.
+- [51 Runtime metric 이름과 label](51-runtime-metrics.ko.md) — Metric 이름, 단위와 bounded label만 정의한다.
+- [52 Message flow tracing](52-message-flow-tracing.ko.md) — Message 한 건의 phase, outcome과 trace attribute를 정의한다.
+- [53 Request correlation과 causal flow](53-flow-correlation.ko.md) — Correlation ID와 flow ID의 생성·전파를 정의한다.
+- [54 Host Relocate와 Shutdown](54-graceful-drain-handoff.ko.md) — 두 relocation mode와 종료 lifecycle을 정의한다.
 - [55 Transport liveness](55-transport-liveness.ko.md)
 
 ## Server 언어별 exact interface

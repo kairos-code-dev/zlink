@@ -385,13 +385,13 @@ handler 예외는 one-way 경로에서도 error로 기록한다. observer 실패
 
 ## 11. 종료
 
-`Retire`가 `Retiring` intent를 게시하거나 `Shutdown`이 admission seal을 시작하면 새 channel 선택, Logical Multicast
-target과 새 상태 배정을 제한한다. `Retiring`에서 permit을 얻지 못한 relocation unit은 기존 message와 timer를 계속
+`Relocate`가 `Relocating` intent를 게시하거나 `Shutdown`이 admission seal을 시작하면 새 channel 선택, Logical Multicast
+target과 새 상태 배정을 제한한다. `Relocating`에서 permit을 얻지 못한 relocation unit은 기존 message와 timer를 계속
 처리하며 queue turn 경계에서 permit을 얻은 뒤에만 seal한다. `Draining` 뒤에는 이미 admission한 message, request
 completion, Actor relocation과 [STREAM session](01-glossary.ko.md#stream-session) barrier만 설정된 [deadline](01-glossary.ko.md#deadline)까지 진행한다. Deadline 뒤 남은 operation은
 owner별 terminal [shutdown](01-glossary.ko.md#shutdown) 결과로 완료한다.
 
 Draining MeshNode는 새 Instance placement 후보에서 제외된다. `Shutdown`은 기존 Instance Spot을 다른 node로
-이동시키지 않고 수락된 turn을 deadline까지 처리한 뒤 정리한다. `Retire`는 type별 maintenance policy와
+이동시키지 않고 수락된 turn을 deadline까지 처리한 뒤 정리한다. `Relocate`는 type별 maintenance policy와
 authority transaction이 허용한 기존 owner만 target에 materialize한다. 두 operation 모두 Framework admission
 seal과 current location authority를 검증하며 stale owner가 `Closing`이나 release를 적용하지 못하게 한다.

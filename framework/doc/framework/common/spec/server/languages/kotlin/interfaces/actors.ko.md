@@ -57,7 +57,7 @@ fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `Byt
 [Factory](../../../../01-glossary.ko.md#factory)는 target attempt마다 fresh Actor instance를 만들며 source나 이전 attempt instance를 재사용하지 않는다.
 같은 attempt의 restore는 반복될 수 있다. Capture exception은 source [authority](../../../../01-glossary.ko.md#authority)와 admission을 유지하고, restore
 exception은 target을 sealed 상태로 유지한 채 same payload retry 또는 target replacement로 처리한다. Null stage와
-null capture payload는 contract 위반이다. Host Retire의 precommit adapter exception·contract violation은 deadline이
+null capture payload는 contract 위반이다. Host relocation의 precommit adapter exception·contract violation은 deadline이
 먼저 확정되지 않았으면 `Blocked/StateIncompatible`, [deadline](../../../../01-glossary.ko.md#deadline)이 먼저 확정되면 `Blocked/DeadlineExceeded`다.
 Stale attempt cancellation은 terminal result를 commit하지 못한다. 두 callback은 at-least-once이고 stale attempt와
 겹칠 수 있으므로 retry-safe해야 한다. Kotlin coroutine 안에서 exception을 정상 completion으로 바꾸거나 empty

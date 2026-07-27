@@ -11,7 +11,7 @@
 | [Topology configuration](interfaces/03-configuration-topology.ko.md) | RouteMesh, ClientServer와 fanout builder 및 runtime option을 정의한다. |
 | [Location 설정과 운영](interfaces/08-location-maintenance.ko.md) | Application용 Location option, readiness와 운영 query를 정의한다. |
 | [Location·Relocation provider](interfaces/08-authority-relocation.ko.md) | Generic atomic Location Store와 immutable Relocation Store SPI를 정의한다. |
-| [Host monitoring](interfaces/10-topology-monitoring.ko.md) | Host state, Retire·Shutdown result, snapshot과 event를 정의한다. |
+| [Host monitoring](interfaces/10-topology-monitoring.ko.md) | Host state, Relocate·Shutdown result와 운영 status를 정의한다. |
 
 Stream connector client는 별도 package이며
 [.NET Stream connector 계약](../../../stream-connector/languages/dotnet/03-stream-connector.ko.md)이
@@ -31,7 +31,7 @@ Stream connector client는 별도 package이며
 - Actor·User Spot·Instance [Spot](../../../01-glossary.ko.md#spot)의 일반 message는 global ID만 받는다. Actor와 User Spot의 manager create는
   stable type과 optional Mesh·placement를 받고 remote placement를 수행하며 exact mutation은 `ActorRef` 또는
   `SpotRef`를 받는다. Missing [Instance Spot](../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)은 Spot 전용 fluent call에서 activation을 명시한다.
-- Host lifecycle은 `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
+- Host lifecycle은 `IZLinkFrameworkRuntime`의 `RelocateAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
 - Framework service runtime은 bindings의 public raw socket API만 사용하고 Core service C API, private SPI,
   reflection과 native symbol 직접 호출을 사용하지 않는다.
 - Logical Multicast의 target별 ROUTER 제출과 manual peer의 expected RID 의미는

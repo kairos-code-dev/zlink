@@ -100,7 +100,7 @@ handler와 timer는 Stage 공통 gate를 사용할 수 있지만 같은 Actor의
 같은 gate가 필요한 request를 `Async`로 기다리거나 자신에게 보낸 request를
 기다리는 호출은 submit 전에 `InvalidConfiguration`으로 거부한다.
 
-Host `Retire`가 시작되어도 relocation을 시작할 실행 권한을 아직 얻지 못한 Stage
+Host `Relocate`가 시작되어도 relocation을 시작할 실행 권한을 아직 얻지 못한 Stage
 Spot은 기존 message와 timer turn을 계속 처리한다. Framework가 relocation 준비
 상태를 알리기 위해 사용하는 내부 notification은 application event가 아니므로 Stage
 callback을 실행하지 않는다.

@@ -180,7 +180,7 @@ Ready로 공개하지 않는다. 이미 존재하는 Actor가 User Spot에서 �
 Spot에서 application join으로 이동하는 경우에는 `OnCreateActorAsync`와
 `OnActorJoinAsync`를 호출하지 않는다.
 
-Host `Retire`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 경우에는
+Host `Relocate`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 경우에는
 application join callback을 사용하지 않는다. Framework는 target에서 Actor state를
 복원하고 Actor owner와 target Entry Spot membership을 commit한 뒤 target Entry
 Spot의 `OnActorRelocatedAsync`와 source Entry Spot의 `OnLeaveActorAsync`를 실행한다.
@@ -203,7 +203,7 @@ Framework는 target을 sealed 상태로 유지하고 current relocation fence에
 ### 4.3 Entry Spot 자체는 이동하지 않는다
 
 Entry Spot은 해당 Object Server lifecycle에 속하므로 relocation participant가
-아니다. Host `Retire`에서는 Entry Spot에 속한 Actor를 target node의 Entry Spot으로
+아니다. Host `Relocate`에서는 Entry Spot에 속한 Actor를 target node의 Entry Spot으로
 옮기지만 source Entry Spot instance 자체를 옮기지는 않는다. Target Entry Spot은
 target Object Server startup에서 Framework가 새 RID와 lifecycle로 준비한다.
 
@@ -285,7 +285,7 @@ factory 실행과 Ready barrier는
 정의한다.
 
 Instance Spot은 application handler나 timer가 자신의 context에서 close할 수 있다.
-Host `Retire`에서는 Actor가 없는 Spot 하나를 relocation unit으로 처리한다.
+Host `Relocate`에서는 Actor가 없는 Spot 하나를 relocation unit으로 처리한다.
 Instance Spot의 direct handler와 timer는 하나의 Spot execution gate를 사용한다.
 `Yield`로 이 turn을 반납하면 다음 Instance Spot record를 실행할 수 있고,
 continuation은 같은 gate에서 새 turn으로 재개한다.
@@ -402,7 +402,7 @@ public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 | [21 MeshNode](21-mesh-node.ko.md) | Object role, Entry Spot과 factory 등록, placement capability |
 | [23 Spot과 Actor membership](23-spot-actor.ko.md) | Actor 생성, Entry·User Spot membership과 callback·commit 순서 |
 | [24 Spot 주소 메시징](24-spot-address-messaging.ko.md) | User·Instance Spot의 ID, 생성, cold activation, route와 close |
-| [54 Host Retire, Shutdown과 handoff](54-graceful-drain-handoff.ko.md) | 세 Spot 종류의 shutdown, relocation과 recovery 순서 |
+| [54 Host Relocate, Shutdown과 handoff](54-graceful-drain-handoff.ko.md) | 세 Spot 종류의 shutdown, relocation과 recovery 순서 |
 
 ## 9. 검증 요구
 

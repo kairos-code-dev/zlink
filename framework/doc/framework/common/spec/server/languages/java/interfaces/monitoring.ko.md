@@ -35,8 +35,10 @@ public interface ZLinkMonitoringOptionsCustomizer {
 Orderly disconnect와 service liveness timeout은 다른 reason으로 관측한다. Peer 하나가 실패해도 다른 ready
 peer와 host를 `ERROR`로 바꾸지 않는다.
 
-별도 drain control과 component termination result는 제공하지 않는다. 모든 topology의 종료는
-`ZLinkFrameworkRuntime`의 host `Retire` 또는 `Shutdown`이 조정한다.
+별도 drain control과 component termination result는 제공하지 않는다. Object relocation과 host 종료는
+`ZLinkFrameworkRuntime`의 `relocate(options)`와 `shutdown()`이 각각 조정한다. Relocation options는
+planned maintenance와 rolling update의 target version 규칙을 명시하며 monitoring API가 target을
+추론하거나 변경하지 않는다.
 
 ## Host runtime observation exact source signature
 
@@ -52,38 +54,19 @@ package systems.zlink.framework.monitoring;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.Flow;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationResult;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
-import systems.zlink.framework.runtime.host.ZLinkTerminationIntent;
-import systems.zlink.framework.runtime.host.ZLinkTerminationReason;
-import systems.zlink.framework.runtime.host.ZLinkTerminationResult;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationResult;
 
-public interface ZLinkRuntimeQuery {
-    ZLinkFrameworkRuntimeState state();
-    ZLinkFrameworkRuntimeSnapshot snapshot();
-    Flow.Publisher<ZLinkFrameworkRuntimeEvent> observe(int capacity);
-}
-
-public record ZLinkFrameworkRuntimeSnapshot(
+public record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState state,
-    Optional<ZLinkTerminationIntent> effectiveIntent,
+    boolean isReady,
+    boolean acceptingWork,
     Optional<Instant> deadline,
-    boolean workSealed,
-    Optional<ZLinkTerminationReason> blockerReason,
-    long pendingRequestCount,
-    long pendingRelocationCount,
-    long pendingStreamBarrierCount,
-    Optional<ZLinkTerminationResult> terminalResult,
+    Optional<ZLinkFrameworkRelocationResult> relocationResult,
+    Optional<ZLinkFrameworkTerminationResult> terminationResult,
     long sequence,
     Instant observedAt) {}
-
-public record ZLinkFrameworkRuntimeEvent(
-    long sequence,
-    Instant timestamp,
-    ZLinkFrameworkRuntimeSnapshot runtime) implements ZLinkRuntimeEvent {
-    @Override public String sourceName() {
-        return "zlink.runtime.host.termination_changed";
-    }
-}
 ```
 
 ## Topology runtime observation exact source signature
@@ -252,8 +235,8 @@ capacity는 0보다 커야 하며 publisher cancellation은 해당 관찰만 끝
 `active`, `reserved`, `limit`을 반환한다. Limit `0`은 제한이 없다는 뜻이다. Entry Spot은 Spot 집계에서
 제외하지만 Entry Spot에 존재하는 Actor는 Actor 전체 집계에 포함한다. `activationConcurrency()`는 현재
 factory·initialization 실행 수와 양수 limit을 별도 값으로 반환하며 population capacity에 합치지 않는다.
-Host 종료 deadline, work seal과 pending relocation·stream barrier 수는 `ZLinkFrameworkRuntimeSnapshot`이
-제공한다. `ZLinkMeshNodeSnapshot`에는 별도 drain object나 같은 값을 복제한 field를 추가하지 않는다.
+Host status는 readiness, 신규 work 수락 여부와 relocation·termination terminal 결과만 제공한다.
+Work seal, pending relocation 수와 STREAM barrier 수는 Framework 내부 조정 상태이므로 공개하지 않는다.
 
 Fanout의 `connectionIntent`는 automatic planner의 endpoint intent다. `ready`와 `readyConnectionCount`는
 publisher 전용 SUB socket의 native-ready와 같은 socket의 첫 valid application record 또는 liveness beacon

@@ -298,11 +298,16 @@ target attempt·reservation을 함께 보존한다. `Committed`부터 `Completed
 바꾸며 stable identity와 relocation root를 바꾸지 않는다.
 
 User Spot과 member Actor relocation은 non-zero 128-bit aggregate ID와 exact participant inventory를 사용한다.
-Participant는 최대 1024개이고 encoded aggregate는 최대 1 MiB다. Target offer는 Spot과 member Actor의 global
-identity, ObjectGeneration, kind와 capacity reservation을 고정한다. `Committed` CAS는 aggregate owner와 membership
-visibility를 원자적으로 바꾼다. Target은 commit 전에 factory·restore와 journal validation·staging을 끝낸다.
-Commit 뒤 joined callback과 source leave callback을 실행하고 frozen message·journal replay와 Framework timer
-자동 복원을 이어서 실행한다. Seal 뒤 source
+Participant 총수에는 1,024개 상한을 두지 않는다. Location Store에는 최대 1,024개·
+encoded 1 MiB의 immutable leaf chunk와 필요한 index chunk로 inventory tree를
+저장한다. Target offer는 tree root·전체 count·digest와 Spot·member Actor의 capacity
+reservation을 고정한다. `Committed` CAS는 aggregate owner, generation과 inventory
+root를 바꾸어 membership visibility를 원자적으로 전환한다. Target은 commit 전에
+factory·restore와 journal validation·staging을 끝낸다.
+
+User Spot aggregate는 membership을 유지하므로 member Actor의 joined·leave callback을
+호출하지 않는다. Commit 뒤 frozen message·journal replay와 Framework timer 자동
+복원을 이어서 실행한다. Seal 뒤 source
 ingress hold는 precommit abort에서 source queue로 돌아가고 commit 뒤에는 original operation identity와 fence를
 보존해 target으로 relay한다. Replay 뒤 source는 old membership과 나머지 source resource cleanup을 durable하게 끝낸다.
 

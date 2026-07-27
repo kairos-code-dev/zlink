@@ -3,15 +3,23 @@
   "version": "11.0.0",
   "description": "RouteMesh 11 formal document semantics. This inventory intentionally contains no document or code-block hash.",
   "languages": ["dotnet", "cpp", "java", "kotlin", "node"],
-  "termination_result_contract": {
+  "host_lifecycle_contract": {
     "formal_path": "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md",
     "e2e_path": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
-    "outcomes": [
-      { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
-      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady", "ManualTopologyUnsupported"] },
-      { "name": "ForceStopped", "wire_value": 2, "reasons": ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"] }
+    "states": [
+      { "name": "Preparing", "wire_value": 0 },
+      { "name": "Serving", "wire_value": 1 },
+      { "name": "Relocating", "wire_value": 2 },
+      { "name": "Drained", "wire_value": 3 },
+      { "name": "Draining", "wire_value": 4 },
+      { "name": "Stopped", "wire_value": 5 },
+      { "name": "Error", "wire_value": 6 }
     ],
-    "reasons": [
+    "relocation_outcomes": [
+      { "name": "Drained", "wire_value": 0, "reasons": ["None"] },
+      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RelocationFailed", "RuntimeNotReady", "ManualTopologyUnsupported", "ShutdownRequested", "OperationInProgress"] }
+    ],
+    "relocation_reasons": [
       { "name": "None", "wire_value": 0 },
       { "name": "TargetUnavailable", "wire_value": 1 },
       { "name": "StoreUnavailable", "wire_value": 2 },
@@ -19,15 +27,25 @@
       { "name": "StateIncompatible", "wire_value": 4 },
       { "name": "DeadlineExceeded", "wire_value": 5 },
       { "name": "RelocationFailed", "wire_value": 6 },
-      { "name": "TeardownFailed", "wire_value": 7 },
-      { "name": "RuntimeNotReady", "wire_value": 8 },
-      { "name": "ManualTopologyUnsupported", "wire_value": 9 }
+      { "name": "RuntimeNotReady", "wire_value": 7 },
+      { "name": "ManualTopologyUnsupported", "wire_value": 8 },
+      { "name": "ShutdownRequested", "wire_value": 9 },
+      { "name": "OperationInProgress", "wire_value": 10 }
+    ],
+    "termination_outcomes": [
+      { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
+      { "name": "ForceStopped", "wire_value": 1, "reasons": ["DeadlineExceeded", "TeardownFailed"] }
+    ],
+    "termination_reasons": [
+      { "name": "None", "wire_value": 0 },
+      { "name": "DeadlineExceeded", "wire_value": 1 },
+      { "name": "TeardownFailed", "wire_value": 2 }
     ],
     "checkpoint_ceiling_pair": "Blocked/StateIncompatible",
-    "forbidden_fragments": ["CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
+    "forbidden_fragments": ["CheckpointTooLarge", "Retire", "Retiring", "| `Completed` |", "| `Failed` |"]
   },
-  "java_kotlin_termination_owners": {
-    "members": ["retire", "shutdown"],
+  "java_kotlin_host_lifecycle_owners": {
+    "members": ["relocate", "shutdown"],
     "allowed": ["ZLinkFrameworkRuntime"],
     "forbidden_topologies": [
       "ZLinkRouteMeshRuntime",
@@ -49,8 +67,11 @@
         "public interface IZLinkSpotRelocationAdapter<TSpot>",
         "ValueTask OnActorRelocatedAsync(",
         "public int MaxActiveOutboundRelocations { get; set; } = 64;",
-        "Retiring = 2,",
-        "ManualTopologyUnsupported = 9",
+        "Relocating = 2,",
+        "ManualTopologyUnsupported = 8",
+        "public sealed record ZLinkFrameworkRuntimeStatus(",
+        "ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(",
+        "ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(",
         "public readonly record struct ActorRef(",
         "public readonly record struct SpotRef(",
         "public interface IZLinkActorManager",
@@ -65,8 +86,8 @@
         "public interface IZLinkRelocationStore",
         "public sealed class ZLinkRedisRelocationStore",
         "ZLinkBlobReference reference",
-        "ZLinkClientServerServerState",
-        "ZLinkFanoutPublisherConnectionState"
+        "public sealed record ZLinkClientServerStatus(",
+        "public sealed record ZLinkFanoutStatus("
       ],
       "forbidden_file_fragments": {
         "05-spots.ko.md": ["InstanceSpotAddress", "public abstract class SpotHandle", "IZLinkSpotHandleResolver", "ZLinkCreatableSpotKind"],
@@ -87,8 +108,11 @@
         "class spot_relocation_adapter_t",
         "on_actor_relocated(TActor &actor)",
         "std::size_t max_active_outbound_relocations = 64;",
-        "retiring = 2,",
-        "manual_topology_unsupported = 9",
+        "relocating = 2,",
+        "manual_topology_unsupported = 8",
+        "struct framework_runtime_status_t",
+        "task_t<relocation_result_t> relocate(",
+        "task_t<termination_result_t> shutdown(",
         "class actor_ref_t final",
         "class spot_ref_t final",
         "class actor_manager_t",
@@ -125,8 +149,8 @@
         "interface ZLinkSpotRelocationAdapter<TSpot>",
         "default CompletionStage<Void> onActorRelocated(TActor actor)",
         "ZLinkLocationOptions configureLocations();",
-        "RETIRING(2)",
-        "MANUAL_TOPOLOGY_UNSUPPORTED(9)",
+        "RELOCATING(2)",
+        "MANUAL_TOPOLOGY_UNSUPPORTED(8)",
         "public final class systems.zlink.framework.actors.ActorRef",
         "public final class systems.zlink.framework.spots.SpotRef",
         "public interface systems.zlink.framework.actors.ZLinkActorManager",
@@ -142,10 +166,9 @@
         "class ZLinkRedisRelocationStore",
         "ZLinkStoreCancellation cancellation",
         "ZLinkBlobReference reference",
-        "public interface ZLinkRuntimeQuery",
-        "public record ZLinkFrameworkRuntimeSnapshot(",
-        "public record ZLinkFrameworkRuntimeEvent(",
-        "public record ZLinkInstanceSpotTypeSnapshot(",
+        "public record ZLinkFrameworkRuntimeStatus(",
+        "public CompletionStage<ZLinkFrameworkRelocationResult> relocate(",
+        "public CompletionStage<ZLinkFrameworkTerminationResult> shutdown(",
         "public interface ZLinkClientServerRuntime",
         "public interface ZLinkFanoutRuntime",
         "public ZLinkRouteMeshRuntime routeMeshRuntime();",
@@ -160,15 +183,14 @@
           "public ZLinkClientServerRuntime clientServerRuntime();",
           "public ZLinkFanoutRuntime fanoutRuntime();",
           "Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환한 객체와 reference identity가 같다.",
-          "MeshName을 받는 partial termination operation은 없다."
+          "별도 drain facade와 MeshName을 받는 partial operation은 없다."
         ],
         "monitoring.ko.md": [
           "## Host runtime observation exact source signature",
           "## Topology runtime observation exact source signature",
-          "public interface ZLinkRuntimeQuery {",
-          "public record ZLinkFrameworkRuntimeSnapshot(",
-          "Optional<ZLinkTerminationResult> terminalResult,",
-          "public record ZLinkFrameworkRuntimeEvent(",
+          "public record ZLinkFrameworkRuntimeStatus(",
+          "Optional<ZLinkFrameworkRelocationResult> relocationResult,",
+          "Optional<ZLinkFrameworkTerminationResult> terminationResult,",
           "public record ZLinkInstanceSpotTypeSnapshot(",
           "public interface ZLinkClientServerRuntime {",
           "public interface ZLinkFanoutRuntime {",
@@ -227,8 +249,8 @@
         "ZLinkActorRelocationAdapter<TActor>",
         "ZLinkSpotRelocationAdapter<TSpot>",
         "onActorRelocatedSuspending(",
-        "`RETIRING(2)`",
-        "`MANUAL_TOPOLOGY_UNSUPPORTED(9)`",
+        "`RELOCATING(2)`",
+        "`MANUAL_TOPOLOGY_UNSUPPORTED(8)`",
         "actor: ActorRef",
         "protected abstract suspend fun createActor(",
         "suspend fun ZLinkLocationRuntimeQuery.status()",
@@ -266,8 +288,11 @@
         "export interface ZLinkSpotRelocationAdapter<TSpot extends ZLinkSpot | ZLinkInstanceSpot>",
         "onActorRelocated?(actor: TActor): Promise<void>;",
         "maxActiveOutboundRelocations(value: number): this;",
-        "Retiring = 2,",
-        "ManualTopologyUnsupported = 9",
+        "Relocating = 2,",
+        "ManualTopologyUnsupported = 8",
+        "export interface ZLinkFrameworkRuntimeStatus",
+        "relocate(options: ZLinkFrameworkRelocationOptions)",
+        "shutdown(options?: ZLinkFrameworkLifecycleOptions)",
         "export interface ZLinkInstanceSpot {",
         "readonly context: ZLinkInstanceSpotContext;",
         "sendToSpot(spotId: SpotId",
@@ -334,6 +359,7 @@
     "\\b(?:IZLinkAuthorityStore|IZLinkMeshNodeLocationStore|IZLinkOwnerLeaseStore|IZLinkClientServerLocationStore|IZLinkFanoutLocationStore|ZLinkAuthorityStore|ZLinkMeshNodeLocationStore|ZLinkOwnerLeaseStore|ZLinkClientServerLocationStore|ZLinkFanoutLocationStore|authority_store_t|mesh_node_location_store_t|owner_lease_store_t|client_server_location_store_t|fanout_location_store_t)\\b",
     "\\b(?:IZLinkRoutingIdSlot|IZLinkAllocatedRoutingIdProvider|ZLinkRoutingIdSlot|ZLinkAllocatedRoutingIdProvider|routing_id_slot_t|allocated_routing_id_provider_t)\\b",
     "\\b(?:ZLinkHandlerInvocation|handler_invocation_t|ZLinkRuntimeEventPublisher|IZLinkRuntimeEventPublisher|runtime_event_publisher_t|ZLinkRuntimeEventDispatcher)\\b",
+    "\\b(?:IZLinkRuntimeMessageFlowObserver|ZLinkRuntimeMessageFlowEvent|ZLinkFrameworkRuntimeSnapshot|ZLinkFrameworkRuntimeEvent|runtime_message_flow_observer_t|framework_runtime_snapshot_t|framework_runtime_event_t)\\b",
     "\\b(?:ZLinkMeshDrainSnapshot|ZLinkMeshDrainResult|ZLinkDrainForceReason|ZLinkOwnerLeaseSnapshot|ZLinkOwnerLeaseRenewal)\\b",
     "\\b(?:ZLinkSpotNodeStatus|ZLinkSpotNodePeerEntry|ZLinkSpotNodeSubjectEntry|ZLinkSpotPeerKind|ZLinkSpotPeerSource|ZLinkSpotPeerState|spot_node_status_t|spot_node_peer_entry_t|spot_node_subject_entry_t|spot_peer_kind_t|spot_peer_source_t|spot_peer_state_t)\\b",
     "\\b(?:ZLinkStreamDiagnostic|nativeCode|native_code|native_event|native_value|pending_operation_t|service_scope_kind_t|service_scope_t|add_spot_events)\\b",
@@ -719,7 +745,7 @@
     },
     {
       "path": "framework/doc/framework/common/spec/05-framework-api.ko.md",
-      "required_fragments": ["ChannelName", "global Actor", "Object role", "Retire", "Shutdown"],
+      "required_fragments": ["ChannelName", "global Actor", "Object role", "Relocate", "Shutdown"],
       "forbidden_fragments": ["InstanceSpotAddress는 `MeshName`", "ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate"]
     },
     {
@@ -739,13 +765,13 @@
     },
     {
       "path": "framework/doc/framework/common/spec/40-location-runtime.ko.md",
-      "required_fragments": ["global ActorId", "global SpotId", "owner lease", "Reserve", "Commit", "Abort"],
+      "required_fragments": ["Actor·Spot의 현재 위치", "ActorId 또는 SpotId", "owner lease", "Reserve", "Commit", "Abort"],
       "forbidden_fragments": ["Instance Spot authority row"]
     },
     {
       "path": "framework/doc/framework/common/spec/54-graceful-drain-handoff.ko.md",
-      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "ManualTopologyUnsupported=9", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady`, `ManualTopologyUnsupported` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `RelocationFailed`, `TeardownFailed` |"],
-      "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate", "DrainNatural", "CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
+      "required_fragments": ["Relocate", "Shutdown", "admission seal", "Component별 `Drain`", "ManualTopologyUnsupported=8", "| 0 | `Drained` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RelocationFailed`, `RuntimeNotReady`, `ManualTopologyUnsupported`, `ShutdownRequested`, `OperationInProgress` |", "Shutdown outcome은 `Stopped=0`, `ForceStopped=1`", "reason은 `None=0`,", "`DeadlineExceeded=1`, `TeardownFailed=2`"],
+      "forbidden_fragments": ["Retire", "Retiring", "ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate", "DrainNatural", "CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
     },
     {
       "path": "framework/doc/framework/common/spec/55-transport-liveness.ko.md",

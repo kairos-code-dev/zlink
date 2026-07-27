@@ -16,7 +16,7 @@ authority commit, bound session route, failure cleanup이 같은 순서와 의�
 
 이 config의 actor 이동은 공개 relocation 계약을 호출해 처리 주체를 명시적으로 바꾸는 동작이다.
 MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 동작은 계약하지 않는다. MeshNode
-증설과 신규 배치는 Config 2 SM-G2에서 검증하고, 운영자가 host `Retire`로 기존 actor를
+증설과 신규 배치는 Config 2 SM-G2에서 검증하고, 운영자가 host `Relocate`로 기존 actor를
 다른 node로 인계하는 동작은 Config 11의 maintenance handoff 시나리오에서 검증한다.
 
 ## 1. 목적과 범위
@@ -168,7 +168,7 @@ Ready barrier를 끝낸 뒤 join을 완료하는가.
 - 절차: remote relocation 정상 경로를 실행하되 authority commit과 callback·journal replay 뒤, source가
   `source_cleanup` marker를 남기기 전에 대기하도록 설정한다. 이 시점에 join success reply와 새 target
   application admission handler가 모두 0건임을 확인한 뒤 `run_e2e.sh`가 `actor-a` process에 `SIGKILL`을 보낸다.
-  `Retire`나 `Shutdown`으로 cleanup을
+  `Relocate`나 `Shutdown`으로 cleanup을
   완료하는 경로를 섞지 않는다. Recovery coordinator가 expired source lease와 exact immutable source token으로
   durable cleanup을 종결하도록 기다린 뒤 target actor에게 packet을 보낸다.
 - 검증: source process 종료는 committed ownership을 source로 rollback하지 않는다. Evidence는 recovery의
@@ -226,7 +226,7 @@ domain state를 별도로 읽어 올 수 있는가.
 - 절차: 독립된 두 topology를 사용한다. (a) `Capture` 전 또는 Relocation Store Put은 완료됐지만
   Location authority에 root reference를 CAS하기 전 source를 `SIGKILL`한다. (b) authority에 `Captured`
   root가 연결되었거나 target이 `Prepared`를 완료한 evidence 후, authority commit 전 source를
-  `SIGKILL`한다. 정상 `Retire`·`Shutdown`은 사용하지 않는다.
+  `SIGKILL`한다. 정상 `Relocate`·`Shutdown`은 사용하지 않는다.
 - 검증: (a)는 unlinked payload를 orphan cleanup하고 target membership·handler dispatch·hidden request replay가
   0건이다. Original caller는 connection failure 또는 timeout terminal을 따른다. (b)는 authority에 연결된
   immutable root와 accepted journal을 사용해 current target 또는 fenced replacement의 factory·`Restore`·commit을
@@ -244,7 +244,7 @@ completion barrier를 끝내는가.
 
 - 절차: remote relocation 정상 경로에서 `authority_committed` evidence 직후, callback과 journal replay 전에
   `actor-a` process에 `SIGKILL`을 보낸다. Target recovery가 callback·journal replay, source lease expiry 기반
-  durable cleanup, `Completed`, route ACK와 steady normalization을 재개하도록 한다. `Retire`나 `Shutdown`의
+  durable cleanup, `Completed`, route ACK와 steady normalization을 재개하도록 한다. `Relocate`나 `Shutdown`의
   cleanup 결과를 source 장애 evidence로 사용하지 않는다.
 - 검증: Actor authority row는 target User Spot과 target node를 계속 가리킨다. 전체 completion barrier 전에는
   target Actor packet, bound session push와 success reply가 모두 0건이다. `ready -> admission_open ->
@@ -489,7 +489,7 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 우선순위: `P0`
 
 - 절차: `SpotWide` User Spot member Actor가 request `Yield` 상태이고 다른 Actor·Spot handler·timer가
-  실행 중일 때 host `Retire`를 시작한다. 별도 반복에서는 `PerActor` User Spot의 여러 Actor lane,
+  실행 중일 때 host `Relocate`를 시작한다. 별도 반복에서는 `PerActor` User Spot의 여러 Actor lane,
   Spot lane과 서로 다른 timer lane을 동시에 실행한다.
 - 검증: 새 application admission과 membership 변경을 먼저 seal하지만 yielded continuation과 이미
   실행 중인 모든 lane이 안전한 turn 경계에 도달하기 전에는 `Capture`와 relocation payload publication을
@@ -503,12 +503,15 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 
 - 절차: Actor N개를 포함한 stable type `room` User Spot을 (a) Actor total slot이 N보다 하나 부족한
   target, (b) Spot total과 Actor total은 충분하지만 `room` stable type slot만 부족한 target,
-  (c) 세 bucket이 모두 충분한 target으로 차례로 relocation한다.
+  (c) 세 bucket이 모두 충분한 target으로 차례로 relocation한다. 기본 반복은 여러 inventory
+  chunk가 필요한 N=10,000으로 실행한다.
 - 검증: (a)와 (b)에는 Spot total 1개, `room` stable type 1개와 Actor total N개 가운데 어떤 reservation도
-  남지 않고 factory·Restore·participant authority mutation이 0건이다. (c)는 같은 transaction에서 단일
-  typed capacity bundle과 canonical participant set을 Reserved로 연결하고 aggregate commit에서 모두
-  Active로 전환한다.
-- 세부 동작: participant authority와 capacity vector의 atomic aggregate.
+  남지 않고 factory·Restore·inventory publication이 0건이다. (c)는 participant를 최대
+  1,024개씩 immutable leaf chunk에 저장하고 root의 전체 count와 digest를 확인한다.
+  마지막 aggregate authority CAS가 owner, generation, inventory root와 typed capacity
+  bundle을 함께 전환해야 한다. CAS 전에는 Actor 하나도 target owner로 보이면 안 되고
+  CAS 뒤에는 10,000개 모두 target owner로 조회되어야 한다.
+- 세부 동작: 큰 participant inventory 준비와 aggregate root의 atomic publication.
 
 ### Track H — deferred Join과 Context 계약
 
@@ -580,10 +583,10 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 
 - 절차: handler 하나에서 Join 64개와 encoded request 합계 8 MiB 경계를 채운 뒤 65번째·합계 초과·개별
   1 MiB 초과를 각각 시도한다. Request 없는 overload, 기본 timeout과 min/max boundary도 실행한다.
-  Join claim과 Retire·Shutdown seal race, same-target User·Entry Join도 반복한다.
+  Join claim과 Relocate·Shutdown seal race, same-target User·Entry Join도 반복한다.
 - 검증: 초과·invalid timeout은 partial record 없이 동기 `InvalidConfiguration`이다. Request 생략은 empty
   message, 기본은 5초, 명시는 millisecond 올림 finite `1..INT_MAX` ms이며 Defer 시 monotonic deadline을
-  고정한다. Join winner면 maintenance가 기다리고 Retire winner는 `ActorMoving`, Shutdown winner는
+  고정한다. Join winner면 maintenance가 기다리고 Relocate winner는 `ActorMoving`, Shutdown winner는
   `RuntimeShutdown`이다. Same-target는 lifecycle·Store mutation 없이 Accepted completion을 실행한다.
 
 #### ST-H4B Yield, awaited cycle과 reply terminal

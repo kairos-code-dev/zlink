@@ -342,7 +342,7 @@ relocation을 abort하고 `Blocked/DeadlineExceeded`로 admission을 복원한�
 Request completion, send-ready, binding update, relocation barrier와 disconnect cleanup은 infrastructure task에서
 진행한다. Session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 진행해야 한다.
 
-Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의 Retire와 Shutdown은 신규 session·binding을
+Actor owner host의 Relocate는 §5 barrier를 사용한다. Session owner host의 Relocate와 Shutdown은 신규 session·binding을
 거부하고 accepted callback·reply·cleanup을 [deadline](01-glossary.ko.md#deadline)까지 처리한 뒤 connection을 닫는다. Physical connection을
 다른 process로 이동하지 않는다.
 

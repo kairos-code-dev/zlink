@@ -148,8 +148,8 @@ request는 barrier 뒤에서 기다리고 handler도 끝날 수 없어 순환 �
 Framework는 이 request를 제출하기 전에 `InvalidConfiguration`으로 거부한다.
 
 Join과 maintenance가 경쟁하면 먼저 확정한 제어 상태를 따른다. Join claim이
-`Retire`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지 기다린다.
-`Retire` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이 먼저면
+`Relocate`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지 기다린다.
+`Relocate` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이 먼저면
 `RuntimeShutdown`으로 실패한다.
 
 Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다시

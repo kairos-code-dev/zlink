@@ -2,7 +2,7 @@
 
 [공통 스펙 목차](README.ko.md) · [MeshNode](21-mesh-node.ko.md) ·
 [Location runtime](40-location-runtime.ko.md) · [Runtime monitoring](50-runtime-monitoring.ko.md) ·
-[Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)
+[Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)
 
 ## 1. 이 문서가 정의하는 범위
 
@@ -123,7 +123,7 @@ Location option의 owner lease renew interval은 store lease 갱신 주기이며
 
 ## 6. Host 종료와 resource 정리
 
-`Retire`와 `Shutdown`이 admission을 seal한 뒤에도 accepted reply, relocation과 STREAM barrier에 필요한 기존
+`Relocate`와 `Shutdown`이 admission을 seal한 뒤에도 accepted reply, relocation과 STREAM barrier에 필요한 기존
 connection은 deadline까지 유지할 수 있다. 새 application target selection에는 포함하지 않는다. Terminal
 cleanup은 liveness timer, reconnect timer, monitor subscription과 pending callback을 connection보다 늦게
 남기지 않는다.
@@ -158,5 +158,5 @@ connection ID를 넣지 않으며 개별 identity는 bounded [snapshot](01-gloss
 - Reconnect가 service admission을 다시 수행하고 이전 connection의 completion·binding state를 재사용하지 않는다.
 - Reply, timeout, cancellation, disconnect와 [shutdown](01-glossary.ko.md#shutdown) 경쟁에서 terminal completion이 하나만 발생한다.
 - Connection loss 뒤 request와 one-way operation을 다른 peer나 owner에 자동 재제출하지 않는다.
-- `Retire`·`Shutdown` cleanup 뒤 liveness·reconnect timer와 callback이 남지 않는다.
+- `Relocate`·`Shutdown` cleanup 뒤 liveness·reconnect timer와 callback이 남지 않는다.
 - C++·.NET·JVM·Node.js가 같은 기본 profile과 관찰 결과를 제공한다.

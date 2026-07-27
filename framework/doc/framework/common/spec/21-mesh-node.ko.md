@@ -334,7 +334,7 @@ reference를 확보하여 Spot queue에 넣는다.
 
 ## 8. Drain과 종료
 
-`Retiring` node는 다음 신규 작업의 target에서 제외한다.
+`Relocating` node는 다음 신규 작업의 target에서 제외한다.
 
 - Channel selection
 - Object create와 membership
@@ -346,9 +346,9 @@ reference를 확보하여 Spot queue에 넣는다.
 
 이미 reservation을 끝낸 create, accepted message, completion과 relocation barrier는
 정해진 deadline과 fence에 따라 terminal 상태까지 진행한다. 전체 종료와 handoff
-순서는 [Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)이 정의한다.
+순서는 [Host relocation와 shutdown](54-graceful-drain-handoff.ko.md)이 정의한다.
 
-`Shutdown`은 새 relocation을 시작하지 않는다. `Retire`는 등록한 relocation policy에
+`Shutdown`은 새 relocation을 시작하지 않는다. `Relocate`는 등록한 relocation policy에
 따라 Actor, User Spot aggregate와 Instance Spot을 이전한다.
 
 Node weight를 `0`으로 바꾸거나 drain을 시작했다는 이유로 기존 object를 숨겨 다시

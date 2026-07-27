@@ -1,211 +1,112 @@
-# .NET monitoring과 Framework 오류 공개 인터페이스
+# .NET Framework 오류 공개 인터페이스
 
-[.NET exact interface 목차](README.ko.md)
+[.NET exact interface 목차](README.ko.md) ·
+[공통 Framework API](../../../../05-framework-api.ko.md) ·
+[Message flow](../../../../52-message-flow-tracing.ko.md)
 
-## 1. Monitoring과 Framework 오류
+## 1. 범위
 
-Monitoring source는 framework root와 같은 DI container에 등록한다. 공개 source 종류와 등록 표면은
-다음과 같다. `ZLinkSocketEventKind`는 다음 여섯 값으로 닫혀 있다.
+이 문서는 .NET application이 Framework operation 실패를 처리할 때 사용하는 public exception과
+안정된 오류 분류를 고정한다. 오류 종류는 실패가 발생한 내부 함수나 state machine 단계가 아니라,
+application이 선택할 수 있는 대응 방법을 기준으로 구분한다.
 
-```csharp
-public interface IZLinkMonitoringOptions
-{
-    void AddSocketEvents(
-        string sourceName,
-        params ZLinkSocketEventKind[] events);
-    void AddMeshNodeEvents(string meshName);
-    void AddLocationRuntimeEvents(string sourceName, TimeSpan interval);
-}
+Authority owner, fence, generation, descriptor revision, relocation staging, worker queue와 timer scheduler의
+내부 상태는 public 오류 계약에 포함하지 않는다. 세부 원인과 stack trace는 .NET logging과 tracing에
+기록한다.
 
-public enum ZLinkSocketEventKind
-{
-    Connected = 0,
-    ConnectionReady = 1,
-    Disconnected = 2,
-    HandshakeFailed = 3,
-    PeerAdmissionChanged = 4,
-    Closed = 5
-}
-```
+## 2. Framework 오류
 
-Location monitoring은 provider-neutral runtime status, topology와 service summary만 공개한다. Store row update,
-resolve miss와 auto-connect reconcile diff를 별도 source로 등록하는 API는 제공하지 않는다. 해당 값은 provider
-DTO와 owner fence를 포함하는 내부 reducer 입력이며 application은 `ZLinkLocationRuntimeEvent`,
-`ZLinkMeshRuntimeEvent`, message-flow event와 runtime snapshot으로 운영 상태를 확인한다.
-
-Request, lifecycle과 one-way operation의 framework 실패는 다음 exception으로 전달한다. One-way operation은
-정상 완료 값을 반환하지 않는다. 잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다.
+잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다. Startup configuration이 유효하지
+않으면 `ZLinkConfigurationException`이 발생한다. 실행 중 request, lifecycle과 one-way operation에서
+발생한 Framework 실패는 `ZLinkFrameworkException`으로 전달한다.
 
 ```csharp
 public enum ZLinkFrameworkErrorKind
 {
-    ActorRouteNotFound = 0,
-    ActorCreateFailed = 1,
-    ActorAlreadyExists = 2,
-    ActorTypeMismatch = 3,
-    SpotCreateFailed = 4,
-    SpotRouteNotFound = 5,
-    SpotTypeMismatch = 6,
-    ActorSessionNotBound = 7,
-    HandlerNotFound = 8,
-    RouteHandlerNotFound = 9,
-    ActorDispatchHandlerNotFound = 10,
-    PayloadDecodeFailed = 11,
-    RouteNotConnected = 12,
-    RequestTargetNotFound = 13,
-    RequestRejected = 14,
-    RequestProtocolError = 15,
-    RequestFailed = 16,
-    WorkerQueueFull = 17,
-    WorkerTimedOut = 18,
-    WorkerFailed = 19,
-    ActorLocationStale = 20,
-    ActorCreateRejected = 21,
-    ObjectClientNotConfigured = 22,
-    MeshSelectionRequired = 23,
-    MeshNotFound = 24,
-    InvalidConfiguration = 25,
-    AlreadySubmitted = 26,
-    ActorGenerationStale = 27,
-    ActorMoving = 28,
-    DeadlineExceeded = 29,
-    PlacementCapacityExhausted = 30,
-    RoutingIdConflict = 31,
-    SpotGenerationStale = 32,
-    SpotMoving = 33,
-    RelocationDataLost = 34,
-    SpotIdConflict = 35,
-    RuntimeShutdown = 36,
-    RelocationDisabled = 37,
-    RelocationTargetUnavailable = 38,
-    RelocationFailed = 39
+    NotFound = 0,
+    AlreadyExists = 1,
+    TypeMismatch = 2,
+    NotConfigured = 3,
+    Rejected = 4,
+    Unavailable = 5,
+    CapacityExceeded = 6,
+    DeadlineExceeded = 7,
+    ShuttingDown = 8,
+    ProtocolError = 9,
+    InvalidOperation = 10,
+    DataLost = 11,
+    InternalFailure = 12
+}
+
+public enum ZLinkRetryAdvice
+{
+    DoNotRetry = 0,
+    RetryAfterBackoff = 1,
+    RetryAfterStateChange = 2
 }
 
 public sealed class ZLinkFrameworkException : Exception
 {
-    public ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind kind,
-        string message,
-        bool? isRetriable = null,
-        Exception? innerException = null);
     public ZLinkFrameworkErrorKind Kind { get; }
-    public bool IsRetriable { get; }
+    public ZLinkRetryAdvice RetryAdvice { get; }
 }
 
 public sealed class ZLinkConfigurationException : InvalidOperationException
 {
-    public ZLinkConfigurationException(string message);
 }
 ```
 
-`Kind`의 숫자 값과 기본 재시도 의미는 [공통 Framework API](../../../../05-framework-api.ko.md#13-오류-kind)와
-같다. `RelocationDataLost`는 Location authority가 공개한 Relocation reference의 payload를 영구적으로 찾을 수
-없거나 checksum·inventory digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이 오류에서
-이전 owner로 rollback하지 않는다. Remote framework error는 `ZLinkFrameworkException`으로 전달한다.
-`RuntimeShutdown`은 runtime이 신규 admission을 받지 않는 terminal state에서 사용한다.
-`RelocationDisabled`는 object policy가 cross-node 이동을 허용하지 않을 때,
-`RelocationTargetUnavailable`은 호환 target을 확보하지 못했을 때,
-`RelocationFailed`는 admission callback exception이나 capture·factory·restore·staging
-실패가 발생했을 때 사용한다.
+`ZLinkFrameworkException`은 Framework만 생성한다. Application은 exception을 상속하거나 retry 분류를
+변경하지 않는다. `ZLinkConfigurationException`도 Framework가 startup validation 결과로 생성한다.
+`Message`는 사람이 진단하기 위한 설명이며 programmatic 분기에 사용하지 않는다.
 
-`RoutingIdConflict`는 transport RID claim 충돌이고 `SpotIdConflict`는 global Spot ID claim 충돌이다.
-## 2. Eventing과 metric identity
+`RetryAdvice`는 Framework가 확인한 현재 실패 조건만 설명한다. Application은 operation의 idempotency와
+업무 deadline을 확인한 뒤 retry 여부를 결정해야 한다.
 
-```csharp
-public interface IZLinkRuntimeEvent
-{
-    string SourceName { get; }
-    DateTimeOffset Timestamp { get; }
-}
+| `RetryAdvice` | 의미 |
+|---|---|
+| `DoNotRetry` | 같은 입력과 상태로 다시 실행해도 성공할 수 없거나 중복 실행의 안전성을 보장하지 않는다. |
+| `RetryAfterBackoff` | 일시적인 resource·transport 실패일 수 있다. Operation이 idempotent일 때만 간격을 두고 다시 실행한다. |
+| `RetryAfterStateChange` | configuration, topology 또는 대상 상태가 바뀐 뒤 다시 실행할 수 있다. 즉시 반복하지 않는다. |
 
-public interface IZLinkRuntimeEventHandler<in TEvent>
-    where TEvent : IZLinkRuntimeEvent
-{
-    ValueTask HandleAsync(
-        TEvent @event,
-        CancellationToken cancellationToken);
-}
+## 3. 오류 kind 의미
 
-public readonly record struct ZLinkSocketEvent(
-    string SourceName,
-    DateTimeOffset Timestamp,
-    ZLinkSocketEventKind Event,
-    RoutingId? RoutingId,
-    string LocalAddr,
-    string RemoteAddr) : IZLinkRuntimeEvent;
+| Kind | Application에서 확인할 내용 |
+|---|---|
+| `NotFound` | 요청한 Actor, Spot, handler, route 또는 target이 존재하는지 확인한다. |
+| `AlreadyExists` | create와 registration이 멱등하게 처리되어야 하는지 확인한다. |
+| `TypeMismatch` | stable type과 요청한 application type이 일치하는지 확인한다. |
+| `NotConfigured` | 필요한 role, handler, Store 또는 object client가 startup에 등록되었는지 확인한다. |
+| `Rejected` | 대상 application callback 또는 현재 policy가 operation을 거부했다. |
+| `Unavailable` | target, route, Store 또는 worker가 현재 operation을 처리할 수 없다. |
+| `CapacityExceeded` | placement, queue 또는 bounded resource의 여유가 생긴 뒤 다시 시도할 수 있다. |
+| `DeadlineExceeded` | operation이 정한 deadline 안에 완료되지 않았다. 결과의 side effect 여부는 해당 operation 계약을 따른다. |
+| `ShuttingDown` | Runtime이 신규 admission을 받지 않는 상태다. 다른 serving instance를 사용해야 한다. |
+| `ProtocolError` | peer와 protocol 또는 reply 계약이 일치하는지 확인한다. |
+| `InvalidOperation` | 현재 object·session·runtime 상태에서는 요청한 operation이 허용되지 않는다. |
+| `DataLost` | 공개된 relocation payload를 찾을 수 없거나 검증에 실패했다. 이전 owner로 임의 rollback하지 않는다. |
+| `InternalFailure` | 위 분류로 표현할 수 없는 Framework 실패다. Log와 trace의 correlation 정보로 원인을 확인한다. |
 
-public static class ZLinkMeters
-{
-    public const string Framework = "zlink.framework";
-}
+Generation stale, object moving, worker queue 상태와 relocation 처리 단계는 Framework가 retry·recovery를
+판정할 때 사용하는 내부 원인이다. Application이 다른 대응을 선택할 수 없으면 별도 public kind로
+구분하지 않는다.
 
-public enum ZLinkFlowOrigin : byte
-{
-    Inbound = 1,
-    Timer = 2,
-    Application = 3,
-    Lifecycle = 4
-}
+## 4. Diagnostics 경계
 
-public abstract record ZLinkLocationRuntimeEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkLocationRuntimeEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-    public string SourceName { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record StatusChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkLocationRuntimeStatus Status) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
-    public sealed record TopologyChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        IReadOnlyList<ZLinkLocationTopologyEntry> Topology) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
-    public sealed record ServiceSummaryChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        IReadOnlyList<ZLinkLocationServiceSummary> ServiceSummary) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
-    public sealed record StoreFailure(
-        string SourceName,
-        DateTimeOffset Timestamp) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
-    public sealed record StoreRecovered(
-        string SourceName,
-        DateTimeOffset Timestamp) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
-}
+Framework는 application message의 흐름과 runtime 오류를 .NET 표준 diagnostics로 제공한다.
 
-public readonly record struct ZLinkSpotTimerDiagnostic(
-    string SpotId,
-    bool IsEntrySpot,
-    string TimerName,
-    string HandlerType,
-    ulong DeliveryIndex,
-    ulong ScheduledIndex,
-    string ExceptionType,
-    string ExceptionMessage);
+- Trace는 `ActivitySource`를 사용한다.
+- Metric은 `System.Diagnostics.Metrics.Meter`를 사용하며 meter 이름은 `zlink.framework`다.
+- Log는 `Microsoft.Extensions.Logging.ILogger` category를 사용한다.
 
-public abstract record ZLinkSpotEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkSpotEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-    public string SourceName { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record TimerHandlerFailed(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotTimerDiagnostic Diagnostic) : ZLinkSpotEvent(SourceName, Timestamp);
-    public sealed record TimerStoppedAfterUnhandledException(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotTimerDiagnostic Diagnostic) : ZLinkSpotEvent(SourceName, Timestamp);
-}
-```
+Application은 [topology와 host monitoring](10-topology-monitoring.ko.md)의
+`IZLinkDiagnosticsOptions`로 level, sampling과 message size 기록 여부를 설정한다. Exporter, log provider,
+file과 원격 backend는 application이 구성한다.
+
+Public callback 기반 message-flow observer, runtime error sink와 raw socket event DTO는 제공하지 않는다.
+Trace·metric·log에 포함되는 안정된 operation 이름과 attribute는 공통
+[Message flow](../../../../52-message-flow-tracing.ko.md)와
+[Runtime metrics](../../../../51-runtime-metrics.ko.md)가 정의한다.
+
+Timer handler 실패는 해당 Spot ID와 timer 이름을 포함한 structured log와 trace error로 기록한다.
+Scheduler delivery index, handler runtime type, exception type과 stack trace를 public DTO로 제공하지 않는다.

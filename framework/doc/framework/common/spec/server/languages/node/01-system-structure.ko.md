@@ -135,7 +135,7 @@ ClientServer runtime provider를 만들지 않는다. Manual fanout subscriber�
 class MonitoringProbe {
     constructor(
         @Inject(ZLINK_FRAMEWORK_RUNTIME)
-        frameworkRuntime: ZLinkFrameworkRuntime, // host 전체 Retire·Shutdown과 termination 관측 표면이다.
+        frameworkRuntime: ZLinkFrameworkRuntime, // object relocation, host 종료와 lifecycle 관측 표면이다.
         @Inject(ZLINK_ROUTE_MESH_RUNTIME)
         routeMeshRuntime: ZLinkRouteMeshRuntime | null, // 동적 구성에 RouteMesh 역할이 없으면 null이다.
         @Inject(ZLINK_CLIENT_SERVER_RUNTIME)
@@ -191,8 +191,9 @@ lifecycle 참여자는 **framework → monitoring** 순서다.
 ### 5.2 종료 순서
 
 NestJS [shutdown](../../../01-glossary.ko.md#shutdown) hook은 host 단위 `Shutdown`을 사용한다. Rolling maintenance에서 continuity가 필요하면
-operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.retire(...)`를 호출한다. Hook이 시작될 때 이미
-`Retire`가 `Draining`을 시작했다면 새 `Shutdown`을 만들지 않고 그 shared operation에 합류한다.
+operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.relocate(...)`를 호출하고 `Drained` 결과를 확인한 뒤
+`shutdown(...)`을 호출한다. Relocation이 필요하지 않으면 hook에서 `shutdown(...)`만 호출한다. Hook이
+시작될 때 이미 `Shutdown`이 `Draining`을 시작했다면 새 operation을 만들지 않고 그 shared operation에 합류한다.
 
 1. Framework runtime의 host maintenance barrier에서 신규 application admission을 닫는다.
 2. 이미 수락한 작업과 진행 중인 relocation·STREAM barrier를 deadline까지 처리한다.

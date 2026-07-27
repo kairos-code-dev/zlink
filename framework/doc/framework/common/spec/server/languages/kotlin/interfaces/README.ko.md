@@ -26,7 +26,8 @@ state contract ID, suspending adapter와 reified [Snapshot](../../../../01-gloss
 lifecycle class만 Java default `onActorRelocated`를 `onActorRelocatedSuspending`으로 bridge한다.
 
 Channel extension은 process-local ChannelName만 받으며 MeshName과 [ChannelName](../../../../01-glossary.ko.md#channelname)을 함께 받는 선택 overload를
-추가하지 않는다. Host `Retire`·`Shutdown`은 Java 결과 type을 그대로 사용하며 별도 drain facade를
+추가하지 않는다. Host `Relocate`·`Shutdown`은 Java의 relocation mode·options·result type을 그대로
+사용하며 별도 drain facade를
 제공하지 않는다. Location Store의 opaque key·value atomic batch와 Relocation Store의
 Framework-issued reference 기반 immutable blob 계약도 Java public interface가 정본이다.
 

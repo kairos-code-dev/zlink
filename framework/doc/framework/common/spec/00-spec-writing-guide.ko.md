@@ -1,700 +1,603 @@
 # 이해하기 쉬운 Framework 스펙 작성 가이드
 
-> 이 문서는 `framework/doc/framework/common/spec/` 아래에서 공개 계약을 이해하기
-> 쉽게 설명하면서도 구현과 contract test의 기준으로 사용할 수 있는 스펙을 작성하는
-> 방법을 정의한다.
+> 이 문서는 `framework/doc/framework/common/spec/` 아래의 공개 계약을 작성하거나
+> 수정하는 작업자가 따라야 하는 절차다. 주 독자는 문서 작업을 수행하는 AI다.
 >
-> 이 디렉터리의 스펙은 이전 문서를 대체할 독립적인 공개 계약이다. 작성 과정에서는
-> 이전 문서를 누락 검사에 사용할 수 있지만, 완성된 스펙은 이전 문서에 의미나
-> 판단을 위임하지 않고 필요한 계약을 자체적으로 모두 설명해야 한다.
+> 목표는 정확한 계약을 처음 읽는 개발자도 이해할 수 있게 설명하는 것이다. 정해진
+> 문서 모양을 만드는 것이 목표가 아니다.
 
 [Framework 공개 계약 관리](00-public-contract-governance.ko.md) ·
+[용어집](01-glossary.ko.md) ·
 [문서 설명 원칙](../../../../../doc/principal/documentation/documentation-principles.ko.md) ·
-[작성 예시: Spot 메시징](20-spot-messaging.ko.md) ·
-[용어집](01-glossary.ko.md)
+[작성 예시: Spot 모델](19-spot-model.ko.md) ·
+[작성 예시: Spot 메시징](20-spot-messaging.ko.md)
 
-## 1. 이 문서 형식을 사용하는 목적
+## 1. 완료 결과
 
-스펙은 정확한 계약을 유지하면서 다음 독자가 처음 읽어도 이해할 수 있도록 충분히
-풀어서 설명한다.
+완성된 스펙은 다음 독자가 외부 초안이나 구현 코드를 다시 읽지 않아도 공개 동작을
+판단할 수 있어야 한다.
 
-- Framework를 구현하는 개발자
-- 언어별 binding과 public interface를 검토하는 개발자
-- Contract test를 작성하는 개발자
-- 설계 의도를 확인하는 application 개발자
+- Framework와 각 언어 binding을 구현하는 개발자
+- Public interface와 contract test를 검토하는 개발자
+- 기능을 사용하는 application 개발자
 
-이전 문서의 계약을 옮기는 동안 새로운 동작을 임의로 추가하거나 제약을 줄이지
-않는다. 이전이 끝난 문서는 외부 자료를 다시 읽지 않아도 입력, 상태, 정상 흐름,
-실패와 완료 조건을 판단할 수 있어야 한다.
+문서를 읽은 독자는 다음 질문에 답할 수 있어야 한다.
 
-현재 이 형식을 적용한 예시는 다음과 같다.
+| 질문 | 문서가 제공해야 하는 답 |
+|---|---|
+| 이 기능은 무엇을 하는가? | Application에서 관찰할 수 있는 결과를 설명한다. |
+| 누가 무엇을 결정하는가? | Application, Framework, provider와 remote runtime의 책임을 구분한다. |
+| 정상 처리는 어떤 순서인가? | 입력부터 완료까지 상태 확인과 변경 순서를 설명한다. |
+| 어떤 값이 판단 기준인가? | Identity, generation, Store record와 상태의 역할을 설명한다. |
+| 언제 완료되는가? | Queue 수락, remote 전달, handler와 reply 완료를 구분한다. |
+| 실패하면 무엇이 남는가? | 반환 오류, 유지하는 상태, 재시도와 정리 규칙을 설명한다. |
+| 제한은 어디에 적용되는가? | 시스템, object, record, payload와 memory 제한을 구분한다. |
 
-- [10 Channel topology](10-channel-topology.ko.md)
-- [11 Channel 메시징](11-channel-messaging.ko.md)
-- [12 ClientServer Channel](12-client-server-channel.ko.md)
-- [13 Network listener identity](13-network-listener-identity.ko.md)
-- [20 Spot 메시징](20-spot-messaging.ko.md)
+이 질문에 답하려고 용어집을 먼저 읽거나 여러 절의 문장을 조합해야 한다면 아직
+완료되지 않은 문서다. 용어집과 exact interface는 세부 내용을 확인하는 자료이며
+본문의 기본 설명을 대신하지 않는다.
 
-## 2. 가장 먼저 지킬 원칙
+## 2. AI 작업 순서
 
-### 2.1 동작을 먼저 설명하고 용어는 나중에 붙인다
+AI는 다음 순서를 지킨다. 문장을 먼저 생성한 뒤 계약을 추측하여 맞추지 않는다.
 
-독자가 영어 용어를 이미 안다고 가정하지 않는다. 먼저 무엇을 확인하고 어떤 결과가
-생기는지 설명한 뒤 필요한 경우에만 정식 용어를 붙인다.
+### 2.1 입력 자료를 확인한다
+
+1. 수정 대상 문서가 소유하는 공개 계약 범위를 확인한다.
+2. 관련 공통 스펙과 언어별 exact interface를 확인한다.
+3. [용어집](01-glossary.ko.md)에서 사용할 용어의 정의를 확인한다.
+4. 구현, E2E와 이전 문서는 누락을 찾는 증거로만 사용한다.
+5. 서로 다른 자료가 충돌하면 임의로 합치지 않고 정식 계약의 소유 문서를 확인한다.
+
+구현에만 존재하고 정식 스펙에 없는 public 동작을 현재 계약처럼 추가하지 않는다.
+새 계약이 필요하면 공개 계약 관리 절차에 따라 먼저 설계를 확정한다.
+
+### 2.2 독자의 질문으로 목차를 만든다
+
+기능 이름이나 내부 class 이름을 기준으로 절을 나누지 않는다. 독자가 순서대로
+묻게 될 질문을 기준으로 나눈다.
+
+공개 operation을 설명할 때는 다음 순서를 출발점으로 사용할 수 있다.
+
+1. 범위와 Application에서 보이는 결과
+2. 역할과 책임
+3. 입력, identity와 대상 선택
+4. 정상 처리 순서
+5. 동시 요청과 상태 변경
+6. 완료, 실패와 cancellation
+7. 수명, 정리와 shutdown
+8. 구현 및 contract test 검증 요구
+
+자료구조는 `작은 예 → 구성 요소 → 읽기·변경 규칙 → 실패` 순서가 더 적합하다.
+여러 방식을 비교할 때는 `공통 목적 → 차이 표 → 방식별 상세` 순서를 사용한다.
+모든 문서에 같은 목차를 강제하지 않는다.
+
+### 2.3 용어를 먼저 정리한다
+
+초안에 사용할 영어 명사와 Framework 개념을 목록으로 만든다.
+
+- Public identifier인가?
+- 업계에서 같은 의미로 널리 사용하는 용어인가?
+- Framework 전용 용어라면 용어집에 있는가?
+- 같은 철자를 현재 문서에서 다른 의미로 사용하지 않는가?
+
+용어집에 없는 Framework 전용 표현은 바로 사용하지 않는다. 동작을 쉬운 문장으로
+풀어 쓸 수 있으면 새 용어를 만들지 않는다. 반드시 반복해서 구분해야 하는 개념이면
+§3.4에 따라 용어집부터 수정한다.
+
+### 2.4 쉬운 설명부터 작성한다
+
+각 절은 결과나 질문의 답으로 시작한다. 내부 record, protocol command와 helper
+이름부터 나열하지 않는다.
+
+한 문단에는 주된 판단 하나만 둔다. 다음 항목이 바뀌면 문단을 나누거나 비교 표를
+사용한다.
+
+- 동작 주체
+- 처리 단계
+- 정상 조건과 실패 조건
+- 저장하는 정보
+- 수치가 적용되는 범위
+
+### 2.5 정확한 계약을 다시 대조한다
+
+초안을 쓴 뒤 입력 자료와 항목별로 대조한다.
+
+| 확인 영역 | 확인할 계약 |
+|---|---|
+| 입력 | Required·optional 값, 형식, 범위와 중복 설정 |
+| 대상 선택 | 조회 순서, 후보 조건과 caller가 지정할 수 없는 값 |
+| 정상 흐름 | 생성, 초기화, 상태 변경과 최초 message 처리 순서 |
+| 경쟁 처리 | 동시 요청이 하나로 수렴하는 조건 |
+| 완료 | Send 수락, remote queue, handler와 reply의 관계 |
+| 실패 | Status, exception, timeout, cancellation과 shutdown |
+| 수명 | 새 작업 차단, 이미 수락한 작업과 resource 정리 |
+| 검증 | 구현과 contract test가 확인할 조건 |
+
+이 단계에서는 설명을 더 자연스럽게 만들기 위해 수치, 상태 또는 실패 규칙을
+삭제하지 않는다. 반대로 입력 자료에 없는 보장을 이해를 돕는다는 이유로 추가하지
+않는다.
+
+### 2.6 링크와 자동 검증을 확인한다
+
+1. 각 용어의 첫 설명에 glossary 링크가 있는지 확인한다.
+2. 관련 계약 링크가 정식 스펙을 가리키는지 확인한다.
+3. Markdown 표, code fence와 diagram 문법을 확인한다.
+4. `git diff --check`를 실행한다.
+5. `scripts/verify-framework-doc-contracts.sh`를 실행한다.
+
+자동 검사는 의미를 대신 검토하지 않는다. 검사가 통과해도 처음 읽는 독자가 §1의
+질문에 답할 수 없으면 문장을 다시 작성한다.
+
+## 3. 용어 작성 규칙
+
+### 3.1 동작을 설명한 문장에서 용어를 소개한다
+
+독자가 용어를 이미 안다고 가정하지 않는다. 무엇을 하는지 먼저 설명하고 같은
+문장에서 용어 이름을 붙인다.
 
 나쁜 예:
 
-> Target runtime은 local exact instance가 없으면 generic placement reservation을
-> 획득하며 CAS winner만 owner claim을 만든다.
+> Target runtime은 local exact instance가 없으면 placement reservation을 획득하고
+> CAS winner만 owner claim을 만든다.
 
 좋은 예:
 
-> Target node에 현재 Spot이 없으면 Location Store에 이 Spot을 생성해도 되는지
+> Target node에 현재 Spot이 없으면 Location Store에 이 Spot을 만들어도 되는지
 > 요청한다. 여러 target이 동시에 요청해도 생성 권한을 먼저 확보한 target만 자신을
 > owner로 기록하고 Spot을 만든다.
 
-공개 계약을 확인하는 데 필요하지 않은 내부 용어는 좋은 예에 다시 넣지 않는다.
+공개 계약을 설명하는 데 필요하지 않은 내부 이름은 좋은 예에 다시 넣지 않는다.
 
-### 2.2 처음 설명하고 두 번째 등장에 용어집을 연결한다
+### 3.2 Glossary 정의와 첫 링크
 
-한 페이지에서 영어 용어가 처음 나오면 쉬운 설명을 한 번 붙인다. 같은 페이지에서
-두 번째로 등장할 때는 별도 용어집의 해당 항목에 링크한다. 그 뒤에는 용어만
-사용한다. 목차, interface signature와 code block 안의 식별자는 등장 횟수에서
-제외하고 독자가 의미를 읽는 본문과 표를 기준으로 판단한다.
+[용어집](01-glossary.ko.md)은 여러 스펙이 공유하는 용어 정의의 기준이다.
 
-페이지에서 한 번만 사용하는 용어는 첫 등장에 용어집을 연결할 수 있다. 링크를
-넣기 위해 같은 설명을 반복하지 않는다.
+각 문서에서 glossary 용어를 처음 사용할 때는 다음 두 조건을 함께 만족한다.
 
-다른 페이지는 독립적으로 읽을 수 있어야 하므로 같은 용어가 처음 나오면 다시
-설명한다.
-
-예:
-
-> 실행 중인 Instance Spot이 없을 때 새 Spot을 만들고 초기화하여 사용할 수 있게
-> 준비하는 과정을 `cold activation`이라 한다.
-
-두 번째 `cold activation`에는 다음과 같이 용어집 링크를 붙인다.
+1. 현재 문맥에서 하는 일을 쉬운 문장으로 설명한다.
+2. 용어 이름을 glossary의 정확한 항목에 연결한다.
 
 ```markdown
-[cold activation](01-glossary.ko.md#cold-activation)
+실행 중인 Instance Spot이 없을 때 새 Spot을 만들고 초기화하는 과정을
+[cold activation](01-glossary.ko.md#cold-activation)이라고 한다.
 ```
 
-세 번째부터는 `cold activation`만 사용한다.
+문서에서 한 번만 사용하는 용어도 링크한다. 이후 같은 용어에는 링크를 반복하지
+않는다. 다른 문서는 독립적으로 읽어야 하므로 그 문서의 첫 사용에서 다시 설명하고
+링크한다.
 
-용어집에는 public API 이름을 모두 복사하지 않는다. 여러 스펙에서 반복되거나 계약을
-이해하는 데 필요한 domain term, 상태와 결과 이름을 정리한다.
+제목, 목차, interface signature와 code block은 첫 사용 판단에서 제외할 수 있다.
+본문의 public identifier, 상태와 오류 값은 glossary 항목이 있으면 제외하지 않는다.
 
-완료 리뷰에서는 용어집의 각 항목을 기준으로 페이지별 사용 위치를 검사한다.
-본문이나 표에서 같은 domain term이 두 번 이상 등장하면 해당 페이지에 용어집
-링크가 정확히 하나 있어야 한다. 이미 링크가 하나 있으면 이후 등장마다 링크를
-반복하지 않는다.
+Glossary 링크만 두고 설명을 생략하지 않는다. 반대로 현재 문서의 설명이 glossary와
+다르면 다음 중 하나로 고친다.
 
-다음 위치는 등장 횟수와 자동 링크 검사에서 제외한다.
+- 같은 개념이면 glossary 정의와 문서를 같은 뜻으로 맞춘다.
+- 서로 다른 개념이면 이름과 glossary 항목을 분리한다.
+- 현재 문서에 필요 없는 용어면 제거하고 동작을 풀어서 쓴다.
 
-- 제목과 목차
-- Interface signature와 code block
-- Inline code로 표시한 public identifier와 닫힌 상태·오류 값
-- 이미 다른 문서나 용어집으로 연결된 link label
-- 같은 철자이지만 용어집의 domain 의미가 아니라 일반적인 뜻으로 사용한 단어
+예를 들어 Actor가 Spot에 속하는 관계와 node가 Channel에 참여하는 관계가 다르면
+둘 다 `Membership`으로 연결하지 않는다. `Actor membership`처럼 서로 다른 이름과
+정의를 사용한다.
 
-자동 검사는 누락 후보를 찾는 단계다. 실제 링크를 추가하기 전에는 첫 등장이 쉬운
-설명을 제공하는지, 두 번째 등장이 같은 domain 의미인지 확인한다.
+### 3.3 정식 식별자와 업계 용어
 
-### 2.3 정식 식별자와 상태 이름은 바꾸지 않는다
-
-다음 값은 코드와 contract test에서 사용하는 이름이므로 그대로 쓴다.
-
-- Public type, method와 property 이름
-- Error와 status 이름
-- Wire field나 public result field
-- Lifecycle state
-- 수치 제한과 단위
-
-이름은 유지하되 바로 옆에서 의미를 쉬운 문장으로 설명한다.
+Public type, method, field, wire 값, status와 error 이름은 바꾸지 않는다. 이름 바로
+옆에 caller가 관찰하는 의미를 설명한다.
 
 ```text
-`RuntimeShutdown`: runtime이 새 admission을 받지 않아 operation이 예외로 완료되었다.
+`RuntimeShutdown`: runtime이 종료 중이어서 새 operation을 받지 않는다.
 ```
 
-### 2.4 Domain에 따라 의미가 좁아지는 용어는 구체적인 이름으로 쓴다
+API, callback, transaction과 cache처럼 업계에서 널리 쓰는 용어도 현재 문맥에서
+무엇을 하는지 처음에 설명한다. 업계 용어인지 확실하지 않으면 새 Framework 용어로
+간주하고 쉬운 문장으로 바꾼다.
 
-`descriptor`, `target`, `owner`, `member`처럼 여러 기능에서 다른 뜻으로 사용하는
-단어를 단독으로 쓰지 않는다. 해당 문맥에서 어떤 종류인지 이름에 포함한다.
+`descriptor`, `target`, `owner`처럼 기능에 따라 의미가 달라지는 단어는 구체적으로
+쓴다.
+
+| 모호한 표현 | 구체적인 표현 |
+|---|---|
+| descriptor | MeshNode descriptor, ClientServer Server descriptor |
+| target | 선택한 target node, 현재 owner Spot |
+| member | User Spot의 member Actor, Channel Server member |
+
+### 3.4 새 Framework 용어
+
+다음 조건을 모두 만족할 때만 새 용어를 추가한다.
+
+- 기존 public identifier나 업계 용어로 정확히 설명할 수 없다.
+- 여러 문서나 API에서 같은 개념을 반복해서 구분해야 한다.
+- 이름을 붙이는 편이 동작을 반복해서 설명하는 것보다 이해하기 쉽다.
+- 다른 용어와 의미가 겹치지 않는다.
+
+새 용어가 필요하면 glossary에 먼저 다음 내용을 기록한다.
+
+| 항목 | 기록할 내용 |
+|---|---|
+| 쉬운 정의 | 무엇을 나타내고 왜 필요한지 설명한다. |
+| 형태 | 단일 값, 복합 값, 상태 또는 동작인지 밝힌다. |
+| 공개 구성 | Field, 형식, 길이와 값의 범위를 적는다. |
+| 생성·관리 | 값을 만드는 주체와 uniqueness 범위를 적는다. |
+| 전달 | 어느 request, reply, Store record나 상태에 포함되는지 적는다. |
+| 수명 | 언제부터 유효하고 언제 사용할 수 없게 되는지 적는다. |
+| Application 권한 | Application이 생성·해석·변경할 수 있는지 적는다. |
+
+실제 public type이 있으면 exact interface의 선언을 그대로 사용한다. 독립된 public
+type이 없으면 `public type 없음`이라고 쓴다. 설명용 선언은 `contract
+pseudocode이며 실제 API가 아니다`라고 명시한다.
+
+Glossary에 항목을 추가했다는 사실만으로 어려운 용어 사용이 정당화되지는 않는다.
+이름 없이 설명해도 충분하면 항목과 본문 용어를 모두 제거한다.
+
+### 3.5 만들지 말아야 할 표현
+
+여러 구현 동작을 영어 명사로 묶어 새로운 개념처럼 쓰지 않는다.
 
 나쁜 예:
 
-> Endpoint를 확정하고 descriptor를 게시한다.
+> Target은 closed owner rule과 participant projection을 확인한 뒤 steady
+> normalization을 수행한다.
 
 좋은 예:
 
-> RouteMesh listener의 endpoint를 확정하고 `MeshNode descriptor`를 게시한다.
+> Target은 Location Store에서 현재 owner를 다시 확인한다. 이동 대상 목록과 저장한
+> payload 목록이 모두 일치하면 복원을 시작한다. 복원이 끝나면 relocation 중에만
+> 사용한 정보를 제거한다.
 
-`Descriptor`처럼 여러 등록 정보를 통칭하는 상위 개념은 용어집에 남길 수 있다.
-하지만 실제 흐름에서는 `MeshNode descriptor`, `ClientServer Server descriptor`,
-`fanout publisher descriptor`처럼 구체적인 계약 이름을 사용한다. Domain에 따라
-포함 field, 게시 위치나 검증 절차가 달라지면 용어집에도 별도 항목을 만든다.
+`canonical`, `exact`, `bounded`, `projection`, `fence`, `root`, `manifest`,
+`admission`, `normalization`, `handoff`를 다른 명사와 이어 붙여 의미를 압축하지
+않는다. 해당 단어가 꼭 필요하면 무엇이 일치하는지, 무엇을 제한하는지, 어떤 값을
+가리키는지와 어떤 상태가 바뀌는지를 문장으로 설명한다.
 
-### 2.5 값을 나타내는 용어는 공개된 구성을 함께 설명한다
+## 4. 문서 구조와 책임 경계
 
-Identifier, descriptor, envelope, token과 snapshot처럼 실제 값을 나타내는 용어는
-무엇을 하는지만 설명해서는 부족하다. 원문 계약이 정의한 범위 안에서 다음 내용을
-용어집에 함께 적는다.
+### 4.1 결과와 범위를 먼저 쓴다
 
-- 단일 값인지 여러 field로 이루어진 값인지
-- 공개된 field와 형식, 길이 또는 값의 범위
-- 값을 만드는 주체와 uniqueness 범위
-- 어떤 message나 상태에 포함되어 전달되는지
-- 값이 유효한 기간과 더 이상 사용할 수 없게 되는 조건
-- Application이 값을 해석·생성·변경할 수 있는지
+첫 단락에서 이 문서가 답하는 질문과 Application에서 관찰할 결과를 말한다. 내부
+component 목록이나 구현 배경으로 시작하지 않는다.
 
-여러 field로 이루어진 값에 실제 .NET public type이 있으면 정식 C# 선언을 그대로
-보여주고, 계약을 이해하는 데 필요한 member 옆에 짧은 한국어 주석을 붙인다. 이렇게
-하면 field가 어느 record나 class에 속하는지, nullable인지, collection의 key와
-value type이 무엇인지 한 번에 확인할 수 있다. 실제 public type이 없는 공통 구조나
-wire 형식은 표로 구성 요소를 설명한다.
+```text
+이 문서는 Spot ID로 message를 보낼 때 Framework가 현재 owner를 찾고,
+Spot queue에 message를 제출하는 방법을 정의한다.
+```
 
-내부 구조를 공개하지 않는 opaque 값이라면 구성 field를 추측하지 않고, 단일 opaque
-값이라는 사실과 공개된 형식 제약만 명시한다. 원문 계약에 없는 field나 encoding을
-이해를 돕는다는 이유로 추가하지 않는다.
+첫 부분에는 가능하면 다음 책임을 함께 구분한다.
 
-공통 용어집에서는 실제 사용 모습을 이해하는 데 도움이 되면 .NET public type을
-계약의 예시 표기로 함께 적을 수 있다. 이때 공통 동작을 .NET 전용 계약으로 바꾸지
-않으며, 언어별 exact interface에 선언된 type과 member 이름을 그대로 사용한다.
-독립된 public type이 없는 값은 **public type 없음**이라고 표시한다. 구조 설명을
-위해 C# 모양을 제시해야 하면 **contract pseudocode이며 실제 API가 아니다**라고
-같은 위치에 명시한다.
-
-## 3. 권장 문서 구조
-
-문서 성격에 맞지 않는 절은 생략할 수 있지만 다음 순서를 기본으로 사용한다.
-
-1. 범위와 독자
-2. 전체 동작 요약
-3. Public interface 발췌
-4. Identity와 역할
-5. 정상 흐름
-6. 동시 실행과 경쟁 처리
-7. 완료 결과와 실패
-8. 수명과 shutdown
-9. Metadata와 관측
-10. 구현 및 contract test 검증 요구
-
-독자가 문서 앞부분만 읽어도 다음 질문에 답할 수 있어야 한다.
-
-- Application은 어떤 값만 지정하는가?
-- Framework는 어떤 값을 대신 결정하는가?
-- 대상이 있거나 없을 때 각각 무엇을 하는가?
-- 호출은 언제 완료되는가?
-- 실패하면 어떤 결과를 반환하는가?
-
-## 4. 범위와 전체 동작 요약 작성법
-
-### 4.1 결과와 책임 경계를 먼저 쓴다
-
-첫 단락에서 문서가 답하는 질문을 명시한다. 내부 구성 요소를 먼저 나열하지 않는다.
-
-예:
-
-> 이 문서는 logical Spot 하나 또는 같은 Channel의 여러 Spot에 message를 보낼 때
-> Framework가 대상을 정하고 callback을 실행하는 방법을 설명한다.
-
-### 4.2 요약 표도 완전한 문장으로 쓴다
-
-표의 칸이 짧아야 한다는 이유로 조건과 순서를 생략하지 않는다.
-
-나쁜 예:
-
-| 방식 | Framework가 결정하는 대상 |
+| 주체 | 설명할 내용 |
 |---|---|
-| Spot direct | Ready owner 또는 cold activation target |
-| Logical Multicast | Positive-weight ready remote와 local match |
+| Application | 지정할 수 있는 값과 호출하는 API |
+| Framework | 자동으로 조회·선택·저장하는 값 |
+| Provider | 반드시 구현해야 하는 저장·전송 계약 |
+| Remote runtime | 다시 검증하는 상태와 handler 실행 조건 |
 
-좋은 예:
+### 4.2 다른 문서의 계약을 복제하지 않는다
 
-| 방식 | Framework가 실제 전달 대상을 정하는 방법 |
-|---|---|
-| Spot direct | 먼저 현재 사용할 수 있는 Spot을 찾는다. Spot이 있으면 그 Spot을 소유한 node로 보낸다. Spot이 없고 application이 생성을 허용했다면 새 Spot을 만들 node를 선택한다. |
-| Logical Multicast | 해당 Channel에 참여하고 ready 상태인 remote node를 먼저 선택한다. 각 수신 node는 자신의 local Spot 중에서 ChannelName과 topic이 일치하는 Spot에 message를 전달한다. |
+현재 문서가 보장할 결과만 설명한다. 세부 동작을 다른 정식 스펙이 소유하면 현재
+문서에는 경계를 이해하는 데 필요한 결과와 링크만 둔다.
 
-표 아래에는 표만으로 드러나지 않는 예외를 문장으로 보충한다. 예를 들어 Spot이
-없고 생성도 허용하지 않은 경우의 결과를 함께 설명한다.
+구현 코드에서 확인한 내부 알고리즘을 공개 보장처럼 복제하지 않는다. 관련 정식
+문서가 아직 없으면 폐기 예정 문서나 구현 파일을 임시 계약으로 링크하지 않는다.
 
-### 4.3 다른 계약이 소유한 세부 동작을 복제하지 않는다
+### 4.3 문단과 절의 역할을 겹치지 않는다
 
-현재 문서가 보장할 결과와 다른 문서가 소유한 세부 동작을 구분한다. 구현 코드에서
-동작을 확인했더라도 원본 계약이 현재 문서의 공개 규칙으로 정의하지 않았다면 설명을
-추가하여 계약 범위를 넓히지 않는다.
+같은 규칙을 요약, 상세 절과 완료 점검표에서 반복하지 않는다.
 
-관련 세부 동작을 정의하는 정식 문서가 있으면 현재 문서에는 독자가 경계를 이해하는 데
-필요한 결과만 적고 해당 문서를 링크한다. 아직 정식 문서가 없다면 폐기할 이전 문서,
-구현 코드나 임시 문서를 대신 링크하지 않는다. 정식 문서가 만들어진 뒤 링크를
-추가한다.
+- 요약에는 결과와 큰 흐름만 둔다.
+- 상세 절에는 조건, 순서, 상태와 수치를 둔다.
+- 검증 절에는 구현이나 test가 확인할 관찰 가능한 결과만 둔다.
+- Checklist에는 본문 문장을 복사하지 않고 누락 여부를 묻는다.
 
-예를 들어 Channel topology 문서는 같은 peer의 중복 연결이 하나로 정리된다는 결과만
-정의한다. ROUTER socket이 duplicate RID를 처리하는 option과 physical connection 선택
-알고리즘은 해당 transport 계약이 소유한다. Channel topology 문서에 그 알고리즘을
-복제하지 않고, transport 정식 문서가 준비되면 링크만 연결한다.
+앞 절의 설명을 다시 써야 하면 반복하지 말고 정확한 절을 링크한다.
 
-## 5. 역할과 흐름을 설명하는 방법
+## 5. 동작을 설명하는 방법
 
-### 5.1 Source, Framework와 target의 책임을 나눈다
+### 5.1 주체와 순서를 분리한다
 
-한 문장에서 여러 구성 요소의 동작을 섞지 않는다. 다음 순서로 나누어 쓴다.
+분산 호출은 다음 순서로 확인한다.
 
 1. Caller가 지정하는 값
 2. Source runtime이 조회하거나 선택하는 값
 3. Transport가 수락하는 시점
 4. Target runtime이 확인하는 상태
-5. Queue와 handler가 처리하는 작업
+5. Queue와 handler가 실행하는 작업
 6. Caller에게 결과가 돌아오는 시점
 
-각 단계에서 주어를 생략하지 않는다.
+`resolve 후 reserve하고 dispatch한다`처럼 주어와 조건을 생략하지 않는다.
 
-나쁜 예:
+### 5.2 존재 여부와 생성 위치를 명시한다
 
-> Resolve 후 reservation과 Ready를 거쳐 dispatch한다.
+Object 생성이나 메시징 문서는 다음 질문에 직접 답한다.
 
-좋은 예:
+- Source가 Store에서 존재 여부를 확인하는가?
+- Target이 process 내부 object 목록을 확인하는가?
+- Object가 없을 때 누가 target을 고르는가?
+- 누가 생성 권한과 수용 공간을 확보하는가?
+- 최초 message를 target이 보관하는가, source가 다시 보내는가?
+- 여러 caller가 동시에 요청하면 factory가 몇 번 실행되는가?
 
-> Source runtime은 Location Store에서 현재 Spot을 찾는다. Spot이 없으면 target
-> node를 선택해 최초 request와 생성 정보를 함께 보낸다. Target node는 Spot을
-> 생성하고 초기화한 뒤 request를 Spot queue에 한 번 넣는다.
+이 질문에 답하지 않으면 정상 흐름 설명이 완성되지 않은 것이다.
 
-### 5.2 존재 여부를 언제 어디서 확인하는지 명시한다
+### 5.3 자동 동작과 명시적 호출을 구분한다
 
-생성과 메시징 흐름에서는 다음 차이가 계약을 바꿀 수 있다.
-
-- Source가 Location Store에서 확인하는가?
-- Target node가 자신의 Spot 목록에서 확인하는가?
-- Spot이 없을 때 source와 target 중 누가 생성 권한을 요청하는가?
-- 최초 message를 source가 다시 보내는가, 처음 전달한 message를 target이 보관하는가?
-
-이 질문에 답하지 않는 문장은 흐름 설명으로 충분하지 않다.
-
-### 5.3 Framework가 자동으로 하지 않는 동작과 application이 할 수 없는 동작을 구분한다
-
-“중계하지 않는다”, “재전송하지 않는다”, “다른 경로를 사용하지 않는다”는 문장만
-쓰면 해당 동작 자체가 금지되는 것처럼 읽힐 수 있다. 다음 세 가지를 함께 설명한다.
+`자동으로 중계하지 않는다`는 문장이 API 자체를 금지한다는 뜻으로 읽히지 않게
+다음 내용을 함께 쓴다.
 
 1. Framework가 현재 operation에서 자동으로 하지 않는 동작
-2. 실패했을 때 자동 fallback이나 retry가 있는지
-3. Application이 별도 API 호출로 명시적으로 시작할 수 있는 동작
+2. 실패했을 때 fallback이나 retry 여부
+3. Application이 별도 API로 새 operation을 시작할 수 있는지
+4. 새 operation이 중복 실행 위험을 만들면 그 책임
 
-나쁜 예:
+### 5.4 Role과 target 선택을 구체적으로 쓴다
 
-> Framework는 mesh 사이를 중계하지 않는다.
+`Server가 없다`처럼 범위를 생략하지 않는다.
 
-좋은 예:
+- 현재 process에 어떤 role이 필요한가?
+- 호출을 시작할 local 송신 role은 무엇인가?
+- Remote target이 제공해야 하는 role은 무엇인가?
+- 어느 role이 descriptor와 target membership을 게시하는가?
+- 서로 다른 role 축을 함께 설정할 수 있는가?
 
-> Framework는 한 RouteMesh에서 받은 message를 다른 RouteMesh로 자동 전달하지
-> 않으며, target을 찾지 못했을 때 다른 RouteMesh로 fallback하지 않는다. 같은
-> process의 application은 MeshName이나 등록된 ChannelName을 지정하여 다른
-> RouteMesh에서 별도의 호출을 시작할 수 있다. 이 호출은 기존 message의 자동
-> 중계가 아니라 application이 시작한 새 operation이다.
+자동 선택과 identity 직접 지정 호출도 분리한다.
 
-별도 호출이 중복 실행 위험을 만들 수 있다면 그 책임과 결과도 설명한다. 예를 들어
-Framework가 request를 자동 재전송하지 않더라도 application이 새 request를 시작할
-수는 있다. 이때 application은 이전 request가 이미 실행되었을 가능성을 처리해야 한다.
-
-### 5.4 Role 부재와 기능 부재를 같은 뜻으로 쓰지 않는다
-
-Role을 설명할 때는 “Server가 없다”처럼 범위를 생략하지 않는다. 다음 위치와 조건을
-구분한다.
-
-- 현재 process 또는 local MeshNode에 어떤 role이 등록되어 있는가?
-- 호출을 시작하려면 caller 쪽에 어떤 role이나 송신 경로가 필요한가?
-- Message를 처리하려면 remote target에 어떤 role이 필요한가?
-- 각 role 가운데 무엇을 descriptor에 게시하는가?
-- 아무 role도 등록하지 않은 경우에도 가능한 작업은 무엇인가?
-
-예를 들어 “local Server role이 없어도 Channel 호출을 시작할 수 있다”고 썼다면,
-호출할 ChannelName의 `Client` role은 local MeshNode에 등록해야 하고 같은 MeshName의
-remote MeshNode에는 `Server` role이 있어야 한다는 조건을 바로 이어서 쓴다.
-Client role은 local 송신 경로만 만들며 Server membership으로 게시하지 않는다는
-차이도 설명한다.
-
-Role에 따라 허용 동작이 달라지면 표로 비교한다. 표 바로 아래에는 서로 다른
-process의 caller와 target을 보여주는 최소 interface 발췌와 설정 예제를 둔다.
-
-한 component에 서로 다른 role 축이 있으면 각 축을 분리해서 설명한다. 예를 들어
-Channel Client·Server role은 Channel target membership을 결정하고, Object
-Client·Server role은 Spot·Actor factory와 object placement 자격을 결정한다.
-Channel Client라는 이유만으로 Object placement target에서 제외된다고 추론하지
-않는다. 두 role 축을 함께 설정할 수 있다면 허용되는 조합과 각 조합의 결과를 표와
-예제로 보여준다.
-
-### 5.5 서로 다른 target API의 공통 차이를 먼저 설명한다
-
-Node direct, Spot direct와 Actor direct처럼 비슷해 보이는 API의 경계를 설명할 때
-“A의 payload를 B의 handler에 전달하지 않는다”는 제한부터 쓰지 않는다. 독자가 먼저
-이해해야 하는 공통 차이를 첫 문장에 제시한다.
-
-나쁜 예:
-
-> Node direct payload를 Spot callback이나 Actor handler로 전달하지 않는다.
-
-좋은 예:
-
-> Node direct, Spot direct와 Actor direct는 서로 다른 주소 지정 방식이며, handler도
-> 서로 섞이지 않는다.
-
-그다음 각 방식이 지정하는 target과 실행하는 handler를 설명한다. Payload type이나
-내용이 같더라도 Framework가 다른 target 방식으로 자동 변환하지 않는다면 그 제한을
-마지막에 덧붙인다.
-
-이 순서는 다음과 같이 독자가 비교해야 하는 대상이 둘 이상인 설명에도 적용한다.
-
-1. 가장 큰 공통 차이
-2. 각 방식이 지정하는 identity 또는 target
-3. 각 방식에서 실행하는 queue, callback 또는 handler
-4. Framework가 자동으로 변환하거나 대신 선택하지 않는 경계
-
-### 5.6 내부 제어 신호는 application에서 보이는 결과부터 설명한다
-
-Liveness beacon, relocation control message와 lifecycle notification처럼 Framework가
-내부에서만 사용하는 입력을 설명할 때 내부 처리 이름부터 쓰지 않는다. 독자가 먼저
-알아야 하는 것은 application event와 어떻게 구분되고 어떤 callback이나 관측 결과가
-발생하지 않는지다.
-
-나쁜 예:
-
-> Exact beacon은 handler와 message-flow publish에 전달하지 않는다.
-
-좋은 예:
-
-> Subscriber는 이 topic의 신호를 application event로 처리하지 않는다. Framework가
-> 연결 상태를 확인하는 데만 사용하므로 fanout handler를 실행하지 않으며,
-> application message의 전달 흐름을 기록하는 관측 event에도 게시하지 않는다.
-
-다음 순서로 설명한다.
-
-1. Framework가 이 신호를 사용하는 목적
-2. Application payload나 event와 구분하는 기준
-3. 실행하지 않는 application handler 또는 callback
-4. 일반 message 관측에 포함하는지 여부
-5. Byte 형식이나 timeout처럼 다른 계약이 소유한 세부 규칙의 링크
-
-`message-flow publish`, `control claim`처럼 내부 구현자에게만 바로 이해되는 표현은
-그대로 두지 않는다. 공개 계약에 필요한 경우 “application message의 전달 흐름을
-기록하는 관측 event”, “lifecycle 작업을 처리하는 Framework 전용 queue”처럼
-application에서 관찰하는 의미를 먼저 설명한다.
-
-### 5.7 자동 선택에서 제외하는 규칙과 직접 지정 호출을 분리한다
-
-Drain, weight 0과 readiness처럼 target 후보 자격을 설명할 때 모든 호출에 같은 효과가
-있는 것처럼 쓰지 않는다. 먼저 누가 target을 선택하는 호출인지 밝히고, 직접 identity를
-지정하는 호출과 나누어 설명한다.
-
-나쁜 예:
-
-> Drain 중인 member는 새 선택에서 제외하지만 RID direct의 의미를 바꾸지 않는다.
-
-좋은 예:
-
-> ChannelName 호출에서는 Framework가 Server member 하나를 선택한다. Drain 상태의
-> member는 이 후보에서 제외하므로 새로운 ChannelName message를 보내지 않는다.
->
-> Node direct에서는 caller가 target RID를 직접 지정한다. Framework는 drain 상태라는
-> 이유로 다른 RID를 대신 선택하지 않는다. 이 설명은 target을 바꾸지 않는다는
-> 뜻이며, 지정한 node가 message를 반드시 수락한다는 보장은 아니다.
-
-상태 하나가 호출 방식마다 다르게 작용하면 다음 네 가지를 명시한다.
-
-1. 영향을 받는 호출 방식
-2. 후보에서 제외하거나 새 수락을 막는 주체와 시점
-3. 영향을 받지 않는 직접 지정 방식
-4. “target을 바꾸지 않는다”와 “호출이 성공한다”의 차이
-
-## 6. Sequence diagram 작성법
-
-### 6.1 설명하려는 계약에 맞는 call 형태를 선택한다
-
-Sequence diagram을 항상 request/reply로 그릴 필요는 없다. 송신 경로 수락이나
-one-way 전달이 핵심이면 send 흐름이 더 정확하다. Reply correlation, request
-timeout이나 caller에게 결과가 돌아오는 과정까지 설명해야 하면 request/reply
-흐름을 사용할 수 있다.
-
-아래 다이어그램은 request 완료 과정을 설명할 때 사용할 수 있는 예시다.
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Source
-    participant Target
-    participant Spot
-
-    Caller->>Source: request 제출
-    Source->>Target: request와 필요한 생성 정보 전달
-    Target->>Target: Spot 존재 여부 확인
-    Target->>Spot: request를 queue에 한 번 제출
-    Spot-->>Target: reply 반환
-    Target-->>Source: 원래 request 식별 정보를 유지해 reply 전달
-    Source-->>Caller: request 결과 반환
-```
-
-### 6.2 화살표 설명은 한국어로 쓴다
-
-Participant 이름에는 정식 component 이름을 사용할 수 있다. 화살표, `alt`, `else`,
-`Note`의 설명은 한국어 문장으로 쓴다.
-
-### 6.3 Diagram이 보여주지 않는 경로를 명시한다
-
-Diagram이 정상 경로, 생성 권한을 얻은 경로 또는 특정 API만 보여준다면 바로 아래에
-범위를 적는다.
-
-예:
-
-> 이 다이어그램은 Missing Spot에서 선택된 target이 생성 권한을 얻는 정상 경로를
-> 보여준다. 다른 target이 먼저 생성 권한을 얻은 경우에는 현재 target이 Spot을
-> 만들지 않는다.
-
-### 6.4 물리 연결과 논리 target 선택은 별도 diagram으로 그린다
-
-두 API가 같은 socket이나 connection을 사용하더라도 물리 topology와 논리 target
-선택을 한 그림에 모두 넣으면 계층이 섞여 보일 수 있다. 다음 두 diagram으로 나눈다.
-
-첫 번째 diagram은 물리 연결만 보여준다.
-
-- 어떤 MeshName의 MeshNode가 서로 연결되는가?
-- MeshNode마다 어떤 socket과 RID가 있는가?
-- Full mesh 또는 다른 물리 topology가 어떻게 구성되는가?
-- 서로 다른 MeshName 사이에 자동 연결이나 relay가 있는가?
-
-같은 RouteMesh의 node를 `MeshNode A`, `MeshNode B`처럼 서로 다른 이름으로 표시하지
-않는다. 모든 node에 같은 MeshName을 반복해서 적고, 서로 다른 RID로 node를
-구분한다. MeshName은 물리 연결망을 구분하고 RID는 그 연결망 안의 node를
-식별한다는 차이가 그림만 보아도 드러나야 한다.
-
-두 번째 diagram은 이미 만들어진 물리 연결 위의 논리 관계만 보여준다.
-
-- Caller가 target RID를 직접 지정하는지, ChannelName을 지정하는지
-- Client와 Server membership 가운데 어느 쪽이 target 후보가 되는지
-- Ready와 weight로 어떤 후보를 선택하는지
-- 선택한 target에서 어느 queue와 handler namespace를 사용하는지
-
-한 diagram에 후보 snapshot, selector, transport와 queue를 모두 넣지 않는다.
-`Client role만 등록한 caller가 여러 remote Server 중 하나를 선택하는 경우`와
-`Server role의 caller가 자기 node를 포함한 후보 중 하나를 선택하는 경우`처럼
-application이 구분해야 하는 사례를 별도 diagram으로 단순하게 보여준다.
-
-Client-only 그림에서는 Client를 하나의 원으로, Server 후보를 각각의 node box로
-배치한다. Select-one 예시에서 실제로 선택된 Server 하나에만 화살표를 연결하고,
-나머지는 이번 호출에서 선택되지 않은 후보라고 본문에서 설명한다.
-
-Server role이 송신 기능을 포함하는 그림도 같은 구도를 사용한다. 왼쪽 원에는
-`server A에 포함된 송신 capability`라고 쓰고, 오른쪽 Server 후보에는 자기 node인
-server A를 함께 배치한다. 자기 node가 선택된 예시라면 server A에만 화살표를
-연결한다. 왼쪽 원은 별도로 등록한 Client role이 아니며 Server role에 포함된
-capability라는 점을 그림 아래에서 설명한다.
-
-두 번째 diagram 아래에는 실제 message가 첫 번째 diagram의 기존 peer 연결을
-사용하며 논리 Channel 등록이 socket을 추가하지 않는다고 명시한다.
-
-화살표 설명에는 “전송”만 쓰지 않고 `지정한 RID 유지`, `Server 후보로 등록`,
-`weight를 반영해 하나 선택`처럼 해당 단계의 계약을 적는다.
-
-## 7. 표 작성법
-
-표는 조건이나 역할을 비교할 때만 사용한다. 한 가지 흐름을 순서대로 설명할 때는
-번호 목록이나 sequence diagram을 사용한다.
-
-각 표는 다음 조건을 만족해야 한다.
-
-- 각 열의 비교 기준이 제목만으로 분명하다.
-- 셀 안에서도 주어와 동작을 생략하지 않는다.
-- `ready remote`, `local match`, `admission`처럼 용어만 나열하지 않는다.
-- Status나 field 이름 옆에 application이 관찰하는 의미를 쓴다.
-- 표에 담기 어려운 예외는 표 아래 산문으로 보충한다.
-
-결과 수를 설명할 때는 field 이름만 나열하지 않는다.
-
-| Field | 쉬운 설명 |
+| 호출 방식 | 상태가 적용되는 방법 |
 |---|---|
-| `snapshot` | 작업을 시작할 때 선택한 target 수 |
-| `admitted` | Message를 수락한 target 수 |
-| `dropped` | Queue 용량 부족으로 message를 수락하지 못한 target 수 |
-| `unreachable` | 송신 경로가 없어 연결할 수 없는 remote target 수 |
+| Framework가 target을 선택 | Ready, drain과 weight를 후보 구성에 적용한다. |
+| Caller가 identity를 직접 지정 | Framework는 다른 identity를 대신 선택하지 않는다. 지정한 target이 수락한다는 보장은 별도로 판단한다. |
 
-## 8. 코드 예제 작성법
+`target을 바꾸지 않는다`와 `호출이 성공한다`를 같은 뜻으로 쓰지 않는다.
 
-### 8.1 링크만 두지 않고 필요한 interface를 문서에 보여준다
+### 5.5 비슷한 API는 공통 차이부터 설명한다
 
-독자가 흐름을 이해하려고 다른 문서를 오가게 만들지 않는다. 설명에 필요한 public
-interface와 result type은 정식 interface 문서에서 정확히 발췌한다.
+Node direct, Spot direct와 Actor direct처럼 비슷한 API는 제한부터 나열하지 않는다.
 
-발췌하지 않은 overload나 세부 계약은 정식 interface 문서 링크로 연결한다.
+1. 주소 지정 방식의 가장 큰 차이를 설명한다.
+2. 각 방식이 사용하는 identity와 target을 설명한다.
+3. 실행하는 queue와 handler를 설명한다.
+4. Framework가 자동 변환하지 않는 경계를 설명한다.
 
-### 8.2 공통 계약을 특정 언어 계약으로 바꾸지 않는다
+Payload type이 같아도 다른 주소 지정 방식의 handler로 자동 전달하지 않는다면
+마지막 단계에서 명시한다.
 
-언어 중립 스펙에서도 .NET 코드를 비규범적 pseudo code처럼 사용할 수 있다. 이때
-다음 내용을 코드 앞에 명시한다.
+### 5.6 내부 제어 입력은 Application 관점에서 설명한다
 
-- 공통 동작을 이해하기 위한 예시다.
+Liveness beacon이나 relocation control message는 내부 이름보다 다음 결과를 먼저
+설명한다.
+
+- Framework가 사용하는 목적
+- Application payload와 구분하는 기준
+- 실행하지 않는 handler나 callback
+- 일반 message monitoring이나 tracing에 포함하는지
+- Byte 형식이나 timeout을 소유한 다른 계약
+
+## 6. 값, 상태와 제한을 설명하는 방법
+
+### 6.1 간접 구조는 실제 예로 푼다
+
+Root, manifest, reference, generation, tree와 digest처럼 다른 값을 가리키는 구조는
+정의만 나열하지 않는다.
+
+1. 원래 값이 무엇인지 설명한다.
+2. 왜 여러 record로 나누는지 설명한다.
+3. 각 record에 무엇이 들어가는지 설명한다.
+4. 어떤 변경이 새 상태를 공식적으로 공개하는지 설명한다.
+5. 중간에 실패한 record를 어떻게 정리하는지 설명한다.
+
+예를 들어 Actor 10,000개의 목록을 최대 1,024개씩 나눈다면 전체 Actor 상한과 목록
+페이지 하나의 제한을 같은 값처럼 쓰지 않는다.
+
+### 6.2 수치는 적용 범위를 붙인다
+
+같은 단위라도 목적이 다르면 별도 행으로 설명한다.
+
+| 범위 | 예 |
+|---|---|
+| 시스템 전체 | 전체 Actor·Spot 수에 고정 상한이 있는가? |
+| Object 하나 | User Spot 하나에 속할 수 있는 Actor 수 |
+| Record 하나 | 목록 페이지의 항목 수와 저장 크기 |
+| Payload | Application state와 queue data의 전체 크기 |
+| 실행 중 memory | 동시에 처리하는 in-flight byte 상한 |
+
+`최대 1 MiB`만 쓰지 않는다. 무엇의 encoded 크기인지 같은 문장이나 표 제목에서
+밝힌다.
+
+### 6.3 상태 변경의 원자적 범위를 밝힌다
+
+여러 값을 함께 바꿔야 하면 다음 내용을 설명한다.
+
+- 함께 검증하는 이전 값
+- 한 번에 바꾸는 record와 field
+- 충돌했을 때 변경되는 값이 있는지
+- 성공 전과 성공 후에 어느 node를 owner로 인정하는지
+- 실패 후 다시 읽어야 하는 공식 record
+
+`atomic`, `CAS` 또는 `transaction`이라고만 쓰지 않는다. 무엇이 전부 바뀌거나 전혀
+바뀌지 않는지 설명한다.
+
+## 7. 표와 다이어그램
+
+### 7.1 표
+
+표는 역할, 조건이나 결과를 비교할 때 사용한다. 시간 순서는 번호 목록이나 sequence
+diagram을 사용한다.
+
+표는 다음 조건을 만족해야 한다.
+
+- 열 제목만 읽어도 비교 기준을 알 수 있다.
+- 각 셀에 주어, 조건과 결과가 있다.
+- Status와 field 옆에 Application이 관찰하는 의미가 있다.
+- 용어만 나열하지 않는다.
+- 표에 들어가지 않는 예외는 바로 아래 문장으로 설명한다.
+
+### 7.2 Sequence diagram
+
+설명하려는 완료 경계에 맞는 call 형태를 선택한다. One-way 수락이 핵심이면 send
+흐름을 사용한다. Reply까지 설명해야 할 때만 request/reply를 사용한다.
+
+Participant에는 정식 component 이름을 사용할 수 있다. 화살표, 조건과 note는
+한국어 문장으로 쓴다. 정상 경로만 그렸다면 diagram 아래에서 제외한 실패나 경쟁
+경로를 밝힌다.
+
+물리 connection과 논리 target 선택은 한 그림에 섞지 않는다.
+
+- 물리 diagram: MeshName, Node RID, listener와 peer connection
+- 논리 diagram: caller가 지정한 identity, target 후보, ready·weight와 handler
+
+논리 Channel 등록이 새 socket을 만드는 것처럼 보이지 않게 두 diagram의 관계를
+설명한다. 한 그림에 candidate 목록, selector, transport, queue와 handler를 모두
+넣지 않는다.
+
+## 8. Public interface와 예제
+
+### 8.1 설명하는 절에 필요한 interface를 둔다
+
+독자가 의미를 확인하려고 다른 문서를 계속 오가지 않게 필요한 public interface와
+result type을 정확히 발췌한다. 모든 overload를 복사하지 않고 나머지는 exact
+interface 문서로 연결한다.
+
+같은 선언과 예제를 여러 절에 반복하지 않는다. 의미를 가장 직접 설명하는 절에 두고
+다른 절에서는 그 절을 링크한다.
+
+### 8.2 공통 계약과 언어별 표현을 구분한다
+
+공통 스펙에서 .NET 코드를 예시로 사용할 수 있다. 코드 앞에 다음 내용을 명시한다.
+
+- 공통 동작을 설명하는 예시다.
 - 다른 언어에 같은 signature를 요구하지 않는다.
-- 정확한 언어별 signature는 언어별 interface 문서가 정의한다.
+- 정확한 signature는 언어별 exact interface가 정의한다.
 
-### 8.3 핵심 호출 옆에 이유를 주석으로 쓴다
+실제 public interface가 아닌 설명용 코드는 `contract pseudocode`라고 표시한다.
 
-코드만 읽어도 해당 절의 핵심을 이해할 수 있어야 한다.
+### 8.3 코드 주석은 목적과 계약을 설명한다
+
+핵심 호출 옆에 코드만으로 알 수 없는 이유, 완료 시점이나 제약을 주석으로 쓴다.
 
 ```csharp
 return client
     .RequestToSpot(spotId, request)
-    .InstanceSpot("ShoppingCartSpot") // Spot이 없으면 이 type으로 새로 준비한다.
+    .InstanceSpot("ShoppingCartSpot") // Spot이 없을 때 사용할 factory type이다.
     .InMesh("object-mesh")             // 처음 배치할 Mesh에만 적용한다.
-    .Async<TReply>(cancellationToken); // Spot 준비 뒤 handler의 reply를 기다린다.
+    .Async<TReply>(cancellationToken); // Handler가 반환한 reply까지 기다린다.
 ```
 
-모든 줄을 설명하지 않는다. 코드만으로 알 수 없는 목적, 완료 시점과 제약이 있는
-줄에만 주석을 붙인다.
+호출 이름을 그대로 한국어로 반복하는 주석은 쓰지 않는다.
 
-### 8.4 Interface와 예제는 설명하는 절에 함께 둔다
+### 8.4 송신과 수신을 한 흐름으로 보여준다
 
-문서 앞부분에 public interface를 한꺼번에 보여주고 뒤의 role이나 lifecycle 절에는
-링크만 남기지 않는다. 특정 절의 의미가 API 선택에 따라 달라진다면 그 절에서 필요한
-interface만 다시 발췌하거나 앞의 발췌를 해당 절로 옮긴다.
+Caller가 설정하고 target이 읽는 metadata, timeout, filter와 correlation은 같은
+절에서 다음 내용을 연결한다.
 
-예를 들어 Client와 Server role의 차이를 설명하는 절에는 `Client()`와 `Server()`,
-Server에서만 제공하는 handler와 weight 설정을 함께 보여준다. 이어지는 최소 예제는
-caller process와 server process가 서로 다르다는 점과 각 process에 필요한 role을
-코드 주석으로 명시한다.
+1. 값을 설정하는 call builder
+2. 값을 읽는 handler context
+3. 선택한 target에서 보이는 최소 예제
+4. Ownership, 크기와 자동 복사 여부
 
-같은 interface와 예제를 여러 절에 그대로 복사하지 않는다. 가장 관련 있는 절에
-배치하고 다른 절에서는 해당 절을 링크한다.
+Handler 설명에는 handler를 찾는 key, 등록 builder, 실행 queue 또는 turn과 namespace
+경계를 함께 둔다.
 
-### 8.5 송신 설정과 수신 결과를 한 흐름으로 보여준다
+## 9. 완료와 실패
 
-Metadata, timeout, filter와 correlation처럼 caller가 설정하고 target handler가 읽는
-기능은 한쪽 interface만 보여주지 않는다. 다음 세 부분을 같은 절에서 연결한다.
+### 9.1 완료 경계를 나눈다
 
-1. Caller가 값을 설정하는 call builder interface
-2. Target handler가 값을 읽는 context interface
-3. 설정한 값이 선택된 target에서 보이는 최소 예제
+다음 시점을 별도로 설명한다.
 
-Metadata를 “message와 함께 전달한다”고만 쓰거나 interface 문서 링크만 남기면
-application이 실제로 어디에서 설정하고 읽는지 알 수 없다. Setter, receiver와
-ownership·크기·자동 복사 여부를 함께 설명한다. Packet 안의 frame 배치처럼 공개
-계약이 아닌 구현 상세는 추가하지 않는다.
+- Source queue 또는 transport가 작업을 수락한 시점
+- Remote queue가 message를 수락한 시점
+- Handler가 실행을 시작하거나 끝낸 시점
+- Request reply가 caller에게 도착한 시점
 
-### 8.6 Handler 선택 규칙과 메시징 방식의 경계를 interface로 확인시킨다
+Timeout이 어느 구간에 적용되는지, cancellation 뒤 remote 작업이 계속될 수 있는지,
+일부 target만 성공했을 때 이미 수락한 작업을 유지하는지도 설명한다.
 
-Handler를 설명하는 절에는 다음 정보를 함께 둔다.
+오류는 이름만 나열하지 않는다. Caller가 어떤 조건에서 어떤 status나 exception을
+관찰하는지 표로 설명한다.
 
-- Handler를 찾는 key와 namespace
-- 어느 builder에 handler를 등록하는지
-- 선택된 target에서 어떤 queue나 turn이 handler를 실행하는지
-- 같은 packet name을 다른 namespace에서 사용할 수 있는지
+### 9.2 비동기 terminal 이름
 
-Node direct와 ChannelName, ChannelName과 Classic fanout처럼 비슷해 보이는 방식은 각
-handler interface와 최소 등록 예제를 나란히 보여준다. 이때 “A의 payload를 B에
-전달하지 않는다”는 제한만 쓰지 않고, 각 방식이 선택하는 대상과 완료 시점을 먼저
-설명한다.
+같은 operation의 정상 비동기 완료를 나타내는 이름은 다음 규칙을 사용한다.
 
-## 9. 완료와 실패를 설명하는 방법
+| 언어 | 이름 |
+|---|---|
+| .NET | `Async` |
+| Kotlin 전용 wrapper | `await` |
+| Java·Node.js·C++ | `submit` |
 
-One-way 비동기 terminal의 정상 완료와 handler 실행 완료를 구분한다. 언어별 이름은
-.NET `Async`, Kotlin wrapper `await`, Java·Node.js·C++ `submit`을 사용한다. Request라면
-transport 수락과 reply 완료도 구분한다.
+현재 shared Spot gate를 실제로 반납하는 terminal만 `Yield` 또는 `yield`라고 쓴다.
+`SubmitAsync`처럼 서로 다른 완료 의미를 한 이름에 섞지 않는다.
 
-이 이름 규칙은 다음 call builder에만 적용한다.
+이 규칙은 다음 call builder에 적용한다.
 
-- Server Framework, Stream Connector와 zlink HTTP Client의 send·request·publish·reply·wait call
+- Server Framework, Stream Connector와 zlink HTTP Client의 send·request·publish·reply·wait
 - `RunCpuWorker`와 `RunIoWorker`가 반환하는 Worker call
 
-Network topology·endpoint·MeshNode 연결, Host·runtime·client 설정, Channel membership, handler·codec·
-security·retry 등록과 같은 configuration builder에는 적용하지 않는다. Spot·Actor create·get-or-create·
-join·close·destroy·relocation 같은 object lifecycle builder도 이름 규칙의 일반 대상이 아니다. 다만
-create·get-or-create의 `Yield`는 허용된 Spot 실행 문맥에서 turn을 반납하기 위한 별도 execution 특례다.
-`RelayAsync(...)`처럼 builder를 반환하지 않는 직접 method의 이름도 이 규칙으로 바꾸지 않는다.
+다음 API에는 일반 적용하지 않는다.
 
-같은 operation의 정상적인 비동기 완료를 표현할 때 .NET은 `Async`, Kotlin 전용 wrapper는 `await`,
-Java·Node.js·C++는 `submit`을 사용한다. 현재 shared Spot gate를 실제로 반납하는 terminal만
-`Yield`·`yield`라고 쓴다. `SubmitAsync`처럼 두 완료 의미를 한 이름에 섞지 않는다.
+- Topology, endpoint, runtime과 client configuration
+- Channel membership, handler, security와 retry 등록
+- Spot·Actor create, get-or-create, join, close, destroy와 relocation
+- Builder를 반환하지 않는 직접 method
 
-다음 질문에 각각 답한다.
+Create·get-or-create의 `Yield`는 허용된 Spot 실행 문맥에서 turn을 반납하는 별도
+특례다.
 
-- 송신 경로가 message를 수락하면 call이 완료되는가?
-- Target queue 수락까지 기다리는가?
-- Handler 실행이나 reply까지 기다리는가?
-- Timeout은 어느 단계부터 어느 단계까지 적용하는가?
-- Cancellation 뒤 remote handler가 이미 시작한 작업을 취소하는가?
-- 일부 target만 수락한 경우 이미 성공한 제출을 유지하는가?
+## 10. 이전 계약을 대체할 때
 
-정상 완료에는 반환 데이터가 없고 실패는 exception으로 전달한다. 오류 kind는 이름만
-나열하지 않고 caller가 관찰하는 조건을 표로 설명한다. Logical Multicast의 target별
-수치는 public result나 publish 전용 monitoring으로 제공하지 않음을 같은 위치에서 설명한다.
+이전 문서, 구현과 E2E는 누락 검사에 사용할 수 있다. 완성된 정식 스펙은 이 자료에
+판단을 위임하지 않는다.
 
-## 10. 이전 계약을 옮기고 대조하는 방법
+다음 내용을 완성된 문서에 남기지 않는다.
 
-이전 문서를 대체하는 스펙을 작성할 때는 이전 문서와 항목별로 대조한다. 이전 문서는
-누락을 찾는 입력 자료일 뿐, 완성된 스펙이 독자에게 다시 확인하도록 요구하는
-외부 기준이 아니다.
+- 폐기할 이전 문서 링크
+- 두 문서가 다르면 이전 문서를 따른다는 문구
+- 계약 일부를 구현 코드나 초안에서 확인하라는 안내
+- 이전 문서와 달라진 작성 이력
 
-| 확인 항목 | 대조할 내용 |
-|---|---|
-| 입력 | Required 값, optional 값, 크기와 범위 |
-| 대상 선택 | 조회 순서, 자동 선택 조건과 application이 지정할 수 없는 값 |
-| 정상 흐름 | 생성, 초기화, Ready와 최초 message 처리 순서 |
-| 경쟁 처리 | 여러 node나 중복 message가 동시에 도착했을 때 하나로 수렴하는 조건 |
-| 완료 | Send 수락 시점, request reply와 handler 실행의 관계 |
-| 실패 | Status, error, timeout, cancellation과 shutdown |
-| 수명 | 신규 message 차단, 이미 수락한 작업과 종료 시간 |
-| 결과 | Result field와 각 count의 의미 |
-| 검증 | 구현과 contract test가 확인해야 하는 조건 |
+대조 중 발견한 새 동작을 바로 정식 계약으로 추가하지 않는다. 현재 계약에
+포함할지 별도 리뷰를 거친다.
 
-이전 계약에 없는 동작을 이해를 돕는다는 이유로 보장처럼 추가하지 않는다. 설명을
-위해 추론한 내용이 필요하면 비규범적 예시라고 표시하고, 공개 계약으로 채택해야
-한다면 먼저 설계 검토를 거친다.
+## 11. 완료 점검표
 
-완성된 대체 스펙에는 다음 내용을 남기지 않는다.
+AI는 최종 보고 전에 아래 항목을 직접 확인한다.
 
-- 폐기할 이전 문서의 링크
-- “두 문서가 다르면 이전 문서를 따른다”는 우선순위 문구
-- 계약의 일부를 이전 문서에서 확인하라는 안내
-- 이전 문서와 달라진 작성 이력이나 비교표
+### 계약
 
-대조가 끝나면 이전 문서 없이도 모든 checklist 항목을 판단할 수 있는지 다시 읽는다.
+- [ ] 첫 단락에 문서의 질문, 결과와 책임 범위가 있다.
+- [ ] Application, Framework, provider와 remote runtime의 책임을 구분했다.
+- [ ] 대상이 있을 때와 없을 때의 동작을 설명했다.
+- [ ] 동시 요청이 하나로 수렴하는 조건을 설명했다.
+- [ ] 자동 선택, 직접 지정, fallback과 retry의 차이를 설명했다.
+- [ ] Send, remote 수락, handler와 reply 완료를 구분했다.
+- [ ] Timeout, cancellation, shutdown과 정리 결과를 설명했다.
+- [ ] 모든 수치에 적용 범위를 붙였다.
+- [ ] 구현과 contract test가 확인할 결과를 명시했다.
+- [ ] 이전 계약에 있던 상태, 수치와 실패 규칙을 빠뜨리지 않았다.
 
-## 11. 작성 완료 점검표
+### 용어와 설명
 
-### 내용
+- [ ] Glossary 용어는 각 문서의 첫 설명에서 쉬운 뜻과 링크를 함께 제공했다.
+- [ ] 같은 철자를 서로 다른 의미로 연결하지 않았다.
+- [ ] Public identifier와 업계 용어도 처음에 하는 일을 설명했다.
+- [ ] 불필요한 Framework 전용 영어 용어를 만들지 않았다.
+- [ ] 영어 명사를 이어 붙인 압축 표현을 동작이 드러나는 문장으로 바꿨다.
+- [ ] 한 문단에는 주된 판단 하나만 있다.
+- [ ] 간접 구조는 실제 값이나 개수를 사용한 예로 설명했다.
+- [ ] 객체, 연결과 상태를 의인화하지 않았다.
 
-- [ ] 첫 단락만 읽어도 문서의 질문과 책임 경계를 알 수 있다.
-- [ ] Application이 지정하는 값과 Framework가 결정하는 값을 구분했다.
-- [ ] 대상이 있을 때와 없을 때의 동작을 모두 설명했다.
-- [ ] Source와 target이 각각 확인하는 상태를 구분했다.
-- [ ] Local과 remote role, caller와 target에 필요한 등록을 각각 명시했다.
-- [ ] “자동으로 하지 않는다”와 “application도 할 수 없다”를 구분했다.
-- [ ] 자동 fallback·retry가 없을 때 application이 별도 호출을 시작할 수 있는지 설명했다.
-- [ ] 자동 target 선택의 제외 조건과 caller가 identity를 직접 지정하는 호출을 구분했다.
-- [ ] Target을 바꾸지 않는다는 규칙을 호출 성공 보장처럼 쓰지 않았다.
-- [ ] 최초 message가 언제 몇 번 queue에 들어가는지 설명했다.
-- [ ] Send, request와 handler의 완료 시점을 구분했다.
-- [ ] 내부 제어 신호가 application handler와 일반 message 관측에 나타나는지 설명했다.
-- [ ] Status와 result field를 쉬운 문장으로 설명했다.
-- [ ] 이전 계약의 수치, 상태, 실패와 검증 요구를 빠뜨리지 않고 현재 문서에 옮겼다.
-- [ ] 폐기할 이전 문서의 링크나 우선순위 문구가 남아 있지 않다.
+### 표, diagram과 코드
 
-### 표현
+- [ ] 표의 각 셀에 조건과 결과가 있다.
+- [ ] 시간 순서는 번호 목록이나 sequence diagram으로 설명했다.
+- [ ] Diagram의 화살표와 조건은 한국어로 작성했다.
+- [ ] 물리 connection과 논리 target 선택을 별도 diagram으로 구분했다.
+- [ ] 필요한 public interface와 최소 예제를 관련 절에 배치했다.
+- [ ] 코드 주석은 호출을 반복하지 않고 목적과 계약을 설명한다.
+- [ ] 송신 설정과 수신 context를 같은 흐름에서 확인할 수 있다.
 
-- [ ] 페이지에서 처음 나오는 용어는 쉬운 설명을 먼저 붙였다.
-- [ ] 두 번째로 등장하는 domain term에 용어집 항목을 연결했다.
-- [ ] 새 domain term을 용어집에 추가하거나 기존 정의와 일치하는지 확인했다.
-- [ ] `descriptor` 같은 상위 용어를 실제 흐름에서 구체적인 domain 이름으로 썼다.
-- [ ] 불필요한 내부 용어와 영어 명사 나열을 제거했다.
-- [ ] 객체나 연결을 의인화하지 않았다.
-- [ ] 표의 각 셀을 축약어가 아닌 완전한 문장으로 작성했다.
-- [ ] Diagram의 화살표, 조건과 note를 한국어로 작성했다.
-- [ ] 물리 연결과 논리 target 선택을 서로 다른 diagram으로 분리했다.
-- [ ] 코드 주석이 호출을 반복하지 않고 목적과 계약을 설명한다.
-- [ ] Role이나 lifecycle을 설명하는 절에 필요한 interface와 최소 예제를 함께 두었다.
-- [ ] Caller가 설정하고 handler가 읽는 기능은 송신 interface와 수신 context를 한 흐름으로 보여 주었다.
-- [ ] Handler를 찾는 key, 등록 위치와 실행 범위를 같은 절에서 설명했다.
+### 검증
 
-### 형식
-
-- [ ] Markdown code fence가 모두 닫혀 있다.
-- [ ] 상대 링크가 실제 문서를 가리킨다.
+- [ ] 상대 링크와 glossary anchor가 실제 위치를 가리킨다.
+- [ ] Markdown 표와 code fence가 올바르다.
 - [ ] Mermaid 문법을 확인했다.
-- [ ] 표의 열 수가 모든 행에서 같다.
-- [ ] Trailing whitespace와 금지 표현이 없다.
+- [ ] `git diff --check`가 통과한다.
+- [ ] `scripts/verify-framework-doc-contracts.sh`가 통과한다.

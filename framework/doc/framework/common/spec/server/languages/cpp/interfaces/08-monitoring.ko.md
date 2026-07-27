@@ -6,47 +6,37 @@ Monitoring에 표시하는 Channel, ClientServer와 placement weight는 configur
 descriptor가 사용하는 값과 같다. C++에서는 signed `int`의 `0..10000` 범위로
 표현하며 `std::uint8_t`처럼 범위가 더 좁은 타입으로 바꾸지 않는다.
 
-## 1. Host termination 관측
+## 1. Host lifecycle 관측
 
 Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `mesh_node_state_t`는 MeshNode 상태를
 나타내며 host termination 상태로 재사용하지 않는다.
 
 ```cpp
-struct framework_runtime_snapshot_t {
+struct framework_runtime_status_t {
     framework_runtime_state_t state;
-    std::optional<termination_intent_t> effective_intent;
-    std::optional<std::chrono::system_clock::time_point> deadline;
-    bool work_sealed;
-    std::optional<termination_reason_t> blocker_reason;
-    std::uint64_t pending_request_count;
-    std::uint64_t pending_relocation_count;
-    std::uint64_t pending_stream_barrier_count;
-    std::optional<termination_result_t> terminal_result;
+    bool is_ready;
+    bool accepting_work;
+    std::optional<std::chrono::system_clock::time_point> operation_deadline;
+    std::optional<relocation_result_t> relocation_result;
+    std::optional<termination_result_t> termination_result;
     std::uint64_t sequence;
     std::chrono::system_clock::time_point observed_at;
-};
-
-struct framework_runtime_event_t {
-    std::string identifier;
-    std::uint64_t sequence;
-    std::chrono::system_clock::time_point timestamp;
-    framework_runtime_state_t state;
-    std::optional<termination_intent_t> effective_intent;
-    std::optional<termination_outcome_t> outcome;
-    std::optional<termination_reason_t> reason;
 };
 
 class framework_runtime_t {
 public:
     virtual ~framework_runtime_t() = default;
-    virtual framework_runtime_state_t state() const noexcept = 0;
-    virtual bool is_ready() const noexcept = 0;
-    virtual framework_runtime_snapshot_t snapshot() const = 0;
+    virtual framework_runtime_status_t status() const = 0;
     virtual std::unique_ptr<runtime_observation_t> observe(
       std::size_t capacity,
-      std::function<void(const framework_runtime_event_t &)> observer) = 0;
+      std::function<void(const framework_runtime_status_t &)> observer) = 0;
 };
 ```
+
+`is_ready`는 `state == framework_runtime_state_t::serving`일 때만 `true`다. `accepting_work`는 host가
+새 application operation을 받는지를 나타낸다. Status는 application이 lifecycle operation의 결과와
+readiness를 판단하는 데 필요한 값만 제공한다. Relocation unit 수, queue, barrier와 Store 내부 상태는
+포함하지 않는다.
 
 ### 1.1 MeshNode placement capacity
 

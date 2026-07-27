@@ -160,7 +160,7 @@ Capture exception은 authority publication 전에 relocation을 abort하고 sour
 exception은 target admission을 sealed 상태로 유지한 채 같은 immutable payload를 retry하거나 target을 교체한다.
 Factory는 target attempt마다 fresh Spot instance를 만들며 source나 이전 attempt instance를 재사용하지 않는다.
 같은 attempt에서는 Restore가 반복될 수 있다. Exception을 빈 payload나 성공으로 바꾸지 않는다. Capture의 null
-stage와 null `byte[]`, Restore의 null stage는 contract 위반이다. Host Retire에서 deadline이 먼저 확정되지 않은
+stage와 null `byte[]`, Restore의 null stage는 contract 위반이다. Host relocation에서 deadline이 먼저 확정되지 않은
 precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`, [deadline](../../../../01-glossary.ko.md#deadline)이 먼저 확정되면
 `Blocked/DeadlineExceeded`다. Stale attempt cancellation은 terminal result를 commit하지 못한다. Capture와
 restore는 at-least-once이고 stale target attempt와 겹칠 수 있으므로 retry-safe해야 한다.
@@ -247,7 +247,7 @@ logical timer registration을 복원하므로 application이 timer를 다시 등
 User Spot의 `close()`는 active Actor membership이 있으면 `false`를 반환한다. Spot state, admission과 authority는
 바꾸지 않고 `onClosing`을 호출하거나 Actor를 자동 leave·destroy하지 않는다. Caller는 Actor를 명시적으로
 leave 또는 destroy한 뒤 다시 close한다. Manager에서 Spot이 missing인 경우도 `false`이므로 caller는 사전 read
-없이 두 경우를 구분하지 않는다. Host Shutdown·Retire는 Actor barrier를 끝낸 뒤 Spot cleanup을 수행한다.
+없이 두 경우를 구분하지 않는다. Host `Shutdown`은 Actor barrier를 끝낸 뒤 Spot cleanup을 수행한다.
 Manager의 `find`와 `close`도 User Spot만 대상으로 한다. Instance Spot이 자신의 lifecycle을 끝내는 public 표면은
 `ZLinkInstanceSpotContext.close()`이며 이 context 내부 close 계약은 유지한다.
 

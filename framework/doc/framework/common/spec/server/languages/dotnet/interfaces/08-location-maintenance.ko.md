@@ -157,9 +157,14 @@ Page size는 `1..1000`이고 continuation token은 해당 query가 발급한 opa
 
 ## 4. Host maintenance
 
-Relocation만 따로 시작하는 application API는 제공하지 않는다. Host maintenance는 기존
-`IZLinkFrameworkRuntime.RetireAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
-
-`RetireAsync(...)`는 가능한 workload를 다른 owner로 이전한 뒤 host를 종료한다. `ShutdownAsync(...)`는 새
-relocation을 요구하지 않고 bounded cleanup 뒤 host를 종료한다. 정확한 signature와 결과는
+Host maintenance는 `IZLinkFrameworkRuntime.RelocateAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
+`RelocateAsync(...)`는 가능한 workload를 다른 owner로 이전하고 `Drained` 상태에서 완료한다.
+`PlannedMaintenance`는 source와 같은 application version으로만 이전하며 target version을 받지 않는다.
+`RollingUpdate`는 source보다 큰 target version을 필수로 받고 그 version과 정확히 일치하는 node로만
+이전한다. 두 mode 모두 version, maintenance wave, capability, capacity, placement weight 순서로
+candidate를 제한하고 선택한다. 요청 조건을 만족하는 target이 없으면 deadline까지 기다린 뒤
+`Blocked/TargetUnavailable`로 완료한다.
+Application은 결과를 확인한 뒤 `ShutdownAsync(...)`로 host를 종료할 수 있다. `ShutdownAsync(...)`를
+`Serving`에서 바로 호출하면 새 relocation을 시작하지 않고 bounded cleanup 뒤 host를 종료한다.
+정확한 signature와 결과는
 [Host monitoring](10-topology-monitoring.ko.md)이 소유한다.

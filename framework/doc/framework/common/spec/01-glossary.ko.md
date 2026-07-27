@@ -101,6 +101,17 @@ User·Instance Spot ID를 지정하면 Store와 factory를 실행하기 전에 `
 세 종류의 기능, Actor membership, close와 relocation 차이는
 [Spot 모델](19-spot-model.ko.md)이 정의한다.
 
+<a id="actor-membership"></a>
+### Actor membership
+
+Actor가 현재 어느 Entry Spot 또는 User Spot에 속하는지 나타내는 관계다. Location
+Store가 이 관계의 기준을 보관한다. Actor를 다른 Spot이나 node로 옮길 때는 Actor
+owner와 source·target Spot의 membership을 한 번의 Location Store 변경으로 함께
+바꾼다.
+
+Channel이나 Mesh에 node가 참여한다는
+[Membership](#membership)과는 다른 개념이다.
+
 <a id="user-spot-execution-mode"></a>
 ### User Spot execution mode
 
@@ -276,6 +287,16 @@ public readonly record struct ZLinkAuthorityKey(
     string Value); // Object kind와 global logical key에 대응하는 provider key
 ```
 
+### Compare-and-set
+
+Store에서 값을 읽을 때 받은 version이 그대로일 때만 값을 바꾸는 조건부 변경이다.
+다른 요청이 먼저 값을 바꿨으면 변경하지 않고 충돌을 반환한다. Framework는 이
+방식으로 같은 Actor·Spot의 owner나 membership을 동시에 두 요청이 서로 다르게
+바꾸지 못하게 한다. 문서에서는 줄여서 CAS라고 쓴다.
+
+CAS가 여러 record를 대상으로 할 때는 조건 확인과 모든 변경을 한 Store 요청에서
+처리한다. 하나라도 조건이 다르면 어떤 record도 변경하지 않는다.
+
 `ZLinkAuthoritySnapshot`의 공개 field는 다음과 같다.
 
 ```csharp
@@ -379,9 +400,14 @@ Store reservation이 factory와 callback 실행을 하나씩 직렬화한다. �
 <a id="reservation-id"></a>
 ### Reservation ID
 
-Location Store가 creation attempt 하나를 구분하는 opaque identifier다. 같은
-`ReservationId`는 CAS winner와 recovery가 같은 Creating authority를 fence하는 데
-사용한다. 서로 다른 operation을 같은 application result에 합류시키는 식별자가 아니다.
+Location Store에서 생성 또는 relocation을 위해 확보한 수용 공간과 진행 record를
+구분하는 식별자다. 생성용 ID와 relocation용 ID는 서로 다른 namespace를 사용한다.
+같은 ID와 같은 요청을 다시 보내면 앞서 발급한 결과를 반환한다. 같은 ID로 내용이
+다른 요청을 보내면 `Conflict`다.
+
+이 값은 process 재시작 뒤 같은 작업을 계속하거나 정확히 그 작업만 취소할 때
+사용한다. 서로 다른 operation을 같은 application 결과에 합류시키는 식별자가
+아니다.
 
 ```csharp
 public readonly record struct ZLinkCreationReservationId(
@@ -804,8 +830,13 @@ family별 send timeout까지 capacity를 기다린다. Logical Multicast transac
 <a id="timed-out"></a>
 ### DeadlineExceeded
 
-허용된 send timeout까지 송신 경로나 queue가 message를 수락하지 못했을 때 발생하는 Framework exception이다.
-Public submit status가 아니며 request handler 실행 timeout과 같은 terminal reply도 아니다.
+Operation에 허용된 deadline까지 해당 operation의 완료 조건을 만족하지 못했을 때
+발생하는 Framework exception이다. 완료 조건은 operation마다 다르다. 예를 들어
+one-way send는 source queue가 message를 수락하는 시점, object 생성은 `Ready` 또는
+생성 실패 결과가 확정되는 시점까지 기다린다.
+
+Public submit status가 아니며 request handler가 application reply를 반환하지 못한
+상태와도 구분한다.
 
 <a id="target-not-found"></a>
 ### TargetNotFound
@@ -914,6 +945,15 @@ Actor나 Spot을 다른 node에서 계속 실행해야 할 때 application state
 계약이다. Application은 operation마다 policy를 바꾸지 못하며 startup 뒤
 registration도 변경할 수 없다.
 
+<a id="snapshot-relocation-policy"></a>
+### Snapshot relocation policy
+
+Actor나 Spot을 다른 node로 옮길 때 application state를 bytes로 저장하고 target의
+새 instance에 복원하는 relocation policy다. Framework가 관리하는 queue, 아직
+끝나지 않은 작업과 timer도 함께 옮긴다.
+
+Monitoring에서 특정 시점의 상태를 복사한 [Snapshot](#snapshot)과는 다른 개념이다.
+
 <a id="classic-fanout"></a>
 ### Classic fanout
 
@@ -982,17 +1022,36 @@ Actor queue head의 현재 job 하나를 실행할 권한이다. 같은 Actor에
 | 공개 구성 | Actor identity와 현재 queue head job을 결합한다. |
 | 수명 | Handler 시작부터 continuation을 포함한 현재 job 완료까지 유지된다. `SpotWide` member Actor가 `Yield`해도 User Spot gate만 반환하며 이 claim은 유지한다. |
 
+<a id="relocation-mode"></a>
+### Relocation mode
+
+Host의 stateful object를 어느 application version으로 이전할지 지정하는 caller intent다.
+Application version을 유지하는 node 점검은 `PlannedMaintenance`, 준비한 새 version으로
+전환하는 배포는 `RollingUpdate`를 사용한다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Closed value `PlannedMaintenance=0`, `RollingUpdate=1` |
+| .NET 표기 | `ZLinkFrameworkRelocationMode` |
+| 공개 구성 | `PlannedMaintenance`는 source와 같은 effective target version을 사용한다. `RollingUpdate`는 source보다 큰 exact `TargetApplicationVersion`을 함께 지정한다. |
+| 수명 | 한 host `Relocate` operation을 시작할 때 고정하며 terminal result에도 같은 mode와 effective target version을 기록한다. |
+
+Mode가 정한 exact version을 먼저 적용하고 그 뒤 capability, policy, adapter, capacity와
+placement weight를 평가한다. 요청한 version과 다른 node는 더 높은 version이어도 target이
+아니다.
+
 <a id="drain"></a>
 ### Drain과 draining
 
-Drain은 종료나 다른 host로의 이전을 준비하기 위해 새로운 application 작업의
-수락과 target 선택을 단계적으로 닫고, 이미 수락한 작업을 정해진 시간 안에
-정리하는 과정이다. 이 과정이 진행 중인 상태를 `draining` 또는 `drain 중`이라고
-한다.
+Drain은 host를 종료하기 위해 새로운 application 작업의 수락을 닫고, 이미 수락한
+작업과 infrastructure resource를 정해진 시간 안에 정리하는 과정이다. 이 과정이
+진행 중인 상태를 `draining` 또는 `drain 중`이라고 한다. Stateful object를 다른
+host로 이전하는 relocation은 별도 operation이며 성공하면 host가 `Drained`가 된다.
 
 Drain을 시작했다고 해서 기존 connection을 즉시 끊거나 이미 수락한 작업을 바로
 취소하지 않는다. 어떤 신규 작업을 차단하고 기존 작업을 언제까지 처리하는지는
-component와 `Retire`·`Shutdown` 단계에 따라 달라진다.
+component와 `Shutdown` 단계에 따라 달라진다. `Relocate`는 unit별 seal 전까지
+기존 application 처리를 유지하고 성공해도 host를 종료하지 않는다.
 
 ClientServer Server에서는 drain을 시작하면 새로운 send와 request의 target
 선택에서 제외하고 새 업무 message의 수락을 중단한다. 이미 수락한 handler와
@@ -1004,8 +1063,8 @@ request reply는 deadline까지 처리한 뒤 descriptor, owner lease와 listene
 |---|---|
 | 형태 | Lifecycle process와 closed state |
 | .NET 표기 | `IZLinkFrameworkRuntime`, `ZLinkFrameworkRuntimeState`, `ZLinkFrameworkRuntimeEvent` |
-| 공개 구성 | `RetireAsync`·`ShutdownAsync`, host runtime state와 deadline을 사용한다. |
-| 수명 | Drain 시작부터 정상 정리 또는 force-stop 완료까지 진행하며 이미 수락한 작업의 deadline을 보존한다. |
+| 공개 구성 | Mode와 exact target application version을 받는 `RelocateAsync`, 별도 `ShutdownAsync`, host runtime state와 deadline을 사용한다. |
+| 수명 | `Shutdown` 시작부터 정상 정리 또는 force-stop 완료까지 진행하며 이미 수락한 작업의 deadline을 보존한다. |
 
 <a id="drain-deadline"></a>
 ### Drain deadline

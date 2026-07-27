@@ -565,7 +565,7 @@ const plannedAdds = [
   ['regression:add:relocation-cas-conflict-orphan-cleanup', 'regression', 'Relocation Store 저장 뒤 Location CAS가 충돌하면 authority를 변경하지 않고 미공개 root를 orphan TTL 또는 idempotent delete 대상으로 남긴다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['regression:add:relocation-root-replacement-order', 'regression', '새 immutable relocation root 저장, Location reference CAS, 이전 root 정리 순서를 고정하고 중간 실패가 published root를 손상하지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['regression:add:relocation-reference-release-before-delete', 'regression', 'Location Store가 relocation reference 사용 종료를 CAS한 뒤에만 Relocation Store payload를 삭제한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:location-participant-digest-authority', 'regression', 'bounded canonical participant set과 inventory digest의 authority는 Location Store에만 있고 Relocation manifest는 payload 탐색에만 사용하며 두 digest가 일치해야 한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:location-participant-digest-authority', 'regression', 'Location Store의 immutable inventory tree와 root·전체 count·digest가 authority다. Relocation manifest는 payload 탐색에만 사용하며 count와 digest가 모두 일치해야 한다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['regression:add:relocation-data-lost-no-rollback', 'regression', 'published payload의 영구 누락, checksum 불일치와 participant inventory digest 불일치를 non-retriable RelocationDataLost로 분류하고 임의 rollback을 금지한다.', 'V11-M6-SCAFFOLD-ZERO'],
 ];
 const plannedRuntimeLanguages = ['cpp', 'dotnet', 'java', 'node'];

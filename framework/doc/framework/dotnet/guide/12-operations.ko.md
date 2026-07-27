@@ -96,10 +96,11 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.location.owner_lease.renew.failures` | owner lease 갱신 실패 누계 |
 | `zlink.location.owner_lease.renew.lateness` | 예정 시각 대비 owner lease 갱신 지연 |
 | `zlink.observability.events.overflow` | monitoring·trace observer queue overflow 누계 |
-| `zlink.termination.state` | 현재 host Framework runtime state |
-| `zlink.termination.duration` | Retire·Shutdown 시작부터 terminal result까지의 시간 |
-| `zlink.termination.blocked` | admission을 바꾸지 않고 끝난 Retire 수 |
-| `zlink.termination.forced` | bounded teardown으로 끝난 operation 수 |
+| `zlink.host.state` | 현재 host Framework runtime state |
+| `zlink.host.relocation.duration` | Host `Relocate` 시작부터 terminal result까지의 시간 |
+| `zlink.host.relocation.blocked` | `Blocked`로 끝난 host `Relocate` 수 |
+| `zlink.host.shutdown.duration` | Host `Shutdown` 시작부터 terminal result까지의 시간 |
+| `zlink.host.shutdown.forced` | Bounded teardown으로 끝난 host `Shutdown` 수 |
 
 ## 2. Retire — continuity를 유지하는 host 종료
 
@@ -228,7 +229,7 @@ await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
 
 `ZLinkFrameworkRuntimeState`의 `Preparing`·`Serving`·`Retiring`·`Draining`·`Stopped`·`Error`를 그대로
 관측한다. Terminal event의 intent·outcome·reason은 `RetireAsync` 또는 `ShutdownAsync` 결과와 같아야 한다.
-수치로 보려면 §1의 `zlink.termination.*` 계기를 사용한다.
+수치로 보려면 §1의 `zlink.host.*` 계기를 사용한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

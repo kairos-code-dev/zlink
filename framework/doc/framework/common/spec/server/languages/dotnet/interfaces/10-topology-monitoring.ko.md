@@ -1,34 +1,51 @@
 # .NET topology와 host monitoring 공개 인터페이스
 
-[.NET exact interface 목차](README.ko.md)
+[.NET exact interface 목차](README.ko.md) ·
+[Runtime monitoring](../../../../50-runtime-monitoring.ko.md) ·
+[Host Relocate, Shutdown & Handoff](../../../../54-graceful-drain-handoff.ko.md)
 
-## 1. Runtime snapshot, event와 host termination
+## 1. 범위
+
+이 문서는 .NET application이 host 종료를 요청하고 RouteMesh·ClientServer·Fanout의 운영 상태를
+확인할 때 사용하는 public interface를 고정한다. Status와 관찰 stream에는 application이 상태를 판단하거나
+대응 방법을 선택하는 데 필요한 값만 포함한다.
+
+Framework가 topology를 조정할 때 사용하는 descriptor revision, lifecycle generation, endpoint,
+admission·claim·reservation 단계와 Location Store record는 public interface에 포함하지 않는다.
+이 값은 application이 변경할 수 없으며 Framework가 stale state와 ownership을 판정할 때만 사용한다.
+
+## 2. Host lifecycle
+
+`Relocating`, `Drained`와 `Draining`은 application에 미치는 영향이 다르므로 별도 상태로 제공한다.
+`Relocating`에서는 새 placement와 application admission을 받지 않고 현재 object를 다른 node로 이전한다.
+`Drained`에서는 이전이 완료되었지만 host infrastructure를 유지한다. `Draining`에서는 relocation 없이
+남아 있는 application 처리와 resource를 정리한다.
 
 ```csharp
 public enum ZLinkFrameworkRuntimeState
 {
     Preparing = 0,
     Serving = 1,
-    Retiring = 2,
-    Draining = 3,
-    Stopped = 4,
-    Error = 5
+    Relocating = 2,
+    Drained = 3,
+    Draining = 4,
+    Stopped = 5,
+    Error = 6
 }
 
-public enum ZLinkFrameworkTerminationIntent
+public enum ZLinkFrameworkRelocationOutcome
 {
-    Retire = 0,
-    Shutdown = 1
+    Drained = 0,
+    Blocked = 1
 }
 
-public enum ZLinkFrameworkTerminationOutcome
+public enum ZLinkFrameworkRelocationMode
 {
-    Stopped = 0,
-    Blocked = 1,
-    ForceStopped = 2
+    PlannedMaintenance = 0,
+    RollingUpdate = 1
 }
 
-public enum ZLinkFrameworkTerminationReason
+public enum ZLinkFrameworkRelocationReason
 {
     None = 0,
     TargetUnavailable = 1,
@@ -37,165 +54,208 @@ public enum ZLinkFrameworkTerminationReason
     StateIncompatible = 4,
     DeadlineExceeded = 5,
     RelocationFailed = 6,
-    TeardownFailed = 7,
-    RuntimeNotReady = 8,
-    ManualTopologyUnsupported = 9
+    RuntimeNotReady = 7,
+    ManualTopologyUnsupported = 8,
+    ShutdownRequested = 9,
+    OperationInProgress = 10
+}
+
+public sealed record ZLinkFrameworkRelocationOptions
+{
+    public required ZLinkFrameworkRelocationMode Mode { get; init; }
+    public long? TargetApplicationVersion { get; init; }
+    public TimeSpan? Deadline { get; init; }
+}
+
+public readonly record struct ZLinkFrameworkRelocationResult(
+    ZLinkFrameworkRelocationMode Mode,
+    long TargetApplicationVersion,
+    ZLinkFrameworkRelocationOutcome Outcome,
+    ZLinkFrameworkRelocationReason Reason);
+
+public enum ZLinkFrameworkTerminationOutcome
+{
+    Stopped = 0,
+    ForceStopped = 1
+}
+
+public enum ZLinkFrameworkTerminationReason
+{
+    None = 0,
+    DeadlineExceeded = 1,
+    TeardownFailed = 2
 }
 
 public readonly record struct ZLinkFrameworkTerminationResult(
-    ZLinkFrameworkTerminationIntent EffectiveIntent,
     ZLinkFrameworkTerminationOutcome Outcome,
     ZLinkFrameworkTerminationReason Reason);
 
-public sealed record ZLinkFrameworkRuntimeSnapshot(
+public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState State,
-    ZLinkFrameworkTerminationIntent? EffectiveIntent,
+    bool IsReady,
+    bool AcceptingWork,
     DateTimeOffset? Deadline,
-    bool WorkSealed,
-    ZLinkFrameworkTerminationReason? BlockerReason,
-    ulong PendingRequestCount,
-    ulong PendingRelocationCount,
-    ulong PendingStreamBarrierCount,
-    ZLinkFrameworkTerminationResult? TerminalResult,
+    ZLinkFrameworkRelocationResult? RelocationResult,
+    ZLinkFrameworkTerminationResult? TerminationResult,
     ulong Sequence,
     DateTimeOffset ObservedAt);
 
-public sealed record ZLinkFrameworkRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    ZLinkFrameworkRuntimeState State,
-    ZLinkFrameworkTerminationIntent? EffectiveIntent,
-    ZLinkFrameworkTerminationOutcome? Outcome,
-    ZLinkFrameworkTerminationReason? Reason);
-
 public interface IZLinkFrameworkRuntime
 {
-    ZLinkFrameworkRuntimeState State { get; }
-    bool IsReady { get; }
-    ZLinkFrameworkRuntimeSnapshot Snapshot();
-    IAsyncEnumerable<ZLinkFrameworkRuntimeEvent> ObserveAsync(
-        int capacity = 1024,
+    ZLinkFrameworkRuntimeStatus Status { get; }
+
+    IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkFrameworkTerminationResult> RetireAsync(
-        TimeSpan? deadline = null,
+
+    ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(
+        ZLinkFrameworkRelocationOptions options,
         CancellationToken cancellationToken = default);
+
     ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
         TimeSpan? deadline = null,
         CancellationToken cancellationToken = default);
 }
+```
 
-public enum ZLinkMeshNodeState
+`IsReady`는 `State == Serving`일 때만 true다. `AcceptingWork`는 현재 host가 새로운 application
+operation을 받아들이는지를 나타낸다. 두 값은 relocation unit 수나 queue 내부 상태를 application에
+노출하지 않고도 readiness와 admission을 판단할 수 있게 한다.
+
+`RelocateAsync(...)`는 mode가 정한 application version의 target으로 현재 stateful object를 이전한다.
+`PlannedMaintenance`에서는 `TargetApplicationVersion`을 지정하지 않으며 Framework가 source host의
+`ApplicationVersion`을 effective target version으로 고정한다. `RollingUpdate`에서는 source보다 큰
+`TargetApplicationVersion`을 반드시 지정한다. 다른 값 조합은 operation을 시작하기 전에
+`ArgumentException`으로 거부한다.
+
+Target version 조건은 capability, capacity와 weight를 적용하기 전에 후보 집합을 제한한다.
+
+- `PlannedMaintenance`: source와 application version이 같은 target만 사용한다.
+- `RollingUpdate`: 호출자가 지정한 application version과 정확히 같은 target만 사용한다. 그보다 높거나
+  낮은 다른 version으로 자동 전환하지 않는다.
+
+두 mode 모두 source node를 제외하고 `Serving` 상태인 Object Server, stable type, relocation policy,
+Snapshot adapter와 capacity가 호환되는 target만 사용한다. Source에 `MaintenanceWave`가 설정되어 있으면
+같은 wave의 target을 제외한다. 남은 후보가 여러 개이면 기존 node-wide placement weight를 적용한다.
+요청한 version의 eligible target이 없으면 deadline까지 descriptor와 Core ready 상태의 수렴을 기다린 뒤
+`Blocked/TargetUnavailable`을 반환한다.
+
+모든 object의 이전이 끝나면 `Drained`를 반환하고 host는 `Drained`가 된다.
+이 상태에서는 새 application operation을 받지 않지만 infrastructure와 연결은 유지한다. 이전을 안전하게
+시작하거나 완료할 수 없으면 `Blocked`를 반환한다. Framework는 아직 commit하지 않은 변경을 정리하고
+host가 계속 처리할 local object가 있으면 `Serving`으로 복귀한다.
+
+`ShutdownAsync(...)`는 relocation을 시작하지 않는다. `Serving`에서 호출하면 남은 application 처리와
+resource를 정리하고, `Drained`에서 호출하면 infrastructure와 연결만 정리한다. 두 경우 모두 종료를
+완료하면 `Stopped`가 된다. `deadline == null`이면 각 operation의 기본값은 30초다.
+
+`ShutdownAsync(...)`가 `Relocating` 중 호출되면 현재 atomic relocation unit의 terminal 결과까지만
+확정하고 나머지 relocation을 시작하지 않는다. Relocation waiter는 `Blocked/ShutdownRequested`를 받고
+shutdown operation은 source에 남은 object와 resource를 정리한다.
+
+호출자가 전달한 `CancellationToken`은 해당 waiter만 종료한다. 이미 시작한 shared lifecycle operation은
+계속 실행되며 다른 waiter와 host lifecycle에 영향을 주지 않는다. 같은 operation을 반복 호출한 waiter는
+진행 중인 operation과 terminal 결과를 공유한다. `Mode`와 effective target application version이 모두 같은
+호출만 합류한다. 다른 options로 호출하면 기존 operation을 변경하지 않고
+`Blocked/OperationInProgress`를 반환한다.
+
+## 3. 공통 topology 상태
+
+Topology status는 사용자가 readiness와 장애 범위를 판단할 수 있는 닫힌 상태만 제공한다.
+`ZLinkOperationalReason`은 application이 설정을 확인하거나 잠시 후 다시 관찰할지를 결정하는 데 사용한다.
+세부 transport 또는 Store 오류는 .NET logging과 tracing에 기록한다.
+
+```csharp
+public enum ZLinkOperationalState
 {
     Starting = 0,
-    Serving = 1,
+    Ready = 1,
+    Degraded = 2,
+    Stopping = 3,
+    Stopped = 4,
+    Failed = 5
+}
+
+public enum ZLinkOperationalReason
+{
+    RuntimeNotReady = 0,
+    NoReadyPeer = 1,
+    NoReadyTarget = 2,
+    LocationUnavailable = 3,
+    CapacityExceeded = 4,
+    Draining = 5,
+    InternalFailure = 6
+}
+
+public enum ZLinkPeerState
+{
+    Connecting = 0,
+    Ready = 1,
     Draining = 2,
-    Drained = 3,
-    ForceStopping = 4,
-    Stopped = 5,
-    Faulted = 6
+    Unavailable = 3
 }
 
-public sealed record ZLinkMeshPeerSnapshot(
-    RoutingId Rid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
-    string AdmissionState,
-    bool Ready,
-    string DrainState,
-    IReadOnlyList<string> ChannelNames,
-    string? LastFailure);
-
-public sealed record ZLinkMeshChannelSnapshot(
+public sealed record ZLinkChannelStatus(
     string ChannelName,
-    int LocalWeight,
-    int ReadyMemberCount,
-    bool Selectable);
+    bool IsReady,
+    int ReadyTargetCount);
 
-public sealed record ZLinkMeshClaimSnapshot(
-    bool ApplicationActive,
-    ulong PendingApplicationWork,
-    bool InfrastructureActive,
-    ulong PendingInfrastructureWork);
+public sealed record ZLinkPeerStatus(
+    RoutingId NodeRid,
+    ZLinkPeerState State,
+    ZLinkOperationalReason? UnavailableReason);
+```
 
-public sealed record ZLinkInstanceSpotTypeSnapshot(
-    string InstanceSpotType,
-    ulong ActiveCount,
-    ulong ActivatingCount,
-    ulong ClosingCount,
-    ulong PendingMessageCount,
-    ulong PendingByteCount,
-    string? LastActivationOutcome);
+`NodeRid`는 MeshNode의 transport identity이며 peer를 log와 deployment 정보에 대응시키는 데 사용한다.
+별도의 운영용 node identity를 추가하지 않는다. Endpoint와 connection generation은 public status에서
+제공하지 않는다.
 
-public sealed record ZLinkLocationRuntimeSnapshot(
-    string State,
-    DateTimeOffset? LastSuccessAt,
-    DateTimeOffset? LastFailureAt);
+## 4. RouteMesh
 
-public sealed record ZLinkMeshNodeSnapshot(
+RouteMesh status는 같은 MeshName의 peer 연결, channel readiness와 object placement 가능 여부를
+한 번에 보여 준다. Placement count는 이 process에 존재하는 active object만 집계한다.
+
+```csharp
+public sealed record ZLinkPlacementStatus(
+    bool IsAvailable,
+    int ActiveActorCount,
+    int ActiveSpotCount,
+    ZLinkOperationalReason? UnavailableReason);
+
+public sealed record ZLinkRouteMeshStatus(
     string MeshName,
-    RoutingId Rid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
-    ZLinkMeshNodeState State,
+    ZLinkOperationalState State,
+    bool IsReady,
+    int ReadyPeerCount,
+    IReadOnlyList<ZLinkChannelStatus> Channels,
+    IReadOnlyList<ZLinkPeerStatus> Peers,
+    ZLinkPlacementStatus Placement,
     ulong Sequence,
-    DateTimeOffset ObservedAt,
-    IReadOnlyList<string> DescriptorSources,
-    IReadOnlyList<ZLinkMeshPeerSnapshot> Peers,
-    IReadOnlyList<ZLinkMeshChannelSnapshot> Channels,
-    ZLinkMeshClaimSnapshot Claims,
-    ZLinkLocationRuntimeSnapshot Location)
-{
-    public long ApplicationVersion { get; init; }
-    public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
-    public int PlacementWeight { get; init; }
-    public ZLinkPlacementCapacity PopulationCapacity { get; init; }
-        = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
-    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
-        = new(0, 128);
-    public ulong PlacementReservationFailureCount { get; init; }
-    public string? LastPlacementReservationFailure { get; init; }
-    public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
-        = Array.Empty<ZLinkObjectCapability>();
-    public IReadOnlyList<ZLinkInstanceSpotTypeSnapshot> InstanceSpots { get; init; }
-        = Array.Empty<ZLinkInstanceSpotTypeSnapshot>();
-}
-
-public sealed record ZLinkMeshRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    string MeshName,
-    RoutingId SourceRid,
-    RoutingId? PeerRid,
-    ulong? LifecycleGeneration,
-    ulong? DescriptorRevision,
-    string? ChannelName,
-    string? ClaimDomain,
-    string? MessageKind,
-    string? PlacementOutcome,
-    ZLinkCapacityVector? Capacity,
-    ZLinkPlacementCapacity? PopulationCapacity,
-    ZLinkActivationConcurrency? ActivationConcurrency,
-    string? Reason,
-    ZLinkMeshNodeState? State)
-    : Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-{
-    public string SourceName => MeshName;
-}
+    DateTimeOffset ObservedAt);
 
 public interface IZLinkRouteMeshRuntime
 {
-    ZLinkMeshNodeSnapshot Snapshot(string meshName);
-    IAsyncEnumerable<ZLinkMeshRuntimeEvent> ObserveAsync(
-        string meshName,
-        int capacity = 1024,
-        CancellationToken cancellationToken = default);
-    bool IsReady(string meshName);
-}
+    ZLinkRouteMeshStatus GetStatus(string meshName);
 
+    IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+        string meshName,
+        CancellationToken cancellationToken = default);
+}
+```
+
+`IsReady`는 host가 `Serving`이고 해당 RouteMesh가 application traffic을 처리할 수 있을 때 true다.
+`ReadyPeerCount`는 ready 상태인 remote MeshNode 수다. Local channel도 정상적으로 사용할 수 있으므로
+peer가 0개라는 이유만으로 모든 RouteMesh를 unavailable로 판정하지 않는다.
+
+`Placement.IsAvailable`은 이 node가 Object Server role이고 새로운 Actor·Spot을 받을 수 있을 때 true다.
+Population reservation, activation barrier와 stable type별 내부 count는 public status에 포함하지 않는다.
+
+## 5. ClientServer
+
+같은 process에 등록한 Server도 remote Server와 같은 weight 규칙을 적용받는 정상적인 target이다.
+Status는 선택 가능한 전체 target 수와 target별 운영 상태를 제공하며 endpoint와 discovery revision은
+제공하지 않는다.
+
+```csharp
 public enum ZLinkClientServerRole
 {
     Client = 1,
@@ -203,351 +263,87 @@ public enum ZLinkClientServerRole
     ClientAndServer = 3
 }
 
-public enum ZLinkClientServerServerState
-{
-    Configured = 0,
-    Connecting = 1,
-    Ready = 2,
-    Draining = 3,
-    Disconnected = 4,
-    Rejected = 5
-}
-
-public sealed record ZLinkClientServerServerSnapshot(
-    RoutingId ServerRid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
+public sealed record ZLinkClientServerTargetStatus(
+    RoutingId NodeRid,
     int Weight,
-    bool Ready,
-    ZLinkClientServerServerState State,
-    string DescriptorSource,
-    string? LastFailure);
+    ZLinkPeerState State,
+    ZLinkOperationalReason? UnavailableReason);
 
-public sealed record ZLinkClientServerChannelSnapshot(
+public sealed record ZLinkClientServerStatus(
     string ChannelName,
     ZLinkClientServerRole LocalRole,
-    bool Selectable,
-    int ReadyServerCount,
-    int ConnectionIntentCount,
-    int PendingRequestCount,
+    ZLinkOperationalState State,
+    bool IsReady,
+    int ReadyTargetCount,
+    IReadOnlyList<ZLinkClientServerTargetStatus> Targets,
     ulong Sequence,
-    DateTimeOffset ObservedAt,
-    IReadOnlyList<ZLinkClientServerServerSnapshot> Servers,
-    ZLinkLocationRuntimeSnapshot Location);
-
-public sealed record ZLinkClientServerRuntimeEvent(
-    string Identifier,
-    ulong Sequence,
-    DateTimeOffset Timestamp,
-    string ChannelName,
-    RoutingId? ServerRid,
-    ulong? LifecycleGeneration,
-    ulong? DescriptorRevision,
-    int? Weight,
-    bool? Ready,
-    ZLinkClientServerServerState? State,
-    string? Reason);
+    DateTimeOffset ObservedAt);
 
 public interface IZLinkClientServerRuntime
 {
-    ZLinkClientServerChannelSnapshot Snapshot(string channelName);
-    IAsyncEnumerable<ZLinkClientServerRuntimeEvent> ObserveAsync(
+    ZLinkClientServerStatus GetStatus(string channelName);
+
+    IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
         string channelName,
-        int capacity = 1024,
         CancellationToken cancellationToken = default);
-    bool IsReady(string channelName);
 }
+```
 
-public enum ZLinkFanoutPublisherConnectionState
-{
-    Connecting = 0,
-    Ready = 1,
-    Disconnected = 2,
-    Reconnecting = 3,
-    ExcludedDraining = 4,
-    ExcludedStale = 5
-}
+`ReadyTargetCount`에는 local·remote 구분 없이 positive weight를 가지고 있으며 draining 상태가 아닌
+Ready Server를 포함한다. `Targets`는 진단을 위한 읽기 전용 값이다. 이 목록으로 특정 Server를 선택하거나
+target weight를 변경하지 않는다.
 
-public sealed record ZLinkFanoutPublisherConnectionSnapshot(
-    RoutingId PublisherRid,
-    ulong LifecycleGeneration,
-    ulong DescriptorRevision,
-    string Endpoint,
-    bool ConnectionIntent,
-    bool Ready,
-    ZLinkFanoutPublisherConnectionState State,
-    string? LastFailure);
+## 6. Fanout
 
-public sealed record ZLinkFanoutChannelSnapshot(
+Fanout runtime status는 automatic subscriber가 현재 사용할 수 있는 publisher 연결을 보여 준다.
+개별 publisher의 endpoint, discovery source와 generation은 Framework가 관리한다.
+
+```csharp
+public sealed record ZLinkFanoutStatus(
     string ChannelName,
-    int ConnectionIntentCount,
-    int ReadyConnectionCount,
+    ZLinkOperationalState State,
+    bool IsReady,
+    int ReadyPublisherCount,
+    IReadOnlyList<ZLinkPeerStatus> Publishers,
     ulong Sequence,
-    DateTimeOffset ObservedAt,
-    IReadOnlyList<ZLinkFanoutPublisherConnectionSnapshot> Publishers,
-    ZLinkLocationRuntimeSnapshot Location);
-
-public abstract record ZLinkFanoutRuntimeEvent
-{
-    private protected ZLinkFanoutRuntimeEvent(
-        string identifier,
-        ulong sequence,
-        DateTimeOffset timestamp,
-        string channelName)
-    {
-        Identifier = identifier;
-        Sequence = sequence;
-        Timestamp = timestamp;
-        ChannelName = channelName;
-    }
-
-    public string Identifier { get; }
-    public ulong Sequence { get; }
-    public DateTimeOffset Timestamp { get; }
-    public string ChannelName { get; }
-
-    public sealed record PublisherChanged(
-        ulong Sequence,
-        DateTimeOffset Timestamp,
-        string ChannelName,
-        ZLinkFanoutPublisherConnectionSnapshot Entry)
-        : ZLinkFanoutRuntimeEvent(
-            "zlink.runtime.fanout.publisher_changed",
-            Sequence,
-            Timestamp,
-            ChannelName);
-
-    public sealed record LocationChanged(
-        ulong Sequence,
-        DateTimeOffset Timestamp,
-        string ChannelName,
-        ZLinkLocationRuntimeSnapshot Location)
-        : ZLinkFanoutRuntimeEvent(
-            "zlink.runtime.location.store_changed",
-            Sequence,
-            Timestamp,
-            ChannelName);
-}
+    DateTimeOffset ObservedAt);
 
 public interface IZLinkFanoutRuntime
 {
-    ZLinkFanoutChannelSnapshot Snapshot(string channelName);
-    IAsyncEnumerable<ZLinkFanoutRuntimeEvent> ObserveAsync(
+    ZLinkFanoutStatus GetStatus(string channelName);
+
+    IAsyncEnumerable<ZLinkFanoutStatus> ObserveAsync(
         string channelName,
-        int capacity = 1024,
         CancellationToken cancellationToken = default);
 }
 ```
 
-`PopulationCapacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
-active·reserved·limit을 구분한다. Limit `0`은 제한 없음이다. Entry Spot 자체는 Spot count에서 제외하고
-Entry Spot의 Actor는 Actor 전체 count에 포함한다. `ActivationConcurrency`의 active·limit은 population
-reservation과 별도로 제공한다. Placement event의 `Capacity`는 해당 operation의 typed vector이고
-`PopulationCapacity`는 관찰 시점의 node aggregate다.
+Manual subscriber의 연결 목록은 manual connection API가 소유한다. Manual ChannelName을
+`IZLinkFanoutRuntime`으로 조회하면 `ZLinkConfigurationException`이 발생한다.
 
-`InstanceSpots`는 이 MeshNode에 startup에서 등록한 Instance type별 immutable 집계다. `ActiveCount`는
-`Ready` 상태에서 업무 message를 처리할 수 있는 수이고, 나머지 count는 `Activating`, `Closing`, activation
-barrier 앞의 pending message와 byte를 각각 나타낸다. `LastActivationOutcome`은 아직 terminal activation을
-관찰하지 않았으면 `null`이고, 값이 있으면 `ready`, `rejected`, `conflict`, `timed_out`, `shutdown`,
-`store_failure`, `fenced` 가운데 하나다. 이 snapshot에는 Spot ID, owner ID, `ObjectGeneration`,
-`AuthorityOwnerGeneration`, `StoreVersion`과 owner lease fence의 개별 목록을 포함하지 않는다.
+## 7. 관찰 stream
 
-`IZLinkFrameworkRuntime`은 host maintenance를 소유하는 singleton이다. `RetireAsync(...)`와
-`ShutdownAsync(...)`는 MeshName이나 ChannelName을 받지 않는다. `deadline == null`은 30초이며 cancellation은
-해당 waiter만 끝낸다. Host가 `Draining`으로 전환된 뒤에는 먼저 시작한 operation의 deadline과
-`EffectiveIntent`가 고정되고 cross-intent waiter도 그 terminal result에 합류한다. `Blocked`는 concurrent
-preflight waiter에게만 공유하며 host terminal result로 저장하지 않는다.
+각 `ObserveAsync(...)`는 상태가 의미 있게 바뀌었을 때 완성된 immutable status를 전달한다. 소비자가
+변경 속도를 따라가지 못하면 중간 status를 합치고 최신 status를 전달한다. Status stream은 모든 전이를
+감사하는 event log가 아니다.
 
-`Preparing` 또는 `Error`의 `RetireAsync`는 admission을 바꾸지 않고
-`Blocked/RuntimeNotReady`를 반환한다. `ShutdownAsync`는 두 state에서도 bounded cleanup을 시작한다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)과
-seal 시점의 member Actor는 bounded aggregate로 함께 이전한다. Participant의 `Disabled` policy나 호환 target 부재는
-aggregate 전체를 commit 전에 차단한다. Enum의 숫자와 허용 outcome·reason 조합은
-[Host Retire, Shutdown & Handoff](../../../../54-graceful-drain-handoff.ko.md)를
-그대로 투영한다.
+Identifier에
+따라 nullable field의 의미가 달라지는 범용 event DTO는 사용하지 않는다. 소비자는 event 종류별 field
+조합을 해석하지 않고 받은 status 전체를 현재 상태로 사용할 수 있다.
 
-Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
-하나라도 등록되어 있으면 `RetireAsync`는 state와 admission을 바꾸기 전에
-`Blocked/ManualTopologyUnsupported`를 반환한다. `ShutdownAsync`에는 이 제한을 적용하지 않는다. Automatic
-RouteMesh는 source의 Core peer table에서 descriptor와 같은 RID·lifecycle generation이 `Ready`가 된 뒤에만
-`Retiring`으로 전환한다.
-이 검사는 현재 process의 registration만 판정한다. 다른 process의 manual endpoint나 Framework 밖의 client
-connection mode는 관찰할 수 없으며, 참여 process 전체가 automatic discovery를 사용한다는 조건은 deployment가
-보장한다.
+`Sequence`는 같은 runtime instance의 status 순서를 비교하는 값이다. Process가 다시 시작되면 0부터
+시작할 수 있으며 persistence나 전역 순서를 보장하지 않는다.
 
-`Blocked/DeadlineExceeded`는 모든 target의 `Prepared` 완료와 `Draining` publication 전에 [deadline](../../../../01-glossary.ko.md#deadline)이 끝난
-결과다. Framework는 reversible 작업을 정리하고 host state와 admission을 복원한다. `Draining` publication 뒤
-bounded teardown이 deadline을 넘으면 `ForceStopped/DeadlineExceeded`를 반환한다. 두 결과는 같은 reason을
-사용하지만 phase와 side effect가 다르며 enum을 추가하지 않는다.
+`CancellationToken`은 해당 asynchronous enumeration만 종료한다. 취소를 인식한 뒤에는 새 status를
+전달하지 않으며 다른 observer, topology 연결과 host lifecycle에는 영향을 주지 않는다.
 
-`IZLinkClientServerRuntime`은 [ChannelName](../../../../01-glossary.ko.md#channelname)으로 ClientServer [snapshot](../../../../01-glossary.ko.md#snapshot)과 event를 제공하며 [MeshName](../../../../01-glossary.ko.md#meshname)을 받지
-않는다. Remote Server RID와 endpoint는 관측 값이고 target 선택 API가 아니다.
-같은 ChannelName에 Client와 Server를 함께 등록하면 `LocalRole`은 `ClientAndServer`다. 이 값은 두
-별도 registration이 하나의 ClientServer topology를 공유한다는 snapshot aggregate projection이다.
-Builder에서 선택하거나 `(ChannelName, Role)` registration key로 사용할 수 없다.
+## 8. Dispatch policy와 diagnostics
 
-`IZLinkRouteMeshRuntime.IsReady(...)`와 `IZLinkClientServerRuntime.IsReady(...)`는 host
-`FrameworkRuntimeState == Serving` projection과 해당 조회 대상의 ready 조건을 함께
-만족할 때만 true이며 별도 host lifecycle authority를 만들지 않는다.
-
-`ZLinkMeshNodeState`는 읽기 전용 component 상태다. MeshName을 받는 partial drain operation과 component
-termination result는 제공하지 않는다. 모든 topology의 admission과 resource 종료는 host `RetireAsync` 또는
-`ShutdownAsync`가 한 번에 조정한다.
-
-`IZLinkFanoutRuntime`은 endpoint 없이 등록한 automatic subscriber ChannelName만 받는다. Snapshot의
-`Publishers`와 `ZLinkFanoutRuntimeEvent.PublisherChanged.Entry`는 Publisher RID, lifecycle generation,
-descriptor revision과 endpoint를 하나의 immutable identity로 보존한다.
-`ZLinkFanoutRuntimeEvent.LocationChanged.Location`은 publisher가 0개여도 store degraded·recovered 상태를
-전달한다. 두 sealed variant는 서로의 payload를 nullable field로 섞지 않는다. `State`의 닫힌 값과 event identifier는
-[Runtime monitoring](../../../../50-runtime-monitoring.ko.md)의 lowercase identifier를 그대로 사용한다. 이
-service는 읽기 전용이며 manual
-subscriber의 `IZLinkEndpointConnections`를 대신하거나 그 endpoint 집합을 변경하지 않는다. Manual
-subscriber ChannelName을 조회하면 `ZLinkConfigurationException`이 발생한다.
-
-`ObserveAsync(...)`의 `CancellationToken`은 해당 asynchronous enumeration 하나만 종료한다. 취소를
-인식하면 아직 소비하지 않은 event를 폐기하고 enumeration을 그 token에 연결된
-`OperationCanceledException`으로 종료한다. 이미 실행을 시작한 소비 코드는 반환할 수 있지만 취소를
-인식한 뒤에 새 event를 전달하지 않는다. 다른 enumeration, automatic connection과 manual endpoint
-집합은 영향을 받지 않는다.
-
-`ConnectionIntent=true`는 automatic planner가 endpoint 연결을 요청했다는 뜻이고 transport readiness가
-아니다. `Ready=true`, `ReadyConnectionCount`와 `PublisherChanged`의 `ready` state는 publisher 전용 SUB
-socket의 native-ready와 같은 socket의 첫 valid application fanout record 또는 liveness beacon 수신을 모두
-반영한다. `disconnected`는 native disconnect 또는 15초 inbound timeout을 반영한다. `Connect` 반환,
-native-ready 하나와 내부 active target 수로 이 값을 먼저 바꾸지 않는다.
-
-## 2. Message flow와 metric
+Unhandled message 정책과 diagnostics 설정은 별도의 child interface가 담당한다. Dispatch configuration은
+두 interface를 찾는 root 역할만 하며 tracing mode, observer, error sink와 file output을 직접 제공하지
+않는다.
 
 ```csharp
-public enum ZLinkRuntimeMessageFlowMode
-{
-    Off = 0,
-    ErrorsOnly = 1,
-    KeyTransitions = 2,
-    Verbose = 3
-}
-
-public sealed record ZLinkRuntimeMessageFlowEvent(
-    string EventId,
-    DateTimeOffset Timestamp,
-    string? Phase,
-    string Surface,
-    string MessageKind,
-    string Outcome,
-    string? Reason,
-    string? Action,
-    string? MeshName,
-    string? ChannelName,
-    string? ChannelRouteKind,
-    RoutingId? SourceRid,
-    RoutingId? TargetRid,
-    RoutingId? ServerRid,
-    string? PacketName,
-    string? Topic,
-    string? SpotId,
-    string? InstanceSpotType,
-    string? ActivationState,
-    string? ActorId,
-    string? CorrelationId,
-    string? FlowId,
-    string? FlowOrigin,
-    long? MessageSizeBytes,
-    double? DurationSeconds);
-
-public sealed record ZLinkRuntimeErrorEvent(
-    string EventId,
-    DateTimeOffset Timestamp,
-    string Kind,
-    string Source,
-    string Reason);
-
-public interface IZLinkRuntimeMessageFlowObserver
-{
-    ValueTask OnMessageFlowAsync(
-        ZLinkRuntimeMessageFlowEvent flow,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkRuntimeErrorSink
-{
-    ValueTask OnRuntimeErrorAsync(
-        ZLinkRuntimeErrorEvent error,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkDispatchOptions
-{
-    IZLinkUnhandledDispatchOptions Unhandled { get; }
-    IZLinkDiagnosticsOptions Diagnostics { get; }
-    IZLinkDispatchOptions TraceSampleRate(double rate);
-    IZLinkDispatchOptions IncludeMessageSizes(bool include);
-    IZLinkDispatchOptions TraceLogFile(string path);
-    IZLinkDispatchOptions TraceLabel(string label);
-    IZLinkDispatchOptions SetRuntimeMessageFlowObserver<TObserver>()
-        where TObserver : class, IZLinkRuntimeMessageFlowObserver;
-    IZLinkDispatchOptions SetRuntimeMessageFlowObserver(
-        IZLinkRuntimeMessageFlowObserver observer);
-    IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
-        where TSink : class, IZLinkRuntimeErrorSink;
-    IZLinkDispatchOptions SetRuntimeErrorSink(IZLinkRuntimeErrorSink sink);
-    IZLinkDispatchOptions MessageFlow(ZLinkRuntimeMessageFlowMode mode);
-}
-
-public interface IZLinkMessageFlowRuntime
-{
-    ZLinkRuntimeMessageFlowMode Mode { get; set; }
-    IAsyncEnumerable<ZLinkRuntimeMessageFlowEvent> ObserveAsync(
-        int capacity = 1024,
-        CancellationToken cancellationToken = default);
-}
-```
-
-Message flow의 기본 mode는 `ErrorsOnly`이며 실행 중 변경할 수 있다. Observer는 immutable event를 받고
-dispatch 결정에 참여하지 않는다. `EventId == "zlink.dispatch_error"`일 때 `Outcome`은
-`"failed"`이고 `Reason`과 `Action`이 모두 존재한다. runtime error sink는 observer 실패를
-`EventId == "zlink.runtime_error"`, `Kind == "observer_failed"`, `Source == "message_flow_observer"`로
-받는다. 두 event에 exception object를 포함하지 않으며 sink 실패는 다시 sink를 호출하지
-않는다. 닫힌 문자열 값과 조건부 field 규칙은 [Message flow](../../../../52-message-flow-tracing.ko.md)이
-소유한다. Instance [Spot](../../../../01-glossary.ko.md#spot) event의 `InstanceSpotType`은 startup에 등록한 type이고 `ActivationState`는
-`activating`, `ready`, `closing` 가운데 하나다. Metric은 `System.Diagnostics.Metrics`의 `Meter` 이름
-`zlink.framework`로 제공하고, 계기 이름·단위·label은
-[Runtime metrics](../../../../51-runtime-metrics.ko.md)의 공통 계약을 그대로 사용한다.
-
-Instance activation 계기는 다음 .NET instrument로 투영한다.
-
-| 계기 | .NET instrument | 단위 | Label |
-|---|---|---|---|
-| `zlink.instance_spot.activations` | `Counter<long>` | `{activation}` | `mesh_name`, `instance_spot_type`, `outcome` |
-| `zlink.instance_spot.activation.duration` | `Histogram<double>` | `s` | `mesh_name`, `instance_spot_type`, `outcome` |
-| `zlink.instance_spot.pending.messages` | `ObservableGauge<long>` | `{message}` | `mesh_name`, `instance_spot_type` |
-| `zlink.instance_spot.pending.bytes` | `ObservableGauge<long>` | `By` | `mesh_name`, `instance_spot_type` |
-| `zlink.instance_spot.claim.conflicts` | `Counter<long>` | `{claim}` | `mesh_name`, `instance_spot_type`, `reason` |
-| `zlink.instance_spot.takeovers` | `Counter<long>` | `{takeover}` | `mesh_name`, `instance_spot_type`, `outcome` |
-
-이 계기는 공통 spec의 `mesh_name`, 등록된 `instance_spot_type`, 닫힌 `outcome`·`reason` label만 사용한다.
-[Spot ID](../../../../01-glossary.ko.md#spot-id), [owner](../../../../01-glossary.ko.md#owner) ID, internal [authority](../../../../01-glossary.ko.md#authority) fields, endpoint와 correlation ID는 label로 기록하지 않는다. Instance one-way
-activation 실패는 `zlink.mesh_node.messages.dropped`에 `surface=instance_spot`으로 기록하며 완료된 submit
-결과를 바꾸거나 reply를 만들지 않는다.
-## 3. Dispatch policy와 diagnostics configuration
-
-```csharp
-public interface IZLinkUnhandledDispatchOptions
-{
-    ZLinkUnhandledDispatchAction Request { get; set; }
-    ZLinkUnhandledDispatchAction Send { get; set; }
-    ZLinkUnhandledDispatchAction Publish { get; set; }
-}
-
-public interface IZLinkDiagnosticsOptions
-{
-    ZLinkRuntimeMessageFlowMode MessageFlow { get; }
-    double SampleRate { get; }
-    bool IncludeMessageSizes { get; }
-    string? LogFile { get; }
-    string? Label { get; }
-    ZLinkRuntimeMessageFlowMode EffectiveMessageFlow { get; }
-}
-
 public enum ZLinkUnhandledDispatchAction
 {
     ReplyError = 0,
@@ -556,9 +352,40 @@ public enum ZLinkUnhandledDispatchAction
     Throw = 3
 }
 
+public interface IZLinkUnhandledDispatchOptions
+{
+    ZLinkUnhandledDispatchAction Request { get; set; }
+    ZLinkUnhandledDispatchAction Send { get; set; }
+    ZLinkUnhandledDispatchAction Publish { get; set; }
+}
+
+public enum ZLinkDiagnosticsLevel
+{
+    Off = 0,
+    Errors = 1,
+    Normal = 2,
+    Detailed = 3
+}
+
+public interface IZLinkDiagnosticsOptions
+{
+    IZLinkDiagnosticsOptions SetLevel(ZLinkDiagnosticsLevel level);
+    IZLinkDiagnosticsOptions SetSampleRate(double rate);
+    IZLinkDiagnosticsOptions IncludeMessageSizes(bool include);
+}
+
+public interface IZLinkDispatchOptions
+{
+    IZLinkUnhandledDispatchOptions Unhandled { get; }
+    IZLinkDiagnosticsOptions Diagnostics { get; }
+}
 ```
 
-`IZLinkDispatchOptions.Diagnostics`는 fluent configuration의 read-only view다. Runtime message flow observer와
-runtime error sink는 §2의 한 event model을 사용한다. 실행 중 mode 변경과 bounded event stream 관찰은
-`IZLinkMessageFlowRuntime`이 함께 소유한다. 별도 control interface, observer interface, mode enum과 event DTO를
-병렬로 제공하지 않는다.
+`SetSampleRate(...)`는 `0.0` 이상 `1.0` 이하만 허용한다. 범위를 벗어나면
+`ArgumentOutOfRangeException`이 발생한다. Message size를 기록하면 payload 크기 분포가 telemetry에
+추가되며 payload 내용은 기록하지 않는다.
+
+.NET runtime은 trace를 `ActivitySource`, metric을 `System.Diagnostics.Metrics.Meter`, log를
+`Microsoft.Extensions.Logging.ILogger`로 제공한다. Export 대상과 log 저장 위치는 application의
+telemetry와 logging configuration이 결정한다. Framework는 file path를 받거나 자체 exporter lifecycle을
+public API로 제공하지 않는다.

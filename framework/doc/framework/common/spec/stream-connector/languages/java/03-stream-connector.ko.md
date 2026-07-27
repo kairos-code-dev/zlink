@@ -280,7 +280,7 @@ Connector가 시작한 outbound operation은 UUIDv7 `flow_id`를 한 번 생성�
 Connector instance의 mutable 필드나 thread ID로 current flow를 추정하지 않는다. wire 형식과 비동기
 문맥 경계는
 [Stream Connector §4.2](../../32-stream-connector.ko.md#42-header)와
-[Flow Correlation §6](../../../53-flow-correlation.ko.md#6-async-context)이 소유한다.
+[Flow Correlation §6](../../../53-flow-correlation.ko.md#6-async-작업과-execution-context)이 소유한다.
 
 ### 7.2 테스트 대기 표면
 

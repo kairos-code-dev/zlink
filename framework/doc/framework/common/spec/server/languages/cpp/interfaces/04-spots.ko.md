@@ -495,13 +495,13 @@ Recovery pointer는 첫 handler terminal completion을 durable하게 기록하�
 갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
 User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이 있다는 이유만으로
-Retire를 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와
+host relocation을 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와
 `instance_spot_context_t::close()`는 context가 보유한 exact current SpotRef를 사용한다.
 
 일반 User Spot close는 active Actor membership이 하나라도 있으면 `false`로 끝나고 admission과 authority를
 유지한다. Caller가 member Actor의 leave 또는 destroy를 완료한 뒤에만 close할 수 있으며, Framework가 close를
-위해 Actor를 숨겨서 이동하거나 제거하지 않는다. Host Retire는 close와 다르게 User Spot과 current member
-Actor 전체를 bounded aggregate로 이전한다.
+위해 Actor를 숨겨서 이동하거나 제거하지 않는다. Host relocation은 close와 다르게 User Spot과 current
+member Actor 전체를 하나의 aggregate로 이전하며 participant 총수에 고정 상한을 두지 않는다.
 
 Instance Spot factory는 actor-free lifecycle만 구현한다. Source runtime은 Instance Spot marker가 있는 direct
 call에서만 missing RID의 [activation envelope](../../../../01-glossary.ko.md#activation-envelope)를 target에 보낸다. Target runtime은 envelope를 근거로 자신을

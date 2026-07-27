@@ -44,9 +44,11 @@ Network identity의 공통값과 listener별 override는
 [13 Network listener identity](13-network-listener-identity.ko.md)가 소유한다.
 
 Root 등록은 process당 Framework runtime singleton 하나를 제공한다. 이 runtime은 host 전체를 대상으로
-`Retire`와 `Shutdown`을 수행한다. MeshName, ChannelName이나 node RID별 drain operation은 제공하지 않는다.
-State, terminal result, 기본 deadline, 반복 호출과 cancellation 계약은
-[54 Host Retire, Shutdown & Handoff](54-graceful-drain-handoff.ko.md)가 소유한다.
+mode를 필수로 받는 `Relocate`와 별도의 `Shutdown`을 수행한다. `PlannedMaintenance`는 source와 같은
+application version으로 이전하고, `RollingUpdate`는 caller가 지정한 source보다 큰 exact version으로
+이전한다. MeshName, ChannelName이나 node RID별 drain operation은 제공하지 않는다.
+State, mode별 target 선택, terminal result, 기본 deadline, 반복 호출과 cancellation 계약은
+[54 Host Relocate, Shutdown & Handoff](54-graceful-drain-handoff.ko.md)가 소유한다.
 
 Framework builder는 service liveness interval과 [deadline](01-glossary.ko.md#deadline)을 공개하지 않는다. Service runtime은 공통 profile을
 내부에서 적용하며 orderly disconnect와 half-open 장애를 구분한다. 고정값, service liveness message와 reconnect
@@ -126,9 +128,12 @@ Framework의 `MaxMessageSize = 0`은 Framework가 transport 기본값보다 작�
 언어별 internals가 소유하며 application public API에 노출하지 않는다.
 
 MeshNode builder에는 drain policy나 lifecycle command를 추가하지 않는다. Host의 continuity maintenance는
-Framework runtime의 `Retire`, 일반 종료는 `Shutdown`이 수행한다. `Retiring`은 permit을 얻은 relocation unit부터
-진행하면서 나머지 unit의 application 처리를 유지하는 state이고, `Draining`은 source application dispatch를 모두
-끝낸 뒤 resource를 정리하는 state다. Channel weight 0을 lifecycle state 대신 사용하지 않는다.
+Framework runtime의 `Relocate`, 일반 종료는 `Shutdown`이 수행한다. Caller는 node 점검에는
+`PlannedMaintenance`, 새 version 배포에는 exact target version을 가진 `RollingUpdate`를 선택한다.
+`Relocating`은 permit을 얻은 relocation unit부터
+진행하면서 나머지 unit의 application 처리를 유지하는 state이고, `Drained`는 모든 stateful object의
+relocation을 마쳤지만 host와 infrastructure를 유지하는 state다. `Draining`은 별도로 호출한 `Shutdown`이
+resource를 정리하는 state다. Channel weight 0을 lifecycle state 대신 사용하지 않는다.
 
 ## 4. Manual peer
 
@@ -298,7 +303,7 @@ Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
 Object Server factory에 `Recreate` 또는 `Snapshot` policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도
 있으면 opaque Relocation Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지
-않지만 factory 등록 시점에는 향후 cross-node join과 host `Retire`를 배제할 수 없으므로 이 조건을 완화하지 않는다.
+않지만 factory 등록 시점에는 향후 cross-node join과 host `Relocate`를 배제할 수 없으므로 이 조건을 완화하지 않는다.
 Instance Spot factory가 없고 모든 factory가 `Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있으며,
 cross-node relocation은 capture 전에 거부한다.
 
@@ -614,7 +619,7 @@ capacity 부족은 admission 오류다. Framework는 이 결과를 이유로 다
 ### 13.2 Dispatch 실패 action owner
 
 Dispatch 실패 observer의 reason, action과 caller 결과 대응은
-[Message Flow Tracing §4](52-message-flow-tracing.ko.md#4-event-fields)가 단일 owner다.
+[Message Flow Tracing §3](52-message-flow-tracing.ko.md#3-공통-attribute)가 단일 owner다.
 언어별 exact interface는 그 닫힌 값을 해당 언어의 enum 또는 문자열로 투영하며 값을 추가하거나 줄이지
 않는다.
 

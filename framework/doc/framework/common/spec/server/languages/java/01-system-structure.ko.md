@@ -7,7 +7,7 @@ Java server public signature는 [exact interface 목차](interfaces/README.ko.md
 - [Channel messaging](interfaces/channel-messaging.ko.md)
 - [Monitoring](interfaces/monitoring.ko.md)
 
-Host 종료는 `Retire`와 `Shutdown`으로만 요청한다. 별도 host drain이나 MeshNode scoped drain public
+Object relocation은 `Relocate`, host 종료는 `Shutdown`으로 요청한다. 별도 host drain이나 MeshNode scoped drain public
 interface는 제공하지 않는다. 정확한 결과와 monitoring 계약은 [공통 runtime](interfaces/common-runtime.ko.md)과
 [Monitoring](interfaces/monitoring.ko.md)을 따른다.
 

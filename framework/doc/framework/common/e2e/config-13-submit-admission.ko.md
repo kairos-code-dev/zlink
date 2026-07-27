@@ -59,7 +59,7 @@ send·reply call이다. Stream connector package의 send builder, 반환 type과
 
 Stateful scenario는 close·destroy 뒤 recreate로 generation을 바꾸고 cross-node relocation은 시작하지 않는다.
 따라서 `MeshTarget`의 모든 factory는 `Disabled`를 사용하며 Relocation Store와 relocation adapter를 등록하지
-않는다. SA-E2E-06에서 `Retire`하는 `AdmissionCaller`와 `SessionGateway`는 Object Client라 local object
+않는다. SA-E2E-06에서 `Relocate`하는 `AdmissionCaller`와 `SessionGateway`는 Object Client라 local object
 inventory가 없고, 다른 Channel·session component의 eligible target만 preflight한다. Object operation을
 시작하지 않는 역할에는 object role을 추가하지 않는다.
 
@@ -305,20 +305,20 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   한 번이고 handler 실행은 0이다.
 - **공통 evidence:** Resolve snapshot, known target ID, route-ready state, public exception kind와 handler count를 남긴다.
 
-### SA-E2E-06 — Retire·Shutdown admission 거부
+### SA-E2E-06 — Relocate·Shutdown admission 거부
 
-- **목적:** `Retire` 또는 `Shutdown`의 admission seal 뒤 새 one-way call이 runtime shutdown 예외로 한 번만
+- **목적:** `Relocate` 또는 `Shutdown`의 admission seal 뒤 새 one-way call이 runtime shutdown 예외로 한 번만
   거부되는지 확인한다.
-- **Topology·사전 조건:** Target이 아니라 family별 public call의 실제 source host를 `Retire`와 `Shutdown` 대상으로
+- **Topology·사전 조건:** Target이 아니라 family별 public call의 실제 source host를 `Relocate`와 `Shutdown` 대상으로
   사용한다. RouteMesh·ClientServer Channel, Spot·Actor와 Logical Multicast는 `AdmissionCaller`, classic fanout은
   `FanoutPublisher`, bound session·session Actor relay와 server STREAM은 해당 `SessionGateway`가 source다. 미리
   만든 public call 작업은 각 source Framework admission barrier 뒤에서 기다리게 한다. Receiver gate는 열어
   capacity 실패와 섞이지 않게 한다. Source host가 종료된 뒤에도 결과를 조회할 수 있도록 operation evidence와
   admission-closed marker는 독립 process인 `EvidenceCollector`로 전송한다.
 - **절차:** `SA-E2E-06.a`는 continuity preflight가 성공하도록 eligible target을 준비한 뒤 family별 source host의
-  `Retire`를 시작하고 `Draining`과 admission-closed marker를 확인한 다음 public
+  `Relocate`를 시작하고 `Relocating`과 admission-closed marker를 확인한 다음 public
   call barrier를 해제한다. `SA-E2E-06.b`는 같은 source에서 pending operation을 만든 뒤 해당 source Framework
-  host의 `Shutdown`과 경쟁시킨다. Target 역할 server의 `Retire`·`Shutdown` 결과와 source host 안의 control endpoint를
+  host의 `Shutdown`과 경쟁시킨다. Target 역할 server의 `Relocate`·`Shutdown` 결과와 source host 안의 control endpoint를
   종료 후 evidence로 사용하지 않는다.
 - **기대 결과:** Admission seal 뒤의 신규 call과 shutdown이 먼저 선형화된 pending call은 runtime shutdown
   예외로 한 번 완료된다. 이미 transport admission을 완료한 call의 정상 완료는 바꾸지 않는다. 어느

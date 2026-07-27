@@ -10,6 +10,10 @@ Java API를 기다리는 server extension도 이 디렉토리의 정식 계약�
 [Java/Kotlin Stream Connector 계약](../../../stream-connector/languages/java/03-stream-connector.ko.md)이
 소유한다.
 
+Host relocation은 Java의 mode·options·result type을 그대로 사용한다. Planned maintenance는 source와
+같은 application version을, rolling update는 호출자가 지정한 더 높은 application version과 정확히
+일치하는 target만 사용한다. Kotlin 전용 default mode나 target 선택 extension은 제공하지 않는다.
+
 ChannelName 단일 호출, RouteMesh·ClientServer role builder, listener network identity, handler context와
 전용 descriptor·runtime은 Java 정본 타입을 재사용하고 Kotlin DSL만 관용적으로 투영한다.
 

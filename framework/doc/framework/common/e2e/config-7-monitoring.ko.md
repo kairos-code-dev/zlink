@@ -24,7 +24,7 @@ source나 event kind를 정의하지 않는다.
 - 다룬다: 하나의 MeshNode snapshot, peer·channel readiness 전이, Logical Multicast backpressure·drop,
   application·infrastructure claim, location health, event sequence와 observer 격리.
 - 여기서 다루지 않는다: socket 내부 monitor event, registry·Spot별 monitoring source, 집계 metric catalog와
-  exporter(Config 11), message flow trace(Config 11), host `Retire`·`Shutdown`의 전체 state machine(Config 11).
+  exporter(Config 11), message flow trace(Config 11), host `Relocate`·`Shutdown`의 전체 state machine(Config 11).
 - snapshot은 현재 상태의 authority이고 event는 변화 알림이다. E2E는 event만 보고 최종 상태를
   확정하지 않으며, 항상 같은 MeshNode의 최신 snapshot과 대조한다.
 

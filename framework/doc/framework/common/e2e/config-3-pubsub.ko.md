@@ -162,7 +162,7 @@ advertised endpoint에 연결하는가.
 **검증 질문:** automatic subscriber가 같은 ChannelName의 fanout publisher descriptor만 연결하는가.
 
 - 절차: `events` publisher와 다른 `audit` publisher를 시작하고, 같은 prefix에 MeshNode와 ClientServer
-  descriptor도 둔다. 유효한 lease를 가지지만 host `Retire` 또는 `Shutdown`으로 `Draining` 중인 별도
+  descriptor도 둔다. 유효한 lease를 가지지만 host `Relocate`로 `Relocating`이거나 `Shutdown`으로 `Draining` 중인 별도
   `events` publisher descriptor도 넣는다.
   Subscriber descriptor는 fanout location 계약에 존재하지 않으므로 만들지 않는다.
 - 검증: public fanout runtime snapshot의 `ConnectionIntentCount`와 `Publishers`에는 live `events` publisher만
@@ -243,7 +243,7 @@ observer를 막지 않고, bounded queue의 sequence gap을 snapshot으로 복�
 automatic snapshot과 event를 변경하지 않는가.
 
 - 절차: 같은 automatic subscriber에 capacity `1`인 느린 observer와 정상 observer를 동시에 연다.
-  Publisher 추가·host `Retire`에 따른 `Draining` 제외·재등록을 반복해 observer queue capacity보다 많은
+  Publisher 추가·host `Relocate`에 따른 `Relocating` 제외·재등록을 반복해 observer queue capacity보다 많은
   전이를 만들고, 그 동안
   business event를 발행한다. 느린 observer에서 sequence gap을 관찰하면 같은 ChannelName의 public
   snapshot을 다시 읽어 최신 publisher identity·connection intent·native ready 상태를 복원한다. 그 뒤

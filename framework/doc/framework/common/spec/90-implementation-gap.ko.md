@@ -60,7 +60,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.33 | Java/Kotlin, Node, C++ | [MeshName](01-glossary.ko.md#meshname) 중심 [RouteMesh](01-glossary.ko.md#routemesh)·MeshNode 등록 표면이 package·sample·E2E까지 일관되게 적용되지 않았고 분리 builder나 production in-memory location helper가 남아 있다 |
 | §12.34 | `.NET`, C++ | ActorRef의 공통 세 필드 밖 공개 상태가 남아 있다 |
 | §12.35 | C++ | Actor generation이 하나의 lifetime 안에서 join마다 증가한다 |
-| §12.36 | C++ | `Retire`·`Shutdown`, terminal result, factory-attached relocation policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
+| §12.36 | C++ | `Relocate`·`Shutdown`, terminal result, factory-attached relocation policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
 | §12.37 | `.NET` | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다 |
 | §12.38 | Java/Kotlin | RouteMesh runtime [snapshot](01-glossary.ko.md#snapshot)의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.39 | 전 언어 | ClientServer dual-role 등록과 local Server transport 선택은 구현됐다. ChannelName 단일 주소, exact role builder·listener network identity·monitoring snapshot과 process E2E가 남았다 |
@@ -70,6 +70,7 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.43 | 전 언어 | 다섯 언어의 공개 one-way call은 비동기 결과로 전환됐다. 그러나 언어별 admission runtime에 signal 없는 재시도, blocking executor, terminal queue cleanup과 Logical Multicast commit barrier 차이가 남아 있고 Config 13 process E2E가 없다 |
 | §12.44 | 전 언어 | Instance Spot exact public surface, opaque [authority](01-glossary.ko.md#authority) CAS 기반 cold activation과 네 언어 runtime의 actor-free lifecycle·fencing·recovery가 완성되지 않았다 |
 | §12.45 | `.NET`, Java/Kotlin, C++ | User Spot aggregate relocation은 command 30 source accept 뒤 participant 전체의 typed capacity bundle으로 aggregate prepare를 한 번 실행하고, target factory·Restore 뒤 같은 aggregate fence를 commit해야 한다. Standalone relocation capacity fence와 뒤늦은 aggregate prepare를 함께 사용하면 capacity를 이중 예약하므로 금지한다 |
+| §12.49 | 전 언어 | Host relocation mode와 exact application-version target 선택이 구현되지 않았다. 현재 runtime은 `PlannedMaintenance`와 `RollingUpdate`를 구분하지 않으며 언어별 target filter에도 차이가 있다 |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -206,7 +207,7 @@ ChannelName을 등록하면 startup에서 거부하는 contract test를 추가�
 
 ### 12.27 Java/Kotlin·C++ Actor location의 Spot generation 미구현
 
-[Location Runtime §2](40-location-runtime.ko.md#2-identity와-generation)과 다섯 언어 exact interface는 Actor location에
+[Location Runtime §2](40-location-runtime.ko.md#2-같은-id의-재생성과-owner-변경을-구분하는-값)과 다섯 언어 exact interface는 Actor location에
 현재 Spot의 [lifecycle generation](01-glossary.ko.md#lifecycle-generation)을 보존한다. 같은 [Spot ID](01-glossary.ko.md#spot-id)가 종료 뒤 다시 사용되면 이 값으로 낮은
 generation의 membership과 새 membership을 구분한다.
 
@@ -285,7 +286,7 @@ Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recover
 
 ### 12.31 Java/Kotlin·Node·C++ relocation metric outcome 미구현
 
-[Runtime Metrics §4](51-runtime-metrics.ko.md#4-object와-stream-계기)는
+[Runtime Metrics §4](51-runtime-metrics.ko.md#4-object와-stream)는
 `zlink.relocation.completed`와 `zlink.relocation.duration`에 `mesh_name`, `object_kind`, `policy`와 닫힌
 `outcome=completed|aborted|recovered|failed|shutdown`을 기록하도록 고정한다. Duration은 prepare부터
 terminal phase까지의 시간이며 Location commit만으로 성공을 기록하지 않는다.
@@ -379,16 +380,16 @@ gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 �
 ### 12.36 C++ 11.0 host maintenance public surface 미구현
 
 [C++ exact interface](server/languages/cpp/interfaces/README.ko.md)는 rolling maintenance의 정식 진입점을
-`Retire`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 현재 install-tree header에는
+`Relocate`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 현재 install-tree header에는
 `app_t::drain`, `await_drained`, `stop`, `request_stop`이 존재하지만 다음 목표 member는 아직 없다.
 
-- continuity를 준비한 뒤 종료하는 `retire`와 새 relocation 없이 bounded 종료를 수행하는 `shutdown`
+- continuity를 준비한 뒤 종료하는 `relocate`와 새 relocation 없이 bounded 종료를 수행하는 `shutdown`
 - terminal intent·outcome·reason·result와 Framework runtime state
 - Actor와 Instance Spot factory에 연결하는 typed relocation policy와 Snapshot state adapter
 - opaque authority CAS와 Relocation Store capability
 - Framework runtime maintenance snapshot과 event
 
-`Retire`와 `Shutdown` 외의 기존 lifecycle 호출을 source compatibility 때문에 유지해야 하면 새 state나 결과를
+`Relocate`와 `Shutdown` 외의 기존 lifecycle 호출을 source compatibility 때문에 유지해야 하면 새 state나 결과를
 소유하지 않는 deprecated facade로만 둘 수 있다. 새 guide와 sample은 facade를 사용하지 않는다. 별도 Actor
 relocation registry, phase별 Store와 public operation state machine은 추가하지 않는다. Install-tree header와 clean
 consumer contract test가 exact interface와 일치해야 한다.
@@ -513,7 +514,7 @@ lease 만료·drain·재게시 reconcile과 manual publisher/subscriber의 store
 
 ### 12.41 전 언어 host maintenance production 경로 미완성
 
-정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Retire`는 standalone Actor, Instance Spot과
+정식 계약은 MeshNode별 drain policy를 제공하지 않는다. Host `Relocate`는 standalone Actor, Instance Spot과
 User Spot aggregate queue에 infrastructure notification을 예약하고, 현재 turn을 끝낸 ready unit부터 bounded
 sliding relocation을 수행한다. Permit을 모두 얻기 전에는 queue를 seal하지 않는다. Seal 시점에 실행하지 않은
 message, accepted journal, logical timer registration과 pending tick은 Relocation Store에 저장해 target에서
@@ -555,7 +556,7 @@ RelocationId, target attempt generation, coordinator, participant, exact request
 이 frame의 필수 field다.
 
 현재 `.NET` Spot relocation은 `.stage.v1`·`.publish.v1`·`.abort.v1`·`.reply.v1` typed Route packet을
-사용한다. Java는 `ZLinkSpotRetireControl` 전용 magic과 command kind를 사용하고 Node는 NodeRequest payload 안의
+사용한다. Java는 `ZLinkSpotRelocateControl` 전용 magic과 command kind를 사용하고 Node는 NodeRequest payload 안의
 별도 relocation control envelope를 사용한다. C++ maintenance component도 canonical command의 production
 encode·dispatch 경로가 없다. 각 언어의 공통 service-wire codec은 command number를 known set으로 인식하지만
 해당 command body 전체를 encode·decode하여 runtime state machine에 전달하지 않는다. 이 상태에서는 다른 언어가
@@ -651,7 +652,7 @@ Framework의 현재 차이는 다음과 같다.
   relocation policy와 application version capability를 게시해야 한다.
 - Source의 eligible-node selection과 first-message activation envelope, target-owned generic reservation,
   Ready-visible ordering, factory 실패 cleanup, lease-derived local admission deadline, bounded stale-route
-  forwarding과 Retire·close 순서가 구현되어 있지 않다. Source가 target transport 전에 Instance owner claim을
+  forwarding과 Relocate·close 순서가 구현되어 있지 않다. Source가 target transport 전에 Instance owner claim을
   만드는 현재 구현은 목표 계약이 아니며 target CAS winner만 factory를 실행하도록 교체해야 한다.
 - Activation outcome·duration, pending budget, claim conflict·takeover metric과 `surface=instance_spot` message-flow
   drop 관측이 언어별 runtime에 연결되어 있지 않다.
@@ -717,6 +718,55 @@ Entry Spot 예약 형식과 같으면 Location Store reservation과 factory 전�
 `InvalidConfiguration`으로 거부한다. RID 문자열을 parse하거나 MeshNode RID 전체를
 결합해 Entry Spot 관계를 복원하지 않는다.
 
+### 12.49 전 언어 relocation mode와 exact version 선택 미구현
+
+목표 계약은 host relocation을 두 mode로 분리한다. `PlannedMaintenance`는 source와 application
+version이 정확히 같은 target만 사용한다. `RollingUpdate`는 caller가 source보다 큰 target version을
+명시하고 그 version과 정확히 일치하는 target만 사용한다. 두 mode는 version을 먼저 적용한 뒤
+maintenance wave, capability, capacity와 placement weight를 순서대로 적용한다.
+
+현재 production runtime은 이 mode와 target version을 public input과 result에 보존하지 않는다.
+`.NET`과 C++ target selection은 source 이상의 version을 허용하므로 같은-version 점검과 새-version
+전환을 구분하지 못한다. Node.js는 readiness 단계의 version·wave 조건을 실제 workload target 선택에서
+다시 검증하지 않는다. Java/Kotlin은 host preflight가 version·wave 조건을 적용하지 않는다.
+
+모든 언어에서 다음 항목을 함께 구현해야 gap을 닫을 수 있다.
+
+1. Mode와 target version option을 host lifecycle operation에 전달하고 결과에도 effective version을 남긴다.
+2. 잘못된 조합은 state와 admission을 변경하기 전에 public argument error로 거부한다.
+3. 요청한 exact version이 없으면 deadline까지 기다린 뒤 `Blocked/TargetUnavailable`로 끝내며 다른
+   version으로 자동 전환하지 않는다.
+4. Mode와 effective version이 같은 concurrent call만 shared operation에 합류시킨다. 다른 option은
+   `Blocked/OperationInProgress`로 거부한다.
+5. Planned maintenance, rolling update, mixed-version candidate, target 부재와 concurrent conflict를
+   contract test와 process E2E에서 검증한다.
+
+### 12.50 전 언어 User Spot inventory tree와 aggregate root CAS 미구현
+
+목표 계약은 User Spot 하나에 포함할 수 있는 Actor 수를 1,024개로 제한하지 않는다.
+Framework는 Spot과 member Actor 전체를 최대 1,024개·encoded 1 MiB의 immutable leaf
+chunk로 나누고, 필요하면 index chunk를 추가하여 Location Store inventory tree를
+만든다.
+
+모든 chunk를 저장하고 전체 count와 digest를 확인한 뒤 aggregate authority의 owner,
+generation, inventory root와 capacity를 한 번의 CAS로 전환한다. 이 CAS 전에는 모든
+participant가 source owner를 사용하고, CAS 뒤에는 모두 target owner를 사용한다.
+Actor별 owner row 전체를 하나의 Store transaction에서 바꾸지 않는다.
+
+현재 service wire schema와 production runtime은 aggregate participant vector와 record
+하나에 최대 1,024개를 넣는 구조다. 이 구조는 Actor가 1,023명을 넘는 User Spot을
+relocation할 수 없다. 모든 언어에서 다음 항목을 구현해야 gap을 닫을 수 있다.
+
+1. Location Store에 immutable inventory leaf·index chunk와 작은 aggregate authority
+   record를 저장한다.
+2. Participant negotiation과 relocation staging을 한 vector가 아니라 inventory
+   root·count·digest와 chunk stream으로 처리한다.
+3. Actor direct resolve가 current aggregate generation과 owner를 따르게 한다.
+4. Join·leave는 새 inventory path를 준비한 뒤 Actor membership과 aggregate root를
+   expected-version batch로 함께 바꾼다.
+5. Actor 10,000개를 포함한 User Spot relocation에서 CAS 전 부분 visibility가 없고
+   CAS 뒤 전체가 target으로 전환되는지 process E2E로 검증한다.
+
 ## 13. 샘플 계약 차이
 
 [공통 샘플 규약](../sample/README.ko.md)과 개별 sample 문서를 기준으로 남아 있는 차이는
@@ -766,14 +816,14 @@ sample과 E2E가 검증하는지 직접 대조해 확인한 현재 차이를 기
 
 | ID | 목표 계약과 실제 차이 | 대상 |
 |---|---|---|
-| **IMP-X2** | [50 §3](50-runtime-monitoring.ko.md#3-event-identifiers)은 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 요구한다. Java와 C++는 이 location store 상태 event source를 게시하지 않는다 | Java · C++ |
+| **IMP-X2** | [50 §5](50-runtime-monitoring.ko.md#5-structured-log)는 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 요구한다. Java와 C++는 이 location store 상태 log source를 게시하지 않는다 | Java · C++ |
 | **IMP-X5** | [52 §3](52-message-flow-tracing.ko.md)은 관측자를 로그 모드와 독립적으로 호출하도록 요구한다. Java·Node·C++는 관측자를 로그 모드에 연결해 `off`일 때 event를 전달하지 않는다 | Java · Node · C++ |
 | **IMP-X6** | [53 §4.2](53-flow-correlation.ko.md)의 `origin=lifecycle`을 생성하지 않아 drain이 유발한 트래픽과 application 트래픽을 구분할 수 없다 | Java · Node · C++ |
 | **IMP-X8** | [10 §5.2](10-channel-topology.ko.md)는 수동 endpoint를 지정한 역할의 automatic reconcile을 중단하도록 요구한다. Java는 store의 다른 peer도 연결하고 round-robin 대상으로 사용한다 | Java |
 | **IMP-X12** | [21 §close](21-mesh-node.ko.md)는 actor가 남은 user Spot의 종료를 실패로 끝내도록 요구한다. Java의 check-then-act 경합은 actor가 존재하는 Spot을 종료해 actor location row가 제거된 Spot을 가리킬 수 있다 | Java |
 | **IMP-X14** | C++는 `listPageSize`를 읽지 않아 기본 1000개 단위 page 대신 목록 전체를 한 번에 읽는다 | C++ |
 | **IMP-X16** | Java는 `includeNativeDiagnostics`를 검증하지만 runtime에 적용하지 않는다 | Java |
-| **IMP-X17** | [54 §3](54-graceful-drain-handoff.ko.md#3-retire-preflight와-intent-notification)은 manual service topology가 하나라도 있으면 `Retire`를 `Blocked/ManualTopologyUnsupported`로 차단하고, 각 automatic RouteMesh에 source 자신을 제외한 non-draining replacement가 최소 하나 있으며 exact RID·lifecycle generation이 source Core peer table에서 admitted·ready가 된 뒤에만 `Retiring`을 게시하도록 요구한다. Empty·source-only·all-draining snapshot은 `TargetUnavailable`이다. .NET은 local manual registration blocker, exact descriptor/Core peer fence, `Retiring` publication rollback과 Green `Ready` → old `Retiring` → relocation → old `Draining`·barrier → descriptor·owner lease release → disconnect 순서를 구현했으며 minimum replacement gate 보강을 진행 중이다. Node.js는 같은 local manual registration blocker, minimum replacement와 exact peer readiness gate, cleanup ordering을 구현했다. Multi-Mesh `Retiring` descriptor publication은 host state 변경 전에 수행하며 일부 write 또는 응답 유실이 발생하면 시도한 모든 descriptor를 `Serving`으로 되돌린다. Rollback까지 확인되면 `Blocked/StoreUnavailable`, 확인할 수 없으면 안전하게 `ForceStopped/TeardownFailed`로 끝낸다. Build와 focused topology·drain contract 38/38이 통과했다. Java·Kotlin·C++ runtime과 실제 process rolling E2E에는 같은 gate와 cleanup ordering이 남아 있다. | .NET · Java · Kotlin · C++ · process E2E |
+| **IMP-X17** | [54 §4~5](54-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)는 manual service topology가 하나라도 있으면 `Relocate`를 `Blocked/ManualTopologyUnsupported`로 차단하고, 각 automatic RouteMesh에 source 자신을 제외한 non-draining replacement가 최소 하나 있으며 exact RID·lifecycle generation이 source Core peer table에서 admitted·ready가 된 뒤에만 `Relocating`을 게시하도록 요구한다. Empty·source-only·all-draining snapshot은 `TargetUnavailable`이다. .NET은 local manual registration blocker, exact descriptor/Core peer fence, `Relocating` publication rollback과 Green `Ready` → old `Relocating` → relocation → old `Draining`·barrier → descriptor·owner lease release → disconnect 순서를 구현했으며 minimum replacement gate 보강을 진행 중이다. Node.js는 같은 local manual registration blocker, minimum replacement와 exact peer readiness gate, cleanup ordering을 구현했다. Multi-Mesh `Relocating` descriptor publication은 host state 변경 전에 수행하며 일부 write 또는 응답 유실이 발생하면 시도한 모든 descriptor를 `Serving`으로 되돌린다. Rollback까지 확인되면 `Blocked/StoreUnavailable`, 확인할 수 없으면 안전하게 `ForceStopped/TeardownFailed`로 끝낸다. Build와 focused topology·drain contract 38/38이 통과했다. Java·Kotlin·C++ runtime과 실제 process rolling E2E에는 같은 gate와 cleanup ordering이 남아 있다. | .NET · Java · Kotlin · C++ · process E2E |
 
 ### 15.4 E2E gate 검증력 차이
 
@@ -783,7 +833,7 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 | 대상 | 목표 | 실제 차이 |
 |---|---|---|
 | Node `DiscoveryRegistryHa` location probe | location runtime이 관측한 role과 state를 client가 검증한다 | probe가 `serviceRole=Router`, `state=Ready`를 직접 만들어 반환하므로 runtime이 잘못된 값을 내도 client assertion이 성공할 수 있다 |
-| C++ `ObservabilityOps` `OBS-A2` | [52 §4](52-message-flow-tracing.ko.md#4-event-fields)의 dispatch error field와 닫힌 값을 검증한다 | runner가 공통 field인 `outcome=failed` 대신 C++ 전용 `phase=error`를 요구해 계약과 다른 구현을 통과 조건으로 고정한다 |
+| C++ `ObservabilityOps` `OBS-A2` | [52 §3](52-message-flow-tracing.ko.md#3-공통-attribute)의 dispatch error field와 닫힌 값을 검증한다 | runner가 공통 field인 `outcome=failed` 대신 C++ 전용 `phase=error`를 요구해 계약과 다른 구현을 통과 조건으로 고정한다 |
 
 각 gate는 다음 조건을 만족해야 gap 제거 증거가 된다.
 

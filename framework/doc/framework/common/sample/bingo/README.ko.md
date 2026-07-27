@@ -1302,7 +1302,7 @@ Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `
 
 ### 17.3 Graceful Drain
 
-`Play`를 `Retire`할 때 application은 MeshNode나 Spot별 종료 정책을 선택하지 않는다. Framework는 room User
+`Play`를 `Relocate`할 때 application은 MeshNode나 Spot별 종료 정책을 선택하지 않는다. Framework는 room User
 Spot과 current member Actor를 하나의 bounded aggregate로 취급하고, ready unit부터 target으로 relocation한다.
 Infrastructure notification이 room queue의 turn boundary에 도달하면 현재 실행 중인 turn만 source에서
 완료한다. 아직 실행하지 않은 message, accepted journal, logical timer registration과 pending tick은 immutable
@@ -1317,10 +1317,10 @@ member Actor의 join·leave·relocation callback은 호출하지 않는다. Sour
 Commit 뒤 Framework가 frozen queue·journal·timer를 복원하고 seal 중 source hold를 target으로 relay한다.
 Bound STREAM route ACK와 steady normalization까지 끝난 뒤에만 target admission을 연다. Commit 전 failure는
 source queue를 frozen message 뒤 hold message 순서로 복원하며, commit 뒤 failure는 일부 participant를
-source로 되돌리지 않고 같은 aggregate relocation을 recovery한다. `Retire` terminal result와 terminal
+source로 되돌리지 않고 같은 aggregate relocation을 recovery한다. `Relocate` terminal result와 terminal
 lifecycle event는 각각 한 번만 기록한다. 상세 실행 gate와 증거 순서는
 [Config 5 RL-F11~F14](../../e2e/config-5-resilience-lifecycle.ko.md#rl-f11-readiness-first-relocation과-느린-turn-격리)와
-[Config 11 OBS-C3](../../e2e/config-11-observability-ops.ko.md#obs-c3-user-spot-aggregate-retire-handoff)가 소유한다.
+[Config 11 OBS-C3](../../e2e/config-11-observability-ops.ko.md#obs-c3-user-spot-aggregate-relocate-handoff)가 소유한다.
 
 ### 17.4 언어별 표면
 

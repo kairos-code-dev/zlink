@@ -223,16 +223,20 @@ late callback은 current attempt와 authority read를 통과하지 못한다.
 ## 8. Aggregate membership과 session barrier
 
 User Spot과 member Actor를 함께 이동할 때 non-zero 128-bit aggregate ID와 exact participant inventory를 사용한다.
-Participant는 최대 1024개이고 encoded aggregate는 최대 1 MiB다. User Spot이 있다는 이유만으로 Retire를 차단하지
-않는다. 모든 factory의 명시적 maintenance policy, target capacity와 state compatibility를 preflight한다.
+Participant 총수에는 1,024개 상한을 두지 않는다. Framework는 최대 1,024개·encoded
+1 MiB의 immutable leaf chunk와 필요한 index chunk로 inventory tree를 만든다. User
+Spot이 있다는 이유만으로 Relocate를 차단하지 않는다. 모든 factory의 명시적
+relocation policy, target capacity와 state compatibility를 preflight한다.
 
-Location Store의 bounded canonical participant set, participant별 mutation, aggregate generation과 inventory
-digest가 authority다. Relocation manifest는 participant별 payload를 찾기 위해 같은 digest를 보존하지만 participant
-authority가 아니다. 두 digest가 일치하지 않으면 target restore를 시작하지 않는다.
+Location Store aggregate authority의 owner·generation·inventory root·전체 count와
+digest가 authority다. Relocation manifest는 participant별 payload를 찾기 위해 같은
+count와 digest를 보존하지만 participant authority가 아니다. 두 Store의 count와 digest가
+일치하지 않으면 target restore를 시작하지 않는다.
 
-Target reservation은 Spot과 member Actor의 global identity, ObjectGeneration과 kind를 고정한다. `Committed` CAS는
-aggregate owner와 membership visibility를 원자적으로 바꾼다. Target은 commit 전에 factory·restore와 journal
-validation·staging을 끝낸다.
+Target reservation은 Spot과 member Actor의 global identity, ObjectGeneration과 kind를
+고정한다. `Committed` CAS는 aggregate owner, generation과 inventory root를 바꾸어
+membership visibility를 원자적으로 전환한다. Target은 commit 전에 factory·restore와
+journal validation·staging을 끝낸다.
 
 Source Entry Spot의 standalone Actor를 maintenance relocation한 경우 commit 뒤 target Entry Spot의
 `OnActorRelocated`를 먼저 실행하고 source Entry Spot의 `OnLeaveActor`를 이어서 실행한다. Source process가

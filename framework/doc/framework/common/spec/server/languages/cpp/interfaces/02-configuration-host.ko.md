@@ -4,10 +4,18 @@
 
 ## 1. Host maintenance
 
-Host 종료의 정본은 `retire()`와 `shutdown()`이다. 기존 `drain()`과 `await_drained()`는 source compatibility를
-위해 남긴 deprecated facade이며 새 continuity 의미를 정의하지 않는다. 이 facade는 `shutdown()`과 같은
-shared operation을 사용하고 legacy 결과 형식으로만 변환한다. `stop()`과 `request_stop()`도 host의
-`shutdown()`을 시작한다. MeshName을 받는 component termination operation은 제공하지 않는다.
+Host lifecycle operation은 `relocate()`와 `shutdown()`으로 나눈다. `relocate()`는 현재 object를 선택한
+운영 목적에 맞는 node로 이전하고 host를 `drained` 상태로 유지한다. Application은 relocation 결과를 확인한
+뒤 필요할 때 `shutdown()`을 호출한다. Relocation이 필요하지 않으면 `shutdown()`만 호출할 수 있다.
+
+Application은 `relocate()`를 호출할 때 목적을 반드시 지정한다. `planned_maintenance`는 같은 application
+version의 다른 node로 object를 이전한 뒤 현재 host를 점검하거나 재시작할 때 사용한다.
+`rolling_update`는 application이 지정한 더 높은 version으로만 object를 이전할 때 사용한다.
+
+기존 `drain()`과 `await_drained()`는 source compatibility를 위해 남긴 deprecated facade다. 이 facade는
+`shutdown()`과 같은 shared operation을 사용하고 legacy 결과 형식으로만 변환한다. `stop()`과
+`request_stop()`도 host의 `shutdown()`을 시작한다. MeshName을 받는 component lifecycle operation은
+제공하지 않는다.
 
 ```cpp
 namespace zlink::framework {
@@ -15,15 +23,24 @@ namespace zlink::framework {
 enum class framework_runtime_state_t {
     preparing = 0,
     serving = 1,
-    retiring = 2,
-    draining = 3,
-    stopped = 4,
-    error = 5
+    relocating = 2,
+    drained = 3,
+    draining = 4,
+    stopped = 5,
+    error = 6
 };
 
-enum class termination_intent_t { retire = 0, shutdown = 1 };
-enum class termination_outcome_t { stopped = 0, blocked = 1, force_stopped = 2 };
-enum class termination_reason_t {
+enum class relocation_outcome_t {
+    drained = 0,
+    blocked = 1
+};
+
+enum class relocation_mode_t {
+    planned_maintenance = 0,
+    rolling_update = 1
+};
+
+enum class relocation_reason_t {
     none = 0,
     target_unavailable = 1,
     store_unavailable = 2,
@@ -31,13 +48,37 @@ enum class termination_reason_t {
     state_incompatible = 4,
     deadline_exceeded = 5,
     relocation_failed = 6,
-    teardown_failed = 7,
-    runtime_not_ready = 8,
-    manual_topology_unsupported = 9
+    runtime_not_ready = 7,
+    manual_topology_unsupported = 8,
+    shutdown_requested = 9,
+    operation_in_progress = 10
+};
+
+struct relocation_options_t {
+    relocation_mode_t mode;
+    std::optional<std::int64_t> target_application_version;
+    std::optional<std::chrono::milliseconds> deadline;
+};
+
+struct relocation_result_t {
+    relocation_mode_t mode;
+    std::int64_t effective_target_application_version;
+    relocation_outcome_t outcome;
+    relocation_reason_t reason;
+};
+
+enum class termination_outcome_t {
+    stopped = 0,
+    force_stopped = 1
+};
+
+enum class termination_reason_t {
+    none = 0,
+    deadline_exceeded = 1,
+    teardown_failed = 2
 };
 
 struct termination_result_t {
-    termination_intent_t effective_intent;
     termination_outcome_t outcome;
     termination_reason_t reason;
 };
@@ -45,22 +86,64 @@ struct termination_result_t {
 } // namespace zlink::framework
 ```
 
-`wait_cancellation`은 waiter만 중단하며 이미 시작한 shared operation을 취소하지 않는다. `retire()`는
-continuity preflight가 실패하면 admission과 state를 바꾸지 않고 `blocked`를 반환한다. `shutdown()`은
+`relocation_options_t::mode`는 필수다. `planned_maintenance`에서는
+`target_application_version`을 지정하지 않는다. Framework는 source와 같은 application version만
+선택하며 result의 `effective_target_application_version`에 source version을 기록한다.
+`rolling_update`에서는 source보다 큰 `target_application_version`을 반드시 지정한다. Framework는 이 값과
+정확히 같은 application version만 선택하고 result에도 같은 값을 기록한다. 이러한 option 조합을 위반하면
+Framework는 `std::invalid_argument`로 호출을 거부하고 shared operation과 host state를 변경하지 않는다.
+
+`deadline`이 비어 있으면 기본 30초를 사용한다. `wait_cancellation`은 waiter만 중단하며 이미 시작한 shared
+operation을 취소하지 않는다. 같은 `relocation_options_t`를 사용한 동시 호출은 이미 실행 중인 shared
+operation에 합류하며 같은 terminal result를 받는다. Mode, target application version 또는 deadline이
+다른 동시 호출은 기존 operation에 합류하거나 이를 변경하지 않고
+`blocked/operation_in_progress`를 반환한다. 이 결과의 mode와 effective target version은 거부된 호출이
+요청한 유효한 option을 반영한다.
+
+`relocate()`는 continuity preflight가 실패하면 admission과 state를 바꾸지 않고 `blocked`를 반환한다.
+성공하면 `drained/none`을 반환하며 host process와 infrastructure connection은 유지한다. `shutdown()`은
 `blocked`를 반환하지 않는다.
 
-Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
-하나라도 있으면 `retire()`는 `blocked/manual_topology_unsupported`를 반환한다. Automatic RouteMesh는 source의
-Core peer table에서 descriptor와 같은 RID·lifecycle generation이 admitted·ready가 된 뒤에만 `retiring`으로
-전환한다. 이 제한은 `shutdown()`에 적용하지 않는다.
+두 mode 모두 candidate를 다음 순서로 좁힌다.
 
-`blocked/deadline_exceeded`는 모든 target의 `Prepared` 완료와 host `Draining` descriptor publication 전에
+1. `planned_maintenance`는 source와 version이 같은 candidate만 남긴다.
+   `rolling_update`는 요청한 target version과 정확히 같은 candidate만 남긴다.
+2. Source와 같은 non-empty maintenance wave에 속한 candidate를 제외한다.
+3. 남은 candidate에 stable type과 relocation policy·adapter 호환성 검사를 적용한다.
+4. 호환 candidate의 population capacity를 확인한다.
+5. 마지막 후보 집합에서 node-wide placement weight를 적용한다.
+
+Version과 maintenance wave 조건을 capability·capacity·weight보다 먼저 적용하므로, rolling update가 같은
+version node로 fallback하거나 planned maintenance가 더 높은 version node를 선택하지 않는다. 첫 번째
+단계 뒤 candidate가 없거나 이후 조건을 만족하는 target이 없으면
+`blocked/target_unavailable`을 반환한다. 여러 relocation unit은 모두 같은 effective target version을
+사용하지만 각각 다른 eligible node를 선택할 수 있다.
+
+Local manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는 manual fanout publisher가
+하나라도 있으면 `relocate()`는 `blocked/manual_topology_unsupported`를 반환한다. Automatic RouteMesh는
+source의 Core peer table에서 descriptor와 같은 RID·lifecycle generation이 admitted·ready가 된 뒤에만
+`relocating`으로 전환한다. 이 제한은 `shutdown()`에 적용하지 않는다.
+
+`blocked/deadline_exceeded`는 모든 target의 `Prepared` 완료와 host `Relocating` descriptor publication 전에
 deadline이 끝난 결과다. Connection-bound work와 bound-session request가 pre-`Captured` [deadline](../../../../01-glossary.ko.md#deadline) 안에 terminal
 drain되지 않은 경우도 `relocation_disabled`가 아니라 이 결과를 사용한다. Framework는 relocation reference와
 reservation을 정리하고 reversible seal을 해제한 뒤 host state와 admission을 복원한다. 모든 target이
-`Prepared`이고 `Draining` publication이 성공한 뒤에는 `blocked`로 돌아가지 않는다. 이 경계 뒤 bounded teardown이
-deadline을 넘으면 `force_stopped/deadline_exceeded`를 반환한다. 두 결과는 같은 deadline reason을 사용하지만
-phase와 side effect가 다르며 enum을 추가하지 않는다.
+`Prepared`이고 `Relocating` publication이 성공하면 모든 relocation unit을 완료하고 `drained`로 전환한다.
+
+`relocating` 중 `shutdown()`이 시작되면 현재 atomic relocation unit을 terminal 상태로 확정한 뒤 나머지
+relocation을 중단한다. Relocation waiter는 `blocked/shutdown_requested`를 받고, host는 `draining`으로
+전환하여 종료를 계속한다. 이미 `drained`인 host에서 `shutdown()`을 호출하면 남은 connection과 resource만
+정리한다. `serving`에서 호출하면 relocation 없이 `draining`으로 전환한다.
+
+`relocation_result_t`와 `termination_result_t`의 유효한 조합은 다음과 같다. Caller는 relocation 결과가
+`drained/none`일 때만 모든 object의 이전이 끝났다고 판단한다.
+
+| Result | Reason |
+|---|---|
+| `drained` | `none` |
+| `blocked` | `target_unavailable`, `store_unavailable`, `relocation_disabled`, `state_incompatible`, `deadline_exceeded`, `relocation_failed`, `runtime_not_ready`, `manual_topology_unsupported`, `shutdown_requested`, `operation_in_progress` |
+| `stopped` | `none` |
+| `force_stopped` | `deadline_exceeded`, `teardown_failed` |
 
 ## 2. App / Host
 
@@ -74,7 +157,6 @@ namespace zlink::framework {
 
 enum class drain_force_reason_t {
     deadline_exceeded,
-    relocation_failed,
     teardown_failed
 };
 struct drained_t {};
@@ -115,8 +197,8 @@ public:
     app_t &set_message_flow_mode(message_flow_log_mode_t mode) noexcept;
     message_flow_log_mode_t message_flow_mode() const noexcept;
 
-    task_t<termination_result_t> retire(
-      std::chrono::milliseconds deadline = std::chrono::seconds{30},
+    task_t<relocation_result_t> relocate(
+      relocation_options_t options,
       std::stop_token wait_cancellation = {});
     task_t<termination_result_t> shutdown(
       std::chrono::milliseconds deadline = std::chrono::seconds{30},
@@ -131,11 +213,9 @@ public:
 ```
 
 Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다. `stopped/none`은 `drained_t`로
-변환한다. `force_stopped/deadline_exceeded`, `force_stopped/relocation_failed`,
-`force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`를 담은 `force_stopped_t`로
-변환한다. 이 목록은 허용된 Shutdown terminal result 전체를 포함한다. `blocked`는 Shutdown 결과가 아니므로
-`drain_result_t`에 추가하지 않는다. 이전 `drain_state_publish_failed`와 `owner_cleanup_failed` 값은 제공하지
-않는다. 인자 없는
+변환한다. `force_stopped/deadline_exceeded`와 `force_stopped/teardown_failed`는 각각 같은 이름의
+`drain_force_reason_t`를 담은 `force_stopped_t`로 변환한다. 이 목록은 허용된 Shutdown terminal result
+전체를 포함한다. 인자 없는
 `drain()`과 `await_drained()`도 기본 30초의 같은 Shutdown operation을 시작하거나 이미 시작한 operation에
 합류한다. 이 facade는 state transition, admission 또는 cleanup 순서를 별도로 소유하지 않는다.
 
@@ -884,7 +964,7 @@ tracing hook은 공통 message-flow tracing 계약의 observer와 runtime contro
 
 `add_runtime_metrics()`가 활성화한 provider는 Instance activation에 대해 다음 여섯 이름을 byte 단위로
 그대로 사용한다. 종류, 단위, label과 닫힌 outcome 값은
-[Runtime metrics §4](../../../../51-runtime-metrics.ko.md#4-object와-stream-계기)가 소유한다.
+[Runtime metrics §4](../../../../51-runtime-metrics.ko.md#4-object와-stream)가 소유한다.
 
 - `zlink.instance_spot.activations`
 - `zlink.instance_spot.activation.duration`

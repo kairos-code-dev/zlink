@@ -250,7 +250,7 @@ normal completion과 monitoring event를 기록한다. 이는 operation cancella
 시작된 transaction의 완료를 기다리며, host drain deadline을 넘긴 경우에만 전체 runtime의 bounded force
 stop 규칙을 따른다.
 
-MeshNode가 `Retiring`으로 전환되면 새 ChannelName 선택과 Logical Multicast target에서 제외된다. Relocation permit을
+MeshNode가 `Relocating`으로 전환되면 새 ChannelName 선택과 Logical Multicast target에서 제외된다. Relocation permit을
 얻지 못한 unit의 application claim은 계속 진행하고, permit을 얻은 queue turn 경계에서만 해당 unit을 seal한다.
 `Draining` 뒤에는 이미 수락한 application record, request completion, Actor relocation과 STREAM barrier만 shutdown
 deadline까지 진행한다. Deadline 뒤에는 남은 claim을 revoke하고 대기 중인 operation을 shutdown 결과로 완료한다.

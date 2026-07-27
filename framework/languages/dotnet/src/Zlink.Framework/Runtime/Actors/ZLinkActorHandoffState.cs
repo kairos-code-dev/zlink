@@ -3,11 +3,21 @@ namespace Zlink.Framework.Runtime.Actors;
 internal sealed class ZLinkActorHandoffState(
     string actorId,
     TimeProvider timeProvider,
-    Action<string>? diagnostic = null)
+    Action<string>? diagnostic = null,
+    ZLinkBoundedIngressAdmission? sourceIngressAdmission = null,
+    ZLinkBoundedIngressAdmission? targetIngressAdmission = null,
+    ZLinkBoundedIngressAdmission? sourceHoldAdmission = null)
 {
     private readonly object _gate = new();
     private readonly object _forwardGate = new();
     private readonly List<ZLinkActorHandoffFrame> _frames = [];
+    private readonly List<ZLinkActorHandoffFrame> _sourceHoldFrames = [];
+    private readonly ZLinkBoundedIngressAdmission _sourceIngressAdmission =
+        sourceIngressAdmission ?? new ZLinkBoundedIngressAdmission();
+    private readonly ZLinkBoundedIngressAdmission _sourceHoldAdmission =
+        sourceHoldAdmission ?? new ZLinkBoundedIngressAdmission();
+    private ZLinkBoundedIngressAdmission _targetIngressAdmission =
+        targetIngressAdmission ?? new ZLinkBoundedIngressAdmission();
     private CancellationTokenSource? _forwardingExpiry;
     private ZLinkActorForwardingMapping? _forwarding;
     private ZLinkBackendActorRef? _staleSourceActor;
@@ -17,7 +27,11 @@ internal sealed class ZLinkActorHandoffState(
     private ZLinkActorTargetHandoffPhase _targetPhase;
     private long _arrivalIndex;
     private int _importedFrameCount;
+    private int _sourceCommittedFrameCount = -1;
+    private int _sourceCommittedHoldCount;
     private bool _sourceTrailingImported;
+    private bool _sourceCaptureSealed;
+    private bool _abortRestoreAdmissionsReleased;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
     private TaskCompletionSource? _sourceCompletion;
 
@@ -27,6 +41,7 @@ internal sealed class ZLinkActorHandoffState(
         {
             if (_sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                 or ZLinkActorSourceHandoffPhase.CutoverPending
+                or ZLinkActorSourceHandoffPhase.AbortRestoring
                 or ZLinkActorSourceHandoffPhase.ForwardingCommitted
                 || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.Replaying
@@ -39,10 +54,18 @@ internal sealed class ZLinkActorHandoffState(
             _preparation = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
             _sourceTrailingImported = false;
+            _sourceCaptureSealed = false;
+            _sourceCommittedFrameCount = -1;
+            _sourceCommittedHoldCount = 0;
+            _abortRestoreAdmissionsReleased = false;
             _sourcePhase = ZLinkActorSourceHandoffPhase.Capturing;
             _sourceCompletion = new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
             _frames.Clear();
+            _sourceHoldFrames.Clear();
             _arrivalIndex = 0;
         }
     }
@@ -54,6 +77,7 @@ internal sealed class ZLinkActorHandoffState(
             lock (_gate)
                 return _sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                     or ZLinkActorSourceHandoffPhase.CutoverPending
+                    or ZLinkActorSourceHandoffPhase.AbortRestoring
                     or ZLinkActorSourceHandoffPhase.ForwardingCommitted;
         }
     }
@@ -73,6 +97,7 @@ internal sealed class ZLinkActorHandoffState(
             lock (_gate)
                 return _sourcePhase is ZLinkActorSourceHandoffPhase.Capturing
                            or ZLinkActorSourceHandoffPhase.CutoverPending
+                           or ZLinkActorSourceHandoffPhase.AbortRestoring
                            or ZLinkActorSourceHandoffPhase.ForwardingCommitted
                        || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                            or ZLinkActorTargetHandoffPhase.AuthorityCommitted
@@ -114,20 +139,86 @@ internal sealed class ZLinkActorHandoffState(
         return completion.WaitAsync(cancellationToken);
     }
 
-    public bool TryCapture(ZLinkSpotActorFrame frame)
+    public ZLinkActorHandoffCaptureResult TryCapture(ZLinkSpotActorFrame frame)
     {
         lock (_gate)
         {
-            if (_sourcePhase != ZLinkActorSourceHandoffPhase.Capturing
-                && _targetPhase is not (ZLinkActorTargetHandoffPhase.Importing
+            var capturesSourceIngress =
+                _sourcePhase == ZLinkActorSourceHandoffPhase.Capturing;
+            var capturesSourceHold = capturesSourceIngress
+                                     && _sourceCaptureSealed;
+            var capturesTargetIngress =
+                _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
-                    or ZLinkActorTargetHandoffPhase.Replaying))
-                return false;
+                    or ZLinkActorTargetHandoffPhase.Replaying;
+            if (!capturesSourceIngress
+                && !capturesTargetIngress)
+                return ZLinkActorHandoffCaptureResult.NotSealed;
 
-            _frames.Add(ZLinkActorHandoffFrames.Capture(frame, _arrivalIndex++));
+            if (!frame.RouteContext.IsDirectRoute)
+            {
+                if (frame.RequestSource is not null
+                    || frame.SourceNodeGeneration != 0)
+                    throw new ZLinkActorHandoffRejectedException(
+                        $"Actor '{actorId}' received a bound-session frame with "
+                        + "a synthetic request-source fence.");
+                // Bound-session work has no lease-backed source identity and
+                // therefore cannot enter the durable relocation journal. The
+                // inbound pipeline gives requests an explicit ActorMoving
+                // terminal and discards one-way sends at this sealed boundary.
+                return ZLinkActorHandoffCaptureResult.NotSealed;
+            }
+
+            if (frame.RequestSource is not { } source
+                || frame.SourceNodeGeneration == 0
+                || frame.SourceNodeRid != source.NodeRid
+                || frame.SourceNodeGeneration != source.NodeGeneration)
+                throw new ZLinkActorHandoffRejectedException(
+                    $"Actor '{actorId}' cannot accept a direct request without "
+                    + "an exact ingress request-source fence.");
+
+            var captured = ZLinkActorHandoffFrames.Capture(frame, _arrivalIndex);
+            var encodedBytes = capturesSourceIngress || capturesTargetIngress
+                ? ZLinkActorHandoffFrames.CanonicalEncodedLength(
+                    captured,
+                    frame.Actor)
+                : 0;
+            if (capturesSourceIngress || capturesTargetIngress)
+                captured = captured with
+                {
+                    CanonicalEncodedLength = encodedBytes
+                };
+            if (capturesSourceIngress
+                && !capturesSourceHold
+                && !_sourceIngressAdmission.TryAcquire(encodedBytes))
+                return ZLinkActorHandoffCaptureResult.Full;
+            if (capturesSourceHold
+                && !_sourceHoldAdmission.TryAcquire(encodedBytes))
+                return ZLinkActorHandoffCaptureResult.Full;
+            if (capturesTargetIngress
+                && !_targetIngressAdmission.TryAcquire(encodedBytes))
+                return ZLinkActorHandoffCaptureResult.Full;
+            try
+            {
+                if (capturesSourceHold)
+                    _sourceHoldFrames.Add(captured);
+                else
+                    _frames.Add(captured);
+                _arrivalIndex++;
+            }
+            catch
+            {
+                if (capturesSourceIngress && !capturesSourceHold)
+                    _sourceIngressAdmission.Release(encodedBytes);
+                if (capturesSourceHold)
+                    _sourceHoldAdmission.Release(encodedBytes);
+                if (capturesTargetIngress)
+                    _targetIngressAdmission.Release(encodedBytes);
+                throw;
+            }
             diagnostic?.Invoke(
                 $"handoff_backlog actor={actorId} arrival={_arrivalIndex - 1} kind={frame.Header.Kind} request_id={frame.RequestId} flags={frame.Flags}");
-            return true;
+            return ZLinkActorHandoffCaptureResult.Captured;
         }
     }
 
@@ -172,11 +263,19 @@ internal sealed class ZLinkActorHandoffState(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             preparation = _preparation.Task;
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
             _frames.Clear();
+            _sourceHoldFrames.Clear();
             _arrivalIndex = 0;
             foreach (var frame in request.HandoffFrames.OrderBy(static frame => frame.ArrivalIndex))
             {
-                _frames.Add(frame with { ArrivalIndex = _arrivalIndex++ });
+                _frames.Add(frame with
+                {
+                    ArrivalIndex = _arrivalIndex++,
+                    CanonicalEncodedLength = 0
+                });
                 diagnostic?.Invoke(
                     $"backlog_enqueued actor={actorId} arrival={_arrivalIndex - 1} request_id={frame.RequestId} flags={frame.Flags}");
             }
@@ -188,7 +287,9 @@ internal sealed class ZLinkActorHandoffState(
 
     internal void BeginCanonicalMaintenanceImport(
         string handoffId,
-        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+        IReadOnlyList<ZLinkActorHandoffFrame> frames,
+        int? negotiatedMessages = null,
+        long? negotiatedBytes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(handoffId);
         ArgumentNullException.ThrowIfNull(frames);
@@ -215,12 +316,99 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = null;
             _preparation = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
+            if (negotiatedMessages is not null || negotiatedBytes is not null)
+            {
+                if (negotiatedMessages is null || negotiatedBytes is null)
+                    throw new ArgumentException(
+                        "Canonical target admission requires both negotiated bounds.");
+                _targetIngressAdmission = new ZLinkBoundedIngressAdmission(
+                    negotiatedMessages.Value,
+                    negotiatedBytes.Value);
+            }
             _frames.Clear();
-            _arrivalIndex = 0;
-            foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
-                _frames.Add(frame with { ArrivalIndex = _arrivalIndex++ });
+            _sourceHoldFrames.Clear();
+            long previousSequence = 0;
+            try
+            {
+                foreach (var frame in frames.OrderBy(
+                             static frame => frame.ArrivalIndex))
+                {
+                    if (frame.ArrivalIndex <= previousSequence
+                        || frame.CanonicalEncodedLength <= 0)
+                        throw new ZLinkRelocationDataLostException(
+                            $"Actor '{actorId}' canonical accepted sequence or size is invalid.");
+                    if (!_targetIngressAdmission.TryAcquire(
+                            frame.CanonicalEncodedLength))
+                        throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.ActorMoving,
+                            $"Actor '{actorId}' canonical target backlog exceeds its bound.",
+                            true);
+                    _frames.Add(frame);
+                    previousSequence = frame.ArrivalIndex;
+                }
+            }
+            catch
+            {
+                _targetIngressAdmission.ReleaseAll();
+                _frames.Clear();
+                _handoffId = null;
+                _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
+                throw;
+            }
+            _arrivalIndex = checked(previousSequence + 1);
             _importedFrameCount = _frames.Count;
             _sourceTrailingImported = true;
+        }
+    }
+
+    internal void AppendCanonicalMaintenanceImport(
+        string handoffId,
+        IReadOnlyList<ZLinkActorHandoffFrame> frames)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(handoffId);
+        ArgumentNullException.ThrowIfNull(frames);
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal)
+                || _targetPhase != ZLinkActorTargetHandoffPhase.Importing)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' does not have the matching canonical import.");
+            var ordered = frames.OrderBy(static frame => frame.ArrivalIndex)
+                .ToArray();
+            var expectedSequence = _arrivalIndex;
+            long requiredBytes = 0;
+            foreach (var frame in ordered)
+            {
+                if (frame.ArrivalIndex != expectedSequence
+                    || frame.CanonicalEncodedLength <= 0)
+                    throw new ZLinkRelocationDataLostException(
+                        $"Actor '{actorId}' canonical delta sequence or size is invalid.");
+                expectedSequence++;
+                requiredBytes = checked(requiredBytes
+                    + frame.CanonicalEncodedLength);
+            }
+            if (ordered.Length
+                    > _targetIngressAdmission.RemainingRecordCapacity
+                || requiredBytes
+                    > _targetIngressAdmission.RemainingByteCapacity)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorMoving,
+                    $"Actor '{actorId}' canonical target backlog exceeds its negotiated bound.",
+                    true);
+            foreach (var frame in ordered)
+            {
+                if (!_targetIngressAdmission.TryAcquire(frame.CanonicalEncodedLength))
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorMoving,
+                        $"Actor '{actorId}' canonical target backlog exceeds its negotiated bound.",
+                        true);
+                _frames.Add(frame);
+                _arrivalIndex++;
+            }
+            _importedFrameCount = _frames.Count;
         }
     }
 
@@ -338,7 +526,11 @@ internal sealed class ZLinkActorHandoffState(
         lock (_gate)
         {
             if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal)) return;
+            _sourceIngressAdmission.ReleaseAll();
+            _sourceHoldAdmission.ReleaseAll();
+            _targetIngressAdmission.ReleaseAll();
             _frames.Clear();
+            _sourceHoldFrames.Clear();
             _importedFrameCount = 0;
             _sourceTrailingImported = false;
             _handoffId = null;
@@ -375,6 +567,41 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
+    internal void SealCapture()
+    {
+        lock (_gate)
+        {
+            if (_sourcePhase != ZLinkActorSourceHandoffPhase.Capturing
+                || _sourceCaptureSealed)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' source handoff capture cannot be sealed.");
+            _sourceCaptureSealed = true;
+        }
+    }
+
+    internal ZLinkActorHandoffCommitBoundary FreezeCaptureCommitBoundary()
+    {
+        lock (_gate)
+        {
+            if (_sourcePhase != ZLinkActorSourceHandoffPhase.Capturing
+                || !_sourceCaptureSealed
+                || _sourceCommittedFrameCount >= 0)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' source commit boundary cannot be frozen.");
+            var frames = _frames
+                .Concat(_sourceHoldFrames)
+                .OrderBy(static frame => frame.ArrivalIndex)
+                .ToArray();
+            _sourceCommittedFrameCount = frames.Length;
+            _sourceCommittedHoldCount = _sourceHoldFrames.Count;
+            return new ZLinkActorHandoffCommitBoundary(
+                frames,
+                checked((ulong)frames.Length),
+                _sourceHoldAdmission.RemainingRecordCapacity,
+                _sourceHoldAdmission.RemainingByteCapacity);
+        }
+    }
+
     public IReadOnlyList<ZLinkActorHandoffFrame> CutoverCaptureToForwarding(
         int committedFrameCount,
         ZLinkBackendActorRef sourceActor,
@@ -405,7 +632,13 @@ internal sealed class ZLinkActorHandoffState(
                 if (_sourcePhase != ZLinkActorSourceHandoffPhase.Capturing)
                     throw new InvalidOperationException(
                         $"Actor '{actorId}' does not have an active source handoff capture.");
-                if (committedFrameCount < 0 || committedFrameCount > _frames.Count)
+                if (committedFrameCount < 0
+                    || (!_sourceCaptureSealed
+                        && committedFrameCount > _frames.Count)
+                    || (_sourceCaptureSealed
+                        && (_sourceCommittedFrameCount < 0
+                            || committedFrameCount
+                            != _sourceCommittedFrameCount)))
                     throw new ArgumentOutOfRangeException(nameof(committedFrameCount));
 
                 _forwardingExpiry?.Cancel();
@@ -423,9 +656,16 @@ internal sealed class ZLinkActorHandoffState(
                     new ZLinkActorForwardingWindow(timeProvider));
                 _staleSourceActor = sourceActor;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.CutoverPending;
+                _sourceCaptureSealed = true;
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
                 diagnostic?.Invoke(
                     $"mapping_installed actor={actorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
-                return _frames.Skip(committedFrameCount).ToArray();
+                return _frames
+                    .Skip(Math.Min(committedFrameCount, _frames.Count))
+                    .Concat(_sourceHoldFrames.Skip(_sourceCommittedHoldCount))
+                    .OrderBy(static frame => frame.ArrivalIndex)
+                    .ToArray();
             }
         }
     }
@@ -442,8 +682,13 @@ internal sealed class ZLinkActorHandoffState(
                     throw new InvalidOperationException(
                         $"Actor '{actorId}' does not have a pending forwarding cutover.");
 
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
+                _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
+                _sourceHoldFrames.Clear();
                 _sourcePhase = ZLinkActorSourceHandoffPhase.ForwardingCommitted;
+                _sourceCaptureSealed = true;
                 expiry = new CancellationTokenSource();
                 _forwardingExpiry = expiry;
                 forwarding.Lease.Commit(window);
@@ -468,6 +713,10 @@ internal sealed class ZLinkActorHandoffState(
             {
                 var trailing = sourceTrailingFrames
                     .OrderBy(static frame => frame.ArrivalIndex)
+                    .Select(static frame => frame with
+                    {
+                        CanonicalEncodedLength = 0
+                    })
                     .ToArray();
                 var trailingStart = _importedFrameCount;
                 _frames.InsertRange(_importedFrameCount, trailing);
@@ -504,6 +753,15 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
+    internal bool IsCanonicalMaintenanceReplayComplete(string handoffId)
+    {
+        lock (_gate)
+            return string.Equals(_handoffId, handoffId,
+                       StringComparison.Ordinal)
+                   && _targetPhase == ZLinkActorTargetHandoffPhase.Replaying
+                   && _frames.Count == 0;
+    }
+
     public IReadOnlyList<ZLinkActorHandoffFrame> SnapshotFinalReplay()
     {
         lock (_gate)
@@ -525,32 +783,140 @@ internal sealed class ZLinkActorHandoffState(
             if (_frames.Count == 0)
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' does not have a handoff frame to acknowledge.");
+            var removed = _frames[0];
             _frames.RemoveAt(0);
+            if (removed.CanonicalEncodedLength > 0)
+                _targetIngressAdmission.Release(
+                    removed.CanonicalEncodedLength);
+        }
+    }
+
+    internal void AcknowledgeCanonicalReplayThrough(ulong acceptedSequence)
+    {
+        lock (_gate)
+        {
+            if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying)
+                throw new InvalidOperationException(
+                    $"Actor '{actorId}' cannot acknowledge canonical replay outside target replay.");
+            while (_frames.Count != 0
+                   && checked((ulong)_frames[0].ArrivalIndex) <= acceptedSequence)
+            {
+                var removed = _frames[0];
+                _frames.RemoveAt(0);
+                _targetIngressAdmission.Release(
+                    removed.CanonicalEncodedLength);
+            }
         }
     }
 
     public IReadOnlyList<ZLinkActorHandoffFrame> AbortCapture()
+    {
+        var frames = BeginAbortCaptureRestore();
+        foreach (var frame in frames)
+            AcknowledgeAbortRestoreEnqueued(frame.ArrivalIndex);
+        CompleteAbortCaptureRestore();
+        return frames;
+    }
+
+    internal IReadOnlyList<ZLinkActorHandoffFrame> BeginAbortCaptureRestore()
+    {
+        lock (_forwardGate)
+        {
+            lock (_gate)
+            {
+                if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.Capturing
+                    or ZLinkActorSourceHandoffPhase.CutoverPending
+                    or ZLinkActorSourceHandoffPhase.AbortRestoring))
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' does not have an abortable source handoff.");
+                if (_sourcePhase != ZLinkActorSourceHandoffPhase.AbortRestoring)
+                    _abortRestoreAdmissionsReleased =
+                        _sourcePhase == ZLinkActorSourceHandoffPhase.CutoverPending;
+                _sourcePhase = ZLinkActorSourceHandoffPhase.AbortRestoring;
+                return _frames
+                    .Concat(_sourceHoldFrames)
+                    .OrderBy(static frame => frame.ArrivalIndex)
+                    .ToArray();
+            }
+        }
+    }
+
+    internal void AcknowledgeAbortRestoreEnqueued(long arrivalIndex)
+    {
+        lock (_forwardGate)
+        {
+            lock (_gate)
+            {
+                if (_sourcePhase != ZLinkActorSourceHandoffPhase.AbortRestoring)
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' does not have an active abort restore.");
+                var sourceIndex = _frames.Count == 0
+                    ? -1
+                    : _frames.FindIndex(frame => frame.ArrivalIndex == arrivalIndex);
+                var holdIndex = _sourceHoldFrames.Count == 0
+                    ? -1
+                    : _sourceHoldFrames.FindIndex(
+                        frame => frame.ArrivalIndex == arrivalIndex);
+                var nextArrival = _frames
+                    .Concat(_sourceHoldFrames)
+                    .Select(static frame => frame.ArrivalIndex)
+                    .DefaultIfEmpty(long.MinValue)
+                    .Min();
+                if (nextArrival != arrivalIndex
+                    || sourceIndex < 0 && holdIndex < 0)
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' abort restore acknowledgement is out of order.");
+
+                if (sourceIndex >= 0)
+                {
+                    var frame = _frames[sourceIndex];
+                    _frames.RemoveAt(sourceIndex);
+                    if (!_abortRestoreAdmissionsReleased)
+                        _sourceIngressAdmission.Release(
+                            frame.CanonicalEncodedLength);
+                }
+                else
+                {
+                    var frame = _sourceHoldFrames[holdIndex];
+                    _sourceHoldFrames.RemoveAt(holdIndex);
+                    if (!_abortRestoreAdmissionsReleased)
+                        _sourceHoldAdmission.Release(
+                            frame.CanonicalEncodedLength);
+                }
+            }
+        }
+    }
+
+    internal void CompleteAbortCaptureRestore()
     {
         TaskCompletionSource? completion;
         lock (_forwardGate)
         {
             lock (_gate)
             {
-                if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.Capturing
-                    or ZLinkActorSourceHandoffPhase.CutoverPending))
+                if (_sourcePhase != ZLinkActorSourceHandoffPhase.AbortRestoring)
                     throw new InvalidOperationException(
-                        $"Actor '{actorId}' does not have an abortable source handoff.");
+                        $"Actor '{actorId}' does not have an abort restore to complete.");
+                if (_frames.Count != 0 || _sourceHoldFrames.Count != 0)
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' abort restore still has queued frames.");
                 _sourcePhase = ZLinkActorSourceHandoffPhase.Idle;
-                var frames = _frames.ToArray();
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
+                _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
+                _sourceHoldFrames.Clear();
                 _importedFrameCount = 0;
                 _sourceTrailingImported = false;
+                _sourceCaptureSealed = false;
+                _sourceCommittedFrameCount = -1;
+                _sourceCommittedHoldCount = 0;
+                _abortRestoreAdmissionsReleased = false;
                 _staleSourceActor = null;
                 completion = _sourceCompletion;
                 _sourceCompletion = null;
                 ClearForwardingMappingLocked();
                 completion?.TrySetResult();
-                return frames;
             }
         }
     }
@@ -593,9 +959,16 @@ internal sealed class ZLinkActorHandoffState(
             {
                 _sourcePhase = ZLinkActorSourceHandoffPhase.Idle;
                 _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
+                _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
+                _sourceHoldFrames.Clear();
                 _importedFrameCount = 0;
                 _sourceTrailingImported = false;
+                _sourceCaptureSealed = false;
+                _sourceCommittedFrameCount = -1;
+                _sourceCommittedHoldCount = 0;
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
@@ -618,9 +991,16 @@ internal sealed class ZLinkActorHandoffState(
                 preparation = _preparation;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.Idle;
                 _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
+                _targetIngressAdmission.ReleaseAll();
                 _frames.Clear();
+                _sourceHoldFrames.Clear();
                 _importedFrameCount = 0;
                 _sourceTrailingImported = false;
+                _sourceCaptureSealed = false;
+                _sourceCommittedFrameCount = -1;
+                _sourceCommittedHoldCount = 0;
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
@@ -781,6 +1161,7 @@ internal enum ZLinkActorSourceHandoffPhase
     Idle,
     Capturing,
     CutoverPending,
+    AbortRestoring,
     ForwardingCommitted,
     Retired
 }

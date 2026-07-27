@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
-#include <zlink/framework/contracts/configuration/services.hpp>
+#include "service_scope.hpp"
 
 #include <map>
 #include <utility>
@@ -70,7 +70,7 @@ namespace zlink::framework
 service_provider_t::service_provider_t () :
     _registry (std::make_shared<detail::service_registry_t> ()),
     _scope (std::make_shared<detail::service_scope_state_t> (
-      false, service_scope_kind_t::handler_invocation))
+      false, detail::service_scope_kind_t::handler_invocation))
 {
 }
 
@@ -86,14 +86,27 @@ service_provider_t::service_provider_t (service_provider_t &&) noexcept = defaul
 
 service_provider_t &service_provider_t::operator= (service_provider_t &&) noexcept = default;
 
-service_scope_t service_provider_t::create_scope (service_scope_kind_t kind)
+detail::service_scope_t detail::service_scope_t::create (service_provider_t &provider,
+                                                         service_scope_kind_t kind)
 {
-    if (is_closed ()) {
+    if (provider.is_closed ()) {
         throw detail::make_boundary_exception (detail::boundary_error_t::shutdown,
                                      "service provider is closed");
     }
-    return service_scope_t (
-      service_provider_t (_registry, std::make_shared<detail::service_scope_state_t> (true, kind)));
+    return service_scope_t (service_scope_access_t::create_child (provider, kind));
+}
+
+service_provider_t detail::service_scope_access_t::create_child (
+  service_provider_t &provider, service_scope_kind_t kind)
+{
+    return service_provider_t (
+      provider._registry, std::make_shared<service_scope_state_t> (true, kind));
+}
+
+detail::service_scope_kind_t detail::service_scope_access_t::kind (
+  const service_provider_t &provider) noexcept
+{
+    return provider._scope->kind;
 }
 
 void service_provider_t::close () noexcept
@@ -160,27 +173,28 @@ std::shared_ptr<void> service_provider_t::try_resolve (std::type_index type)
     return resolve (type);
 }
 
-service_scope_t::service_scope_t (service_provider_t provider) : _provider (std::move (provider))
+detail::service_scope_t::service_scope_t (service_provider_t provider) :
+    _provider (std::move (provider))
 {
 }
 
-service_scope_t::~service_scope_t ()
+detail::service_scope_t::~service_scope_t ()
 {
     close ();
 }
 
-service_scope_t::service_scope_t (service_scope_t &&) noexcept = default;
+detail::service_scope_t::service_scope_t (service_scope_t &&) noexcept = default;
 
-service_scope_t &service_scope_t::operator= (service_scope_t &&) noexcept = default;
+detail::service_scope_t &detail::service_scope_t::operator= (service_scope_t &&) noexcept = default;
 
-void service_scope_t::close () noexcept
+void detail::service_scope_t::close () noexcept
 {
     _provider.close ();
 }
 
-service_scope_kind_t service_scope_t::kind () const noexcept
+detail::service_scope_kind_t detail::service_scope_t::kind () const noexcept
 {
-    return _provider._scope->kind;
+    return service_scope_access_t::kind (_provider);
 }
 
 service_collection_t::service_collection_t () :
@@ -205,7 +219,7 @@ service_collection_t &service_collection_t::add_descriptor (std::type_index type
 service_provider_t service_collection_t::build_provider () const
 {
     return service_provider_t (_registry, std::make_shared<detail::service_scope_state_t> (
-                                            false, service_scope_kind_t::handler_invocation));
+                                            false, detail::service_scope_kind_t::handler_invocation));
 }
 
 bool service_collection_t::contains (std::type_index type) const

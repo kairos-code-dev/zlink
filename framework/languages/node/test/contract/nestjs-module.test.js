@@ -145,7 +145,7 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
   assert.equal(tokens.has(nestjs.ZLINK_FANOUT_CLIENT), true);
   assert.equal(tokens.has(nestjs.ZLINK_ACTOR_CLIENT), false);
   assert.equal(tokens.has(nestjs.ZLINK_BOUND_SESSION_FACTORY), true);
-  assert.equal(tokens.has(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER), true);
+  assert.equal(Object.hasOwn(nestjs, 'ZLINK_RUNTIME_EVENT_PUBLISHER'), false);
   assert.equal(tokens.has(nestjs.ZLINK_ROUTE_MESH_RUNTIME), false);
   assert.equal(tokens.has(nestjs.ZLINK_MESSAGE_METADATA_POLICY), true);
   assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), false);
@@ -196,33 +196,6 @@ test('ZLinkHttpClientModule registers named server clients through Nest DI', asy
   );
 });
 
-test('ZLinkMonitoringModule.forRoot exposes runtime event publisher provider path', () => {
-  const module = nestjs.ZLinkMonitoringModule.forRoot();
-  const tokens = providerTokens(module);
-
-  assert.equal(tokens.has(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER), true);
-});
-
-test('ZLinkMonitoringModule.forRoot resolves publisher from framework runtime provider', () => {
-  const module = nestjs.ZLinkMonitoringModule.forRoot();
-  const provider = module.providers.find((candidate) => candidate.provide === nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER);
-  const runtime = {
-    eventPublisher: {
-      register() {},
-      async publish() {}
-    }
-  };
-  const publisher = provider.useFactory({
-    get(token, options) {
-      assert.equal(token, nestjs.ZLINK_FRAMEWORK_RUNTIME);
-      assert.deepEqual(options, { strict: false });
-      return runtime;
-    }
-  });
-
-  assert.equal(publisher, runtime.eventPublisher);
-});
-
 test('ZLinkModule lifecycle registers decorated runtime event handlers with the runtime publisher', async () => {
   const events = [];
   class TimerFailureMonitor {
@@ -240,7 +213,7 @@ test('ZLinkModule lifecycle registers decorated runtime event handlers with the 
 
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
   try {
-    const publisher = app.get(nestjs.ZLINK_RUNTIME_EVENT_PUBLISHER);
+    const publisher = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME).eventPublisher;
     await publisher.publish({
       sourceName: 'stage-node',
       timestamp: new Date(),
@@ -1555,7 +1528,6 @@ test('framework options builder maps the formal RouteMesh registration flow into
     spot.addSpotFactory(StageSpot)
       .addSpotFactory(LocalStageSpot)
       .addEntrySpot(StageEntrySpot)
-      .configureEntrySpot({ routingId: 'entry-stage' })
       .actorFactory('stage', StageActor)
       .addActorTransferAdapter('stage', StageActorTransferAdapter);
     spot.listen('tcp://0.0.0.0:9405');
@@ -1584,7 +1556,7 @@ test('framework options builder maps the formal RouteMesh registration flow into
   assert.equal(registration.spotFactories.has(StageSpot), true);
   assert.equal(registration.spotFactories.has(LocalStageSpot), true);
   assert.equal(spotNode.entrySpotType, StageEntrySpot);
-  assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-stage' });
+  assert.equal(spotNode.entrySpot, undefined);
   assert.deepEqual(spotNode.spotFactories, [StageSpot, LocalStageSpot]);
   assert.equal(spotNode.router.bind, 'tcp://0.0.0.0:9405');
   assert.deepEqual(spotNode.router.manualConnections, undefined);
@@ -1711,7 +1683,6 @@ test('zlinkFramework builder maps stream node registration without raw server co
       .addRouteMesh('game.spot')
         .listen('tcp://0.0.0.0:9110')
         .routingId('game-node')
-        .configureEntrySpot({ routingId: 'entry-node' })
         .addEntrySpot(StageEntrySpot)
         .actorFactory('player', PlayerActorFactory)
         .channelName('game.spot')
@@ -1729,7 +1700,7 @@ test('zlinkFramework builder maps stream node registration without raw server co
   assert.equal(spotNode.router.routingId, 'game-node');
   assert.deepEqual(Object.keys(spotNode.meshChannels), ['game.spot']);
   assert.equal(registration.spotPublisherClients.has('game.spot'), true);
-  assert.deepEqual(spotNode.entrySpot, { routingId: 'entry-node' });
+  assert.equal(spotNode.entrySpot, undefined);
   assert.equal(spotNode.entrySpotType, StageEntrySpot);
 });
 
@@ -1819,15 +1790,22 @@ test('ZLinkModule.forRoot maps one location store into runtime registration', as
   assert.equal(registration.locations.storeInstance, store);
 });
 
-test('ZLinkModule.forRoot exposes SpotHandle resolvers from location stores', async () => {
+test('ZLinkModule.forRoot exposes only the public Spot manager capability', async () => {
   const store = new framework.ZLinkInMemoryLocationStore();
+  class ManagedSpot {}
   const module = nestjs.ZLinkModule.forRoot(nestjs.zlinkFramework()
     .addLocationStore(store)
+    .addRouteMesh('game')
+      .listen(uniqueIpcEndpoint('public-spot-manager'))
+      .routingId('game-node')
+      .addSpotFactory(ManagedSpot)
+      .channelName('game')
     .build());
   const tokens = providerTokens(module);
 
-  assert.equal(tokens.has(nestjs.ZLINK_SPOT_HANDLE_RESOLVER), true);
-  assert.equal(tokens.has(nestjs.ZLINK_ACTOR_SPOT_HANDLE_RESOLVER), true);
+  assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), true);
+  assert.equal(Object.hasOwn(nestjs, 'ZLINK_SPOT_HANDLE_RESOLVER'), false);
+  assert.equal(Object.hasOwn(nestjs, 'ZLINK_ACTOR_SPOT_HANDLE_RESOLVER'), false);
   assert.equal(Object.hasOwn(nestjs, 'ZLINK_SPOT_' + 'REMOTE_ADDRESS_RESOLVER'), false);
 });
 
@@ -2339,7 +2317,6 @@ test('framework runtime host applies formal MeshNode router and peer options', a
             manualPeerConnections: [{ peerRid: 'node-b', endpoint: 'tcp://127.0.0.1:9309' }]
           },
           meshChannels: { game: {} },
-          entrySpot: { routingId: 'entry-node-a' }
         }
       }
     })

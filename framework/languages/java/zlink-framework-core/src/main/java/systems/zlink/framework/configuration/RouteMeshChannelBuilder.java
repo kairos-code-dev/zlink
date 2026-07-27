@@ -1,7 +1,8 @@
-package systems.zlink.framework.configuration;
+package systems.zlink.framework.runtime.internal.configuration;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
+import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);

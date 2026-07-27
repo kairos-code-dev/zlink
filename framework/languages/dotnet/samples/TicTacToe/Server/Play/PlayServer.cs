@@ -42,7 +42,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .SetConnectionString(settings.RedisEndpoint)
                 .SetKeyPrefix(settings.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             options.AddStreamNode(SampleNodes.ClientStream)

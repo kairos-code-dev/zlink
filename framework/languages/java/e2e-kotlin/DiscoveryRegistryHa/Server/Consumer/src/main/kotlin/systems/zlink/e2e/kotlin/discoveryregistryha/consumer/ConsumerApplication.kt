@@ -71,7 +71,6 @@ class ConsumerApplication {
                 .setCommandTimeout(Duration.ofMillis(consumerOptions.redisCommandTimeoutMillis)),
         )
         return when (consumerOptions.storeMode) {
-            "polling" -> PollingOnlyLocationStore(redisStore)
             "delay" -> DelayableLocationStore(redisStore, delayState)
             else -> redisStore
         }
@@ -81,9 +80,10 @@ class ConsumerApplication {
     fun consumerHttpServer(
         client: ZLinkClient,
         lifecycle: ZLinkFrameworkLifecycle,
+        locations: ZLinkLocationStore,
         json: ObjectMapper,
         consumerOptions: ConsumerOptions,
         delayState: LocationStoreDelayState,
     ): ConsumerHttpServer =
-        ConsumerHttpServer(client, lifecycle, json, consumerOptions, delayState)
+        ConsumerHttpServer(client, lifecycle, locations, json, consumerOptions, delayState)
 }

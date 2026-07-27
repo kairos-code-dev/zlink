@@ -1,7 +1,6 @@
 export * from './auto-connect';
 export * from './in-memory-location-store';
 export * from './in-memory-authority-store';
-export * from './allocated-routing-id-runtime';
 export * from './lease-tracker';
 export * from './lifecycle';
 export * from './resolvers';

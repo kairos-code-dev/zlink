@@ -296,7 +296,7 @@ public sealed class ActorManagerProductionTests
             object?[]? args)
         {
             ArgumentNullException.ThrowIfNull(targetMethod);
-            if (targetMethod.Name == nameof(IZLinkAuthorityStore.ReserveAsync)
+            if (targetMethod.Name == nameof(IZLinkLocationStore.ReserveAsync)
                 && args is { Length: > 0 }
                 && args[0] is ZLinkObjectReservationRequest
                 {

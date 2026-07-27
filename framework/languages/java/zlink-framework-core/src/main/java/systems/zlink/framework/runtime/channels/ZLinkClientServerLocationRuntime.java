@@ -19,26 +19,26 @@ import java.util.concurrent.TimeUnit;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private static final String SECURITY_IDENTITY = "default";
 
-    private final ZLinkClientServerLocationStore store;
+    private final ZLinkLocationStore store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
     private final ZLinkChannelBackendAdapter backend;
     private final ZLinkBackendAdapterProvider backendFactory;
@@ -60,7 +60,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private volatile boolean running;
 
     ZLinkClientServerLocationRuntime(
-        ZLinkClientServerLocationStore store,
+        ZLinkLocationStore store,
         Supplier<ZLinkLocationOwnerToken> owner,
         ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendContext context,
@@ -92,8 +92,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
             running = true;
             if (surfaces.stream().anyMatch(surface ->
                     surface.type()
-                        == systems.zlink.framework.locations
-                            .ZLinkLocationAutoConnectType.CLIENT_SERVER
+                        == systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType.CLIENT_SERVER
                     && surface.role()
                         == systems.zlink.framework.locations
                             .ZLinkLocationRole.DEALER)
@@ -166,8 +165,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         List<ZLinkChannelRuntime.AutoConnectSurface> surfaces) {
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
             if (surface.type()
-                    != systems.zlink.framework.locations
-                        .ZLinkLocationAutoConnectType.CLIENT_SERVER
+                    != systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType.CLIENT_SERVER
                 || surface.role()
                     != systems.zlink.framework.locations.ZLinkLocationRole.ROUTER
                 || published.containsKey(surface.meshName())) {
@@ -417,7 +415,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private void completeAdmission(
         String connectionId,
         ZLinkChannelSocketRegistry.AdmissionFence fence,
-        systems.zlink.framework.runtime.backend.ZLinkBackendReceived reply) {
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived reply) {
         try (reply) {
             ZLinkClientServerServerDescriptor expected;
             synchronized (this) {
@@ -428,7 +426,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 expected = current.expected();
             }
             if (reply.result()
-                    != systems.zlink.framework.runtime.backend
+                    != systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendRequestResult.OK
                 || reply.parts().size() != 1) {
                 synchronized (this) {
@@ -539,8 +537,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         Set<String> result = new HashSet<>();
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
             if (surface.type()
-                    == systems.zlink.framework.locations
-                        .ZLinkLocationAutoConnectType.CLIENT_SERVER
+                    == systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType.CLIENT_SERVER
                 && surface.role()
                     == systems.zlink.framework.locations.ZLinkLocationRole.DEALER
                 && surface.manualEndpoints().isEmpty()) {

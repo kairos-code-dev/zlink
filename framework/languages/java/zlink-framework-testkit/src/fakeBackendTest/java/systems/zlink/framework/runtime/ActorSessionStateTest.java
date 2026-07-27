@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;

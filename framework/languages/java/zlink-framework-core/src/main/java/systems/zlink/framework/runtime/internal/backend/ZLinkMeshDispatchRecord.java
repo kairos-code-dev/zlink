@@ -2,8 +2,8 @@ package systems.zlink.framework.runtime.internal.backend;
 
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ReadyRecord;
-import systems.zlink.contracts.service.spot.ReceiveRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReceiveRecord;
 
 /**
  * One retained RouteMesh dispatch message.

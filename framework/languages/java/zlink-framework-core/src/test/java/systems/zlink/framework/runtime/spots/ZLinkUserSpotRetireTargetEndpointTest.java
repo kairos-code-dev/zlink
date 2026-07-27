@@ -21,13 +21,13 @@ import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.runtime.actors.ZLinkSessionRelocationPeerClient;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkAggregateRelocationCoordinator;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
@@ -37,15 +37,15 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
 
     @Test
     void command46MustCloseTheExactRequestSourceFence() {
-        var relay = new systems.zlink.framework.runtime.service
+        var relay = new systems.zlink.framework.runtime.internal.service
             .ZLinkServiceRelocationWireCodec.ReplyRelay(
-                new systems.zlink.framework.runtime.service
+                new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceRelocationWireCodec.Operation(1, 2),
                 3,
-                new systems.zlink.framework.runtime.service
+                new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceRelocationWireCodec.RelocationId(4, 5),
                 6,
-                new systems.zlink.framework.runtime.service
+                new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceRelocationWireCodec.CoordinatorFence(
                         "target-owner", 7, RoutingId.from("target-node"),
                         8, "store-version"),
@@ -60,10 +60,10 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
                 new systems.zlink.framework.runtime.internal.locations
                     .ZLinkServiceRelocationEnvelopeCodec.Payload(
                         "reply", "application/json", new byte[] {1}));
-        var wrongLease = new systems.zlink.framework.runtime.service
+        var wrongLease = new systems.zlink.framework.runtime.internal.service
             .ZLinkServiceRelocationWireCodec.ReplyRelayAck(
                 relay.relocation(), relay.coordinator(), relay.operation(),
-                new systems.zlink.framework.runtime.service
+                new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceRelocationWireCodec.RequestSourceFence(
                         "source-owner", 13, RoutingId.from("source-node"), 12),
                 1);
@@ -83,7 +83,7 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
         String authorityKey = ZLinkAuthorityKeyCodec.spot(spotId);
         String actorAuthorityKey = ZLinkAuthorityKeyCodec.actor(actorId);
         AuthorityState authority = new AuthorityState();
-        ZLinkAuthorityStore authorityStore = authority.proxy();
+        ZLinkLocationStore authorityStore = authority.proxy();
         var coordinator = new ZLinkAggregateRelocationCoordinator(
             authorityStore,
             new InMemoryRelocationStore());
@@ -359,10 +359,10 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
             new ConcurrentHashMap<>();
         private ZLinkAggregatePrepareRequest prepared;
 
-        ZLinkAuthorityStore proxy() {
-            return (ZLinkAuthorityStore) Proxy.newProxyInstance(
-                ZLinkAuthorityStore.class.getClassLoader(),
-                new Class<?>[] {ZLinkAuthorityStore.class},
+        ZLinkLocationStore proxy() {
+            return (ZLinkLocationStore) Proxy.newProxyInstance(
+                ZLinkLocationStore.class.getClassLoader(),
+                new Class<?>[] {ZLinkLocationStore.class},
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "prepareAggregate" -> prepare(
                         (ZLinkAggregatePrepareRequest) arguments[0]);

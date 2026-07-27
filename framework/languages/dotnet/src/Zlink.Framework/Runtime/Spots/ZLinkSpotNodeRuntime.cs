@@ -17,6 +17,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
+    private IDisposable? _manualConnectionAttachment;
     private bool _stopSourceDisposed;
     private IActorCreateOperationTarget? _actorCreateOperationTarget;
     private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
@@ -58,6 +59,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                     "The MeshNode backend does not support authority fencing.");
             authorityObserver.SetLocalOwnerLeaseGeneration(
                 checked((ulong)locationLifecycle.OwnerToken.LeaseGeneration));
+            if (node is not IZLinkBackendRequestSourceFenceObserver sourceObserver)
+                throw new InvalidOperationException(
+                    "The MeshNode backend does not preserve request-source fences.");
+            var localRequestSource =
+                new ZLinkServiceWireCodec.RequestSourceFence(
+                    locationLifecycle.OwnerToken.OwnerId,
+                    checked((ulong)locationLifecycle.OwnerToken.LeaseGeneration),
+                    node.RoutingId,
+                    node.MeshStatus().LifecycleGeneration);
+            sourceObserver.SetLocalRequestSourceFence(localRequestSource);
+            sourceObserver.ObserveRequestSourceFence(localRequestSource);
         }
         StartupState = startupState;
         EntrySpotId = entrySpotId ?? startupState?.EntrySpotId
@@ -86,19 +98,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node,
             spotChannelName,
             locationLifecycle);
-        if (frameworkRegistration.Locations.ResolveStore()
-            is { } relocationAuthorityStore
+        if (frameworkRegistration.Locations.ResolveStore() is not null
             && node is IZLinkBackendRelocationReplyRelay relayBackend)
         {
             _relocationReplyRelayTarget =
                 new ZLinkRelocationReplyTarget(
-                    runtime,
-                    relocationAuthorityStore);
+                    relayBackend);
             relayBackend.SetRelocationReplyRelayTarget(
                 _relocationReplyRelayTarget);
         }
         if (frameworkRegistration.Locations.ResolveStore()
-                is IZLinkAuthorityStore canonicalAuthorityStore
+                is { } locationStore
             && node is IZLinkBackendCanonicalRelocationReservation
                 canonicalBackend
             && startupState is { } canonicalStartup
@@ -111,7 +121,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         {
             _canonicalRelocationReservationOwner =
                 new ZLinkCanonicalRelocationReservationOwner(
-                    canonicalAuthorityStore,
+                    locationStore,
                     runtime.RelocationPermits,
                     spotChannelName,
                     node.RoutingId,
@@ -156,13 +166,13 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
         if (registration.InstanceSpotFactories.Count > 0
             && frameworkRegistration.Locations.ResolveStore()
-                is IZLinkAuthorityStore instanceAuthorityStore
+                is { } instanceLocationStore
             && frameworkRegistration.Locations.RelocationStoreInstance
                 is { } relocationStore
             && locationLifecycle is not null)
         {
             _instanceSpotActivationTarget = new ZLinkInstanceSpotActivationTarget(
-                instanceAuthorityStore,
+                instanceLocationStore,
                 relocationStore,
                 _spots,
                 node,
@@ -585,12 +595,21 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         lock (_disposeGate)
-            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
+            return new ValueTask(
+                _disposeTask ??= DisposeCoreAsync(CancellationToken.None));
     }
 
-    private async Task DisposeCoreAsync()
+    internal ValueTask ForceStopAsync(CancellationToken cancellationToken)
+    {
+        lock (_disposeGate)
+            return new ValueTask(
+                _disposeTask ??= DisposeCoreAsync(cancellationToken));
+    }
+
+    private async Task DisposeCoreAsync(CancellationToken forceStopToken)
     {
         var failures = new List<Exception>();
+        Capture(DetachManualConnections);
         await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
         Capture(RequestStop);
         if (_entryDispatchPump is { } entryDispatchPump)
@@ -602,7 +621,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         await CaptureAsync(_nodeSubmitter.DisposeAsync).ConfigureAwait(false);
         if (_canonicalRelocationReservationOwner is { } reservationOwner)
             await CaptureAsync(reservationOwner.DisposeAsync).ConfigureAwait(false);
-        await CaptureAsync(Node.DisposeAsync).ConfigureAwait(false);
+        await CaptureAsync(forceStopToken.CanBeCanceled
+                ? () => Node.ForceStopAsync(forceStopToken)
+                : Node.DisposeAsync)
+            .ConfigureAwait(false);
         Capture(() =>
         {
             lock (_disposeGate)
@@ -640,6 +662,38 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 failures.Add(exception);
             }
         }
+    }
+
+    internal void OwnManualConnectionAttachment(IDisposable attachment)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+        IDisposable? previous = null;
+        var dispose = false;
+        lock (_disposeGate)
+        {
+            if (_disposeTask is not null)
+                dispose = true;
+            else
+            {
+                previous = _manualConnectionAttachment;
+                _manualConnectionAttachment = attachment;
+            }
+        }
+        previous?.Dispose();
+        if (!dispose) return;
+        attachment.Dispose();
+        throw new ObjectDisposedException(nameof(ZLinkSpotNodeRuntime));
+    }
+
+    private void DetachManualConnections()
+    {
+        IDisposable? attachment;
+        lock (_disposeGate)
+        {
+            attachment = _manualConnectionAttachment;
+            _manualConnectionAttachment = null;
+        }
+        attachment?.Dispose();
     }
 
     public void ApplyEntrySpotIdBeforeBind()
@@ -814,6 +868,21 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public bool ConnectPeerAuto(RoutingId? peerRid, string endpoint)
         => _peerConnector.ConnectPeerAuto(peerRid, endpoint);
+
+    internal void ObserveRequestSourceFence(ZLinkAutoConnectTarget target)
+    {
+        if (target.NodeRid.IsEmpty || target.LifecycleGeneration == 0
+            || string.IsNullOrWhiteSpace(target.OwnerId)
+            || target.OwnerLeaseGeneration <= 0)
+            return;
+        if (Node is IZLinkBackendRequestSourceFenceObserver observer)
+            observer.ObserveRequestSourceFence(
+                new ZLinkServiceWireCodec.RequestSourceFence(
+                    target.OwnerId,
+                    checked((ulong)target.OwnerLeaseGeneration),
+                    target.NodeRid,
+                    target.LifecycleGeneration));
+    }
 
     public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration)
         => Node.DisconnectPeerLifetime(peerRid, lifecycleGeneration);

@@ -65,63 +65,10 @@ class live_location_reader_t final
 
   public:
 
-    task_t<std::vector<peer_location_t>> list_peers (peer_location_filter_t filter)
+    task_t<location_page_t<mesh_node_descriptor_t>>
+    list_mesh_nodes (std::string mesh_name, location_page_request_t page = {})
     {
-        auto rows = _store->list_peers (std::move (filter)).result ().value ();
-        filter_live (rows);
-        return completed (std::move (rows));
-    }
-
-    task_t<std::vector<peer_location_t>> list_raw_peers (peer_location_filter_t filter)
-    {
-        return _store->list_peers (std::move (filter));
-    }
-
-    task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key)
-    {
-        auto row = _store->resolve_spot (std::move (key)).result ().value ();
-        return completed (live (std::move (row)));
-    }
-
-    task_t<location_page_t<spot_location_t>>
-    list_spots (spot_location_filter_t filter, location_page_request_t page = {})
-    {
-        auto rows = _store->list_spots (std::move (filter), page).result ().value ();
-        filter_live (rows.items);
-        return completed (std::move (rows));
-    }
-
-
-    task_t<location_page_t<spot_location_t>>
-    list_raw_spots (spot_location_filter_t filter, location_page_request_t page = {})
-    {
-        return _store->list_spots (std::move (filter), std::move (page));
-    }
-
-    task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key)
-    {
-        auto row = _store->resolve_actor (std::move (key)).result ().value ();
-        return completed (live (std::move (row)));
-    }
-
-    task_t<location_page_t<actor_location_t>>
-    list_actors (actor_location_filter_t filter, location_page_request_t page = {})
-    {
-        auto rows = _store->list_actors (std::move (filter), page).result ().value ();
-        filter_live (rows.items);
-        return completed (std::move (rows));
-    }
-
-    task_t<location_page_t<actor_location_t>>
-    list_raw_actors (actor_location_filter_t filter, location_page_request_t page = {})
-    {
-        return _store->list_actors (std::move (filter), std::move (page));
-    }
-
-    task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key)
-    {
-        auto row = _store->resolve_route (std::move (key)).result ().value ();
-        return completed (live (std::move (row)));
+        return _store->list_mesh_nodes (std::move (mesh_name), std::move (page));
     }
 
     task_t<authority_read_result_t> read_authority (authority_key_t key)
@@ -129,72 +76,10 @@ class live_location_reader_t final
         return _store->read_authority (std::move (key));
     }
 
-    task_t<location_page_t<route_location_t>>
-    list_routes (route_location_filter_t filter, location_page_request_t page = {})
-    {
-        auto rows = _store->list_routes (std::move (filter), page).result ().value ();
-        filter_live (rows.items);
-        return completed (std::move (rows));
-    }
-
-    task_t<location_page_t<route_location_t>>
-    list_raw_routes (route_location_filter_t filter, location_page_request_t page = {})
-    {
-        return _store->list_routes (std::move (filter), std::move (page));
-    }
-
-    std::set<std::string> live_owner_ids ()
-    {
-        std::set<std::string> owner_ids;
-        for (const auto &row :
-             _store->list_peers ({}).result ().value ())
-            owner_ids.insert (row.owner_id);
-        collect_page_owner_ids (
-          owner_ids,
-          [this] (location_page_request_t page) {
-              return _store
-                ->list_spots ({}, page)
-                .result ()
-                .value ();
-          });
-        collect_page_owner_ids (
-          owner_ids,
-          [this] (location_page_request_t page) {
-              return _store
-                ->list_actors ({}, page)
-                .result ()
-                .value ();
-          });
-        collect_page_owner_ids (
-          owner_ids,
-          [this] (location_page_request_t page) {
-              return _store
-                ->list_routes ({}, page)
-                .result ()
-                .value ();
-          });
-        return live_owners (owner_ids);
-    }
-
   private:
     template <typename T> static task_t<T> completed (T value)
     {
         return task_t<T> (result_t<T>::success (std::move (value)));
-    }
-
-    template <typename PageLoader>
-    static void collect_page_owner_ids (
-      std::set<std::string> &owner_ids,
-      PageLoader load)
-    {
-        location_page_request_t request;
-        do {
-            const auto page = load (request);
-            for (const auto &row : page.items)
-                owner_ids.insert (row.owner_id);
-            request.continuation_token =
-              page.continuation_token;
-        } while (request.continuation_token);
     }
 
     std::set<std::string> live_owners (

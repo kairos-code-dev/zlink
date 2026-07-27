@@ -317,9 +317,7 @@ class channel_runtime_t
     void publish_socket_event (const std::string &channel_name,
                                socket_event_kind_t event,
                                std::string local_address = {},
-                               std::string remote_address = {},
-                               std::uint32_t native_event = 0,
-                               std::uint32_t native_value = 0) const;
+                               std::string remote_address = {}) const;
     void set_server_weight (const std::string &channel_name, int value);
     std::optional<int>
     server_peer_weight_override (const std::string &channel_name) const;

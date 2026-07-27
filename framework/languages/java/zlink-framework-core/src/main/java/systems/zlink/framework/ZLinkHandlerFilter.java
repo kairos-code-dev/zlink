@@ -4,6 +4,6 @@ import java.util.concurrent.CompletionStage;
 
 public interface ZLinkHandlerFilter {
     <T> CompletionStage<T> invoke(
-        ZLinkHandlerInvocation invocation,
-        ZLinkNext<T> next);
+        ZLinkMessageContext context,
+        ZLinkHandlerFilterNext<T> next);
 }

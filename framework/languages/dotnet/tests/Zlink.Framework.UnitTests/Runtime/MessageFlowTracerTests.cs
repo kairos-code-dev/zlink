@@ -17,7 +17,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void Off_SuppressesAllTransitions()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.Off);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.Off);
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped));
         Assert.Empty(logger.Messages);
@@ -26,7 +26,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void ErrorsOnly_EmitsDroppedButNotHealthyTransitions()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.ErrorsOnly);
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped));
         Assert.DoesNotContain(logger.Messages, m => m.Contains("phase=received"));
@@ -36,7 +36,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void HandlerExceptionFlowUsesErrorLogLevel()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.ErrorsOnly);
 
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Error) with
         {
@@ -47,17 +47,17 @@ public sealed class MessageFlowTracerTests
     }
 
     [Theory]
-    [InlineData(ZLinkDispatchMessageKind.Send, LogLevel.Warning)]
-    [InlineData(ZLinkDispatchMessageKind.Publish, LogLevel.Debug)]
+    [InlineData((int)ZLinkDispatchMessageKind.Send, LogLevel.Warning)]
+    [InlineData((int)ZLinkDispatchMessageKind.Publish, LogLevel.Debug)]
     public void MissingHandlerFlowUsesMessageKindLogLevel(
-        ZLinkDispatchMessageKind messageKind,
+        int messageKind,
         LogLevel expected)
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.ErrorsOnly);
 
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Error) with
         {
-            MessageKind = messageKind,
+            MessageKind = (ZLinkDispatchMessageKind)messageKind,
             ErrorReason = ZLinkDispatchErrorReason.HandlerMissing
         });
 
@@ -67,7 +67,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void KeyTransitions_EmitsLifecycleKeyedByCorrelation()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Replied));
         Assert.Contains(logger.Messages, m => m.Contains("phase=received"));
@@ -78,37 +78,37 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void LiveMode_OverridesStaticAndTogglesAtRuntime()
     {
-        var (tracer, logger, options) = Build(ZLinkMessageFlowLogMode.Off);
-        var cell = new ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode.Off);
+        var (tracer, logger, options) = Build(ZLinkRuntimeMessageFlowMode.Off);
+        var cell = new ZLinkMessageFlowModeCell(ZLinkRuntimeMessageFlowMode.Off);
         options.Diagnostics.LiveMode = cell;
 
         Assert.False(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
 
-        cell.Mode = ZLinkMessageFlowLogMode.KeyTransitions;
+        cell.Mode = ZLinkRuntimeMessageFlowMode.KeyTransitions;
         Assert.True(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received));
         Assert.Contains(logger.Messages, m => m.Contains("phase=received"));
 
-        cell.Mode = ZLinkMessageFlowLogMode.Off;
+        cell.Mode = ZLinkRuntimeMessageFlowMode.Off;
         Assert.False(tracer.Enabled(ZLinkMessageFlowOutcome.Received));
     }
 
     [Fact]
-    public void Public_MessageFlowControl_Toggles_All_Shared_Runtime_Tracers()
+    public void Public_MessageFlowRuntime_Toggles_All_Shared_Runtime_Tracers()
     {
         var services = new ServiceCollection();
         services.AddZLinkFramework(_ => { });
         using var provider = services.BuildServiceProvider();
         var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
-        var control = provider.GetRequiredService<IZLinkMessageFlowControl>();
+        var control = provider.GetRequiredService<IZLinkMessageFlowRuntime>();
         var channelLogger = new RecordingLogger();
         var spotLogger = new RecordingLogger();
         var channelTracer = new ZLinkMessageFlowTracer(registration.DispatchOptions, channelLogger);
         var spotTracer = new ZLinkMessageFlowTracer(registration.DispatchOptions, spotLogger);
 
-        control.SetMessageFlowMode(ZLinkMessageFlowLogMode.Off);
-        Assert.Equal(ZLinkMessageFlowLogMode.Off, control.MessageFlowMode);
-        control.SetMessageFlowMode(ZLinkMessageFlowLogMode.KeyTransitions);
+        control.Mode = ZLinkRuntimeMessageFlowMode.Off;
+        Assert.Equal(ZLinkRuntimeMessageFlowMode.Off, control.Mode);
+        control.Mode = ZLinkRuntimeMessageFlowMode.KeyTransitions;
         channelTracer.Trace(Flow(ZLinkMessageFlowOutcome.Received) with
         {
             Surface = ZLinkDispatchErrorSurface.Channel
@@ -120,20 +120,20 @@ public sealed class MessageFlowTracerTests
 
         Assert.Single(channelLogger.Messages);
         Assert.Single(spotLogger.Messages);
-        Assert.Equal(ZLinkMessageFlowLogMode.KeyTransitions, control.MessageFlowMode);
+        Assert.Equal(ZLinkRuntimeMessageFlowMode.KeyTransitions, control.Mode);
 
-        control.SetMessageFlowMode(ZLinkMessageFlowLogMode.Off);
+        control.Mode = ZLinkRuntimeMessageFlowMode.Off;
         channelTracer.Trace(Flow(ZLinkMessageFlowOutcome.Replied));
         spotTracer.Trace(Flow(ZLinkMessageFlowOutcome.Dispatched));
         Assert.Single(channelLogger.Messages);
         Assert.Single(spotLogger.Messages);
-        Assert.Equal(ZLinkMessageFlowLogMode.Off, control.MessageFlowMode);
+        Assert.Equal(ZLinkRuntimeMessageFlowMode.Off, control.Mode);
     }
 
     [Fact]
     public void Sampling_Decision_Is_Stable_For_The_Whole_Flow()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.5d);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions, 0.5d);
         var flowId = ZlinkStreamFlowId.Create();
 
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, flowId));
@@ -145,7 +145,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void Sampling_Can_Keep_And_Drop_Different_Flows()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.5d);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions, 0.5d);
 
         for (var index = 0; index < 256; index++)
             tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
@@ -157,7 +157,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void Dropped_And_Error_Bypass_Zero_Sample_Rate()
     {
-        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions, 0.0d);
+        var (tracer, logger, _) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions, 0.0d);
 
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Dropped, ZlinkStreamFlowId.Create()));
@@ -179,12 +179,12 @@ public sealed class MessageFlowTracerTests
             try
             {
                 var enabledOptions = new ZLinkDispatchOptionsModel();
-                enabledOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+                enabledOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
                 new ZLinkMessageFlowTracer(enabledOptions)
                     .Trace(Flow(ZLinkMessageFlowOutcome.Received));
 
                 var offOptions = new ZLinkDispatchOptionsModel();
-                offOptions.MessageFlow(ZLinkMessageFlowLogMode.Off);
+                offOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
                 new ZLinkMessageFlowTracer(offOptions)
                     .Trace(Flow(ZLinkMessageFlowOutcome.Replied));
             }
@@ -204,7 +204,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void Verbose_size_and_structured_hook_fields_follow_the_frozen_gates()
     {
-        var (tracer, logger, options) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
+        var (tracer, logger, options) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         options.IncludeMessageSizes(true);
         tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received) with
         {
@@ -213,7 +213,7 @@ public sealed class MessageFlowTracerTests
         });
         Assert.DoesNotContain(logger.Messages, message => message.Contains("size=42", StringComparison.Ordinal));
 
-        options.MessageFlow(ZLinkMessageFlowLogMode.Verbose);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Verbose);
         foreach (var (outcome, surface, source) in new[]
                  {
                      (ZLinkMessageFlowOutcome.Received, ZLinkDispatchErrorSurface.Channel, "sender"),
@@ -234,7 +234,7 @@ public sealed class MessageFlowTracerTests
     [Fact]
     public void Off_gate_prevents_event_construction()
     {
-        var (tracer, _, _) = Build(ZLinkMessageFlowLogMode.Off);
+        var (tracer, _, _) = Build(ZLinkRuntimeMessageFlowMode.Off);
         var constructed = 0;
 
         if (tracer.Enabled(ZLinkMessageFlowOutcome.Received))
@@ -258,7 +258,7 @@ public sealed class MessageFlowTracerTests
         var path = Path.Combine(root, "flow.log");
         try
         {
-            var (tracer, _, options) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
+            var (tracer, _, options) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions);
             options.TraceLogFile(path);
             Assert.Null(ZLinkFlowContext.Current);
 
@@ -294,7 +294,7 @@ public sealed class MessageFlowTracerTests
         var path = Path.Combine(root, "nested", "flow.log");
         try
         {
-            var (tracer, logger, options) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
+            var (tracer, logger, options) = Build(ZLinkRuntimeMessageFlowMode.KeyTransitions);
             options.TraceLogFile(path);
             options.TraceLabel("node-a");
             tracer.Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
@@ -325,7 +325,7 @@ public sealed class MessageFlowTracerTests
         try
         {
             var options = new ZLinkDispatchOptionsModel();
-            options.MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly);
+            options.MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly);
             options.TraceLogFile(path);
             var appLogger = new RecordingLogger();
             var reporter = new ZLinkDispatchErrorReporter(options, appLogger);
@@ -374,7 +374,7 @@ public sealed class MessageFlowTracerTests
         var fallback = new RecordingLogger();
         var explicitLogger = ZLinkMessageFlowTracer.CreateLogger(factory, fallback);
         var enabled = new ZLinkDispatchOptionsModel();
-        enabled.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        enabled.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
 
         new ZLinkMessageFlowTracer(enabled, explicitLogger)
             .Trace(Flow(ZLinkMessageFlowOutcome.Received, ZlinkStreamFlowId.Create()));
@@ -389,7 +389,7 @@ public sealed class MessageFlowTracerTests
         Assert.Single(fallback.Messages);
 
         var off = new ZLinkDispatchOptionsModel();
-        off.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        off.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
         new ZLinkMessageFlowTracer(off, explicitLogger)
             .Trace(Flow(ZLinkMessageFlowOutcome.Error, ZlinkStreamFlowId.Create()));
         Assert.Single(factoryLogger.Messages);
@@ -400,7 +400,7 @@ public sealed class MessageFlowTracerTests
     {
         using var factory = new RecordingLoggerFactory();
         var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         using (var provider = new ServiceCollection()
                    .AddSingleton<ILoggerFactory>(factory)
                    .BuildServiceProvider())
@@ -415,7 +415,7 @@ public sealed class MessageFlowTracerTests
             Assert.Contains(ZLinkMessageFlowTracer.LoggerCategory, factory.Categories);
             Assert.Single(logger.Messages);
 
-            registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.Off);
+            registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
             runtime.Flow.Trace(Flow(ZLinkMessageFlowOutcome.Error) with
             {
                 Surface = ZLinkDispatchErrorSurface.SpotActor
@@ -431,7 +431,7 @@ public sealed class MessageFlowTracerTests
             try
             {
                 var fallbackRegistration = new ZLinkFrameworkRegistration();
-                fallbackRegistration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+                fallbackRegistration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
                 using var provider = new ServiceCollection().BuildServiceProvider();
                 var runtime = CreateRuntime(provider, fallbackRegistration);
                 runtime.Flow.Trace(Flow(ZLinkMessageFlowOutcome.Sent) with
@@ -471,8 +471,8 @@ public sealed class MessageFlowTracerTests
         meterListener.Start();
         var observer = new BlockingFailOnceObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
-        options.SetMessageFlowObserver(observer);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.SetRuntimeMessageFlowObserver(observer);
         await using var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
         await using var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
@@ -501,8 +501,8 @@ public sealed class MessageFlowTracerTests
     {
         var observer = new PairCapturingObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
-        options.SetMessageFlowObserver(observer);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.SetRuntimeMessageFlowObserver(observer);
         await using var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
         await using var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
@@ -514,7 +514,7 @@ public sealed class MessageFlowTracerTests
 
         Assert.All(observed, flow =>
         {
-            Assert.Equal(string.Empty, flow.FlowId);
+            Assert.Null(flow.FlowId);
             Assert.Null(flow.FlowOrigin);
         });
         var malformed = Flow(ZLinkMessageFlowOutcome.Received) with { FlowId = "orphan-id" };
@@ -525,7 +525,7 @@ public sealed class MessageFlowTracerTests
     }
 
     private static (ZLinkMessageFlowTracer Tracer, RecordingLogger Logger, ZLinkDispatchOptionsModel Options) Build(
-        ZLinkMessageFlowLogMode mode,
+        ZLinkRuntimeMessageFlowMode mode,
         double sampleRate = 1.0d)
     {
         var options = new ZLinkDispatchOptionsModel();
@@ -613,7 +613,7 @@ public sealed class MessageFlowTracerTests
         }
     }
 
-    private sealed class BlockingFailOnceObserver : IZLinkMessageFlowObserver
+    private sealed class BlockingFailOnceObserver : IZLinkRuntimeMessageFlowObserver
     {
         private int _first = 1;
         private int _observedCount;
@@ -632,7 +632,7 @@ public sealed class MessageFlowTracerTests
         public ConcurrentQueue<string> ObservedPacketNames { get; } = new();
 
         public async ValueTask OnMessageFlowAsync(
-            ZLinkMessageFlowEvent flow,
+            ZLinkRuntimeMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _observedCount);
@@ -648,15 +648,15 @@ public sealed class MessageFlowTracerTests
         }
     }
 
-    private sealed class PairCapturingObserver : IZLinkMessageFlowObserver
+    private sealed class PairCapturingObserver : IZLinkRuntimeMessageFlowObserver
     {
-        private readonly List<ZLinkMessageFlowEvent> _events = [];
+        private readonly List<ZLinkRuntimeMessageFlowEvent> _events = [];
 
-        public TaskCompletionSource<IReadOnlyList<ZLinkMessageFlowEvent>> Completed { get; } =
+        public TaskCompletionSource<IReadOnlyList<ZLinkRuntimeMessageFlowEvent>> Completed { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ValueTask OnMessageFlowAsync(
-            ZLinkMessageFlowEvent flow,
+            ZLinkRuntimeMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
             _ = cancellationToken;

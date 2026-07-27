@@ -39,7 +39,6 @@ import { MaintenanceStore } from '../Configuration/maintenance-store';
 import { NodeRuntimeState } from './Domain/node-runtime-state';
 import { SpotRuntimeEventHandler } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
 
-const ZONE_NODE_ALLOCATION_GROUP = 'zoneworld.zone-node';
 
 function createZoneNodeModule() {
   class ZoneNodeModule {}
@@ -70,8 +69,7 @@ function createZoneNodeModule() {
           }
 
           const zoneMesh = builder.addRouteMesh(ZoneWorldNames.zoneMesh)
-            .useAllocatedRoutingId(2, 'zn')
-            .setRoutingIdAllocationGroup(ZONE_NODE_ALLOCATION_GROUP)
+            .setRoutingIdPrefix('zn')
             .listen(node.spotRouterEndpoint)
             .addEntrySpot(ZoneEntrySpot)
             .actorFactory(ZoneWorldNames.playerActorType, PlayerActorFactory)
@@ -96,7 +94,7 @@ function createZoneNodeModule() {
             .addPublishHandler(PacketNames.nodeMaintenanceChangedEvent, MaintenanceChangedSubscriber);
           return {
             ...builder.build(),
-            monitoring: { spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 50 }] }
+            monitoring: {}
           };
         }
       })
@@ -131,4 +129,4 @@ function createZoneNodeModule() {
   return ZoneNodeModule;
 }
 
-export { ZONE_NODE_ALLOCATION_GROUP, createZoneNodeModule };
+export { createZoneNodeModule };

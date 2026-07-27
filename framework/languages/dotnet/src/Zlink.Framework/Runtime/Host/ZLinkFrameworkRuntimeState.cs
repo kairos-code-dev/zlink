@@ -92,6 +92,16 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        return BeginDispose(CancellationToken.None);
+    }
+
+    internal ValueTask ForceStopAsync(CancellationToken cancellationToken)
+    {
+        return BeginDispose(cancellationToken);
+    }
+
+    private ValueTask BeginDispose(CancellationToken forceStopToken)
+    {
         lock (_disposeGate)
         {
             if (_disposeTask is not null) return new ValueTask(_disposeTask);
@@ -111,11 +121,14 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
                     ListenerTasks.ToArray());
             }
 
-            return new ValueTask(_disposeTask = DisposeCoreAsync(resources));
+            return new ValueTask(
+                _disposeTask = DisposeCoreAsync(resources, forceStopToken));
         }
     }
 
-    private async Task DisposeCoreAsync(RuntimeResources resources)
+    private async Task DisposeCoreAsync(
+        RuntimeResources resources,
+        CancellationToken forceStopToken)
     {
         var failures = new List<Exception>();
         foreach (var node in resources.SpotNodes)
@@ -144,7 +157,10 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         // MeshNode. Destroy the dependent session service and socket before
         // destroying the MeshNode that owns their routing plane.
         foreach (var node in resources.SpotNodes)
-            await CaptureAsync(() => DisposeSafelyAsync(node)).ConfigureAwait(false);
+            await CaptureAsync(() => DisposeSpotNodeSafelyAsync(
+                    node,
+                    forceStopToken))
+                .ConfigureAwait(false);
 
         foreach (var bundle in resources.PublisherBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
@@ -226,6 +242,25 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         try
         {
             await disposable.DisposeAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (ZlinkCloseException)
+        {
+        }
+    }
+
+    private static async ValueTask DisposeSpotNodeSafelyAsync(
+        ZLinkSpotNodeRuntime node,
+        CancellationToken forceStopToken)
+    {
+        try
+        {
+            if (forceStopToken.CanBeCanceled)
+                await node.ForceStopAsync(forceStopToken).ConfigureAwait(false);
+            else
+                await node.DisposeAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {

@@ -14,7 +14,7 @@ internal sealed record ZLinkRelocationRecoveryCandidate(
 /// it must be idempotent for the aggregate identity.
 /// </summary>
 internal sealed class ZLinkRelocationStartupRecovery(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     IZLinkRelocationStore relocationStore)
 {
     private const int PageSize = 128;
@@ -26,14 +26,42 @@ internal sealed class ZLinkRelocationStartupRecovery(
             CancellationToken,
             ValueTask> resume,
         CancellationToken cancellationToken = default)
+        => await RecoverAsync(
+                resume,
+                recoverPreparing: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    internal async ValueTask RecoverAsync(
+        Func<
+            ZLinkRelocationRecoveryCandidate,
+            CancellationToken,
+            ValueTask> resume,
+        Func<
+            ZLinkAuthorityEntry,
+            CancellationToken,
+            ValueTask>? recoverPreparing,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resume);
         var linked = new Dictionary<
             string,
             RecoveryGroup>(StringComparer.Ordinal);
+        var preparing = new Dictionary<string, ZLinkAuthorityEntry>(
+            StringComparer.Ordinal);
         foreach (var prefix in Prefixes)
-            await ScanPrefixAsync(prefix, linked, cancellationToken)
+            await ScanPrefixAsync(prefix, linked, preparing, cancellationToken)
                 .ConfigureAwait(false);
+
+        if (recoverPreparing is not null)
+            foreach (var entry in preparing.Values
+                         .OrderBy(static value => value.Key.Value,
+                             StringComparer.Ordinal))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await recoverPreparing(entry, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
         var reader = new ZLinkRelocationPublicationCoordinator(
             authorityStore,
@@ -101,6 +129,16 @@ internal sealed class ZLinkRelocationStartupRecovery(
                 unpublished++;
                 continue;
             }
+            if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                    found.Snapshot.Payload.Span,
+                    out var canonical)
+                && canonical.Phase == 1)
+            {
+                // Preparing has no immutable root yet and therefore cannot be
+                // reconciled as a published relocation tree.
+                unpublished++;
+                continue;
+            }
             AddPublished(entry, linked);
         }
 
@@ -137,6 +175,7 @@ internal sealed class ZLinkRelocationStartupRecovery(
     private async ValueTask ScanPrefixAsync(
         string prefix,
         Dictionary<string, RecoveryGroup> linked,
+        Dictionary<string, ZLinkAuthorityEntry> preparing,
         CancellationToken cancellationToken)
     {
         ZLinkAuthorityScanCursor? cursor = null;
@@ -151,13 +190,14 @@ internal sealed class ZLinkRelocationStartupRecovery(
             if (scan is ZLinkAuthorityScanResult.ScanExpired)
             {
                 RemovePrefix(linked, prefix);
+                RemovePrefix(preparing, prefix);
                 cursor = null;
                 continue;
             }
 
             var page = ((ZLinkAuthorityScanResult.Page)scan).Value;
             foreach (var entry in page.Items)
-                AddPublished(entry, linked);
+                AddPublished(entry, linked, preparing);
             cursor = page.NextCursor;
             if (cursor is null) return;
         }
@@ -165,7 +205,8 @@ internal sealed class ZLinkRelocationStartupRecovery(
 
     private static void AddPublished(
         ZLinkAuthorityEntry entry,
-        Dictionary<string, RecoveryGroup> linked)
+        Dictionary<string, RecoveryGroup> linked,
+        Dictionary<string, ZLinkAuthorityEntry>? preparing = null)
     {
         if (entry.Snapshot.Allocation.ObjectKind is not (
                 ZLinkPlacementObjectKind.Actor
@@ -175,11 +216,38 @@ internal sealed class ZLinkRelocationStartupRecovery(
                 entry.Snapshot.Payload.Span,
                 out var publication))
             return;
+        string expectedOwnerId;
+        long expectedOwnerLeaseGeneration;
+        if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                entry.Snapshot.Payload.Span,
+                out var canonical))
+        {
+            if (canonical.Phase == 1)
+            {
+                if (preparing is not null)
+                    preparing[entry.Key.Value] = entry;
+                return;
+            }
+            preparing?.Remove(entry.Key.Value);
+            var sourceOwned = canonical.Phase is 2 or 3 or 9;
+            expectedOwnerId = sourceOwned
+                ? canonical.State.SourceOwnerId
+                : canonical.TargetOwnerId;
+            expectedOwnerLeaseGeneration = checked((long)(sourceOwned
+                ? canonical.State.SourceOwnerLeaseGeneration
+                : canonical.TargetOwnerLeaseGeneration));
+        }
+        else
+        {
+            expectedOwnerId = publication.TargetOwnerId;
+            expectedOwnerLeaseGeneration =
+                publication.TargetOwnerLeaseGeneration;
+        }
         if (!string.Equals(
-                publication.TargetOwnerId,
+                expectedOwnerId,
                 entry.Snapshot.OwnerId,
                 StringComparison.Ordinal)
-            || publication.TargetOwnerLeaseGeneration
+            || expectedOwnerLeaseGeneration
             != entry.Snapshot.OwnerLeaseGeneration)
             throw DataLost(
                 $"Authority '{entry.Key.Value}' does not match its published relocation owner fence.");
@@ -214,8 +282,15 @@ internal sealed class ZLinkRelocationStartupRecovery(
     {
         if (!envelope.CanonicalLogicalStream.IsEmpty)
         {
+            var standaloneActor = envelope.Participants.Count == 1
+                                  && authorities.Count == 1
+                                  && envelope.Participants[0].ObjectKind
+                                  == ZLinkPlacementObjectKind.Actor
+                                  && authorities[0].Snapshot.Allocation.ObjectKind
+                                  == ZLinkPlacementObjectKind.Actor;
             if (envelope.Participants.Count != authorities.Count
-                || authorities.Count(static authority =>
+                || !standaloneActor
+                && (authorities.Count(static authority =>
                     authority.Snapshot.Allocation.ObjectKind
                     is ZLinkPlacementObjectKind.UserSpot
                     or ZLinkPlacementObjectKind.InstanceSpot) != 1
@@ -223,7 +298,7 @@ internal sealed class ZLinkRelocationStartupRecovery(
                     authority.Snapshot.Allocation.ObjectKind
                     is not (ZLinkPlacementObjectKind.Actor
                     or ZLinkPlacementObjectKind.UserSpot
-                    or ZLinkPlacementObjectKind.InstanceSpot)))
+                    or ZLinkPlacementObjectKind.InstanceSpot))))
                 throw DataLost(
                     $"Canonical relocation aggregate '{envelope.AggregateId:N}' authority inventory is invalid.");
             return;
@@ -261,6 +336,16 @@ internal sealed class ZLinkRelocationStartupRecovery(
             if (group.Authorities.Count == 0)
                 linked.Remove(reference);
         }
+    }
+
+    private static void RemovePrefix(
+        Dictionary<string, ZLinkAuthorityEntry> preparing,
+        string prefix)
+    {
+        foreach (var key in preparing.Keys
+                     .Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
+                     .ToArray())
+            preparing.Remove(key);
     }
 
     private static ZLinkFrameworkException DataLost(

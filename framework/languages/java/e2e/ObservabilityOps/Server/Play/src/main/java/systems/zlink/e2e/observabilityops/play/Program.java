@@ -67,7 +67,6 @@ public final class Program {
         EvidenceStore evidence,
         ObjectMapper json,
         MeterRegistry metrics,
-        systems.zlink.framework.monitoring.ZLinkDrainControl drain,
         ZLinkFrameworkLifecycle lifecycle,
         DrainEvidence drainEvidence,
         ZLinkSpotManager spots,
@@ -75,7 +74,7 @@ public final class Program {
         PlayOptions config) {
         return new EvidenceHttpServer(
             evidence, json, config.httpEndpoint(), metrics,
-            drain, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, spots::close,
+            lifecycle, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, spots::close,
             () -> routes.requestToNode(
                     Contracts.ROUTE_CHANNEL,
                     RoutingId.from(Contracts.PLAY_NODE_B),

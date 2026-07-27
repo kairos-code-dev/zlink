@@ -6,7 +6,6 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 
@@ -22,8 +21,8 @@ public final class ZLinkStoreActorDirectory implements ZLinkActorDirectory {
         if (actorId == null || actorId.isBlank()) {
             throw new ZLinkConfigurationException("actorId is required");
         }
-        return locations.resolveActorRow(new ZLinkActorLocationKey(actorId))
-            .thenApply(row -> row == null || row.actorRef() == null
+        return locations.resolveActor(actorId)
+            .thenApply(row -> row == null
                 ? Optional.empty()
                 : Optional.of(row.actorRef()));
     }

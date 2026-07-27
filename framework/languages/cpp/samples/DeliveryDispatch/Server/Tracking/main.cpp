@@ -26,11 +26,11 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_server (topology.tracking_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::tracking_route_node))
-          .use_handler_group ("tracking");
+          .server ()
+          .set_bind_host (host_from_tcp_endpoint (topology.tracking_route_endpoint))
+          .listen (port_from_http_url (topology.tracking_route_endpoint))
+          .add_handler_group ("tracking");
         options.add_route_mesh (sample_names_t::customer_actor_discovery)
-          .use_allocated_routing_id (16, "delivery-tracking")
           .listen (topology.tracking_spot_router_endpoint)
           .channel_name (sample_names_t::customer_actor_discovery);
         options.handlers ().group ("tracking").add<delivery_status_changed_handler_t> ();

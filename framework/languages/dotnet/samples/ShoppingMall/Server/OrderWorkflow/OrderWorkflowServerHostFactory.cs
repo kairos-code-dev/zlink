@@ -55,7 +55,7 @@ public static class OrderWorkflowServerHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, instance.InstanceId))
                 .TraceLabel(instance.InstanceId);
             options.AddHandlersFromAssemblyOf(typeof(OrderWorkflowServerHostFactory));

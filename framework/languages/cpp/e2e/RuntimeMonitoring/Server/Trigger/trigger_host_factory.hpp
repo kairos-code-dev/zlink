@@ -52,7 +52,6 @@ inline void configure_trigger_host (zlink::framework::zlink_framework_options_t 
           .map_post<duplicate_source_validation_handler_t> (
             "/validation/registration/duplicate-source")
           .map_post<interval_validation_handler_t> ("/validation/registration/interval")
-          .map_post<missing_spot_validation_handler_t> ("/validation/registration/missing-spot")
           .map_post<missing_socket_validation_handler_t> ("/validation/registration/missing-socket")
           .map_post<handshake_failure_handler_t> ("/socket/handshake-failure");
     }

@@ -27,9 +27,7 @@ function createBingoApiModule() {
           const builder = zlinkFramework();
           builder.options({
             metrics: { meterProvider: bingoMeterProvider },
-            monitoring: {
-              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }]
-            }
+            monitoring: {}
           });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -39,8 +37,7 @@ function createBingoApiModule() {
           bingoLocationOptions(builder.configureLocations());
           builder.codecs().use(bingoFrameworkProtobuf);
           const apiMesh = builder.addRouteMesh(SampleNames.roomSpotNode)
-            .useAllocatedRoutingId(2, 'api')
-            .setRoutingIdAllocationGroup('bingo.api')
+            .setRoutingIdPrefix('api')
             .listen(config.apiEndpoint);
           apiMesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
           apiMesh.channelName(SampleNames.playChannel).setWeight(0);

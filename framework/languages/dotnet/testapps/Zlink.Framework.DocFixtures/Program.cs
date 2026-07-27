@@ -107,7 +107,6 @@ internal static class FixtureSamples
         builder.Services.AddZLinkMonitoring(options =>
         {
             options.AddMeshNodeEvents("orders");
-            options.AddSpotEvents("stage-node", TimeSpan.FromMilliseconds(250));
         });
         return builder;
     }
@@ -177,10 +176,12 @@ internal sealed class FixtureSpotSubscriptionHandler
     public ValueTask HandleAsync(
         FixtureStageSpot spot,
         FixtureSpotEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = spot;
         _ = message;
+        _ = context;
         _ = cancellationToken;
         return ValueTask.CompletedTask;
     }
@@ -193,7 +194,7 @@ internal sealed class FixtureSendHandler
     [ZLinkSend]
     public ValueTask HandleAsync(
         FixtureSendCommand command,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = command;

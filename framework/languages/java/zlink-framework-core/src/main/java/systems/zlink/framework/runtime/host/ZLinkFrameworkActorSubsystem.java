@@ -4,7 +4,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorClientRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntrySpotRoutePackets;
 import systems.zlink.framework.runtime.actors.ZLinkActorEntryTransferEnvelope;
@@ -187,7 +187,7 @@ final class ZLinkFrameworkActorSubsystem {
             handlerFactory,
             registration.handlerExecutor(),
             eventDispatcher));
-        actors.setRoutedTransport(channels, () -> spots.primaryNode().entrySpot().routingId());
+        actors.setRoutedTransport(channels, () -> spots.primaryNode().entrySpot().spotId());
         if (remoteAddressResolver != null) {
             actors.setRemoteAddressResolver(remoteAddressResolver);
         }

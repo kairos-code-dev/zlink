@@ -9,7 +9,7 @@ import {
   type ZLinkRouteLocationKey,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationKey
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 
 export interface ZLinkOwnershipLostEvent {
   readonly kind: ZLinkLocationKind;

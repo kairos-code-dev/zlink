@@ -42,6 +42,15 @@ internal interface IZLinkBackendAuthorityObserver
         ulong ownerLeaseGeneration);
 }
 
+internal interface IZLinkBackendRequestSourceFenceObserver
+{
+    void SetLocalRequestSourceFence(
+        ZLinkServiceWireCodec.RequestSourceFence source);
+
+    void ObserveRequestSourceFence(
+        ZLinkServiceWireCodec.RequestSourceFence source);
+}
+
 internal interface IZLinkBackendLocalActorAuthorityReader
 {
     bool TryGetLocalActorAuthority(
@@ -109,7 +118,10 @@ internal sealed record ZLinkBackendActorPart(
     Message Message,
     bool More,
     ZLinkBackendActorRef? ReplyActor = null,
-    ZLinkBackendActorRouteContext RouteContext = default);
+    ZLinkBackendActorRouteContext RouteContext = default,
+    ulong SourceNodeGeneration = 0,
+    ZLinkServiceWireCodec.RequestSourceFence? RequestSource = null,
+    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? DirectReply = null);
 
 internal class ZLinkBackendActorJoinRequest(
     ZLinkBackendActorRef sourceActor,

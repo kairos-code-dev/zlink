@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 

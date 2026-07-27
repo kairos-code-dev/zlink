@@ -4,12 +4,11 @@ import type {
   ZLinkAggregateParticipant,
   ZLinkAuthorityKey,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore,
   ZLinkCapacityVector,
   ZLinkLocationOwnerToken,
-  ZLinkMeshNodeDescriptorKey,
-  ZLinkObjectCreationStore
+  ZLinkMeshNodeDescriptorKey
 } from '../../contracts/Locations';
+import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
   inventoryDigest,
   type ServiceRelocationEnvelope

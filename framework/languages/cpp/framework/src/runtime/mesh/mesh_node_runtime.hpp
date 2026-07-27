@@ -50,11 +50,7 @@ struct mesh_node_builder_state_t
     std::function<void (const std::string &)> channel_name_observer;
     route_handler_registry_t handlers;
     std::vector<mesh_peer_connection_t> peer_connections;
-    std::size_t allocation_slot_count = 0;
-    std::string allocation_routing_id_prefix;
-    std::string allocation_group;
     mesh_node_socket_config_t socket;
-    entry_spot_options_t entry_spot;
     std::chrono::milliseconds default_request_timeout{std::chrono::seconds (30)};
     std::size_t max_pending = 1024;
     std::atomic<std::uint64_t> next_join_completion_operation{1};

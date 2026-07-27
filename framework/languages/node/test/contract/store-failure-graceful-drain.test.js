@@ -28,6 +28,7 @@ test('drain keeps the marker observable for one configured polling interval', as
       cleanupStartedAt = performance.now();
     }
   };
+  host.serviceRelocation.relocateMesh = async () => {};
   host.stop = async () => {};
 
   assert.deepEqual(await host.routeMeshRuntime.drain('game', 500), { kind: 'drained' });
@@ -39,7 +40,7 @@ test('drain keeps the marker observable for one configured polling interval', as
   );
 });
 
-test('SF-C2 uses public weight drain and verifies marker, terminal result, and clean exit', () => {
+test('SF-C2 uses host retire and verifies marker, terminal result, and clean exit', () => {
   const provider = read('e2e/DiscoveryRegistryHa/Server/Provider/Endpoints/provider-endpoints.ts');
   const providerHost = read('e2e/DiscoveryRegistryHa/Server/Provider/provider-host-factory.ts');
   const providerMain = read('e2e/DiscoveryRegistryHa/Server/Provider/main.ts');
@@ -47,9 +48,10 @@ test('SF-C2 uses public weight drain and verifies marker, terminal result, and c
   const runner = read('e2e/DiscoveryRegistryHa/run_e2e.sh');
 
   assert.match(provider, /configureServerSocket\(\)\.weight\s*=\s*0/);
-  assert.match(provider, /routeMeshRuntime\.drain\(/);
+  assert.match(provider, /frameworkRuntime\.retire\(/);
   assert.match(scenario, /draining/);
-  assert.match(scenario, /kind\s*===\s*'drained'/);
+  assert.match(scenario, /ZLinkTerminationOutcome\.Stopped/);
+  assert.match(scenario, /ZLinkTerminationReason\.None/);
   assert.match(scenario, /providerRid\s*===\s*'api-a'/);
   assert.match(runner, /wait\s+"\$API_B_PID"/);
   assert.doesNotMatch(runner, /run_sf_c2\(\)[\s\S]*?\/shutdown/);

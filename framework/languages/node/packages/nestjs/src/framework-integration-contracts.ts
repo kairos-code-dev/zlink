@@ -5,7 +5,6 @@ import type {
   ZLinkActorFactory,
   ZLinkDispatchOptions,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
   ZLinkLocationOptions,
   ZLinkLocationOptionValues,
@@ -22,11 +21,23 @@ import type {
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
-  ZLinkRuntimeEventPublisher,
+  ZLinkRuntimeEvent,
+  ZLinkRuntimeEventHandler,
   ZLinkSpot,
   ZLinkStreamCompressionOptions,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
+
+export interface ZLinkRuntimeEventPublisher {
+  register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
+  publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
+}
+
+/** Private composition bridge used only by the Nest companion package. */
+export interface ZLinkProviderResolver {
+  get?<T>(type: Type<T>): T | undefined;
+  create?<T>(type: Type<T>): T | Promise<T>;
+}
 
 export interface ZLinkWorkerOptions {
   readonly minThreads: number;
@@ -45,7 +56,6 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly routeMeshRuntime: import('@zlink-systems/framework').ZLinkRouteMeshRuntime;
   readonly clientServerRuntime: import('@zlink-systems/framework').ZLinkClientServerRuntime;
   readonly fanoutRuntime: import('@zlink-systems/framework').ZLinkFanoutRuntime;
-  waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<unknown>;
   createLocationHandleResolver(): unknown;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -100,7 +110,6 @@ export interface ZLinkLocationRegistration {
 export interface ZLinkCodecSerializerRegistration {
   readonly contentType: string;
   readonly serializer: ZLinkMessageSerializer;
-  readonly canSerialize?: (payloadType: Type) => boolean;
 }
 
 export interface ZLinkStreamCodecRegistration {
@@ -149,7 +158,7 @@ export interface ZLinkFrameworkRegistrationOptions {
 
 export interface ZLinkChannelOptions {
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly requestTimeoutMs?: number;
   readonly client?: ZLinkClientCapabilityOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
@@ -189,7 +198,7 @@ export interface ZLinkRouteMeshChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -222,10 +231,9 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly objectRole?: 'client' | 'server';
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
-  readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly spotFactoryRegistrations?: Readonly<Record<
@@ -304,11 +312,6 @@ export interface ZLinkRouteMeshRequestHandlerRegistration {
   readonly handlerType: Type;
 }
 
-export interface ZLinkRoutingIdAllocationOptions {
-  readonly slotCount: number;
-  readonly routingIdPrefix: string;
-  readonly groupName?: string;
-}
 
 export interface ZLinkSpotRouterCapabilityOptions {
   readonly bind?: string;

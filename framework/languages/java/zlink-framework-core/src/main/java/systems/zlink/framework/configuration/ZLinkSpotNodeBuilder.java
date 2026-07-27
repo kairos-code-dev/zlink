@@ -1,4 +1,4 @@
-package systems.zlink.framework.configuration;
+package systems.zlink.framework.runtime.internal.configuration;
 
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;

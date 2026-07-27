@@ -18,15 +18,13 @@ import systems.zlink.framework.locations.ZLinkAuthorityDelete;
 import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
 import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.locations.ZLinkAuthorityRestore;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
 import systems.zlink.framework.locations.ZLinkAuthorityStored;
 import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
@@ -52,18 +50,10 @@ import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
-import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 
 class ZLinkInMemoryLocationStoreTest {
     private static final Instant NOW = Instant.parse("2026-07-03T00:00:00Z");
@@ -403,6 +393,84 @@ class ZLinkInMemoryLocationStoreTest {
     }
 
     @Test
+    void restoreRequiresExactOwnerButDoesNotRequireALiveLease()
+        throws Exception {
+        var leaseLive = new java.util.concurrent.atomic.AtomicBoolean(true);
+        ZLinkInMemoryAuthorityStore store = new ZLinkInMemoryAuthorityStore(
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            ignored -> leaseLive.get(),
+            (descriptor, generation, owner) -> meshNodeDescriptor(
+                owner,
+                1,
+                "tcp://127.0.0.1:7000"));
+        var owner = new ZLinkLocationOwnerToken("source", 1);
+        String key = "zla1:a:4:mesh:7:restore";
+        var created = createActive(store, key, owner);
+        leaseLive.set(false);
+
+        var restored = assertInstanceOf(
+            ZLinkAuthorityStored.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(created.storeVersion()),
+                    new ZLinkAuthorityRestore(new byte[] {9}, owner),
+                    () -> false)
+                .toCompletableFuture().get());
+
+        assertArrayEquals(new byte[] {9}, restored.payload());
+        assertEquals(created.objectGeneration(), restored.objectGeneration());
+        assertEquals(
+            created.authorityOwnerGeneration(),
+            restored.authorityOwnerGeneration());
+        assertEquals(owner.ownerId(), restored.ownerId());
+        assertInstanceOf(
+            ZLinkAuthorityConflict.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(restored.storeVersion()),
+                    new ZLinkAuthorityRestore(
+                        new byte[] {8},
+                        new ZLinkLocationOwnerToken("other", 1)),
+                    () -> false)
+                .toCompletableFuture().get());
+    }
+
+    @Test
+    void meshNodeChangeStampTracksOnlyStoredMutations() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
+            Clock.fixed(NOW, ZoneOffset.UTC));
+        var owner = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("stamp-owner", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        var descriptor = meshNodeDescriptor(
+            owner,
+            NODE_A,
+            7,
+            1,
+            "tcp://127.0.0.1:7000",
+            "mesh-entry-00000000-0000-4000-8000-000000000077");
+
+        assertEquals(
+            java.util.OptionalLong.empty(),
+            store.getMeshNodeChangeStamp("mesh")
+                .toCompletableFuture().get());
+        store.updateMeshNode(descriptor, ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture().get();
+        assertEquals(
+            java.util.OptionalLong.of(1),
+            store.getMeshNodeChangeStamp("mesh")
+                .toCompletableFuture().get());
+        store.removeMeshNode(
+                new ZLinkMeshNodeDescriptorKey("mesh", NODE_A), owner)
+            .toCompletableFuture().get();
+        assertEquals(
+            java.util.OptionalLong.of(2),
+            store.getMeshNodeChangeStamp("mesh")
+                .toCompletableFuture().get());
+    }
+
+    @Test
     void creationReservationFencesTargetDescriptorLifecycleAndOwner()
         throws Exception {
         ZLinkInMemoryAuthorityStore store = newAuthorityStore();
@@ -464,122 +532,68 @@ class ZLinkInMemoryLocationStoreTest {
     @Test
     void newClaimRejectsWhenExistingOwnerLeaseIsLive() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
-            .toCompletableFuture().get();
-        var first = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var ownerA = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        var first = store.updateMeshNode(
+                meshNodeDescriptor(ownerA, 1, "tcp://127.0.0.1:6000"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
+        var ownerB = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-b", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
 
-        var conflict = store.updatePeer(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var conflict = store.updateMeshNode(
+                meshNodeDescriptor(
+                    ownerB,
+                    1,
+                    "tcp://127.0.0.1:6000"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
         assertEquals(ZLinkLocationWriteStatus.STORED, first.status());
-        assertEquals(1, first.generation());
+        assertEquals(7, first.generation());
         assertEquals(ZLinkLocationWriteStatus.REJECTED_CONFLICT, conflict.status());
     }
 
     @Test
-    void expiredOwnerLeaseAllowsNewClaimWithNewGeneration() throws Exception {
+    void releasedOwnerLeaseAllowsNewClaimWithNewLifecycle() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var ownerA = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        store.updateMeshNode(
+                meshNodeDescriptor(ownerA, 1, "tcp://127.0.0.1:6000"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
+        assertEquals(
+            ZLinkOwnerLeaseReleaseResult.RELEASED,
+            store.releaseOwnerLease(ownerA).toCompletableFuture().get());
+        var ownerB = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-b", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
 
-        var replacement = store.updatePeer(peer("owner-b", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
+        var replacement = store.updateMeshNode(
+                meshNodeDescriptor(
+                    ownerB,
+                    NODE_A,
+                    8,
+                    1,
+                    "tcp://127.0.0.1:6000",
+                    "mesh-entry-00000000-0000-4000-8000-000000000001"),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
 
         assertEquals(ZLinkLocationWriteStatus.STORED, replacement.status());
-        assertEquals(2, replacement.generation());
-    }
-
-    @Test
-    void renewAndRemoveRequireCurrentOwnerToken() throws Exception {
-        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        var claim = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
-            .toCompletableFuture()
-            .get();
-
-        var staleRenew = store.updatePeer(peer("owner-a", NODE_A, 99), ZLinkLocationWriteIntent.RENEW)
-            .toCompletableFuture()
-            .get();
-        var renew = store.updatePeer(peer("owner-a", NODE_A, claim.generation()), ZLinkLocationWriteIntent.RENEW)
-            .toCompletableFuture()
-            .get();
-        var staleRemove = store.removePeer(
-                peerKey(NODE_A),
-                new ZLinkLocationOwnerToken("owner-a", 99))
-            .toCompletableFuture()
-            .get();
-        var remove = store.removePeer(
-                peerKey(NODE_A),
-                new ZLinkLocationOwnerToken("owner-a", claim.generation()))
-            .toCompletableFuture()
-            .get();
-
-        assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRenew.status());
-        assertEquals(ZLinkLocationWriteStatus.STORED, renew.status());
-        assertEquals(ZLinkLocationWriteStatus.IGNORED_STALE, staleRemove.status());
-        assertEquals(ZLinkLocationWriteStatus.STORED, remove.status());
-        assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
-    }
-
-    @Test
-    void changeStampTracksMeshSpecificAndKindWideScopes() throws Exception {
-        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-
-        store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
-            .toCompletableFuture()
-            .get();
-
-        assertEquals(1, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, "mesh"))
-            .toCompletableFuture()
-            .get());
-        assertEquals(1, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.PEER, null))
-            .toCompletableFuture()
-            .get());
-        assertEquals(0, store.getChangeStamp(new ZLinkLocationChangeStampScope(ZLinkLocationKind.SPOT, null))
-            .toCompletableFuture()
-            .get());
-    }
-
-    @Test
-    void routingIdSlotsAssignLowestAvailableAndFenceStaleRelease() throws Exception {
-        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
-            Clock.fixed(NOW, ZoneOffset.UTC));
-        List<ZLinkRoutingIdSlotAllocationMember> members = List.of(
-            new ZLinkRoutingIdSlotAllocationMember("mesh", "node"));
-
-        var first = assertInstanceOf(ZLinkRoutingIdSlotAcquired.class,
-            store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
-                "group", members, 2, "owner-a", Duration.ofSeconds(30)))
-                .toCompletableFuture().get());
-        var second = assertInstanceOf(ZLinkRoutingIdSlotAcquired.class,
-            store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
-                "group", members, 2, "owner-b", Duration.ofSeconds(30)))
-                .toCompletableFuture().get());
-        assertInstanceOf(ZLinkRoutingIdSlotGroupExhausted.class,
-            store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
-                "group", members, 2, "owner-c", Duration.ofSeconds(30)))
-                .toCompletableFuture().get());
-
-        assertEquals(1, first.allocation().slot());
-        assertEquals(2, second.allocation().slot());
-        assertEquals(ZLinkRoutingIdSlotReleaseResult.RELEASED,
-            store.releaseRoutingIdSlot("group", 1, first.allocation().owner())
-                .toCompletableFuture().get());
-        var replacement = assertInstanceOf(ZLinkRoutingIdSlotAcquired.class,
-            store.acquireRoutingIdSlot(new ZLinkRoutingIdSlotAcquireRequest(
-                "group", members, 2, "owner-c", Duration.ofSeconds(30)))
-                .toCompletableFuture().get());
-        assertEquals(1, replacement.allocation().slot());
-        assertEquals(
-            2,
-            replacement.allocation().owner().leaseGeneration());
-        assertEquals(ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE,
-            store.releaseRoutingIdSlot("group", 1, first.allocation().owner())
-                .toCompletableFuture().get());
+        assertEquals(8, replacement.generation());
     }
 
     private static ZLinkObjectReservation reserveActor(
@@ -741,32 +755,6 @@ class ZLinkInMemoryLocationStoreTest {
             owner.ownerId(),
             owner.leaseGeneration(),
             NOW);
-    }
-
-    private static ZLinkPeerLocation peer(String ownerId, RoutingId nodeRid, long generation) {
-        return new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
-            "mesh",
-            nodeRid,
-            ZLinkLocationRole.ROUTER,
-            "tcp://127.0.0.1:6000",
-            1,
-            false,
-            0,
-            Map.of(),
-            List.of(),
-            ownerId,
-            generation,
-            NOW);
-    }
-
-    private static ZLinkPeerLocationKey peerKey(RoutingId nodeRid) {
-        return new ZLinkPeerLocationKey(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
-            "mesh",
-            ZLinkLocationRole.ROUTER,
-            nodeRid,
-            null);
     }
 
     private static ZLinkPlacementCapacity actorCapacity(

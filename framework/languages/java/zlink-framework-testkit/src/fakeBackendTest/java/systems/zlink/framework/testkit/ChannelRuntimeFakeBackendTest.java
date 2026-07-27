@@ -1,6 +1,6 @@
 package systems.zlink.framework.testkit;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -55,7 +55,7 @@ final class ChannelRuntimeFakeBackendTest {
     void channelCallsUseMessageTypePacketNameByDefault() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var channel = options.addClientServerChannel("profile"); channel.client().connect("inproc://profile-server"); };
-        { var route = options.addRouteMeshChannel("route"); route.enableServer("inproc://route");
+        { var route = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "route"); route.enableServer("inproc://route");
             route.enableClient("inproc://route-peer"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 

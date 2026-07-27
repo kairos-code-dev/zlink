@@ -525,33 +525,27 @@ public sealed class RedisLocationStoreTests
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup);
         await setup;
-        var meshScope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play");
-        var kindScope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null);
-
-        var beforeMesh = await store.GetChangeStampAsync(meshScope);
-        var beforeKind = await store.GetChangeStampAsync(kindScope);
+        var beforeMesh = await store.GetMeshNodeChangeStampAsync("play");
 
         var claimed = await store.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
 
-        var afterWriteMesh = await store.GetChangeStampAsync(meshScope);
-        var afterWriteKind = await store.GetChangeStampAsync(kindScope);
-        // Every successful write bumps both the mesh scope and the
-        // kind-wide scope, exactly like the in-memory store.
+        var afterWriteMesh = await store.GetMeshNodeChangeStampAsync("play");
         Assert.True(afterWriteMesh > beforeMesh);
-        Assert.True(afterWriteKind > beforeKind);
 
         await store.ListMeshNodesAsync("play", default);
-        await store.GetChangeStampAsync(meshScope);
-        Assert.Equal(afterWriteMesh, await store.GetChangeStampAsync(meshScope));
-        Assert.Equal(afterWriteKind, await store.GetChangeStampAsync(kindScope));
+        Assert.Equal(
+            afterWriteMesh,
+            await store.GetMeshNodeChangeStampAsync("play"));
 
         // A failed write leaves the stamps untouched.
         var stale = await store.UpdateMeshNodeAsync(
             TestRows.MeshNode("wrong-owner"),
             ZLinkLocationWriteIntent.Renew);
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, stale.Status);
-        Assert.Equal(afterWriteMesh, await store.GetChangeStampAsync(meshScope));
+        Assert.Equal(
+            afterWriteMesh,
+            await store.GetMeshNodeChangeStampAsync("play"));
     }
 
     [SkippableFact]
@@ -637,12 +631,11 @@ public sealed class RedisLocationStoreTests
         Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
         await using var store = _fixture.CreateStore(out var prefix);
         await store.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
-        var scope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play");
         await store.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Assert.True(await store.GetChangeStampAsync(scope) > 0);
+        Assert.True(await store.GetMeshNodeChangeStampAsync("play") > 0);
 
         Assert.True(await _fixture.DeleteKeyAsync($"{prefix}:stamp:mesh:play"));
-        Assert.Equal(0UL, await store.GetChangeStampAsync(scope));
+        Assert.Equal(0UL, await store.GetMeshNodeChangeStampAsync("play"));
         Assert.Single((await store.ListMeshNodesAsync("play", default)).Items);
     }
 

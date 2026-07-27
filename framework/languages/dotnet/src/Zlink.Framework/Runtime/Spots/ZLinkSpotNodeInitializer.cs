@@ -207,7 +207,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         ZLinkSpotNodeRuntime nodeRuntime)
     {
         if (registration.Router is { AcquisitionMode: ZLinkPeerAcquisitionMode.Manual } router)
-            router.ManualConnections.Attach(
+            nodeRuntime.OwnManualConnectionAttachment(router.ManualConnections.Attach(
             endpoint =>
             {
                 _ = router.PeerRoutingIds.TryGetValue(endpoint, out var peerRid)
@@ -220,7 +220,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                     nodeRuntime.DisconnectPeerManual(endpoint, peerRid);
                 else
                     nodeRuntime.DisconnectPeerManual(endpoint);
-            });
+            }));
     }
 
     internal static RoutingId PrepareNodeRoutingId(

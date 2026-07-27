@@ -66,7 +66,7 @@ builder.Services.AddZLinkFramework(options =>
         // dispatch transition turns the sample log into a second high-volume workload and can
         // starve the stream scenarios that the runner is meant to verify. Keep failures visible
         // without tracing every successful tick.
-        .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
+        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
         .TraceLabel(nodeId);
     options.AddHandlersFromAssemblyOf(typeof(ZoneSpot));
 
@@ -116,13 +116,6 @@ builder.Services.AddZLinkFramework(options =>
 
 if (hostsZones)
 {
-    builder.Services.AddZLinkMonitoring(monitor =>
-    {
-        // Ops cannot subscribe to a remote node's spot events, so this node watches its own
-        // and reports them explicitly (§8.1).
-        monitor.AddSpotEvents(ZoneWorldNames.ZoneSpotSource, TimeSpan.FromMilliseconds(200));
-    });
-
     // Registered after the framework so they start after it: the bootstrap creates spots and
     // actors, and the runtime has to be accepting operations before it can.
     builder.Services.AddHostedService<ZoneNodeBootstrap>();

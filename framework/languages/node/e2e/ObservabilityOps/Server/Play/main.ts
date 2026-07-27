@@ -25,7 +25,8 @@ import {
   type ZLinkEntrySpotActorSendHandler,
   type ZLinkEntrySpotContext,
   type ZLinkLocationActorEvent,
-  type ZLinkMeshDrainResult,
+  type ZLinkTerminationResult,
+  type ZLinkFrameworkRuntime,
   type ZLinkRouteMeshRuntime,
   type ZLinkLocationRuntimeQuery,
   type ZLinkRuntimeEventHandler,
@@ -37,16 +38,15 @@ import {
   type ZLinkSpotActorSendHandler,
   type ZLinkSpotContext,
   type ZLinkSpotManager,
-  type ZLinkSpotHandleResolver
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,
+  ZLINK_FRAMEWORK_RUNTIME,
   ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_LOCATION_RUNTIME_QUERY,
   ZLINK_SPOT_MANAGER,
-  ZLINK_SPOT_HANDLE_RESOLVER,
   ZLinkModule,
   zlinkRuntimeEventHandler,
   zlinkFramework
@@ -484,7 +484,6 @@ Module({
         builder.setActorTransferForwardWindow(500);
         const mesh = builder.addRouteMesh(ObservabilityOpsNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .addEntrySpot(TransferEntrySpot)
           .actorFactory(ObservabilityOpsNames.actorTypeStateful, TransferActorFactory)
           .addActorTransferAdapter(ObservabilityOpsNames.actorTypeStateful, TransferActorAdapter)
@@ -525,10 +524,10 @@ async function main(): Promise<void> {
   actorManager = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
   const actorClient = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
   const spots = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
-  const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
   const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
-  let drainResult: ZLinkMeshDrainResult | undefined;
+  let drainResult: ZLinkTerminationResult | undefined;
   let drainStarted = false;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
@@ -561,9 +560,9 @@ async function main(): Promise<void> {
           drainStarted = true;
           const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
           evidence.add('drain', options.rid, 'draining', `deadline=${deadlineMs}`);
-          void routeMeshRuntime.drain(ObservabilityOpsNames.mesh, deadlineMs).then((result) => {
+          void frameworkRuntime.retire({ deadlineMs }).then((result) => {
             drainResult = result;
-            evidence.add('drain', options.rid, result.kind, result.kind === 'forceStopped' ? result.reason : 'complete');
+            evidence.add('retire', options.rid, String(result.outcome), String(result.reason));
           });
         }
         return { started: true };
@@ -571,10 +570,10 @@ async function main(): Promise<void> {
     },
     {
       method: 'GET', path: /^\/spots\/([^/]+)\/ref$/, handle: async (_body, match) => {
-        const spot = await spotRefs.resolveSpotHandle(ObservabilityOpsNames.mesh, match![1]);
+        const spot = await spots.find(match![1]);
         return spot === undefined ? { found: false } : {
           found: true,
-          spotRid: String(spot.spotRid)
+          spotRid: String(spot.spotId)
         };
       }
     },

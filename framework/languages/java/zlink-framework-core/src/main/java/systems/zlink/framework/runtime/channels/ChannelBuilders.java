@@ -4,7 +4,7 @@ import java.time.Duration;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.runtime.internal.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkClientServerChannelClientBuilder;
 import systems.zlink.framework.configuration.ZLinkClientServerChannelServerBuilder;
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
@@ -17,18 +17,35 @@ public final class ChannelBuilders {
     }
 
     public static ClientServerChannelBuilder clientServer(ChannelRegistration registration) {
-        return new ClientServer(registration);
+        return clientServer(registration, "127.0.0.1", null);
+    }
+
+    public static ClientServerChannelBuilder clientServer(
+        ChannelRegistration registration,
+        String bindHost,
+        String advertiseHost) {
+        return new ClientServer(registration, bindHost, advertiseHost);
     }
 
     public static FanoutChannelBuilder fanout(ChannelRegistration registration) {
-        return new Fanout(registration);
+        return fanout(registration, "127.0.0.1", null);
+    }
+
+    public static FanoutChannelBuilder fanout(
+        ChannelRegistration registration,
+        String bindHost,
+        String advertiseHost) {
+        return new Fanout(registration, bindHost, advertiseHost);
     }
 
     public static RouteMeshChannelBuilder routeMesh(ChannelRegistration registration) {
         return new RouteMesh(registration);
     }
 
-    private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
+    private record ClientServer(
+        ChannelRegistration registration,
+        String bindHost,
+        String advertiseHost) implements ClientServerChannelBuilder {
         @Override
         public ZLinkClientServerChannelClientBuilder client() {
             registration.declareClient();
@@ -38,7 +55,7 @@ public final class ChannelBuilders {
         @Override
         public ZLinkClientServerChannelServerBuilder server() {
             registration.declareServer();
-            return new ClientServerServer(registration);
+            return new ClientServerServer(registration, bindHost, advertiseHost);
         }
     }
 
@@ -54,12 +71,20 @@ public final class ChannelBuilders {
     private static final class ClientServerServer
         implements ZLinkClientServerChannelServerBuilder {
         private final ChannelRegistration registration;
-        private String bindHost = "0.0.0.0";
+        private String bindHost;
         private String advertiseHost;
         private Integer listenPort;
 
-        private ClientServerServer(ChannelRegistration registration) {
+        private ClientServerServer(
+            ChannelRegistration registration,
+            String bindHost,
+            String advertiseHost) {
             this.registration = registration;
+            this.bindHost = bindHost;
+            this.advertiseHost = advertiseHost;
+            if (advertiseHost != null) {
+                registration.setClientServerAdvertiseHost(advertiseHost);
+            }
         }
 
         @Override
@@ -146,12 +171,67 @@ public final class ChannelBuilders {
         }
     }
 
-    private record Fanout(ChannelRegistration registration) implements FanoutChannelBuilder {
+    private static final class Fanout implements FanoutChannelBuilder {
+        private final ChannelRegistration registration;
+        private String bindHost;
+        private String advertiseHost;
+        private Integer listenPort;
+
+        private Fanout(
+            ChannelRegistration registration,
+            String bindHost,
+            String advertiseHost) {
+            this.registration = registration;
+            this.bindHost = bindHost;
+            this.advertiseHost = advertiseHost;
+            if (advertiseHost != null) {
+                registration.setFanoutAdvertiseHost(advertiseHost);
+            }
+        }
+
         @Override
         public FanoutChannelBuilder enablePublisher(String endpoint) {
             registration.enablePublisher();
             registration.addPublisherBind(endpoint);
             return this;
+        }
+
+        @Override
+        public FanoutChannelBuilder enablePublisher() {
+            return enablePublisher(0);
+        }
+
+        @Override
+        public FanoutChannelBuilder enablePublisher(int port) {
+            if (port < 0 || port > 65_535) {
+                throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "Fanout listen port must be between 0 and 65535.");
+            }
+            listenPort = port;
+            registration.enablePublisher();
+            applyListen();
+            return this;
+        }
+
+        @Override
+        public FanoutChannelBuilder setBindHost(String host) {
+            bindHost = ClientServerServer.requireHost(host, "bind host");
+            applyListen();
+            return this;
+        }
+
+        @Override
+        public FanoutChannelBuilder setAdvertiseHost(String host) {
+            advertiseHost = ClientServerServer.requireHost(host, "advertise host");
+            registration.setFanoutAdvertiseHost(advertiseHost);
+            return this;
+        }
+
+        private void applyListen() {
+            if (listenPort != null) {
+                registration.replacePublisherBind(
+                    "tcp://" + bindHost + ":" + listenPort);
+            }
         }
 
         @Override

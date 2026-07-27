@@ -10,10 +10,7 @@ export type * from './contracts';
 export {
   registerActorFactory,
   registerActorTransferAdapter,
-  createRoutingIdAllocation,
-  setRoutingIdAllocationGroup,
-  rejectFixedRoutingId,
-  rejectAllocatedRoutingId,
+  validateRoutingIdPrefix,
   registerEntrySpot,
   registerSpotFactory,
   validateActorTransferTimeout,
@@ -32,17 +29,16 @@ import type {
   ZLinkDispatchOptionsBuilder,
   ZLinkFanoutClient,
   ZLinkFanoutRuntime,
-  ZLinkProviderResolver,
   ZLinkRouteClient,
   ZLinkRouteMeshRuntime,
   ZLinkRouteMeshRuntimeOptions,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpotManager,
   ZLinkSpotOutbound,
   ZLinkSpotPublisherClient,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec
 } from './contracts';
+import type { ZLinkProviderResolver } from './contracts/Common/ZLinkProviderResolver';
 import type { ZLinkSpotHandleResolver } from './runtime/spots/spot-handle';
 import type { ZLinkBoundSessionFactory } from './runtime/streams/session-context';
 import type { ZLinkFrameworkRegistration } from './contracts/Configuration/Registration';
@@ -71,6 +67,7 @@ import {
 } from './runtime/spots';
 import { ZLinkWorkerRuntime } from './runtime/workers';
 import { captureZLinkExecutionTurn } from './runtime/execution';
+import type { ZLinkRuntimeEventPublisher } from './runtime/diagnostics';
 export {
   registerHandlerFilterScope as registerIntegrationHandlerFilterScope,
   type ZLinkHandlerFilterScopeRunner
@@ -85,10 +82,6 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly routeMeshRuntime: ZLinkRouteMeshRuntime;
   readonly clientServerRuntime: ZLinkClientServerRuntime;
   readonly fanoutRuntime: ZLinkFanoutRuntime;
-  waitForReadyAllocation(
-    groupName: string,
-    signal?: AbortSignal
-  ): Promise<import('./contracts').ZLinkAllocatedRoutingId>;
   createLocationHandleResolver(): ZLinkSpotHandleResolver | undefined;
   start(): Promise<void>;
   stop(): Promise<void>;

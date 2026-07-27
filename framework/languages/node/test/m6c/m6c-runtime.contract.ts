@@ -44,6 +44,9 @@ import {
 import {
   ZLinkManagedTimer
 } from '../../packages/framework/src/runtime/spots/spot-timer';
+import {
+  ZLinkStatefulAuthorityRouteRuntime
+} from '../../packages/framework/src/runtime/host/stateful-authority-route-runtime';
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
 import {
   ZLinkTimerOverrunPolicy
@@ -580,6 +583,96 @@ test('canonical authority CAS reconciles response loss and retains pending relay
   assert.ok(decodeServiceReadySpotAuthority(released.payload));
 });
 
+test('Preparing recovery restores steady authority after the stored owner lease expires', async () => {
+  let ownerLive = true;
+  const authority = new ZLinkInMemoryAuthorityStore({
+    isTargetLive: () => ownerLive
+  }, () => new Date(100));
+  const key = authorityKey('preparing-recovery');
+  const ready = await createAuthority(authority, 'preparing-recovery');
+  const codec = new ServiceRelocationAuthorityPayloadCodec();
+  const preparing = await authority.compareExchangeAuthority(
+    key,
+    ready.storeVersion,
+    {
+      kind: 'put',
+      generationTransition: 'preserve',
+      payload: codec.prepare(ready.payload)
+    }
+  );
+  assert.equal(preparing.kind, 'stored');
+  if (preparing.kind !== 'stored') return;
+
+  ownerLive = false;
+  const normalWrite = await authority.compareExchangeAuthority(
+    key,
+    preparing.storeVersion,
+    { kind: 'put', generationTransition: 'preserve', payload: ready.payload }
+  );
+  assert.equal(normalWrite.kind, 'conflict');
+
+  const restored = await authority.compareExchangeAuthority(
+    key,
+    preparing.storeVersion,
+    {
+      kind: 'restore',
+      payload: codec.readPreparing(preparing.payload)!,
+      expectedOwner: owner('owner-a', 1n)
+    }
+  );
+  assert.equal(restored.kind, 'stored');
+  if (restored.kind !== 'stored') return;
+  assert.equal(Buffer.from(restored.payload).toString(), 'owner-state');
+
+  const wrongOwner = await authority.compareExchangeAuthority(
+    key,
+    restored.storeVersion,
+    {
+      kind: 'restore',
+      payload: Buffer.from('wrong'),
+      expectedOwner: owner('owner-b', 2n)
+    }
+  );
+  assert.equal(wrongOwner.kind, 'conflict');
+});
+
+test('startup recovery removes a rootless Preparing marker before route admission', async () => {
+  let ownerLive = true;
+  const authority = new ZLinkInMemoryAuthorityStore({
+    isTargetLive: () => ownerLive
+  }, () => new Date(100));
+  const key = authorityKey('startup-preparing-recovery');
+  const ready = await createAuthority(authority, 'startup-preparing-recovery');
+  const codec = new ServiceRelocationAuthorityPayloadCodec();
+  const preparing = await authority.compareExchangeAuthority(
+    key,
+    ready.storeVersion,
+    {
+      kind: 'put',
+      generationTransition: 'preserve',
+      payload: codec.prepare(ready.payload)
+    }
+  );
+  assert.equal(preparing.kind, 'stored');
+
+  ownerLive = false;
+  const runtime = new ZLinkStatefulAuthorityRouteRuntime({
+    store: authority,
+    meshNodes: new Map(),
+    pollingIntervalMs: 60_000,
+    pageSize: 32,
+    reportError: error => { throw error; }
+  });
+  await runtime.start();
+  await runtime.stop();
+
+  const recovered = await authority.readAuthority(key);
+  assert.equal(recovered.kind, 'snapshot');
+  if (recovered.kind !== 'snapshot') return;
+  assert.equal(codec.readPreparing(recovered.payload), undefined);
+  assert.equal(Buffer.from(recovered.payload).toString(), 'owner-state');
+});
+
 test('Retire preflight precedes publication and ready units use bounded permits', async () => {
   const events: string[] = [];
   let active = 0;
@@ -835,7 +928,7 @@ test('durable relocation stores payload before Location CAS and clears authority
     owner('owner-b', 2n),
     relocationEnvelope()
   );
-  assert.deepEqual(events.slice(0, 2), ['payload-put', 'authority-cas']);
+  assert.deepEqual(events.slice(0, 3), ['authority-cas', 'payload-put', 'authority-cas']);
   assert.equal(published.authority.objectGeneration, initial.objectGeneration);
   assert.equal(
     published.authority.authorityOwnerGeneration,
@@ -863,17 +956,25 @@ test('failed publication removes only the orphan and published data loss never r
   const authority = authorityStore();
   const key = authorityKey('actor:a');
   const initial = await createAuthority(authority, 'actor:a');
-  await authority.compareExchangeAuthority(
-    key,
-    initial.storeVersion,
-    {
-      kind: 'put',
-      generationTransition: 'preserve',
-      payload: Buffer.from('concurrent-update')
+  let authorityCasCount = 0;
+  const authorityPort = {
+    readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
+      authority.readAuthority(...args),
+    compareExchangeAuthority: async (
+      ...args: Parameters<ZLinkInMemoryAuthorityStore['compareExchangeAuthority']>
+    ) => {
+      authorityCasCount += 1;
+      if (authorityCasCount === 2) {
+        return {
+          kind: 'conflict' as const,
+          current: await authority.readAuthority(key)
+        };
+      }
+      return authority.compareExchangeAuthority(...args);
     }
-  );
+  };
   const store = new MemoryRelocationStore(events);
-  const runtime = new ServiceDurableRelocationRuntime(authority, store, authorityCodec);
+  const runtime = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
   await assert.rejects(
     runtime.captureAndPublish(
       key,
@@ -888,7 +989,12 @@ test('failed publication removes only the orphan and published data loss never r
   const current = await authority.readAuthority(key);
   assert.equal(current.kind, 'snapshot');
   if (current.kind !== 'snapshot') return;
-  const published = await runtime.captureAndPublish(
+  authorityCasCount = 0;
+  const published = await new ServiceDurableRelocationRuntime(
+    authority,
+    store,
+    authorityCodec
+  ).captureAndPublish(
     key,
     current,
     owner('owner-b', 2n),
@@ -936,7 +1042,7 @@ test('authority response loss reconciles a committed publication without deletin
     relocationEnvelope()
   );
 
-  assert.deepEqual(events, ['payload-put', 'authority-cas']);
+  assert.deepEqual(events, ['authority-cas', 'payload-put', 'authority-cas']);
   assert.equal(
     authorityCodec.read(published.authority.payload)?.reference,
     published.publication.reference
@@ -1315,8 +1421,8 @@ test('concrete User Spot aggregate restores hidden membership and sealed work be
     captured.envelope,
     published => reserveTarget(authority, key, published, 'concrete-aggregate')
   );
-  const rootPublication = events.indexOf('authority-cas');
-  const ownerCommit = events.indexOf('authority-cas', rootPublication + 1);
+  const rootPublication = events.indexOf('authority-cas', events.indexOf('payload-put'));
+  const ownerCommit = events.lastIndexOf('authority-cas');
   assert.ok(rootPublication < events.indexOf('target-restore:actor:a:actor-state'));
   assert.ok(ownerCommit > events.indexOf('target-membership:actor:a:spot:room:4'));
   assert.ok(ownerCommit > events.indexOf('target-restore:actor:a:actor-state'));

@@ -246,15 +246,15 @@ std::string g_initial_actor_node_rid;
 class transfer_actor_t final : public fw::actor_t
 {
   public:
+    explicit transfer_actor_t (fw::actor_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
     void set_actor_ref (const fw::actor_ref_t &actor_ref)
     {
         actor_id = std::string (actor_ref.actor_id ());
         actor_type = std::string (actor_ref.actor_type ());
-    }
-
-    void set_actor_context (fw::actor_context_t actor_context)
-    {
-        _context = std::move (actor_context);
     }
 
     fw::actor_context_t &context () noexcept override
@@ -332,7 +332,7 @@ class transfer_actor_factory_t final :
   public:
     fw::task_t<std::shared_ptr<transfer_actor_t>>
     create (
-      fw::actor_context_t &context,
+      fw::actor_context_t context,
       std::stop_token) override
     {
         const auto actor_id =
@@ -342,10 +342,9 @@ class transfer_actor_factory_t final :
             g_evidence->add ("transfer", actor_id, "transfer_in_empty_default", "actor-factory");
         }
         auto actor =
-          std::make_shared<transfer_actor_t> ();
+          std::make_shared<transfer_actor_t> (std::move (context));
         actor->set_actor_ref (
-          context.actor_ref ());
-        actor->set_actor_context (context);
+          actor->context ().actor_ref ());
         co_return actor;
     }
 };

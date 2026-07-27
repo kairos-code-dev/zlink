@@ -5,7 +5,6 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   ZLinkObjectRole,
-  type ZLinkLocationChangeStampStore,
   type ZLinkLocationStore,
   type ZLinkActorLocation,
   type ZLinkAggregateAbortResult,
@@ -20,10 +19,6 @@ import {
   type ZLinkAuthorityScanCursor,
   type ZLinkAuthorityScanResult,
   type ZLinkAuthorityStoreVersion,
-  type ZLinkActorTransferPrepareRequest,
-  type ZLinkActorTransferRecord,
-  type ZLinkActorTransferState,
-  type ZLinkActorTransferWriteResult,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
   type ZLinkLocationChangeStampScope,
@@ -34,16 +29,8 @@ import {
   type ZLinkMeshNodeDescriptorKey,
   type ZLinkClientServerServerDescriptor,
   type ZLinkClientServerServerDescriptorKey,
-  type ZLinkFanoutLocationStore,
   type ZLinkFanoutPublisherDescriptor,
   type ZLinkFanoutPublisherDescriptorKey,
-  type ZLinkRoutingIdSlotAcquireRequest,
-  type ZLinkRoutingIdSlotAcquireResult,
-  type ZLinkRoutingIdSlotAllocation,
-  type ZLinkRoutingIdSlotAllocationMember,
-  type ZLinkRoutingIdSlotAllocationSnapshot,
-  type ZLinkRoutingIdSlotAllocationStore,
-  type ZLinkRoutingIdSlotReleaseResult,
   type ZLinkOwnerLeaseClaimResult,
   type ZLinkOwnerLeaseReadResult,
   type ZLinkOwnerLeaseReleaseResult,
@@ -72,7 +59,14 @@ import {
   type ZLinkSpotLocation,
   type ZLinkSpotLocationFilter,
   type ZLinkSpotLocationKey
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
+import type {
+  ZLinkActorTransferPrepareRequest,
+  ZLinkActorTransferRecord,
+  ZLinkActorTransferState,
+  ZLinkActorTransferWriteResult
+} from '../../contracts/Locations/ActorTransfer';
+import type { ZLinkFanoutLocationStore } from './internal-store-contracts';
 import { ZLinkInMemoryAuthorityStore } from './in-memory-authority-store';
 import { encodeAuthorityKey } from './authority-key-codec';
 import { ZLinkLocationKeyCodec } from './key-codec';
@@ -85,9 +79,7 @@ import {
 
 export class ZLinkInMemoryLocationStore implements
   ZLinkLocationStore,
-  ZLinkFanoutLocationStore,
-  ZLinkLocationChangeStampStore,
-  ZLinkRoutingIdSlotAllocationStore {
+  ZLinkFanoutLocationStore {
   private readonly leases = new Map<string, InMemoryOwnerLease>();
   private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();
   private readonly clientServers = new RowTable<ZLinkClientServerServerDescriptor>();
@@ -97,7 +89,6 @@ export class ZLinkInMemoryLocationStore implements
   private readonly actors = new RowTable<ZLinkActorLocation>();
   private readonly routes = new RowTable<ZLinkRouteLocation>();
   private readonly stamps = new Map<string, bigint>();
-  private readonly routingIdGroups = new Map<string, InMemoryRoutingIdGroup>();
   private readonly actorTransfers = new Map<string, InMemoryActorTransferSlot>();
   private readonly entrySpotClaims = new Map<string, InMemoryEntrySpotClaim>();
   private ownerLeaseGeneration = 0n;
@@ -310,8 +301,13 @@ export class ZLinkInMemoryLocationStore implements
     return ZLinkLocationWriteStatus.Stored;
   }
 
-  async listMeshNodes(meshName: string): Promise<readonly ZLinkMeshNodeDescriptor[]> {
-    return [...this.meshNodes.rows.values()]
+  async listMeshNodes(
+    meshName: string,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> {
+    signal?.throwIfAborted();
+    const rows = [...this.meshNodes.rows.values()]
       .filter((row) => row.meshName === meshName)
       .map((row) => {
         const descriptor = { meshName: row.meshName, rid: row.rid };
@@ -341,6 +337,7 @@ export class ZLinkInMemoryLocationStore implements
           }
         };
       });
+    return pageValues(rows, page ?? {}, row => meshNodeKey(row.meshName, row.rid));
   }
 
   async updateClientServer(
@@ -498,108 +495,6 @@ export class ZLinkInMemoryLocationStore implements
       (row) => row.channelName === channelName && this.isOwnerLive(row.ownerId, storeNow),
       page
     );
-  }
-
-  async acquireRoutingIdSlot(
-    request: ZLinkRoutingIdSlotAcquireRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotAcquireResult> {
-    signal?.throwIfAborted();
-    validateRoutingIdSlotAcquireRequest(request);
-    const storeNow = this.now();
-    const members = normalizeRoutingIdMembers(request.members);
-    let group = this.routingIdGroups.get(request.groupName);
-    if (group === undefined) {
-      const memberNames = new Set(members.map((member) => member.meshName));
-      if ([...this.peers.rows.values()].some((peer) =>
-        memberNames.has(peer.meshName) && this.isOwnerLive(peer.ownerId, storeNow))) {
-        return { kind: 'identityModeConflict' };
-      }
-      group = {
-        members,
-        slotCount: request.slotCount,
-        allocations: new Map(),
-        generations: new Map()
-      };
-      this.routingIdGroups.set(request.groupName, group);
-    } else if (group.slotCount !== request.slotCount || !sameRoutingIdMembers(group.members, members)) {
-      return {
-        kind: 'groupConfigurationMismatch',
-        expectedMembers: group.members,
-        expectedSlotCount: group.slotCount,
-        actualMembers: members,
-        actualSlotCount: request.slotCount
-      };
-    }
-
-    removeExpiredRoutingIdAllocations(group, this.leases, storeNow);
-    for (const [slot, current] of group.allocations) {
-      if (current.owner.ownerId !== request.ownerId) continue;
-      const allocation = routingIdAllocation(
-        slot,
-        current.owner,
-        storeNow,
-        request.leaseTtlMs
-      );
-      group.allocations.set(slot, allocation);
-      this.renewExistingAllocationOwnerLease(request.ownerId, request.leaseTtlMs, storeNow);
-      return { kind: 'acquired', allocation };
-    }
-
-    for (let slot = 1; slot <= group.slotCount; slot += 1) {
-      if (group.allocations.has(slot)) continue;
-      const generation = (group.generations.get(slot) ?? 0n) + 1n;
-      group.generations.set(slot, generation);
-      const allocation = routingIdAllocation(
-        slot,
-        { ownerId: request.ownerId, leaseGeneration: generation },
-        storeNow,
-        request.leaseTtlMs
-      );
-      group.allocations.set(slot, allocation);
-      return { kind: 'acquired', allocation };
-    }
-    return { kind: 'groupExhausted' };
-  }
-
-  async releaseRoutingIdSlot(
-    groupName: string,
-    slot: number,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotReleaseResult> {
-    signal?.throwIfAborted();
-    validateRoutingIdSlotRelease(groupName, slot, owner);
-    const group = this.routingIdGroups.get(groupName);
-    const current = group?.allocations.get(slot);
-    if (current === undefined
-      || current.owner.ownerId !== owner.ownerId
-      || current.owner.leaseGeneration !== owner.leaseGeneration) {
-      return 'ignoredStale';
-    }
-    group?.allocations.delete(slot);
-    return 'released';
-  }
-
-  async listRoutingIdSlots(
-    groupName: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotAllocationSnapshot> {
-    signal?.throwIfAborted();
-    validateRoutingIdGroupName(groupName);
-    const storeNow = this.now();
-    const group = this.routingIdGroups.get(groupName);
-    if (group === undefined) {
-      return { groupName, members: [], slotCount: 0, allocations: [], storeNow };
-    }
-    removeExpiredRoutingIdAllocations(group, this.leases, storeNow);
-    return {
-      groupName,
-      members: group.members,
-      slotCount: group.slotCount,
-      allocations: [...group.allocations.values()].sort((left, right) => left.slot - right.slot),
-      storeNow
-    };
   }
 
   async updatePeer(
@@ -1147,15 +1042,6 @@ export class ZLinkInMemoryLocationStore implements
     return lease !== undefined && lease.leaseExpiresAt.getTime() > now.getTime();
   }
 
-  private renewExistingAllocationOwnerLease(ownerId: string, leaseTtlMs: number, now: Date): void {
-    const lease = this.leases.get(ownerId);
-    if (lease === undefined) return;
-    this.leases.set(ownerId, {
-      ...lease,
-      leaseExpiresAt: new Date(now.getTime() + leaseTtlMs)
-    });
-  }
-
   private bump(kind: ZLinkLocationKind, meshName: string | undefined): void {
     this.bumpScope({ kind, meshName });
     if (meshName !== undefined) {
@@ -1296,13 +1182,6 @@ function meshNodeDescriptorFingerprint(descriptor: ZLinkMeshNodeDescriptor): str
     maintenanceWave: descriptor.maintenanceWave ?? null,
     state: descriptor.state
   });
-}
-
-interface InMemoryRoutingIdGroup {
-  readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
-  readonly slotCount: number;
-  readonly allocations: Map<number, ZLinkRoutingIdSlotAllocation>;
-  readonly generations: Map<number, bigint>;
 }
 
 interface InMemoryActorTransferSlot {
@@ -1452,102 +1331,11 @@ function transferResult(status: ZLinkActorTransferWriteResult['status']): ZLinkA
   return { status };
 }
 
-function validateRoutingIdSlotAcquireRequest(request: ZLinkRoutingIdSlotAcquireRequest): void {
-  validateRoutingIdGroupName(request.groupName);
-  if (!Number.isInteger(request.slotCount) || request.slotCount < 1) {
-    throw new RangeError('Routing-id slotCount must be a positive integer.');
-  }
-  if (request.ownerId.trim().length === 0) {
-    throw new TypeError('Routing-id allocation ownerId must not be empty.');
-  }
-  if (!Number.isFinite(request.leaseTtlMs) || request.leaseTtlMs <= 0) {
-    throw new RangeError('Routing-id allocation leaseTtlMs must be greater than zero.');
-  }
-  if (request.members.length === 0) {
-    throw new TypeError('Routing-id allocation requires at least one member.');
-  }
-  const names = new Set<string>();
-  for (const member of request.members) {
-    if (member.meshName.trim().length === 0 || member.routingIdPrefix.trim().length === 0) {
-      throw new TypeError('Routing-id allocation member names and prefixes must not be empty.');
-    }
-    if (names.has(member.meshName)) {
-      throw new TypeError(`Routing-id allocation member '${member.meshName}' is duplicated.`);
-    }
-    names.add(member.meshName);
-  }
-}
-
-function validateRoutingIdSlotRelease(
-  groupName: string,
-  slot: number,
-  owner: ZLinkLocationOwnerToken
-): void {
-  validateRoutingIdGroupName(groupName);
-  if (!Number.isInteger(slot) || slot < 1) {
-    throw new RangeError('Routing-id allocation slot must be a positive integer.');
-  }
-  if (owner.ownerId.trim().length === 0 || owner.leaseGeneration < 1n) {
-    throw new TypeError('Routing-id allocation owner token is invalid.');
-  }
-}
-
-function validateRoutingIdGroupName(groupName: string): void {
-  if (groupName.trim().length === 0) {
-    throw new TypeError('Routing-id allocation group name must not be empty.');
-  }
-}
-
-function normalizeRoutingIdMembers(
-  members: readonly ZLinkRoutingIdSlotAllocationMember[]
-): readonly ZLinkRoutingIdSlotAllocationMember[] {
-  return members
-    .map((member) => ({ ...member }))
-    .sort((left, right) => left.meshName.localeCompare(right.meshName));
-}
-
-function sameRoutingIdMembers(
-  left: readonly ZLinkRoutingIdSlotAllocationMember[],
-  right: readonly ZLinkRoutingIdSlotAllocationMember[]
-): boolean {
-  return left.length === right.length && left.every((member, index) =>
-    member.meshName === right[index]?.meshName
-      && member.routingIdPrefix === right[index]?.routingIdPrefix);
-}
-
-function removeExpiredRoutingIdAllocations(
-  group: InMemoryRoutingIdGroup,
-  leases: ReadonlyMap<string, InMemoryOwnerLease>,
-  storeNow: Date
-): void {
-  for (const [slot, allocation] of group.allocations) {
-    const leaseExpiresAt = leases.get(allocation.owner.ownerId)?.leaseExpiresAt
-      ?? allocation.leaseExpiresAt;
-    if (leaseExpiresAt.getTime() <= storeNow.getTime()) {
-      group.allocations.delete(slot);
-    }
-  }
-}
-
 function validateOwnerLeaseInput(ownerId: string, leaseTtlMs: number): void {
   if (ownerId.trim().length === 0) throw new TypeError('ownerId is required.');
   if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1) {
     throw new RangeError('leaseTtlMs must be a positive safe integer.');
   }
-}
-
-function routingIdAllocation(
-  slot: number,
-  owner: ZLinkLocationOwnerToken,
-  storeNow: Date,
-  leaseTtlMs: number
-): ZLinkRoutingIdSlotAllocation {
-  return {
-    slot,
-    owner,
-    leaseExpiresAt: new Date(storeNow.getTime() + leaseTtlMs),
-    storeNow
-  };
 }
 
 function pageRows<TRow>(
@@ -1561,6 +1349,24 @@ function pageRows<TRow>(
     .map(([, row]) => row);
   const offset = parseContinuationToken(page.continuationToken);
   const size = page.pageSize !== undefined && page.pageSize > 0 ? page.pageSize : Number.MAX_SAFE_INTEGER;
+  const items = ordered.slice(offset, offset + size);
+  const nextOffset = offset + items.length;
+  return {
+    items,
+    continuationToken: nextOffset < ordered.length ? String(nextOffset) : undefined
+  };
+}
+
+function pageValues<TRow>(
+  rows: readonly TRow[],
+  page: ZLinkPageRequest,
+  key: (row: TRow) => string
+): ZLinkLocationPage<TRow> {
+  const ordered = [...rows].sort((left, right) => key(left).localeCompare(key(right)));
+  const offset = parseContinuationToken(page.continuationToken);
+  const size = page.pageSize !== undefined && page.pageSize > 0
+    ? page.pageSize
+    : Number.MAX_SAFE_INTEGER;
   const items = ordered.slice(offset, offset + size);
   const nextOffset = offset + items.length;
   return {

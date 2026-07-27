@@ -109,6 +109,15 @@ public abstract record ZLinkAuthorityMutation
         ZLinkRelocationCapacityFence? RelocationCapacityFence)
         : ZLinkAuthorityMutation;
 
+    /// <summary>
+    /// Replaces only the opaque payload after matching the exact store version
+    /// and owner token. The current owner lease need not still be live.
+    /// </summary>
+    public sealed record Restore(
+        ReadOnlyMemory<byte> Payload,
+        ZLinkLocationOwnerToken ExpectedOwner)
+        : ZLinkAuthorityMutation;
+
     public sealed record Delete : ZLinkAuthorityMutation;
 }
 
@@ -397,67 +406,6 @@ public enum ZLinkAggregateAbortResult
     Stale = 3
 }
 
-public interface IZLinkAuthorityStore
-{
-    ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
-        ZLinkAuthorityKey key,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
-        ZLinkAuthorityKey key,
-        string expectedStoreVersion,
-        ZLinkAuthorityMutation mutation,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
-        string prefix,
-        ZLinkAuthorityScanCursor? cursor,
-        int limit,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkObjectReserveResult> ReserveAsync(
-        ZLinkObjectReservationRequest request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkObjectCommitResult> CommitAsync(
-        ZLinkObjectReservation reservation,
-        ReadOnlyMemory<byte> readyPayload,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
-        ZLinkObjectReservation reservation,
-        ZLinkObjectCreationCompletion completion,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
-        ZLinkCreationOperationId operation,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkObjectAbortResult> AbortAsync(
-        ZLinkObjectReservation reservation,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
-        ZLinkRelocationCapacityReservationRequest request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
-        ZLinkRelocationCapacityFence fence,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
-        ZLinkAggregatePrepareRequest request,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
-        ZLinkAggregateFence fence,
-        CancellationToken cancellationToken = default);
-
-    ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
-        ZLinkAggregateFence fence,
-        CancellationToken cancellationToken = default);
-}
-
 public sealed record ZLinkRelocationStored(
     string Reference,
     uint ChecksumCrc32c,
@@ -493,6 +441,10 @@ public abstract record ZLinkRelocationRenewResult
     public sealed record Missing : ZLinkRelocationRenewResult;
 }
 
+/// <summary>
+/// Stores immutable relocation payloads independently of location authority.
+/// This is a provider SPI, not an application object API.
+/// </summary>
 public interface IZLinkRelocationStore
 {
     ValueTask<ZLinkRelocationStored> PutRelocationAsync(

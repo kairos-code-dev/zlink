@@ -12,9 +12,12 @@ public sealed class LocationContractTests
     }
 
     [Fact]
-    public void Location_Kind_Has_Invalid_Zero_Value()
+    public void Removed_Location_Kind_Is_Not_Public_Contract()
     {
-        Assert.Equal(0, (int)ZLinkLocationKind.Invalid);
+        var assembly = typeof(ZLinkLocationAutoConnectType).Assembly;
+
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocation" + "Kind"));
     }
 
     [Fact]

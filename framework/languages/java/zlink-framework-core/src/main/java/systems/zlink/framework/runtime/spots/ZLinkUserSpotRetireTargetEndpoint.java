@@ -19,8 +19,8 @@ import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkAggregateRelocationCoordinator;
 import systems.zlink.framework.runtime.actors.ZLinkSessionRelocationPeerClient;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkServiceRelocationEnvelopeCodec;
 import systems.zlink.framework.spots.ZLinkSpot;

@@ -10,5 +10,4 @@
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
-#include <zlink/framework/contracts/locations/watch.hpp>
 #include <zlink/framework/contracts/locations/writes.hpp>

@@ -16,20 +16,20 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
 
 final class ZLinkChannelSocketRegistry {
     private static final long READY_POLL_INTERVAL_MILLIS = 5;
@@ -444,7 +444,7 @@ final class ZLinkChannelSocketRegistry {
     boolean tryHandleClientServerControl(
         String channelName,
         ZLinkBackendRouterSocket router,
-        systems.zlink.framework.runtime.backend.ZLinkBackendReceived received) {
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived received) {
         if (received.parts().isEmpty()) {
             return false;
         }
@@ -917,7 +917,7 @@ final class ZLinkChannelSocketRegistry {
         if (server != null) {
             for (String endpoint : channel.serverBinds()) {
                 surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                    ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    ZLinkAutoConnectType.CLIENT_SERVER,
                     channel.name(),
                     ZLinkLocationRole.ROUTER,
                     serverRoutingIds.get(channel.name()),
@@ -932,7 +932,7 @@ final class ZLinkChannelSocketRegistry {
         }
         if (channel.clientEnabled()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                ZLinkAutoConnectType.CLIENT_SERVER,
                 channel.name(),
                 ZLinkLocationRole.DEALER,
                 channel.routingId(),
@@ -949,11 +949,14 @@ final class ZLinkChannelSocketRegistry {
         if (publishers.containsKey(channel.name())) {
             for (String endpoint : channel.publisherBinds()) {
                 surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                    ZLinkLocationAutoConnectType.FANOUT,
+                    ZLinkAutoConnectType.FANOUT,
                     channel.name(),
                     ZLinkLocationRole.PUB,
                     publisherRoutingIds.get(channel.name()),
-                    advertisedEndpoint(endpoint, publishers.get(channel.name())),
+                    advertisedEndpoint(
+                        endpoint,
+                        publishers.get(channel.name()),
+                        channel.fanoutAdvertiseHost()),
                     100,
                     null,
                     List.of()));
@@ -961,7 +964,7 @@ final class ZLinkChannelSocketRegistry {
         }
         if (channel.automaticSubscriberEnabled()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                ZLinkLocationAutoConnectType.FANOUT,
+                ZLinkAutoConnectType.FANOUT,
                 channel.name(),
                 ZLinkLocationRole.SUB,
                 channel.routingId(),
@@ -981,7 +984,7 @@ final class ZLinkChannelSocketRegistry {
         }
         for (String endpoint : channel.routeBinds()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                ZLinkLocationAutoConnectType.ROUTE_MESH,
+                ZLinkAutoConnectType.ROUTE_MESH,
                 channel.name(),
                 ZLinkLocationRole.ROUTER,
                 channel.routeRoutingId(),
@@ -992,7 +995,7 @@ final class ZLinkChannelSocketRegistry {
         }
         if (channel.routeBinds().isEmpty()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
-                ZLinkLocationAutoConnectType.ROUTE_MESH,
+                ZLinkAutoConnectType.ROUTE_MESH,
                 channel.name(),
                 ZLinkLocationRole.ROUTER,
                 channel.routeRoutingId(),
@@ -1044,13 +1047,35 @@ final class ZLinkChannelSocketRegistry {
     private static String advertisedEndpoint(
         String configuredEndpoint,
         ZLinkBackendPublisherSocket publisher) {
+        return advertisedEndpoint(configuredEndpoint, publisher, null);
+    }
+
+    private static String advertisedEndpoint(
+        String configuredEndpoint,
+        ZLinkBackendPublisherSocket publisher,
+        String advertiseHost) {
+        String endpoint;
         if (!configuredEndpoint.endsWith(":0")) {
-            return configuredEndpoint;
+            endpoint = configuredEndpoint;
+        } else {
+            String boundEndpoint = publisher.lastEndpoint();
+            endpoint = boundEndpoint == null || boundEndpoint.isBlank()
+                ? configuredEndpoint
+                : boundEndpoint;
         }
-        String boundEndpoint = publisher.lastEndpoint();
-        return boundEndpoint == null || boundEndpoint.isBlank()
-            ? configuredEndpoint
-            : boundEndpoint;
+        if (advertiseHost == null || advertiseHost.isBlank()) {
+            return endpoint;
+        }
+        java.net.URI value = java.net.URI.create(endpoint);
+        try {
+            return new java.net.URI(
+                value.getScheme(), value.getUserInfo(), advertiseHost,
+                value.getPort(), value.getPath(), value.getQuery(), value.getFragment())
+                .toString();
+        } catch (java.net.URISyntaxException invalid) {
+            throw new IllegalArgumentException(
+                "Invalid Fanout advertise host.", invalid);
+        }
     }
 
     private static void closeAll(

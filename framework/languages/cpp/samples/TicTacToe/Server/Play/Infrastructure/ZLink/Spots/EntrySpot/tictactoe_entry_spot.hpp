@@ -22,19 +22,20 @@ using framework::message_t;
 class tictactoe_entry_spot_t : public entry_spot_t
 {
   public:
-    void configure (entry_spot_context_t &context)
+    explicit tictactoe_entry_spot_t (entry_spot_context_t context) :
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&tictactoe_entry_spot_t::join_game> ();
-        context.handlers ().add_actor_request<&tictactoe_entry_spot_t::observe_milestone> ();
-        context.handlers ().add_subscribe<&tictactoe_entry_spot_t::on_player_win_milestone> (
-          sample_names_t::player_milestone_topic);
     }
 
-    void configure (spot_context_t &context)
+    entry_spot_context_t &context () noexcept { return _context; }
+    const entry_spot_context_t &context () const noexcept { return _context; }
+
+    void configure ()
     {
-        entry_spot_context_t entry_context (context);
-        configure (entry_context);
+        _context.handlers ().add_actor_request<&tictactoe_entry_spot_t::join_game> ();
+        _context.handlers ().add_actor_request<&tictactoe_entry_spot_t::observe_milestone> ();
+        _context.handlers ().add_subscribe<&tictactoe_entry_spot_t::on_player_win_milestone> (
+          sample_names_t::player_milestone_topic);
     }
 
     task_t<join_game_res_t> join_game (const player_actor_t &actor,

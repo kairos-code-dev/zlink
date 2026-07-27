@@ -34,45 +34,35 @@ enum class location_topology_state_t
 
 struct location_topology_filter_t
 {
-    std::optional<location_kind_t> kind;
     std::optional<std::string> mesh_name;
-    std::optional<location_role_t> role;
     std::optional<zlink::routing_id_t> node_rid;
     std::optional<location_topology_state_t> state;
 };
 
 struct location_topology_entry_t
 {
-    location_kind_t kind = location_kind_t::peer;
-    std::optional<std::string> mesh_name;
-    std::optional<location_role_t> role;
-    std::optional<zlink::routing_id_t> node_rid;
-    std::optional<std::string> spot_id;
-    std::optional<std::string> actor_id;
-    std::optional<std::string> endpoint;
+    std::string mesh_name;
+    zlink::routing_id_t node_rid =
+      zlink::routing_id_t::from (std::uint32_t{0});
+    std::string endpoint;
+    bool draining = false;
     location_topology_state_t state = location_topology_state_t::discovered;
-    std::uint32_t desired_count = 0;
-    std::uint32_t ready_count = 0;
-    int error_code = 0;
     std::chrono::system_clock::time_point updated_at{};
 };
 
 struct location_service_summary_filter_t
 {
     std::optional<std::string> mesh_name;
-    std::optional<location_auto_connect_type_t> auto_connect_type;
-    std::optional<location_role_t> role;
 };
 
 struct location_service_summary_t
 {
     std::string mesh_name;
-    location_auto_connect_type_t auto_connect_type = location_auto_connect_type_t::invalid;
-    location_role_t role = location_role_t::invalid;
     std::uint32_t total_count = 0;
     std::uint32_t ready_count = 0;
-    std::uint32_t lost_count = 0;
     std::uint32_t error_count = 0;
+    std::uint32_t stopped_count = 0;
+    std::chrono::system_clock::time_point last_updated_at{};
 };
 
 } // namespace zlink::framework

@@ -10,8 +10,7 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final ScenarioState state;
@@ -19,7 +18,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final String endpoint;
     private final ZLinkChannelRuntimeOptions runtimeOptions;
     private final ConfigurableApplicationContext applicationContext;
-    private final ZLinkDrainControl drain;
+    private final ZLinkFrameworkLifecycle drain;
     private HttpServer server;
     private java.util.concurrent.ExecutorService executor;
     private boolean running;
@@ -30,7 +29,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         String endpoint,
         ZLinkChannelRuntimeOptions runtimeOptions,
         ConfigurableApplicationContext applicationContext,
-        ZLinkDrainControl drain) {
+        ZLinkFrameworkLifecycle drain) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
@@ -73,9 +72,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/admin/fault/none", exchange -> setObserverThrows(exchange, false));
             server.createContext("/admin/shutdown", exchange -> {
                 state.record("AdminShutdown", state.providerRid());
-                var result = drain.drain(java.time.Duration.ofSeconds(30))
+                var result = drain.retire(java.time.Duration.ofSeconds(30))
                     .toCompletableFuture().join();
-                String terminal = result instanceof Drained ? "Drained" : "ForceStopped";
+                String terminal = result.outcome() == systems.zlink.framework.runtime.host
+                    .ZLinkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped";
                 write(exchange, 200, "{\"result\":\"" + terminal + "\"}\n");
                 Thread shutdown = new Thread(applicationContext::close, "java-rl-admin-shutdown");
                 shutdown.setDaemon(false);

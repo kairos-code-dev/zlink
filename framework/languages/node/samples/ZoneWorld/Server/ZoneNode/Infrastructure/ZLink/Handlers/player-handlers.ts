@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import { ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
 import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
 import {
   EnterWorldRes,
@@ -18,7 +18,7 @@ import type { BotTickReq, EnterWorldReq, JoinWorldReq, MoveMsg } from '../../../
 import type {
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorSendContext,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { PlayerActor } from '../Actors/player-actor';
@@ -92,7 +92,7 @@ class EntryJoinWorldHandler {
 class PlayerMovement {
   constructor(
     private readonly nodeState: NodeRuntimeState,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
   ) {}
 
@@ -109,7 +109,7 @@ class PlayerMovement {
       actor.y = y;
       const spotRid = actor.context.spotRid;
       if (spotRid === undefined) throw new Error(`Player '${actor.actorId}' is not joined to a zone.`);
-      const spot = await this.spotHandles.resolveSpotHandle(ZoneWorldNames.zoneMesh, spotRid);
+      const spot = await this.spotHandles.find(spotRid);
       if (spot === undefined) throw new Error(`Zone '${String(spotRid)}' could not be resolved.`);
       await this.spotOutbound.sendToSpot(spot, new UpdateZonePositionMsg(actor.actorId, x, y)).submit();
       return;

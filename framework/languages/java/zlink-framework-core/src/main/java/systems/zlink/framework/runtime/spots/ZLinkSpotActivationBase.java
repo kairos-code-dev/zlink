@@ -15,7 +15,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 
 abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoCloseable {

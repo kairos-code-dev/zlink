@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { ClientOptions } from './client-options';
+import type { ZLinkTerminationResult } from '@zlink-systems/framework';
 import { getJson, getStatus, postJsonWithin, postStatus } from '../../../http-client';
 
 export interface DynamicProvider {
@@ -131,8 +132,8 @@ export class DynamicClusterLauncher {
     }
   }
 
-  async drain(provider: DynamicProvider): Promise<{ readonly kind: string; readonly reason?: string }> {
-    const result = await postJsonWithin<{ readonly kind: string; readonly reason?: string }>(
+  async drain(provider: DynamicProvider): Promise<ZLinkTerminationResult> {
+    const result = await postJsonWithin<ZLinkTerminationResult>(
       provider.httpUrl,
       '/drain',
       {},

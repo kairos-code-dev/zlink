@@ -12,15 +12,15 @@ import java.util.function.Supplier;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class ConsumerEndpoints implements SmartLifecycle {
     private final ObjectMapper json;
     private final ZLinkClient client;
     private final ZLinkFrameworkLifecycle lifecycle;
+    private final ZLinkLocationStore locations;
     private final String endpoint;
     private HttpServer server;
     private boolean running;
@@ -29,10 +29,12 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         ObjectMapper json,
         ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
+        ZLinkLocationStore locations,
         String endpoint) {
         this.json = json;
         this.client = client;
         this.lifecycle = lifecycle;
+        this.locations = locations;
         this.endpoint = endpoint;
     }
 
@@ -65,18 +67,18 @@ public final class ConsumerEndpoints implements SmartLifecycle {
                 return Map.of("status", "accepted");
             }));
             server.createContext("/operations/peers", exchange -> handle(exchange, () -> {
-                List<Contracts.PeerLocation> peers = lifecycle.monitoringLocationRuntimeQuery()
-                    .listPeerLocations(new ZLinkPeerLocationFilter(
-                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                List<Contracts.PeerLocation> peers = locations
+                    .listClientServers(
                         Contracts.CHANNEL,
-                        ZLinkLocationRole.ROUTER,
-                        null,
-                        null))
+                        new ZLinkPageRequest(1_000, null))
                     .toCompletableFuture()
                     .join()
-                    .stream()
-                    .map(peer -> new Contracts.PeerLocation(
-                        peer.nodeRid().toString(), peer.endpoint(), peer.ownerId(), peer.generation()))
+                    .items().stream()
+                    .map(server -> new Contracts.PeerLocation(
+                        server.serverRid().toString(),
+                        server.endpoint(),
+                        server.ownerId(),
+                        server.lifecycleGeneration()))
                     .toList();
                 return new Contracts.PeerSnapshot(peers);
             }));

@@ -214,14 +214,13 @@ class auditing_filter_t
 {
   public:
     zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_t &invocation,
+    invoke (const zlink::framework::message_context_t &context,
             zlink::framework::handler_next_t next)
     {
         ++before_count;
-        last_packet_name = invocation.descriptor.packet_name;
-        last_context_channel = invocation.message_context.channel_name.value_or ("<none>");
-        last_context_packet = invocation.message_context.packet_name;
-        last_message = invocation.message ? invocation.message->to_string () : "";
+        last_packet_name = context.packet_name;
+        last_context_channel = context.channel_name.value_or ("<none>");
+        last_context_packet = context.packet_name;
         auto message = co_await next ();
         ++after_count;
         co_return message;
@@ -232,17 +231,16 @@ class auditing_filter_t
     std::string last_packet_name;
     std::string last_context_channel;
     std::string last_context_packet;
-    std::string last_message;
 };
 
 class short_circuit_filter_t
 {
   public:
     zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_t &invocation,
+    invoke (const zlink::framework::message_context_t &context,
             zlink::framework::handler_next_t next)
     {
-        if (invocation.descriptor.packet_name == "blocked") {
+        if (context.packet_name == "blocked") {
             ++short_circuit_count;
             co_return zlink::message_t::from (std::string ("99"));
         }
@@ -375,7 +373,7 @@ int main ()
     auto &audit_filter = provider.get_required<auditing_filter_t> ();
     if (audit_filter.before_count != 1 || audit_filter.after_count != 1
         || audit_filter.last_packet_name != "request" || audit_filter.last_context_channel != "game"
-        || audit_filter.last_context_packet != "request" || audit_filter.last_message != "7") {
+        || audit_filter.last_context_packet != "request") {
         return 35;
     }
 

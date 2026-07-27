@@ -4,7 +4,7 @@ import {
   type ZLinkRouteClient,
   type ZLinkSpotManager,
   type ZLinkSpotOutbound,
-  type ZLinkSpotHandleResolver
+  type ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type {
   ChannelEchoRes,
@@ -69,7 +69,7 @@ export function createPlayEndpoints(
   evidence: EvidenceStore,
   spotManager: ZLinkSpotManager,
   spotOutbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotHandleResolver,
+  spotRefs: ZLinkSpotManager,
   routeClient: ZLinkRouteClient,
   stop: () => void
 ): HttpRoute[] {
@@ -645,7 +645,7 @@ function countNew(entries: readonly string[], before: readonly string[], marker:
 
 async function requestSpotState(
   spotOutbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotHandleResolver,
+  spotRefs: ZLinkSpotManager,
   request: SpotStateRouteReq
 ): Promise<StateRes> {
   const spot = await requireSpotRef(spotRefs, request.spotRid);
@@ -658,7 +658,7 @@ async function requestSpotState(
 
 async function submitSpotAdmin(
   spotOutbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotHandleResolver,
+  spotRefs: ZLinkSpotManager,
   spotRid: string,
   request: SpotAdminReq
 ): Promise<unknown> {
@@ -666,8 +666,8 @@ async function submitSpotAdmin(
   return spotOutbound.requestToSpot(spot, request).timeout(30000).submit();
 }
 
-async function requireSpotRef(spotRefs: ZLinkSpotHandleResolver, spotRid: string) {
-  const spot = await spotRefs.resolveSpotHandle(SpotServiceNames.spotChannel, spotRid);
+async function requireSpotRef(spotRefs: ZLinkSpotManager, spotRid: string) {
+  const spot = await spotRefs.find(spotRid);
   if (spot === undefined) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotRouteNotFound,

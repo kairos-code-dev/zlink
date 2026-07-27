@@ -122,20 +122,14 @@ class query_peers_handler_t
     {
         zlink::framework::http_response_t response;
         try {
-            auto peers =
-              _query
-                .list_peer_locations (zlink::framework::peer_location_filter_t{
-                  .auto_connect_type =
-                    zlink::framework::location_auto_connect_type_t::client_server})
-                .result ()
-                .value ();
+            auto peers = _query.list_topology ({}).result ().value ();
             std::vector<peer_row_res_t> rows;
-            rows.reserve (peers.size ());
-            for (const auto &peer : peers) {
+            rows.reserve (peers.items.size ());
+            for (const auto &peer : peers.items) {
                 rows.push_back (
-                  peer_row_res_t{.rid = peer.node_rid ? peer.node_rid->to_string () : std::string{},
+                  peer_row_res_t{.rid = peer.node_rid.to_string (),
                                  .endpoint = peer.endpoint,
-                                 .owner_id = peer.owner_id,
+                                 .owner_id = {},
                                  .draining = peer.draining});
             }
             response.body = nlohmann::json (rows).dump ();

@@ -1137,7 +1137,7 @@ drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
                                                          serializer_registry_t &serializers)
 {
     drain_actor_handoff_result_t outcome;
-    auto peers = provider.get<peer_location_resolver_t> ();
+    auto peers = provider.get<runtime::store_location_resolvers_t> ();
     auto actor_gateway = provider.get<actor_gateway_runtime_t> ();
     for (const auto &spot_node : spot_node_runtime_t::snapshots (zlink)) {
         auto runtime = spot_node_runtime_t::from (zlink, spot_node.name);
@@ -1158,14 +1158,11 @@ drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
         }
         const auto mesh_name = spot_node.discovery_channel_name ? *spot_node.discovery_channel_name
                                                                 : spot_node.name;
-        std::vector<peer_location_t> mesh_peers;
+        std::vector<mesh_node_descriptor_t> mesh_peers;
         try {
             mesh_peers =
               peers->get ()
-                .list_live_peers (peer_location_filter_t{
-                  .auto_connect_type = location_auto_connect_type_t::spot_mesh,
-                  .mesh_name = mesh_name,
-                  .role = location_role_t::spot})
+                .list_live_mesh_nodes (mesh_name)
                 .result ()
                 .value ();
         }
@@ -1178,18 +1175,22 @@ drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
           make_actor_gateway_spot_node_binding (zlink, spot_node, *runtime, serializers);
         std::size_t next_target = 0;
         for (const auto &actor_ref : actors) {
-            const auto capability = "actor:" + std::string (actor_ref.actor_type ());
             std::vector<node_rid_t> eligible;
             for (const auto &peer : mesh_peers) {
-                if (peer.draining || !peer.node_rid) {
+                if (peer.state == framework_runtime_state_t::retiring
+                    || peer.state == framework_runtime_state_t::draining) {
                     continue;
                 }
-                const auto peer_rid = peer.node_rid->to_string ();
+                const auto peer_rid = peer.rid.to_string ();
                 if (peer_rid.empty () || peer_rid == binding.local_spot_node_rid) {
                     continue;
                 }
-                if (std::find (peer.capabilities.begin (), peer.capabilities.end (), capability)
-                    == peer.capabilities.end ()) {
+                if (std::none_of (
+                      peer.object_capabilities.begin (), peer.object_capabilities.end (),
+                      [&] (const auto &capability) {
+                          return capability.object_kind == placement_object_kind_t::actor
+                                 && capability.stable_type == actor_ref.actor_type ();
+                      })) {
                     continue;
                 }
                 eligible.push_back (node_rid_t::from_string (peer_rid));

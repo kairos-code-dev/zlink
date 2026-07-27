@@ -43,6 +43,36 @@ public sealed class EndpointConnectionsTests
     }
 
     [Fact]
+    public void Disposed_Runtime_Generation_No_Longer_Receives_Endpoint_Mutations()
+    {
+        var connections = new ZLinkEndpointConnections();
+        var firstGeneration = new List<string>();
+        var secondGeneration = new List<string>();
+        var firstLease = connections.Attach(firstGeneration.Add, _ => { });
+
+        firstLease.Dispose();
+        using var secondLease = connections.Attach(secondGeneration.Add, _ => { });
+        connections.Connect("tcp://127.0.0.1:7301");
+
+        Assert.Empty(firstGeneration);
+        Assert.Equal(["tcp://127.0.0.1:7301"], secondGeneration);
+    }
+
+    [Fact]
+    public void Older_Runtime_Lease_Cannot_Detach_The_Current_Generation()
+    {
+        var connections = new ZLinkEndpointConnections();
+        var firstLease = connections.Attach(_ => { }, _ => { });
+        var secondGeneration = new List<string>();
+        using var secondLease = connections.Attach(secondGeneration.Add, _ => { });
+
+        firstLease.Dispose();
+        connections.Connect("tcp://127.0.0.1:7302");
+
+        Assert.Equal(["tcp://127.0.0.1:7302"], secondGeneration);
+    }
+
+    [Fact]
     public void Runtime_Handle_Does_Not_Expose_Mutable_List_Operations()
     {
         IZLinkEndpointConnections connections = new ZLinkEndpointConnections();

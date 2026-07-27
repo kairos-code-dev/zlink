@@ -269,25 +269,18 @@ public sealed class DeferredActorJoinDurabilityTests
     }
 
     private sealed class TestAuthorityStore(ZLinkAuthoritySnapshot snapshot)
-        : IZLinkAuthorityStore
+        : ZLinkLocationStoreTestDouble
     {
         internal ZLinkAuthoritySnapshot Snapshot { get; private set; } = snapshot;
         internal int CompareExchangeCount { get; private set; }
 
-        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<ZLinkAuthorityReadResult>(
                 new ZLinkAuthorityReadResult.Found(Snapshot));
 
-        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
-            string prefix,
-            ZLinkAuthorityScanCursor? cursor,
-            int limit,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
             ZLinkAuthorityKey key,
             string expectedStoreVersion,
             ZLinkAuthorityMutation mutation,
@@ -313,59 +306,6 @@ public sealed class DeferredActorJoinDurabilityTests
                 new ZLinkAuthorityCompareExchangeResult.Stored(Snapshot));
         }
 
-        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
-            ZLinkObjectReservationRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
-            ZLinkObjectReservation reservation,
-            ReadOnlyMemory<byte> readyPayload,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
-            ZLinkObjectReservation reservation,
-            ZLinkObjectCreationCompletion completion,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
-            ZLinkCreationOperationId operation,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
-            ZLinkObjectReservation reservation,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityReserveResult>
-            ReserveRelocationCapacityAsync(
-                ZLinkRelocationCapacityReservationRequest request,
-                CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityAbortResult>
-            AbortRelocationCapacityAsync(
-                ZLinkRelocationCapacityFence fence,
-                CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
-            ZLinkAggregatePrepareRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class TestRelocationStore : IZLinkRelocationStore

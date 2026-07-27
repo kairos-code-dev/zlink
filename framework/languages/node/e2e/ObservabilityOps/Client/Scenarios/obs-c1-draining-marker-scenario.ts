@@ -12,7 +12,7 @@ import {
   require,
   unique
 } from '../Support/scenario-support.js';
-import { startDrain, waitForDrain } from '../Support/observability-support.js';
+import { retireCompleted, startDrain, waitForDrain } from '../Support/observability-support.js';
 
 export async function runObsC1(): Promise<void> {
   const actorId = `actor-handoff-gate-${unique('obs-c1')}`;
@@ -34,6 +34,6 @@ export async function runObsC1(): Promise<void> {
   await post(nodeA, `/transfer-gates/${actorId}/release`, {});
   require((await reply).actorId === actorId && (await push).payload.actorId === actorId,
     'OBS-C1 in-flight bound request was not preserved.');
-  await waitForDrain(nodeA, (status) => status.result?.kind === 'drained', 'OBS-C1 drain did not complete');
+  await waitForDrain(nodeA, retireCompleted, 'OBS-C1 retire did not complete');
   await connector.close();
 }

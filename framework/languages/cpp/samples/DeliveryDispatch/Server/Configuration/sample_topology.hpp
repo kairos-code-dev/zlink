@@ -3,6 +3,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <stdexcept>
 #include <string>
 
 namespace zlink::samples::deliverydispatch
@@ -76,6 +77,16 @@ inline int port_from_http_url (const std::string &url)
         return 80;
     }
     return std::stoi (url.substr (colon + 1));
+}
+
+inline std::string host_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto start = endpoint.rfind ("tcp://", 0) == 0 ? 6U : 0U;
+    const auto colon = endpoint.rfind (':');
+    if (colon == std::string::npos || colon <= start) {
+        throw std::runtime_error ("TCP endpoint must use tcp://host:port");
+    }
+    return endpoint.substr (start, colon - start);
 }
 
 } // namespace zlink::samples::deliverydispatch

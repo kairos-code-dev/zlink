@@ -213,7 +213,6 @@ int main (int argc, char **argv)
         const auto workflow_channel = sample_names_t::order_workflow_channel;
         auto workflow_route = options.add_route_mesh (workflow_channel);
         workflow_route.listen (instance.route_endpoint)
-          .use_allocated_routing_id (16, "shoppingmall-workflow")
           .channel_name (workflow_channel);
         workflow_route
           .add_route_request_handler<workflow_route_handlers_t,
@@ -222,12 +221,10 @@ int main (int argc, char **argv)
             ensure_order_workflow_spot_req_t::packet_name);
         auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
         spot_route.listen (instance.spot_route_endpoint)
-          .use_allocated_routing_id (16, "shoppingmall-workflow-route")
           .channel_name (sample_names_t::order_spot_route);
         auto order_spot = options.add_route_mesh (sample_names_t::order_spot_discovery);
         order_spot.channel_name (sample_names_t::order_spot_route);
         order_spot.listen (instance.spot_router_endpoint)
-          .use_allocated_routing_id (16, "shoppingmall-workflow-owner")
           .add_spot<order_workflow_spot_t> (
             sample_names_t::order_workflow_spot,
             [topology] { return std::make_shared<order_workflow_spot_t> (topology); });

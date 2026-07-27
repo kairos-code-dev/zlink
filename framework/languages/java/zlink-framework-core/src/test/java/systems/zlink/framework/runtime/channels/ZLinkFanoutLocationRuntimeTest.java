@@ -13,23 +13,23 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkFanoutLocationStore;
+import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 
 final class ZLinkFanoutLocationRuntimeTest {
@@ -107,7 +107,7 @@ final class ZLinkFanoutLocationRuntimeTest {
     }
 
     private static final class EmptyStore
-        implements ZLinkFanoutLocationStore {
+        extends ZLinkLocationStoreTestAdapter {
         @Override
         public java.util.concurrent.CompletionStage<ZLinkLocationWriteResult>
             updateFanoutPublisher(

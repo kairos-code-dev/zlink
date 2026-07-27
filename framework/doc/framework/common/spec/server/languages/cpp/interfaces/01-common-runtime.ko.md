@@ -28,15 +28,13 @@ binding 기준은 아래 문서를 따른다.
 - [C++ Codec Extension Specification](../../../../../../../../../bindings/doc/spec/cpp/codec.md)
 
 framework public API는 `zlink::framework` namespace 아래에 둔다. 설치되는 public header에는
-정식 contract와 명시적인 extension point만 포함한다. 일반 사용자는 raw socket이나 poller를 직접
-다루지 않고 application을 구성할 수 있어야 한다.
+정식 contract와 명시적인 extension point만 포함한다. Application은 transport 구현을 알지 않고
+framework를 구성할 수 있어야 한다.
 
 ## 2. Binding public dependency 경계
 
-Framework package는 C++ binding의 public API만 의존한다. Application은 framework 기능을 사용할 때
-binding의 native handle, raw callback userdata, raw option key, socket과 poller를 직접 다루지 않는다.
-공개 handler와 client에는 ChannelName, topic, typed payload, timeout과 lifecycle처럼 framework
-계약에 정의된 값만 나타난다.
+Framework package는 C++ binding의 public API만 의존한다. 공개 handler와 client에는 ChannelName, topic,
+typed payload, timeout과 lifecycle처럼 framework 계약에 정의된 값만 나타난다.
 
 사용자가 binding 값을 직접 넘길 수 있는 곳은 `message_t`처럼 정식 signature가 명시한 payload
 경계로 제한한다. 그 밖의 binding 타입은 framework public signature에 나타나지 않는다.
@@ -71,41 +69,15 @@ zlink/framework/contracts/workers/*.hpp
 `zlink/framework/runtime.hpp` 같은 public header는 제공하지 않는다. public API에는 `app_t`,
 `request_client_t`, `spot_context_t`처럼 사용자가 이해하는 계약 이름만 노출한다.
 
-`bindings/cpp`보다 framework 쪽의 분리를 더 강하게 잡는다. binding은 zlink core의
-native 개념을 C++로 안전하게 감싸는 계층이지만, framework는 application contract를
-제공하는 계층이다. 그래서 framework contract header가 binding public 타입을 내부
-substrate로 참조할 수는 있어도, native socket [owner](../../../../01-glossary.ko.md#owner), CAPI dispatch callback, raw recv
-순서, frame codec 구현을 public contract로 노출하면 안 된다.
-
-public header에 template 구현이 필요한 경우에는 `contracts/detail/*`만 사용한다.
-이 detail 영역은 type trait, concept check, facade forwarding을 위한 곳이며,
-runtime 구현을 숨겨 넣는 장소가 아니다.
-
 이 구조는 `.NET`의 public interface를 C++ pure virtual class로 모두 옮긴다는 뜻이
 아니다. C++ public API는 concrete facade와 value type을 적극적으로 사용할 수 있다.
 다만 facade의 멤버, 생성자, method signature가 runtime 구현 타입을 노출하지 않아야 한다.
-runtime 객체를 가리켜야 하는 public facade는 PIMPL, type-erased state, shared internal
-state 같은 방식으로 구현을 숨긴다. 사용자 확장점만 abstract interface 또는 concept
-contract로 둔다.
-
-설치되는 header는 contract와 facade만 포함한다. 구현 전용 header는 install 결과와 package의 public
-include 경로에 포함하지 않는다.
-
-public type을 만들 때는 아래 질문에 모두 답해야 한다.
-
-| 질문 | public contract에 둘 수 있는 경우 | runtime에 숨겨야 하는 경우 |
-|------|----------------------------------|-----------------------------|
-| 사용자가 직접 구현하는가? | handler, filter, serializer, hosted service처럼 구현 대상이면 둔다. | framework가 내부에서만 구현하면 숨긴다. |
-| 사용자가 값을 조합하는가? | option, builder, typed result처럼 조합 대상이면 둔다. | queue node, dispatch token, recv state처럼 조합하지 않으면 숨긴다. |
-| 공통 기능을 사용자에게 제공하는가? | 같은 기능 축의 public 계약이면 C++ contract로 둔다. | runtime 실행에만 필요한 타입이면 숨긴다. |
-| native 실행 순서를 드러내는가? | 드러내지 않으면 facade로 둘 수 있다. | poll/recv/drain 순서가 보이면 숨긴다. |
+사용자 확장점만 abstract interface 또는 concept contract로 둔다.
 
 ### 3.1 공개 계약 경계
 
-C++ 공개 header는 사용자가 구성하거나 호출하는 타입과 결과만 정의한다. socket owner, queue,
-pending operation 저장소, dispatch 순서와 native transport adapter는 공개 signature에 노출하지
-않는다. 공개 facade가 상태를 유지해야 할 때도 사용자는 그 상태의 자료구조나 처리 순서를 알 필요가
-없어야 한다.
+C++ 공개 header는 사용자가 구성하거나 호출하는 타입과 결과만 정의한다. 공개 facade가 상태를
+유지하더라도 사용자는 그 상태의 자료구조나 처리 순서를 알 필요가 없어야 한다.
 
 공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot ID를 대상으로 하는 typed 호출을
 제공한다. [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
@@ -117,9 +89,9 @@ serializer 선택은 framework가 처리한다.
 `.metadata(key, value)`로 설정한 값은 application metadata 계약에 따라 snapshot되며, transport
 세부와 correlation 상태는 공개 API에 드러나지 않는다.
 
-native result와 error envelope는 다음 공개 오류 의미로 변환한다.
+하위 transport와 remote error envelope는 다음 공개 오류 의미로 변환한다.
 
-| native/error code | C++ error kind | retriable |
+| 하위 오류 의미 | C++ error kind | retriable |
 |-------------------|----------------|-----------|
 | `timed_out`, `timeout` | 경계 timeout — public enum 값이 아니라 `framework_exception_t`의 `code() == std::errc::timed_out` 값(§7.4) | no |
 | `not_connected`, `route_not_connected` | `route_not_connected` | yes |
@@ -140,8 +112,7 @@ handler 등록과 Stream Connector의 send, request와 on 기본 이름은 이 �
 C++는 설치된 header가 곧 공개 표면이므로 다음 규칙을 지킨다.
 
 - template header에는 type check와 공개 facade forwarding만 둔다.
-- public class의 state는 공개 계약 타입만 사용하며 native socket, queue와 pending operation 타입을
-  노출하지 않는다.
+- public class의 state는 공개 계약 타입만 사용한다.
 - JSON, MessagePack, Protobuf와 같은 선택 dependency 타입은 해당 codec extension의 공개 계약에만
   나타날 수 있다.
 - contract test는 설치된 public header만 include한다.
@@ -274,34 +245,29 @@ target_link_libraries(app PRIVATE zlink::framework_codec_protobuf)
 
 SPOT과 STREAM의 backpressure는 public **call object, timeout, result error kind**로만 관찰한다.
 
-- **application handler가 pending queue를 직접 resume하거나 poller readiness를 다루는 API를 두지
-  않는다.**
+- **application handler가 framework queue를 직접 제어하는 API를 두지 않는다.**
 - **기본 정책은 무한 queue가 아니다.** queue 상한·submit timeout·overflow 정책은 framework runtime
   설정으로 닫고, **한도 초과는 실패 result로 반환한다**(`request_rejected` 등).
 
 ### 6.2 Handler filter
 
-**filter는 `handler_invocation_t`로 descriptor·message context·immutable message payload를
-읽는다.** **payload를 바꾸려면 `next()` 결과 대신 새 `message_t`를 반환한다.**
+**filter는 `message_context_t`로 현재 dispatch의 공개 metadata를 읽는다.** descriptor와 raw
+message storage는 Framework 내부에 유지한다. **reply를 바꾸려면 `next()` 결과 대신 새
+`message_t`를 반환한다.**
 
 filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../05-framework-api.ko.md)이
 소유한다.
 
 ### 6.3 Public surface 경계
 
-- **public surface는 native socket, poller, callback userdata를 직접 노출하지 않는다.**
-- **handler public contract는 `contracts/handlers/*`가 소유한다.** handler [descriptor](../../../../01-glossary.ko.md#descriptor) map, DI
-  resolve, serializer 호출 순서와 dispatch lookup은 public signature에 노출하지 않는다.
-- **handler template 코드는 지원하는 handler signature인지 검사하고 type-erased 호출로 연결하는 작업으로
-  제한한다.** pending queue,
-  recv loop, monitoring event 생성 구현을 `contracts/detail/*`에 넣지 않는다.
+Handler public contract는 `contracts/handlers/*`가 소유한다. Application은 handler signature, 공개 metadata와
+결과만 사용하며 handler lookup, DI resolve와 serializer 실행 순서를 제어하지 않는다.
 
 
 ### 6.4 Timer 실행
 
-**C++ framework는 binding의 public generic timer를 사용하고 만료 event를 owner [Spot](../../../../01-glossary.ko.md#spot) mailbox에 제출한다.**
-Timer callback, packet과 Actor turn은 같은 owner의 serial execution queue에서 순서를 정한다. Native timer
-handle, poller와 receive 순서는 public interface에 나타나지 않는다.
+Timer callback, packet과 Actor turn은 같은 owner의 serial execution queue에서 순서를 정한다. Application은
+logical timer registration과 callback metadata만 사용한다.
 
 **CPU-bound이거나 blocking 가능성이 있는 handler는 Framework runtime의 offload 실행으로 넘긴다**
 (§7.3 worker).
@@ -310,9 +276,9 @@ handle, poller와 receive 순서는 public interface에 나타나지 않는다.
 
 | 항목 | 결정 |
 |------|------|
-| **`actor_ref_t` public 형태** | node routing id, actor id, **generation**을 담는 C++ 값 타입. **native 내부 ref를 그대로 노출하지 않는다** |
+| **`actor_ref_t` public 형태** | node routing id, actor id와 **generation**을 담는 C++ 값 타입 |
 | **session 생성** | session 구현체는 **DI에서 resolve한다.** handler registry callback은 낮은 수준 확장 표면으로만 둔다 |
-| **remote ActorGateway locator codec** | wire metadata는 **runtime 내부 frame으로 숨긴다.** application에는 `actor_ref_t`와 session actor 표면만 보인다 |
+| **remote ActorGateway** | application에는 `actor_ref_t`와 session actor 표면만 보인다 |
 | **actor factory 중복 정책** | 같은 actor id 중복은 **`actor_already_exists`**, actor id/type 불일치는 **`actor_type_mismatch`** 로 보고한다 |
 
 **`actor_ref_t`의 `node_rid`·`actor_id`·`generation`은 bind·relay·push round-trip에서 보존된다.**
@@ -379,17 +345,9 @@ worker를 제출하거나 turn을 반환하지 않고 `invalid_configuration`으
 `framework_exception_t::code()`의 `std::error_code`로 노출한다.
 
 
-### 7.5 실행 문맥
-
-같은 Spot의 dispatch가 직렬화되는 근거는
-[stage-wrapper §3](../../../../25-stage-wrapper-on-spot.ko.md)이 소유한다. Turn state, scope와 ambient context hook은
-runtime private type이며 installed public header에 선언하지 않는다.
-
-### 7.6 설치 header 제외 규칙
-
-정식 public type 카탈로그에 없는 runtime state, [snapshot](../../../../01-glossary.ko.md#snapshot), access와 implementation type은 설치되는
-header에 선언하거나 노출하지 않는다. Application이 구현 세부 이름을 include하거나 forward
-declaration으로 참조해야 하는 구성을 공개 계약으로 인정하지 않는다.
+같은 Spot의 dispatch 직렬화와 `yield()` 허용 범위는
+[stage-wrapper §3](../../../../25-stage-wrapper-on-spot.ko.md)과
+[비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

@@ -15,6 +15,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.monitoring.ZLinkRuntimeQuery;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
@@ -25,6 +26,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final ZLinkRouteMeshRuntimeOptions meshRuntimeOptions;
     private final ZLinkRouteClient routeClient;
     private final ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime;
+    private final ObjectProvider<ZLinkRuntimeQuery> runtimeQuery;
     private final ObserverIsolationProbe observerIsolation;
     private final ObjectProvider<ZLinkSpotManager> spots;
     private final ZLinkSpotPublisherClient publisher;
@@ -40,6 +42,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ZLinkRouteMeshRuntimeOptions meshRuntimeOptions,
         ZLinkRouteClient routeClient,
         ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime,
+        ObjectProvider<ZLinkRuntimeQuery> runtimeQuery,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
         ZLinkSpotPublisherClient publisher,
@@ -51,6 +54,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         this.meshRuntimeOptions = meshRuntimeOptions;
         this.routeClient = routeClient;
         this.meshRuntime = meshRuntime;
+        this.runtimeQuery = runtimeQuery;
         this.observerIsolation = observerIsolation;
         this.spots = spots;
         this.publisher = publisher;
@@ -180,6 +184,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private Contracts.RuntimeSnapshot runtimeSnapshot() {
         ZLinkRouteMeshRuntime runtime = requireMeshRuntime();
         ZLinkMeshNodeSnapshot snapshot = runtime.snapshot(Contracts.SPOT_MESH);
+        var host = runtimeQuery.getObject().snapshot();
         return new Contracts.RuntimeSnapshot(
             snapshot.meshName(),
             snapshot.rid().toHex(),
@@ -211,11 +216,11 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             snapshot.location().state(),
             snapshot.location().lastSuccessAt().map(Object::toString).orElse(""),
             snapshot.location().lastFailureAt().map(Object::toString).orElse(""),
-            snapshot.drain().state().name(),
-            snapshot.drain().workSealed(),
-            snapshot.drain().pendingRequestCount(),
-            snapshot.drain().pendingTransferCount(),
-            snapshot.drain().pendingStreamBarrierCount());
+            host.state().name(),
+            host.workSealed(),
+            host.pendingRequestCount(),
+            host.pendingRelocationCount(),
+            host.pendingStreamBarrierCount());
     }
 
     private record AdminResult(String status, int weight) {

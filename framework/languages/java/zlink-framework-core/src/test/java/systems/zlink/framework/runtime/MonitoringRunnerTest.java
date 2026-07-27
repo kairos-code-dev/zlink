@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 

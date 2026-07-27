@@ -33,7 +33,7 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
       location_runtime_query_t *location_runtime,
       drain_callback_t drain,
       await_drained_callback_t await_drained,
-      mesh_node_location_store_t *location_store = nullptr);
+      location_store_t *location_store = nullptr);
     ~route_mesh_runtime_service_t ();
 
     mesh_node_snapshot_t snapshot (std::string mesh_name) const override;

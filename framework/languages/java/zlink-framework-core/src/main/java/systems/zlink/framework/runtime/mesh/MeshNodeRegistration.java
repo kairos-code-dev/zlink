@@ -58,6 +58,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private final RouterSocketConfig routerSocket = new RouterSocketConfig();
     private final SpotPublisherConfig spotPublisher = new SpotPublisherConfig();
     private String bindEndpoint;
+    private String bindHost;
+    private String advertiseHost;
+    private Integer listenPort;
     private RoutingId routingId;
     private String routingIdPrefix;
     private String entrySpotId;
@@ -65,13 +68,19 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private int actorCapacity;
     private int spotCapacity;
     private int activationConcurrency = 128;
-    private Integer allocationSlotCount;
-    private String allocationPrefix;
-    private String allocationGroup;
     private Duration defaultRequestTimeout;
 
     public MeshNodeRegistration(String meshName) {
+        this(meshName, "127.0.0.1", null);
+    }
+
+    public MeshNodeRegistration(
+        String meshName,
+        String bindHost,
+        String advertiseHost) {
         this.meshName = requireText(meshName, "mesh name");
+        this.bindHost = requireText(bindHost, "bind host");
+        this.advertiseHost = advertiseHost;
     }
 
     public String meshName() {
@@ -82,7 +91,11 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return bindEndpoint;
     }
 
-    public RoutingId routingId() {
+    public synchronized RoutingId routingId() {
+        if (routingId == null) {
+            routingId = RoutingId.from(
+                routingIdPrefix() + "-" + java.util.UUID.randomUUID());
+        }
         return routingId;
     }
 
@@ -102,28 +115,12 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return activationConcurrency;
     }
 
-    public Integer allocationSlotCount() {
-        return allocationSlotCount;
-    }
-
-    public String allocationPrefix() {
-        return allocationPrefix == null ? meshName : allocationPrefix;
-    }
-
     public String routingIdPrefix() {
         return routingIdPrefix == null ? meshName : routingIdPrefix;
     }
 
     public String entrySpotId() {
         return ensureEntrySpotId();
-    }
-
-    public String allocationGroup() {
-        return allocationGroup == null ? meshName : allocationGroup;
-    }
-
-    public void applyAllocatedRoutingId(RoutingId value) {
-        routingId = Objects.requireNonNull(value, "routingId");
     }
 
     public List<String> channelNames() {
@@ -257,6 +254,36 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     @Override
     public ZLinkMeshNodeBuilder listen(String endpoint) {
         bindEndpoint = requireText(endpoint, "MeshNode listen endpoint");
+        listenPort = null;
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder listen() {
+        return listen(0);
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder listen(int port) {
+        if (port < 0 || port > 65_535) {
+            throw new ZLinkConfigurationException(
+                "MeshNode listen port must be between 0 and 65535");
+        }
+        listenPort = port;
+        updateDefaultEndpoint();
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setBindHost(String host) {
+        bindHost = requireText(host, "bind host");
+        updateDefaultEndpoint();
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setAdvertiseHost(String host) {
+        advertiseHost = requireText(host, "advertise host");
         return this;
     }
 
@@ -266,9 +293,27 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return this;
     }
 
+    public String advertisedEndpoint(String actualEndpoint) {
+        if (advertiseHost == null || actualEndpoint == null
+            || !actualEndpoint.startsWith("tcp://")) {
+            return actualEndpoint;
+        }
+        int colon = actualEndpoint.lastIndexOf(':');
+        return colon < "tcp://".length()
+            ? actualEndpoint
+            : "tcp://" + advertiseHost + actualEndpoint.substring(colon);
+    }
+
+    private void updateDefaultEndpoint() {
+        if (listenPort != null) {
+            bindEndpoint = "tcp://" + bindHost + ":" + listenPort;
+        }
+    }
+
     @Override
     public ZLinkMeshNodeBuilder setRoutingIdPrefix(String value) {
         routingIdPrefix = requireText(value, "routing ID prefix");
+        routingId = null;
         entrySpotId = null;
         return this;
     }
@@ -311,29 +356,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                 "Activation concurrency must be positive.");
         }
         activationConcurrency = maxConcurrentActivations;
-        return this;
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount) {
-        return useAllocatedRoutingId(slotCount, null);
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount, String routingIdPrefix) {
-        if (slotCount <= 0) {
-            throw new ZLinkConfigurationException("routing ID slot count must be positive");
-        }
-        allocationSlotCount = slotCount;
-        allocationPrefix = routingIdPrefix == null
-            ? null
-            : requireText(routingIdPrefix, "routing ID prefix");
-        return this;
-    }
-
-    @Override
-    public ZLinkMeshNodeBuilder setRoutingIdAllocationGroup(String groupName) {
-        allocationGroup = requireText(groupName, "routing ID allocation group");
         return this;
     }
 
@@ -422,15 +444,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             throw new ZLinkConfigurationException(
                 "MeshNode listen endpoint is required: " + meshName);
         }
-        if (routingId != null && allocationSlotCount != null) {
-            throw new ZLinkConfigurationException(
-                "fixed and allocated routing IDs cannot be combined: " + meshName);
-        }
-        if (allocationGroup != null && allocationSlotCount == null) {
-            throw new ZLinkConfigurationException(
-                "routing ID allocation group requires allocated routing ID configuration: "
-                    + meshName);
-        }
+        routingId();
         if (entrySpots.size() > 1) {
             throw new ZLinkConfigurationException(
                 "MeshNode registers multiple entry spots: " + meshName);

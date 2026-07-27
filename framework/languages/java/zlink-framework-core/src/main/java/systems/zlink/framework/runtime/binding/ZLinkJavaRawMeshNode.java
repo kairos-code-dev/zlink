@@ -29,20 +29,20 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.contracts.service.spot.MeshNodeMonitor;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.contracts.service.spot.MeshPeerSource;
-import systems.zlink.contracts.service.spot.MeshPeerState;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.OperationKind;
-import systems.zlink.contracts.service.spot.OwnerKind;
-import systems.zlink.contracts.service.spot.PeerChannels;
-import systems.zlink.contracts.service.spot.ReadyDomain;
-import systems.zlink.contracts.service.spot.ReadyRecord;
-import systems.zlink.contracts.service.spot.ReceiveRecord;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationKind;
+import systems.zlink.framework.runtime.internal.binding.spot.OwnerKind;
+import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyDomain;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReceiveRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
@@ -50,21 +50,21 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkUserSpotOperationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.protocol.ServiceWireConstants;
-import systems.zlink.framework.runtime.service.ZLinkServiceLivenessRegistry;
-import systems.zlink.framework.runtime.service.ZLinkServiceFrozenRecordCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6AWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceMailbox;
-import systems.zlink.framework.runtime.service.ZLinkServiceNodeDescriptor;
-import systems.zlink.framework.runtime.service.ZLinkServiceOperationRegistry;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceTopologyRegistry;
-import systems.zlink.framework.runtime.service.ZLinkServiceWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceWireFrame;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceLivenessRegistry;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceFrozenRecordCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMailbox;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceNodeDescriptor;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceOperationRegistry;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceTopologyRegistry;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
 
 /**
  * Raw-binding RouteMesh owner. Service topology and application dispatch are
@@ -232,7 +232,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     byte[] encodeLocalActorAccepted(
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         long sourceBindingGeneration,
@@ -281,7 +281,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     byte[] encodeLocalActorAccepted(
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         long sourceBindingGeneration,
@@ -766,7 +766,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         currentSpots.enqueueLogicalMulticast(
             selectedChannel,
             topic,
-            source == null ? routingId.toString() : source.routingId(),
+            source == null ? routingId.toString() : source.spotId(),
             routingId,
             metadata,
             parts);
@@ -785,7 +785,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             flags,
             selectedChannel,
             topic,
-            source == null ? routingId.toString() : source.routingId()));
+            source == null ? routingId.toString() : source.spotId()));
         if (flags != 0) {
             frames.add(metadata.clone());
         }
@@ -1021,7 +1021,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     boolean sendActor(
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         List<Message> parts) {
         Optional<ZLinkServiceTopologyRegistry.Peer> peer =
             topology == null ? Optional.empty() : topology.peer(actor.nodeRid());
@@ -1052,7 +1052,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     boolean sendBoundActor(
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         RoutingId sourceSessionRid,
         long sourceBindingGeneration,
         long sourceSessionSequence,
@@ -1131,7 +1131,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     }
 
     CompletionStage<List<Message>> requestActor(
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         List<Message> parts,
         Duration timeout) {
         Optional<ZLinkServiceTopologyRegistry.Peer> peer =
@@ -1197,7 +1197,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
 
     CompletionStage<Void> bindRemoteStreamSession(
         RoutingId sessionRid,
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         long authorityOwnerGeneration,
         long bindingGeneration,
         boolean active,
@@ -2001,7 +2001,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
 
     private void completeActorRequest(
         UUID operationId,
-        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor,
         long correlation,
         systems.zlink.contracts.sockets.RequestResult result,
         List<byte[]> frames) {

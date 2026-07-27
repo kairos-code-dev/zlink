@@ -4,11 +4,11 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   type ZLinkChannelRuntimeOptions,
-  type ZLinkRouteMeshRuntime
+  type ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_ROUTE_MESH_RUNTIME,
+  ZLINK_FRAMEWORK_RUNTIME,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
@@ -31,10 +31,10 @@ export async function startProviderHost(): Promise<void> {
   const options = app.get(DISCOVERY_OPTIONS, { strict: false }) as ProviderOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createProviderEndpoints(evidence, runtimeOptions, routeMeshRuntime, () => { stopping = true; })
+    createProviderEndpoints(evidence, runtimeOptions, frameworkRuntime, () => { stopping = true; })
   );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));

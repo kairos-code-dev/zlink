@@ -10,9 +10,9 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 

@@ -34,7 +34,7 @@ public static class CustomerGatewayHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));

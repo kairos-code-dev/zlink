@@ -5,11 +5,8 @@ using Zlink.Framework.ContractTests.Support;
 namespace Zlink.Framework.ContractTests.Locations;
 
 /// <summary>
-///     Worked examples for the three location store capabilities that carry
-///     object creation and relocation rather than descriptor rows:
-///     the authority store (08-authority-relocation §3), the relocation
-///     payload store (§5) and the optional ClientServer descriptor capability
-///     (08-location-maintenance §5).
+///     Worked examples for the complete Location Store provider contract and
+///     the separate Relocation Store payload contract.
 /// </summary>
 public sealed class AuthorityStoreContracts
 {
@@ -29,7 +26,7 @@ public sealed class AuthorityStoreContracts
         new("play-node-c#7ab1", 42L);
 
     [Fact]
-    [ContractExample(typeof(IZLinkAuthorityStore))]
+    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Authority_store_reserves_commits_and_hands_an_object_to_a_new_owner()
     {
         var store = new ExampleAuthorityStore();
@@ -168,7 +165,7 @@ public sealed class AuthorityStoreContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkAuthorityStore))]
+    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Authority_store_aborts_a_failed_activation_and_moves_a_spot_aggregate()
     {
         var store = new ExampleAuthorityStore();
@@ -306,12 +303,12 @@ public sealed class AuthorityStoreContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkClientServerLocationStore))]
+    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Client_server_descriptors_are_channel_scoped_and_paged()
     {
-        // ClientServer is an optional store capability. Its descriptors carry
-        // a ChannelName and no MeshName or RouteMesh membership, and unlike
-        // MeshNode lists they are paged (08-location-maintenance §5).
+        // ClientServer registration is optional for an application, but its
+        // descriptor operations belong to every complete Location Store.
+        // Rows carry a ChannelName and no MeshName or RouteMesh membership.
         var store = new ExampleClientServerLocationStore();
 
         var registered = await store.UpdateClientServerAsync(
@@ -437,7 +434,7 @@ public sealed class AuthorityStoreContracts
         return ~crc;
     }
 
-    private sealed class ExampleAuthorityStore : IZLinkAuthorityStore
+    private sealed class ExampleAuthorityStore : LocationStoreContractExample
     {
         private readonly Dictionary<string, Row> _rows = new(StringComparer.Ordinal);
 
@@ -452,12 +449,12 @@ public sealed class AuthorityStoreContracts
         private ulong _objectGeneration;
         private ulong _authorityOwnerGeneration;
 
-        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(Read(key));
 
-        public ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
             ZLinkAuthorityKey key,
             string expectedStoreVersion,
             ZLinkAuthorityMutation mutation,
@@ -530,7 +527,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkAuthorityCompareExchangeResult.Stored(updated.ToSnapshot()));
         }
 
-        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+        public override ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
             string prefix,
             ZLinkAuthorityScanCursor? cursor,
             int limit,
@@ -553,7 +550,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkAuthorityScanResult.Page(new ZLinkAuthorityPage(items, NextCursor: null)));
         }
 
-        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+        public override ValueTask<ZLinkObjectReserveResult> ReserveAsync(
             ZLinkObjectReservationRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -609,7 +606,7 @@ public sealed class AuthorityStoreContracts
                         request.TargetOwner)));
         }
 
-        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
+        public override ValueTask<ZLinkObjectCommitResult> CommitAsync(
             ZLinkObjectReservation reservation,
             ReadOnlyMemory<byte> readyPayload,
             CancellationToken cancellationToken = default)
@@ -632,7 +629,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkObjectCommitResult.Committed(committed));
         }
 
-        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        public override ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
             ZLinkObjectReservation reservation,
             ZLinkObjectCreationCompletion completion,
             CancellationToken cancellationToken = default)
@@ -689,7 +686,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkObjectCreationCompleteResult.Created(snapshot, record));
         }
 
-        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        public override ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
             ZLinkCreationOperationId operation,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<ZLinkCreationTerminalReadResult>(
@@ -697,7 +694,7 @@ public sealed class AuthorityStoreContracts
                     ? new ZLinkCreationTerminalReadResult.Found(record)
                     : new ZLinkCreationTerminalReadResult.Missing(StoreNow));
 
-        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
+        public override ValueTask<ZLinkObjectAbortResult> AbortAsync(
             ZLinkObjectReservation reservation,
             CancellationToken cancellationToken = default)
         {
@@ -714,7 +711,7 @@ public sealed class AuthorityStoreContracts
                     : new ZLinkObjectAbortResult.AlreadyAborted());
         }
 
-        public ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
+        public override ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
             ZLinkRelocationCapacityReservationRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -741,7 +738,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkRelocationCapacityReserveResult.Reserved(fence));
         }
 
-        public ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
+        public override ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
             ZLinkRelocationCapacityFence fence,
             CancellationToken cancellationToken = default)
         {
@@ -754,7 +751,7 @@ public sealed class AuthorityStoreContracts
             return ValueTask.FromResult(ZLinkRelocationCapacityAbortResult.Aborted);
         }
 
-        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
+        public override ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
             ZLinkAggregatePrepareRequest request,
             CancellationToken cancellationToken = default)
         {
@@ -784,7 +781,7 @@ public sealed class AuthorityStoreContracts
                 new ZLinkAggregatePrepareResult.Prepared(fence));
         }
 
-        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
+        public override ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
             ZLinkAggregateFence fence,
             CancellationToken cancellationToken = default)
         {
@@ -815,7 +812,7 @@ public sealed class AuthorityStoreContracts
             return ValueTask.FromResult(ZLinkAggregateCommitResult.Committed);
         }
 
-        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
+        public override ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
             ZLinkAggregateFence fence,
             CancellationToken cancellationToken = default)
         {
@@ -950,12 +947,12 @@ public sealed class AuthorityStoreContracts
                     : ZLinkRelocationDeleteResult.Missing);
     }
 
-    private sealed class ExampleClientServerLocationStore : IZLinkClientServerLocationStore
+    private sealed class ExampleClientServerLocationStore : LocationStoreContractExample
     {
         private readonly Dictionary<ZLinkClientServerServerDescriptorKey,
             ZLinkClientServerServerDescriptor> _rows = [];
 
-        public ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
+        public override ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
             ZLinkClientServerServerDescriptor descriptor,
             ZLinkLocationWriteIntent intent,
             CancellationToken cancellationToken = default)
@@ -974,7 +971,7 @@ public sealed class AuthorityStoreContracts
                 ZLinkLocationWriteResult.Stored(descriptor.LifecycleGeneration, StoreNow));
         }
 
-        public ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
+        public override ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
             ZLinkClientServerServerDescriptorKey key,
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default)
@@ -990,7 +987,7 @@ public sealed class AuthorityStoreContracts
             return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
         }
 
-        public ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
+        public override ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
             string channelName,
             ZLinkPageRequest page,
             CancellationToken cancellationToken = default)

@@ -17,6 +17,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     private readonly List<Task> _retired = [];
     private int _pendingRequests;
     private bool _disposed;
+    private IDisposable? _manualConnectionAttachment;
     private Task? _disposeTask;
 
     internal ZLinkClientServerClientRuntime(
@@ -279,19 +280,46 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     {
         Task task;
         TaskCompletionSource? start = null;
+        IDisposable? attachment = null;
         lock (_gate)
         {
             if (_disposeTask is null)
             {
                 _disposed = true;
+                attachment = _manualConnectionAttachment;
+                _manualConnectionAttachment = null;
                 start = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 _disposeTask = DisposeCoreAsync(start.Task);
             }
             task = _disposeTask;
         }
+        attachment?.Dispose();
         start?.TrySetResult();
         return new ValueTask(task);
+    }
+
+    internal void OwnManualConnectionAttachment(IDisposable attachment)
+    {
+        ArgumentNullException.ThrowIfNull(attachment);
+        var dispose = false;
+        IDisposable? previous = null;
+        lock (_gate)
+        {
+            if (_disposed)
+                dispose = true;
+            else
+            {
+                previous = _manualConnectionAttachment;
+                _manualConnectionAttachment = attachment;
+            }
+        }
+        previous?.Dispose();
+        if (dispose)
+        {
+            attachment.Dispose();
+            throw new ObjectDisposedException(nameof(ZLinkClientServerClientRuntime));
+        }
     }
 
     private async Task DisposeCoreAsync(Task started)

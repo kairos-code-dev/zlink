@@ -34,7 +34,7 @@
 | Stream Connector(client) | 중간 | client 측에서 STREAM 서버에 접속 | [9](09-stream.ko.md) | [공개 계약](../../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) |
 | Location 자동 연결·운영 조회 | 중간 | endpoint를 코드에 적지 않고 서버 증감을 따라가고 싶을 때 | [10](10-location.ko.md) | [location runtime](../../common/spec/40-location-runtime.ko.md) |
 | spot 주소 메시징 | 중간 | 다른 노드의 spot/actor로 반복해서 보낼 때(조회 1회 후 주소 보관) | [6](06-spot.ko.md) §5 | [spot 주소 메시징](../../common/spec/24-spot-address-messaging.ko.md) |
-| runtime monitoring | 낮음 | socket/location/spot 이벤트 관찰 | [11](11-monitoring.ko.md) | [monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md) |
+| runtime monitoring | 낮음 | socket/mesh/location 이벤트와 spot timer 실패 관찰 | [11](11-monitoring.ko.md) | [monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md) |
 | 메시지 흐름 추적 · flow_id | 낮음 | 요청 하나·업무 흐름 하나의 생애주기를 노드 간에 추적 | [11](11-monitoring.ko.md) §5 | [message-flow-tracing](../../common/spec/52-message-flow-tracing.ko.md) · [flow-correlation](../../common/spec/53-flow-correlation.ko.md) |
 | 런타임 메트릭 | 낮음 | CCU·큐 깊이·요청 지연을 대시보드로 볼 때(`AddMeter` 한 줄) | [12](12-operations.ko.md) §1 | [runtime-metrics](../../common/spec/51-runtime-metrics.ko.md) |
 | graceful drain & readiness | 중간 | 무중단 배포·축소에서 접속 유저를 지키며 노드를 내릴 때 | [12](12-operations.ko.md) §2~§4 | [graceful-drain-handoff](../../common/spec/54-graceful-drain-handoff.ko.md) |

@@ -15,8 +15,8 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkUserSpotOperationEx
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6AWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 final class ZLinkUserSpotOperationHandler
@@ -29,7 +29,7 @@ final class ZLinkUserSpotOperationHandler
     private static final ZLinkStoreCancellation OPEN = () -> false;
     private final String meshName;
     private final ZLinkInternalMeshNode node;
-    private final ZLinkAuthorityStore authorityStore;
+    private final ZLinkLocationStore authorityStore;
     private final ZLinkSpotLifecycle lifecycle;
     private final ZLinkMessageSerializer serializer;
     private final Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>> factories;
@@ -41,7 +41,7 @@ final class ZLinkUserSpotOperationHandler
     ZLinkUserSpotOperationHandler(
         String meshName,
         ZLinkInternalMeshNode node,
-        ZLinkAuthorityStore authorityStore,
+        ZLinkLocationStore authorityStore,
         ZLinkSpotLifecycle lifecycle,
         ZLinkMessageSerializer serializer,
         Map<String, MeshNodeRegistration.RelocatableSpotFactory<?>> factories) {

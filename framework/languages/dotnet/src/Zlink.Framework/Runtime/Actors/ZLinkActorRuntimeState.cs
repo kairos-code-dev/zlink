@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Actors;
 internal sealed class ZLinkActorRuntimeState(
     string actorId,
     TimeProvider? timeProvider = null,
-    Action<string>? handoffDiagnostic = null)
+    Action<string>? handoffDiagnostic = null,
+    ZLinkBoundedIngressAdmission? sourceIngressAdmission = null)
 {
     private static readonly AsyncLocal<DispatchOwnership?> AmbientDispatch = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
@@ -20,7 +21,8 @@ internal sealed class ZLinkActorRuntimeState(
     public ZLinkActorHandoffState Handoff { get; } = new(
         actorId,
         timeProvider ?? TimeProvider.System,
-        handoffDiagnostic);
+        handoffDiagnostic,
+        sourceIngressAdmission);
 
     public string? ActorType { get; private set; }
 
@@ -75,6 +77,9 @@ internal sealed class ZLinkActorRuntimeState(
             throw;
         }
     }
+
+    internal ZLinkActorDispatchMailbox.BarrierReservation
+        ReserveHandoffRestoreBarrier() => _dispatchMailbox.ReserveBarrier();
 
     public void EnsureDeferredJoinIdentity(IZLinkActor actor, ulong objectGeneration)
     {

@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,7 +37,7 @@ final class SpotManagerTest {
         Zlink.version();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-manager-router-" + suffix).setRoutingId(RoutingId.from("spot-manager-node-" + suffix));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-manager-router-" + suffix).setRoutingId(RoutingId.from("spot-manager-node-" + suffix));
                 node.addSpotFactory(GameSpot.class); }; };
         String spotId = RoutingId.from("game-1-" + suffix);
 
@@ -71,7 +71,7 @@ final class SpotManagerTest {
         Zlink.version();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-once-router-" + suffix).setRoutingId(RoutingId.from("spot-once-node-" + suffix));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-once-router-" + suffix).setRoutingId(RoutingId.from("spot-once-node-" + suffix));
                 node.addSpotFactory(GameSpot.class); }; };
         String spotId = RoutingId.from("game-once-" + suffix);
 
@@ -96,7 +96,7 @@ final class SpotManagerTest {
         SlowCreateSpot.reset();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-concurrent-router-" + suffix).setRoutingId(RoutingId.from("spot-concurrent-node-" + suffix));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-concurrent-router-" + suffix).setRoutingId(RoutingId.from("spot-concurrent-node-" + suffix));
                 node.addSpotFactory(SlowCreateSpot.class); }; };
         String spotId = RoutingId.from("game-concurrent-" + suffix);
 
@@ -128,7 +128,7 @@ final class SpotManagerTest {
         PublishingSpot.reset();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-timer-router-" + suffix).setRoutingId(RoutingId.from("spot-timer-router-node-" + suffix));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-timer-router-" + suffix).setRoutingId(RoutingId.from("spot-timer-router-node-" + suffix));
                 node.enablePubSub("inproc://spot-pub-" + suffix);
                 node.addSpotFactory(PublishingSpot.class); }; };
         String spotId = RoutingId.from("timer-room-" + suffix);
@@ -163,7 +163,7 @@ final class SpotManagerTest {
         Zlink.version();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-reject-router-" + suffix).setRoutingId(RoutingId.from("spot-reject-node-" + suffix));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://spot-reject-router-" + suffix).setRoutingId(RoutingId.from("spot-reject-node-" + suffix));
                 node.addSpotFactory(RejectingSpot.class); }; };
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {

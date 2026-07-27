@@ -47,15 +47,15 @@ import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.ZLinkHandlerInvocation;
-import systems.zlink.framework.ZLinkNext;
+import systems.zlink.framework.ZLinkHandlerFilterNext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.handlers.ZLinkRequest;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
@@ -504,7 +504,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
                     ZLinkJavaBackendAdapterFactory::new);
                 sourceContext.registerBean(
                     ZLinkFrameworkConfigurer.class,
-                    () -> options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+                    () -> options -> { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "route"); channel.enableServer(sourceEndpoint);
                         channel.setRoutingId(sourceRid);
                         channel.enableClient(targetEndpoint); });
                 sourceContext.register(
@@ -745,7 +745,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Bean
         ZLinkFrameworkConfigurer monitoredServerChannelConfigurer() {
-            return options -> { var channel = options.addRouteMeshChannel("profile"); channel.enableServer("inproc://profile-monitor");
+            return options -> { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "profile"); channel.enableServer("inproc://profile-monitor");
                 channel.enableClient("inproc://profile-monitor"); };
         }
 
@@ -815,7 +815,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class SpotNodeConfig {
         @Bean
         ZLinkFrameworkConfigurer spotNodeConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
+            return options -> { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                     node.addSpotFactory(GameSpot.class); }; };
         }
     }
@@ -826,7 +826,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotNodeWithActorConfigurer() {
             return options -> {
-                { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
+                { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                         node.addSpotFactory(GameSpot.class);
                         node.addActorFactory("player", PlayerActorFactory.class); }; };
             };
@@ -844,7 +844,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotNodeWithLocationStoreConfigurer() {
             return options -> {
-                var mesh = options.addSpotMesh("game");
+                var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game");
                 mesh.enableRouter("inproc://play-router");
             };
         }
@@ -855,7 +855,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class PrivateConstructorSpotConfig {
         @Bean
         ZLinkFrameworkConfigurer privateConstructorSpotConfigurer() {
-            return options -> { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
+            return options -> { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                     node.addSpotFactory(PrivateConstructorSpot.class); }; };
         }
     }
@@ -871,7 +871,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer injectedSpotAndActorConfigurer() {
             return options -> {
-                { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
+                { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                         node.addSpotFactory(InjectedGameSpot.class);
                         node.addActorFactory("player", InjectedPlayerActorFactory.class); }; };
             };
@@ -884,7 +884,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer spotPublisherConfigurer() {
             return options -> {
-                var mesh = options.addSpotMesh("game");
+                var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game");
                 mesh.enableRouter("inproc://spot-router");
                 mesh.enablePubSub("inproc://spot-pub");
                 mesh.addSpotFactory(GameSpot.class);
@@ -1007,7 +1007,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
         @Bean
         ZLinkFrameworkConfigurer routeMeshHandlerConfigurer(
             RouteMeshEndpoints endpoints) {
-            return options -> { var channel = options.addRouteMeshChannel("route"); channel.enableServer(endpoints.targetEndpoint());
+            return options -> { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "route"); channel.enableServer(endpoints.targetEndpoint());
                 channel.setRoutingId(endpoints.targetRid());
                 channel.enableClient(endpoints.sourceEndpoint());
                 channel.addRequestHandler(
@@ -1315,8 +1315,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkHandlerInvocation context,
-            ZLinkNext<T> next) {
+            ZLinkMessageContext context,
+            ZLinkHandlerFilterNext<T> next) {
             return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")
                 T decorated = (T) new ProfileReply(dependency.decorate((ProfileReply) reply));

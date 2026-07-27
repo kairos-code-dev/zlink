@@ -23,23 +23,24 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
-import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorEvent;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
@@ -437,7 +438,7 @@ final class ZLinkClientServerM6ARuntimeTest {
                     default -> throw new UnsupportedOperationException(
                         method.getName());
                 });
-        ZLinkClientServerLocationStore store =
+        ZLinkLocationStore store =
             new SingleDescriptorStore(descriptor);
         ZLinkBackendContext context =
             (ZLinkBackendContext) Proxy.newProxyInstance(
@@ -461,8 +462,8 @@ final class ZLinkClientServerM6ARuntimeTest {
                 100);
         ZLinkChannelRuntime.AutoConnectSurface client =
             new ZLinkChannelRuntime.AutoConnectSurface(
-                systems.zlink.framework.locations
-                    .ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    systems.zlink.framework.runtime.internal.locations
+                        .ZLinkAutoConnectType.CLIENT_SERVER,
                 "orders",
                 systems.zlink.framework.locations.ZLinkLocationRole.DEALER,
                 RoutingId.from("client"),
@@ -472,8 +473,8 @@ final class ZLinkClientServerM6ARuntimeTest {
                 List.of());
         ZLinkChannelRuntime.AutoConnectSurface server =
             new ZLinkChannelRuntime.AutoConnectSurface(
-                systems.zlink.framework.locations
-                    .ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                    systems.zlink.framework.runtime.internal.locations
+                        .ZLinkAutoConnectType.CLIENT_SERVER,
                 "orders",
                 systems.zlink.framework.locations.ZLinkLocationRole.ROUTER,
                 descriptor.serverRid(),
@@ -560,7 +561,7 @@ final class ZLinkClientServerM6ARuntimeTest {
     }
 
     private static final class SingleDescriptorStore
-        implements ZLinkClientServerLocationStore {
+        extends ZLinkLocationStoreTestAdapter {
         private final ZLinkClientServerServerDescriptor descriptor;
 
         private SingleDescriptorStore(
@@ -628,9 +629,9 @@ final class ZLinkClientServerM6ARuntimeTest {
                 (proxy, method, arguments) -> switch (method.getName()) {
                     case "name" -> "monitor";
                     case "onEvent" -> {
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendSocketMonitorHandler handler =
-                                (systems.zlink.framework.runtime.backend
+                                (systems.zlink.framework.runtime.internal.backend
                                     .ZLinkBackendSocketMonitorHandler)
                                     arguments[0];
                         handler.handle(new ZLinkBackendSocketMonitorEvent(

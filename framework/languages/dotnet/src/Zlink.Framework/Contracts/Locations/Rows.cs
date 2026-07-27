@@ -123,38 +123,3 @@ public sealed record ZLinkPlacementCapacity(
 public sealed record ZLinkActivationConcurrency(
     int Active,
     int Limit);
-
-/// <summary>
-///     Current location of one logical Spot. The owner MeshNode's RID and
-///     lifecycle generation ride along so resolvers only trust the row while
-///     the same-generation descriptor and owner lease are both live.
-/// </summary>
-public sealed record ZLinkSpotLocation(
-    string MeshName,
-    string SpotId,
-    ulong SpotGeneration,
-    RoutingId OwnerNodeRid,
-    ulong OwnerNodeGeneration,
-    ZLinkSpotKind SpotKind,
-    string SpotType,
-    string OwnerId,
-    long LeaseGeneration,
-    DateTimeOffset UpdatedAt);
-
-/// <summary>
-///     Current location of one Actor. Internal authority and membership
-///     generations are not part of this public projection.
-/// </summary>
-public sealed record ZLinkActorLocation(
-    string MeshName,
-    string ActorId,
-    string ActorType,
-    ActorRef ActorRef,
-    RoutingId OwnerNodeRid,
-    ulong OwnerNodeGeneration,
-    string SpotId,
-    ulong SpotGeneration,
-    ZLinkSpotKind SpotKind,
-    string OwnerId,
-    long LeaseGeneration,
-    DateTimeOffset UpdatedAt);

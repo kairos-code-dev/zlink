@@ -51,9 +51,37 @@ Node direct는 `RouteMessageContext`, Logical Multicast는
 `PublishMessageContext`, STREAM dispatch는 `SessionMessageContext`로 각 경로의 추가 정보를 제공한다.
 
 Send·Request·SpotActor별 marker context는 제공하지 않는다. Actor request의 context에 reply metadata·compression
-option을 두지 않으며 별도 reply call도 만들지 않는다. Handler filter는 message context의 subtype이 아닌
-`HandlerInvocation`을 받고, invocation 안에서 current `MessageContext`, descriptor, payload와 chain을 읽는다.
+option을 두지 않으며 별도 reply call도 만들지 않는다. Handler filter는 handler와 같은 current
+`MessageContext`를 직접 받는다. Framework 내부 owner 분류나 dispatch descriptor를 filter에 노출하지 않는다.
 Object lifecycle Context와 현재 message의 MessageContext는 서로 다른 계약이다.
+
+### 2.2 Global object reference JSON
+
+`ActorRef`와 `SpotRef`의 typed JSON contract는 모든 언어에서 같은 property 이름과 JSON type을 사용한다. 모든
+property는 required이고 property 이름은 case-sensitive다. 중복 property, `null`, unknown property와 범위를
+벗어난 generation은 거부한다. Deserialization은 ID와 route string을 normalization하지 않는다.
+
+```json
+{
+  "actorId": "player-42",
+  "objectGeneration": "17",
+  "meshName": "game",
+  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
+}
+```
+
+```json
+{
+  "spotId": "room-42",
+  "objectGeneration": "9",
+  "meshName": "game",
+  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
+}
+```
+
+`actorId`와 `spotId`는 global logical ID이고 `meshName`과 `nodeRid`는 조회 시점의 location snapshot이다.
+`objectGeneration`은 `"1"`..`"9223372036854775807"`의 leading-zero 없는 decimal string이다. 숫자 token,
+부호, 소수점과 exponent는 허용하지 않는다.
 
 ## 3. Application metadata
 
@@ -94,6 +122,10 @@ metadata를 명시적으로 넘긴 경우에만 새 outbound snapshot에 포함�
 submit 호출이 반환되기 전까지 outbound builder와 payload는 호출자가 소유한다. Framework가 submit을
 수락하면 필요한 payload와 metadata reference 또는 복사본을 operation lifetime 동안 유지한다. 호출자가
 transport buffer, native message pointer 또는 multipart part의 lifetime을 관리하게 하지 않는다.
+
+Handler에 전달된 message context, metadata와 payload view는 callback 동안 읽기 전용이다. Application이 이를
+dispose하지 않으며 callback이 끝난 뒤 보관하려면 필요한 값을 복사한다. Framework가 callback completion과 함께
+수신 payload storage, reply correlation과 route envelope의 lifecycle을 정리한다.
 
 Object creation이 pending인 동안에도 같은 ownership 규칙이 적용된다. Location Store I/O와 [factory](01-glossary.ko.md#factory)가 caller의
 payload object나 native buffer 수명에 의존하지 않도록 Framework service runtime이 immutable encoded payload를

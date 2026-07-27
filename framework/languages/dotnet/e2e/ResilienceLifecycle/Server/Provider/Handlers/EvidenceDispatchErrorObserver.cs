@@ -3,21 +3,21 @@ using Zlink.Framework.Contracts.Dispatch;
 namespace ResilienceLifecycle.Server.Provider.Handlers;
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence, FaultState fault)
-    : IZLinkMessageFlowObserver
+    : IZLinkRuntimeMessageFlowObserver
 {
     public ValueTask OnMessageFlowAsync(
-        ZLinkMessageFlowEvent flow,
+        ZLinkRuntimeMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error) return ValueTask.CompletedTask;
+        if (flow.Outcome != "failed") return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"
             + $"|surface={flow.Surface}"
             + $"|kind={flow.MessageKind}"
-            + $"|reason={flow.ErrorReason}"
-            + $"|action={flow.ErrorAction}"
+            + $"|reason={flow.Reason}"
+            + $"|action={flow.Action}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
         if (fault.Mode == "observer-throws") throw new InvalidOperationException("dispatch observer failure");

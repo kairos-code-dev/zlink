@@ -16,7 +16,6 @@ import type {
   ZLinkEntrySpot,
   ZLinkFanoutClient,
   ZLinkMessageContext,
-  ZLinkProviderResolver,
   ZLinkRouteClient,
   ZLinkSpot,
   ZLinkSpotManager,
@@ -31,6 +30,7 @@ import type {
   ZLinkFrameworkRegistration,
   ZLinkFrameworkRegistrationOptions,
   ZLinkNestIntegrationRuntimeHost,
+  ZLinkProviderResolver,
   ZLinkStreamCodecRegistration
 } from './framework-integration-contracts';
 
@@ -93,21 +93,7 @@ interface FrameworkIntegrationModule {
   ): void;
   validateActorTransferTimeout(timeoutMs: number): number;
   validateActorTransferForwardWindow(timeoutMs: number): number;
-  createRoutingIdAllocation(
-    slotCount: number,
-    routingIdPrefix: string,
-    groupName?: string
-  ): { slotCount: number; routingIdPrefix: string; groupName?: string };
-  setRoutingIdAllocationGroup(
-    groupName: string,
-    allocation: { slotCount: number; routingIdPrefix: string; groupName?: string } | undefined,
-    defaultPrefix: string
-  ): { slotCount: number; routingIdPrefix: string; groupName?: string };
-  rejectFixedRoutingId(routingId: unknown, memberName: string): void;
-  rejectAllocatedRoutingId(
-    allocation: { slotCount: number; routingIdPrefix: string; groupName?: string } | undefined,
-    memberName: string
-  ): void;
+  validateRoutingIdPrefix(prefix: string): string;
   registerEntrySpot(
     options: { entrySpotType?: Type<ZLinkEntrySpot> },
     entrySpotType: Type<ZLinkEntrySpot>

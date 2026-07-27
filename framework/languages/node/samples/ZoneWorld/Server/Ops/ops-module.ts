@@ -16,11 +16,6 @@ import {
 import { OpsSessionFactory } from './ops-session';
 import { OpsConsoleRegistry } from './ops-console-registry';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
-import {
-  OPS_LOCATION_SOURCE,
-  OpsLocationEventHandler,
-  OpsReportMeshEventHandler
-} from './ops-runtime-events';
 
 function createOpsModule() {
   class OpsModule {}
@@ -51,20 +46,12 @@ function createOpsModule() {
           const channelName = ZoneWorldNames.opsChannel(nodeId);
           mesh.channelName(channelName).setWeight(0);
         }
-        return {
-          ...builder.build(),
-          monitoring: {
-            locationRuntime: [{ sourceName: OPS_LOCATION_SOURCE, intervalMs: 100 }],
-            spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 100 }]
-          }
-        };
+        return builder.build();
       }
     })],
     providers: [
       NodeRegistry,
       MaintenanceStore,
-      OpsLocationEventHandler,
-      OpsReportMeshEventHandler,
       OpsConsoleRegistry,
       OpsSessionFactory,
       AnnounceWorldHandler,

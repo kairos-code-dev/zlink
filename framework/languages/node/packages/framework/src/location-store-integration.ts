@@ -7,7 +7,7 @@ import type {
   ZLinkRouteLocationFilter,
   ZLinkSpotLocation,
   ZLinkSpotLocationFilter
-} from './contracts/Locations';
+} from './runtime/locations/internal-location-contracts';
 import { routingIdsEqual } from './runtime/routing-id';
 
 export function matchesPeerLocation(

@@ -1,13 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createClient } from 'redis';
+import type { RedisClientType } from 'redis';
 import { RedisStoreKeys } from './redis-store-key-prefixes';
-import {
-  configureOptions,
-  type RedisCommandClient,
-  type RedisCommandValue,
-  type MutableZLinkRedisLocationOptions,
-  type ZLinkRedisLocationOptions
-} from './redis-options';
+import type { ZLinkRedisLocationOptions } from './redis-options';
 import {
   encodeActorKey,
   encodeClientServerServerKey,
@@ -20,26 +15,18 @@ import {
   routingIdHex
 } from './redis-row-keys';
 import {
-  ACQUIRE_ROUTING_ID_SLOT_SCRIPT,
-  ABORT_ACTOR_TRANSFER_SCRIPT,
-  ACTIVATE_ACTOR_TRANSFER_SCRIPT,
   SERVICE_DESCRIPTOR_REMOVE_SCRIPT,
   SERVICE_DESCRIPTOR_WRITE_SCRIPT,
   CLAIM_LEASE_SCRIPT,
-  COMMIT_ACTOR_TRANSFER_SCRIPT,
-  LIST_ROUTING_ID_SLOTS_SCRIPT,
   MESH_DESCRIPTOR_WRITE_SCRIPT,
   MESH_DESCRIPTOR_REMOVE_SCRIPT,
   READ_LEASE_SCRIPT,
   RELEASE_LEASE_SCRIPT,
-  RELEASE_ROUTING_ID_SLOT_SCRIPT,
-  PREPARE_ACTOR_TRANSFER_SCRIPT,
   PUT_RELOCATION_SCRIPT,
   REMOVE_ALL_BY_OWNER_SCRIPT,
   REMOVE_SCRIPT,
   RENEW_RELOCATION_SCRIPT,
   RENEW_LEASE_SCRIPT,
-  TAKE_OVER_ACTOR_TRANSFER_SCRIPT,
   WRITE_SCRIPT
 } from './redis-scripts';
 import { AUTHORITY_HYBRID_SCRIPT } from './redis-authority-scripts';
@@ -52,7 +39,6 @@ import {
   kindPeer,
   kindRoute,
   kindSpot,
-  kindTagOf,
   materialize,
   ridOf,
   type LocationKind
@@ -63,24 +49,12 @@ import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  ZLinkLocationChangeScopeKind,
   ZLinkFrameworkRuntimeState,
-  type RoutingId,
-  type ZLinkLocationChangeStampStore,
-  type ZLinkActorLocation,
-  type ZLinkClientServerLocationStore,
+  type ZLinkLocationStore,
   type ZLinkClientServerServerDescriptor,
   type ZLinkClientServerServerDescriptorKey,
-  type ZLinkFanoutLocationStore,
   type ZLinkFanoutPublisherDescriptor,
   type ZLinkFanoutPublisherDescriptorKey,
-  type ZLinkActorTransferPrepareRequest,
-  type ZLinkActorTransferRecord,
-  type ZLinkActorTransferState,
-  type ZLinkActorTransferWriteResult,
-  type ZLinkActorLocationFilter,
-  type ZLinkActorLocationKey,
-  type ZLinkLocationChangeStampScope,
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
@@ -122,43 +96,43 @@ import {
   type ZLinkOwnerLeaseReadResult,
   type ZLinkOwnerLeaseReleaseResult,
   type ZLinkOwnerLeaseRenewResult,
-  type ZLinkOwnerLeaseStore,
   type ZLinkPageRequest,
-  type ZLinkPeerLocation,
-  type ZLinkPeerLocationFilter,
-  type ZLinkPeerLocationKey,
-  type ZLinkRouteLocation,
-  type ZLinkRouteLocationFilter,
-  type ZLinkRouteLocationKey,
-  type ZLinkSpotLocation,
-  type ZLinkSpotLocationFilter,
-  type ZLinkSpotLocationKey,
-  type ZLinkRoutingIdSlotAcquireRequest,
-  type ZLinkRoutingIdSlotAcquireResult,
-  type ZLinkRoutingIdSlotAllocationMember,
-  type ZLinkRoutingIdSlotAllocationSnapshot,
-  type ZLinkRoutingIdSlotAllocationStore,
-  type ZLinkRoutingIdSlotReleaseResult
 } from '@zlink-systems/framework';
+import type {
+  ZLinkActorLocation,
+  ZLinkPeerLocation,
+  ZLinkRouteLocation,
+  ZLinkSpotLocation
+} from '../../framework/src/contracts/Locations/Rows';
+import type {
+  ZLinkActorLocationFilter,
+  ZLinkActorLocationKey,
+  ZLinkPeerLocationFilter,
+  ZLinkPeerLocationKey,
+  ZLinkRouteLocationFilter,
+  ZLinkRouteLocationKey,
+  ZLinkSpotLocationFilter,
+  ZLinkSpotLocationKey
+} from '../../framework/src/contracts/Locations/Keys';
 
 const CLIENT_SERVER_PAGE_MAX_BYTES = 4 * 1024 * 1024;
 const FANOUT_PAGE_MAX_BYTES = 4 * 1024 * 1024;
 const CREATION_TERMINAL_RETENTION_MS = 5 * 60 * 1000;
 const MAX_CREATION_TERMINAL_BYTES = 1024 * 1024;
+type RedisCommandValue = string | Buffer;
+type RedisCommandClient = Pick<
+  RedisClientType,
+  'isOpen' | 'connect' | 'sendCommand' | 'quit' | 'disconnect' | 'on'
+>;
 
-export class ZLinkRedisLocationStore implements
-  ZLinkClientServerLocationStore,
-  ZLinkFanoutLocationStore,
-  ZLinkLocationChangeStampStore,
-  ZLinkOwnerLeaseStore,
-  ZLinkRoutingIdSlotAllocationStore {
+export class ZLinkRedisLocationStore implements ZLinkLocationStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
   private client?: RedisCommandClient;
   private schemaPromise?: Promise<void>;
 
-  constructor(options: ZLinkRedisLocationOptions | ((options: MutableZLinkRedisLocationOptions) => void)) {
-    const resolved = typeof options === 'function' ? configureOptions(options) : options;
+  constructor(options: ZLinkRedisLocationOptions) {
+    const resolved = options;
     if (resolved.keyPrefix.length === 0) {
       throw new Error('ZLinkRedisLocationOptions.keyPrefix is required.');
     }
@@ -340,8 +314,9 @@ export class ZLinkRedisLocationStore implements
 
   async listMeshNodes(
     meshName: string,
+    page?: ZLinkPageRequest,
     signal?: AbortSignal
-  ): Promise<readonly ZLinkMeshNodeDescriptor[]> {
+  ): Promise<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> {
     const [rows, projection] = await Promise.all([
       this.loadMeshNodes(signal),
       this.authorityCall('capacityProjection', {}, signal) as Promise<{
@@ -353,7 +328,7 @@ export class ZLinkRedisLocationStore implements
         readonly typeReserved: Readonly<Record<string, number>>;
       }>
     ]);
-    return rows
+    const projected = rows
       .filter(row => row.meshName === meshName)
       .map(row => {
         const descriptorKey = encodeMeshNodeKey({
@@ -402,6 +377,16 @@ export class ZLinkRedisLocationStore implements
           }
         };
       });
+    const offset = parsePageOffset(page?.continuationToken);
+    const pageSize = page?.pageSize !== undefined && page.pageSize > 0
+      ? page.pageSize
+      : projected.length;
+    const items = projected.slice(offset, offset + pageSize);
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      continuationToken: nextOffset < projected.length ? String(nextOffset) : undefined
+    };
   }
 
   async updateClientServer(
@@ -671,109 +656,6 @@ export class ZLinkRedisLocationStore implements
     return await this.listPage(kindRoute, (row) => matchesRoute(row, filter), page, signal);
   }
 
-  async prepareActorTransfer(
-    request: ZLinkActorTransferPrepareRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    validateTransferRequest(request);
-    const actorRowKey = transferActorRowKey(request.meshName, request.actorId);
-    const raw = asArray(await this.eval(PREPARE_ACTOR_TRANSFER_SCRIPT, [
-      this.keys.actorTransfer(actorRowKey, request.transferId),
-      this.keys.actorTransferByActor(actorRowKey)
-    ], [
-      request.transferId,
-      serializeActorRef(request.source),
-      serializeActorRef(request.target),
-      request.expectedActorGeneration.toString(),
-      request.expectedMembershipEpoch.toString(),
-      serializeParticipants(request.participants),
-      request.recoveryOwnerId,
-      String(Math.max(1, Math.trunc(request.recoveryLeaseTtlMs)))
-    ], signal));
-    return transferResultOf(raw, request.meshName, request.actorId, request.transferId);
-  }
-
-  async commitActorTransfer(
-    meshName: string,
-    actorId: string,
-    transferId: string,
-    recoveryOwnerId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    return await this.transitionActorTransfer(
-      COMMIT_ACTOR_TRANSFER_SCRIPT,
-      meshName, actorId, transferId, recoveryOwnerId, signal
-    );
-  }
-
-  async activateActorTransfer(
-    meshName: string,
-    actorId: string,
-    transferId: string,
-    recoveryOwnerId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    return await this.transitionActorTransfer(
-      ACTIVATE_ACTOR_TRANSFER_SCRIPT,
-      meshName, actorId, transferId, recoveryOwnerId, signal
-    );
-  }
-
-  async abortActorTransfer(
-    meshName: string,
-    actorId: string,
-    transferId: string,
-    recoveryOwnerId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    return await this.transitionActorTransfer(
-      ABORT_ACTOR_TRANSFER_SCRIPT,
-      meshName, actorId, transferId, recoveryOwnerId, signal
-    );
-  }
-
-  async takeOverActorTransfer(
-    meshName: string,
-    actorId: string,
-    transferId: string,
-    successorOwnerId: string,
-    recoveryLeaseTtlMs: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    validateTransferIdentity(meshName, actorId, transferId);
-    validateTransferLease(successorOwnerId, recoveryLeaseTtlMs);
-    const actorRowKey = transferActorRowKey(meshName, actorId);
-    const raw = asArray(await this.eval(TAKE_OVER_ACTOR_TRANSFER_SCRIPT, [
-      this.keys.actorTransfer(actorRowKey, transferId),
-      this.keys.actorTransferByActor(actorRowKey)
-    ], [
-      transferId,
-      successorOwnerId,
-      String(Math.max(1, Math.trunc(recoveryLeaseTtlMs)))
-    ], signal));
-    return transferResultOf(raw, meshName, actorId, transferId);
-  }
-
-  async resolveActorTransfer(
-    meshName: string,
-    actorId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferRecord | undefined> {
-    const actorRowKey = transferActorRowKey(meshName, actorId);
-    const active = await this.command([
-      'GET',
-      this.keys.actorTransferByActor(actorRowKey)
-    ], signal);
-    if (active === null) return undefined;
-    const transferId = asString(active);
-    const fields = asArray(await this.command([
-      'HMGET',
-      this.keys.actorTransfer(actorRowKey, transferId),
-      ...TRANSFER_HASH_FIELDS
-    ], signal));
-    return materializeTransfer(meshName, actorId, transferId, fields);
-  }
-
   async claimOwnerLease(
     ownerId: string,
     leaseTtlMs: number,
@@ -927,110 +809,9 @@ export class ZLinkRedisLocationStore implements
     return BigInt(meshNodeRemoved + removed + clientServerRemoved + fanoutRemoved);
   }
 
-  async getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint> {
-    const partition = scope.channelName ?? scope.meshName;
-    const value = await this.command(['GET', this.keys.stamp(changeStampTag(scope.kind), partition)], signal);
+  async getMeshNodeChangeStamp(meshName: string, signal?: AbortSignal): Promise<bigint | undefined> {
+    const value = await this.command(['GET', this.keys.stamp(kindMeshNode.tag, meshName)], signal);
     return value === null ? 0n : BigInt(asString(value));
-  }
-
-  async acquireRoutingIdSlot(
-    request: ZLinkRoutingIdSlotAcquireRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotAcquireResult> {
-    validateAcquire(request);
-    const members = [...request.members]
-      .sort((left, right) => left.meshName.localeCompare(right.meshName));
-    const config = JSON.stringify(members.map((member) => ({
-      MeshName: member.meshName,
-      RoutingIdPrefix: member.routingIdPrefix
-    })));
-    const groupKey = this.keys.routingIdAllocationGroup(request.groupName);
-    const slotLeaseKeys = await this.routingSlotLeaseKeys(
-      groupKey,
-      request.slotCount,
-      signal
-    );
-    const raw = asArray(await this.eval(ACQUIRE_ROUTING_ID_SLOT_SCRIPT, [
-      groupKey,
-      this.keys.lease(request.ownerId),
-      ...slotLeaseKeys
-    ], [
-      config,
-      String(request.slotCount),
-      request.ownerId,
-      String(Math.max(1, Math.trunc(request.leaseTtlMs)))
-    ], signal));
-    const kind = asString(raw[0]);
-    if (kind === 'exhausted') return { kind: 'groupExhausted' };
-    if (kind === 'identity-conflict') return { kind: 'identityModeConflict' };
-    if (kind === 'mismatch') {
-      return {
-        kind: 'groupConfigurationMismatch',
-        expectedMembers: decodeMembers(asString(raw[1])),
-        expectedSlotCount: toNumber(raw[2]),
-        actualMembers: members,
-        actualSlotCount: request.slotCount
-      };
-    }
-    if (kind !== 'acquired') throw new Error(`Unknown routing-id slot acquire result '${kind}'.`);
-    return {
-      kind: 'acquired',
-      allocation: {
-        slot: toNumber(raw[1]),
-        owner: { ownerId: request.ownerId, leaseGeneration: BigInt(asString(raw[2])) },
-        leaseExpiresAt: fromUnixMs(toNumber(raw[3])),
-        storeNow: fromUnixMs(toNumber(raw[4]))
-      }
-    };
-  }
-
-  async releaseRoutingIdSlot(
-    groupName: string,
-    slot: number,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotReleaseResult> {
-    validateRelease(groupName, slot, owner);
-    const raw = asArray(await this.eval(RELEASE_ROUTING_ID_SLOT_SCRIPT, [
-      this.keys.routingIdAllocationGroup(groupName)
-    ], [String(slot), owner.ownerId, String(owner.leaseGeneration)], signal));
-    return asString(raw[0]) === 'released' ? 'released' : 'ignoredStale';
-  }
-
-  async listRoutingIdSlots(
-    groupName: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkRoutingIdSlotAllocationSnapshot> {
-    validateGroupName(groupName);
-    const groupKey = this.keys.routingIdAllocationGroup(groupName);
-    const slotCountValue = await this.command(['HGET', groupKey, 'slotCount'], signal);
-    const slotCount = slotCountValue === null ? 0 : toNumber(slotCountValue);
-    const slotLeaseKeys = await this.routingSlotLeaseKeys(groupKey, slotCount, signal);
-    const raw = asArray(await this.eval(LIST_ROUTING_ID_SLOTS_SCRIPT, [
-      groupKey,
-      ...slotLeaseKeys
-    ], [], signal));
-    const storeNow = fromUnixMs(toNumber(raw[2]));
-    const entries = asArray(raw[3]);
-    const allocations = [];
-    for (let index = 0; index + 3 < entries.length; index += 4) {
-      allocations.push({
-        slot: toNumber(entries[index]),
-        owner: {
-          ownerId: asString(entries[index + 1]),
-          leaseGeneration: BigInt(asString(entries[index + 2]))
-        },
-        leaseExpiresAt: fromUnixMs(toNumber(entries[index + 3])),
-        storeNow
-      });
-    }
-    return {
-      groupName,
-      members: asString(raw[0]).length === 0 ? [] : decodeMembers(asString(raw[0])),
-      slotCount: toNumber(raw[1]),
-      allocations,
-      storeNow
-    };
   }
 
   async readAuthority(
@@ -1058,7 +839,15 @@ export class ZLinkRedisLocationStore implements
             ? { ownerId: before.ownerId, leaseGeneration: before.ownerLeaseGeneration.toString() }
             : undefined
         }
-      : {
+      : mutation.kind === 'restore'
+        ? {
+            key: key.value,
+            expectedStoreVersion: expectedStoreVersion.value,
+            mutationKind: 'restore',
+            payload: encodePayload(mutation.payload),
+            expectedOwner: ownerJson(mutation.expectedOwner)
+          }
+        : {
           key: key.value,
           expectedStoreVersion: expectedStoreVersion.value,
           mutationKind: 'put',
@@ -1069,7 +858,7 @@ export class ZLinkRedisLocationStore implements
           currentOwner: before.kind === 'snapshot'
             ? { ownerId: before.ownerId, leaseGeneration: before.ownerLeaseGeneration.toString() }
             : undefined
-        };
+          };
     const raw = await this.authorityCall('cas', request, signal);
     return authorityCasResult(raw);
   }
@@ -1434,24 +1223,6 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
-  private async transitionActorTransfer(
-    script: string,
-    meshName: string,
-    actorId: string,
-    transferId: string,
-    recoveryOwnerId: string,
-    signal?: AbortSignal
-  ): Promise<ZLinkActorTransferWriteResult> {
-    validateTransferIdentity(meshName, actorId, transferId);
-    if (recoveryOwnerId.trim().length === 0) throw new TypeError('recoveryOwnerId is required.');
-    const actorRowKey = transferActorRowKey(meshName, actorId);
-    const raw = asArray(await this.eval(script, [
-      this.keys.actorTransfer(actorRowKey, transferId),
-      this.keys.actorTransferByActor(actorRowKey)
-    ], [transferId, recoveryOwnerId], signal));
-    return transferResultOf(raw, meshName, actorId, transferId);
-  }
-
   private async remove<TRow>(
     kind: LocationKind<TRow>,
     rowKey: string,
@@ -1676,24 +1447,6 @@ export class ZLinkRedisLocationStore implements
       if (await remove(rowKey, row) === ZLinkLocationWriteStatus.Stored) removed++;
     }
     return removed;
-  }
-
-  private async routingSlotLeaseKeys(
-    groupKey: string,
-    slotCount: number,
-    signal?: AbortSignal
-  ): Promise<string[]> {
-    const result: string[] = [];
-    for (let slot = 1; slot <= slotCount; slot++) {
-      const value = await this.command(['HGET', groupKey, `slot:${slot}`], signal);
-      if (value === null) {
-        result.push(this.keys.schema());
-        continue;
-      }
-      const ownerId = asString(value).split('|', 1)[0] ?? '';
-      result.push(ownerId.length === 0 ? this.keys.schema() : this.keys.lease(ownerId));
-    }
-    return result;
   }
 
   private async loadRows<TRow>(
@@ -2003,18 +1756,6 @@ export class ZLinkRedisLocationStore implements
     }
   }
 
-}
-
-function changeStampTag(kind: ZLinkLocationChangeStampScope['kind']): string {
-  switch (kind) {
-    case ZLinkLocationChangeScopeKind.MeshNode: return kindMeshNode.tag;
-    case ZLinkLocationChangeScopeKind.ClientServer: return kindClientServer.tag;
-    case ZLinkLocationChangeScopeKind.Spot: return kindSpot.tag;
-    case ZLinkLocationChangeScopeKind.Authority: return 'authority';
-    case ZLinkLocationChangeScopeKind.OwnerLease: return 'owner_lease';
-    case ZLinkLocationChangeScopeKind.FanoutPublisher: return kindFanoutPublisher.tag;
-    default: return kindTagOf(kind);
-  }
 }
 
 interface AuthorityJson {
@@ -2738,166 +2479,13 @@ function requireDescriptorText(value: string, field: string): string {
   return value;
 }
 
-const TRANSFER_HASH_FIELDS = [
-  'state',
-  'source',
-  'target',
-  'expectedActorGeneration',
-  'expectedMembershipEpoch',
-  'participants',
-  'recoveryOwnerId',
-  'recoveryLeaseExpiresAtMs',
-  'updatedAtMs'
-] as const;
-const TRANSFER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-function transferActorRowKey(meshName: string, actorId: string): string {
-  return encodeKeySegments(meshName, actorId);
-}
-
-function serializeActorRef(actorRef: ZLinkActorTransferRecord['source']): string {
-  return [
-    '{',
-    `"nodeRid":${JSON.stringify(routingIdHex(actorRef.nodeRid))}`,
-    `,"actorId":${JSON.stringify(actorRef.actorId)}`,
-    `,"generation":${actorRef.generation}`,
-    '}'
-  ].join('');
-}
-
-function parseActorRef(json: string): ZLinkActorTransferRecord['source'] {
-  const row = JSON.parse(json.replace(/("generation":)([0-9]+)/, '$1"$2"')) as {
-    nodeRid: string;
-    actorId: string;
-    generation: string;
-  };
-  return {
-    nodeRid: ridOf(row.nodeRid),
-    actorId: row.actorId,
-    generation: BigInt(row.generation)
-  };
-}
-
-function serializeParticipants(participants: ReadonlySet<RoutingId>): string {
-  return JSON.stringify([...participants].map(routingIdHex).sort());
-}
-
-function transferResultOf(
-  raw: readonly unknown[],
-  meshName: string,
-  actorId: string,
-  transferId: string
-): ZLinkActorTransferWriteResult {
-  const status = asString(raw[0]);
-  if (status !== 'stored') {
-    const mapped = status === 'notfound'
-      ? 'notFound'
-      : status === 'conflict'
-        ? 'rejectedConflict'
-        : status === 'invalid'
-          ? 'invalidState'
-          : 'ignoredStale';
-    return { status: mapped };
+function parsePageOffset(token: string | undefined): number {
+  if (token === undefined) return 0;
+  const offset = Number(token);
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new RangeError('MeshNode continuation token is invalid.');
   }
-  return {
-    status: 'stored',
-    record: materializeTransfer(meshName, actorId, transferId, asArray(raw[1]))
-  };
-}
-
-function materializeTransfer(
-  meshName: string,
-  actorId: string,
-  transferId: string,
-  fields: readonly unknown[]
-): ZLinkActorTransferRecord {
-  if (fields.length !== TRANSFER_HASH_FIELDS.length || fields.some((field) => field === null)) {
-    throw new Error('Redis Actor transfer record is incomplete.');
-  }
-  return {
-    meshName,
-    actorId,
-    transferId,
-    state: transferStateOf(asString(fields[0])),
-    source: parseActorRef(asString(fields[1])),
-    target: parseActorRef(asString(fields[2])),
-    expectedActorGeneration: BigInt(asString(fields[3])),
-    expectedMembershipEpoch: BigInt(asString(fields[4])),
-    participants: new Set(
-      (JSON.parse(asString(fields[5])) as string[]).map(ridOf)
-    ),
-    recoveryOwnerId: asString(fields[6]),
-    recoveryLeaseExpiresAt: fromUnixMs(toNumber(fields[7])),
-    updatedAt: fromUnixMs(toNumber(fields[8]))
-  };
-}
-
-function transferStateOf(state: string): ZLinkActorTransferState {
-  switch (state) {
-    case 'Prepared': return 'prepared';
-    case 'Committed': return 'committed';
-    case 'Activated': return 'activated';
-    case 'Aborted': return 'aborted';
-    default: throw new Error(`Unknown Redis Actor transfer state '${state}'.`);
-  }
-}
-
-function validateTransferRequest(request: ZLinkActorTransferPrepareRequest): void {
-  validateTransferIdentity(request.meshName, request.actorId, request.transferId);
-  validateTransferLease(request.recoveryOwnerId, request.recoveryLeaseTtlMs);
-  if (request.expectedActorGeneration < 1n || request.expectedMembershipEpoch < 1n) {
-    throw new RangeError('Actor transfer generation and membership epoch must be positive.');
-  }
-  if (request.participants.size === 0) {
-    throw new TypeError('Actor transfer requires at least one participant.');
-  }
-}
-
-function validateTransferIdentity(meshName: string, actorId: string, transferId: string): void {
-  if (meshName.trim().length === 0 || actorId.trim().length === 0) {
-    throw new TypeError('Actor transfer meshName and actorId are required.');
-  }
-  if (!TRANSFER_ID_PATTERN.test(transferId)) {
-    throw new TypeError('Actor transferId must be a lowercase canonical UUID.');
-  }
-}
-
-function validateTransferLease(ownerId: string, ttlMs: number): void {
-  if (ownerId.trim().length === 0 || !Number.isFinite(ttlMs) || ttlMs <= 0) {
-    throw new TypeError('Actor transfer recovery owner and positive lease TTL are required.');
-  }
-}
-
-function decodeMembers(value: string): readonly ZLinkRoutingIdSlotAllocationMember[] {
-  const decoded = JSON.parse(value) as Array<{
-    MeshName?: string;
-    RoutingIdPrefix?: string;
-    meshName?: string;
-    routingIdPrefix?: string;
-  }>;
-  return decoded.map((member) => ({
-    meshName: member.MeshName ?? member.meshName ?? '',
-    routingIdPrefix: member.RoutingIdPrefix ?? member.routingIdPrefix ?? ''
-  }));
-}
-
-function validateAcquire(request: ZLinkRoutingIdSlotAcquireRequest): void {
-  validateGroupName(request.groupName);
-  if (!Number.isInteger(request.slotCount) || request.slotCount < 1) throw new RangeError('slotCount must be positive.');
-  if (request.ownerId.trim().length === 0 || request.members.length === 0) throw new TypeError('ownerId and members are required.');
-  if (!Number.isFinite(request.leaseTtlMs) || request.leaseTtlMs <= 0) throw new RangeError('leaseTtlMs must be positive.');
-}
-
-function validateRelease(groupName: string, slot: number, owner: ZLinkLocationOwnerToken): void {
-  validateGroupName(groupName);
-  if (!Number.isInteger(slot) || slot < 1) throw new RangeError('slot must be positive.');
-  if (owner.ownerId.trim().length === 0 || owner.leaseGeneration < 1n) {
-    throw new TypeError('owner token is invalid.');
-  }
-}
-
-function validateGroupName(groupName: string): void {
-  if (groupName.trim().length === 0) throw new TypeError('groupName must not be empty.');
+  return offset;
 }
 
 function validateOwnerLeaseInput(ownerId: string, leaseTtlMs: number): void {

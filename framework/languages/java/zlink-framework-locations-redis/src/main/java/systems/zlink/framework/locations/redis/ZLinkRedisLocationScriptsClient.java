@@ -1,6 +1,5 @@
 package systems.zlink.framework.locations.redis;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.RedisCommandExecutionException;
 import io.lettuce.core.RedisCommandTimeoutException;
@@ -15,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -27,9 +27,9 @@ import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
-import systems.zlink.framework.locations.ZLinkOwnerLease;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLease;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewal;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimConflict;
@@ -41,21 +41,9 @@ import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocation;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationSnapshot;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupConfigurationMismatch;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotGroupExhausted;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotIdentityModeConflict;
-import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 
 final class ZLinkRedisLocationScriptsClient {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final TypeReference<List<ZLinkRoutingIdSlotAllocationMember>> MEMBERS_TYPE =
-        new TypeReference<>() { };
     private final ZLinkRedisLocationConnection connection;
     private final ZLinkRedisLocationKeys keys;
 
@@ -64,6 +52,19 @@ final class ZLinkRedisLocationScriptsClient {
         ZLinkRedisLocationKeys keys) {
         this.connection = connection;
         this.keys = keys;
+    }
+
+    CompletionStage<OptionalLong> getMeshNodeChangeStamp(
+        String meshName) {
+        if (meshName == null || meshName.isBlank()) {
+            throw new IllegalArgumentException("meshName must be non-blank");
+        }
+        return connection.commands()
+            .thenCompose(redis -> redis.get(
+                keys.stampKey("mesh-node", meshName)))
+            .thenApply(value -> value == null
+                ? OptionalLong.empty()
+                : OptionalLong.of(Long.parseLong(value)));
     }
 
     CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLeaseAsync(
@@ -182,59 +183,6 @@ final class ZLinkRedisLocationScriptsClient {
                 : ZLinkOwnerLeaseReleaseResult.STALE)
             .exceptionally(
                 ZLinkRedisLocationScriptsClient::propagateWriteFailure);
-    }
-
-    CompletionStage<ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlotAsync(
-        ZLinkRoutingIdSlotAcquireRequest request) {
-        List<ZLinkRoutingIdSlotAllocationMember> members = normalizeMembers(request.members());
-        String config = serializeMembers(members);
-        long ttlMs = Math.max(1L, request.leaseTtl().toMillis());
-        return connection.commands()
-            .thenCompose(redis -> redis.<List<Object>>eval(
-                ZLinkRedisLocationScripts.ACQUIRE_ROUTING_ID_SLOT,
-                ScriptOutputType.MULTI,
-                new String[] {
-                    keys.routingIdSlotGroupKey(request.groupName()),
-                    keys.legacyLeaseKey(request.ownerId()),
-                    keys.leaseIndexKey()
-                },
-                config,
-                Integer.toString(request.slotCount()),
-                request.ownerId(),
-                Long.toString(ttlMs),
-                keys.legacyLeaseKeyPrefix()))
-            .thenApply(raw -> toSlotAcquireResult(request, members, raw))
-            .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
-    }
-
-    CompletionStage<ZLinkRoutingIdSlotReleaseResult> releaseRoutingIdSlotAsync(
-        String groupName,
-        int slot,
-        ZLinkLocationOwnerToken owner) {
-        return connection.commands()
-            .thenCompose(redis -> redis.<List<Object>>eval(
-                ZLinkRedisLocationScripts.RELEASE_ROUTING_ID_SLOT,
-                ScriptOutputType.MULTI,
-                new String[] {keys.routingIdSlotGroupKey(groupName)},
-                Integer.toString(slot),
-                owner.ownerId(),
-                Long.toString(owner.leaseGeneration())))
-            .thenApply(raw -> "released".equals(string(raw.getFirst()))
-                ? ZLinkRoutingIdSlotReleaseResult.RELEASED
-                : ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE)
-            .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
-    }
-
-    CompletionStage<ZLinkRoutingIdSlotAllocationSnapshot> listRoutingIdSlotsAsync(
-        String groupName) {
-        return connection.commands()
-            .thenCompose(redis -> redis.<List<Object>>eval(
-                ZLinkRedisLocationScripts.LIST_ROUTING_ID_SLOTS,
-                ScriptOutputType.MULTI,
-                new String[] {keys.routingIdSlotGroupKey(groupName)},
-                keys.legacyLeaseKeyPrefix()))
-            .thenApply(raw -> toSlotSnapshot(groupName, raw))
-            .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
 
     CompletionStage<Boolean> removeOwnerLeaseAsync(String ownerId) {
@@ -983,82 +931,6 @@ final class ZLinkRedisLocationScriptsClient {
             leases.add(new ZLinkOwnerLease(ownerId, nodeRid, storeNow.plusMillis(remainingMs), renewedAt));
         }
         return new ZLinkOwnerLeaseSnapshot(List.copyOf(leases), storeNow);
-    }
-
-    private static ZLinkRoutingIdSlotAcquireResult toSlotAcquireResult(
-        ZLinkRoutingIdSlotAcquireRequest request,
-        List<ZLinkRoutingIdSlotAllocationMember> members,
-        List<Object> raw) {
-        String status = string(raw.getFirst());
-        return switch (status) {
-            case "acquired" -> {
-                Instant storeNow = fromUnixMs(number(raw.get(4)));
-                yield new ZLinkRoutingIdSlotAcquired(new ZLinkRoutingIdSlotAllocation(
-                    Math.toIntExact(number(raw.get(1))),
-                    new ZLinkLocationOwnerToken(request.ownerId(), number(raw.get(2))),
-                    fromUnixMs(number(raw.get(3))),
-                    storeNow));
-            }
-            case "exhausted" -> new ZLinkRoutingIdSlotGroupExhausted();
-            case "identity-conflict" -> new ZLinkRoutingIdSlotIdentityModeConflict();
-            case "mismatch" -> new ZLinkRoutingIdSlotGroupConfigurationMismatch(
-                members,
-                request.slotCount(),
-                deserializeMembers(string(raw.get(1))),
-                Math.toIntExact(number(raw.get(2))));
-            default -> throw new IllegalStateException(
-                "Unknown routing ID slot acquire result: " + status);
-        };
-    }
-
-    private static ZLinkRoutingIdSlotAllocationSnapshot toSlotSnapshot(
-        String groupName,
-        List<Object> raw) {
-        String config = string(raw.getFirst());
-        int slotCount = Math.toIntExact(number(raw.get(1)));
-        Instant storeNow = fromUnixMs(number(raw.get(2)));
-        @SuppressWarnings("unchecked")
-        List<Object> entries = (List<Object>) raw.get(3);
-        List<ZLinkRoutingIdSlotAllocation> allocations = new ArrayList<>();
-        for (int index = 0; index + 3 < entries.size(); index += 4) {
-            allocations.add(new ZLinkRoutingIdSlotAllocation(
-                Math.toIntExact(number(entries.get(index))),
-                new ZLinkLocationOwnerToken(
-                    string(entries.get(index + 1)),
-                    number(entries.get(index + 2))),
-                fromUnixMs(number(entries.get(index + 3))),
-                storeNow));
-        }
-        return new ZLinkRoutingIdSlotAllocationSnapshot(
-            groupName,
-            config.isEmpty() ? List.of() : deserializeMembers(config),
-            slotCount,
-            allocations,
-            storeNow);
-    }
-
-    private static List<ZLinkRoutingIdSlotAllocationMember> normalizeMembers(
-        List<ZLinkRoutingIdSlotAllocationMember> members) {
-        return members.stream()
-            .sorted(java.util.Comparator.comparing(ZLinkRoutingIdSlotAllocationMember::meshName)
-                .thenComparing(ZLinkRoutingIdSlotAllocationMember::routingIdPrefix))
-            .toList();
-    }
-
-    private static String serializeMembers(List<ZLinkRoutingIdSlotAllocationMember> members) {
-        try {
-            return JSON.writeValueAsString(members);
-        } catch (java.io.IOException error) {
-            throw new IllegalArgumentException("routing ID allocation members are invalid", error);
-        }
-    }
-
-    private static List<ZLinkRoutingIdSlotAllocationMember> deserializeMembers(String value) {
-        try {
-            return List.copyOf(JSON.readValue(value, MEMBERS_TYPE));
-        } catch (java.io.IOException error) {
-            throw new IllegalStateException("stored routing ID allocation members are invalid", error);
-        }
     }
 
     private static ZLinkLocationWriteResult toWriteResult(List<Object> result) {

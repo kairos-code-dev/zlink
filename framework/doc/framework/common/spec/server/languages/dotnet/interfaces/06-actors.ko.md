@@ -1,11 +1,7 @@
 # .NET Actor 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
-변경하지 않는다.
+Session에 bind된 Actor를 포함한 relocation은 같은 `ObjectGeneration`을 유지한다. Relocation 자체는
+physical·logical disconnect가 아니므로 Actor disconnect callback을 실행하지 않는다.
 
 [.NET exact interface 목차](README.ko.md)
 
@@ -294,15 +290,9 @@ attempt의 factory가 만든 instance에 같은 immutable payload를 적용한�
 callback을 취소하면 `DeadlineExceeded`로 분류한다. Current exact owner와 attempt fence만 completion을 commit하고
 admission을 열 수 있으며 callback에는 relocation ID를 제공하지 않는다.
 
-Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
-relocation ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
-status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
-accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
-
-Source는 connection-bound one-way를 포함해 admission한 모든 connection-bound work가 terminal accounting에
-도달한 뒤에만 `Captured`를 commit한다. Durable accepted journal은 exact owner lease가 있는 source에서만
-사용한다. Pre-`Captured` drain이 [deadline](../../../../01-glossary.ko.md#deadline) 안에 끝나지 않으면 relocation을 abort하고 host Retire를
-`Blocked/DeadlineExceeded`로 끝낸다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
+Relocation을 시작하기 전에 이미 수락한 connection-bound work가 deadline 안에 끝나지 않으면 relocation을
+중단하고 host Retire는 `Blocked/DeadlineExceeded`로 완료한다. 이를 직접 확인하거나 조작하는 public ACK나
+phase API는 제공하지 않는다.
 
 Entry Spot maintenance와 일반 join에서 실행하는 lifecycle callback의 순서, callback 실패 뒤 sealed retry와 whole
 User Spot aggregate move의 callback 생략은 [Spot interface](05-spots.ko.md)가 정한다. Actor relocation adapter는 이

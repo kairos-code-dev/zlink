@@ -631,13 +631,13 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       const empty = BindingMessage.from(Buffer.alloc(0));
       return {
         nativeRequest: empty,
-        callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(empty.data()), this.options.messageSerializers)
+        callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(empty.data()))
       };
     }
     const nativeRequest = encodeFrameworkPayloadMessage(request, this.options.messageSerializers);
     return {
       nativeRequest,
-      callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(nativeRequest.data()), this.options.messageSerializers)
+      callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(nativeRequest.data()))
     };
   }
 

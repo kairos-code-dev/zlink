@@ -12,7 +12,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQuery
 {
     private readonly ZLinkLocationOptions _options;
-    private readonly IZLinkMeshNodeLocationStore _meshNodeStore;
+    private readonly IZLinkLocationStore _meshNodeStore;
     private readonly IReadOnlyCollection<string> _registeredMeshNames;
     private readonly ZLinkOwnerLeaseTracker _leaseTracker;
     private readonly ZLinkLocationRuntime _runtime;
@@ -23,7 +23,7 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
 
     internal ZLinkLocationRuntimeQueryService(
         ZLinkLocationOptions options,
-        IZLinkMeshNodeLocationStore meshNodeStore,
+        IZLinkLocationStore meshNodeStore,
         IReadOnlyCollection<string> registeredMeshNames,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkLocationRuntime runtime,

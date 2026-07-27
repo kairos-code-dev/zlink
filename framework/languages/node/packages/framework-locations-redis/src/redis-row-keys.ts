@@ -115,8 +115,13 @@ export function routingIdHex(routingId: RoutingId): string {
 
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
-  ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   type RoutingId,
   type SpotId
 } from '@zlink-systems/framework';
+
+enum ZLinkLocationAutoConnectType {
+  Invalid = 0,
+  RouteMesh = 1,
+  Fanout = 2
+}

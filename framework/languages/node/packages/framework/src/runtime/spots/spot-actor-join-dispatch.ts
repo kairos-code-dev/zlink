@@ -5,10 +5,10 @@ import type {
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkBackendSpotDispatchEvent } from '../backend/contracts';
 import type {
   ZLinkBackendActorRef,

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
-import systems.zlink.framework.runtime.backend.ZLinkBackendConnectableSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendConnectableSocket;
 
 final class RuntimeEndpointConnections implements ZLinkEndpointConnections {
     private final Runnable enable;

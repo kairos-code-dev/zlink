@@ -134,7 +134,7 @@ internal static class ZLinkInstanceSpotAuthorityPayloadCodec
 internal static class ZLinkInstanceSpotActivationEnvelopeCodec
 {
     private static readonly byte[] Magic = "ZLIA"u8.ToArray();
-    private const byte Version = 1;
+    private const byte Version = 2;
 
     internal sealed record ActivationRecord(
         bool IsRequest,
@@ -142,15 +142,24 @@ internal static class ZLinkInstanceSpotActivationEnvelopeCodec
         ulong DeadlineUnixMs,
         RoutingId SourceNodeRid,
         ulong SourceNodeGeneration,
+        ZLinkServiceWireCodec.RequestSourceFence RequestSource,
         string SourceSpotId,
         ReadOnlyMemory<byte>? Metadata,
         IReadOnlyList<ReadOnlyMemory<byte>> Payload);
 
     internal static byte[] Encode(
         InstanceSpotActivationOperation operation,
+        ZLinkServiceWireCodec.RequestSourceFence requestSource,
         ReadOnlyMemory<byte>? metadata,
         IReadOnlyList<ReadOnlyMemory<byte>> payload)
     {
+        if (requestSource.NodeRid != operation.SourceNodeRid
+            || requestSource.NodeGeneration != operation.SourceNodeGeneration
+            || string.IsNullOrWhiteSpace(requestSource.OwnerId)
+            || requestSource.LeaseGeneration == 0)
+            throw new ArgumentException(
+                "The Instance Spot activation source fence is invalid.",
+                nameof(requestSource));
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
         writer.Write(Magic);
@@ -162,6 +171,8 @@ internal static class ZLinkInstanceSpotActivationEnvelopeCodec
         writer.Write(operation.DeadlineUnixMs);
         WriteBytes(writer, operation.SourceNodeRid.ToBytes());
         writer.Write(operation.SourceNodeGeneration);
+        WriteText(writer, requestSource.OwnerId);
+        writer.Write(requestSource.LeaseGeneration);
         WriteText(writer, operation.SourceSpotId);
         writer.Write(metadata.HasValue);
         if (metadata.HasValue) WriteBytes(writer, metadata.Value.Span);
@@ -244,6 +255,17 @@ internal static class ZLinkInstanceSpotActivationEnvelopeCodec
             var deadline = reader.ReadUInt64();
             var sourceRid = RoutingId.From(ReadBytes(reader));
             var sourceGeneration = reader.ReadUInt64();
+            var sourceOwnerId = ReadText(reader);
+            var sourceOwnerLeaseGeneration = reader.ReadUInt64();
+            if (sourceRid.IsEmpty || sourceGeneration == 0
+                || string.IsNullOrWhiteSpace(sourceOwnerId)
+                || sourceOwnerLeaseGeneration == 0)
+                return false;
+            var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+                sourceOwnerId,
+                sourceOwnerLeaseGeneration,
+                sourceRid,
+                sourceGeneration);
             var sourceSpotId = ReadText(reader);
             ReadOnlyMemory<byte>? metadata = reader.ReadBoolean()
                 ? ReadBytes(reader)
@@ -260,6 +282,7 @@ internal static class ZLinkInstanceSpotActivationEnvelopeCodec
                 deadline,
                 sourceRid,
                 sourceGeneration,
+                requestSource,
                 sourceSpotId,
                 metadata,
                 payload);
@@ -327,7 +350,7 @@ internal sealed class ZLinkInstanceSpotOperationGate
 }
 
 internal sealed class ZLinkInstanceSpotActivationTarget(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     IZLinkRelocationStore relocationStore,
     ZLinkSpotNodeCatalog catalog,
     IZLinkBackendSpotNode node,
@@ -394,8 +417,16 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             .ConfigureAwait(false);
         if (replay is not null) return replay;
 
+        var requestSource = await ResolveRequestSourceAsync(
+                operation.Target.MeshName,
+                operation.SourceNodeRid,
+                operation.SourceNodeGeneration,
+                cancellationToken)
+            .ConfigureAwait(false);
+
         var envelope = ZLinkInstanceSpotActivationEnvelopeCodec.Encode(
             operation,
+            requestSource,
             metadata,
             payload);
         var envelopeHash = SHA256.HashData(envelope);
@@ -445,6 +476,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                         payload,
                         reserve,
                         stored,
+                        requestSource,
                         cancellationToken)
                     .ConfigureAwait(false);
             reservation = reserved.Reservation;
@@ -483,6 +515,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
             var terminal = await DispatchFirstMessageAsync(
                     prepared.Activation,
                     operation,
+                    requestSource,
                     readySnapshot,
                     metadata,
                     payload,
@@ -657,6 +690,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         var terminal = await DispatchFirstMessageAsync(
                 activation,
                 operation,
+                record.RequestSource,
                 snapshot,
                 record.Metadata,
                 record.Payload,
@@ -677,6 +711,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
         IReadOnlyList<ReadOnlyMemory<byte>> payload,
         ZLinkObjectReserveResult reserve,
         ZLinkRelocationStored operationRoot,
+        ZLinkServiceWireCodec.RequestSourceFence requestSource,
         CancellationToken cancellationToken)
     {
         var current = reserve switch
@@ -768,6 +803,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 var terminal = await DispatchFirstMessageAsync(
                         activation,
                         operation,
+                        requestSource,
                         stored.Snapshot,
                         metadata,
                         payload,
@@ -809,6 +845,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
     private async ValueTask<InstanceSpotActivationTerminal> DispatchFirstMessageAsync(
         ZLinkSpotActivation activation,
         InstanceSpotActivationOperation operation,
+        ZLinkServiceWireCodec.RequestSourceFence requestSource,
         ZLinkAuthoritySnapshot authority,
         ReadOnlyMemory<byte>? metadata,
         IReadOnlyList<ReadOnlyMemory<byte>> payload,
@@ -818,6 +855,7 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 operation.OperationId,
                 operation.SourceNodeRid,
                 operation.SourceSpotId,
+                requestSource,
                 operation.Target.TargetNodeGeneration,
                 authority.AuthorityOwnerGeneration,
                 checked((ulong)authority.OwnerLeaseGeneration),
@@ -826,6 +864,31 @@ internal sealed class ZLinkInstanceSpotActivationTarget(
                 operation.IsRequest,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask<ZLinkServiceWireCodec.RequestSourceFence>
+        ResolveRequestSourceAsync(
+            string meshName,
+            RoutingId sourceNodeRid,
+            ulong sourceNodeGeneration,
+            CancellationToken cancellationToken)
+    {
+        var descriptors = await authorityStore.ListAllMeshNodesAsync(
+                meshName,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var descriptor = descriptors.SingleOrDefault(value =>
+            value.Rid == sourceNodeRid
+            && value.LifecycleGeneration == sourceNodeGeneration);
+        if (descriptor is null || descriptor.LeaseGeneration <= 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                "The Instance Spot activation request-source fence is unavailable.");
+        return new ZLinkServiceWireCodec.RequestSourceFence(
+            descriptor.OwnerId,
+            checked((ulong)descriptor.LeaseGeneration),
+            sourceNodeRid,
+            sourceNodeGeneration);
     }
 
     private async ValueTask RecordTerminalAndClearRecoveryAsync(

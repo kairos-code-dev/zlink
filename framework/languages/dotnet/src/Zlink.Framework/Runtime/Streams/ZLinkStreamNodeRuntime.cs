@@ -268,7 +268,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 var session = await _sessions.GetOrCreateAsync(routingId).ConfigureAwait(false);
                 if (session is null) return;
 
-                _sessions.ApplyPendingConnectionMetadata(session);
                 session.EnqueuePacket(header, payload);
                 ownershipTransferred = true;
             }
@@ -301,17 +300,6 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                         session?.EnqueueConnected(monitorEvent.LocalAddr, monitorEvent.RemoteAddr);
                     });
                 }
-                else
-                {
-                    _ = _sessionIngress.Enqueue(() =>
-                    {
-                        _sessions.QueueConnectionMetadata(
-                            monitorEvent.LocalAddr,
-                            monitorEvent.RemoteAddr);
-                        return ValueTask.CompletedTask;
-                    });
-                }
-
                 break;
             case ZLinkSocketNativeEventType.Accepted:
                 break;
@@ -322,9 +310,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                         disconnectedSession.EnqueueDisconnected(
                             new ZLinkStreamError(
                                 ZLinkStreamSessionError.TransportError,
-                                new ZLinkStreamDiagnostic(
-                                    (int)monitorEvent.Value,
-                                    monitorEvent.NativeEvent.ToString())));
+                                monitorEvent.NativeEvent.ToString()));
                     return ValueTask.CompletedTask;
                 });
                 break;

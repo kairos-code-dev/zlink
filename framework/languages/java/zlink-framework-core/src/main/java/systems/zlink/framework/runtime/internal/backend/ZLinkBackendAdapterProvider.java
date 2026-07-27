@@ -1,11 +1,11 @@
 package systems.zlink.framework.runtime.internal.backend;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkSpotBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkStreamBackendAdapter;
 
 public interface ZLinkBackendAdapterProvider {
     ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options);
@@ -21,33 +21,33 @@ public interface ZLinkBackendAdapterProvider {
     ZLinkMonitoringBackendAdapter createMonitoringAdapter(ZLinkBackendAdapterOptions options);
 
     default java.util.function.Function<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject> admissionSource() {
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject> admissionSource() {
         return backend -> backend;
     }
 
     default java.util.function.Function<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
         java.time.Duration> admissionTimeout() {
         return ignored -> java.time.Duration.ofSeconds(1);
     }
 
     default java.util.function.ToIntFunction<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject>
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject>
         admissionPendingCapacity() {
         return ignored -> 4096;
     }
 
     default java.util.function.BiConsumer<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
         java.util.function.Consumer<
-            systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey>>
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey>>
         admissionReadyRegistrar() {
         return (ignored, handler) -> { };
     }
 
     default java.util.function.BiConsumer<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
         Runnable> admissionShutdownRegistrar() {
         return (ignored, handler) -> { };
     }

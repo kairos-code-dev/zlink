@@ -42,7 +42,7 @@ public static class DispatchServerHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("dispatch");
             options.AddHandlersFromAssemblyOf(typeof(DispatchServerHostFactory));

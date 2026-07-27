@@ -2,10 +2,10 @@ import type {
   RoutingId,
   ZLinkActor,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
 import type { Message } from '../../contracts/Common/Message';

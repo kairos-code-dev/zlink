@@ -2,13 +2,13 @@ import type {
   Type,
   ZLinkActor,
   ZLinkActorHandlerRegistry,
-  ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkMessageContext,
   ZLinkSpotActorRequestHandler,
   ZLinkSpotActorSendHandler
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,

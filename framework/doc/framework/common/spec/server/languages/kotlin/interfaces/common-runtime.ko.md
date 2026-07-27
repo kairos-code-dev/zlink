@@ -4,8 +4,8 @@
 
 Kotlin은 Java의 `ZLinkMeshNodeState`, `ZLinkFrameworkRuntimeState`, termination
 intent·outcome·reason·result와 `ZLinkFrameworkRuntime`을 그대로 사용한다. 같은 enum, result wrapper와
-runtime facade를 추가하지 않는다. Host-level `drain`과 `awaitDrained`는 deprecated `Shutdown` facade이고,
-MeshName을 받는 partial termination member는 없다. Kotlin은 이 Java member를 그대로 사용한다.
+runtime facade를 추가하지 않는다. 별도 drain facade와 MeshName을 받는 partial termination member는 없으며,
+Kotlin은 Java host의 `Retire`와 `Shutdown`을 그대로 사용한다.
 Host가 continuity preflight를 통과해 relocation unit을 준비하는 동안에는 Java enum의 `RETIRING(2)`를
 관측하며, admission을 seal한 뒤에는 `DRAINING(3)`으로 전환한다.
 
@@ -35,8 +35,8 @@ val result = frameworkRuntime.retire(Duration.ofSeconds(30)).await()
 val stopped = frameworkRuntime.shutdown().await()
 ```
 
-별도 `retireAsync`, `shutdownAsync`, `drain` 또는 `awaitStopped` extension은 없다. Deprecated host drain은
-`ZLinkTerminationResult`를 반환하며 `CompletionStage.await()`로 기다린다.
+별도 `retireAsync`, `shutdownAsync`, `drain` 또는 `awaitStopped` extension은 없다. Host 종료 결과는
+`ZLinkTerminationResult`이며 `CompletionStage.await()`로 기다린다.
 
 ## Exact generated JVM signature
 

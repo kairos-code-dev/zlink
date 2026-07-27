@@ -12,18 +12,3 @@ public enum ZLinkFlowOrigin : byte
     Application = 3,
     Lifecycle = 4
 }
-
-public enum ZLinkDrainState
-{
-    Serving = 0,
-    Draining = 1,
-    Drained = 2,
-    ForceStopping = 3
-}
-
-public sealed record ZLinkDrainEvent(
-    DateTimeOffset Timestamp,
-    ZLinkDrainState State) : IZLinkRuntimeEvent
-{
-    public string SourceName => "drain";
-}

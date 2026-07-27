@@ -8,7 +8,6 @@ import type {
   ZLinkDispatchOptions,
   ZLinkDispatchOptionsBuilder,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
   ZLinkLocationStore,
   ZLinkLocationOptions,
@@ -71,7 +70,7 @@ export type Mutable<T> = {
 
 export interface InternalZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly subscriber?: ZLinkClientCapabilityOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
@@ -227,8 +226,7 @@ export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptions
 export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enablePublisher(bind: string | undefined): this;
   routingId(routingId: string | undefined): this;
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-  setRoutingIdAllocationGroup(groupName: string): this;
+  setRoutingIdPrefix(prefix: string): this;
   enableSubscriber(endpoint?: string | readonly string[]): this;
   addPublishHandler(packetName: string, handlerType: Type): this;
   addHandlerGroup(groupName: string): this;
@@ -264,15 +262,13 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   channel(name: string): ZLinkNestMeshChannelBuilder;
   listen(endpoint: string): this;
   routingId(routingId: string | undefined): this;
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-  setRoutingIdAllocationGroup(groupName: string): this;
+  setRoutingIdPrefix(prefix: string): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;
   objects(): ZLinkNestMeshObjectRoleBuilder;
   addSendHandler(packetName: string, handlerType: Type): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
-  configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   actorFactory(actorType: string, factoryType: Type): this;
@@ -323,10 +319,4 @@ export interface ZLinkNestMeshChannelServerBuilder extends ZLinkNestFrameworkOpt
   addSendHandler(packetName: string, handlerType: Type): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
   addHandlerGroup(groupName: string): this;
-}
-
-interface ZLinkRoutingIdAllocationOptions {
-  readonly slotCount: number;
-  readonly routingIdPrefix: string;
-  readonly groupName?: string;
 }

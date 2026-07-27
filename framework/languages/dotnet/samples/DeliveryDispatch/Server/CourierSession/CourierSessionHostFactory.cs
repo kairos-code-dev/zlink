@@ -31,7 +31,7 @@ public static class CourierSessionHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("courier-session");
             options.AddHandlersFromAssemblyOf(typeof(CourierSessionHostFactory));

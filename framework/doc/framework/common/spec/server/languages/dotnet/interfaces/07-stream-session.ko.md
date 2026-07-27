@@ -18,7 +18,7 @@ public interface IZLinkSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
     ValueTask OnDispatchAsync(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -43,7 +43,7 @@ public interface IZLinkSessionHandlerRegistry
     void AddHandler<THandler>() where THandler : class;
     void AddHandler<THandler>(string packetName) where THandler : class;
     ValueTask<bool> TryHandleAsync(
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }
@@ -52,7 +52,7 @@ public interface IZLinkSessionPacketHandler<in TSessionContext, TMessage>
 {
     ValueTask HandleAsync(
         TSessionContext context,
-        ZLinkSessionMessageContext dispatch,
+        ZLinkSessionDispatchContext dispatch,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -97,10 +97,6 @@ public interface IZLinkSessionActor
     ValueTask RelayAsync(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
-    ValueTask RelayAsync(
-        ZLinkSessionMessageContext dispatch,
-        ZLinkMessage payload,
-        CancellationToken cancellationToken = default);
     ValueTask NotifyDisconnectedAsync(
         CancellationToken cancellationToken = default);
 }
@@ -108,20 +104,17 @@ public interface IZLinkSessionActor
 public enum ZLinkStreamSessionError
 {
     Internal = 0,
-    TransportError = 1
+    TransportError = 1,
+    HandshakeFailed = 2
 }
-
-public readonly record struct ZLinkStreamDiagnostic(
-    int NativeCode,
-    string? Message);
 
 public readonly record struct ZLinkStreamError(
     ZLinkStreamSessionError Error,
-    ZLinkStreamDiagnostic? Diagnostic);
+    string? Message);
 
-public sealed class ZLinkSessionMessageContext
+public sealed class ZLinkSessionDispatchContext
 {
-    public ZLinkSessionMessageContext(
+    public ZLinkSessionDispatchContext(
         string packetName,
         ZLinkMessageMetadata? metadata = null,
         bool canReply = false) { }
@@ -139,21 +132,14 @@ terminator는 transport를 시작하기 전에 token을 원자적으로 claim하
 timeout만 admission deadline으로 사용한다. Caller request timeout은 wire로 전달되지 않으므로 reply [deadline](../../../../01-glossary.ko.md#deadline)으로
 사용하지 않으며, timeout이나 cancellation 뒤에는 late reply를 보내지 않는다.
 
-Bind 뒤 relay·request relay와 `NotifyDisconnectedAsync(...)`는 Actor별 저장 route를 사용하며 message마다
-Location Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic
-all-settled 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
+Bind 뒤 `RelayAsync(...)`와 `NotifyDisconnectedAsync(...)`는 Actor별 binding을 사용한다. Physical disconnect는
+Framework가 current binding 전체에 통지하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
 `NotifyDisconnectedAsync(...)`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
-기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
-durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Command 44·45 routed ACK와 steady
-normalization 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
-route와 physical STREAM connection은 유지한다.
+기다린다. Relocation은 같은 ObjectGeneration을 유지하며 해당 Actor의 binding만 갱신한다. 같은 Session의
+다른 Actor binding과 physical STREAM connection은 변경하지 않는다.
 
-Payload만 받는 `RelayAsync(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way
-admission이다. Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시
-runtime에 이전한다. Admission에 성공하면 Actor typed reply가 original STREAM correlation을 terminal-once로
-완료하고 admission failure면 Framework가 같은 correlation을 typed failure로 완료한다. Caller는 별도
-reply·retry를 하지 않는다. One-way dispatch context는 reply capability가 없으므로 local admission까지만
-기다린다.
+`RelayAsync(...)`는 Actor relay가 source-local admission을 수락하면 정상 완료하는 one-way operation이다.
+Request reply는 session callback의 `IZLinkSessionClient.Reply(...)`로 명시적으로 제출한다.
 
 같은 session의 packet과 lifecycle callback은 직렬로 실행한다. Handshake와 node 범위 오류는 runtime
 monitoring으로 보고하며 `OnErrorAsync(...)`에 전달하지 않는다.

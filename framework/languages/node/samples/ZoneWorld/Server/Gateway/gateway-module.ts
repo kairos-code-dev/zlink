@@ -26,8 +26,7 @@ function createGatewayModule() {
           .traceLabel('gateway');
         const zoneMesh = builder
           .addRouteMesh(ZoneWorldNames.zoneMesh)
-            .useAllocatedRoutingId(1, 'gw0')
-            .setRoutingIdAllocationGroup('zoneworld.gateway')
+            .setRoutingIdPrefix('gw0')
             .listen(gateway.spotRouterEndpoint);
         zoneMesh.channelName(ZoneWorldNames.zoneMesh).setWeight(0);
         zoneMesh.channelName(ZoneWorldNames.bridgeMesh).setWeight(0);
@@ -42,7 +41,7 @@ function createGatewayModule() {
         const registration = builder.build();
         return {
           ...registration,
-          monitoring: { spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 50 }] }
+          monitoring: {}
         };
       }
     })],

@@ -2,9 +2,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import type {
   ActorRef,
   ZLinkAuthoritySnapshot,
-  ZLinkLocationOwnerToken,
-  ZLinkObjectCreationStore
+  ZLinkLocationOwnerToken
 } from '../../contracts';
+import type { ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 
 const ACTOR_AUTHORITY_VERSION = 1;
 const CREATION_OPERATION_TIMEOUT_MS = 30_000;

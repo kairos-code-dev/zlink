@@ -18,7 +18,6 @@ public TypeScript declaration을 범주별로 고정한다. 같은 declaration�
 | 06 | [STREAM, timer와 worker](06-stream-worker.ko.md) | STREAM session, timer와 worker scheduling |
 | 07 | [NestJS host adapter](07-nestjs-host.ko.md) | module, DI token, decorator와 host builder |
 | 08 | [Location Store와 maintenance](08-location-maintenance.ko.md) | descriptor, generic Reserve·Commit·Abort, authority와 Relocation Store |
-| 09 | [Automatic Routing ID](09-routing-id-allocation.ko.md) | prefix 기반 RID 생성과 [descriptor](../../../../01-glossary.ko.md#descriptor) owner claim |
 
 배포 package와 이 목차가 가리키는 모든 파일의 export 이름 집합은 양방향으로 같아야 한다.
 Binding package의 service type, backend adapter와 runtime internal subpath는 이 export 집합에 포함하지

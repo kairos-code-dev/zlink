@@ -12,14 +12,14 @@ internal sealed class ZLinkMessageFlowRuntimeService(
 
     public ZLinkRuntimeMessageFlowMode Mode
     {
-        get => Map(options.Diagnostics.EffectiveMessageFlow);
+        get => options.Diagnostics.EffectiveMessageFlow;
         set
         {
-            var mapped = Map(value);
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
             if (options.Diagnostics.LiveMode is { } cell)
-                cell.Mode = mapped;
+                cell.Mode = value;
             else
-                options.Diagnostics.MessageFlow = mapped;
+                options.Diagnostics.MessageFlow = value;
         }
     }
 
@@ -65,27 +65,6 @@ internal sealed class ZLinkMessageFlowRuntimeService(
             }
         }
     }
-
-    private static ZLinkRuntimeMessageFlowMode Map(ZLinkMessageFlowLogMode mode) =>
-        mode switch
-        {
-            ZLinkMessageFlowLogMode.Off => ZLinkRuntimeMessageFlowMode.Off,
-            ZLinkMessageFlowLogMode.ErrorsOnly => ZLinkRuntimeMessageFlowMode.ErrorsOnly,
-            ZLinkMessageFlowLogMode.KeyTransitions => ZLinkRuntimeMessageFlowMode.KeyTransitions,
-            ZLinkMessageFlowLogMode.Verbose => ZLinkRuntimeMessageFlowMode.Verbose,
-            ZLinkMessageFlowLogMode.Diagnostic => ZLinkRuntimeMessageFlowMode.Verbose,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode))
-        };
-
-    private static ZLinkMessageFlowLogMode Map(ZLinkRuntimeMessageFlowMode mode) =>
-        mode switch
-        {
-            ZLinkRuntimeMessageFlowMode.Off => ZLinkMessageFlowLogMode.Off,
-            ZLinkRuntimeMessageFlowMode.ErrorsOnly => ZLinkMessageFlowLogMode.ErrorsOnly,
-            ZLinkRuntimeMessageFlowMode.KeyTransitions => ZLinkMessageFlowLogMode.KeyTransitions,
-            ZLinkRuntimeMessageFlowMode.Verbose => ZLinkMessageFlowLogMode.Verbose,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode))
-        };
 
     private sealed class Subscription
     {

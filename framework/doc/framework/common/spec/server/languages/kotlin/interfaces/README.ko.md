@@ -26,8 +26,8 @@ state contract ID, suspending adapter와 reified [Snapshot](../../../../01-gloss
 lifecycle class만 Java default `onActorRelocated`를 `onActorRelocatedSuspending`으로 bridge한다.
 
 Channel extension은 process-local ChannelName만 받으며 MeshName과 [ChannelName](../../../../01-glossary.ko.md#channelname)을 함께 받는 선택 overload를
-추가하지 않는다. Host `Retire`·`Shutdown`과 deprecated host drain은 Java 결과 type을
-그대로 사용한다. Location provider의 authority CAS와 Relocation Store도 Java public interface가 정본이다.
+추가하지 않는다. Host `Retire`·`Shutdown`은 Java 결과 type을 그대로 사용하며 별도 drain facade를
+제공하지 않는다. Location provider의 authority CAS와 Relocation Store도 Java public interface가 정본이다.
 
 각 기능 문서는 Kotlin source signature와 application이 실제로 link하는 generated JVM signature를 구분한다.
 Default argument, suspend continuation, extension receiver와 generic bound는 두 표현 사이에서 손실 없이 대응해야
@@ -50,7 +50,7 @@ activation은 selected Mesh의 distinct serving Instance type이 하나일 때�
 이 계약을 축약하거나 local fallback을 추가하지 않는다.
 
 Global ref의 JSON field는 `actorId` 또는 `spotId`, `objectGeneration`, `meshName`, `nodeRid`다.
-`objectGeneration`은 decimal string이며 unknown field는 무시하지만 duplicate field, required field 누락,
+`objectGeneration`은 decimal string이며 unknown field, duplicate field, required field 누락,
 0 또는 `Long.MAX_VALUE` 초과 값은 거부한다. String identity는 exact value를 유지하며 normalization하지 않는다.
 허용하는 shape는 다음 두 가지다. `objectGeneration`은 leading zero가 없는
 `"1"`..`"9223372036854775807"`이고 JSON number token은 거부한다.

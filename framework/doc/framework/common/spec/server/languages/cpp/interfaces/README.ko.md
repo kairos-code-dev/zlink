@@ -14,8 +14,8 @@ Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, 
 | [Spots](04-spots.ko.md) | Global SpotId·SpotRef, relocation adapter와 callback, Instance Spot cold activation과 [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) manager를 정의한다. |
 | [Actors](05-actors.ko.md) | Global ActorId·ActorRef, relocation adapter, ID-only messaging, manager create와 exact mutation·bind를 정의한다. |
 | [STREAM session](06-stream-session.ko.md) | `streams`의 packet session과 Actor가 소유한 bound session의 연동 interface를 정의한다. |
-| [Location Store·Redis](07-location-store.ko.md) | Location record, MeshNode descriptor·capacity와 공식 Redis provider를 정의한다. |
-| [Maintenance provider](07-location-maintenance.ko.md) | Authority creation의 Reserve·Commit·Abort와 relocation provider capability를 정의한다. |
+| [Location Store·Redis](07-location-store.ko.md) | 통합 `location_store_t` provider SPI 전체, operational query와 공식 Redis provider를 정의한다. |
+| [Maintenance record와 의미](07-location-maintenance.ko.md) | Location Store가 사용하는 authority·placement·aggregate record와 별도 Relocation Store SPI를 정의한다. |
 | [Monitoring](08-monitoring.ko.md) | `monitoring`·`eventing` interface와 snapshot, event, health 결과를 정의한다. |
 
 `zlink/framework.hpp`는 위 installed header를 모으는 facade다. Application-facing API에는 Core service

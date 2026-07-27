@@ -9,10 +9,10 @@ import type {
   ZLinkMessage,
   ZLinkMeshNodeDescriptor,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import {
   ZLinkFrameworkRuntimeState,
   ZLinkFrameworkErrorKind,
@@ -188,7 +188,6 @@ export class ZLinkSpotNodeRuntimeManager {
           local: capability.local,
           options: location.options,
           changeStampStore: location.changeStampStore,
-          watchStore: location.watchStore,
           leaseTracker: location.leaseTracker
         });
         await loop.start(signal);
@@ -207,7 +206,10 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     const meshAdapter = this.options.backendAdapterFactory.createMeshAdapter();
     for (const [spotNodeName, spotNode] of this.options.registration.spotNodes.entries()) {
-      const routingId = spotNode.router?.routingId ?? spotNode.pubSub?.routingId;
+      const routingId = spotNode.routingId
+        ?? spotNode.router?.routingId
+        ?? spotNode.pubSub?.routingId
+        ?? `${spotNode.routingIdPrefix ?? spotNodeName}-${randomUUID()}`;
       const bind = spotNode.router?.bind;
       if (routingId === undefined || bind === undefined) {
         throw new ZLinkConfigurationException(
@@ -438,7 +440,7 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     let entrySpotId = this.entrySpotIds.get(meshName);
     if (entrySpotId !== undefined) return entrySpotId;
-    const prefix = registration.routingIdAllocation?.routingIdPrefix ?? meshName;
+    const prefix = registration.routingIdPrefix ?? meshName;
     entrySpotId = createFrameworkEntrySpotId(prefix);
     this.entrySpotIds.set(meshName, entrySpotId);
     return entrySpotId;
@@ -450,6 +452,13 @@ export class ZLinkSpotNodeRuntimeManager {
 
   meshNode(meshName: string): ZLinkBackendMeshNode | undefined {
     return this.meshNodes.get(meshName);
+  }
+
+  entrySpotIdForMesh(meshName: string): string | undefined {
+    const registration = this.options.registration.spotNodes.get(meshName);
+    return registration === undefined
+      ? undefined
+      : this.entrySpotId(meshName, registration);
   }
 
   meshNodeDescriptor(meshName: string): ZLinkMeshNodeDescriptor | undefined {

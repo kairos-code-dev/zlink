@@ -11,11 +11,11 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 
 final class ZLinkChannelRequestSubmitter {
     private static final long RETRY_DELAY_MILLIS = 10;

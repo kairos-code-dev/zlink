@@ -433,21 +433,14 @@ task_t<void> stream_send_call_t::submit ()
     return detail::submit_one_way_task ([state] { return state->submit_now (); });
 }
 
-stream_error_t::stream_error_t (stream_session_error_t error,
-                                int native_code,
-                                std::string message) :
-    _error (error), _native_code (native_code), _message (std::move (message))
+stream_error_t::stream_error_t (stream_session_error_t error, std::string message) :
+    _error (error), _message (std::move (message))
 {
 }
 
 stream_session_error_t stream_error_t::error () const noexcept
 {
     return _error;
-}
-
-int stream_error_t::native_code () const noexcept
-{
-    return _native_code;
 }
 
 std::string_view stream_error_t::message () const noexcept
@@ -615,6 +608,16 @@ stream_t &stream_t::operator= (stream_t &&) noexcept = default;
 std::string stream_t::session_id () const
 {
     return _state->session_id;
+}
+
+session_actor_manager_t &stream_t::actors ()
+{
+    auto *actors = _state->actors.load (std::memory_order_acquire);
+    if (!actors) {
+        throw framework_exception_t (framework_error_kind_t::invalid_configuration,
+                                     "STREAM session Actor manager is not attached");
+    }
+    return *actors;
 }
 
 task_t<void> stream_t::close ()

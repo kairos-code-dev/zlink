@@ -8,22 +8,12 @@ export async function runMonA3(options: ClientOptions): Promise<void> {
   const evidence = await postJson<string[]>(options.serviceUrl, '/evidence/wait', {
     containsAll: ['monitor-spot|source=monitor.spot'],
     containsAnyGroups: [
-      ['kind=statusChanged'],
-      ['kind=peersChanged'],
       ['kind=timerHandlerFailed'],
       ['timer=failing']
     ],
     timeoutMilliseconds: 15000
   } satisfies EvidenceWaitReq);
 
-  ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=statusChanged')),
-    'MON-A3 spot status evidence missing.'
-  );
-  ensure(
-    evidence.some((line) => line.includes('monitor-spot|source=monitor.spot|kind=peersChanged')),
-    'MON-A3 spot peer evidence missing.'
-  );
   ensure(
     evidence.some((line) =>
       line.includes('monitor-spot|source=monitor.spot|kind=timerHandlerFailed')

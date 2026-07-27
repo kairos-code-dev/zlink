@@ -62,7 +62,7 @@ internal static class ServiceHostFactory
                                   ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
             }
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
 
@@ -94,8 +94,6 @@ internal static class ServiceHostFactory
             // from the mesh runtime event stream (spec 50), not socket sources.
             monitor.AddMeshNodeEvents(RuntimeMonitoringNames.Channel);
             monitor.AddMeshNodeEvents(RuntimeMonitoringNames.SpotChannel);
-            monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
-
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
                 monitor.AddLocationRuntimeEvents(
                     RuntimeMonitoringNames.LocationRuntimeSource,

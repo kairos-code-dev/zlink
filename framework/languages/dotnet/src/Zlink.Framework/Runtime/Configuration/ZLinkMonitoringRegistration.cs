@@ -4,8 +4,6 @@ internal sealed class ZLinkMonitoringRegistration
 {
     public Dictionary<string, ZLinkSocketMonitoringRegistration> SocketSources { get; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, ZLinkPollingMonitoringRegistration> SpotSources { get; } = new(StringComparer.Ordinal);
-
     public Dictionary<string, ZLinkPollingMonitoringRegistration> LocationRuntimeSources { get; } =
         new(StringComparer.Ordinal);
 
@@ -13,17 +11,7 @@ internal sealed class ZLinkMonitoringRegistration
     // from IZLinkRouteMeshRuntime.ObserveAsync into the runtime event bus.
     public HashSet<string> MeshNodeSources { get; } = new(StringComparer.Ordinal);
 
-    public HashSet<string> LocationPeerSources { get; } = new(StringComparer.Ordinal);
-
-    public HashSet<string> LocationSpotSources { get; } = new(StringComparer.Ordinal);
-
-    public HashSet<string> LocationActorSources { get; } = new(StringComparer.Ordinal);
-
-    public bool HasLocationSources =>
-        LocationRuntimeSources.Count > 0
-        || LocationPeerSources.Count > 0
-        || LocationSpotSources.Count > 0
-        || LocationActorSources.Count > 0;
+    public bool HasLocationSources => LocationRuntimeSources.Count > 0;
 }
 
 internal sealed class ZLinkSocketMonitoringRegistration
@@ -65,15 +53,6 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
                 $"Duplicate monitoring mesh source '{meshName}'.");
     }
 
-    public void AddSpotEvents(string sourceName, TimeSpan interval)
-    {
-        AddPollingSource(
-            registration.SpotSources,
-            "spot",
-            sourceName,
-            interval);
-    }
-
     public void AddLocationRuntimeEvents(string sourceName, TimeSpan interval)
     {
         AddPollingSource(
@@ -81,25 +60,6 @@ internal sealed class ZLinkMonitoringOptionsModel(ZLinkMonitoringRegistration re
             "location-runtime",
             sourceName,
             interval);
-    }
-
-    public void AddLocationPeerEvents(string sourceName) =>
-        AddPushSource(registration.LocationPeerSources, "location-peer", sourceName);
-
-    public void AddLocationSpotEvents(string sourceName) =>
-        AddPushSource(registration.LocationSpotSources, "location-spot", sourceName);
-
-    public void AddLocationActorEvents(string sourceName) =>
-        AddPushSource(registration.LocationActorSources, "location-actor", sourceName);
-
-    private static void AddPushSource(
-        HashSet<string> sources,
-        string kind,
-        string sourceName)
-    {
-        if (!sources.Add(ValidateSourceName(sourceName)))
-            throw new ZLinkConfigurationException(
-                $"Duplicate monitoring {kind} source '{sourceName}'.");
     }
 
     private static void AddPollingSource(

@@ -8,12 +8,6 @@ internal static class MonitoringRegistrationValidation
     public static Task<string> VerifyDuplicateSocketSourceAsync(ClientOptions options) =>
         RunInvalidHostAsync(options, "duplicate-socket", "Duplicate monitoring socket source");
 
-    public static Task<string> VerifyPollingIntervalAsync(ClientOptions options) =>
-        RunInvalidHostAsync(options, "zero-interval", "interval must be greater than zero");
-
-    public static Task<string> VerifyMissingSpotSourceAsync(ClientOptions options) =>
-        RunInvalidHostAsync(options, "missing-spot", "not registered");
-
     public static Task<string> VerifyMissingSocketSourceAsync(ClientOptions options) =>
         RunInvalidHostAsync(options, "missing-socket", "not registered");
 

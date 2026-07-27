@@ -39,7 +39,7 @@ internal static class EphemeralRouteClient
                         .SetConnectionString(options.RedisEndpoint)
                         .SetKeyPrefix(options.RedisKeyPrefix)));
                     framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(
                             options.LogDir,
                             $"ephemeral-{request.Marker}-flow.log"))

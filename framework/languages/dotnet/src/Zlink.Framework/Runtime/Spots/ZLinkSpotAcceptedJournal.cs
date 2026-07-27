@@ -7,6 +7,7 @@ namespace Zlink.Framework.Runtime.Spots;
 internal sealed record ZLinkSpotAcceptedJournalRecord(
     RoutingId? SourceNodeRid,
     ulong SourceNodeGeneration,
+    ZLinkServiceWireCodec.RequestSourceFence? RequestSource,
     string? SpotId,
     ulong? RequestSequence,
     ulong ReplyRouteId,
@@ -21,9 +22,24 @@ internal sealed record ZLinkSpotAcceptedJournalRecord(
 internal static class ZLinkSpotAcceptedJournal
 {
     private const uint Magic = 0x5a4a5231; // ZJR1
-    private const ushort Version = 5;
+    private const ushort Version = 6;
     private const int MaxRecordBytes = 64 * 1024 * 1024;
     private const int MaxParts = 65_536;
+
+    internal static byte[] CaptureOrDispose(
+        ZLinkBackendRouteReceived received,
+        ulong replyRouteId = 0)
+    {
+        try
+        {
+            return Encode(received, replyRouteId);
+        }
+        catch
+        {
+            received.Dispose();
+            throw;
+        }
+    }
 
     internal static byte[] Encode(
         ZLinkBackendRouteReceived received,
@@ -36,12 +52,30 @@ internal static class ZLinkSpotAcceptedJournal
             || received.OwnerLeaseGeneration == 0)
             throw new InvalidOperationException(
                 "An accepted Spot journal record requires an exact operation and authority fence.");
+        if (received.RequestSource is not { } requestSource
+            || received.SourceNodeRid is not { } sourceNodeRid
+            || requestSource.NodeRid != sourceNodeRid
+            || requestSource.NodeGeneration != received.SourceNodeGeneration
+            || string.IsNullOrWhiteSpace(requestSource.OwnerId)
+            || requestSource.LeaseGeneration == 0)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record requires the exact ingress request-source fence.");
+        if (replyRouteId != 0
+            && (received.RequestSeq != replyRouteId
+                || received.OperationId.Low != replyRouteId))
+            throw new InvalidOperationException(
+                "An accepted Spot request must preserve the source-owned operation correlation as its reply route.");
+        if (replyRouteId == 0 && received.CanReply)
+            throw new InvalidOperationException(
+                "An accepted Spot request cannot omit its source-owned reply route.");
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
         writer.Write(Magic);
         writer.Write(Version);
         WriteRoutingId(writer, received.SourceNodeRid);
         writer.Write(received.SourceNodeGeneration);
+        WriteText(writer, requestSource.OwnerId);
+        writer.Write(requestSource.LeaseGeneration);
         WriteSpotId(writer, received.SpotId);
         writer.Write(received.RequestSeq.HasValue);
         if (received.RequestSeq is { } requestSequence)
@@ -78,11 +112,28 @@ internal static class ZLinkSpotAcceptedJournal
             throw new InvalidDataException(
                 "The accepted Spot journal record header is invalid.");
         var version = reader.ReadUInt16();
-        if (version is not (4 or Version))
+        if (version is not (4 or 5 or Version))
             throw new InvalidDataException(
                 "The accepted Spot journal record header is invalid.");
         var sourceNodeRid = ReadRoutingId(reader);
         var sourceNodeGeneration = version >= 5 ? reader.ReadUInt64() : 0;
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null;
+        if (version >= 6)
+        {
+            var sourceOwnerId = ReadText(reader);
+            var sourceOwnerLeaseGeneration = reader.ReadUInt64();
+            if (sourceNodeRid is not { } exactSourceNodeRid
+                || sourceNodeGeneration == 0
+                || string.IsNullOrWhiteSpace(sourceOwnerId)
+                || sourceOwnerLeaseGeneration == 0)
+                throw new InvalidDataException(
+                    "The accepted Spot journal request-source fence is invalid.");
+            requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+                sourceOwnerId,
+                sourceOwnerLeaseGeneration,
+                exactSourceNodeRid,
+                sourceNodeGeneration);
+        }
         var spotId = ReadSpotId(reader);
         var requestSequence = reader.ReadBoolean()
             ? reader.ReadUInt64()
@@ -99,6 +150,9 @@ internal static class ZLinkSpotAcceptedJournal
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0
+            || replyRouteId != 0
+            && (requestSequence != replyRouteId
+                || operationId.Low != replyRouteId)
             || forwardingHopCount > 8)
             throw new InvalidDataException(
                 "The accepted Spot journal authority fence is invalid.");
@@ -119,6 +173,7 @@ internal static class ZLinkSpotAcceptedJournal
         return new ZLinkSpotAcceptedJournalRecord(
             sourceNodeRid,
             sourceNodeGeneration,
+            requestSource,
             spotId,
             requestSequence,
             replyRouteId,
@@ -151,6 +206,22 @@ internal static class ZLinkSpotAcceptedJournal
         if (value is null) return;
         WriteBytes(writer, Encoding.UTF8.GetBytes(
             ZLinkSpotId.Require(value, nameof(value))));
+    }
+
+    private static void WriteText(BinaryWriter writer, string value) =>
+        WriteBytes(writer, Encoding.UTF8.GetBytes(value));
+
+    private static string ReadText(BinaryReader reader)
+    {
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(ReadBytes(reader));
+        }
+        catch (DecoderFallbackException error)
+        {
+            throw new InvalidDataException(
+                "The accepted Spot journal text is invalid.", error);
+        }
     }
 
     private static string? ReadSpotId(BinaryReader reader)

@@ -1,8 +1,0 @@
-package systems.zlink.framework.locations;
-
-import java.time.Instant;
-
-public record ZLinkOwnerLeaseRenewal(
-    Instant leaseExpiresAt,
-    Instant storeNow) {
-}

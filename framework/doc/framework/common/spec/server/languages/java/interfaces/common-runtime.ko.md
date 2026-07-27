@@ -45,7 +45,7 @@ public record ZLinkTerminationResult(
     ZLinkTerminationReason reason) {}
 
 public final class ZLinkFrameworkRuntime
-    implements AutoCloseable, ZLinkMessageFlowControl, ZLinkDrainControl, ZLinkRuntimeQuery {
+    implements AutoCloseable, ZLinkMessageFlowControl, ZLinkRuntimeQuery {
     public static final Duration DEFAULT_TERMINATION_DEADLINE = Duration.ofSeconds(30);
 
     public ZLinkClient client();
@@ -66,12 +66,6 @@ public final class ZLinkFrameworkRuntime
     public ZLinkActorClient actorClient();
     public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid);
 
-    @Deprecated(since = "11.0", forRemoval = false)
-    public CompletionStage<ZLinkTerminationResult> drain();
-    @Deprecated(since = "11.0", forRemoval = false)
-    public CompletionStage<ZLinkTerminationResult> drain(Duration deadline);
-    @Deprecated(since = "11.0", forRemoval = false)
-    public CompletionStage<ZLinkTerminationResult> awaitDrained();
     public boolean isReady();
     public ZLinkFrameworkRuntimeState state();
     public ZLinkFrameworkRuntimeSnapshot snapshot();
@@ -109,9 +103,8 @@ teardown과 recovery handoff를 수행한 뒤 `ForceStopped/DeadlineExceeded`로
 Spring starter가 제공하는 topology runtime bean도 이 accessor가 반환한 객체와 reference identity가 같다.
 
 Spring starter는 `ZLinkFrameworkRuntime` bean을 제공한다. Host 종료의 정본은 `retire()`와 `shutdown()`이다.
-Host-level `drain()`과 `awaitDrained()`는 source compatibility를 위한 deprecated facade이며 같은 shared
-`shutdown()`의 `ZLinkTerminationResult`를 반환한다. MeshName을 받는 partial termination operation은 없다.
-`SmartLifecycle`은 `shutdown()`을 사용하고 운영 maintenance endpoint는 `retire()`를 사용한다.
+별도 drain facade와 MeshName을 받는 partial termination operation은 없다. `SmartLifecycle`은
+`shutdown()`을 사용하고 운영 maintenance endpoint는 `retire()`를 사용한다.
 
 ## Exact public member `javap` inventory
 
@@ -165,18 +158,14 @@ public interface systems.zlink.framework.ZLinkMessageContext {
   public abstract java.util.Optional<java.lang.String> correlationId();
 }
 public interface systems.zlink.framework.ZLinkHandlerFilter {
-  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkHandlerInvocation, systems.zlink.framework.ZLinkNext<T>);
-}
-public interface systems.zlink.framework.ZLinkHandlerInvocation {
-  public abstract systems.zlink.framework.ZLinkMessageContext messageContext();
-  public abstract java.util.Optional<java.lang.Object> request();
+  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkMessageContext, systems.zlink.framework.ZLinkHandlerFilterNext<T>);
 }
 public interface systems.zlink.framework.ZLinkMessageSerializer {
   public abstract <T> systems.zlink.framework.ZLinkEncodedPayload serialize(T);
   public abstract <T> T deserialize(systems.zlink.framework.ZLinkEncodedPayload, java.lang.Class<T>);
   public default void prepare(java.lang.Class<?>);
 }
-public interface systems.zlink.framework.ZLinkNext<T> {
+public interface systems.zlink.framework.ZLinkHandlerFilterNext<T> {
   public abstract java.util.concurrent.CompletionStage<T> invoke();
 }
 public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extends java.lang.Enum<systems.zlink.framework.errors.ZLinkFrameworkErrorKind> {

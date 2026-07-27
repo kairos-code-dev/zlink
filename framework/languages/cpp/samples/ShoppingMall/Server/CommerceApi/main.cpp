@@ -301,17 +301,14 @@ int main (int argc, char **argv)
          * endpoint를 코드에 박지 않는다. */
         auto workflow = options.add_route_mesh (sample_names_t::order_workflow_channel);
         workflow.listen (instance.route_endpoint)
-          .use_allocated_routing_id (16, "shoppingmall-api")
           .channel_name (sample_names_t::order_workflow_channel);
         auto spot_route = options.add_route_mesh (sample_names_t::order_spot_route);
         spot_route.listen ("tcp://127.0.0.1:0")
-          .use_allocated_routing_id (16, "shoppingmall-api-route")
           .channel_name (sample_names_t::order_spot_route);
         options.configure_locations ().spot_router_channels[sample_names_t::order_spot_discovery] =
           sample_names_t::order_spot_route;
         options.add_route_mesh (std::string (sample_names_t::order_spot_discovery) + "."
                                 + instance.instance_id)
-          .use_allocated_routing_id (16, "shoppingmall-api")
           .listen (instance.spot_router_endpoint)
           .channel_name (sample_names_t::order_spot_route);
         options.http ()

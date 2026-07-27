@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.time.Duration;
 import java.util.IdentityHashMap;
@@ -406,8 +406,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         ZLinkHandlerActivator handlerFactory,
         ZLinkStreamCodec defaultStreamCodec,
         java.util.function.BiFunction<
-            systems.zlink.framework.runtime.backend.ZLinkBackendObject,
-            systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey,
             java.util.function.BiFunction<
                 java.util.function.Supplier<Boolean>,
                 Runnable,

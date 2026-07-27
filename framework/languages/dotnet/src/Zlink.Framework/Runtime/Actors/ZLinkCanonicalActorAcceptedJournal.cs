@@ -7,10 +7,14 @@ using Zlink.Framework.Runtime.Streams;
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed record ZLinkCanonicalActorAcceptedFrame(
-    ZLinkActorHandoffFrame Frame,
-    ZLinkServiceWireCodec.RequestSourceFence Source,
+    ZLinkActorAcceptedRecord Accepted,
     ZLinkBackendActorRef TargetActor,
-    RoutingId TargetNodeRid);
+    RoutingId TargetNodeRid)
+{
+    internal ZLinkActorHandoffFrame Frame => Accepted.Frame;
+    internal ZLinkServiceWireCodec.RequestSourceFence Source =>
+        Accepted.RequestSource;
+}
 
 internal static class ZLinkCanonicalActorAcceptedJournal
 {
@@ -19,17 +23,22 @@ internal static class ZLinkCanonicalActorAcceptedJournal
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     internal static byte[] Encode(
-        ZLinkActorHandoffFrame frame,
-        ZLinkServiceWireCodec.RequestSourceFence source,
+        ZLinkActorAcceptedRecord accepted,
         ZLinkBackendActorRef targetActor)
     {
+        ArgumentNullException.ThrowIfNull(accepted);
+        var frame = accepted.Frame;
+        var source = accepted.RequestSource;
         ArgumentNullException.ThrowIfNull(frame);
         ValidateSource(source);
+        if (!frame.SourceNodeRid.AsSpan().SequenceEqual(
+                source.NodeRid.ToBytes())
+            || frame.SourceNodeGeneration != source.NodeGeneration)
+            throw new InvalidOperationException(
+                "The accepted Actor frame does not match its request-source identity.");
         var operation = frame.RouteContext.OperationId;
         var request = (frame.Flags & 1U) != 0;
-        var replyRoute = frame.RouteContext.ReplyRequestId != 0
-            ? frame.RouteContext.ReplyRequestId
-            : request ? frame.RequestId : 0;
+        var replyRoute = frame.RelocationReplyRouteId;
         if (operation == default
             || targetActor.ActorId is not { Length: > 0 }
             || targetActor.Generation == 0
@@ -90,10 +99,8 @@ internal static class ZLinkCanonicalActorAcceptedJournal
 
     internal static ZLinkCanonicalActorAcceptedFrame Decode(
         ReadOnlySpan<byte> encoded,
-        long arrivalIndex,
-        ZLinkServiceWireCodec.RequestSourceFence expectedSource)
+        long arrivalIndex)
     {
-        ValidateSource(expectedSource);
         if (!ZLinkRelocationEnvelopeCodec.TryValidateCanonicalFrozenRecord(encoded))
             throw new InvalidDataException(
                 "The accepted Actor frozen record is malformed.");
@@ -112,9 +119,7 @@ internal static class ZLinkCanonicalActorAcceptedJournal
             sourceNodeRid,
             sourceNodeGeneration);
         sourceReader.End();
-        if (source != expectedSource)
-            throw new InvalidDataException(
-                "The accepted Actor request-source fence does not match its relocation root.");
+        ValidateDecodedSource(source);
         if (reader.Byte() != 0)
             throw new InvalidDataException("Actor frame metadata must be embedded in its exact header.");
         var operation = new MeshOperationId(reader.U64(), reader.U64());
@@ -143,11 +148,13 @@ internal static class ZLinkCanonicalActorAcceptedJournal
         var payload = application.Bytes(checked((int)application.U32()));
         application.End();
         reader.End();
-        var frame = DecodeFramePayload(payload, actor, source.NodeRid,
+        var frame = DecodeFramePayload(payload, actor, source,
             operation, replyRoute, targetNodeGeneration,
             authorityOwnerGeneration, ownerLeaseGeneration, arrivalIndex);
         return new ZLinkCanonicalActorAcceptedFrame(
-            frame, source, actor, targetNodeRid);
+            new ZLinkActorAcceptedRecord(frame, source, actor),
+            actor,
+            targetNodeRid);
     }
 
     private static byte[] EncodeFramePayload(ZLinkActorHandoffFrame frame)
@@ -170,7 +177,7 @@ internal static class ZLinkCanonicalActorAcceptedJournal
     private static ZLinkActorHandoffFrame DecodeFramePayload(
         ReadOnlySpan<byte> encoded,
         ZLinkBackendActorRef actor,
-        RoutingId sourceNodeRid,
+        ZLinkServiceWireCodec.RequestSourceFence requestSource,
         MeshOperationId operation,
         ulong replyRoute,
         ulong targetNodeGeneration,
@@ -197,7 +204,7 @@ internal static class ZLinkCanonicalActorAcceptedJournal
         return new ZLinkActorHandoffFrame(
             replyActorRid,
             replyActorGeneration,
-            sourceNodeRid.ToBytes().ToArray(),
+            requestSource.NodeRid.ToBytes().ToArray(),
             sessionRid,
             requestId,
             flags,
@@ -207,7 +214,11 @@ internal static class ZLinkCanonicalActorAcceptedJournal
             new ZLinkBackendActorRouteContext(
                 operation, hop, targetNodeGeneration,
                 authorityOwnerGeneration, ownerLeaseGeneration,
-                replyRoute, replyFlags, capability));
+                replyRoute, replyFlags, capability),
+            requestSource.NodeGeneration,
+            requestSource,
+            replyRoute,
+            encoded.Length);
     }
 
     private static void ValidateSource(
@@ -217,6 +228,21 @@ internal static class ZLinkCanonicalActorAcceptedJournal
             || string.IsNullOrWhiteSpace(source.OwnerId)
             || source.LeaseGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(source));
+    }
+
+    private static void ValidateDecodedSource(
+        ZLinkServiceWireCodec.RequestSourceFence source)
+    {
+        try
+        {
+            ValidateSource(source);
+        }
+        catch (ArgumentOutOfRangeException error)
+        {
+            throw new InvalidDataException(
+                "The accepted Actor request-source fence is invalid.",
+                error);
+        }
     }
 
     private static RoutingId TextRid(string value)

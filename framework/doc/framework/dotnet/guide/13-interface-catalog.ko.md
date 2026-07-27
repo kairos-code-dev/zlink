@@ -334,7 +334,7 @@ node.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
 
 var dispatch = options.ConfigureDispatch();
 dispatch.MessageFlow(ZLinkMessageFlowMode.ErrorsOnly)                 // 오류 흐름만 기록
-    .SetMessageFlowObserver<FlowObserver>()                           // immutable flow event 관측
+    .SetRuntimeMessageFlowObserver<FlowObserver>()                    // immutable runtime flow event 관측
     .SetRuntimeErrorSink<RuntimeErrorSink>();                         // observer 실패 등 runtime 오류 관측
 ```
 
@@ -344,7 +344,7 @@ dispatch.MessageFlow(ZLinkMessageFlowMode.ErrorsOnly)                 // 오류 
 | `IZLinkSpotPublisherConfig` | spot publisher 옵션(`SendHighWaterMark`, `SendTimeout`, `Linger`) |
 | `IZLinkEntrySpotOptions` | Entry Spot의 routing id 지정 |
 | `IZLinkDispatchOptions` | message-flow observer, runtime error sink와 flow 기록 mode 설정 |
-| `IZLinkMessageFlowObserver` | 메시지 생애주기 이벤트 수신(`OnMessageFlowAsync`) — `ConfigureDispatch().SetMessageFlowObserver<T>()`로 등록([11-monitoring §5](11-monitoring.ko.md)) |
+| `IZLinkRuntimeMessageFlowObserver` | 메시지 생애주기 이벤트 수신(`OnMessageFlowAsync`) — `ConfigureDispatch().SetRuntimeMessageFlowObserver<T>()`로 등록([11-monitoring §5](11-monitoring.ko.md)) |
 | `IZLinkRuntimeErrorSink` | observer 실패처럼 업무 handler 밖에서 발생한 runtime 오류 수신 |
 | `IZLinkMessageFlowRuntime` | 실행 중 flow mode 조회·변경과 bounded flow event stream 관측 |
 | `IZLinkWorkerOptions` | worker pool 설정(`MinThreads`, `MaxThreads`, `IdleTimeout`, `MaxQueueLength`) |
@@ -657,7 +657,6 @@ var traceId = metadata.Find("trace-id");        // 없으면 null
 
 ```csharp
 options.AddSocketEvents("router", ZLinkSocketEventKind.Connected); // 인자 = (source 이름, 받을 event kind)
-options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
 options.AddLocationRuntimeEvents("location-runtime", TimeSpan.FromSeconds(1)); // store 등록 배포
 
 var flow = app.Services.GetRequiredService<IZLinkMessageFlowRuntime>();
@@ -669,9 +668,9 @@ await foreach (ZLinkMessageFlowEvent @event in flow.ObserveAsync(cancellationTok
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkMonitoringOptions` | monitoring source 등록. socket(`AddSocketEvents`)·spot(`AddSpotEvents`)·location projection(`AddLocationRuntimeEvents`)·location row 이벤트(`AddLocationPeerEvents`/`AddLocationSpotEvents`/`AddLocationActorEvents`/`AddLocationRouteEvents`). `AddZLinkMonitoring(...)`의 표면 |
+| `IZLinkMonitoringOptions` | monitoring source 등록. socket(`AddSocketEvents`)·MeshNode(`AddMeshNodeEvents`)·provider-neutral location projection(`AddLocationRuntimeEvents`)을 `AddZLinkMonitoring(...)`에서 선택한다. Store row와 authority payload는 노출하지 않는다. |
 | `IZLinkMessageFlowRuntime` | 현재 flow mode를 바꾸고 bounded `ZLinkMessageFlowEvent` stream을 관측하는 singleton |
-| `IZLinkMessageFlowObserver` | dispatch 시점의 immutable flow event를 받는 observer |
+| `IZLinkRuntimeMessageFlowObserver` | 공통 message-flow schema의 immutable event를 받는 observer |
 | `IZLinkRuntimeErrorSink` | observer 실패를 포함한 framework runtime 오류를 받는 sink |
 
 검증: 목표 계약 구현에서는 monitoring source 등록과 bounded runtime 관측을 각각 계약 테스트로 고정한다.

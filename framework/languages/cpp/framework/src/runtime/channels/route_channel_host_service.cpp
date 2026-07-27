@@ -434,8 +434,7 @@ class route_channel_host_service_t::route_loop_t
             const auto kind = detail::map_socket_monitor_event (event->event);
             if (kind) {
                 _channel_runtime.publish_socket_event (
-                  _route_channel_id, *kind, event->local_addr, event->remote_addr,
-                  static_cast<std::uint32_t> (event->event), event->value);
+                  _route_channel_id, *kind, event->local_addr, event->remote_addr);
             }
             if (!event->routing_id) {
                 continue;

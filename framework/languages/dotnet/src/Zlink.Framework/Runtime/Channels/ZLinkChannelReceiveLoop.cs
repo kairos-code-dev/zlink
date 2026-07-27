@@ -12,6 +12,11 @@ internal sealed class ZLinkChannelReceiveLoop(
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
+        await using var applicationDispatch =
+            new ZLinkChannelApplicationDispatchQueue(
+                $"client-server-application:{channelName}",
+                errorSink,
+                cancellationToken);
         identity.AttachRouter(router);
         try
         {
@@ -38,12 +43,20 @@ internal sealed class ZLinkChannelReceiveLoop(
                         ReplyClientServerControl(router, received, identity);
                         continue;
                     }
-                    await clientServerDispatcher.DispatchAsync(
+                    var owned = received;
+                    received = null;
+                    applicationDispatch.TryPost(
+                        token => DispatchClientServerAsync(
                             channelName,
                             router,
-                            received,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                            owned,
+                            applicationDispatch.ReplyGate,
+                            token),
+                        () => RejectClientServerDispatch(
+                            channelName,
+                            router,
+                            owned,
+                            applicationDispatch.ReplyGate));
                 }
                 catch (Exception) when (cancellationToken.IsCancellationRequested)
                 {
@@ -69,6 +82,37 @@ internal sealed class ZLinkChannelReceiveLoop(
         {
             identity.DetachRouter(router);
         }
+    }
+
+    private void RejectClientServerDispatch(
+        string channelName,
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkChannelReplyGate replyGate)
+    {
+        using (received)
+            clientServerDispatcher.RejectOverloaded(
+                channelName,
+                router,
+                received,
+                replyGate);
+    }
+
+    private async ValueTask DispatchClientServerAsync(
+        string channelName,
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkChannelReplyGate replyGate,
+        CancellationToken cancellationToken)
+    {
+        using (received)
+            await clientServerDispatcher.DispatchAsync(
+                    channelName,
+                    router,
+                    received,
+                    replyGate,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 
     private static void ReplyClientServerControl(
@@ -167,12 +211,18 @@ internal sealed class ZLinkChannelReceiveLoop(
     public async Task RunSubscriberLoopAsync(
         string channelName,
         IZLinkBackendSubscriberSocket subscriber,
+        IZLinkRuntimeFailureReporter errorSink,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
+        await using var applicationDispatch =
+            new ZLinkChannelApplicationDispatchQueue(
+                $"fanout-application:{channelName}",
+                errorSink,
+                cancellationToken);
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var topicMessage = new TopicMessage();
+            TopicMessage? topicMessage = new();
             try
             {
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
@@ -182,8 +232,11 @@ internal sealed class ZLinkChannelReceiveLoop(
                 }
 
                 backoff.Reset();
-                await dispatcher.DispatchEventMessageAsync(channelName, topicMessage, cancellationToken)
-                    .ConfigureAwait(false);
+                var owned = topicMessage;
+                topicMessage = null;
+                applicationDispatch.TryPost(
+                    token => DispatchFanoutAsync(channelName, owned, token),
+                    owned.Dispose);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
             {
@@ -193,6 +246,10 @@ internal sealed class ZLinkChannelReceiveLoop(
             {
                 break;
             }
+            finally
+            {
+                topicMessage?.Dispose();
+            }
         }
     }
 
@@ -201,12 +258,18 @@ internal sealed class ZLinkChannelReceiveLoop(
         IZLinkBackendSubscriberSocket subscriber,
         Action onActivity,
         Action onProtocolError,
+        IZLinkRuntimeFailureReporter errorSink,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
+        await using var applicationDispatch =
+            new ZLinkChannelApplicationDispatchQueue(
+                $"fanout-automatic-application:{channelName}",
+                errorSink,
+                cancellationToken);
         while (!cancellationToken.IsCancellationRequested)
         {
-            using var topicMessage = new TopicMessage();
+            TopicMessage? topicMessage = new();
             try
             {
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
@@ -231,11 +294,11 @@ internal sealed class ZLinkChannelReceiveLoop(
                 }
 
                 onActivity();
-                await dispatcher.DispatchEventMessageAsync(
-                        channelName,
-                        topicMessage,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                var owned = topicMessage;
+                topicMessage = null;
+                applicationDispatch.TryPost(
+                    token => DispatchFanoutAsync(channelName, owned, token),
+                    owned.Dispose);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
             {
@@ -245,6 +308,23 @@ internal sealed class ZLinkChannelReceiveLoop(
             {
                 break;
             }
+            finally
+            {
+                topicMessage?.Dispose();
+            }
         }
+    }
+
+    private async ValueTask DispatchFanoutAsync(
+        string channelName,
+        TopicMessage topicMessage,
+        CancellationToken cancellationToken)
+    {
+        using (topicMessage)
+            await dispatcher.DispatchEventMessageAsync(
+                    channelName,
+                    topicMessage,
+                    cancellationToken)
+                .ConfigureAwait(false);
     }
 }

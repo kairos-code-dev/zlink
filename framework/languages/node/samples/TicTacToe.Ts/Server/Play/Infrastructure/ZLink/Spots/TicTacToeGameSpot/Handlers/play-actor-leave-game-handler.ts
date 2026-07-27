@@ -1,13 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
 import { ZLinkSpotActorSend } from '@zlink-systems/framework';
 import { SampleNames } from '../../../../../../Configuration/sample-settings';
 import type {
   ZLinkSpotActorSendContext,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { PlayActor } from '../../../Actors/play-actor';
@@ -18,7 +18,7 @@ import { VerifyLeaveGameAtSpotReq } from './tictactoe-game-operation-handlers';
 @Injectable()
 class PlayActorLeaveGameHandler {
   constructor(
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound,
     private readonly pendingDestroys: PendingActorDestroyRegistry
   ) {}
@@ -33,7 +33,7 @@ class PlayActorLeaveGameHandler {
     if (spotRid === undefined || String(spotRid) !== request.roomId) {
       throw new Error(`Actor requested leave for a different room. roomId=${request.roomId}`);
     }
-    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playSpotNode, spotRid);
+    const spot = await this.spotHandles.find(spotRid);
     if (spot === undefined) {
       throw new Error(`Game spot '${String(spotRid)}' could not be resolved.`);
     }

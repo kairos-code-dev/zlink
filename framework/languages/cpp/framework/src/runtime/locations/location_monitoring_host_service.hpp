@@ -88,7 +88,8 @@ class location_monitoring_host_service_t final : public hosted_service_t
             auto summaries =
               _query->list_service_summaries (location_service_summary_filter_t{})
                 .result ()
-                .value ();
+                .value ()
+                .items;
             const auto status_changed = !_last_status || !same_status (*_last_status, status);
             const auto topology_changed = !_last_status || !same_topology (_last_topology, topology);
             const auto summaries_changed =
@@ -137,12 +138,9 @@ class location_monitoring_host_service_t final : public hosted_service_t
     static bool same_topology_entry (const location_topology_entry_t &left,
                                      const location_topology_entry_t &right)
     {
-        return left.kind == right.kind && left.mesh_name == right.mesh_name
-               && left.role == right.role && left.node_rid == right.node_rid
-               && left.spot_id == right.spot_id && left.actor_id == right.actor_id
-               && left.endpoint == right.endpoint && left.state == right.state
-               && left.desired_count == right.desired_count
-               && left.ready_count == right.ready_count && left.error_code == right.error_code;
+        return left.mesh_name == right.mesh_name && left.node_rid == right.node_rid
+               && left.endpoint == right.endpoint && left.draining == right.draining
+               && left.state == right.state;
     }
 
     static bool same_topology (const std::vector<location_topology_entry_t> &left,
@@ -156,10 +154,10 @@ class location_monitoring_host_service_t final : public hosted_service_t
     static bool same_summary (const location_service_summary_t &left,
                               const location_service_summary_t &right)
     {
-        return left.mesh_name == right.mesh_name
-               && left.auto_connect_type == right.auto_connect_type && left.role == right.role
-               && left.total_count == right.total_count && left.ready_count == right.ready_count
-               && left.lost_count == right.lost_count && left.error_count == right.error_count;
+        return left.mesh_name == right.mesh_name && left.total_count == right.total_count
+               && left.ready_count == right.ready_count
+               && left.error_count == right.error_count
+               && left.stopped_count == right.stopped_count;
     }
 
     static bool same_summaries (const std::vector<location_service_summary_t> &left,

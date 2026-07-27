@@ -1,14 +1,14 @@
 import type {
-  ZLinkProviderResolver,
   ZLinkMessageSerializer,
   ZLinkSession,
   ZLinkSessionDispatchContext
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
-  ZLinkSocketNativeEventType
+  ZLinkFrameworkException
 } from '../../contracts';
+import { ZLinkSocketNativeEventType } from '../diagnostics/internal-event-contracts';
 import {
   ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
@@ -478,9 +478,7 @@ export class ZLinkStreamSessionRuntime {
       const session = await this.requireSession();
       await session.onError?.(this.context, {
         error: 'transportError' as never,
-        diagnostic: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+        message: error instanceof Error ? error.message : String(error)
       });
     }
     if (notifyDisconnected) {

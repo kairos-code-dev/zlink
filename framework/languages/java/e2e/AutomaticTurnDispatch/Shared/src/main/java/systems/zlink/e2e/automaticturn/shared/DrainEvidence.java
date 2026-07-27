@@ -2,26 +2,27 @@ package systems.zlink.e2e.automaticturn.shared;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import systems.zlink.framework.monitoring.ZLinkDrainEvent;
+import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
-import systems.zlink.framework.monitoring.ZLinkDrainState;
 import java.time.Instant;
 
-public final class DrainEvidence implements ZLinkRuntimeEventHandler<ZLinkDrainEvent> {
-    private final List<ZLinkDrainEvent> events = new CopyOnWriteArrayList<>();
+public final class DrainEvidence implements ZLinkRuntimeEventHandler<ZLinkFrameworkRuntimeEvent> {
+    public record Event(String state, Instant timestamp) {}
+
+    private final List<Event> events = new CopyOnWriteArrayList<>();
 
     @Override
-    public void handle(ZLinkDrainEvent event) {
-        events.add(event);
+    public void handle(ZLinkFrameworkRuntimeEvent event) {
+        events.add(new Event(event.runtime().state().name(), event.timestamp()));
     }
 
-    public List<ZLinkDrainEvent> events() {
+    public List<Event> events() {
         return List.copyOf(events);
     }
 
     public void observeServing() {
-        if (events.stream().noneMatch(event -> event.state() == ZLinkDrainState.SERVING)) {
-            events.add(new ZLinkDrainEvent(ZLinkDrainState.SERVING, Instant.now()));
+        if (events.stream().noneMatch(event -> event.state().equals("SERVING"))) {
+            events.add(new Event("SERVING", Instant.now()));
         }
     }
 }

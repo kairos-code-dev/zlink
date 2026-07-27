@@ -3,8 +3,8 @@ import type {
   ZLinkActor,
   ZLinkActorTransferAdapter,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
 
@@ -92,7 +92,7 @@ function actorTransferKey(actorType: Type): string {
 }
 
 function emptyTransferState(
-  serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
+  _serializers?: ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessage {
-  return ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(Buffer.alloc(0)), serializers);
+  return ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(Buffer.alloc(0)));
 }

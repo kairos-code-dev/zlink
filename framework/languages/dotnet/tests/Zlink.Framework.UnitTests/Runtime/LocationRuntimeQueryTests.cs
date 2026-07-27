@@ -104,7 +104,7 @@ public sealed class LocationRuntimeQueryTests
             ActorAuthorityRead(ActorLocation(LiveOwner, "1"), lease.Token, 1, time));
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, lagging, tracker, observed, options: options, timeProvider: time);
+            lagging, tracker, observed, options: options, timeProvider: time);
 
         var key = new ZLinkActorLocationKey("actor-1");
         var first = await resolvers.ResolveActorRowAsync(key);
@@ -132,7 +132,7 @@ public sealed class LocationRuntimeQueryTests
         };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
             options, peers, RegisteredMeshes, tracker, runtime, observed);
 
@@ -187,7 +187,7 @@ public sealed class LocationRuntimeQueryTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         var health = new ZLinkLocationStoreHealth();
         var query = new ZLinkLocationRuntimeQueryService(
             options,
@@ -215,7 +215,7 @@ public sealed class LocationRuntimeQueryTests
         var options = new ZLinkLocationOptions();
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var runtime = new ZLinkLocationRuntime(
-            options, store, store, store, time);
+            options, store, time);
         var health = new ZLinkLocationStoreHealth();
         var query = new ZLinkLocationRuntimeQueryService(
             options,
@@ -262,11 +262,11 @@ public sealed class LocationRuntimeQueryTests
     }
 
     private sealed class ScriptedMeshNodeListStore(params ZLinkMeshNodeDescriptor[][] pages)
-        : IZLinkMeshNodeLocationStore
+        : ZLinkLocationStoreTestDouble
     {
         private readonly Queue<ZLinkMeshNodeDescriptor[]> _pages = new(pages);
 
-        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        public override ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
             string meshName,
             ZLinkPageRequest page,
             CancellationToken cancellationToken = default) =>
@@ -274,82 +274,18 @@ public sealed class LocationRuntimeQueryTests
                 _pages.Count > 0 ? _pages.Dequeue() : [],
                 null));
 
-        public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
-            ZLinkMeshNodeDescriptor descriptor,
-            ZLinkLocationWriteIntent intent,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
-            ZLinkMeshNodeDescriptorKey key,
-            ZLinkLocationOwnerToken owner,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private sealed class ScriptedAuthorityStore(params ZLinkAuthorityReadResult[] reads)
-        : IZLinkAuthorityStore
+        : ZLinkLocationStoreTestDouble
     {
         private readonly Queue<ZLinkAuthorityReadResult> _reads = new(reads);
 
-        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_reads.Dequeue());
 
-        public ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
-            ZLinkAuthorityKey key,
-            string expectedStoreVersion,
-            ZLinkAuthorityMutation mutation,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
-            string prefix,
-            ZLinkAuthorityScanCursor? cursor,
-            int limit,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
-            ZLinkObjectReservationRequest request,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
-            ZLinkObjectReservation reservation,
-            ReadOnlyMemory<byte> readyPayload,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
-            ZLinkObjectReservation reservation,
-            ZLinkObjectCreationCompletion completion,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
-            ZLinkCreationOperationId operation,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
-            ZLinkObjectReservation reservation,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
-            ZLinkRelocationCapacityReservationRequest request,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
-            ZLinkRelocationCapacityFence fence,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
-            ZLinkAggregatePrepareRequest request,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FailingRuntimeQuery : IZLinkLocationRuntimeQuery
@@ -460,8 +396,8 @@ public sealed class LocationRuntimeQueryTests
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, observed, options: options, timeProvider: time);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+            store, tracker, observed, options: options, timeProvider: time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         var query = new ZLinkLocationRuntimeQueryService(
             options, store, RegisteredMeshes, tracker, runtime, observed);
         return new QueryFixture(store, resolvers, query, time);

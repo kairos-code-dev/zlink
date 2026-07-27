@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -44,7 +44,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -237,7 +237,7 @@ final class EntrySpotActivation
             null,
             received.requestSeq().map(String::valueOf).orElse(null),
             null,
-            backendSpot.routingId().toString(),
+            backendSpot.spotId().toString(),
             null);
         if (ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(packet.packetName())) {
             @SuppressWarnings({"rawtypes", "unchecked"})
@@ -245,12 +245,12 @@ final class EntrySpotActivation
             ZLinkRoutedActorTransferHandler transfer = new ZLinkRoutedActorTransferHandler(
                 host,
                 host.primaryNode(),
-                backendSpot.routingId(),
+                backendSpot.spotId(),
                 entrySpot,
                 (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
                     ZLinkSpotActorJoinResponse.accept()),
                 actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
-                    entrySpot, actor, backendSpot.routingId(), true));
+                    entrySpot, actor, backendSpot.spotId(), true));
             transfer.handle(received.parts())
                 .thenAccept(received::reply)
                 .whenComplete((ignored, error) -> {
@@ -258,7 +258,7 @@ final class EntrySpotActivation
                         host.replySpotRouteDispatchError(
                             received,
                             packet.packetName(),
-                            backendSpot.routingId(),
+                            backendSpot.spotId(),
                             ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                             error);
                     }
@@ -283,7 +283,7 @@ final class EntrySpotActivation
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.REQUEST_REJECTED,
@@ -309,7 +309,7 @@ final class EntrySpotActivation
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.REQUEST_REJECTED,
@@ -334,12 +334,12 @@ final class EntrySpotActivation
         ZLinkRoutedActorTransferHandler transfer = new ZLinkRoutedActorTransferHandler(
             host,
             host.primaryNode(),
-            backendSpot.routingId(),
+            backendSpot.spotId(),
             entrySpot,
             (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
                 ZLinkSpotActorJoinResponse.accept()),
             actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
-                entrySpot, actor, backendSpot.routingId(), true));
+                entrySpot, actor, backendSpot.spotId(), true));
         CompletableFuture<Message> result = new CompletableFuture<>();
         context.enqueueDispatch(() -> transfer.handle(parts, sourceRoutingId)
                 .thenAccept(replies -> {
@@ -515,7 +515,7 @@ final class EntrySpotActivation
         Message payload) {
         return host.actorAdmissions().admitEntryActor(
             request,
-            backendSpot.routingId(),
+            backendSpot.spotId(),
             actorId -> java.util.concurrent.CompletableFuture.completedFuture(
                 ZLinkSpotActorJoinResponse.accept()));
     }
@@ -523,12 +523,12 @@ final class EntrySpotActivation
     private void completeAcceptedEntryJoin(ZLinkBackendActorJoinRequest request) {
         host.actorAdmissions().completeEntryActorJoin(
             request,
-            backendSpot.routingId(),
+            backendSpot.spotId(),
             actor -> context.enqueueDispatch(() ->
                 host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     entrySpot,
                     actor,
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     true)))
             .exceptionally(error -> null);
     }

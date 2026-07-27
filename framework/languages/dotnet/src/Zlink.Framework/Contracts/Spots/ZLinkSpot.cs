@@ -54,38 +54,6 @@ public readonly record struct ZLinkActorCreateResponse(bool Accepted, ZLinkMessa
     }
 }
 
-public sealed class ZLinkSpotActorReplyOptions
-{
-    private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
-
-    internal IReadOnlyDictionary<string, string> MetadataValues => _metadata;
-
-    internal bool CompressPayload { get; private set; }
-
-    internal ZLinkSpotActorReplyOptionsSnapshot CreateSnapshot()
-    {
-        return new ZLinkSpotActorReplyOptionsSnapshot(
-            _metadata.Count == 0
-                ? new Dictionary<string, string>(StringComparer.Ordinal)
-                : new Dictionary<string, string>(_metadata, StringComparer.Ordinal),
-            CompressPayload);
-    }
-
-    public ZLinkSpotActorReplyOptions Metadata(string key, string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentNullException.ThrowIfNull(value);
-        _metadata[key] = value;
-        return this;
-    }
-
-    public ZLinkSpotActorReplyOptions Compress(bool enabled = true)
-    {
-        CompressPayload = enabled;
-        return this;
-    }
-}
-
 public interface IZLinkSpot
 {
     IZLinkSpotContext Context { get; }

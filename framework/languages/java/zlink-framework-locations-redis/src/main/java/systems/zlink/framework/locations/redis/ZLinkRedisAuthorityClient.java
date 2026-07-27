@@ -620,6 +620,39 @@ final class ZLinkRedisAuthorityClient {
             redis.call('DEL', KEYS[1])
             return {'deleted', nowMs, revision}
         end
+        if ARGV[3] == 'restore' then
+            if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[7]
+                or redis.call(
+                    'HGET', KEYS[1], 'ownerLeaseGeneration') ~= ARGV[8] then
+                return {'conflict', nowMs}
+            end
+            if counterValue(KEYS[3], 'storeRevision') == maxCounter then
+                return {'generation-exhausted', nowMs}
+            end
+            local revision = incrementCounter(
+                KEYS[3], 'storeRevision')
+            redis.call('HSET', KEYS[1],
+                'storeVersion', revision,
+                'payload', ARGV[5],
+                'authorityKey', ARGV[10])
+            recordHistory(
+                KEYS[1], KEYS[11], KEYS[12],
+                KEYS[16], KEYS[18])
+            redis.call('ZADD', KEYS[2], 0, ARGV[6])
+            return {'stored', nowMs, revision,
+                redis.call('HGET', KEYS[1], 'objectGeneration'),
+                redis.call(
+                    'HGET', KEYS[1], 'authorityOwnerGeneration'),
+                redis.call('HGET', KEYS[1], 'ownerId'),
+                redis.call('HGET', KEYS[1], 'ownerLeaseGeneration'),
+                redis.call('HGET', KEYS[1], 'allocationState'),
+                redis.call('HGET', KEYS[1], 'objectKind'),
+                redis.call('HGET', KEYS[1], 'stableType'),
+                redis.call('HGET', KEYS[1], 'descriptorKey'),
+                redis.call(
+                    'HGET', KEYS[1], 'descriptorLifecycleGeneration'),
+                redis.call('HGET', KEYS[1], 'capacityBundle')}
+        end
         local targetOwner = ARGV[7]
         local targetLease = ARGV[8]
         if ARGV[4] == 'preserve' then
@@ -1695,10 +1728,16 @@ final class ZLinkRedisAuthorityClient {
         String version =
             ((ZLinkAuthorityExpectFound) expectation).storeVersion();
         boolean deleting = mutation instanceof ZLinkAuthorityDelete;
-        String payload = deleting
-            ? ""
-            : encode(((ZLinkAuthorityPut) mutation).payload());
-        ZLinkAuthorityPut put = deleting
+        boolean restoring = mutation instanceof systems.zlink.framework.locations
+            .ZLinkAuthorityRestore;
+        byte[] mutationPayload = deleting
+            ? new byte[0]
+            : restoring
+                ? ((systems.zlink.framework.locations.ZLinkAuthorityRestore)
+                    mutation).payload()
+                : ((ZLinkAuthorityPut) mutation).payload();
+        String payload = encode(mutationPayload);
+        ZLinkAuthorityPut put = deleting || restoring
             ? null
             : (ZLinkAuthorityPut) mutation;
         String transition = deleting
@@ -1707,9 +1746,10 @@ final class ZLinkRedisAuthorityClient {
                 case PRESERVE -> "preserve";
                 case NEW_OWNER -> "new-owner";
             };
-        ZLinkLocationOwnerToken targetOwner = put == null
-            ? null
-            : put.targetOwner().orElse(null);
+        ZLinkLocationOwnerToken targetOwner = restoring
+            ? ((systems.zlink.framework.locations.ZLinkAuthorityRestore)
+                mutation).expectedOwner()
+            : put == null ? null : put.targetOwner().orElse(null);
         String capacityFence = put == null
             ? ""
             : put.relocationCapacityFence()
@@ -1775,7 +1815,7 @@ final class ZLinkRedisAuthorityClient {
                 },
                 expectationKind,
                 version,
-                deleting ? "delete" : "put",
+                deleting ? "delete" : restoring ? "restore" : "put",
                 transition,
                 payload,
                 keys.encodedAuthorityKey(key),

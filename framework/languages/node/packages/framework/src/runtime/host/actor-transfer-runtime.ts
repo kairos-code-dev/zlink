@@ -4,12 +4,12 @@ import type {
   RoutingId,
   ZLinkActor,
   ZLinkActorJoinOperationId,
-  ZLinkAuthorityStore,
   ZLinkMessage,
   ZLinkMessageSerializer,
   ZLinkRelocationStore,
   ZLinkSpot
 } from '../../contracts';
+import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef, ZLinkBackendMeshNode } from '../backend';

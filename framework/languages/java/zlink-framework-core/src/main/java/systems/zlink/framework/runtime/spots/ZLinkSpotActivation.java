@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -45,7 +45,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -278,7 +278,7 @@ final class SpotActivation
             null,
             received.requestSeq().map(String::valueOf).orElse(null),
             null,
-            backendSpot.routingId().toString(),
+            backendSpot.spotId().toString(),
             null);
         if (ZLinkActorSpotRoutePackets.JOIN_SPOT_PACKET_NAME.equals(packet.packetName())) {
             return dispatchRoutedActorJoinAsync(received, packet);
@@ -298,7 +298,7 @@ final class SpotActivation
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.REQUEST_REJECTED,
@@ -324,7 +324,7 @@ final class SpotActivation
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.REQUEST_REJECTED,
@@ -454,7 +454,7 @@ final class SpotActivation
                     host.replySpotRouteDispatchError(
                         received,
                         packet.packetName(),
-                        backendSpot.routingId(),
+                        backendSpot.spotId(),
                         ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                         error);
                 } else {
@@ -467,7 +467,7 @@ final class SpotActivation
                         null,
                         received.requestSeq().map(String::valueOf).orElse(null),
                         null,
-                        backendSpot.routingId().toString(),
+                        backendSpot.spotId().toString(),
                         null);
                 }
                 closeRouteReceived(received);
@@ -513,12 +513,12 @@ final class SpotActivation
                     ZLinkMessagePayloads.encoded(phasePayload),
                     host.serializerForSpot()),
                 host.primaryNode(),
-                backendSpot.routingId(),
-                host.spotFor(backendSpot.routingId()),
+                backendSpot.spotId(),
+                host.spotFor(backendSpot.spotId()),
                 actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     spot,
                     actor,
-                    backendSpot.routingId(),
+                    backendSpot.spotId(),
                     true),
                 actorRef -> replayHandoff(actorRef, backlog))
                 .thenApply(join -> {
@@ -620,8 +620,8 @@ final class SpotActivation
         Message payload) {
         return host.actorAdmissions().admitSpotActor(
             request,
-            backendSpot.routingId(),
-            host.spotFor(backendSpot.routingId()),
+            backendSpot.spotId(),
+            host.spotFor(backendSpot.spotId()),
             actorId -> ZLinkHandlerStages.fromStageSupplier(() ->
                 (CompletionStage<ZLinkSpotActorJoinResponse>)
                 ((ZLinkSpot) spot).onActorJoin(
@@ -632,7 +632,7 @@ final class SpotActivation
             actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                 spot,
                 actor,
-                backendSpot.routingId(),
+                backendSpot.spotId(),
                 true));
     }
 

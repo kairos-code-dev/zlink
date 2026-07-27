@@ -1,5 +1,4 @@
-import type { RoutingId, SpotId } from '../Common';
-import type { ZLinkLocationAutoConnectType, ZLinkLocationKind, ZLinkLocationRole } from './Values';
+import type { RoutingId } from '../Common';
 
 export interface ZLinkLocationRuntimeStatus {
   readonly storeHealthy: boolean;
@@ -21,41 +20,29 @@ export enum ZLinkLocationTopologyState {
 }
 
 export interface ZLinkLocationTopologyFilter {
-  readonly kind?: ZLinkLocationKind;
   readonly meshName?: string;
-  readonly role?: ZLinkLocationRole;
   readonly nodeRid?: RoutingId;
   readonly state?: ZLinkLocationTopologyState;
 }
 
 export interface ZLinkLocationTopologyEntry {
-  readonly kind: ZLinkLocationKind;
-  readonly meshName?: string;
-  readonly role?: ZLinkLocationRole;
-  readonly nodeRid?: RoutingId;
-  readonly spotId?: SpotId;
-  readonly actorId?: string;
-  readonly endpoint?: string;
+  readonly meshName: string;
+  readonly nodeRid: RoutingId;
+  readonly endpoint: string;
+  readonly draining: boolean;
   readonly state: ZLinkLocationTopologyState;
-  readonly desiredCount: number;
-  readonly readyCount: number;
-  readonly errorCode: number;
   readonly updatedAt: Date;
 }
 
 export interface ZLinkLocationServiceSummaryFilter {
   readonly meshName?: string;
-  readonly autoConnectType?: ZLinkLocationAutoConnectType;
-  readonly role?: ZLinkLocationRole;
 }
 
 export interface ZLinkLocationServiceSummary {
   readonly meshName: string;
-  readonly autoConnectType: ZLinkLocationAutoConnectType;
-  readonly role: ZLinkLocationRole;
   readonly totalCount: number;
   readonly readyCount: number;
   readonly errorCount: number;
   readonly stoppedCount: number;
-  readonly updatedAt: Date;
+  readonly lastUpdatedAt: Date;
 }

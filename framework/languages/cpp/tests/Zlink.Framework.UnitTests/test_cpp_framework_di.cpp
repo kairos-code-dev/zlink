@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include <zlink/framework.hpp>
+#include "runtime/configuration/service_scope.hpp"
 
 #include <memory>
 
@@ -108,8 +109,9 @@ int main ()
     scoped_t::destroyed = 0;
     scoped_t *first_scope_instance = nullptr;
     {
-        auto scope = provider.create_scope (zlink::framework::service_scope_kind_t::stream_session);
-        if (scope.kind () != zlink::framework::service_scope_kind_t::stream_session) {
+        auto scope = zlink::framework::detail::service_scope_t::create (
+          provider, zlink::framework::detail::service_scope_kind_t::stream_session);
+        if (scope.kind () != zlink::framework::detail::service_scope_kind_t::stream_session) {
             return 5;
         }
         auto &scoped_a = scope.get_required<scoped_t> ();
@@ -124,9 +126,9 @@ int main ()
     }
 
     {
-        auto scope =
-          provider.create_scope (zlink::framework::service_scope_kind_t::spot_activation);
-        if (scope.kind () != zlink::framework::service_scope_kind_t::spot_activation) {
+        auto scope = zlink::framework::detail::service_scope_t::create (
+          provider, zlink::framework::detail::service_scope_kind_t::spot_activation);
+        if (scope.kind () != zlink::framework::detail::service_scope_kind_t::spot_activation) {
             return 8;
         }
         auto &scoped_c = scope.get_required<scoped_t> ();
@@ -136,11 +138,13 @@ int main ()
     }
 
     {
-        auto scope = provider.create_scope (zlink::framework::service_scope_kind_t::actor_creation);
+        auto scope = zlink::framework::detail::service_scope_t::create (
+          provider, zlink::framework::detail::service_scope_kind_t::actor_creation);
         (void) scope.get_required<scoped_t> ();
     }
     {
-        auto scope = provider.create_scope (zlink::framework::service_scope_kind_t::entry_spot);
+        auto scope = zlink::framework::detail::service_scope_t::create (
+          provider, zlink::framework::detail::service_scope_kind_t::entry_spot);
         (void) scope.get_required<scoped_t> ();
     }
 

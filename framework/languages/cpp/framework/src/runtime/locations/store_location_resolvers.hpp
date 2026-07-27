@@ -4,9 +4,9 @@
 #include <array>
 
 #include "runtime/locations/location_key_codec.hpp"
+#include "runtime/locations/actor_authority_payload.hpp"
 #include "runtime/locations/live_location_reader.hpp"
 #include "runtime/locations/location_runtime.hpp"
-#include "runtime/locations/location_value_codec.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
 
 #include <zlink/framework/contracts/locations/resolvers.hpp>
@@ -46,8 +46,7 @@ class actor_location_observer_t
     std::map<std::string, std::pair<std::uint64_t, std::uint64_t>> _generations;
 };
 
-class store_location_resolvers_t final : public peer_location_resolver_t,
-                                         public spot_address_resolver_t,
+class store_location_resolvers_t final : public spot_address_resolver_t,
                                          public actor_address_resolver_t,
                                          public location_readiness_t
 {
@@ -82,33 +81,64 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
     {
     }
 
-    task_t<std::vector<peer_location_t>> list_live_peers (peer_location_filter_t filter) override
+    task_t<std::vector<mesh_node_descriptor_t>>
+    list_live_mesh_nodes (std::string mesh_name)
     {
-        return completed (_store->list_peers (std::move (filter)).result ().value ());
+        std::vector<mesh_node_descriptor_t> descriptors;
+        location_page_request_t page;
+        do {
+            auto current = _store->list_mesh_nodes (mesh_name, page).result ().value ();
+            for (auto &descriptor : current.items) {
+                if (descriptor.state == framework_runtime_state_t::stopped
+                    || descriptor.state == framework_runtime_state_t::error)
+                    continue;
+                if (_store->owner_admission_lifetime (
+                      location_owner_token_t{descriptor.owner_id,
+                                             descriptor.lease_generation}))
+                    descriptors.push_back (std::move (descriptor));
+            }
+            page.continuation_token = current.continuation_token;
+        } while (page.continuation_token);
+        return completed (std::move (descriptors));
     }
 
     task_t<std::optional<spot_address_t>>
-    resolve_spot_address (std::string, std::string spot_id) override
+    resolve_spot_address (std::string mesh_name, std::string spot_id) override
     {
         if (auto cached = cached_route (_spot_routes, spot_id)) {
             return completed (std::optional<spot_address_t>{std::move (*cached)});
         }
-        auto row =
-          _store->resolve_spot (spot_location_key_t{std::move (spot_id)})
-            .result ()
-            .value ();
-        if (!row) {
-            return completed (std::optional<spot_address_t>{});
+        if (const auto authority = read_ready_authority (false, spot_id)) {
+            const auto projected_id = decode_spot_id (authority->payload);
+            if (!projected_id || *projected_id != spot_id)
+                return completed (std::optional<spot_address_t>{});
+            auto address = spot_address_t{
+              authority->allocation.target.mesh_name,
+              zlink::routing_id_t::from (
+                std::string (authority->allocation.target.node_rid.value ())),
+              *projected_id,
+              authority->object_generation};
+            apply_authority (address, *authority);
+            cache_ready_route (_spot_routes, spot_id, address);
+            return completed (std::optional<spot_address_t>{std::move (address)});
         }
-        auto address = spot_address_t{
-          row->mesh_name, row->node_rid, row->spot_id, row->spot_generation};
-        if (const auto authority = read_ready_authority (false, row->spot_id)) {
-            if (authority_matches (*authority, row->owner_id, row->mesh_name, row->node_rid)) {
-                apply_authority (address, *authority);
-            }
+        if (!mesh_name.empty ()) {
+            const auto descriptors =
+              _store->list_mesh_nodes (mesh_name, {}).result ().value ();
+            const auto found = std::find_if (
+              descriptors.items.begin (), descriptors.items.end (),
+              [&] (const mesh_node_descriptor_t &descriptor) {
+                  return descriptor.entry_spot_id
+                         && *descriptor.entry_spot_id == spot_id
+                         && descriptor.state != framework_runtime_state_t::stopped
+                         && descriptor.state != framework_runtime_state_t::error;
+              });
+            if (found != descriptors.items.end ())
+                return completed (std::optional<spot_address_t>{spot_address_t{
+                  found->mesh_name, found->rid, spot_id,
+                  found->lifecycle_generation}});
         }
-        cache_ready_route (_spot_routes, row->spot_id, address);
-        return completed (std::optional<spot_address_t>{std::move (address)});
+        return completed (std::optional<spot_address_t>{});
     }
 
     void invalidate_spot_address (std::string_view spot_id) override
@@ -149,19 +179,20 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         if (auto cached = cached_route (_actor_routes, actor_id)) {
             return completed (std::optional<spot_address_t>{std::move (*cached)});
         }
-        const auto row = _store->resolve_actor (
-          actor_location_key_t{_actor_mesh_name, actor_id}).result ().value ();
-        if (!row || !_actor_locations->accepts (*row)) {
+        const auto authority = read_ready_authority (true, actor_id);
+        if (!authority) {
             return completed (std::optional<spot_address_t>{});
         }
-        auto address = spot_address_t{row->mesh_name, row->owner_node_rid,
-                                      row->spot_id, row->spot_generation};
-        if (const auto authority = read_ready_authority (true, actor_id)) {
-            if (authority_matches (*authority, row->owner_id, row->mesh_name,
-                                   row->owner_node_rid)) {
-                apply_authority (address, *authority);
-            }
-        }
+        const auto projection = decode_actor_authority_payload (authority->payload);
+        if (!projection || projection->actor.actor_id () != actor_id)
+            return completed (std::optional<spot_address_t>{});
+        auto address = spot_address_t{
+          authority->allocation.target.mesh_name,
+          zlink::routing_id_t::from (
+            std::string (authority->allocation.target.node_rid.value ())),
+          projection->spot_id,
+          projection->spot_generation};
+        apply_authority (address, *authority);
         cache_ready_route (_actor_routes, actor_id, address);
         return completed (std::optional<spot_address_t>{std::move (address)});
     }
@@ -171,24 +202,17 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
                                 std::optional<zlink::routing_id_t> node_rid = std::nullopt) override
     {
         try {
-            auto peers = _store
-                           ->list_peers (peer_location_filter_t{
-                             .mesh_name = std::move (mesh_name), .role = role, .node_rid = node_rid})
-                           .result ()
-                           .value ();
-            return completed (std::any_of (peers.begin (), peers.end (),
-                                           [] (const peer_location_t &peer) {
-                                               return peer.weight != 0;
-                                           }));
+            auto descriptors = list_live_mesh_nodes (std::move (mesh_name)).result ().value ();
+            if (role != location_role_t::router && role != location_role_t::spot)
+                return completed (false);
+            return completed (std::any_of (
+              descriptors.begin (), descriptors.end (), [&] (const auto &descriptor) {
+                  return !node_rid || descriptor.rid.to_hex () == node_rid->to_hex ();
+              }));
         }
         catch (...) {
             return completed (false);
         }
-    }
-
-    task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key)
-    {
-        return completed (_store->resolve_route (std::move (key)).result ().value ());
     }
 
   private:
@@ -281,6 +305,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         std::uint64_t authority_owner_generation = 0;
         location_owner_token_t owner;
         placement_allocation_t allocation;
+        std::vector<std::byte> payload;
     };
 
     static std::string authority_key (char kind, std::string_view object_id)
@@ -332,7 +357,8 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
                                           snapshot->object_generation,
                                           snapshot->authority_owner_generation,
                                           snapshot->owner,
-                                          snapshot->allocation};
+                                          snapshot->allocation,
+                                          snapshot->payload};
         }
         return std::nullopt;
     }
@@ -356,36 +382,55 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         address.owner = authority.owner;
     }
 
+    static std::optional<std::string>
+    decode_spot_id (const std::vector<std::byte> &payload)
+    {
+        std::string text;
+        text.reserve (payload.size ());
+        for (const auto value : payload)
+            text.push_back (static_cast<char> (std::to_integer<unsigned char> (value)));
+        constexpr std::string_view user_prefix = "zlink:user-spot:ready:v1\n";
+        if (text.starts_with (user_prefix)) {
+            const auto type_end = text.find ('\n', user_prefix.size ());
+            if (type_end == std::string::npos)
+                return std::nullopt;
+            const auto id_end = text.find ('\n', type_end + 1);
+            if (id_end == std::string::npos || id_end == type_end + 1)
+                return std::nullopt;
+            return text.substr (type_end + 1, id_end - type_end - 1);
+        }
+        if (payload.size () < 5
+            || std::to_integer<unsigned char> (payload[0]) != 'Z'
+            || std::to_integer<unsigned char> (payload[1]) != 'L'
+            || std::to_integer<unsigned char> (payload[2]) != 'I'
+            || std::to_integer<unsigned char> (payload[3]) != 'R'
+            || std::to_integer<unsigned char> (payload[4]) != 1)
+            return std::nullopt;
+        std::size_t offset = 5;
+        const auto read_text = [&] () -> std::optional<std::string> {
+            if (offset + 4 > payload.size ())
+                return std::nullopt;
+            std::uint32_t size = 0;
+            for (int index = 0; index < 4; ++index)
+                size = (size << 8)
+                       | std::to_integer<std::uint8_t> (payload[offset++]);
+            if (offset + size > payload.size ())
+                return std::nullopt;
+            std::string value;
+            value.reserve (size);
+            for (std::uint32_t index = 0; index < size; ++index)
+                value.push_back (static_cast<char> (
+                  std::to_integer<unsigned char> (payload[offset++])));
+            return value;
+        };
+        if (!read_text ())
+            return std::nullopt;
+        return read_text ();
+    }
+
     template <typename T> static task_t<T> completed (T value)
     {
         return task_t<T> (result_t<T>::success (std::move (value)));
-    }
-
-    static std::optional<spot_address_t>
-    resolve_actor_row (live_location_reader_t &store,
-                       const std::string &mesh_name,
-                       const std::string &actor_id,
-                       const std::shared_ptr<actor_location_observer_t> &actor_locations)
-    {
-        auto row =
-          store.resolve_actor (actor_location_key_t{mesh_name, actor_id}).result ().value ();
-        if (!row || !actor_locations->accepts (*row)) {
-            return std::nullopt;
-        }
-        return spot_address_t{row->mesh_name, row->owner_node_rid, row->spot_id,
-                              row->spot_generation};
-    }
-
-    static std::optional<spot_address_t>
-    resolve_spot_row (live_location_reader_t &store, const std::string &spot_id)
-    {
-        auto row =
-          store.resolve_spot (spot_location_key_t{spot_id}).result ().value ();
-        if (!row) {
-            return std::nullopt;
-        }
-        return spot_address_t{row->mesh_name, row->node_rid, row->spot_id,
-                              row->spot_generation};
     }
 
     static std::string router_channel_for (const location_options_t &options,
@@ -449,181 +494,69 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         return completed (std::move (value));
     }
 
-    task_t<std::vector<peer_location_t>>
-    list_peer_locations (peer_location_filter_t filter) override
+    task_t<location_page_t<mesh_node_descriptor_t>>
+    list_mesh_node_descriptors (std::string mesh_name,
+                                location_page_request_t page = {}) override
     {
-        return completed (_store->list_peers (std::move (filter)).result ().value ());
-    }
-
-    task_t<location_page_t<spot_location_t>>
-    list_spot_locations (spot_location_filter_t filter, location_page_request_t page = {}) override
-    {
-        return completed (_store->list_spots (std::move (filter), page).result ().value ());
-    }
-
-    task_t<location_page_t<actor_location_t>>
-    list_actor_locations (actor_location_filter_t filter,
-                          location_page_request_t page = {}) override
-    {
-        auto result = _store->list_actors (std::move (filter), page).result ().value ();
-        std::erase_if (result.items,
-                       [actor_locations = _actor_locations] (const actor_location_t &row) {
-                           return !actor_locations->accepts (row);
-                       });
-        return completed (std::move (result));
-    }
-
-    task_t<location_page_t<route_location_t>>
-    list_route_locations (route_location_filter_t filter,
-                          location_page_request_t page = {}) override
-    {
-        return completed (_store->list_routes (std::move (filter), page).result ().value ());
+        return completed (
+          _store->list_mesh_nodes (std::move (mesh_name), page).result ().value ());
     }
 
     task_t<location_page_t<location_topology_entry_t>>
     list_topology (location_topology_filter_t filter, location_page_request_t page = {}) override
     {
-        const auto kind = filter.kind.value_or (location_kind_t::peer);
-        if (kind == location_kind_t::peer) {
-            auto rows = _store
-                          ->list_raw_peers (peer_location_filter_t{
-                            .mesh_name = filter.mesh_name,
-                            .role = filter.role,
-                            .node_rid = filter.node_rid})
-                          .result ()
-                          .value ();
-            std::vector<location_topology_entry_t> entries;
-            entries.reserve (rows.size ());
-            const auto live_owners = _store->live_owner_ids ();
-            for (const auto &row : rows) {
-                const auto live = live_owners.contains (row.owner_id);
-                location_topology_entry_t entry{
-                  .kind = location_kind_t::peer,
-                  .mesh_name = row.mesh_name,
-                  .role = row.role,
-                  .node_rid = row.node_rid,
-                  .endpoint = row.endpoint,
-                  .state = live ? location_topology_state_t::ready
-                                : location_topology_state_t::lost,
-                  .desired_count = 1,
-                  .ready_count = live ? 1u : 0u,
-                  .updated_at = row.updated_at};
-                if (matches (entry, filter)) {
-                    entries.push_back (std::move (entry));
-                }
-            }
-            return completed (page_in_memory (std::move (entries), page));
+        auto rows = _store->list_mesh_nodes (filter.mesh_name.value_or (""), {}).result ().value ();
+        std::vector<location_topology_entry_t> entries;
+        entries.reserve (rows.items.size ());
+        for (const auto &row : rows.items) {
+            const auto state = topology_state (row.state);
+            location_topology_entry_t entry{
+              .mesh_name = row.mesh_name,
+              .node_rid = row.rid,
+              .endpoint = row.endpoint,
+              .draining = row.state == framework_runtime_state_t::draining,
+              .state = state,
+              .updated_at = row.updated_at};
+            if (matches (entry, filter))
+                entries.push_back (std::move (entry));
         }
-        if (kind == location_kind_t::spot) {
-            auto rows = _store
-                          ->list_raw_spots (spot_location_filter_t{
-                                             .mesh_name = filter.mesh_name,
-                                             .node_rid = filter.node_rid},
-                                           page)
-                          .result ()
-                          .value ();
-            const auto live_owners = _store->live_owner_ids ();
-            return completed (project_page (
-              std::move (rows), filter, [&live_owners] (const spot_location_t &row) {
-                  const auto live = live_owners.contains (row.owner_id);
-                  return location_topology_entry_t{
-                    .kind = location_kind_t::spot,
-                    .mesh_name = row.mesh_name,
-                    .node_rid = row.node_rid,
-                    .spot_id = row.spot_id,
-                    .endpoint = row.route_endpoint,
-                    .state = live ? location_topology_state_t::ready
-                                  : location_topology_state_t::lost,
-                    .desired_count = 1,
-                    .ready_count = live ? 1u : 0u,
-                    .updated_at = row.updated_at};
-              }));
-        }
-        if (kind == location_kind_t::actor) {
-            auto rows = _store
-                          ->list_raw_actors (
-                            actor_location_filter_t{.mesh_name = filter.mesh_name,
-                                                    .owner_node_rid = filter.node_rid},
-                                            page)
-                          .result ()
-                          .value ();
-            std::erase_if (rows.items, [this] (const actor_location_t &row) {
-                return row.actor_ref.empty () || !_actor_locations->accepts (row);
-            });
-            const auto live_owners = _store->live_owner_ids ();
-            return completed (project_page (
-              std::move (rows), filter, [&live_owners] (const actor_location_t &row) {
-                  const auto live = live_owners.contains (row.owner_id);
-                  return location_topology_entry_t{
-                    .kind = location_kind_t::actor,
-                    .mesh_name = row.mesh_name,
-                    .node_rid = row.owner_node_rid,
-                    .spot_id = row.spot_id,
-                    .actor_id = row.actor_id,
-                    .state = live ? location_topology_state_t::ready
-                                  : location_topology_state_t::lost,
-                    .desired_count = 1,
-                    .ready_count = live ? 1u : 0u,
-                    .updated_at = row.updated_at};
-              }));
-        }
-        auto rows = _store
-                      ->list_raw_routes (route_location_filter_t{.owner_node_rid = filter.node_rid},
-                                        page)
-                      .result ()
-                      .value ();
-        const auto live_owners = _store->live_owner_ids ();
-        return completed (project_page (
-          std::move (rows), filter, [&live_owners] (const route_location_t &row) {
-              const auto live = live_owners.contains (row.owner_id);
-              return location_topology_entry_t{
-                .kind = location_kind_t::route,
-                .node_rid = row.owner_node_rid,
-                .state = live ? location_topology_state_t::ready
-                              : location_topology_state_t::lost,
-                .desired_count = 1,
-                .ready_count = live ? 1u : 0u,
-                .updated_at = row.updated_at};
-          }));
+        return completed (page_in_memory (std::move (entries), page));
     }
 
-    task_t<std::vector<location_service_summary_t>>
-    list_service_summaries (location_service_summary_filter_t filter) override
+    task_t<location_page_t<location_service_summary_t>>
+    list_service_summaries (location_service_summary_filter_t filter,
+                            location_page_request_t page = {}) override
     {
-        auto peers = _store->list_raw_peers (peer_location_filter_t{}).result ().value ();
-        const auto live_owners = _store->live_owner_ids ();
+        auto descriptors =
+          _store->list_mesh_nodes (filter.mesh_name.value_or (""), {}).result ().value ();
         std::map<std::string, location_service_summary_t> grouped;
-        for (const auto &peer : peers) {
-            if (filter.mesh_name && peer.mesh_name != *filter.mesh_name) {
-                continue;
-            }
-            if (filter.auto_connect_type && peer.auto_connect_type != *filter.auto_connect_type) {
-                continue;
-            }
-            if (filter.role && peer.role != *filter.role) {
-                continue;
-            }
-            const auto key = peer.mesh_name + "|"
-                             + location_value_codec_t::to_canonical_string (
-                               peer.auto_connect_type)
-                             + "|" + location_value_codec_t::to_canonical_string (peer.role);
-            auto &summary = grouped[key];
-            summary.mesh_name = peer.mesh_name;
-            summary.auto_connect_type = peer.auto_connect_type;
-            summary.role = peer.role;
+        for (const auto &descriptor : descriptors.items) {
+            auto &summary = grouped[descriptor.mesh_name];
+            summary.mesh_name = descriptor.mesh_name;
             ++summary.total_count;
-            if (live_owners.contains (peer.owner_id)) {
-                ++summary.ready_count;
-            } else {
-                ++summary.lost_count;
+            switch (topology_state (descriptor.state)) {
+                case location_topology_state_t::ready:
+                    ++summary.ready_count;
+                    break;
+                case location_topology_state_t::error:
+                case location_topology_state_t::lost:
+                    ++summary.error_count;
+                    break;
+                case location_topology_state_t::stopped:
+                    ++summary.stopped_count;
+                    break;
+                default:
+                    break;
             }
+            summary.last_updated_at =
+              std::max (summary.last_updated_at, descriptor.updated_at);
         }
         std::vector<location_service_summary_t> result;
         result.reserve (grouped.size ());
         for (auto &[_, summary] : grouped) {
             result.push_back (std::move (summary));
         }
-        return completed (std::move (result));
+        return completed (page_in_memory (std::move (result), page));
     }
 
   private:
@@ -641,18 +574,31 @@ class store_location_runtime_query_t final : public location_runtime_query_t
     static bool matches (const location_topology_entry_t &entry,
                          const location_topology_filter_t &filter)
     {
-        return (!filter.kind || entry.kind == *filter.kind)
-               && (!filter.mesh_name || (entry.mesh_name && *entry.mesh_name == *filter.mesh_name))
-               && (!filter.role || (entry.role && *entry.role == *filter.role))
-               && (!filter.node_rid || (entry.node_rid && *entry.node_rid == *filter.node_rid))
+        return (!filter.mesh_name || entry.mesh_name == *filter.mesh_name)
+               && (!filter.node_rid || entry.node_rid == *filter.node_rid)
                && (!filter.state || entry.state == *filter.state);
     }
 
-    static location_page_t<location_topology_entry_t>
-    page_in_memory (std::vector<location_topology_entry_t> entries,
-                    const location_page_request_t &page)
+    static location_topology_state_t topology_state (framework_runtime_state_t state)
     {
-        location_page_t<location_topology_entry_t> result;
+        switch (state) {
+            case framework_runtime_state_t::serving:
+            case framework_runtime_state_t::draining:
+                return location_topology_state_t::ready;
+            case framework_runtime_state_t::stopped:
+                return location_topology_state_t::stopped;
+            case framework_runtime_state_t::error:
+                return location_topology_state_t::error;
+            default:
+                return location_topology_state_t::discovered;
+        }
+    }
+
+    template <typename T>
+    static location_page_t<T>
+    page_in_memory (std::vector<T> entries, const location_page_request_t &page)
+    {
+        location_page_t<T> result;
         const auto offset = page.continuation_token ? parse_offset (*page.continuation_token) : 0;
         const auto page_size =
           page.page_size > 0 ? static_cast<std::size_t> (page.page_size) : entries.size ();
@@ -662,24 +608,6 @@ class store_location_runtime_query_t final : public location_runtime_query_t
         const auto next = offset + result.items.size ();
         if (next < entries.size ()) {
             result.continuation_token = std::to_string (next);
-        }
-        return result;
-    }
-
-    template <typename TRow, typename Project>
-    static location_page_t<location_topology_entry_t>
-    project_page (location_page_t<TRow> rows,
-                  const location_topology_filter_t &filter,
-                  Project project)
-    {
-        location_page_t<location_topology_entry_t> result;
-        result.continuation_token = std::move (rows.continuation_token);
-        result.items.reserve (rows.items.size ());
-        for (const auto &row : rows.items) {
-            auto entry = project (row);
-            if (matches (entry, filter)) {
-                result.items.push_back (std::move (entry));
-            }
         }
         return result;
     }

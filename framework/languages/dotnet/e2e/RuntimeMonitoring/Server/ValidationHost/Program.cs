@@ -26,15 +26,6 @@ switch (validationCase)
             monitor.AddSocketEvents("duplicate.server");
         });
         break;
-    case "zero-interval":
-        builder.Services.AddZLinkMonitoring(monitor =>
-            monitor.AddSpotEvents("spot", TimeSpan.Zero));
-        break;
-    case "missing-spot":
-        builder.Services.AddZLinkFramework(_ => { });
-        builder.Services.AddZLinkMonitoring(monitor =>
-            monitor.AddSpotEvents("missing.spot", TimeSpan.FromMilliseconds(100)));
-        break;
     case "missing-socket":
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -64,7 +55,7 @@ static string PickTcpEndpoint()
 
 internal sealed class ValidationRequestHandler : IZLinkRequestHandler<ProfileReq, ProfileRes>
 {
-    public ValueTask<ProfileRes> HandleAsync(ProfileReq request, ZLinkRequestContext context,
+    public ValueTask<ProfileRes> HandleAsync(ProfileReq request, IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         _ = context;

@@ -11,8 +11,8 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 
 import systems.zlink.framework.streams.ZLinkSessionClient;

@@ -1,23 +1,23 @@
 package systems.zlink.framework.runtime.internal.backend;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
 
 import java.util.List;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ActorTransferId;
-import systems.zlink.contracts.service.spot.ActorTransferPrepare;
-import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
-import systems.zlink.contracts.service.spot.ActorTransferToken;
-import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferId;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepare;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepareResult;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferToken;
+import systems.zlink.framework.runtime.internal.binding.spot.PrepareActorTransferResult;
 import systems.zlink.contracts.sockets.SendFlags;
 
 

@@ -81,6 +81,11 @@ export type ZLinkAuthorityMutation =
       readonly targetOwner?: ZLinkLocationOwnerToken;
       readonly relocationCapacityFence?: ZLinkRelocationCapacityFence;
     }
+  | {
+      readonly kind: 'restore';
+      readonly payload: Uint8Array;
+      readonly expectedOwner: ZLinkLocationOwnerToken;
+    }
   | { readonly kind: 'delete' };
 
 export type ZLinkAuthorityCompareExchangeResult =
@@ -119,25 +124,6 @@ export interface ZLinkAuthorityPage {
 export type ZLinkAuthorityScanResult =
   | ZLinkAuthorityPage
   | { readonly kind: 'scanExpired' };
-
-export interface ZLinkAuthorityStore {
-  readAuthority(
-    key: ZLinkAuthorityKey,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityReadResult>;
-  compareExchangeAuthority(
-    key: ZLinkAuthorityKey,
-    expectedStoreVersion: ZLinkAuthorityStoreVersion,
-    mutation: ZLinkAuthorityMutation,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityCompareExchangeResult>;
-  listAuthorities(
-    prefix: string,
-    cursor: ZLinkAuthorityScanCursor | undefined,
-    limit: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityScanResult>;
-}
 
 export interface ZLinkObjectCreationKey {
   readonly kind: ZLinkPlacementObjectKind;
@@ -303,17 +289,6 @@ export type ZLinkRelocationCapacityAbortResult =
   | 'alreadyCommitted'
   | 'stale';
 
-export interface ZLinkRelocationCapacityStore {
-  reserveRelocationCapacity(
-    request: ZLinkRelocationCapacityReservationRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationCapacityReserveResult>;
-  abortRelocationCapacity(
-    fence: ZLinkRelocationCapacityFence,
-    signal?: AbortSignal
-  ): Promise<ZLinkRelocationCapacityAbortResult>;
-}
-
 export interface ZLinkAggregateId {
   readonly value: string;
   readonly [zlinkAggregateIdBrand]: true;
@@ -360,38 +335,3 @@ export type ZLinkAggregateAbortResult =
   | { readonly kind: 'aborted' }
   | { readonly kind: 'alreadyAborted' }
   | { readonly kind: 'stale' };
-
-export interface ZLinkObjectCreationStore {
-  readCreationTerminal(
-    operation: ZLinkCreationOperationIdentity,
-    signal?: AbortSignal
-  ): Promise<ZLinkCreationTerminalReadResult>;
-  reserve(
-    request: ZLinkObjectReserveRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkObjectReserveResult>;
-  commit(
-    request: ZLinkObjectCommitRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkObjectCommitResult>;
-  completeCreation(
-    request: ZLinkObjectCreationCompleteRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkObjectCreationCompleteResult>;
-  abort(
-    request: ZLinkObjectAbortRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkObjectAbortResult>;
-  prepareAggregate(
-    request: ZLinkAggregatePrepareRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkAggregatePrepareResult>;
-  commitAggregate(
-    fence: ZLinkAggregateFence,
-    signal?: AbortSignal
-  ): Promise<ZLinkAggregateCommitResult>;
-  abortAggregate(
-    fence: ZLinkAggregateFence,
-    signal?: AbortSignal
-  ): Promise<ZLinkAggregateAbortResult>;
-}

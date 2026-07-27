@@ -60,6 +60,13 @@ barrier 진행을 막는 claim을 갖지 않는다.
 
 Store-backed object coordinator는 provider가 발급한 값을 역할별로 분리한다.
 
+.NET runtime은 authority payload를 decode한 Spot·Actor location projection과 그 lookup key를 internal type으로
+공유한다. 이 projection은 application이나 외부 Location Store provider가 구현할 계약이 아니다. 공식 Redis
+extension은 `Zlink.Framework`의 friend assembly로 지정되어 같은 internal representation을 사용하므로 중복 DTO나
+public pass-through interface를 만들지 않는다. Auto-connect channel kind도 registration과 planner 사이에서만 사용하는
+internal type이다. 외부 provider가 구현하는 공개 경계는 `IZLinkLocationStore`의 descriptor·authority operation이며,
+operational readiness가 받는 `ZLinkLocationRole`만 공개 계약으로 유지한다.
+
 | 값 | 역할 |
 |---|---|
 | `StoreVersion` | expected-version CAS와 read snapshot 구분 |
@@ -276,6 +283,13 @@ Durable source cleanup은 source callback·scope, old Entry membership, particip
 authority에 기록한다. `relocationComplete`는 이 state가 terminal임을 확인한 뒤 target finalization을 한 번 알린다.
 Current source lease가 끝났으면 recovery coordinator가 exact immutable source token을 확인하고
 `SourceLeaseExpired`를 기록할 수 있다.
+
+Relocation root를 게시하기 전 `Preparing` authority만 남고 source lease가 끝난 경우 recovery coordinator는
+steady payload와 authority snapshot의 exact `StoreVersion`·stored owner token을 확인한다. 그 뒤
+`ZLinkAuthorityMutation.Restore`로 opaque payload만 교체한다. Location Store는 이 mutation에서 live lease를
+요구하지 않지만 owner·allocation·object generation과 authority owner generation을 그대로 유지한다. 따라서
+provider는 `Preparing` phase나 payload encoding을 알 필요가 없고, concurrent authority 변경은 StoreVersion 또는
+owner mismatch로 거부된다.
 
 Host deadline에 도달하면 local resource를 bounded teardown하지만 committed relocation을 source로 rollback하지
 않는다. Current authority와 relocation root가 남아 있으면 다른 coordinator가 recovery를 이어간다. Cleanup과

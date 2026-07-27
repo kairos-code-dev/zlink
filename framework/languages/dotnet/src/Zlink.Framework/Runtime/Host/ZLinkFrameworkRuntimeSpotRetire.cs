@@ -29,7 +29,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         return false;
     }
 
-    internal async ValueTask<ZLinkRelocationReplyAckState> RelaySpotReplyAsync(
+    internal async ValueTask<ZLinkRelocationReplyAckState> RelayRelocationReplyAsync(
         RoutingId sourceNodeRid,
         ZLinkServiceWireCodec.ReplyRelayRecord relay,
         ZLinkServiceWireCodec.RequestSourceFence expectedSource,
@@ -208,7 +208,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 targetOwnerGeneration,
                 request.MeshName,
                 request.TargetNodeLifecycleGeneration,
-                request.TargetOwnerLeaseGeneration);
+                request.TargetOwnerLeaseGeneration,
+                request.TargetAttemptGeneration);
         }
         catch
         {
@@ -661,7 +662,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         try
         {
-            return await RelaySpotReplyAsync(
+            return await RelayRelocationReplyAsync(
                     sourceNodeRid,
                     relay,
                     new ZLinkServiceWireCodec.RequestSourceFence(
@@ -685,7 +686,7 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private async ValueTask<ZLinkServiceWireCodec.ReplyRelayRecord>
         CreateCanonicalReplyRelayAsync(
-            IZLinkAuthorityStore authorityStore,
+            IZLinkLocationStore authorityStore,
             TargetStage stage,
             ZLinkRelocationParticipantEnvelope participant,
             ZLinkCanonicalAcceptedRequest request,
@@ -702,6 +703,19 @@ internal sealed partial class ZLinkFrameworkRuntime
         var targetOwner = LocationLifecycle?.OwnerToken
                           ?? throw new ZLinkConfigurationException(
                               "Location runtime is not registered.");
+        if (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                found.Snapshot.Payload.Span,
+                out var canonical)
+            || !IsExactCanonicalReplyRelayTarget(
+                canonical,
+                stage.Envelope.CanonicalRelocationHigh,
+                stage.Envelope.CanonicalRelocationLow,
+                stage.TargetAttemptGeneration,
+                stage.Node.Node.RoutingId,
+                stage.TargetNodeLifecycleGeneration,
+                targetOwner))
+            throw new ZLinkRelocationDataLostException(
+                "The canonical reply relay target attempt does not match durable authority.");
         return new ZLinkServiceWireCodec.ReplyRelayRecord(
             new MeshOperationId(
                 completion.OperationHigh,
@@ -710,7 +724,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             new ZLinkServiceWireCodec.RelocationWireId(
                 stage.Envelope.CanonicalRelocationHigh,
                 stage.Envelope.CanonicalRelocationLow),
-            stage.TargetNodeLifecycleGeneration,
+            canonical.TargetAttemptGeneration,
             new ZLinkServiceWireCodec.RelocationCoordinatorFence(
                 targetOwner.OwnerId,
                 checked((ulong)targetOwner.LeaseGeneration),
@@ -722,6 +736,25 @@ internal sealed partial class ZLinkFrameworkRuntime
             completion.TerminalResult,
             (ServiceWireConstants.FrameworkErrorCode)completion.ErrorCode);
     }
+
+    internal static bool IsExactCanonicalReplyRelayTarget(
+        ZLinkCanonicalRelocationAuthorityProjection canonical,
+        ulong relocationHigh,
+        ulong relocationLow,
+        ulong targetAttemptGeneration,
+        RoutingId targetNodeRid,
+        ulong targetNodeGeneration,
+        ZLinkLocationOwnerToken targetOwner) =>
+        targetAttemptGeneration != 0
+        && canonical.TargetAttemptGeneration == targetAttemptGeneration
+        && canonical.RelocationHigh == relocationHigh
+        && canonical.RelocationLow == relocationLow
+        && canonical.State.TargetNodeRid == targetNodeRid.ToHex()
+        && canonical.State.TargetNodeGeneration == targetNodeGeneration
+        && canonical.TargetOwnerId == targetOwner.OwnerId
+        && targetOwner.LeaseGeneration > 0
+        && canonical.TargetOwnerLeaseGeneration
+           == checked((ulong)targetOwner.LeaseGeneration);
 
     internal static bool IsExactSourceLeaseExpired(
         ZLinkOwnerLeaseReadResult lease,

@@ -14,8 +14,7 @@ import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
@@ -177,15 +176,6 @@ public class ZLinkFrameworkAutoConfiguration {
     @Bean
     @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean
-    public ZLinkAllocatedRoutingIdProvider zlinkAllocatedRoutingIdProvider(
-        ZLinkFrameworkLifecycle lifecycle) {
-        return groupName -> lifecycle.allocatedRoutingIds()
-            .waitForReadyAllocation(groupName);
-    }
-
-    @Bean
-    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
-    @ConditionalOnMissingBean
     public systems.zlink.framework.spots.SpotHandleResolver zlinkSpotHandleResolver(
         ZLinkFrameworkLifecycle lifecycle) {
         return new systems.zlink.framework.spots.SpotHandleResolver() {
@@ -214,21 +204,13 @@ public class ZLinkFrameworkAutoConfiguration {
         return actorId -> lifecycle.actorSpotHandleResolver().resolveActorSpotHandle(actorId);
     }
 
-    @Bean
-    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
-    @ConditionalOnMissingBean
-    public systems.zlink.framework.monitoring.ZLinkDrainControl zlinkDrainControl(
-        ZLinkFrameworkLifecycle lifecycle) {
-        return lifecycle;
-    }
-
     @Bean("zlinkDrainReadiness")
     @ConditionalOnClass(name = "org.springframework.boot.actuate.health.HealthIndicator")
-    @ConditionalOnBean(systems.zlink.framework.monitoring.ZLinkDrainControl.class)
+    @ConditionalOnBean(ZLinkFrameworkLifecycle.class)
     @ConditionalOnMissingBean(name = "zlinkDrainReadiness")
     public ZLinkDrainReadinessContributor zlinkDrainReadinessContributor(
-        systems.zlink.framework.monitoring.ZLinkDrainControl drainControl) {
-        return new ZLinkDrainReadinessContributor(drainControl);
+        ZLinkFrameworkLifecycle lifecycle) {
+        return new ZLinkDrainReadinessContributor(lifecycle);
     }
 
 }

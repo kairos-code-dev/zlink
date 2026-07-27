@@ -43,7 +43,7 @@ class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
   constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
   async handle(message: ReportNodeStatusMsg, _context: ZLinkSendContext): Promise<void> {
-    console.log(`node status received node=${message.nodeId} rid=${message.nodeRid}`);
+    console.log(`node status received node=${message.nodeId}`);
     this.consoles.publish(this.nodes.report(message));
   }
 }

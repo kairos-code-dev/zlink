@@ -1,8 +1,8 @@
 import type {
   Type,
   ZLinkMessageContext,
-  ZLinkProviderResolver
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 
 export interface ZLinkHandlerFilterScopeResolver {
   resolve<T>(type: Type<T>): Promise<T>;

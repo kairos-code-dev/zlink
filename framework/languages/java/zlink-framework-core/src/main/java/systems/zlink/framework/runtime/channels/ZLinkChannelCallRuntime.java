@@ -20,11 +20,11 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 

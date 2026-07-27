@@ -9,7 +9,10 @@ internal sealed class ZLinkSpotActorFrame(
     uint flags,
     ZLinkBackendActorRouteContext routeContext,
     ZlinkStreamHeader header,
-    Message body) : IDisposable
+    Message body,
+    ulong sourceNodeGeneration = 0,
+    ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null) : IDisposable
 {
     private Message? _body = body;
 
@@ -25,7 +28,26 @@ internal sealed class ZLinkSpotActorFrame(
 
     public uint Flags { get; } = flags;
 
-    public ZLinkBackendActorRouteContext RouteContext { get; } = routeContext;
+    public ZLinkBackendActorRouteContext RouteContext { get; private set; } = routeContext;
+
+    public ulong SourceNodeGeneration { get; } = sourceNodeGeneration;
+
+    public ZLinkServiceWireCodec.RequestSourceFence? RequestSource { get; } =
+        requestSource;
+
+    public Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? DirectReply { get; } =
+        directReply;
+
+    public ulong RelocationReplyRouteId { get; private set; }
+
+    internal void BindRelocationReplyRoute(ulong replyRouteId)
+    {
+        if (replyRouteId == 0 || RelocationReplyRouteId != 0)
+            throw new InvalidOperationException(
+                "The Actor frame relocation reply route is invalid.");
+        RelocationReplyRouteId = replyRouteId;
+        RouteContext = RouteContext with { ReplyRequestId = replyRouteId };
+    }
 
     public ZlinkStreamHeader Header { get; } = header;
 
@@ -106,7 +128,10 @@ internal static class ZLinkSpotActorFrameReader
             headerPart.Flags,
             headerPart.RouteContext,
             header,
-            body);
+            body,
+            headerPart.SourceNodeGeneration,
+            headerPart.RequestSource,
+            headerPart.DirectReply);
         return true;
     }
 

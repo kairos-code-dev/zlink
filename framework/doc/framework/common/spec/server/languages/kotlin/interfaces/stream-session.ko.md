@@ -21,7 +21,7 @@ Java `ZLinkSessionActor.notifyDisconnected()`는 connection이 유지된 상태�
 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic all-settled 통지를 수행하고
 exact binding identity마다 Spot callback을 최대 한 번 실행한다. Relocation route update는 같은
 ObjectGeneration에만 허용하고 callback·journal replay, durable source cleanup과 `Completed` 뒤 해당
-Actor route만 바꾼다. Command 44·45 routed ACK와 steady normalization 전에는 target session packet·push
+Actor route만 바꾼다. Route 전환이 양쪽 runtime에서 확인되고 steady route가 확정되기 전에는 target session packet·push
 admission을 열지 않으며 같은 Session의 다른 Actor route와 physical STREAM connection은 유지한다.
 
 ## Kotlin source signature

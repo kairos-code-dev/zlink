@@ -19,12 +19,12 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorUnbindOperation;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorBindOperation;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorUnbindOperation;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamErrorHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamPacketHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 

@@ -33,7 +33,7 @@ internal static class SessionHostFactory
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.ConfigureDispatch().MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            framework.ConfigureDispatch().MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(SessionHostFactory));
@@ -49,9 +49,9 @@ internal static class SessionHostFactory
         var app = builder.Build();
         _ = app.Services.GetRequiredService<MetricEvidenceCollector>();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
-        app.MapPost("/message-flow/off", (IZLinkMessageFlowControl flow) =>
+        app.MapPost("/message-flow/off", (IZLinkMessageFlowRuntime flow) =>
         {
-            flow.SetMessageFlowMode(ZLinkMessageFlowLogMode.Off);
+            flow.Mode = ZLinkRuntimeMessageFlowMode.Off;
             return Results.Ok(new { mode = "off" });
         });
         app.MapGet("/evidence", async (

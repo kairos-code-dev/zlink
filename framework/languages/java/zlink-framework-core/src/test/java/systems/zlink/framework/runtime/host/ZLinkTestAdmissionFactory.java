@@ -5,8 +5,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.time.Duration;
 import java.util.function.Consumer;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 
 public final class ZLinkTestAdmissionFactory {
     public interface Backend {

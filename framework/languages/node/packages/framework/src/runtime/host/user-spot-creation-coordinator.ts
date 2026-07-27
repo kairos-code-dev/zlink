@@ -3,12 +3,11 @@ import type {
   RoutingId,
   SpotRef,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore,
   ZLinkLocationOwnerToken,
-  ZLinkObjectCreationStore,
   ZLinkObjectReserveResult,
   ZLinkSpotCreateResult
 } from '../../contracts';
+import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,

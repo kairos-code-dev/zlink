@@ -192,7 +192,6 @@ Module({
         builder
           .addRouteMesh('to-actor')
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .addEntrySpot(TestEntrySpot)
           .actorFactory('test-actor', TestActorFactory)
           .channelName('to-actor');

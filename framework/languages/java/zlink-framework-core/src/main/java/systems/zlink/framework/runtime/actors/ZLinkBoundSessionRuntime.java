@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.util.EnumSet;
 import java.util.List;

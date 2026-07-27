@@ -2,6 +2,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
+const internalEvents = require('../../packages/framework/dist/runtime/diagnostics/internal-event-contracts');
+const spotContextRuntime = require('../../packages/framework/dist/runtime/spots/spot-context');
+const spotTimerRuntime = require('../../packages/framework/dist/runtime/spots/spot-timer');
 
 test('runtime event publisher continues after a monitoring handler fails', async () => {
   const events = [];
@@ -33,7 +36,7 @@ test('socket monitoring source maps backend raw events into framework typed even
   );
 
   await source.publish({
-    nativeEvent: framework.ZLinkSocketNativeEventType.Connected,
+    nativeEvent: internalEvents.ZLinkSocketNativeEventType.Connected,
     routingId: 'peer-a',
     localAddr: 'tcp://local',
     remoteAddr: 'tcp://remote',
@@ -44,7 +47,7 @@ test('socket monitoring source maps backend raw events into framework typed even
     toString() { return 'opaque backend object'; }
   };
   await source.publish({
-    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    nativeEvent: internalEvents.ZLinkSocketNativeEventType.ConnectionReady,
     routingId: opaqueRoutingId,
     localAddr: 'tcp://local',
     remoteAddr: 'tcp://remote',
@@ -56,8 +59,6 @@ test('socket monitoring source maps backend raw events into framework typed even
   assert.equal(events[0].event, framework.ZLinkSocketEventKind.ConnectionReady);
   assert.equal(events[0].routingId, '706565722d61');
   assert.equal(typeof events[0].routingId, 'string');
-  assert.equal(events[0].diagnostic.nativeEvent, framework.ZLinkSocketNativeEventType.ConnectionReady);
-  assert.equal(events[0].diagnostic.nativeValue, 2);
 });
 
 test('location runtime monitoring source publishes snapshot changes and suppresses unchanged polls', async () => {
@@ -82,16 +83,14 @@ test('location runtime monitoring source publishes snapshot changes and suppress
         return { items: [locationTopologyEntry(readyCount)] };
       },
       async listServiceSummaries() {
-        return [{
+        return { items: [{
           meshName: 'api',
-          autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
-          role: framework.ZLinkLocationRole.Router,
           totalCount: 1,
           readyCount,
           errorCount: 0,
           stoppedCount: 0,
-          updatedAt: new Date(readyCount)
-        }];
+          lastUpdatedAt: new Date(readyCount)
+        }] };
       },
       async listPeerLocations() {
         return [];
@@ -142,7 +141,7 @@ test('location runtime monitoring source publishes StoreFailure and StoreRecover
       };
     },
     async listTopology() { return { items: [] }; },
-    async listServiceSummaries() { return []; }
+    async listServiceSummaries() { return { items: [] }; }
   };
   const source = new framework.ZLinkLocationRuntimeMonitoringSource(
     { sourceName: 'location-runtime', intervalMs: 1000 },
@@ -188,10 +187,10 @@ test('location monitoring event emitter publishes registered row and resolve-mis
   await Promise.resolve();
 
   assert.deepEqual(events.map((event) => [event.sourceName, event.event]), [
-    ['location-peer', framework.ZLinkLocationPeerEventKind.RowUpdated],
-    ['location-spot', framework.ZLinkLocationSpotEventKind.ResolveMiss],
-    ['location-actor', framework.ZLinkLocationActorEventKind.ResolveMiss],
-    ['location-route', framework.ZLinkLocationRouteEventKind.RowRemoved]
+    ['location-peer', internalEvents.ZLinkLocationPeerEventKind.RowUpdated],
+    ['location-spot', internalEvents.ZLinkLocationSpotEventKind.ResolveMiss],
+    ['location-actor', internalEvents.ZLinkLocationActorEventKind.ResolveMiss],
+    ['location-route', internalEvents.ZLinkLocationRouteEventKind.RowRemoved]
   ]);
   assert.equal(events[0].peer.endpoint, 'tcp://127.0.0.1:7001');
   assert.equal(events[1].key.meshName, 'game');
@@ -199,133 +198,127 @@ test('location monitoring event emitter publishes registered row and resolve-mis
   assert.equal(events[3].key.routeKey, 'api');
 });
 
-test('mesh monitoring source adapts formal peer endpoint into the public spot event contract', async () => {
+test('continuing spot timer publishes one TimerHandlerFailed event with its SpotId', async () => {
   const events = [];
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
   publisher.register({ async handle(event) { events.push(event); } });
-  const source = new framework.ZLinkMeshMonitoringSource(
-    { sourceName: 'room-route-mesh', intervalMs: 1000 },
+  class IdleTimerHandler {}
+  const timer = new framework.ZLinkManagedTimer(
+    'idle',
+    5,
     {
-      status() {
-        return {
-          state: 2,
-          routingId: 'room-node',
-          meshName: 'room',
-          localEndpoint: 'tcp://room',
-          lifecycleGeneration: 1n,
-          descriptorRevision: 1n,
-          channelCount: 1,
-          configuredPeerCount: 1,
-          admittedPeerCount: 1,
-          drainingPeerCount: 0,
-          pendingApplicationMessages: 0n,
-          pendingInfrastructureMessages: 0n,
-          pendingBytes: 0n,
-          lastError: 0,
-          lastChangedMs: 2n
-        };
-      },
-      peers() {
-        return [{
-          connectionIntentId: 1n,
-          source: framework.ZLinkSpotPeerSource.Manual,
-          state: 3,
-          routingId: 'play-node',
-          lifecycleGeneration: 1n,
-          descriptorRevision: 1n,
-          endpoint: 'tcp://play',
-          channelCount: 1,
-          lastError: 0,
-          lastChangedMs: 2n
-        }];
-      },
-      peerChannels() {
-        return { names: ['bingo.room'], weights: [3] };
-      }
+      overrunPolicy: framework.ZLinkTimerOverrunPolicy.DelayNextTick,
+      maxCatchUpTicks: 1,
+      stopOnUnhandledException: false
     },
-    publisher,
-    { meshChannels: { 'bingo.room': { weight: 2 } } }
+    async () => {
+      throw new TypeError('timer failed');
+    },
+    spotTimerRuntime.createTimerDiagnostics(
+      'stage-node',
+      'stage-entry-550e8400-e29b-41d4-a716-446655440000',
+      true,
+      'idle',
+      IdleTimerHandler,
+      publisher
+    )
   );
 
-  await source.pollOnce();
+  try {
+    await waitFor(() => events.length >= 1, 1000);
+  } finally {
+    await timer.dispose();
+  }
 
-  const statusEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.StatusChanged);
-  const peerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.PeersChanged);
-  assert.equal(statusEvent.status.meshName, 'room');
-  assert.equal(statusEvent.status.rid, 'room-node');
-  assert.equal(statusEvent.status.channels[0].channelName, 'bingo.room');
-  assert.equal(statusEvent.status.channels[0].localWeight, 2);
-  assert.equal(statusEvent.status.channels[0].readyMemberCount, 1n);
-  assert.equal(peerEvent.peers[0].endpoint, 'tcp://play');
-  assert.equal(peerEvent.peers[0].ready, true);
-  assert.equal(peerEvent.peers[0].admissionState, 'ready');
-  assert.deepEqual(peerEvent.peers[0].channelNames, ['bingo.room']);
+  assert.deepEqual(events.map((event) => event.event), [framework.ZLinkSpotEventKind.TimerHandlerFailed]);
+  assert.equal(events[0].timerDiagnostic.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
+  assert.equal(events[0].timerDiagnostic.timerName, 'idle');
+  assert.equal(events[0].timerDiagnostic.exceptionType, 'TypeError');
 });
 
-test('mesh monitoring preserves a connecting peer before its routing identity is known', async () => {
+test('Entry Spot timer diagnostic uses the context SpotId rather than NodeRid', async () => {
   const events = [];
-  let peerChannelQueries = 0;
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
   publisher.register({ async handle(event) { events.push(event); } });
-  const source = new framework.ZLinkMeshMonitoringSource(
-    { sourceName: 'room-route-mesh', intervalMs: 1000 },
-    {
-      status() {
-        return {
-          state: 2,
-          routingId: 'room-node',
-          meshName: 'room',
-          localEndpoint: 'tcp://room',
-          lifecycleGeneration: 1n,
-          descriptorRevision: 1n,
-          channelCount: 1,
-          configuredPeerCount: 1,
-          admittedPeerCount: 0,
-          drainingPeerCount: 0,
-          pendingApplicationMessages: 0n,
-          pendingInfrastructureMessages: 0n,
-          pendingBytes: 0n,
-          lastError: 0,
-          lastChangedMs: 2n
-        };
-      },
-      peers() {
-        return [{
-          connectionIntentId: 1n,
-          source: framework.ZLinkSpotPeerSource.Manual,
-          state: 2,
-          routingId: null,
-          lifecycleGeneration: 0n,
-          descriptorRevision: 0n,
-          endpoint: 'tcp://play',
-          channelCount: 0,
-          lastError: 0,
-          lastChangedMs: 2n
-        }];
-      },
-      peerChannels() {
-        peerChannelQueries += 1;
-        throw new Error('A connecting peer has no routing identity for a channel query.');
+  let reportFailure;
+  const context = spotContextRuntime.createEntrySpotContext({
+    spotId: 'stage-entry-550e8400-e29b-41d4-a716-446655440000',
+    objectGeneration: 1,
+    nodeRid: 'stage-node-rid',
+    handlers: {},
+    outbound: {},
+    timers: {
+      async add(_name, _periodMs, _timerOptions, _handlerType, _serial, _spot, _resolver, _signal, reporter) {
+        reportFailure = reporter;
+        return {};
       }
     },
-    publisher
+    serial: {},
+    getEntrySpot: () => ({}),
+    spotNodeName: 'stage',
+    runtimeEventPublisher: publisher,
+    workerRuntime: {}
+  });
+  class IdleTimerHandler {}
+
+  await context.addTimer('idle', 1000, IdleTimerHandler);
+  await reportFailure(
+    { deliveryIndex: 1n, scheduledIndex: 1n },
+    new TypeError('timer failed'),
+    framework.ZLinkSpotEventKind.TimerHandlerFailed
   );
 
-  await source.pollOnce();
-
-  assert.equal(peerChannelQueries, 0);
-  const peerEvent = events.find((event) => event.event === framework.ZLinkSpotEventKind.PeersChanged);
-  assert.equal(peerEvent.peers.length, 1);
-  assert.equal(peerEvent.peers[0].ready, false);
-  assert.equal(peerEvent.peers[0].admissionState, 'connecting');
-  assert.equal(peerEvent.peers[0].endpoint, 'tcp://play');
-  assert.deepEqual(peerEvent.peers[0].channelNames, []);
+  assert.equal(context.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
+  assert.equal(events[0].timerDiagnostic.spotId, context.spotId);
+  assert.notEqual(events[0].timerDiagnostic.spotId, context.nodeRid);
 });
 
-test('spot timer reports handler failure immediately through runtime publisher', async () => {
+test('decorated Entry Spot timer registration reports the canonical Entry SpotId', async () => {
   const events = [];
   const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
   publisher.register({ async handle(event) { events.push(event); } });
+  class EntrySpot {}
+  class IdleTimerHandler {}
+  let reportFailure;
+  const timers = {
+    async add(_name, _periodMs, _options, _handlerType, _serial, _spot, _resolver, _signal, reporter) {
+      reportFailure = reporter;
+      return {};
+    }
+  };
+
+  await spotTimerRuntime.addEntrySpotTimerRegistrations(
+    timers,
+    EntrySpot,
+    new EntrySpot(),
+    {},
+    { timerHandlers: [{
+      entrySpotType: EntrySpot,
+      handlerType: IdleTimerHandler,
+      name: 'idle',
+      periodMs: 1000
+    }] },
+    {
+      spotNodeName: 'stage',
+      spotId: 'stage-entry-550e8400-e29b-41d4-a716-446655440000',
+      runtimeEventPublisher: publisher
+    }
+  );
+  await reportFailure(
+    { deliveryIndex: 1n, scheduledIndex: 1n },
+    new TypeError('timer failed'),
+    framework.ZLinkSpotEventKind.TimerHandlerFailed
+  );
+
+  assert.equal(events[0].timerDiagnostic.spotId, 'stage-entry-550e8400-e29b-41d4-a716-446655440000');
+  assert.notEqual(events[0].timerDiagnostic.spotId, 'stage-node-rid');
+});
+
+test('stopping spot timer publishes only TimerStoppedAfterUnhandledException', async () => {
+  const events = [];
+  const publisher = new framework.DefaultZLinkRuntimeEventPublisher();
+  publisher.register({ async handle(event) { events.push(event); } });
+  class IdleTimerHandler {}
   const timer = new framework.ZLinkManagedTimer(
     'idle',
     1,
@@ -335,36 +328,28 @@ test('spot timer reports handler failure immediately through runtime publisher',
       stopOnUnhandledException: true
     },
     async () => {
-      throw new TypeError('timer failed');
+      throw new TypeError('timer stopped');
     },
-    async (tick, cause) => {
-      await publisher.publish({
-        sourceName: 'stage-node',
-        timestamp: new Date(),
-        event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
-        timerDiagnostic: {
-          spotId: 'stage-node',
-          isEntrySpot: true,
-          timerName: 'idle',
-          handlerType: 'IdleTimerHandler',
-          deliveryIndex: tick.deliveryIndex,
-          scheduledIndex: tick.scheduledIndex,
-          exceptionType: cause.name,
-          exceptionMessage: cause.message
-        }
-      });
-    }
+    spotTimerRuntime.createTimerDiagnostics(
+      'stage-node',
+      'stage-entry-550e8400-e29b-41d4-a716-446655440000',
+      true,
+      'idle',
+      IdleTimerHandler,
+      publisher
+    )
   );
 
   try {
-    await waitFor(() => events.length >= 1, 1000);
+    await waitFor(() => timer.isDisposed, 1000);
   } finally {
     await timer.dispose();
   }
 
-  assert.equal(events[0].event, framework.ZLinkSpotEventKind.TimerHandlerFailed);
-  assert.equal(events[0].timerDiagnostic.timerName, 'idle');
-  assert.equal(events[0].timerDiagnostic.exceptionType, 'TypeError');
+  assert.deepEqual(events.map((event) => event.event), [
+    framework.ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
+  ]);
+  assert.equal(events[0].timerDiagnostic.exceptionMessage, 'timer stopped');
 });
 
 function fakeSocketMonitor() {
@@ -378,15 +363,11 @@ function fakeSocketMonitor() {
 
 function locationTopologyEntry(readyCount) {
   return {
-    kind: framework.ZLinkLocationKind.Peer,
     meshName: 'api',
-    role: framework.ZLinkLocationRole.Router,
     nodeRid: 'peer-a',
     endpoint: 'tcp://peer:7101',
+    draining: false,
     state: framework.ZLinkLocationTopologyState.Ready,
-    desiredCount: 1,
-    readyCount,
-    errorCode: 0,
     updatedAt: new Date(readyCount)
   };
 }

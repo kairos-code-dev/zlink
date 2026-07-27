@@ -56,15 +56,7 @@ export declare function isZLinkMessage(value: unknown): value is ZLinkMessage;
 
 export declare const MESSAGE_FLOW_MODE_RANK: Record<ZLinkMessageFlowLogMode, number>;
 
-export declare function parseMessage<T>(_payload: ZLinkEncodedPayload, _type: Type<T>): T;
-
-export declare function readZLinkDecoratorMetadata(target: object): readonly ZLinkDecoratorMetadata[];
-
 export type RoutingId = string;
-
-export declare function selectDefaultSerializer(registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>): ZLinkMessageSerializer | undefined;
-
-export declare function selectSerializer(value: unknown, registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>, context?: ZLinkSerializerSelectionContext): ZLinkMessageSerializer | undefined;
 
 export type Type<T = unknown> = new (...args: never[]) => T;
 ```
@@ -111,13 +103,6 @@ export declare function zlinkSnapshotRelocation<TActor extends ZLinkActor>(
     adapterType: Type<ZLinkActorRelocationAdapter<TActor>>): ZLinkSnapshotRelocationPolicy<TActor>;
 export declare function zlinkSnapshotRelocation<TSpot extends ZLinkSpot | ZLinkInstanceSpot>(
     adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>): ZLinkSnapshotRelocationPolicy<TSpot>;
-
-export interface ZLinkAutoConnectDesiredSetChange {
-    readonly autoConnectType: ZLinkLocationAutoConnectType;
-    readonly meshName: string;
-    readonly connectedEndpoints: readonly string[];
-    readonly disconnectedEndpoints: readonly string[];
-}
 
 export interface ZLinkBoundSession {
     send(message: unknown): ZLinkBoundSessionSendCall;
@@ -255,7 +240,6 @@ export interface ZLinkCodecExtension {
 
 export interface ZLinkCodecRegistrar {
     addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this;
-    addSerializer(contentType: string, serializer: ZLinkMessageSerializer, canSerialize: (payloadType: Type) => boolean): this;
     addStreamCodec(contentType: string, codec: unknown): this;
 }
 
@@ -263,6 +247,10 @@ export interface ZLinkCodecRegistryBuilder {
     use(extension: ZLinkCodecExtension): this;
 }
 ```
+
+Entry Spot 등록은 구현 type만 받는다. Entry Spot의 `SpotId`는 Framework가
+`<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식으로 발급한다. caller가 fixed `RoutingId`나
+`SpotId`를 지정하는 option은 제공하지 않는다.
 
 `channel(channelName)` 뒤에는 `client()` 또는 `server()`를 정확히 한 번 호출한다. Client builder에는
 역할별 추가 설정이 없고 Server builder만 `setWeight(...)`와 handler 등록을 제공한다. 따라서 잘못된 역할
@@ -375,18 +363,10 @@ Channel Server와 ClientServer Server weight도 같은 범위와 기본값을 �
 runtime 변경에서 `InvalidConfiguration`이다. Weighted selection은 후보 weight 합계를 최소 64-bit 정수로
 계산한다. Active limit은 양수이고 pending limit은 0 이상이다.
 
-## 3. Handler metadata와 dispatch option
+## 3. Handler decorator와 dispatch option
 
 ```ts
-export interface ZLinkDecoratorMetadata {
-    readonly kind: string;
-    readonly packetName?: string;
-    readonly groupName?: string;
-    readonly methodName?: string;
-    readonly meshName?: string;
-    readonly channelName?: string;
-    readonly topic?: string;
-}
+export declare function ZLinkHandlerGroup(groupName: string): ClassDecorator;
 
 export interface ZLinkLocationOptionValues {
     readonly ownerLeaseRenewIntervalMs: number;

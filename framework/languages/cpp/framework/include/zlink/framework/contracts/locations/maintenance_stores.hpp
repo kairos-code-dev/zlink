@@ -149,11 +149,16 @@ struct authority_put_t
     std::optional<relocation_capacity_fence_t>
       relocation_capacity_fence;
 };
+struct authority_restore_t
+{
+    std::vector<std::byte> payload;
+    location_owner_token_t expected_owner;
+};
 struct authority_delete_t
 {
 };
 using authority_mutation_t =
-  std::variant<authority_put_t, authority_delete_t>;
+  std::variant<authority_put_t, authority_restore_t, authority_delete_t>;
 
 struct authority_stored_t
 {
@@ -176,26 +181,6 @@ using authority_compare_exchange_result_t = std::variant<
   authority_deleted_t,
   authority_conflict_t,
   authority_generation_exhausted_t>;
-
-class authority_store_t
-{
-  public:
-    virtual ~authority_store_t () = default;
-    virtual task_t<authority_read_result_t> read_authority (
-      authority_key_t key,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_compare_exchange_result_t>
-    compare_exchange_authority (
-      authority_key_t key,
-      std::string expected_store_version,
-      authority_mutation_t mutation,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_scan_result_t> list_authorities (
-      std::string prefix,
-      std::optional<authority_scan_cursor_t> cursor,
-      std::size_t limit,
-      std::stop_token cancellation = {}) = 0;
-};
 
 struct object_creation_key_t
 {
@@ -442,20 +427,6 @@ enum class relocation_capacity_abort_result_t : std::uint8_t
     stale = 4
 };
 
-class relocation_capacity_store_t
-{
-  public:
-    virtual ~relocation_capacity_store_t () = default;
-    virtual task_t<relocation_capacity_reserve_result_t>
-    reserve_relocation_capacity (
-      relocation_capacity_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<relocation_capacity_abort_result_t>
-    abort_relocation_capacity (
-      relocation_capacity_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-};
-
 struct aggregate_id_t
 {
     std::array<std::byte, 16> value{};
@@ -522,54 +493,6 @@ enum class aggregate_abort_result_t : std::uint8_t
     aborted = 1,
     already_aborted = 2,
     stale = 3
-};
-
-class object_creation_store_t
-{
-  public:
-    virtual ~object_creation_store_t () = default;
-    virtual task_t<std::optional<creation_terminal_record_t>>
-    read_creation_terminal (
-      creation_operation_identity_t operation,
-      std::stop_token cancellation = {})
-    {
-        (void) operation;
-        (void) cancellation;
-        return task_t<std::optional<creation_terminal_record_t>> (
-          result_t<std::optional<creation_terminal_record_t>>::failure (
-            framework_error_kind_t::request_failed,
-            "creation terminal storage is not implemented"));
-    }
-    virtual task_t<object_reserve_result_t> reserve (
-      object_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_complete_creation_result_t>
-    complete_creation (
-      object_complete_creation_request_t request,
-      std::stop_token cancellation = {})
-    {
-        (void) request;
-        (void) cancellation;
-        return task_t<object_complete_creation_result_t> (
-          result_t<object_complete_creation_result_t>::failure (
-            framework_error_kind_t::request_failed,
-            "creation completion storage is not implemented"));
-    }
-    virtual task_t<object_commit_result_t> commit (
-      object_commit_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_abort_result_t> abort (
-      object_abort_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_prepare_result_t> prepare_aggregate (
-      aggregate_prepare_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_commit_result_t> commit_aggregate (
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_abort_result_t> abort_aggregate (
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
 };
 
 struct relocation_stored_t

@@ -48,11 +48,6 @@ export class ZLinkSpotNodeConnector {
       node.setPublisherRoutingId(spotNode.pubSub.routingId);
       node.setSubscriberRoutingId(spotNode.pubSub.routingId);
     }
-    if (spotNode.entrySpot?.routingId !== undefined) {
-      node.entrySpot().setRoutingId(spotNode.entrySpot.routingId);
-    } else if (spotNode.router?.routingId !== undefined) {
-      node.entrySpot().setRoutingId(spotNode.router.routingId);
-    }
     if (spotNode.router?.bind !== undefined) {
       node.setRouterBind(spotNode.router.bind);
     }

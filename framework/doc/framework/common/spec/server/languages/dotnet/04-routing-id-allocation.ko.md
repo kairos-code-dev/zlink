@@ -1,3 +1,6 @@
 # 이동 안내: .NET routing ID identity
 
-정식 계약은 [interfaces/09-routing-id-allocation.ko.md](interfaces/09-routing-id-allocation.ko.md)가 소유한다.
+정식 public API와 입력 규칙은
+[configuration과 topology exact interface](interfaces/03-configuration-topology.ko.md)가 소유한다.
+descriptor claim과 startup 순서는
+[routing identity runtime](../../../../internals/routing-identity-runtime.ko.md)에 설명한다.

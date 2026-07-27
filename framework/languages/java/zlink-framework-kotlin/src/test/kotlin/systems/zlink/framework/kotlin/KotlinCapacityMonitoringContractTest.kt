@@ -10,7 +10,7 @@ import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole
 import systems.zlink.framework.locations.ZLinkPlacementCapacity
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity
-import systems.zlink.framework.monitoring.ZLinkActivationConcurrency
+import systems.zlink.framework.locations.ZLinkActivationConcurrency
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot

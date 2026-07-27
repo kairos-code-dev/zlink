@@ -212,9 +212,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 ## 7. Location / Monitoring Regression 항목
 
-routing id 자동 할당의 정확한 `.NET` public interface와 lifecycle 증거는
-[routing id 자동 할당 공개 계약](../../common/spec/server/languages/dotnet/interfaces/09-routing-id-allocation.ko.md)을
-따른다.
+routing id 자동 할당의 `.NET` public 입력 규칙은
+[configuration과 topology exact interface](../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)를
+따른다. descriptor claim과 startup 순서는
+[routing identity runtime](../../common/internals/routing-identity-runtime.ko.md)에 설명한다.
 
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
@@ -365,12 +366,12 @@ backend gate 와 별도로 유지한다.
 | `MonitoringTests.AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery` | Spot source는 자동으로 추가되지 않으며 명시한 SpotNode 이름만 등록한다. |
 | `MonitoringTests.SpotPollingEventDiff_EmitsSealedVariantsOnlyForChangedSnapshotParts` | 최초 snapshot과 후속 차이를 sealed Spot event variant로 정확히 발행한다. |
 | 공통 개념 | `.NET` 타입 / 멤버 |
-| 로그 모드 | `ZLinkMessageFlowLogMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose`, `Diagnostic` } |
+| 관측 모드 | `ZLinkRuntimeMessageFlowMode` { `Off`, `ErrorsOnly`(기본), `KeyTransitions`, `Verbose` } |
 | outcome | `ZLinkMessageFlowOutcome` { `Received`, `Dispatched`, `Replied`, `Dropped`, `Sent`, `ReplyReceived`, `Error` } |
 | event | `ZLinkMessageFlowEvent`(record): `Outcome`, `Surface`, `MessageKind`, `PacketName`, `ChannelName`, `Topic`, `CorrelationId`, `SourceRid`, `LocalRid`, `PeerRid`, `SocketRole`, `SpotRid`, `ActorId`, `MessageSize`, `FlowId`, nullable `FlowOrigin`, 오류 필드 |
-| observer | `IZLinkMessageFlowObserver.OnMessageFlowAsync(ZLinkMessageFlowEvent, CancellationToken)` |
+| observer | `IZLinkRuntimeMessageFlowObserver.OnMessageFlowAsync(ZLinkRuntimeMessageFlowEvent, CancellationToken)` |
 | 진단 옵션(read-only) | `IZLinkDispatchOptions.Diagnostics` → `IZLinkDiagnosticsOptions` { `MessageFlow`, `EffectiveMessageFlow`, `SampleRate`, `IncludeMessageSizes`, `LogFile`, `Label` } |
-| 런타임 토글 | `IZLinkMessageFlowControl.SetMessageFlowMode(...)` / `MessageFlowMode` (DI singleton) |
+| 런타임 토글 | `IZLinkMessageFlowRuntime.Mode` (DI singleton) |
 | 공통 개념 | `.NET` |
 | meter 이름(상수) | `ZLinkMeters.Framework` = `"zlink.framework"` (meter/scope 이름은 언어 간 바이트 동일, 공통 §11) |
 | 계기 방출 | `System.Diagnostics.Metrics.Meter("zlink.framework")` — `Counter`/`UpDownCounter`/`ObservableGauge`/`Histogram` |

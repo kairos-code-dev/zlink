@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { zlinkRequestHandler } from '@zlink-systems/nestjs';
 import {
   ZLINK_ACTOR_MANAGER,
-  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
 import { ZONEWORLD_CONFIG } from '../../../../Configuration/configuration';
@@ -22,7 +22,7 @@ import type {
   ZLinkPublishHandler,
   ZLinkRequestContext,
   ZLinkRequestHandler,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { NodeMaintenanceChangedEvent, WorldAnnounceEvent } from '../../../../../Shared/contracts';
@@ -96,7 +96,7 @@ class EnsurePlayerActorHandler implements ZLinkRequestHandler<EnsurePlayerActorR
 class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent> {
   constructor(
     @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly handles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly handles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
@@ -105,7 +105,7 @@ class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent>
     const nodeId = this.config.zoneNode?.nodeId;
     if (nodeId === undefined) return;
     for (const zoneId of zonesOf(nodeId)) {
-      const handle = await this.handles.resolveSpotHandle(ZoneWorldNames.zoneMesh, zoneId);
+      const handle = await this.handles.find(zoneId);
       if (handle !== undefined) {
         this.outbound.sendToSpot(handle, new DeliverAnnounceMsg(message.announcementId, message.text)).submit();
       }

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 

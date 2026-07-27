@@ -21,7 +21,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.channels.ZLinkPublishCall;
 
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
@@ -34,7 +34,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
     private final ZLinkSpotRouteMessages messages;
     private final ThreadPoolExecutor multicastExecutor;
     private final ThreadPoolExecutor multicastHandoffExecutor;
-    private final Function<systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+    private final Function<systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
         Duration> admissionTimeout;
     private final Map<String, ZLinkInternalSpotNode> nodesByChannel = new HashMap<>();
     private final Map<String, ZLinkBackendSpot> spotsByChannel = new HashMap<>();
@@ -62,7 +62,7 @@ final class ZLinkSpotPublisherRuntime implements AutoCloseable {
         ZLinkMessageSerializer serializer,
         ZLinkSpotRouteMessages messages,
         int parallelism,
-        Function<systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        Function<systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
             Duration> admissionTimeout) {
         this.serializer = serializer;
         this.messages = messages;

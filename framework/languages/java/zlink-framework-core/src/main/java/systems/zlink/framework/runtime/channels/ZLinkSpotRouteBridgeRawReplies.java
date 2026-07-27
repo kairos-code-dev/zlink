@@ -10,7 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
 
 final class ZLinkSpotRouteBridgeRawReplies {
     private final Map<String, ArrayDeque<Pending>> pendingByChannel = new HashMap<>();

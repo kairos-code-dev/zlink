@@ -53,7 +53,6 @@ class play_server_host_factory_t
               .add_singleton<bingo_room_allocator_t, bingo_match_queue_t> ();
             use_default_bingo_codecs (options.codecs ());
             add_sample_location_store (options, topology);
-            auto services = options.services ().build_provider ();
             options.add_client_server_channel (sample_names_t::room_spot_discovery)
               .enable_server (topology.selected_play_route_endpoint ())
               .enable_client ()
@@ -63,13 +62,18 @@ class play_server_host_factory_t
             room_mesh.channel_name (sample_names_t::room_spot_mesh);
             room_mesh.peer_connections ().connect (
               topology.peer_play_spot_router_endpoint ());
-            room_mesh.use_allocated_routing_id (16, "bingo-play")
-              .listen (topology.selected_play_spot_router_endpoint ())
+            room_mesh.listen (topology.selected_play_spot_router_endpoint ())
               .add_entry_spot<bingo_entry_spot_t> (
-                [topology, services] {
-                    return std::make_shared<bingo_entry_spot_t> (topology, services);
+                [topology] (entry_spot_context_t context) {
+                    return std::make_shared<bingo_entry_spot_t> (
+                      std::move (context), topology);
                 })
-              .add_spot<bingo_room_spot_t> (sample_names_t::room_spot)
+              .add_spot<bingo_room_spot_t> (
+                sample_names_t::room_spot,
+                [] (spot_context_t context) {
+                    return std::make_shared<bingo_room_spot_t> (
+                      std::move (context));
+                })
               .add_actor_factory<player_actor_factory_t> (sample_names_t::player_actor_type)
               .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
                 sample_names_t::player_actor_type);

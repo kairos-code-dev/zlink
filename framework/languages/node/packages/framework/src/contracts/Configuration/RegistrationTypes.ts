@@ -4,7 +4,6 @@ import type {
   ZLinkActor,
   ZLinkActorFactory,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
   ZLinkInstanceSpot,
   ZLinkMonitoringOptions,
@@ -76,7 +75,6 @@ export interface ZLinkWorkerOptions {
 export interface ZLinkCodecSerializerRegistration {
   readonly contentType: string;
   readonly serializer: ZLinkMessageSerializer;
-  readonly canSerialize?: (payloadType: Type) => boolean;
 }
 
 export interface ZLinkStreamCodecRegistration {
@@ -126,7 +124,7 @@ export interface ZLinkFrameworkRegistrationOptions {
 
 export interface ZLinkChannelOptions {
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly requestTimeoutMs?: number;
   readonly client?: ZLinkClientCapabilityOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
@@ -161,18 +159,12 @@ export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
 }
 
-export interface ZLinkRoutingIdAllocationOptions {
-  readonly slotCount: number;
-  readonly routingIdPrefix: string;
-  readonly groupName?: string;
-}
-
 export interface ZLinkRouteMeshChannelOptions {
   readonly requestTimeoutMs?: number;
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -189,7 +181,7 @@ export interface ZLinkRouteChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -224,10 +216,9 @@ export interface ZLinkSpotNodeOptions {
   readonly spotLimit?: number;
   readonly activationConcurrencyLimit?: number;
   readonly routingId?: string;
-  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
+  readonly routingIdPrefix?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
-  readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly spotFactoryRegistrations?: Readonly<

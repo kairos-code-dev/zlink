@@ -1094,6 +1094,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             current.Span,
             out var relocation))
         {
+            if (relocation.IsCanonical)
+                throw new InvalidOperationException(
+                    "Canonical Actor authority mutations must use the relocation progress coordinator.");
             var nested = ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
                 relocation.ApplicationPayload.Span,
                 out var phase)
@@ -1121,6 +1124,11 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 out var outer))
         {
             publication = outer;
+            if (outer.IsCanonical)
+            {
+                phase = null!;
+                return false;
+            }
             return ZLinkActorRelocationAuthorityPayloadCodec.TryDecode(
                 outer.ApplicationPayload.Span,
                 out phase);
@@ -1136,6 +1144,9 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         ZLinkRelocationAuthorityPayload? publication)
     {
         var encoded = ZLinkActorRelocationAuthorityPayloadCodec.Encode(phase);
+        if (publication?.IsCanonical == true)
+            throw new InvalidOperationException(
+                "Canonical Actor phase mutations must use the relocation progress coordinator.");
         return publication is null
             ? encoded
             : ZLinkRelocationAuthorityPayloadCodec.Encode(

@@ -2,9 +2,9 @@ import type {
   ActorRef,
   RoutingId,
   ZLinkActor,
-  ZLinkProviderResolver,
   ZLinkMessage
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
   meshActorSessionNodeAdapter,
   type ZLinkBackendMeshNode,
@@ -117,6 +117,12 @@ export class ZLinkActorRuntimeOptionsFactory {
         postCommitErrorReporter: this.options.reportPostCommitError,
         sourceTransfer: this.options.actorTransferRuntime,
         actorLocationResolver: this.options.createActorLocationResolver,
+        entrySpotIdProvider: meshName => {
+          const resolvedMeshName = meshName ?? this.options.primaryMeshName();
+          return resolvedMeshName === undefined
+            ? undefined
+            : this.options.spotManager()?.entrySpotIdForMesh(resolvedMeshName);
+        },
         remoteActorBinder: (actorRef, signal) =>
           this.options.streamBindingRuntime.commitActorRoute(actorRef, signal),
         routedTransport: this.options.routeTransport,

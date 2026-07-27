@@ -1,5 +1,22 @@
 namespace Zlink.Framework.Runtime.Locations;
 
+internal enum ZLinkLocationKind
+{
+    Invalid = 0,
+    MeshNode = 1,
+    Spot = 2,
+    Actor = 3
+}
+
+internal abstract record ZLinkLocationKey
+{
+    private ZLinkLocationKey() { }
+
+    internal sealed record MeshNode(ZLinkMeshNodeDescriptorKey Key) : ZLinkLocationKey;
+    internal sealed record Spot(ZLinkSpotLocationKey Key) : ZLinkLocationKey;
+    internal sealed record Actor(ZLinkActorLocationKey Key) : ZLinkLocationKey;
+}
+
 /// <summary>
 /// Optional change notification capability recognized on a registered
 /// location store. Not part of the public store contract

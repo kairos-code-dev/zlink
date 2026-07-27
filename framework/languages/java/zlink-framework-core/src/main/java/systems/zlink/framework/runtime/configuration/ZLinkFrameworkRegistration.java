@@ -16,6 +16,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
+import systems.zlink.framework.runtime.internal.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.locations.ZLinkLocationRegistration;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
@@ -45,6 +46,8 @@ public final class ZLinkFrameworkRegistration {
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Duration actorTransferForwardWindow = Duration.ofSeconds(5);
     private ZLinkRelocationStore relocationStore;
+    private long applicationVersion;
+    private String maintenanceWave;
 
     public Duration defaultRequestTimeout() {
         return defaultRequestTimeout;
@@ -58,8 +61,20 @@ public final class ZLinkFrameworkRegistration {
         return actorTransferForwardWindow;
     }
 
-    void setActorTransferForwardWindow(Duration actorTransferForwardWindow) {
-        this.actorTransferForwardWindow = actorTransferForwardWindow;
+    public long applicationVersion() {
+        return applicationVersion;
+    }
+
+    void setApplicationVersion(long applicationVersion) {
+        this.applicationVersion = applicationVersion;
+    }
+
+    public java.util.Optional<String> maintenanceWave() {
+        return java.util.Optional.ofNullable(maintenanceWave);
+    }
+
+    void setMaintenanceWave(String maintenanceWave) {
+        this.maintenanceWave = maintenanceWave;
     }
 
     public ZLinkCodecRegistration codecs() {

@@ -57,6 +57,20 @@ foreach(required_text IN ITEMS
     message(FATAL_ERROR "framework package config lacks ${required_text}")
   endif()
 endforeach()
+if(ZLINK_FRAMEWORK_CPP_EXPECT_REDIS_PLUS_PLUS)
+  string(FIND "${framework_config_text}"
+    "find_dependency(redis++ CONFIG)" dependency_pos)
+  if(dependency_pos EQUAL -1)
+    message(FATAL_ERROR "framework package config lacks redis++ dependency")
+  endif()
+endif()
+if(ZLINK_FRAMEWORK_CPP_EXPECT_LIBUV)
+  string(FIND "${framework_config_text}"
+    "find_dependency(libuv CONFIG)" dependency_pos)
+  if(dependency_pos EQUAL -1)
+    message(FATAL_ERROR "framework package config lacks libuv dependency")
+  endif()
+endif()
 foreach(forbidden_text IN ITEMS
     "zlink_stream_connector_cppTargets.cmake"
     "find_dependency(msgpack-cxx CONFIG)"
@@ -126,6 +140,7 @@ find_package(zlink_stream_connector_cpp CONFIG REQUIRED)
 add_executable(consumer main.cpp)
 target_link_libraries(consumer PRIVATE
   zlink::framework
+  zlink::framework_locations_redis
   zlink::http_client
   zlink::stream_connector
   zlink::stream_connector_codecs
@@ -135,6 +150,7 @@ target_link_libraries(consumer PRIVATE
 
 file(WRITE "${consumer_source_dir}/main.cpp" [=[
 #include <zlink/framework.hpp>
+#include <zlink/locations/redis.hpp>
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
@@ -160,6 +176,16 @@ main ()
 {
   auto app = zlink::framework::app_t::create ();
   (void) app;
+  auto redis_options =
+    zlink::framework::locations::redis::redis_location_options_t{};
+  auto relocation_options =
+    zlink::framework::locations::redis::redis_relocation_options_t{};
+  auto location_store =
+    zlink::framework::locations::redis::redis_location_store_t(redis_options);
+  auto relocation_store =
+    zlink::framework::locations::redis::redis_relocation_store_t(relocation_options);
+  (void) location_store;
+  (void) relocation_store;
   auto client = zlink::http_client::client_t::create ()
                   .base_url ("http://127.0.0.1:18080")
                   .build ();
@@ -181,7 +207,7 @@ main ()
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -S "${consumer_source_dir}" -B "${consumer_build_dir}"
-          "-DCMAKE_PREFIX_PATH=${consumer_install_prefix}"
+          "-DCMAKE_PREFIX_PATH=${consumer_install_prefix};${ZLINK_FRAMEWORK_CPP_DEPENDENCY_PREFIX_PATH}"
   RESULT_VARIABLE configure_result)
 if(NOT configure_result EQUAL 0)
   message(FATAL_ERROR "installed C++ framework consumer configure failed")

@@ -664,17 +664,14 @@ void channel_runtime_t::record_fanout_received (const std::string &topic) const
 void channel_runtime_t::publish_socket_event (const std::string &channel_name,
                                               socket_event_kind_t event,
                                               std::string local_address,
-                                              std::string remote_address,
-                                              std::uint32_t native_event,
-                                              std::uint32_t native_value) const
+                                              std::string remote_address) const
 {
     if (!_state->monitoring) {
         return;
     }
     monitoring_runtime_t (_state->monitoring)
       .publish_socket (socket_event_payload_t{runtime_event_base_t{channel_name}, event,
-                                              std::move (local_address), std::move (remote_address),
-                                              native_event, native_value});
+                                              std::move (local_address), std::move (remote_address)});
 }
 
 void channel_runtime_t::set_server_weight (const std::string &channel_name,
@@ -687,8 +684,7 @@ void channel_runtime_t::set_server_weight (const std::string &channel_name,
         std::lock_guard lock (_state->mutex);
         _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
     }
-    publish_socket_event (channel_name, socket_event_kind_t::peer_admission_changed, {}, {}, 0,
-                          static_cast<std::uint32_t> (value));
+    publish_socket_event (channel_name, socket_event_kind_t::peer_admission_changed);
 }
 
 std::optional<int>

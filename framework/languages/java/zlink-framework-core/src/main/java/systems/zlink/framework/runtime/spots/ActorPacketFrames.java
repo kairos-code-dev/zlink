@@ -5,14 +5,14 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 
 final class ActorPacketFrames {
     private ActorPacketFrames() {

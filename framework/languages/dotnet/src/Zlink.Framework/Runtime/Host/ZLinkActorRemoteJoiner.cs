@@ -364,7 +364,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         string actorType,
         string handoffId,
         ZLinkObjectRelocationRegistration relocation,
-        IZLinkAuthorityStore authorityStore,
+        IZLinkLocationStore authorityStore,
         ZLinkActorAuthorityPayload sourceAuthority,
         ulong actorAuthorityOwnerGeneration,
         long predictedPayloadBytes,

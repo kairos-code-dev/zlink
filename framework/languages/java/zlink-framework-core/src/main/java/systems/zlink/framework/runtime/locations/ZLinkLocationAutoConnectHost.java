@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.locations;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -9,13 +8,12 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
-import systems.zlink.framework.runtime.backend.ZLinkBackendConnectableSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeerResolver;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendConnectableSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
@@ -30,7 +28,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     public static final String SPOT_PUB_ENDPOINT_METADATA_KEY = "pub-endpoint";
 
     private final ZLinkLocationRuntime runtime;
-    private final ZLinkPeerLocationResolver peers;
+    private final ZLinkAutoConnectPeerResolver peers;
     private final ZLinkLocationOptions options;
     private final ZLinkClientServerRuntimeConfiguration clientServers;
     private final ZLinkFanoutRuntimeConfiguration fanout;
@@ -38,14 +36,14 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
     public ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
-        ZLinkPeerLocationResolver peers,
+        ZLinkAutoConnectPeerResolver peers,
         ZLinkLocationOptions options) {
         this(runtime, peers, options, null, null);
     }
 
     public ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
-        ZLinkPeerLocationResolver peers,
+        ZLinkAutoConnectPeerResolver peers,
         ZLinkLocationOptions options,
         ZLinkClientServerRuntimeConfiguration clientServers) {
         this(runtime, peers, options, clientServers, null);
@@ -53,7 +51,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
     public ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
-        ZLinkPeerLocationResolver peers,
+        ZLinkAutoConnectPeerResolver peers,
         ZLinkLocationOptions options,
         ZLinkClientServerRuntimeConfiguration clientServers,
         ZLinkFanoutRuntimeConfiguration fanout) {
@@ -77,19 +75,19 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
 
         List<ZLinkChannelRuntime.AutoConnectSurface> surfaces = channels.autoConnectSurfaces();
         boolean hasAutomaticClientServer = surfaces.stream().anyMatch(
-            surface -> surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER);
+            surface -> surface.type() == ZLinkAutoConnectType.CLIENT_SERVER);
         if (hasAutomaticClientServer
             && (clientServers == null || clientServers.store() == null)) {
             return CompletableFuture.failedFuture(
                 new systems.zlink.framework.errors.ZLinkConfigurationException(
                     "automatic ClientServer channels require "
-                        + "ZLinkClientServerLocationStore"));
+                        + "ZLinkLocationStore with ClientServer descriptors"));
         }
         boolean hasAutomaticFanoutSubscriber = surfaces.stream().anyMatch(
-            surface -> surface.type() == ZLinkLocationAutoConnectType.FANOUT
+            surface -> surface.type() == ZLinkAutoConnectType.FANOUT
                 && surface.role() == ZLinkLocationRole.SUB);
         boolean hasFanoutPublisher = surfaces.stream().anyMatch(
-            surface -> surface.type() == ZLinkLocationAutoConnectType.FANOUT
+            surface -> surface.type() == ZLinkAutoConnectType.FANOUT
                 && surface.role() == ZLinkLocationRole.PUB);
         boolean hasAutomaticFanout = hasAutomaticFanoutSubscriber
             || (hasFanoutPublisher
@@ -100,11 +98,11 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             return CompletableFuture.failedFuture(
                 new systems.zlink.framework.errors.ZLinkConfigurationException(
                     "automatic classic fanout requires "
-                        + "ZLinkFanoutLocationStore"));
+                        + "ZLinkLocationStore with fanout descriptors"));
         }
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
-            if (surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER
-                || surface.type() == ZLinkLocationAutoConnectType.FANOUT) {
+            if (surface.type() == ZLinkAutoConnectType.CLIENT_SERVER
+                || surface.type() == ZLinkAutoConnectType.FANOUT) {
                 continue;
             }
             addChannelLoop(surface);
@@ -118,11 +116,12 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             if (endpoint == null || endpoint.isBlank()) {
                 endpoint = mesh.bindEndpoint();
             }
+            endpoint = mesh.advertisedEndpoint(endpoint);
             Set<String> manual = mesh.peers().stream()
                 .map(MeshNodeRegistration.Peer::endpoint)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
             addLoop(
-                ZLinkLocationAutoConnectType.ROUTE_MESH,
+                ZLinkAutoConnectType.ROUTE_MESH,
                 mesh.meshName(),
                 ZLinkLocationRole.ROUTER,
                 mesh.routingId(),
@@ -146,7 +145,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 .map(SpotNodeRegistration.RouterManualConnection::endpoint)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
             addLoop(
-                ZLinkLocationAutoConnectType.SPOT_MESH,
+                ZLinkAutoConnectType.SPOT_MESH,
                 spot.meshName(),
                 ZLinkLocationRole.SPOT,
                 node.routingId(),
@@ -220,7 +219,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             ? ZLinkAutoConnectExecutor.NONE
             : new ConnectableSocketExecutor(surface.socket(), Set.copyOf(surface.manualEndpoints()));
         if (surface.socket() instanceof ZLinkBackendRouterSocket router
-            && surface.type() == ZLinkLocationAutoConnectType.ROUTE_MESH) {
+            && surface.type() == ZLinkAutoConnectType.ROUTE_MESH) {
             executor = new RouteSocketExecutor(router, Set.copyOf(surface.manualEndpoints()));
         }
         addLoop(
@@ -236,7 +235,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     private void addLoop(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid,
@@ -251,15 +250,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
         ZLinkAutoConnectPlanner.Local local =
             new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
-        ZLinkPeerLocation row = advertisable
-            ? new ZLinkPeerLocation(
-                type, meshName, nodeRid, role, endpoint, weight, false,
-                newLifecycleGeneration(),
-                metadata, capabilities, "", 0, Instant.EPOCH)
-            : null;
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
             local,
-            row,
+            null,
             runtime,
             peers,
             executor,
@@ -268,7 +261,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     }
 
     static boolean shouldAdvertise(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         ZLinkLocationRole role,
         RoutingId nodeRid,
         String endpoint) {
@@ -278,11 +271,6 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             case FANOUT -> role == ZLinkLocationRole.PUB && hasEndpoint;
             default -> ZLinkAutoConnectPlanner.hasRid(nodeRid) || hasEndpoint;
         };
-    }
-
-    private static long newLifecycleGeneration() {
-        return java.util.concurrent.ThreadLocalRandom.current()
-            .nextLong(1, Long.MAX_VALUE);
     }
 
     @Override

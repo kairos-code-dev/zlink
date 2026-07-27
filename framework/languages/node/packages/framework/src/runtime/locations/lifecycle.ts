@@ -1,9 +1,9 @@
 import type { ActorRef, RoutingId } from '../../contracts/Common';
 import type {
-  ZLinkActorLocationStore,
   ZLinkActorLocation,
   ZLinkLocationWriteStatus
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
+import type { ZLinkActorLocationStore } from './internal-store-contracts';
 import { ZLinkSpotKind } from '../../contracts/Spots';
 import {
   ZLinkActorLocationClaims,

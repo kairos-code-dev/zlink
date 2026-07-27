@@ -6,11 +6,11 @@ import type {
   ZLinkSessionActor,
   ZLinkSessionFactory,
   ZLinkSession,
-  ZLinkProviderResolver,
   ZLinkMessageSerializer,
   ZLinkStreamCompressionCodec,
   ZLinkStreamCompressionOptions
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import {
   ZLinkMessage

@@ -22,14 +22,13 @@ import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
@@ -216,29 +215,6 @@ final class ZLinkActorClientRuntimeTest {
         assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
     }
 
-    @Test
-    void legacyActorRowCannotSupersedeMissingCanonicalAuthority() {
-        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
-            () -> new RequestFailingSpotNode(RequestResult.NOT_FOUND),
-            new ZLinkStoreLocationResolvers(
-                ZLinkRegisteredLocationStores.fromUnified(
-                    legacyStoreWithActor("actor-1", 8)),
-                new systems.zlink.framework.locations.ZLinkLocationOptions()),
-            new ZLinkJsonMessageSerializer(),
-            Duration.ofSeconds(5),
-            systems.zlink.framework.runtime.host.ZLinkTestAdmissionFactory.create());
-
-        CompletionException error = assertThrows(
-            CompletionException.class,
-            () -> client.requestToActor("actor-1", new Ping("hello"))
-                .submit(Pong.class)
-                .toCompletableFuture()
-                .join());
-
-        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
-    }
-
     private static systems.zlink.framework.locations.ZLinkLocationStore
         storeWithActor(String actorId) {
         return storeWithActor(actorId, 7);
@@ -295,35 +271,6 @@ final class ZLinkActorClientRuntimeTest {
                     default -> throw new UnsupportedOperationException(
                         method.getName());
                 });
-    }
-
-    private static ZLinkInMemoryLocationStore legacyStoreWithActor(
-        String actorId,
-        long generation) {
-        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.claimOwnerLease("owner", Duration.ofMinutes(1))
-            .toCompletableFuture()
-            .join();
-        store.updateActor(
-                new ZLinkActorLocation(
-                    actorId,
-                    "test",
-                    new ActorRef(
-                        actorId,
-                        generation,
-                        "game",
-                        RoutingId.from("actor-node")),
-                    RoutingId.from("actor-node"),
-                    ZLinkSpotKind.ENTRY,
-                    "mesh",
-                    "actor-node",
-                    "owner",
-                    1,
-                    Instant.now()),
-                ZLinkLocationWriteIntent.NEW_CLAIM)
-            .toCompletableFuture()
-            .join();
-        return store;
     }
 
     private static List<Message> reply(String value) {

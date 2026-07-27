@@ -156,16 +156,6 @@ export interface ZLinkMetricsOptions {
     readonly meterProvider?: ZLinkMeterProvider;
 }
 
-export interface ZLinkMonitoringOptions {
-    socket?: ZLinkSocketMonitoringRegistration[];
-    spot?: ZLinkPollingMonitoringRegistration[];
-    locationRuntime?: ZLinkPollingMonitoringRegistration[];
-    locationPeer?: ZLinkLocationMonitoringRegistration[];
-    locationSpot?: ZLinkLocationMonitoringRegistration[];
-    locationActor?: ZLinkLocationMonitoringRegistration[];
-    locationRoute?: ZLinkLocationMonitoringRegistration[];
-}
-
 export interface ZLinkOutboundRouteConfig {
     targetNodeRid: RoutingId;
     endpoint: string;
@@ -173,6 +163,9 @@ export interface ZLinkOutboundRouteConfig {
 
 export declare function ZLinkPacket(packetName: string): ClassDecorator;
 ```
+
+Monitoring 등록 타입과 `ZLinkMonitoringOptions`의 exact declaration은
+[Location과 observability](03-location-observability.ko.md)가 한 번만 소유한다.
 
 Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언어에서 사용하는 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 계기 이름 카탈로그는 다음 여섯 값이며, 이름·종류·단위와 attribute 제한은
@@ -195,52 +188,9 @@ One-way placement·activation 실패는 `zlink.mesh_node.messages.dropped`에
 ## 3. Location peer와 Logical Multicast
 
 ```ts
-export interface ZLinkPageRequest {
-    readonly pageSize?: number;
-    readonly continuationToken?: string;
-}
-
-export interface ZLinkPeerLocation {
-    readonly autoConnectType: ZLinkLocationAutoConnectType;
-    readonly meshName: string;
-    readonly nodeRid?: RoutingId;
-    readonly role: ZLinkLocationRole;
-    readonly endpoint: string;
-    readonly weight: number;
-    readonly draining: boolean;
-    readonly value: bigint;
-    readonly metadata?: Readonly<Record<string, string>>;
-    readonly capabilities?: readonly string[];
-    readonly ownerId: string;
-    readonly leaseGeneration: bigint;
-    readonly generation: bigint;
-    readonly updatedAt: Date;
-}
-
-export interface ZLinkPeerLocationFilter {
-    readonly autoConnectType?: ZLinkLocationAutoConnectType;
-    readonly meshName?: string;
-    readonly role?: ZLinkLocationRole;
-    readonly nodeRid?: RoutingId;
-    readonly endpoint?: string;
-}
-
-export interface ZLinkPeerLocationKey {
-    readonly autoConnectType: ZLinkLocationAutoConnectType;
-    readonly meshName: string;
-    readonly role: ZLinkLocationRole;
-    readonly nodeRid?: RoutingId;
-    readonly endpoint?: string;
-}
-
 export interface ZLinkPollingMonitoringRegistration {
     readonly sourceName: string;
     readonly intervalMs: number;
-}
-
-export interface ZLinkProviderResolver {
-    get?<T>(type: Type<T>): T | undefined;
-    create?<T>(type: Type<T>): T | Promise<T>;
 }
 
 export declare function ZLinkPublish(packetName?: string): MethodDecorator;
@@ -303,36 +253,6 @@ export interface ZLinkRouteConfig {
     endpoint: string;
 }
 
-export declare enum ZLinkRouteKind {
-    Invalid = 0,
-    ActorSession = 1,
-    SpotName = 2,
-    FrameworkRoute = 3
-}
-
-export interface ZLinkRouteLocation {
-    readonly routeKind: ZLinkRouteKind;
-    readonly routeKey: string;
-    readonly ownerNodeRid: RoutingId;
-    readonly ownerId: string;
-    readonly leaseGeneration: bigint;
-    readonly generation: bigint;
-
-    readonly value: Uint8Array;
-    readonly updatedAt: Date;
-}
-
-export interface ZLinkRouteLocationFilter {
-    readonly routeKind?: ZLinkRouteKind;
-    readonly ownerNodeRid?: RoutingId;
-    readonly ownerId?: string;
-}
-
-export interface ZLinkRouteLocationKey {
-    readonly routeKind: ZLinkRouteKind;
-    readonly routeKey: string;
-}
-
 export interface ZLinkRouteMeshRuntimeOptions {
     mesh(meshName: string): ZLinkMeshPlacementRuntimeOptions;
     channel(channelName: string): ZLinkMeshChannelRuntimeOptions;
@@ -378,20 +298,6 @@ export interface ZLinkRouteMessageContext extends ZLinkMessageContext {
 
 export interface ZLinkRouteSendHandler<TMessage> {
     handle(message: TMessage, context: ZLinkRouteMessageContext): Promise<void>;
-}
-
-export interface ZLinkRuntimeEvent {
-    readonly sourceName: string;
-    readonly timestamp: Date;
-}
-
-export interface ZLinkRuntimeEventHandler<TEvent extends ZLinkRuntimeEvent> {
-    handle(event: TEvent): Promise<void>;
-}
-
-export interface ZLinkRuntimeEventPublisher {
-    register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
-    publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
 }
 
 export declare function ZLinkSend(packetName?: string): MethodDecorator;
@@ -446,15 +352,6 @@ Target snapshot이 0개여도 정상 완료한다.
 ## 6. Serializer와 STREAM session
 
 ```ts
-export interface ZLinkSerializerRegistryLike {
-    readonly serializers: ReadonlyMap<string, ZLinkMessageSerializer>;
-}
-
-export interface ZLinkSerializerSelectionContext {
-    readonly messageType?: Type<unknown>;
-    readonly packetName?: string;
-}
-
 export interface ZLinkSession {
     readonly context: ZLinkSessionContext;
     onConnected?(context: ZLinkSessionContext): Promise<void>;
@@ -532,8 +429,8 @@ Location Store를 조회하지 않는다. Physical disconnect는 Framework가 cu
 all-settled 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
 `notifyDisconnected(...)`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
 기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
-durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Command 44·45 routed ACK와 steady
-normalization 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
+durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Route 전환이 양쪽 runtime에서 확인되고
+steady route가 확정되기 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
 route와 physical STREAM connection은 유지한다.
 
 Payload만 받는 `relay(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way admission이다.

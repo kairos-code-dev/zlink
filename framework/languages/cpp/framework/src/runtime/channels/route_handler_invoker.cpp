@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/route_handler_invoker.hpp"
+#include "runtime/configuration/service_scope.hpp"
 
 #include "runtime/dispatch/coroutine_executor.hpp"
 
@@ -21,7 +22,8 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
        packet_name = std::string (packet_name), &services, &serializers, message,
        context] () mutable -> boost::asio::awaitable<result_t<void>> {
           try {
-              auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
+              auto invocation_scope = service_scope_t::create (
+                services, service_scope_kind_t::handler_invocation);
               auto &invocation_services = invocation_scope.provider ();
               auto result = co_await runtime::await_task_result (handlers.invoke_async (
                 router_channel_id, runtime::messaging::message_kind_t::command, packet_name,
@@ -55,7 +57,8 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
        packet_name = std::string (packet_name), &services, &serializers, message,
        context] () mutable -> boost::asio::awaitable<result_t<zlink::message_t>> {
           try {
-              auto invocation_scope = services.create_scope (service_scope_kind_t::handler_invocation);
+              auto invocation_scope = service_scope_t::create (
+                services, service_scope_kind_t::handler_invocation);
               auto &invocation_services = invocation_scope.provider ();
               co_return co_await runtime::await_task_result (handlers.invoke_async (
                 router_channel_id, runtime::messaging::message_kind_t::request, packet_name,

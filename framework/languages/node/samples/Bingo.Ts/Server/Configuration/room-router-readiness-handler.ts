@@ -1,41 +1,29 @@
-import { Injectable } from '@nestjs/common';
-import {
-  ZLinkLocationPeerEventKind,
-  ZLinkSpotEventKind,
-  type ZLinkLocationPeerEvent,
-  type ZLinkRuntimeEventHandler,
-  type ZLinkSpotEvent
-} from '@zlink-systems/framework';
-import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
+import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
 import { SampleNames } from './sample-names';
 
 @Injectable()
-@zlinkRuntimeEventHandler()
-class RoomRouterReadinessHandler implements ZLinkRuntimeEventHandler<ZLinkSpotEvent | ZLinkLocationPeerEvent> {
-  async handle(event: ZLinkSpotEvent | ZLinkLocationPeerEvent): Promise<void> {
-    if (event.sourceName === SampleNames.roomLocationPeerMonitor
-      && event.event === ZLinkLocationPeerEventKind.DesiredSetChanged) {
-      const change = event.desiredSetChange;
-      if (change.meshName === SampleNames.roomSpotNode) {
-        const connected = change.connectedEndpoints.join(',');
-        const disconnected = change.disconnectedEndpoints.join(',');
-        console.log(
-          `bingo-room-desired connected=${connected.length === 0 ? '-' : connected} `
-          + `disconnected=${disconnected.length === 0 ? '-' : disconnected}`
-        );
-      }
-      return;
-    }
-    if (event.event !== ZLinkSpotEventKind.PeersChanged) return;
-    if (event.sourceName !== SampleNames.roomSpotNode) return;
-    for (const peer of event.peers) {
+class RoomRouterReadinessHandler implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly stop = new AbortController();
+
+  constructor(@Inject(ZLINK_ROUTE_MESH_RUNTIME) private readonly runtime: ZLinkRouteMeshRuntime) {}
+
+  onApplicationBootstrap(): void {
+    void this.observeReadiness();
+  }
+
+  onApplicationShutdown(): void {
+    this.stop.abort();
+  }
+
+  private async observeReadiness(): Promise<void> {
+    for await (const event of this.runtime.observe(SampleNames.roomSpotNode, 64, this.stop.signal)) {
+      if (event.identifier !== 'zlink.runtime.mesh_node.peer_changed') continue;
       console.log(
-        `bingo-room-peer-state remote=${peer.endpoint} rid=${peer.rid} `
-        + `generation=${peer.lifecycleGeneration} admission=${peer.admissionState} ready=${peer.ready}`
+        `bingo-room-peer-state rid=${event.peerRid ?? '-'} generation=${event.lifecycleGeneration ?? 0n} `
+        + `reason=${event.reason ?? '-'}`
       );
-      if (peer.ready) {
-        console.log(`bingo-room-peer ConnectionReady remote=${peer.endpoint}`);
-      }
     }
   }
 }

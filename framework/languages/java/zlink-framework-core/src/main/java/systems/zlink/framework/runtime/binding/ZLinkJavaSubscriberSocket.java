@@ -3,9 +3,9 @@ package systems.zlink.framework.runtime.binding;
 import systems.zlink.contracts.messaging.TopicMessage;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.SubSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 
 record ZLinkJavaSubscriberSocket(SubSocket socket)
     implements ZLinkBackendSubscriberSocket, ZLinkJavaSocketBacked {

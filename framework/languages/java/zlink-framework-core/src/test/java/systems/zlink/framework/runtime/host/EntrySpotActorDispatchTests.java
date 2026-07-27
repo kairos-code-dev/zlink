@@ -30,34 +30,34 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotNodeMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkSpotBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
@@ -177,7 +177,7 @@ final class EntrySpotActorDispatchTests {
         options.setDefaultRequestTimeout(Duration.ofSeconds(1));
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTests.class);
         options.configureDispatch().setMessageFlowObserver(new CapturingFlowObserver());
-        var node = options.addSpotMesh("entry");
+        var node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "entry");
         node.setRoutingId(RoutingId.from("entry-node"));
         node.enableRouter("inproc://entry-actor-dispatch");
         node.addEntrySpot(ProbeEntrySpot.class);
@@ -485,7 +485,7 @@ final class EntrySpotActorDispatchTests {
                 actorMessages));
         }
 
-        @Override public String routingId() { return routingId; }
+        @Override public String spotId() { return routingId; }
         @Override public void setRoutingId(String spotId) { this.routingId = spotId; }
         @Override public void setSubscription(String topic) { }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }

@@ -8,10 +8,10 @@ import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 
 record ZLinkJavaRouterSocket(RouterSocket socket)
     implements ZLinkBackendRouterSocket, ZLinkJavaSocketBacked {

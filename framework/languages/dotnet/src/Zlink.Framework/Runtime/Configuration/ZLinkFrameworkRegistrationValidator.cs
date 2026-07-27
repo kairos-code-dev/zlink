@@ -36,25 +36,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer)
             .Select(static channel => channel.ChannelName)
             .ToHashSet(StringComparer.Ordinal);
-        if (clientServerChannels.Count > 0
-            && registration.Locations.Enabled
-            && !registration.Locations.UseInMemoryStores
-            && registration.Locations.StoreInstance
-                is not IZLinkClientServerLocationStore)
-            throw new ZLinkConfigurationException(
-                "ClientServer automatic discovery requires the registered "
-                + "location store to implement IZLinkClientServerLocationStore.");
-        var requiresFanoutStore = registration.Channels.Values.Any(static channel =>
-            channel.AutoConnectType == ZLinkLocationAutoConnectType.Fanout
-            && (channel.Subscriber?.AutomaticDiscoveryEnabled == true
-                || channel.Publisher is not null));
-        if (requiresFanoutStore
-            && registration.Locations.Enabled
-            && !registration.Locations.UseInMemoryStores
-            && registration.Locations.StoreInstance is not IZLinkFanoutLocationStore)
-            throw new ZLinkConfigurationException(
-                "Fanout automatic discovery requires the registered "
-                + "location store to implement IZLinkFanoutLocationStore.");
         foreach (var node in registration.SpotNodes.Values)
         foreach (var membership in node.ChannelMemberships)
             if (clientServerChannels.Contains(membership.ChannelName))

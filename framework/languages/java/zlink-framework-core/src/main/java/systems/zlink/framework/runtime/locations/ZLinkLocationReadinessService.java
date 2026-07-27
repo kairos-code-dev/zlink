@@ -3,7 +3,6 @@ package systems.zlink.framework.runtime.locations;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationReadiness;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -30,9 +29,7 @@ public final class ZLinkLocationReadinessService implements ZLinkLocationReadine
         }
         return query.listTopology(
                 new ZLinkLocationTopologyFilter(
-                    ZLinkLocationKind.PEER,
                     meshName,
-                    role,
                     nodeRid,
                     ZLinkLocationTopologyState.READY),
                 ZLinkPageRequest.firstPage())
@@ -43,6 +40,6 @@ public final class ZLinkLocationReadinessService implements ZLinkLocationReadine
 
     private static boolean ready(ZLinkLocationTopologyEntry entry) {
         return entry.state() == ZLinkLocationTopologyState.READY
-            && entry.readyCount() > 0;
+            && !entry.draining();
     }
 }

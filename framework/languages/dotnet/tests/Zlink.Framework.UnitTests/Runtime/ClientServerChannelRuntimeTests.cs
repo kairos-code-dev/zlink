@@ -82,6 +82,100 @@ public sealed class ClientServerChannelRuntimeTests
     }
 
     [Fact]
+    public async Task BlockingRequestHandler_DoesNotBlockClientServerLivenessControl()
+    {
+        var port = ReservePort();
+        await using var server = CreateBlockingServer(port);
+        await using var client = CreateClient(port);
+        var serverRuntime = server.GetRequiredService<ZLinkFrameworkRuntime>();
+        var clientRuntime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        var blocking = server.GetRequiredService<BlockingRequestProbe>();
+
+        await serverRuntime.StartAsync(CancellationToken.None);
+        await clientRuntime.StartAsync(CancellationToken.None);
+        try
+        {
+            var clientTransport =
+                clientRuntime.GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => clientTransport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+            var serverState = await serverRuntime.EnsureStartedStateAsync(
+                CancellationToken.None);
+            var serverIdentity = serverState.ClientServerServerBundles["work"]
+                .ClientServerServer!;
+            var request = client.GetRequiredService<IZLinkRouteClient>()
+                .RequestToChannel("work", new BlockingRequest("blocked"))
+                .Timeout(TimeSpan.FromSeconds(15))
+                .Async<EchoReply>()
+                .AsTask();
+            await blocking.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var baselineProbeCount = serverIdentity.LivenessProbeCount;
+
+            await WaitUntilAsync(
+                () => serverIdentity.LivenessProbeCount > baselineProbeCount,
+                TimeSpan.FromSeconds(8));
+            Assert.Equal(1, clientTransport.ReadyCount);
+
+            blocking.Release.TrySetResult();
+            Assert.Equal(
+                "blocked",
+                (await request.WaitAsync(TimeSpan.FromSeconds(5))).Value);
+        }
+        finally
+        {
+            blocking.Release.TrySetResult();
+            await clientRuntime.StopAsync(CancellationToken.None);
+            await serverRuntime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationIgnoringRequestHandler_DoesNotBlockRuntimeStopOrReplyLate()
+    {
+        var port = ReservePort();
+        await using var server = CreateBlockingServer(port);
+        await using var client = CreateClient(port);
+        var serverRuntime = server.GetRequiredService<ZLinkFrameworkRuntime>();
+        var clientRuntime = client.GetRequiredService<ZLinkFrameworkRuntime>();
+        var blocking = server.GetRequiredService<BlockingRequestProbe>();
+        Exception? runtimeFailure = null;
+        serverRuntime.ErrorSink.UnhandledCallbackException += exception =>
+            runtimeFailure = exception;
+
+        await serverRuntime.StartAsync(CancellationToken.None);
+        await clientRuntime.StartAsync(CancellationToken.None);
+        try
+        {
+            var clientTransport =
+                clientRuntime.GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => clientTransport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+            var request = client.GetRequiredService<IZLinkRouteClient>()
+                .RequestToChannel("work", new BlockingRequest("late"))
+                .Timeout(TimeSpan.FromSeconds(3))
+                .Async<EchoReply>()
+                .AsTask();
+            await blocking.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await serverRuntime.StopAsync(CancellationToken.None)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(3));
+            blocking.Release.TrySetResult();
+            await blocking.Completed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await Assert.ThrowsAnyAsync<Exception>(async () => await request);
+            Assert.Null(runtimeFailure);
+        }
+        finally
+        {
+            blocking.Release.TrySetResult();
+            await clientRuntime.StopAsync(CancellationToken.None);
+            await serverRuntime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task ServerPushedDrainingUpdate_RemovesManualClientFromReadySet()
     {
         var port = ReservePort();
@@ -1095,6 +1189,19 @@ public sealed class ClientServerChannelRuntimeTests
         return services.BuildServiceProvider();
     }
 
+    private static ServiceProvider CreateBlockingServer(int port)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<BlockingRequestProbe>();
+        services.AddSingleton(new ServerIdentity(string.Empty));
+        services.AddZLinkFramework(options =>
+            options.AddClientServerChannel("work")
+                .Server()
+                .Listen(port)
+                .AddRequestHandler<BlockingRequestHandler, BlockingRequest, EchoReply>());
+        return services.BuildServiceProvider();
+    }
+
     private static ServiceProvider CreateClient(int port)
     {
         var services = new ServiceCollection();
@@ -1192,12 +1299,48 @@ public sealed class ClientServerChannelRuntimeTests
 
     private sealed record EchoSend(string Value);
 
+    private sealed record BlockingRequest(string Value);
+
     private sealed record ServerIdentity(string Name);
 
     private sealed class EchoProbe
     {
         public TaskCompletionSource<string> Received { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingRequestProbe
+    {
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Completed { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class BlockingRequestHandler(BlockingRequestProbe probe)
+        : IZLinkRequestHandler<BlockingRequest, EchoReply>
+    {
+        public async ValueTask<EchoReply> HandleAsync(
+            BlockingRequest request,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken)
+        {
+            Assert.Equal("work", context.ChannelName);
+            probe.Entered.TrySetResult();
+            await probe.Release.Task;
+            try
+            {
+                return new EchoReply(request.Value);
+            }
+            finally
+            {
+                probe.Completed.TrySetResult();
+            }
+        }
     }
 
     private sealed class EchoSendHandler(EchoProbe probe) : IZLinkSendHandler<EchoSend>

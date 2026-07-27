@@ -21,10 +21,8 @@ internal sealed class LocationStoreDelayState
 /// </summary>
 internal sealed class DelayableLocationStore(
     IZLinkLocationStore inner,
-    LocationStoreDelayState delayState,
-    IZLinkLocationChangeStampStore? changeStampStore = null) :
-    IZLinkLocationStore,
-    IZLinkLocationChangeStampStore
+    LocationStoreDelayState delayState) :
+    IZLinkLocationStore
 {
     private async ValueTask DelayAsync(CancellationToken cancellationToken)
     {
@@ -213,13 +211,11 @@ internal sealed class DelayableLocationStore(
         return await inner.AbortAggregateAsync(fence, cancellationToken);
     }
 
-    public async ValueTask<ulong> GetChangeStampAsync(
-        ZLinkLocationChangeStampScope scope,
+    public async ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
         await DelayAsync(cancellationToken);
-        if (changeStampStore is null)
-            throw new NotSupportedException("The inner store exposes no change stamp.");
-        return await changeStampStore.GetChangeStampAsync(scope, cancellationToken);
+        return await inner.GetMeshNodeChangeStampAsync(meshName, cancellationToken);
     }
 }

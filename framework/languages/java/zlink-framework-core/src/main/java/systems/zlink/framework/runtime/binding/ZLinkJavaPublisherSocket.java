@@ -6,7 +6,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.PubSocket;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
 
 record ZLinkJavaPublisherSocket(PubSocket socket)
     implements ZLinkBackendPublisherSocket, ZLinkJavaSocketBacked {

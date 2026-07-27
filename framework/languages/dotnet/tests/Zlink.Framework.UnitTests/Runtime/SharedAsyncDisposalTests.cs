@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Locations;
@@ -16,7 +17,11 @@ public sealed class SharedAsyncDisposalTests
     [Fact]
     public async Task AutoConnectHost_Repeated_Dispose_Callers_Share_Finalization()
     {
-        var host = new ZLinkLocationAutoConnectHost(null!, null!, new ZLinkLocationOptions());
+        var host = new ZLinkLocationAutoConnectHost(
+            null!,
+            null!,
+            new ZLinkLocationOptions(),
+            store: new ZLinkInMemoryLocationStore());
         var first = host.DisposeAsync().AsTask();
         var second = host.DisposeAsync().AsTask();
         Assert.Same(first, second);
@@ -108,6 +113,30 @@ public sealed class SharedAsyncDisposalTests
     }
 
     [Fact]
+    public async Task ChannelBundle_Dispose_Detaches_Manual_Generation_And_Joins_Connect()
+    {
+        var socket = new BlockingConnectableSocket();
+        var bundle = new ZLinkChannelRuntimeBundle(socket);
+        var connections = new ZLinkEndpointConnections();
+        bundle.OwnManualConnectionAttachment(connections.Attach(
+            endpoint => bundle.ConnectManual(socket, endpoint),
+            endpoint => bundle.DisconnectManual(socket, endpoint)));
+        var connect = Task.Run(
+            () => connections.Connect("tcp://127.0.0.1:7401"));
+        await socket.ConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var dispose = bundle.DisposeAsync().AsTask();
+        Assert.False(dispose.IsCompleted);
+
+        socket.ConnectRelease.TrySetResult();
+        await Task.WhenAll(connect, dispose).WaitAsync(TimeSpan.FromSeconds(5));
+        connections.Connect("tcp://127.0.0.1:7402");
+
+        Assert.Equal(1, socket.ConnectCount);
+        Assert.Equal(1, socket.DisposeCount);
+    }
+
+    [Fact]
     public async Task HandlerOwner_Concurrent_Dispose_Callers_Share_Fallback_Cleanup()
     {
         await using var services = new ServiceCollection().BuildServiceProvider();
@@ -129,14 +158,15 @@ public sealed class SharedAsyncDisposalTests
     {
         await using var services = new ServiceCollection().BuildServiceProvider();
         var options = new ZLinkDispatchOptionsModel();
-        options.SetMessageFlowObserver<BlockingObserver>();
+        options.SetRuntimeMessageFlowObserver<BlockingObserver>();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
         var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
-        Assert.True(pump.Enqueue(new ZLinkMessageFlowEvent(
+        Assert.True(ZLinkRuntimeMessageFlowProjection.TryProject(new ZLinkMessageFlowEvent(
             ZLinkMessageFlowOutcome.Received,
             ZLinkDispatchErrorSurface.StreamSession,
             ZLinkDispatchMessageKind.Send,
-            "packet")));
+            "packet"), out var flow));
+        Assert.True(pump.EnqueueRuntime(flow));
         var observer = await BlockingObserver.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var first = pump.DisposeAsync().AsTask();
         await observer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -291,6 +321,41 @@ public sealed class SharedAsyncDisposalTests
         }
     }
 
+    private sealed class BlockingConnectableSocket : IZLinkBackendConnectableSocket
+    {
+        private int _connectCount;
+        private int _disposeCount;
+
+        internal TaskCompletionSource ConnectStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource ConnectRelease { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal int ConnectCount => Volatile.Read(ref _connectCount);
+
+        internal int DisposeCount => Volatile.Read(ref _disposeCount);
+
+        public void Bind(string endpoint) { }
+
+        public void SetChannelName(string channelName) { }
+
+        public void Connect(string endpoint)
+        {
+            Interlocked.Increment(ref _connectCount);
+            ConnectStarted.TrySetResult();
+            ConnectRelease.Task.GetAwaiter().GetResult();
+        }
+
+        public void Disconnect(string endpoint) { }
+
+        public ValueTask DisposeAsync()
+        {
+            Interlocked.Increment(ref _disposeCount);
+            return ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class EmptyBackendAdapterFactory : IZLinkBackendAdapterFactory
     {
         public IZLinkChannelBackendAdapter CreateChannelAdapter() => null!;
@@ -392,7 +457,7 @@ public sealed class SharedAsyncDisposalTests
         }
     }
 
-    public sealed class BlockingObserver : IZLinkMessageFlowObserver, IAsyncDisposable
+    public sealed class BlockingObserver : IZLinkRuntimeMessageFlowObserver, IAsyncDisposable
     {
         internal static TaskCompletionSource<BlockingObserver> Created { get; private set; } = NewCreated();
         private int _disposeCount;
@@ -410,7 +475,9 @@ public sealed class SharedAsyncDisposalTests
         internal TaskCompletionSource Release { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int DisposeCount => Volatile.Read(ref _disposeCount);
-        public ValueTask OnMessageFlowAsync(ZLinkMessageFlowEvent flow, CancellationToken cancellationToken) =>
+        public ValueTask OnMessageFlowAsync(
+            ZLinkRuntimeMessageFlowEvent flow,
+            CancellationToken cancellationToken) =>
             ValueTask.CompletedTask;
         public async ValueTask DisposeAsync()
         {

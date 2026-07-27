@@ -6,25 +6,25 @@ namespace RegistrationCodec.Server.InvalidDuplicate;
 internal sealed class FirstFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {
     public async ValueTask InvokeAsync(
-        ZLinkHandlerInvocation invocation,
+        IZLinkMessageContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"filter|name=first|phase=before|packet={invocation.PacketName}");
+        evidence.Add($"filter|name=first|phase=before|packet={context.PacketName}");
         await next();
-        evidence.Add($"filter|name=first|phase=after|packet={invocation.PacketName}");
+        evidence.Add($"filter|name=first|phase=after|packet={context.PacketName}");
     }
 }
 
 internal sealed class SecondFilter(EvidenceStore evidence) : IZLinkHandlerFilter
 {
     public async ValueTask InvokeAsync(
-        ZLinkHandlerInvocation invocation,
+        IZLinkMessageContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken)
     {
-        evidence.Add($"filter|name=second|phase=before|packet={invocation.PacketName}");
+        evidence.Add($"filter|name=second|phase=before|packet={context.PacketName}");
         await next();
-        evidence.Add($"filter|name=second|phase=after|packet={invocation.PacketName}");
+        evidence.Add($"filter|name=second|phase=after|packet={context.PacketName}");
     }
 }

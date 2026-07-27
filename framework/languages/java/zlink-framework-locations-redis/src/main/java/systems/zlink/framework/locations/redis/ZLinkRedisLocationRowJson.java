@@ -23,26 +23,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkObjectCapability;
 import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkRouteKind;
-import systems.zlink.framework.locations.ZLinkRouteLocation;
-import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
-import systems.zlink.framework.spots.ZLinkSpotKind;
 
 final class ZLinkRedisLocationRowJson {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -514,127 +505,6 @@ final class ZLinkRedisLocationRowJson {
             encoded.path("Limit").asInt());
     }
 
-    static String serializePeer(ZLinkPeerLocation row) {
-        ObjectNode node = JSON.createObjectNode();
-        node.put("AutoConnectType", autoConnectTypeNumber(row.autoConnectType()));
-        node.put("MeshName", row.meshName());
-        putRid(node, "NodeRid", row.nodeRid());
-        node.put("Role", row.role() == null ? 0 : row.role().value());
-        node.put("Endpoint", row.endpoint());
-        node.put("Weight", row.weight());
-        node.put("Draining", row.draining());
-        node.put("Value", row.value());
-        putStringMap(node, "Metadata", row.metadata());
-        putStringList(node, "Capabilities", row.capabilities());
-        node.put("OwnerId", row.ownerId());
-        node.put("Generation", row.generation());
-        putInstant(node, "UpdatedAt", row.updatedAt());
-        return write(node);
-    }
-
-    static ZLinkPeerLocation deserializePeer(String json, long generation, Instant updatedAt) {
-        JsonNode node = read(json);
-        return new ZLinkPeerLocation(
-            autoConnectType(node.path("AutoConnectType").asInt()),
-            text(node, "MeshName"),
-            rid(node, "NodeRid"),
-            role(node.path("Role").asInt()),
-            text(node, "Endpoint"),
-            node.path("Weight").asLong(),
-            node.path("Draining").asBoolean(),
-            node.path("Value").asLong(),
-            stringMap(node.path("Metadata")),
-            stringList(node.path("Capabilities")),
-            text(node, "OwnerId"),
-            generation,
-            updatedAt);
-    }
-
-    static String serializeSpot(ZLinkSpotLocation row) {
-        ObjectNode node = JSON.createObjectNode();
-        node.put("MeshName", row.meshName());
-        node.put("SpotId", row.spotId());
-        node.put("SpotGeneration", row.spotGeneration());
-        putNullableText(node, "SpotType", row.spotType());
-        putRid(node, "NodeRid", row.nodeRid());
-        node.put("SpotKind", spotKindNumber(row.spotKind()));
-        putNullableText(node, "RouteEndpoint", row.routeEndpoint());
-        node.put("OwnerId", row.ownerId());
-        node.put("Generation", row.generation());
-        putInstant(node, "UpdatedAt", row.updatedAt());
-        return write(node);
-    }
-
-    static ZLinkSpotLocation deserializeSpot(String json, long generation, Instant updatedAt) {
-        JsonNode node = read(json);
-        return new ZLinkSpotLocation(
-            text(node, "MeshName"),
-            text(node, "SpotId"),
-            node.path("SpotGeneration").asLong(generation),
-            nullableText(node, "SpotType"),
-            rid(node, "NodeRid"),
-            spotKind(node.path("SpotKind").asInt()),
-            nullableText(node, "RouteEndpoint"),
-            text(node, "OwnerId"),
-            generation,
-            updatedAt);
-    }
-
-    static String serializeActor(ZLinkActorLocation row) {
-        ObjectNode node = JSON.createObjectNode();
-        node.put("ActorId", row.actorId());
-        putNullableText(node, "ActorType", row.actorType());
-        putActorRef(node, "ActorRef", row.actorRef());
-        putRid(node, "NodeRid", row.nodeRid());
-        node.put("LocationKind", row.locationKind().value());
-        node.put("SpotMeshName", row.spotMeshName());
-        node.put("SpotId", row.spotId());
-        node.put("OwnerId", row.ownerId());
-        node.put("Generation", row.generation());
-        putInstant(node, "UpdatedAt", row.updatedAt());
-        return write(node);
-    }
-
-    static ZLinkActorLocation deserializeActor(String json, long generation, Instant updatedAt) {
-        JsonNode node = read(json);
-        return new ZLinkActorLocation(
-            text(node, "ActorId"),
-            nullableText(node, "ActorType"),
-            actorRef(node.get("ActorRef")),
-            rid(node, "NodeRid"),
-            spotKind(node.path("LocationKind").asInt()),
-            text(node, "SpotMeshName"),
-            text(node, "SpotId"),
-            text(node, "OwnerId"),
-            generation,
-            updatedAt);
-    }
-
-    static String serializeRoute(ZLinkRouteLocation row) {
-        ObjectNode node = JSON.createObjectNode();
-        node.put("RouteKind", row.routeKind().value());
-        node.put("RouteKey", row.routeKey());
-        putRid(node, "OwnerNodeRid", row.ownerNodeRid());
-        node.put("OwnerId", row.ownerId());
-        node.put("Generation", row.generation());
-        node.put("Value", Base64.getEncoder().encodeToString(row.value() == null ? new byte[0] : row.value()));
-        putInstant(node, "UpdatedAt", row.updatedAt());
-        return write(node);
-    }
-
-    static ZLinkRouteLocation deserializeRoute(String json, long generation, Instant updatedAt) {
-        JsonNode node = read(json);
-        String value = nullableText(node, "Value");
-        return new ZLinkRouteLocation(
-            routeKind(node.path("RouteKind").asInt()),
-            text(node, "RouteKey"),
-            rid(node, "OwnerNodeRid"),
-            text(node, "OwnerId"),
-            generation,
-            value == null ? new byte[0] : Base64.getDecoder().decode(value),
-            updatedAt);
-    }
-
     private static JsonNode read(String json) {
         try {
             return JSON.readTree(json);
@@ -716,68 +586,6 @@ final class ZLinkRedisLocationRowJson {
         };
     }
 
-    private static void putStringMap(ObjectNode node, String field, Map<String, String> value) {
-        if (value == null) {
-            node.putNull(field);
-            return;
-        }
-        ObjectNode map = JSON.createObjectNode();
-        value.forEach(map::put);
-        node.set(field, map);
-    }
-
-    private static Map<String, String> stringMap(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        Map<String, String> result = new HashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
-        while (fields.hasNext()) {
-            Map.Entry<String, JsonNode> field = fields.next();
-            result.put(field.getKey(), field.getValue().asText());
-        }
-        return Map.copyOf(result);
-    }
-
-    private static void putStringList(ObjectNode node, String field, List<String> value) {
-        if (value == null) {
-            node.putNull(field);
-            return;
-        }
-        ArrayNode array = JSON.createArrayNode();
-        value.forEach(array::add);
-        node.set(field, array);
-    }
-
-    private static List<String> stringList(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        List<String> result = new ArrayList<>();
-        node.forEach(item -> result.add(item.asText()));
-        return List.copyOf(result);
-    }
-
-    private static ZLinkLocationAutoConnectType autoConnectType(int value) {
-        return ZLinkLocationAutoConnectType.fromValue(value);
-    }
-
-    private static ZLinkLocationRole role(int value) {
-        return ZLinkLocationRole.fromValue(value);
-    }
-
-    private static int spotKindNumber(ZLinkSpotKind value) {
-        return value == null ? 0 : value.value();
-    }
-
-    private static ZLinkSpotKind spotKind(int value) {
-        return ZLinkSpotKind.fromValue(value);
-    }
-
-    private static ZLinkRouteKind routeKind(int value) {
-        return ZLinkRouteKind.fromValue(value);
-    }
-
     private static ZLinkPlacementObjectKind placementObjectKind(
         int value) {
         for (ZLinkPlacementObjectKind kind :
@@ -824,33 +632,4 @@ final class ZLinkRedisLocationRowJson {
             "invalid Framework runtime state");
     }
 
-    private static int autoConnectTypeNumber(ZLinkLocationAutoConnectType value) {
-        return value == null ? 0 : value.value();
-    }
-
-    private static void putActorRef(ObjectNode node, String field, ActorRef value) {
-        if (value == null) {
-            node.putNull(field);
-            return;
-        }
-        ObjectNode actorRef = JSON.createObjectNode();
-        actorRef.put("actorId", value.actorId());
-        actorRef.put(
-            "objectGeneration",
-            Long.toString(value.objectGeneration()));
-        actorRef.put("meshName", value.meshName());
-        putRid(actorRef, "nodeRid", value.nodeRid());
-        node.set(field, actorRef);
-    }
-
-    private static ActorRef actorRef(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-        return new ActorRef(
-            text(node, "actorId"),
-            Long.parseLong(text(node, "objectGeneration")),
-            text(node, "meshName"),
-            rid(node, "nodeRid"));
-    }
 }

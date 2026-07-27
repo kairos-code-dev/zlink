@@ -57,8 +57,7 @@ public sealed class RedisStoreFailureTests
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.ListMeshNodesAsync("play", default));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.GetChangeStampAsync(
-                new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.Actor, null)));
+            await store.GetMeshNodeChangeStampAsync("play"));
     }
 
     [Fact]

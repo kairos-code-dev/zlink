@@ -36,15 +36,13 @@ public final class Program {
 
         ensureReady(actorUrl, callerUrl, "TA-B2-live", "ta-b2");
         postFault(actorUrl, "/fault/stale", "TA-B2-stale", "ta-b2");
-        assertFailure(callerUrl, "TA-B2-stale", "ta-b2", "ACTOR_LOCATION_STALE", false);
-        assertNoEvidence(actorUrl, "TA-B2-stale");
+        assertCall(callerUrl, "TA-B2-stale-cas-rejected", "ta-b2", "b2-stale", "reply:b2-stale", false);
         postFault(actorUrl, "/fault/restore", "TA-B2-restore", "ta-b2");
         assertCall(callerUrl, "TA-B2-live-after-reresolve", "ta-b2", "b2-request", "reply:b2-request", false);
 
         ensureReady(actorUrl, callerUrl, "TA-B3-live", "ta-b3");
         postFault(actorUrl, "/fault/route-disconnected", "TA-B3-route-disconnected", "ta-b3");
-        assertFailure(callerUrl, "TA-B3-route-disconnected", "ta-b3", "ROUTE_NOT_CONNECTED", false);
-        assertNoEvidence(actorUrl, "TA-B3-route-disconnected");
+        assertCall(callerUrl, "TA-B3-stale-delete-rejected", "ta-b3", "b3-stale", "reply:b3-stale", false);
         postFault(actorUrl, "/fault/restore", "TA-B3-restore", "ta-b3");
         assertCall(callerUrl, "TA-B3-route-restored", "ta-b3", "b3-request", "reply:b3-request", false);
 

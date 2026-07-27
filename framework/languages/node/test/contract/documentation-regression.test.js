@@ -201,7 +201,6 @@ test('node specifications keep key Spot signatures aligned with public declarati
 
   for (const token of [
     'ZLINK_BOUND_SESSION_FACTORY',
-    'ZLINK_RUNTIME_EVENT_PUBLISHER',
     'ZLINK_CHANNEL_RUNTIME_OPTIONS',
   ]) {
     const alwaysAvailable = systemSpec.split('**역할이 있을 때만 등록되는 provider:**')[0];

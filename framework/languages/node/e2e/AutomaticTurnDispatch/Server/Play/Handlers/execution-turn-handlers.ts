@@ -2,12 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ZLinkPacket,
   type ZLinkHandlerContext,
-  type ZLinkSpotHandleResolver,
+  type ZLinkSpotManager,
   type ZLinkSpotPacketHandler,
   type ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
   type ZLinkServerHttpClient,
   zlinkHttpClientToken
 } from '@zlink-systems/nestjs';
@@ -194,16 +194,13 @@ export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeS
 @ZLinkPacket('SelfCycleMsg')
 export class SelfCycleHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, SelfCycleMsg> {
   constructor(
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     private readonly evidence: EvidenceStore
   ) {}
 
   async handle(spot: AwaitProbeSpot, request: SelfCycleMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    const self = await this.spotHandles.resolveSpotHandle(
-      spot.context.meshName,
-      String(spot.context.spotRid)
-    );
+    const self = await this.spotHandles.find(String(spot.context.spotRid));
     if (self === undefined) throw new Error(`Self SpotHandle was not resolved for '${spot.context.spotRid}'.`);
     try {
       await spot.context.outbound

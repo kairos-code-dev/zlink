@@ -60,13 +60,6 @@ struct handler_failure_event_t
     bool retriable;
 };
 
-struct handler_invocation_t
-{
-    handler_descriptor_t descriptor;
-    message_context_t message_context;
-    std::shared_ptr<const zlink::message_t> message;
-};
-
 class payload_view_t
 {
   public:
@@ -94,7 +87,7 @@ class handler_registry_t
     using failure_observer_t = std::function<void (const handler_failure_event_t &)>;
     using filter_invoker_t = std::function<task_t<zlink::message_t> (service_provider_t &,
                                                                      serializer_registry_t &,
-                                                                     const handler_invocation_t &,
+                                                                     const message_context_t &,
                                                                      handler_next_t)>;
 
     handler_registry_t ();
@@ -378,10 +371,10 @@ class handler_registry_t
     template <typename TFilter> handler_registry_t &use_filter ()
     {
         return add_filter ([] (service_provider_t &services, serializer_registry_t &,
-                               const handler_invocation_t &invocation,
+                               const message_context_t &context,
                                handler_next_t next) -> task_t<zlink::message_t> {
             auto &filter = services.get_required<TFilter> ();
-            return filter.invoke (invocation, std::move (next));
+            return filter.invoke (context, std::move (next));
         });
     }
 

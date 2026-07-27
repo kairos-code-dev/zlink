@@ -4,9 +4,9 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.contracts.service.spot.MeshPeerState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -50,7 +50,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
@@ -154,7 +154,7 @@ public final class ZLinkSpotRuntime
     private final Set<RoutingId> autoConnectedRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final List<ZLinkInternalMeshNode> routeMeshNodes;
     private final Map<String, ZLinkInternalMeshNode> routeMeshNodesByName;
-    private volatile systems.zlink.framework.locations.ZLinkAuthorityStore
+    private volatile systems.zlink.framework.locations.ZLinkLocationStore
         userSpotAuthorityStore;
     private volatile systems.zlink.framework.locations.ZLinkLocationStore
         userSpotLocationStore;
@@ -164,9 +164,9 @@ public final class ZLinkSpotRuntime
         .ZLinkServiceAuthorityPayloadCodec userSpotAuthorities =
             new systems.zlink.framework.runtime.locations
                 .ZLinkServiceAuthorityPayloadCodec();
-    private final systems.zlink.framework.runtime.service
+    private final systems.zlink.framework.runtime.internal.service
         .ZLinkServiceM6AWireCodec userSpotPayloads =
-            new systems.zlink.framework.runtime.service
+            new systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceM6AWireCodec();
     private final Set<String> suppressedActorLifecycleCallbacks = ConcurrentHashMap.newKeySet();
     private final ZLinkSpotRelocationReplyRoutes relocationReplyRoutes =
@@ -509,7 +509,7 @@ public final class ZLinkSpotRuntime
             spotLocations.registerNode(
                 nodeRegistration.meshName(),
                 node.routingId(),
-                node.entrySpot().routingId(),
+                node.entrySpot().spotId(),
                 node.entrySpot().lifecycleGeneration(),
                 nodeRegistration.routerBind(),
                 nodeRegistration.pubSubEnabled());
@@ -569,7 +569,7 @@ public final class ZLinkSpotRuntime
             spotLocations.registerNode(
                 nodeRegistration.meshName(),
                 node.routingId(),
-                node.entrySpot().routingId(),
+                node.entrySpot().spotId(),
                 node.entrySpot().lifecycleGeneration(),
                 nodeRegistration.bindEndpoint(),
                 !nodeRegistration.channelNames().isEmpty());
@@ -615,7 +615,7 @@ public final class ZLinkSpotRuntime
     }
 
     public void installUserSpotOperationHandlers(
-        systems.zlink.framework.locations.ZLinkAuthorityStore authorityStore,
+        systems.zlink.framework.locations.ZLinkLocationStore authorityStore,
         systems.zlink.framework.locations.ZLinkLocationStore locationStore,
         systems.zlink.framework.runtime.locations.ZLinkLocationRuntime
             locationRuntime) {
@@ -696,7 +696,7 @@ public final class ZLinkSpotRuntime
     public CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> find(
         String spotId) {
         java.util.Objects.requireNonNull(spotId, "spotId");
-        systems.zlink.framework.locations.ZLinkAuthorityStore store =
+        systems.zlink.framework.locations.ZLinkLocationStore store =
             requireUserSpotAuthorityStore();
         return store.read(
                 systems.zlink.framework.runtime.locations
@@ -713,7 +713,7 @@ public final class ZLinkSpotRuntime
     public CompletionStage<Boolean> close(
         systems.zlink.framework.spots.SpotRef spot) {
         java.util.Objects.requireNonNull(spot, "spot");
-        systems.zlink.framework.locations.ZLinkAuthorityStore store =
+        systems.zlink.framework.locations.ZLinkLocationStore store =
             requireUserSpotAuthorityStore();
         String key = systems.zlink.framework.runtime.locations
             .ZLinkAuthorityKeyCodec.spot(spot.spotId());
@@ -775,7 +775,7 @@ public final class ZLinkSpotRuntime
             long deadline = System.currentTimeMillis()
                 + defaultRequestTimeout.toMillis();
             var intent = new ZLinkInternalMeshNode.UserSpotCloseIntent(
-                        new systems.zlink.framework.runtime.service
+                        new systems.zlink.framework.runtime.internal.service
                             .ZLinkServiceM6BWireCodec.UserSpotCloseFence(
                                 spot.spotId(),
                                 spot.objectGeneration(),
@@ -810,7 +810,7 @@ public final class ZLinkSpotRuntime
         byte[] applicationBytes =
             request.toEncodedPayload(serializer).bytes();
         byte[] envelope = userSpotPayloads.encodeApplicationPayload(
-            new systems.zlink.framework.runtime.service
+            new systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceM6AWireCodec.ApplicationPayload(
                     "zlink.user-spot-create",
                     "application/zlink-framework-json-v1",
@@ -984,7 +984,7 @@ public final class ZLinkSpotRuntime
                                     "Object client Mesh is not configured: "
                                         + meshName)));
                 }
-                var fence = new systems.zlink.framework.runtime.service
+                var fence = new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceM6BWireCodec.ReservationFence(
                         reservation.reservationVersion(),
                         reservation.storeVersion(),
@@ -1211,7 +1211,7 @@ public final class ZLinkSpotRuntime
         return meshes.getFirst();
     }
 
-    private systems.zlink.framework.locations.ZLinkAuthorityStore
+    private systems.zlink.framework.locations.ZLinkLocationStore
         requireUserSpotAuthorityStore() {
         if (userSpotAuthorityStore == null) {
             throw new IllegalStateException(
@@ -1512,7 +1512,7 @@ public final class ZLinkSpotRuntime
 
     ZLinkSpotRelocationReplyRoutes.CanonicalRoute
         canonicalRelocationReplyRoute(
-            systems.zlink.framework.runtime.service
+            systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceRelocationWireCodec.ReplyRelay relay,
             RoutingId transportSource) {
         return relocationReplyRoutes.lookupCanonical(relay, transportSource);
@@ -2320,7 +2320,7 @@ public final class ZLinkSpotRuntime
         RoutingId sourceRoutingId,
         Message envelope) {
         EntrySpotActivation activation = entrySpotActivationFor(
-            primaryNode.entrySpot().routingId());
+            primaryNode.entrySpot().spotId());
         if (activation == null) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "Entry Spot activation is not available for actor transfer"));
@@ -2514,7 +2514,7 @@ public final class ZLinkSpotRuntime
                 }
                 systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.State timerFlow =
                     systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.create(
-                        systems.zlink.framework.configuration.ZLinkFlowOrigin.TIMER);
+                        systems.zlink.framework.monitoring.ZLinkFlowOrigin.TIMER);
                 try (systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.Scope ignored =
                     systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.enter(timerFlow)) {
                     return operation.get();
@@ -2542,7 +2542,7 @@ public final class ZLinkSpotRuntime
         try {
             if (actorAdmissionsRuntime().isRoutedTransferActor(actor)) {
                 EntrySpotActivation entry = entrySpotActivationFor(
-                    primaryNode.entrySpot().routingId());
+                    primaryNode.entrySpot().spotId());
                 if (entry == null) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                         "Entry Spot activation is not available for actor leave"));
@@ -2557,11 +2557,11 @@ public final class ZLinkSpotRuntime
                     joinedActor -> notifySpotActorLifecycleAndSuppressBackendEvent(
                         rawEntrySpot,
                         joinedActor,
-                        primaryNode.entrySpot().routingId(),
+                        primaryNode.entrySpot().spotId(),
                         true));
             }
             EntrySpotActivation entry = entrySpotActivationFor(
-                primaryNode.entrySpot().routingId());
+                primaryNode.entrySpot().spotId());
             return actorAdmissions.leaveSpot(
                 nodeByRid(nodeRid),
                 actor,
@@ -3129,7 +3129,7 @@ public final class ZLinkSpotRuntime
             return;
         }
         LOGGER.fine("[zlink-java-stream-trace] spot-route " + phase
-            + " localSpot=" + backendSpot.routingId()
+            + " localSpot=" + backendSpot.spotId()
             + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
             + " sourceSpot=" + received.spotId().map(Object::toString).orElse(null)
             + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)
@@ -3146,7 +3146,7 @@ public final class ZLinkSpotRuntime
             return;
         }
         LOGGER.fine("[zlink-java-stream-trace] spot-route " + phase
-            + " localSpot=" + backendSpot.routingId()
+            + " localSpot=" + backendSpot.spotId()
             + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
             + " sourceSpot=" + received.spotId().map(Object::toString).orElse(null)
             + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)

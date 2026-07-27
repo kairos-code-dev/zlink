@@ -1,10 +1,9 @@
-import type { ZLinkRuntimeEventPublisher } from '../../contracts';
-import type { ZLinkBackendMeshNode, ZLinkBackendSocketMonitor, ZLinkMonitoringBackendAdapter } from '../backend';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
+import type { ZLinkBackendSocketMonitor, ZLinkMonitoringBackendAdapter } from '../backend';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import {
   ZLinkLocationRuntimeMonitoringSource,
-  ZLinkMeshMonitoringSource,
   ZLinkSocketMonitoringSource,
 } from '../diagnostics';
 import type { ZLinkFrameworkExecutionState } from '../execution';
@@ -13,7 +12,6 @@ import type { ZLinkLocationRuntime } from '../locations';
 export interface ZLinkMonitoringRuntimeOptions {
   readonly registration: ZLinkFrameworkRegistration;
   readonly channelRuntime: ZLinkChannelRuntimeManager;
-  readonly meshNodes: ReadonlyMap<string, ZLinkBackendMeshNode>;
   readonly locationRuntime?: ZLinkLocationRuntime;
   readonly monitoringAdapter: ZLinkMonitoringBackendAdapter;
   readonly publisher: ZLinkRuntimeEventPublisher;
@@ -43,22 +41,6 @@ export class ZLinkMonitoringRuntime {
       state.listenerTasks.push(state.taskRunner.run(
         `monitoring:location-runtime:${registration.sourceName}`,
         (signal) => runPollingMonitoringSource(registration.intervalMs, signal, () => source.pollOnce(signal))
-      ));
-    }
-    for (const registration of monitoring.spot ?? []) {
-      const meshNode = this.options.meshNodes.get(registration.sourceName);
-      if (meshNode === undefined) {
-        throw new Error(`Monitoring spot source '${registration.sourceName}' is not registered.`);
-      }
-      const source = new ZLinkMeshMonitoringSource(
-        registration,
-        meshNode,
-        this.options.publisher,
-        this.options.registration.spotNodes.get(registration.sourceName)
-      );
-      state.listenerTasks.push(state.taskRunner.run(
-        `monitoring:spot:${registration.sourceName}`,
-        (signal) => runPollingMonitoringSource(registration.intervalMs, signal, () => source.pollOnce())
       ));
     }
   }

@@ -769,6 +769,10 @@ if op == 'cas' then
     if redis.call('HEXISTS', KEYS[6], aggregateLockKey(request.key)) == 1 then
         return cjson.encode({kind = 'conflict', current = snapshot(row)})
     end
+    if request.mutationKind == 'restore'
+        and not sameOwner(row, request.currentOwner) then
+        return cjson.encode({kind = 'conflict', current = snapshot(row)})
+    end
     if request.mutationKind == 'delete' or request.transition == 'preserve' then
         if not leaseLive({ownerId = row.ownerId,
             leaseGeneration = row.ownerLeaseGeneration}, KEYS[15]) then
@@ -782,12 +786,21 @@ if op == 'cas' then
         return cjson.encode({kind = 'generationExhausted'})
     end
     local reservation = nil
-    if request.transition == 'newOwner' then
+    -- System.Text.Json emits a present JSON null for an absent optional
+    -- fence. Redis cjson decodes that value as the truthy cjson.null userdata,
+    -- so test explicit value presence before entering relocation validation.
+    local hasFence = request.fence ~= nil
+        and request.fence ~= cjson.null
+        and request.fence ~= ''
+    if hasFence then
         reservation = readReservation(KEYS[14])
         if not reservation or reservation.status ~= 'reserved'
             or reservation.authorityKey ~= request.key
-            or not sameOwner(row, reservation.request.sourceOwner)
-            or not sameOwner({ownerId = request.targetOwner.ownerId,
+            or not sourceMatches(row, reservation.request) then
+            return cjson.encode({kind = 'conflict', current = snapshot(row)})
+        end
+        if request.transition == 'newOwner'
+            and not sameOwner({ownerId = request.targetOwner.ownerId,
                 ownerLeaseGeneration = tostring(request.targetOwner.leaseGeneration)},
                 reservation.request.targetOwner) then
             return cjson.encode({kind = 'conflict', current = snapshot(row)})
@@ -841,6 +854,12 @@ if op == 'cas' then
         row.descriptorLifecycleGeneration =
             reservation.request.targetNodeLifecycleGeneration
         redis.call('HSET', KEYS[14], 'status', 'committed')
+    elseif reservation then
+        -- Preserve+fence publishes Prepared and atomically rebinds the
+        -- still-reserved capacity fence to the StoreVersion created above.
+        reservation.request.expectedStoreVersion = row.storeVersion
+        redis.call('HSET', KEYS[14],
+            'requestJson', cjson.encode(reservation.request))
     end
     writeRow(KEYS[1], row)
     indexCurrent(request.key, row.storeVersion)

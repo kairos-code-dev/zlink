@@ -20,14 +20,14 @@ internal sealed class WorkflowRequestHandler(EvidenceStore evidence)
 }
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageFlowObserver
+    : IZLinkRuntimeMessageFlowObserver
 {
     public ValueTask OnMessageFlowAsync(
-        ZLinkMessageFlowEvent flow,
+        ZLinkRuntimeMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome != ZLinkMessageFlowOutcome.Error)
+        if (flow.Outcome != "failed")
         {
             return ValueTask.CompletedTask;
         }
@@ -36,8 +36,8 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
             "dispatch-error"
             + $"|surface={flow.Surface}"
             + $"|kind={flow.MessageKind}"
-            + $"|reason={flow.ErrorReason}"
-            + $"|action={flow.ErrorAction}"
+            + $"|reason={flow.Reason}"
+            + $"|action={flow.Action}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
         return ValueTask.CompletedTask;

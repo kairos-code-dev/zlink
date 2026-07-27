@@ -132,6 +132,7 @@ test('runtime topology and supporting exact names are declared by their producti
   const frameworkDeclarations = readTree(declarationsRoot);
   const nestDeclarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
   const redisDeclarations = readTree(path.join(workspaceRoot, 'packages', 'framework-locations-redis', 'dist'));
+  const exactInterfaceCatalog = readTree(interfaceSpecRoot);
   const runtimeTypes = [
     'ZLinkTerminationResult',
     'ZLinkTerminationOptions',
@@ -139,6 +140,13 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkRuntimeSnapshot',
     'ZLinkFrameworkRuntimeEvent',
     'ZLinkFrameworkRuntime',
+    'ZLinkMeshPeerSnapshot',
+    'ZLinkMeshChannelSnapshot',
+    'ZLinkMeshClaimSnapshot',
+    'ZLinkLocationRuntimeSnapshot',
+    'ZLinkMeshNodeSnapshot',
+    'ZLinkMeshRuntimeEvent',
+    'ZLinkRouteMeshRuntime',
     'ZLinkClientServerServerSnapshot',
     'ZLinkClientServerChannelSnapshot',
     'ZLinkClientServerRuntimeEvent',
@@ -153,14 +161,50 @@ test('runtime topology and supporting exact names are declared by their producti
   for (const name of runtimeTypes) {
     assert.match(frameworkDeclarations, new RegExp(`\\binterface ${name}\\b`));
   }
-  for (const name of [
+  const runtimeAliases = [
     'ZLinkClientServerRole',
     'ZLinkClientServerServerState',
     'ZLinkFanoutPublisherConnectionState',
     'ZLinkFanoutRuntimeEvent',
     'ZLinkMessageFlowReason'
-  ]) {
+  ];
+  for (const name of runtimeAliases) {
     assert.match(frameworkDeclarations, new RegExp(`\\btype ${name}\\b`));
+  }
+  const exactRouteMeshNames = [
+    'ZLinkTerminationIntent',
+    'ZLinkTerminationOutcome',
+    'ZLinkTerminationReason',
+    'ZLinkTerminationResult',
+    'ZLinkTerminationOptions',
+    'ZLinkFrameworkRuntimeSnapshot',
+    'ZLinkFrameworkRuntimeEvent',
+    'ZLinkFrameworkRuntime',
+    'ZLinkMeshNodeState',
+    'ZLinkMeshPeerSnapshot',
+    'ZLinkMeshChannelSnapshot',
+    'ZLinkMeshClaimSnapshot',
+    'ZLinkLocationRuntimeSnapshot',
+    'ZLinkInstanceSpotTypeSnapshot',
+    'ZLinkMeshNodeSnapshot',
+    'ZLinkMeshRuntimeEvent',
+    'ZLinkRouteMeshRuntime'
+  ];
+  for (const name of exactRouteMeshNames) {
+    assert.match(exactInterfaceCatalog, new RegExp(`\\b(?:interface|type|enum) ${name}\\b`));
+  }
+  const routeMeshRuntime = declarationBody(frameworkDeclarations, 'ZLinkRouteMeshRuntime');
+  const frameworkRuntime = declarationBody(frameworkDeclarations, 'ZLinkFrameworkRuntime');
+  assert.match(frameworkRuntime, /retire\(options\?: ZLinkTerminationOptions\): Promise<ZLinkTerminationResult>/);
+  assert.match(frameworkRuntime, /shutdown\(options\?: ZLinkTerminationOptions\): Promise<ZLinkTerminationResult>/);
+  assert.match(routeMeshRuntime, /snapshot\(meshName: string\): ZLinkMeshNodeSnapshot/);
+  assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkMeshRuntimeEvent>/);
+  assert.match(routeMeshRuntime, /isReady\(meshName: string\): boolean/);
+  assert.doesNotMatch(routeMeshRuntime, /\bdrain\(/);
+  assert.doesNotMatch(routeMeshRuntime, /\bawaitDrained\(/);
+  for (const removed of ['ZLinkMeshDrainSnapshot', 'ZLinkDrainForceReason', 'ZLinkMeshDrainResult']) {
+    assert.doesNotMatch(frameworkDeclarations, new RegExp(`\\b(?:interface|type) ${removed}\\b`));
+    assert.doesNotMatch(exactInterfaceCatalog, new RegExp(`\\b(?:interface|type) ${removed}\\b`));
   }
   assert.match(nestDeclarations, /\binterface ZLinkNestMeshChannelClientBuilder\b/);
   assert.match(nestDeclarations, /\binterface ZLinkNestMeshChannelServerBuilder\b/);
@@ -186,7 +230,7 @@ test('diagnostics options do not expose inert native diagnostics configuration',
   assert.equal(diagnosticsOptions.includes('includeNativeDiagnostics'), false);
 });
 
-test('monitoring options expose only common-spec socket location and Spot sources', () => {
+test('monitoring options expose only socket and location runtime sources', () => {
   const contracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),
     'utf8'
@@ -195,6 +239,20 @@ test('monitoring options expose only common-spec socket location and Spot source
 
   assert.doesNotMatch(contracts, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
   assert.doesNotMatch(spec, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
+  assert.doesNotMatch(contracts, /\bspot\?:\s*ZLinkPollingMonitoringRegistration/);
+  assert.doesNotMatch(spec, /\bspot\?:\s*ZLinkPollingMonitoringRegistration/);
+  for (const removed of [
+    'ZLinkSpotPeerKind',
+    'ZLinkSpotPeerSource',
+    'ZLinkSpotPeerState',
+    'ZLinkStreamDiagnostic'
+  ]) {
+    assert.doesNotMatch(contracts, new RegExp(`\\b${removed}\\b`));
+    assert.doesNotMatch(spec, new RegExp(`\\b${removed}\\b`));
+  }
+  assert.doesNotMatch(contracts, /\bStatusChanged\s*=\s*['"]statusChanged['"]/);
+  assert.doesNotMatch(contracts, /\bPeersChanged\s*=\s*['"]peersChanged['"]/);
+  assert.doesNotMatch(spec, /\bnativeCode\??:/);
 });
 
 test('framework configuration surface does not expose codec callback options', () => {
@@ -259,6 +317,16 @@ test('framework package exports only the public root contract', () => {
   assert.deepEqual(Object.keys(packageJson.exports).sort(), ['.']);
   assert.equal(packageJson.exports['.'].default, './dist/index.js');
   assert.equal(packageJson.exports['.'].types, './dist/index.d.ts');
+});
+
+test('framework public root excludes raw route storage and serializer selection details', () => {
+  const publicRoot = fs.readFileSync(path.join(declarationsRoot, 'index.d.ts'), 'utf8');
+  const codecDeclarations = readTree(path.join(declarationsRoot, 'Codecs'));
+  assert.doesNotMatch(publicRoot, /ZLinkRouteKind|ZLinkRouteLocation/);
+  assert.doesNotMatch(
+    codecDeclarations,
+    /ZLinkSerializerSelectionContext|canSerialize|selection|packetName|messageType|parseMessage/
+  );
 });
 
 test('NestJS package declarations stay inside declared public package boundaries', () => {
@@ -346,22 +414,22 @@ test('actor join and one-way calls expose only their target terminators', () => 
 test('spot manager exposes exact single-use stable-type calls and generation-fenced refs', () => {
   const declarations = readTree(declarationsRoot);
   const spotManager = declarationBody(declarations, 'ZLinkSpotManager');
+  const meshNodeBuilder = declarationBody(declarations, 'ZLinkMeshNodeBuilder');
+  const objectServerBuilder = declarationBody(declarations, 'ZLinkMeshObjectServerBuilder');
 
   assert.match(spotManager, /create\(spotType: string\): ZLinkSpotCreateCall/);
   assert.match(spotManager, /getOrCreate\(spotId: SpotId, spotType: string\): ZLinkSpotGetOrCreateCall/);
   assert.match(spotManager, /find\(spotId: SpotId, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/);
   assert.match(spotManager, /close\(spot: SpotRef, signal\?: AbortSignal\): Promise<boolean>/);
   assert.doesNotMatch(spotManager, /Type<TSpot>|meshName: string,\s*spotType/);
+  assert.match(objectServerBuilder, /addEntrySpot<TEntrySpot extends ZLinkEntrySpot>/);
+  assert.doesNotMatch(meshNodeBuilder, /configureEntrySpot/);
+  assert.doesNotMatch(declarations, /ZLinkEntrySpotOptions/);
 });
 
 test('location wire enums retain numeric values while Node-facing result enums use strings', () => {
   const framework = require('../../packages/framework/dist');
   const expectedLocationEnums = {
-    ZLinkLocationAutoConnectType: {
-      Invalid: 0,
-      RouteMesh: 1,
-      Fanout: 2
-    },
     ZLinkLocationRole: {
       Invalid: 0,
       Spot: 2,
@@ -369,20 +437,6 @@ test('location wire enums retain numeric values while Node-facing result enums u
       Dealer: 4,
       Pub: 5,
       Sub: 6
-    },
-    ZLinkRouteKind: {
-      Invalid: 0,
-      ActorSession: 1,
-      SpotName: 2,
-      FrameworkRoute: 3
-    },
-    ZLinkLocationKind: {
-      Invalid: 0,
-      Peer: 1,
-      Spot: 2,
-      Actor: 3,
-      Route: 4,
-      ClientServer: 5
     },
     ZLinkLocationWriteIntent: {
       NewClaim: 1,
@@ -393,11 +447,6 @@ test('location wire enums retain numeric values while Node-facing result enums u
       Stored: 'stored',
       IgnoredStale: 'ignoredStale',
       RejectedConflict: 'rejectedConflict'
-    },
-    ZLinkLocationChangeType: {
-      Upserted: 'upserted',
-      Removed: 'removed',
-      Expired: 'expired'
     },
     ZLinkLocationTopologyState: {
       Discovered: 1,
@@ -429,6 +478,11 @@ test('location wire enums retain numeric values while Node-facing result enums u
       `${enumName} key set`
     );
   }
+
+  assert.equal(framework.ZLinkLocationAutoConnectType, undefined);
+  assert.equal(framework.ZLinkLocationKind, undefined);
+  assert.equal(framework.ZLinkRouteKind, undefined);
+  assert.equal(framework.ZLinkLocationChangeType, undefined);
 
   assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
   assert.equal(framework.zlinkLocationRoleName, undefined);
@@ -530,53 +584,56 @@ test('framework error kind values and retriable defaults match the shared table'
   }
 });
 
-test('location contract declarations fix store resolver runtime query watch and row shapes', () => {
+test('location contract exposes one provider SPI and aggregate operational queries', () => {
   const declarations = readTree(declarationsRoot);
   const locationStore = declarationBody(declarations, 'ZLinkLocationStore');
-  const spotLocation = declarationBody(declarations, 'ZLinkSpotLocation');
-  const actorLocation = declarationBody(declarations, 'ZLinkActorLocation');
-  const actorKey = declarationBody(declarations, 'ZLinkActorLocationKey');
-  const actorFilter = declarationBody(declarations, 'ZLinkActorLocationFilter');
-  const changed = declarationBody(declarations, 'ZLinkLocationChanged');
   const runtimeQuery = declarationBody(declarations, 'ZLinkLocationRuntimeQuery');
-  const clientServerStore = declarationBody(declarations, 'ZLinkClientServerLocationStore');
+  const topologyFilter = declarationBody(declarations, 'ZLinkLocationTopologyFilter');
+  const topologyEntry = declarationBody(declarations, 'ZLinkLocationTopologyEntry');
+  const serviceSummaryFilter = declarationBody(declarations, 'ZLinkLocationServiceSummaryFilter');
   const clientServerDescriptor = declarationBody(declarations, 'ZLinkClientServerServerDescriptor');
 
-  assert.match(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends\s+ZLinkMeshNodeLocationStore,\s*ZLinkSpotLocationStore,\s*ZLinkActorLocationStore,\s*ZLinkOwnerLeaseStore,\s*ZLinkActorTransferStore/);
-  assert.doesNotMatch(interfaceHeader(declarations, 'ZLinkLocationStore'), /ZLink(?:Peer|Route)LocationStore/);
+  assert.doesNotMatch(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends/);
+  for (const operation of [
+    'updateMeshNode', 'removeMeshNode', 'listMeshNodes',
+    'updateClientServer', 'removeClientServer', 'listClientServers',
+    'updateFanoutPublisher', 'removeFanoutPublisher', 'listFanoutPublishers',
+    'claimOwnerLease', 'readOwnerLease', 'renewOwnerLease', 'releaseOwnerLease',
+    'readAuthority', 'compareExchangeAuthority', 'listAuthorities',
+    'readCreationTerminal', 'reserve', 'commit', 'completeCreation', 'abort',
+    'reserveRelocationCapacity', 'abortRelocationCapacity',
+    'prepareAggregate', 'commitAggregate', 'abortAggregate'
+  ]) assert.match(locationStore, new RegExp(`\\b${operation}\\(`));
+  assert.match(
+    locationStore,
+    /getMeshNodeChangeStamp\?\(meshName: string, signal\?: AbortSignal\): Promise<bigint \| undefined>/
+  );
+  assert.match(
+    declarations,
+    /kind: 'restore';[\s\S]*?payload: Uint8Array;[\s\S]*?expectedOwner: ZLinkLocationOwnerToken/
+  );
   assert.match(locationStore, /removeAllByOwner\(owner: ZLinkLocationOwnerToken, signal\?: AbortSignal\): Promise<bigint>/);
-  assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
-
-  assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.equal(declarations.includes('ZLinkSpotHandleResolver'), false);
-  assert.equal(declarations.includes('ZLinkActorSpotHandleResolver'), false);
-  assert.equal(declarations.includes('interface SpotRef'), true);
-  assert.equal(declarations.includes('IZLink' + 'SpotAddressResolver'), false);
-  assert.equal(declarations.includes('ZLink' + 'SpotAddress'), false);
-  assert.equal(declarations.includes('IZLinkRouteLocationResolver'), false);
-  assert.equal(declarations.includes('IZLinkActorRefResolver'), false);
-
-  assert.match(runtimeQuery, /listPeerLocations\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
-  assert.match(runtimeQuery, /listSpotLocations\(\s*filter: ZLinkSpotLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkSpotLocation>>/);
-  assert.match(runtimeQuery, /listActorLocations\(\s*filter: ZLinkActorLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkActorLocation>>/);
-  assert.match(runtimeQuery, /listRouteLocations\(\s*filter: ZLinkRouteLocationFilter,\s*page\?: ZLinkPageRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkLocationPage<ZLinkRouteLocation>>/);
-  assert.equal(/\blist(?:Peers|Spots|Actors|Routes)\(/.test(runtimeQuery), false);
-
-  for (const field of [
-    'meshName', 'spotId', 'spotGeneration', 'ownerNodeRid',
-    'ownerNodeGeneration', 'spotKind', 'spotType', 'ownerId', 'updatedAt'
-  ]) {
-    assert.match(spotLocation, new RegExp(`readonly ${field}:`));
+  assert.match(runtimeQuery, /listMeshNodeDescriptors\(/);
+  assert.match(runtimeQuery, /listTopology\(/);
+  assert.match(runtimeQuery, /listServiceSummaries\(/);
+  assert.match(runtimeQuery, /Promise<ZLinkLocationPage<ZLinkLocationServiceSummary>>/);
+  assert.doesNotMatch(runtimeQuery, /list(?:Peer|Spot|Actor|Route)Locations\(/);
+  assert.match(topologyFilter, /readonly meshName\?: string/);
+  assert.match(topologyFilter, /readonly nodeRid\?: RoutingId/);
+  assert.match(topologyFilter, /readonly state\?: ZLinkLocationTopologyState/);
+  assert.doesNotMatch(topologyFilter, /kind|role|spotId|actorId/);
+  for (const field of ['meshName', 'nodeRid', 'endpoint', 'draining', 'state', 'updatedAt']) {
+    assert.match(topologyEntry, new RegExp(`readonly ${field}:`));
   }
-  assert.doesNotMatch(spotLocation, /readonly (?:nodeRid|routeEndpoint|generation):/);
+  assert.doesNotMatch(topologyEntry, /kind|role|spotId|actorId|desiredCount|readyCount|errorCode/);
+  assert.match(serviceSummaryFilter, /readonly meshName\?: string/);
+  assert.doesNotMatch(serviceSummaryFilter, /role|kind/);
 
-  assert.match(changed, /readonly key: ZLinkLocationKey/);
-  assert.equal(changed.includes('locationKey'), false);
-  assert.equal(changed.includes('string'), false);
-  assert.match(declarations, /export type ZLinkLocationKey = \{\s*readonly kind: ZLinkLocationKind\.Peer;\s*readonly key: ZLinkPeerLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Spot;\s*readonly key: ZLinkSpotLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Actor;\s*readonly key: ZLinkActorLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Route;\s*readonly key: ZLinkRouteLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.ClientServer;\s*readonly key: ZLinkClientServerServerDescriptorKey;\s*\};/);
-  assert.match(clientServerStore, /updateClientServer\(/);
-  assert.match(clientServerStore, /removeClientServer\(/);
-  assert.match(clientServerStore, /listClientServers\(/);
+  for (const removed of [
+    'ZLinkClientServerLocationStore', 'ZLinkMeshNodeLocationStore',
+    'ZLinkSpotLocationStore', 'ZLinkActorLocationStore',
+    'ZLinkRoutingIdSlotAllocationStore'
+  ]) assert.equal(declarations.includes(`interface ${removed}`), false, removed);
   for (const field of [
     'channelName', 'serverRid', 'lifecycleGeneration', 'descriptorRevision',
     'endpoint', 'weight', 'state', 'securityIdentity', 'ownerId',
@@ -585,23 +642,6 @@ test('location contract declarations fix store resolver runtime query watch and 
     assert.match(clientServerDescriptor, new RegExp(`readonly ${field}:`));
   }
 
-  assert.match(actorLocation, /readonly actorId: string/);
-  assert.match(actorLocation, /readonly meshName: string/);
-  assert.match(actorLocation, /readonly actorType: string/);
-  assert.match(actorLocation, /readonly actorRef: ActorRef/);
-  assert.match(actorLocation, /readonly ownerNodeRid: RoutingId/);
-  assert.match(actorLocation, /readonly ownerNodeGeneration: bigint/);
-  assert.match(actorLocation, /readonly spotId: SpotId/);
-  assert.match(actorLocation, /readonly spotGeneration: bigint/);
-  assert.match(actorLocation, /readonly spotKind: ZLinkSpotKind/);
-  assert.match(actorLocation, /readonly membershipEpoch: bigint/);
-  assert.match(actorLocation, /readonly leaseGeneration: bigint/);
-  assert.doesNotMatch(actorLocation, /readonly (?:nodeRid|locationKind|spotMeshName|generation):/);
-  assert.equal(/readonly (?:actorType|actorRef|ownerNodeRid|ownerNodeGeneration|spotId|spotGeneration|spotKind|membershipEpoch)\?:/.test(actorLocation), false);
-  assert.match(actorKey, /readonly meshName: string/);
-  assert.match(actorKey, /readonly actorId: string/);
-  assert.equal(actorKey.includes('actorType'), false);
-  assert.match(actorFilter, /readonly locationKind\?: ZLinkSpotKind/);
 });
 
 test('actor declarations resolve global ActorId calls and expose fluent manager shapes', () => {

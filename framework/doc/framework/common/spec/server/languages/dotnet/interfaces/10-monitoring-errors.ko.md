@@ -5,7 +5,7 @@
 ## 1. Monitoring과 Framework 오류
 
 Monitoring source는 framework root와 같은 DI container에 등록한다. 공개 source 종류와 등록 표면은
-다음과 같다. `ZLinkSocketEventKind`는 다음 일곱 값으로 닫혀 있다.
+다음과 같다. `ZLinkSocketEventKind`는 다음 여섯 값으로 닫혀 있다.
 
 ```csharp
 public interface IZLinkMonitoringOptions
@@ -14,11 +14,7 @@ public interface IZLinkMonitoringOptions
         string sourceName,
         params ZLinkSocketEventKind[] events);
     void AddMeshNodeEvents(string meshName);
-    void AddSpotEvents(string sourceName, TimeSpan interval);
     void AddLocationRuntimeEvents(string sourceName, TimeSpan interval);
-    void AddLocationPeerEvents(string sourceName);
-    void AddLocationSpotEvents(string sourceName);
-    void AddLocationActorEvents(string sourceName);
 }
 
 public enum ZLinkSocketEventKind
@@ -28,10 +24,14 @@ public enum ZLinkSocketEventKind
     Disconnected = 2,
     HandshakeFailed = 3,
     PeerAdmissionChanged = 4,
-    Closed = 5,
-    Internal = 6
+    Closed = 5
 }
 ```
+
+Location monitoring은 provider-neutral runtime status, topology와 service summary만 공개한다. Store row update,
+resolve miss와 auto-connect reconcile diff를 별도 source로 등록하는 API는 제공하지 않는다. 해당 값은 provider
+DTO와 owner fence를 포함하는 내부 reducer 입력이며 application은 `ZLinkLocationRuntimeEvent`,
+`ZLinkMeshRuntimeEvent`, message-flow event와 runtime snapshot으로 운영 상태를 확인한다.
 
 Request, lifecycle과 one-way operation의 framework 실패는 다음 exception으로 전달한다. One-way operation은
 정상 완료 값을 반환하지 않는다. 잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다.
@@ -109,7 +109,7 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 실패가 발생했을 때 사용한다.
 
 `RoutingIdConflict`는 transport RID claim 충돌이고 `SpotIdConflict`는 global Spot ID claim 충돌이다.
-## 7. Eventing과 metric identity
+## 2. Eventing과 metric identity
 
 ```csharp
 public interface IZLinkRuntimeEvent
@@ -126,46 +126,13 @@ public interface IZLinkRuntimeEventHandler<in TEvent>
         CancellationToken cancellationToken);
 }
 
-public interface IZLinkRuntimeEventPublisher
-{
-    ValueTask PublishAsync<TEvent>(
-        TEvent @event,
-        CancellationToken cancellationToken)
-        where TEvent : IZLinkRuntimeEvent;
-}
-
-public enum ZLinkSocketNativeEventType
-{
-    Connected = 0x0001,
-    ConnectDelayed = 0x0002,
-    ConnectRetried = 0x0004,
-    Listening = 0x0008,
-    BindFailed = 0x0010,
-    Accepted = 0x0020,
-    AcceptFailed = 0x0040,
-    Closed = 0x0080,
-    CloseFailed = 0x0100,
-    Disconnected = 0x0200,
-    MonitorStopped = 0x0400,
-    HandshakeFailedNoDetail = 0x0800,
-    ConnectionReady = 0x1000,
-    HandshakeFailedProtocol = 0x2000,
-    HandshakeFailedAuth = 0x4000,
-    PeerAdmissionChanged = 0x8000
-}
-
-public readonly record struct ZLinkSocketDiagnostic(
-    ZLinkSocketNativeEventType NativeEvent,
-    uint NativeValue);
-
 public readonly record struct ZLinkSocketEvent(
     string SourceName,
     DateTimeOffset Timestamp,
     ZLinkSocketEventKind Event,
     RoutingId? RoutingId,
     string LocalAddr,
-    string RemoteAddr,
-    ZLinkSocketDiagnostic? Diagnostic) : IZLinkRuntimeEvent;
+    string RemoteAddr) : IZLinkRuntimeEvent;
 
 public static class ZLinkMeters
 {
@@ -178,21 +145,6 @@ public enum ZLinkFlowOrigin : byte
     Timer = 2,
     Application = 3,
     Lifecycle = 4
-}
-
-public enum ZLinkDrainState
-{
-    Serving = 0,
-    Draining = 1,
-    Drained = 2,
-    ForceStopping = 3
-}
-
-public sealed record ZLinkDrainEvent(
-    DateTimeOffset Timestamp,
-    ZLinkDrainState State) : IZLinkRuntimeEvent
-{
-    public string SourceName => "drain";
 }
 
 public abstract record ZLinkLocationRuntimeEvent : IZLinkRuntimeEvent
@@ -226,90 +178,6 @@ public abstract record ZLinkLocationRuntimeEvent : IZLinkRuntimeEvent
         DateTimeOffset Timestamp) : ZLinkLocationRuntimeEvent(SourceName, Timestamp);
 }
 
-public readonly record struct ZLinkAutoConnectDesiredSetChange(
-    ZLinkLocationAutoConnectType AutoConnectType,
-    string MeshName,
-    IReadOnlyList<string> ConnectedEndpoints,
-    IReadOnlyList<string> DisconnectedEndpoints);
-
-public abstract record ZLinkLocationPeerEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkLocationPeerEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-    public string SourceName { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record RowUpdated(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkMeshNodeDescriptorKey Key,
-        ZLinkMeshNodeDescriptor Descriptor) : ZLinkLocationPeerEvent(SourceName, Timestamp);
-    public sealed record RowRemoved(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkMeshNodeDescriptorKey Key) : ZLinkLocationPeerEvent(SourceName, Timestamp);
-    public sealed record DesiredSetChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkAutoConnectDesiredSetChange Change) : ZLinkLocationPeerEvent(SourceName, Timestamp);
-}
-
-public abstract record ZLinkLocationSpotEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkLocationSpotEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-    public string SourceName { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record RowUpdated(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotLocationKey Key,
-        ZLinkSpotLocation Spot) : ZLinkLocationSpotEvent(SourceName, Timestamp);
-    public sealed record RowRemoved(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotLocationKey Key) : ZLinkLocationSpotEvent(SourceName, Timestamp);
-    public sealed record ResolveMiss(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotLocationKey Key) : ZLinkLocationSpotEvent(SourceName, Timestamp);
-}
-
-public abstract record ZLinkLocationActorEvent : IZLinkRuntimeEvent
-{
-    private protected ZLinkLocationActorEvent(string sourceName, DateTimeOffset timestamp)
-    {
-        SourceName = sourceName;
-        Timestamp = timestamp;
-    }
-    public string SourceName { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
-    public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
-        (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record RowUpdated(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkActorLocationKey Key,
-        ZLinkActorLocation Actor) : ZLinkLocationActorEvent(SourceName, Timestamp);
-    public sealed record RowRemoved(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
-    public sealed record ResolveMiss(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkActorLocationKey Key) : ZLinkLocationActorEvent(SourceName, Timestamp);
-}
-
 public readonly record struct ZLinkSpotTimerDiagnostic(
     string SpotId,
     bool IsEntrySpot,
@@ -331,18 +199,6 @@ public abstract record ZLinkSpotEvent : IZLinkRuntimeEvent
     public DateTimeOffset Timestamp { get; init; }
     public void Deconstruct(out string SourceName, out DateTimeOffset Timestamp) =>
         (SourceName, Timestamp) = (this.SourceName, this.Timestamp);
-    public sealed record StatusChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        ZLinkSpotNodeStatus Status) : ZLinkSpotEvent(SourceName, Timestamp);
-    public sealed record PeersChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        IReadOnlyList<ZLinkSpotNodePeerEntry> Peers) : ZLinkSpotEvent(SourceName, Timestamp);
-    public sealed record SubjectsChanged(
-        string SourceName,
-        DateTimeOffset Timestamp,
-        IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects) : ZLinkSpotEvent(SourceName, Timestamp);
     public sealed record TimerHandlerFailed(
         string SourceName,
         DateTimeOffset Timestamp,
@@ -352,81 +208,4 @@ public abstract record ZLinkSpotEvent : IZLinkRuntimeEvent
         DateTimeOffset Timestamp,
         ZLinkSpotTimerDiagnostic Diagnostic) : ZLinkSpotEvent(SourceName, Timestamp);
 }
-```
-## 8. Spot monitoring model
-
-```csharp
-public enum ZLinkSpotNodeState
-{
-    Idle = 1,
-    Connecting = 2,
-    PartialReady = 3,
-    Ready = 4,
-    Error = 5
-}
-
-public enum ZLinkSpotPeerSource
-{
-    Manual = 1,
-    Discovery = 2,
-    Mixed = 3
-}
-
-public enum ZLinkSpotPeerKind
-{
-    SpotMesh = 1,
-    RouterChannel = 2
-}
-
-public enum ZLinkSpotPeerState
-{
-    Configured = 1,
-    Connecting = 2,
-    Connected = 3
-}
-
-public enum ZLinkSubjectKind : uint
-{
-    None = 0,
-    Topic = 1,
-    Pattern = 2
-}
-
-public enum ZLinkSpotRole
-{
-    Pub = 1,
-    Sub = 2
-}
-
-public sealed record ZLinkSpotNodeStatus(
-    string ChannelName,
-    string LocalEndpoint,
-    RoutingId? NodeRoutingId,
-    ZLinkSpotNodeState State,
-    uint ConfiguredPeerCount,
-    uint ActivePeerCount,
-    uint ConnectedPeerCount,
-    uint SubjectCount,
-    uint ReadySubjectCount,
-    int LastError,
-    ulong LastChangedMs);
-
-public sealed record ZLinkSpotNodePeerEntry(
-    string ChannelName,
-    string LocalEndpoint,
-    string PeerEndpoint,
-    ZLinkSpotPeerSource Source,
-    ZLinkSpotPeerKind Kind,
-    ZLinkSpotPeerState State,
-    int Weight,
-    ulong ConnectedSinceMs,
-    ulong LastChangedMs);
-
-public sealed record ZLinkSpotNodeSubjectEntry(
-    ZLinkSpotRole Role,
-    string Subject,
-    ZLinkSubjectKind SubjectKind,
-    uint ReadyPeerCount,
-    uint ActivePeerCount,
-    ulong LastChangedMs);
 ```

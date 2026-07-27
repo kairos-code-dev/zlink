@@ -2,8 +2,8 @@
 
 Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
 callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
+target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
@@ -258,8 +258,8 @@ inline fun <reified TReply> ZLinkKotlinRouteClient.requestToSpot(
 ```
 
 User·Instance Spot relocation에서는 Java runtime이 logical timer registration, 마지막 완료 tick sequence, 다음 예정
-시각과 아직 실행하지 않은 pending tick을 relocation payload에 포함한다. Target은 새 native timer handle을 만들며
-application이 timer를 다시 등록하지 않는다. 현재 실행 중인 suspending timer handler만 source에서 완료하고 target
+시각과 아직 실행하지 않은 pending tick을 relocation payload에 포함한다. Target은 logical timer registration을
+복원하므로 application이 timer를 다시 등록하지 않는다. 현재 실행 중인 suspending timer handler만 source에서 완료하고 target
 Ready 전에는 복원한 tick을 실행하지 않는다.
 
 ## Exact generated JVM signature

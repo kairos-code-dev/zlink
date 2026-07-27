@@ -273,8 +273,10 @@ class quest_event_store_t
 class player_quest_spot_t : public spot_t
 {
   public:
-    player_quest_spot_t (quest_event_store_t &store, service_provider_t services) :
-        _store (store), _services (std::move (services))
+    player_quest_spot_t (quest_event_store_t &store,
+                         actor_directory_t &directory,
+                         actor_client_t &actors) :
+        _store (store), _directory (directory), _actors (actors)
     {
     }
 
@@ -303,21 +305,16 @@ class player_quest_spot_t : public spot_t
     task_t<void> apply (const gameplay_msg_t &message)
     {
         auto result = _store.apply (decode_gameplay (message));
-        auto scope = _services.create_scope ();
-        auto &actor_spots = scope.get_required<actor_spot_handle_resolver_t> ();
-        auto &routes = scope.get_required<route_client_t> ();
-
-        auto session_spot =
-          co_await actor_spots.resolve_actor_spot_handle (message.player_id);
-        if (!session_spot) {
+        auto actor = co_await _directory.find (message.player_id);
+        if (!actor) {
             std::cerr << "gamequest mission kept projection while the player has no session"
                       << " binding. player=" << message.player_id << "\n";
             co_return;
         }
-        routes
-          .send_to_spot (*session_spot,
-                         notify_quest_progress_msg_t{message.player_id, result.projection,
-                                                     result.completed_quest_id})
+        co_await _actors
+          .send_to_actor (*actor,
+                          notify_quest_progress_msg_t{message.player_id, result.projection,
+                                                      result.completed_quest_id})
           .submit ();
         std::cerr << "gamequest mission notified player=" << message.player_id
                   << " completed=" << result.completed_quest_id << "\n";
@@ -362,7 +359,8 @@ class player_quest_spot_t : public spot_t
 
   private:
     quest_event_store_t &_store;
-    service_provider_t _services;
+    actor_directory_t &_directory;
+    actor_client_t &_actors;
     std::string _player_id;
     spot_context_t _context;
 };
@@ -420,7 +418,6 @@ int main (int argc, char **argv)
          * 노드의 spot mesh 이름에 이 route 채널을 매핑해야 한다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
         quest_spot_route.listen (topology.selected_mission_spot_route_endpoint ())
-          .use_allocated_routing_id (16, "gamequest-mission-route")
           .channel_name (sample_names_t::quest_spot_route);
         options.configure_locations ().spot_router_channels[api_spot_mesh_for ("api-a")] =
           sample_names_t::quest_spot_route;
@@ -430,10 +427,12 @@ int main (int argc, char **argv)
         auto quest_spot = options.add_route_mesh (sample_names_t::quest_spot_discovery);
         quest_spot.channel_name (sample_names_t::quest_spot_route);
         quest_spot.listen (topology.selected_mission_spot_router_endpoint ())
-          .use_allocated_routing_id (16, "gamequest-mission-owner")
           .add_spot<player_quest_spot_t> (
-            sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] {
-                return std::make_shared<player_quest_spot_t> (*quest_store_ptr, spot_services);
+            sample_names_t::player_quest_spot, [quest_store_ptr, spot_services] mutable {
+                return std::make_shared<player_quest_spot_t> (
+                  *quest_store_ptr,
+                  spot_services.get_required<actor_directory_t> (),
+                  spot_services.get_required<actor_client_t> ());
             });
         options.handlers ()
           .group ("quest-owner")

@@ -1,6 +1,10 @@
 import type { ZLinkHandlerDelegate } from './ZLinkHandlerDelegate';
-import type { ZLinkHandlerInvocation } from './ZLinkHandlerInvocation';
+import type { ZLinkMessageContext } from './Contexts';
 
 export interface ZLinkHandlerFilter {
-  invoke(invocation: ZLinkHandlerInvocation, next: ZLinkHandlerDelegate): Promise<unknown>;
+  invoke(
+    context: ZLinkMessageContext,
+    next: ZLinkHandlerDelegate,
+    signal?: AbortSignal
+  ): Promise<unknown>;
 }

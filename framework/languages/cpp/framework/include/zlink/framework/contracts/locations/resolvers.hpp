@@ -7,14 +7,6 @@
 namespace zlink::framework
 {
 
-class peer_location_resolver_t
-{
-  public:
-    virtual ~peer_location_resolver_t () = default;
-    virtual task_t<std::vector<peer_location_t>>
-    list_live_peers (peer_location_filter_t filter) = 0;
-};
-
 class location_readiness_t
 {
   public:

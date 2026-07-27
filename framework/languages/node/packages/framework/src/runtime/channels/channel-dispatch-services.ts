@@ -1,9 +1,9 @@
 import type {
   Type,
   ZLinkHandlerFilter,
-  ZLinkHandlerInvocation,
-  ZLinkProviderResolver
+  ZLinkMessageContext,
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type {
   ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
@@ -89,7 +89,7 @@ export class ZLinkChannelDispatchServices {
     }
     this.handlerFiltersValue = this.registration.filterTypes.length === 0
       ? []
-      : [{ invoke: (invocation, next) => this.invokeHandlerFilters(invocation, next) }];
+      : [{ invoke: (context, next, signal) => this.invokeHandlerFilters(context, next, signal) }];
     return this.handlerFiltersValue;
   }
 
@@ -130,15 +130,17 @@ export class ZLinkChannelDispatchServices {
   }
 
   private async invokeHandlerFilters(
-    invocation: ZLinkHandlerInvocation,
-    next: () => Promise<unknown>
+    context: ZLinkMessageContext,
+    next: () => Promise<unknown>,
+    signal?: AbortSignal
   ): Promise<unknown> {
     const scoped = handlerFilterScope(this.providerResolver);
     if (scoped !== undefined) {
-      return scoped(invocation.messageContext, async (resolver) => invokeZLinkHandlerFilters(
+      return scoped(context, async (resolver) => invokeZLinkHandlerFilters(
         await Promise.all(this.registration.filterTypes.map((filterType) => resolver.resolve(filterType))),
-        invocation,
-        next
+        context,
+        next,
+        signal
       ));
     }
 
@@ -152,7 +154,7 @@ export class ZLinkChannelDispatchServices {
       }
       return filter;
     }));
-    return invokeZLinkHandlerFilters(filters, invocation, next);
+    return invokeZLinkHandlerFilters(filters, context, next, signal);
   }
 
   private async resolveHandler<T>(handlerType: Type): Promise<T> {

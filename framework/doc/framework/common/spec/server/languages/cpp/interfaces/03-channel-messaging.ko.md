@@ -811,12 +811,6 @@ struct publish_message_context_t : message_context_t {
     std::optional<std::string> source;
 };
 
-struct handler_invocation_t {
-    handler_descriptor_t descriptor;
-    message_context_t message_context;
-    std::shared_ptr<const zlink::message_t> message;
-};
-
 using handler_next_t = std::function<task_t<zlink::message_t>()>;
 
 } // namespace zlink::framework
@@ -852,13 +846,13 @@ type, immutable metadata와 correlation ID를 제공한다. Node direct context�
 
 handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
 일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
-`invoke(const handler_invocation_t &, handler_next_t)`를 제공하며, 계속 처리하려면
-`co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. descriptor
+`invoke(const message_context_t &, handler_next_t)`를 제공하며, 계속 처리하려면
+`co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. filter는
+현재 dispatch의 typed context만 받으며 descriptor와 raw message storage는 받지 않는다. descriptor
 lookup, serializer 선택, DI resolve 순서와 filter chain 저장 방식은 public API로 노출하지 않는다.
 
-STREAM handler는 일반 request/send/event handler와 분리한다. Framework runtime은 packet
-방식만 지원한다. 내부 wire header는 runtime이 만들고 검증하며, raw [stream session](../../../../01-glossary.ko.md#stream-session)과 사용자
-정의 header framing은 Framework public 표면에 넣지 않는다.
+STREAM handler는 일반 request/send/event handler와 분리한다. Framework runtime은 typed packet
+방식만 지원하며 사용자 정의 header framing은 Framework public 표면에 넣지 않는다.
 
 stream callback은 framework가 packet을 수신하고 header 검증을 마친 뒤 호출한다. 별도
 실행기로 넘기는 것이 기본은 아니며, 같은 stream session의 packet/lifecycle callback은

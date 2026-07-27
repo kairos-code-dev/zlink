@@ -1,13 +1,11 @@
 import { Inject } from '@nestjs/common';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
 import { questMissionSpotRid, SampleNames } from '../../../../Shared/Configuration/sample-names';
 import { PlayerQuestSpot } from './Spots/PlayerQuestSpot/player-quest-spot';
 import type {
-  ZLinkSpotHandleResolver,
   ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
@@ -16,7 +14,7 @@ class PlayerQuestSpotProvisioner {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager
   ) {}
 
   async ensure(playerId: string): Promise<string> {
@@ -27,7 +25,7 @@ class PlayerQuestSpotProvisioner {
 
   async request<TResponse>(playerId: string, request: object): Promise<TResponse> {
     const spotRid = await this.ensure(playerId);
-    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playerQuestSpotMesh, spotRid);
+    const spot = await this.spotHandles.find(spotRid);
     if (spot === undefined) {
       throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
     }
@@ -38,7 +36,7 @@ class PlayerQuestSpotProvisioner {
 
   async send(playerId: string, message: object): Promise<void> {
     const spotRid = await this.ensure(playerId);
-    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playerQuestSpotMesh, spotRid);
+    const spot = await this.spotHandles.find(spotRid);
     if (spot === undefined) {
       throw new Error(`Player quest spot '${spotRid}' was not resolved.`);
     }

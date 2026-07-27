@@ -1,6 +1,6 @@
 import type {
   ZLinkChannelRuntimeOptions,
-  ZLinkRouteMeshRuntime
+  ZLinkFrameworkRuntime
 } from '@zlink-systems/framework';
 import { ChannelNames, type EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -9,7 +9,7 @@ import type { HttpRoute } from '../Support/http-server';
 export function createProviderEndpoints(
   evidence: EvidenceStore,
   runtimeOptions: ZLinkChannelRuntimeOptions,
-  routeMeshRuntime: ZLinkRouteMeshRuntime,
+  frameworkRuntime: ZLinkFrameworkRuntime,
   stop: () => void
 ): readonly HttpRoute[] {
   return [
@@ -33,8 +33,8 @@ export function createProviderEndpoints(
       handle: async () => {
         runtimeOptions.clientServerChannel(ChannelNames.profile).configureServerSocket().weight = 0;
         evidence.add(`drain-started|rid=${evidence.rid}|weight=0`);
-        const result = await routeMeshRuntime.drain(ChannelNames.profile, 30_000);
-        evidence.add(`drain-finished|rid=${evidence.rid}|kind=${result.kind}`);
+        const result = await frameworkRuntime.retire({ deadlineMs: 30_000 });
+        evidence.add(`retire-finished|rid=${evidence.rid}|outcome=${result.outcome}|reason=${result.reason}`);
         stop();
         return result;
       }

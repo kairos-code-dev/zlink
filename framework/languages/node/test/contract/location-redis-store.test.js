@@ -7,9 +7,6 @@ const { createClient } = require('redis');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist');
 const internal = require('../../packages/framework/dist/internal');
-const serviceContracts = require(
-  '../../packages/framework/dist/runtime/foundation/service-runtime-contracts'
-);
 const redisLocations = require('../../packages/framework-locations-redis/dist');
 
 test('redis authority fixture fixes the cross-language hybrid encoding', () => {
@@ -110,24 +107,15 @@ test('redis location store matches core write lease and change-stamp contracts',
     assert.equal('generation' in resolved, false);
     assert.equal(resolved.ownerNodeRid.toHex(), rid('node-a').toHex());
 
-    assert.equal(
-      await store.getChangeStamp({ kind: framework.ZLinkLocationKind.Spot, meshName: 'play' }),
-      2n
-    );
-    assert.equal(
-      await store.getChangeStamp({ kind: framework.ZLinkLocationKind.Spot }),
-      2n
-    );
-
     await store.updatePeer(peer('owner-a', 'node-a'), framework.ZLinkLocationWriteIntent.NewClaim);
     await store.updateActor(actor('owner-a', 'node-a'), framework.ZLinkLocationWriteIntent.NewClaim);
     await store.updateRoute(route('owner-a', 'node-a'), framework.ZLinkLocationWriteIntent.NewClaim);
 
     assert.equal((await store.listPeers({ meshName: 'play' })).length, 1);
     assert.equal((await store.listActors({ actorType: 'player' })).items.length, 1);
-    assert.equal((await store.listRoutes({ routeKind: framework.ZLinkRouteKind.ActorSession })).items.length, 1);
+    assert.equal((await store.listRoutes({ routeKind: internal.ZLinkRouteKind.ActorSession })).items.length, 1);
     assert.deepEqual(
-      [...(await store.resolveRoute({ routeKind: framework.ZLinkRouteKind.ActorSession, routeKey: 'session-1' })).value],
+      [...(await store.resolveRoute({ routeKind: internal.ZLinkRouteKind.ActorSession, routeKey: 'session-1' })).value],
       [1, 2, 3]
     );
 
@@ -230,7 +218,7 @@ test('redis legacy Actor discovery row remains round-trippable', async (t) => {
   }
 });
 
-test('redis exact MeshNode descriptor fixture and Actor transfer authority are atomic', async (t) => {
+test('redis exact MeshNode descriptor fixture reserves Entry Spot identity atomically', async (t) => {
   const fixture = await redisFixture();
   if (fixture === undefined) {
     t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
@@ -245,9 +233,9 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
       framework.ZLinkLocationWriteIntent.NewClaim
     );
     assert.equal(descriptorClaim.generation, 1n);
-    assert.equal((await store.listMeshNodes('game'))[0].lifecycleGeneration, 7n);
+    assert.equal((await store.listMeshNodes('game')).items[0].lifecycleGeneration, 7n);
     assert.match(
-      (await store.listMeshNodes('game'))[0].entrySpotId,
+      (await store.listMeshNodes('game')).items[0].entrySpotId,
       /^game-a-entry-[0-9a-f-]+$/
     );
     const entrySpotId = exactMeshNodeDescriptor().entrySpotId;
@@ -301,32 +289,6 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
     }, framework.ZLinkLocationWriteIntent.NewClaim);
     assert.equal(conflict.status, framework.ZLinkLocationWriteStatus.RejectedConflict);
 
-    const request = actorTransferRequest();
-    const prepared = await store.prepareActorTransfer(request);
-    assert.equal(prepared.status, 'stored');
-    assert.equal(prepared.record.state, 'prepared');
-    assert.equal((await store.prepareActorTransfer(request)).status, 'stored');
-    assert.equal((await store.prepareActorTransfer({
-      ...request,
-      transferId: '11111111-1111-1111-1111-111111111111'
-    })).status, 'rejectedConflict');
-    assert.equal((await store.commitActorTransfer(
-      request.meshName, request.actorId, request.transferId, 'wrong-owner'
-    )).status, 'rejectedConflict');
-    const committed = await store.commitActorTransfer(
-      request.meshName, request.actorId, request.transferId, request.recoveryOwnerId
-    );
-    assert.equal(committed.record.state, 'committed');
-    assert.equal((await store.resolveActorTransfer('game', 'actor-1')).state, 'committed');
-
-    const fixtureKey = `${prefix}:transfer:4:game7:actor-1:${request.transferId}`;
-    const activeKey = `${prefix}:transfer-by-actor:4:game7:actor-1`;
-    assert.equal(await fixture.client.get(activeKey), request.transferId);
-    const hash = await fixture.client.hGetAll(fixtureKey);
-    assert.equal(hash.state, 'Committed');
-    assert.equal(JSON.parse(hash.source).actorId, 'actor-1');
-    assert.equal(JSON.parse(hash.target).actorId, 'actor-1');
-    assert.ok(Number(hash.recoveryLeaseExpiresAtMs) >= Number(hash.updatedAtMs));
     assert.equal(
       await store.removeMeshNode(
         { meshName: 'game', rid: rid('game-a') },
@@ -783,13 +745,37 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       Buffer.from(secondPage.items[0].snapshot.payload).toString(),
       'aggregate-ready'
     );
+    const beforeRestore = await storeA.readAuthority(secondKey);
+    assert.equal(beforeRestore.kind, 'snapshot');
+    assert.equal(await storeA.releaseOwnerLease(targetLease.token), 'released');
+    const restored = await storeA.compareExchangeAuthority(
+      secondKey,
+      beforeRestore.storeVersion,
+      {
+        kind: 'restore',
+        payload: Buffer.from('steady-after-recovery'),
+        expectedOwner: targetLease.token
+      }
+    );
+    assert.equal(restored.kind, 'stored');
+    assert.equal(Buffer.from(restored.payload).toString(), 'steady-after-recovery');
+    const wrongOwnerRestore = await storeA.compareExchangeAuthority(
+      secondKey,
+      restored.storeVersion,
+      {
+        kind: 'restore',
+        payload: Buffer.from('must-not-store'),
+        expectedOwner: sourceLease.token
+      }
+    );
+    assert.equal(wrongOwnerRestore.kind, 'conflict');
     assert.equal(
       (await storeA.listAuthorities(
         'zla1:s:', firstPage.nextCursor, 1
       )).kind,
       'scanExpired'
     );
-    const projectedTarget = (await storeA.listMeshNodes('game'))
+    const projectedTarget = (await storeA.listMeshNodes('game')).items
       .find(node => node.ownerId === 'target-owner');
     assert.equal(projectedTarget.populationCapacity.spots.active, 2);
     assert.equal(projectedTarget.populationCapacity.spots.reserved, 0);
@@ -818,114 +804,6 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
   }
 });
 
-test('two runtime owners resume an expired Redis transfer authority without native tokens', async (t) => {
-  const fixture = await redisFixture();
-  if (fixture === undefined) {
-    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
-    return;
-  }
-  const prefix = `zlink:node-transfer-recovery:${process.pid}:${Date.now()}`;
-  const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
-  try {
-    const source = exactActorLocation();
-    await store.updateActor(source, framework.ZLinkLocationWriteIntent.NewClaim);
-    const control = {
-      kind: 'transferControl',
-      phase: serviceContracts.ActorTransferPhase.Fenced,
-      role: serviceContracts.ActorTransferRole.Target,
-      transferId: { high: 0x0123456789abcdefn, low: 0x0123456789abcdefn },
-      actor: {
-        nodeRid: rid('game-b'),
-        actorId: source.actorId,
-        generation: source.actorRef.generation
-      },
-      membershipEpoch: source.membershipEpoch,
-      finalSequence: 0n,
-      resultCode: 0,
-      failureErrno: 0
-    };
-    const failedOwner = new internal.ZLinkActorTransferAuthorityRuntime({
-      store: () => store,
-      recoveryOwnerId: () => 'failed-runtime',
-      recoveryLeaseTtlMs: 200
-    });
-    await failedOwner.handle('game', control);
-
-    const successor = new internal.ZLinkActorTransferAuthorityRuntime({
-      store: () => store,
-      recoveryOwnerId: () => 'successor-runtime',
-      recoveryLeaseTtlMs: 30_000
-    });
-    await successor.handle('game', { ...control, phase: serviceContracts.ActorTransferPhase.Activated });
-    assert.equal((await store.resolveActorTransfer('game', source.actorId)).state, 'prepared');
-
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    await successor.handle('game', { ...control, phase: serviceContracts.ActorTransferPhase.Activated });
-    assert.equal(await store.resolveActorTransfer('game', source.actorId), undefined);
-  } finally {
-    await store.dispose();
-    await cleanupPrefix(fixture.client, prefix);
-    await fixture.client.quit();
-  }
-});
-
-test('redis routing-id slot allocation is atomic, idempotent, configured, and fenced', async (t) => {
-  const fixture = await redisFixture();
-  if (fixture === undefined) {
-    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
-    return;
-  }
-  const prefix = `zlink:node-routing-id-redis:${process.pid}:${Date.now()}`;
-  const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
-  const members = [
-    { meshName: 'play', routingIdPrefix: 'play-' },
-    { meshName: 'rooms', routingIdPrefix: 'rooms-' }
-  ];
-  const request = (ownerId) => ({
-    groupName: 'game', members, slotCount: 2, ownerId, leaseTtlMs: 30_000
-  });
-  try {
-    const first = await store.acquireRoutingIdSlot(request('owner-a'));
-    assert.equal(first.kind, 'acquired');
-    assert.equal(first.allocation.slot, 1);
-    assert.equal((await store.acquireRoutingIdSlot(request('owner-a'))).allocation.slot, 1);
-    const second = await store.acquireRoutingIdSlot(request('owner-b'));
-    assert.equal(second.kind, 'acquired');
-    assert.equal(second.allocation.slot, 2);
-    assert.equal((await store.acquireRoutingIdSlot(request('owner-c'))).kind, 'groupExhausted');
-    assert.equal((await store.acquireRoutingIdSlot({
-      ...request('owner-c'), slotCount: 3
-    })).kind, 'groupConfigurationMismatch');
-
-    assert.equal(await store.releaseRoutingIdSlot('game', 1, {
-      ownerId: 'owner-a',
-      leaseGeneration: first.allocation.owner.leaseGeneration + 1n
-    }), 'ignoredStale');
-    assert.equal(await store.releaseRoutingIdSlot(
-      'game', 1, first.allocation.owner
-    ), 'released');
-    const recycled = await store.acquireRoutingIdSlot(request('owner-c'));
-    assert.equal(recycled.kind, 'acquired');
-    assert.equal(recycled.allocation.slot, 1);
-    assert.equal(recycled.allocation.owner.leaseGeneration, 2n);
-
-    const snapshot = await store.listRoutingIdSlots('game');
-    assert.deepEqual(snapshot.members, members);
-    assert.equal(snapshot.allocations.length, 2);
-    assert.equal(
-      await fixture.client.hGet(`${prefix}:ridalloc:game`, 'config'),
-      JSON.stringify([
-        { MeshName: 'play', RoutingIdPrefix: 'play-' },
-        { MeshName: 'rooms', RoutingIdPrefix: 'rooms-' }
-      ])
-    );
-  } finally {
-    await store.dispose();
-    await cleanupPrefix(fixture.client, prefix);
-    await fixture.client.quit();
-  }
-});
-
 test('redis resolver rejects an Actor row after the same Spot ID is recreated', async (t) => {
   const fixture = await redisFixture();
   if (fixture === undefined) {
@@ -946,6 +824,7 @@ test('redis resolver rejects an Actor row after the same Spot ID is recreated', 
     const resolvers = new internal.ZLinkStoreLocationResolvers({
       stores: {
         locationStore: store,
+        authorityStore: store,
         peerStore: store,
         spotStore: store,
         actorStore: store,
@@ -1398,7 +1277,7 @@ function rid(value) {
 
 function peer(ownerId, nodeRid) {
   return {
-    autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
+    autoConnectType: internal.ZLinkLocationAutoConnectType.RouteMesh,
     meshName: 'play',
     nodeRid: rid(nodeRid),
     role: framework.ZLinkLocationRole.Router,
@@ -1459,7 +1338,7 @@ function unpublishedActor(ownerId, nodeRid) {
 
 function route(ownerId, nodeRid) {
   return {
-    routeKind: framework.ZLinkRouteKind.ActorSession,
+    routeKind: internal.ZLinkRouteKind.ActorSession,
     routeKey: 'session-1',
     ownerNodeRid: rid(nodeRid),
     ownerId,
@@ -1579,21 +1458,6 @@ function fanoutPublisherDescriptor(publisherName, ownerId, leaseGeneration) {
     ownerId,
     leaseGeneration,
     updatedAt: new Date('2024-07-15T00:00:00.000Z')
-  };
-}
-
-function actorTransferRequest() {
-  return {
-    meshName: 'game',
-    actorId: 'actor-1',
-    transferId: '01234567-89ab-cdef-0123-456789abcdef',
-    source: { nodeRid: rid('game-a'), actorId: 'actor-1', generation: 11n },
-    target: { nodeRid: rid('game-b'), actorId: 'actor-1', generation: 11n },
-    expectedActorGeneration: 11n,
-    expectedMembershipEpoch: 4n,
-    participants: new Set([rid('game-a'), rid('game-b')]),
-    recoveryOwnerId: 'recovery-a',
-    recoveryLeaseTtlMs: 30_000
   };
 }
 

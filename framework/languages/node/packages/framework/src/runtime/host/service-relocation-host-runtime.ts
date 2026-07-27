@@ -10,7 +10,6 @@ import type {
   ZLinkLocationOwnerToken,
   ZLinkMeshNodeDescriptor,
   ZLinkLocationStore,
-  ZLinkProviderResolver,
   ZLinkRelocationCapacityFence,
   ZLinkRelocationReference,
   ZLinkRelocationStore,
@@ -18,6 +17,7 @@ import type {
   ZLinkSpotRelocationAdapter,
   ZLinkInstanceSpot
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ZLinkBackendMeshNode,
@@ -2360,7 +2360,7 @@ function relocationStorePort(store: ZLinkRelocationStore): ServiceRelocationStor
 }
 
 async function requireAuthority(
-  store: Pick<import('../../contracts').ZLinkAuthorityStore, 'readAuthority'>,
+  store: Pick<ZLinkLocationStore, 'readAuthority'>,
   key: ZLinkAuthorityKey,
   signal?: AbortSignal
 ): Promise<ZLinkAuthoritySnapshot> {

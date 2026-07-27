@@ -1,15 +1,12 @@
 package systems.zlink.framework.runtime.locations;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Flow;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,17 +15,12 @@ import systems.zlink.framework.locations.ZLinkAuthorityPage;
 import systems.zlink.framework.locations.ZLinkAuthorityScanCursor;
 import systems.zlink.framework.locations.ZLinkAuthorityScanExpired;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
-import systems.zlink.framework.locations.ZLinkLocationChanged;
-import systems.zlink.framework.locations.ZLinkLocationKind;
-import systems.zlink.framework.locations.ZLinkLocationWatchFilter;
-import systems.zlink.framework.locations.ZLinkLocationWatchStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
-import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 /**
  * Reconciles durable Spot authority into fenced raw routes. A full scan is
@@ -38,8 +30,7 @@ public final class ZLinkStatefulAuthorityRouteRuntime
     implements AutoCloseable {
     private static final ZLinkStoreCancellation OPEN = () -> false;
 
-    private final ZLinkAuthorityStore store;
-    private final ZLinkLocationWatchStore watchStore;
+    private final ZLinkLocationStore store;
     private final Map<String, ZLinkInternalMeshNode> meshNodes;
     private final Duration pollingInterval;
     private final Consumer<Throwable> reportFailure;
@@ -51,21 +42,16 @@ public final class ZLinkStatefulAuthorityRouteRuntime
                 .name("zlink-jvm-authority-routes")
                 .factory());
     private final AtomicBoolean inFlight = new AtomicBoolean();
-    private final AtomicBoolean watchSignaled = new AtomicBoolean();
-    private final List<Flow.Subscription> subscriptions =
-        new ArrayList<>();
     private final Map<String, Applied> applied = new HashMap<>();
     private volatile boolean started;
     private volatile boolean closed;
 
     public ZLinkStatefulAuthorityRouteRuntime(
-        ZLinkAuthorityStore store,
-        ZLinkLocationWatchStore watchStore,
+        ZLinkLocationStore store,
         Map<String, ZLinkInternalMeshNode> meshNodes,
         Duration pollingInterval,
         Consumer<Throwable> reportFailure) {
         this.store = java.util.Objects.requireNonNull(store, "store");
-        this.watchStore = watchStore;
         this.meshNodes = Map.copyOf(
             java.util.Objects.requireNonNull(
                 meshNodes, "meshNodes"));
@@ -82,8 +68,6 @@ public final class ZLinkStatefulAuthorityRouteRuntime
 
     public CompletionStage<Void> start() {
         return reconcile()
-            .thenRun(this::subscribe)
-            .thenCompose(ignored -> reconcile())
             .thenRun(() -> {
                 started = true;
                 executor.scheduleWithFixedDelay(
@@ -91,9 +75,6 @@ public final class ZLinkStatefulAuthorityRouteRuntime
                     pollingInterval.toMillis(),
                     pollingInterval.toMillis(),
                     TimeUnit.MILLISECONDS);
-                if (watchSignaled.get()) {
-                    executor.execute(this::poll);
-                }
             });
     }
 
@@ -247,40 +228,17 @@ public final class ZLinkStatefulAuthorityRouteRuntime
             || !inFlight.compareAndSet(false, true)) {
             return;
         }
-        watchSignaled.set(false);
         reconcile().whenComplete((ignored, failure) -> {
             inFlight.set(false);
             if (failure != null && !closed) {
                 reportFailure.accept(unwrap(failure));
             }
-            if (watchSignaled.get() && !closed) {
-                executor.execute(this::poll);
-            }
         });
-    }
-
-    private void subscribe() {
-        if (watchStore == null) {
-            return;
-        }
-        for (String meshName : meshNodes.keySet()) {
-            try {
-                watchStore.watch(new ZLinkLocationWatchFilter(
-                    ZLinkLocationKind.SPOT,
-                    meshName,
-                    ZLinkRouteKind.INVALID))
-                    .subscribe(new AuthoritySubscriber());
-            } catch (RuntimeException failure) {
-                reportFailure.accept(failure);
-            }
-        }
     }
 
     @Override
     public synchronized void close() {
         closed = true;
-        subscriptions.forEach(Flow.Subscription::cancel);
-        subscriptions.clear();
         executor.shutdownNow();
         applied.values().forEach(this::forget);
         applied.clear();
@@ -302,39 +260,4 @@ public final class ZLinkStatefulAuthorityRouteRuntime
         ZLinkServiceM6BWireCodec.InstanceRouteFence instance) {
     }
 
-    private final class AuthoritySubscriber
-        implements Flow.Subscriber<ZLinkLocationChanged> {
-        @Override
-        public void onSubscribe(Flow.Subscription subscription) {
-            synchronized (ZLinkStatefulAuthorityRouteRuntime.this) {
-                if (closed) {
-                    subscription.cancel();
-                    return;
-                }
-                subscriptions.add(subscription);
-            }
-            subscription.request(Long.MAX_VALUE);
-        }
-
-        @Override
-        public void onNext(ZLinkLocationChanged ignored) {
-            watchSignaled.set(true);
-            if (started) {
-                executor.execute(
-                    ZLinkStatefulAuthorityRouteRuntime.this::poll);
-            }
-        }
-
-        @Override
-        public void onError(Throwable failure) {
-            if (!closed) {
-                reportFailure.accept(failure);
-            }
-        }
-
-        @Override
-        public void onComplete() {
-            // Periodic reconciliation remains the durable fallback.
-        }
-    }
 }

@@ -9,7 +9,6 @@ import type { ZLinkFrameworkRegistration } from './framework-integration-contrac
 import {
   ZLINK_FRAMEWORK_REGISTRATION,
   ZLINK_FRAMEWORK_RUNTIME,
-  ZLINK_RUNTIME_EVENT_PUBLISHER
 } from './tokens';
 import {
   hasNestSpotTimerHandlerMetadata,
@@ -26,7 +25,7 @@ import type {
   ZLinkNestProviderDiscoveryOptions,
   ZLinkNestProviderDiscoveryRoot
 } from './contracts';
-import { framework, type FrameworkRuntimeHost } from './framework-loader';
+import { framework } from './framework-loader';
 import { createZLinkNestFrameworkOptionsBuilder } from './options-builder';
 import {
   assertBuiltModuleOptions,
@@ -164,23 +163,6 @@ export class ZLinkModule {
         ...alwaysAvailableClientTokens(),
         ...conditionalClientTokens()
       ]
-    };
-  }
-}
-
-@Module({})
-export class ZLinkMonitoringModule {
-  static forRoot(): DynamicModule {
-    return {
-      module: ZLinkMonitoringModule,
-      imports: [DiscoveryModule],
-      providers: [{
-        provide: ZLINK_RUNTIME_EVENT_PUBLISHER,
-        inject: [ModuleRef],
-        useFactory: (moduleRef: ModuleRef) =>
-          (moduleRef.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as FrameworkRuntimeHost).eventPublisher
-      }],
-      exports: [ZLINK_RUNTIME_EVENT_PUBLISHER]
     };
   }
 }

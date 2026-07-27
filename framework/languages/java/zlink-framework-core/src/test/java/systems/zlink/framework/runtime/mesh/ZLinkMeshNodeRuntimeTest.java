@@ -8,10 +8,10 @@ import java.util.function.Consumer;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
@@ -20,7 +20,7 @@ class ZLinkMeshNodeRuntimeTest {
     @Test
     void startAppliesIdentityTopologyAndPeersBeforeOwningLifecycle() {
         MeshNodeRegistration registration = new MeshNodeRegistration("game");
-        registration.setRoutingId(RoutingId.from("game-1"));
+        registration.setRoutingIdPrefix("game-1");
         registration.setPlacementWeight(300);
         registration.listen("inproc://game-1");
         registration.channelName("orders").setWeight(2);
@@ -37,7 +37,7 @@ class ZLinkMeshNodeRuntimeTest {
             },
             new RecordingContext())) {
             assertEquals(List.of(
-                "routing-id:game-1",
+                "routing-id:" + registration.routingId(),
                 "bind:inproc://game-1",
                 "placement-weight:300",
                 "channel:orders",

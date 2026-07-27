@@ -125,15 +125,6 @@ export interface ZLinkLocationRuntimeSnapshot {
   readonly lastFailureAt?: Date;
 }
 
-export interface ZLinkMeshDrainSnapshot {
-  readonly state: ZLinkMeshNodeState;
-  readonly deadline?: Date;
-  readonly workSealed: boolean;
-  readonly pendingRequestCount: bigint;
-  readonly pendingTransferCount: bigint;
-  readonly pendingStreamBarrierCount: bigint;
-}
-
 export interface ZLinkMeshNodeSnapshot {
   readonly meshName: string;
   readonly rid: RoutingId;
@@ -164,7 +155,6 @@ export interface ZLinkMeshNodeSnapshot {
   readonly instanceSpots: readonly import('./RuntimeTopology').ZLinkInstanceSpotTypeSnapshot[];
   readonly claims: ZLinkMeshClaimSnapshot;
   readonly location: ZLinkLocationRuntimeSnapshot;
-  readonly drain: ZLinkMeshDrainSnapshot;
 }
 
 export interface ZLinkMeshRuntimeEvent {
@@ -195,20 +185,8 @@ export interface ZLinkMeshRuntimeEvent {
   readonly state?: ZLinkMeshNodeState;
 }
 
-export type ZLinkDrainForceReason =
-  | 'deadline_exceeded'
-  | 'drain_state_publish_failed'
-  | 'owner_cleanup_failed'
-  | 'teardown_failed';
-
-export type ZLinkMeshDrainResult =
-  | { readonly kind: 'drained' }
-  | { readonly kind: 'forceStopped'; readonly reason: ZLinkDrainForceReason };
-
 export interface ZLinkRouteMeshRuntime {
   snapshot(meshName: string): ZLinkMeshNodeSnapshot;
   observe(meshName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkMeshRuntimeEvent>;
   isReady(meshName: string): boolean;
-  drain(meshName: string, deadlineMs?: number, signal?: AbortSignal): Promise<ZLinkMeshDrainResult>;
-  awaitDrained(meshName: string, signal?: AbortSignal): Promise<ZLinkMeshDrainResult>;
 }

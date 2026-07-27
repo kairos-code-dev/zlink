@@ -16,14 +16,6 @@ public enum ZLinkMeshNodeState {
     FAULTED
 }
 
-@Deprecated(since = "11.0", forRemoval = false)
-public interface ZLinkDrainControl {
-    CompletionStage<ZLinkTerminationResult> drain();
-    CompletionStage<ZLinkTerminationResult> drain(Duration deadline);
-    CompletionStage<ZLinkTerminationResult> awaitDrained();
-    boolean isReady();
-}
-
 public interface ZLinkRouteMeshRuntime {
     ZLinkMeshNodeSnapshot snapshot(String meshName);
     Flow.Publisher<ZLinkMeshRuntimeEvent> observe(
@@ -43,10 +35,8 @@ public interface ZLinkMonitoringOptionsCustomizer {
 Orderly disconnect와 service liveness timeout은 다른 reason으로 관측한다. Peer 하나가 실패해도 다른 ready
 peer와 host를 `ERROR`로 바꾸지 않는다.
 
-Host-wide `ZLinkDrainControl`은 deprecated `Shutdown` facade다. `drain(...)`은 host의 shared `shutdown(...)`을
-시작하고 `awaitDrained()`는 같은 operation의 terminal 결과를 기다린다. 별도 host drain result를 만들지 않는다.
-MeshName을 받는 partial termination operation과 component termination result는 제공하지 않는다. 모든 topology의
-종료는 host `Retire` 또는 `Shutdown`이 조정한다.
+별도 drain control과 component termination result는 제공하지 않는다. 모든 topology의 종료는
+`ZLinkFrameworkRuntime`의 host `Retire` 또는 `Shutdown`이 조정한다.
 
 ## Host runtime observation exact source signature
 
@@ -262,6 +252,8 @@ capacity는 0보다 커야 하며 publisher cancellation은 해당 관찰만 끝
 `active`, `reserved`, `limit`을 반환한다. Limit `0`은 제한이 없다는 뜻이다. Entry Spot은 Spot 집계에서
 제외하지만 Entry Spot에 존재하는 Actor는 Actor 전체 집계에 포함한다. `activationConcurrency()`는 현재
 factory·initialization 실행 수와 양수 limit을 별도 값으로 반환하며 population capacity에 합치지 않는다.
+Host 종료 deadline, work seal과 pending relocation·stream barrier 수는 `ZLinkFrameworkRuntimeSnapshot`이
+제공한다. `ZLinkMeshNodeSnapshot`에는 별도 drain object나 같은 값을 복제한 field를 추가하지 않는다.
 
 Fanout의 `connectionIntent`는 automatic planner의 endpoint intent다. `ready`와 `readyConnectionCount`는
 publisher 전용 SUB socket의 native-ready와 같은 socket의 첫 valid application record 또는 liveness beacon
@@ -281,13 +273,6 @@ name을 유지한다.
 아래 선언은 위 source signature와 중복되지 않는 Java public type과 member를 고정한다.
 
 ```java
-@java.lang.Deprecated(since = "11.0", forRemoval = false)
-public interface systems.zlink.framework.monitoring.ZLinkDrainControl {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> drain();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> drain(java.time.Duration);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.runtime.host.ZLinkTerminationResult> awaitDrained();
-  public abstract boolean isReady();
-}
 public final class systems.zlink.framework.monitoring.ZLinkMeshNodeState extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkMeshNodeState> {
   public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState STARTING;
   public static final systems.zlink.framework.monitoring.ZLinkMeshNodeState SERVING;
@@ -352,7 +337,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot ext
   public long pendingInfrastructureWork();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, systems.zlink.framework.monitoring.ZLinkActivationConcurrency, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
+  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, systems.zlink.framework.locations.ZLinkActivationConcurrency, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -373,18 +358,10 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot exte
   public systems.zlink.framework.locations.ZLinkMeshNodeObjectRole objectRole();
   public int placementWeight();
   public systems.zlink.framework.locations.ZLinkPlacementCapacity objectCapacity();
-  public systems.zlink.framework.monitoring.ZLinkActivationConcurrency activationConcurrency();
+  public systems.zlink.framework.locations.ZLinkActivationConcurrency activationConcurrency();
   public java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability> objectCapabilities();
   public long placementReservationFailureCount();
   public java.util.Optional<java.lang.String> lastPlacementReservationFailure();
-}
-public final class systems.zlink.framework.monitoring.ZLinkActivationConcurrency extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkActivationConcurrency(int, int);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public int active();
-  public int limit();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot extends java.lang.Record {
   public systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot(systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.lang.String, boolean, java.lang.String, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
@@ -478,15 +455,15 @@ public final class systems.zlink.framework.monitoring.ZLinkSocketEventKind exten
   public int value();
 }
 public final class systems.zlink.framework.monitoring.ZLinkSpotEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
-  public systems.zlink.framework.monitoring.ZLinkSpotEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkSpotEventKind, java.util.Optional<systems.zlink.contracts.service.spot.MeshNodeStatus>, java.util.List<systems.zlink.contracts.service.spot.MeshPeerEntry>, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
+  public systems.zlink.framework.monitoring.ZLinkSpotEvent(java.lang.String, java.time.Instant, systems.zlink.framework.monitoring.ZLinkSpotEventKind, java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<java.lang.String>, java.util.Optional<java.lang.String>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public java.lang.String sourceName();
   public java.time.Instant timestamp();
   public systems.zlink.framework.monitoring.ZLinkSpotEventKind event();
-  public java.util.Optional<systems.zlink.contracts.service.spot.MeshNodeStatus> status();
-  public java.util.List<systems.zlink.contracts.service.spot.MeshPeerEntry> peers();
+  public java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState> state();
+  public java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot> peers();
   public java.util.List<java.lang.String> subjects();
   public java.util.Optional<java.lang.String> timerDiagnostic();
 }
@@ -495,23 +472,6 @@ public final class systems.zlink.framework.monitoring.ZLinkSpotEvent extends jav
 ## Runtime event support public signature
 
 ```java
-public final class systems.zlink.framework.monitoring.ZLinkDrainEvent extends java.lang.Record implements systems.zlink.framework.monitoring.ZLinkRuntimeEvent {
-  public systems.zlink.framework.monitoring.ZLinkDrainEvent(systems.zlink.framework.monitoring.ZLinkDrainState, java.time.Instant);
-  public java.lang.String sourceName();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public systems.zlink.framework.monitoring.ZLinkDrainState state();
-  public java.time.Instant timestamp();
-}
-public final class systems.zlink.framework.monitoring.ZLinkDrainState extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkDrainState> {
-  public static final systems.zlink.framework.monitoring.ZLinkDrainState SERVING;
-  public static final systems.zlink.framework.monitoring.ZLinkDrainState DRAINING;
-  public static final systems.zlink.framework.monitoring.ZLinkDrainState DRAINED;
-  public static final systems.zlink.framework.monitoring.ZLinkDrainState FORCE_STOPPING;
-  public static systems.zlink.framework.monitoring.ZLinkDrainState[] values();
-  public static systems.zlink.framework.monitoring.ZLinkDrainState valueOf(java.lang.String);
-}
 public final class systems.zlink.framework.monitoring.ZLinkFlowOrigin extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkFlowOrigin> {
   public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin INBOUND;
   public static final systems.zlink.framework.monitoring.ZLinkFlowOrigin TIMER;
@@ -535,12 +495,6 @@ public final class systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind
   public static systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind[] values();
   public static systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind valueOf(java.lang.String);
   public int value();
-}
-public final class systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher {
-  public systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher();
-  public synchronized <TEvent extends systems.zlink.framework.monitoring.ZLinkRuntimeEvent> java.lang.AutoCloseable register(java.lang.Class<TEvent>, systems.zlink.framework.monitoring.ZLinkRuntimeEventHandler<TEvent>);
-  public void publish(systems.zlink.framework.monitoring.ZLinkRuntimeEvent);
-  public int handlerFailureCount();
 }
 public final class systems.zlink.framework.monitoring.ZLinkSpotEventKind extends java.lang.Enum<systems.zlink.framework.monitoring.ZLinkSpotEventKind> {
   public static final systems.zlink.framework.monitoring.ZLinkSpotEventKind STATUS_CHANGED;

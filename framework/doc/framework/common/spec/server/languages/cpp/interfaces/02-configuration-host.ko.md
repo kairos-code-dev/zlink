@@ -376,6 +376,9 @@ options.add_stream_node(sample_names_t::stream_name)
   .register_session<client_session_t>()
 ```
 
+Entry Spot의 SpotId는 Framework가 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식으로 발급한다.
+Application이 Entry Spot의 RoutingId나 고정 SpotId를 설정하는 public option은 제공하지 않는다.
+
 `enable_actor_dispatch()`는 session Actor dispatch에 global ActorId lookup과 exact ActorRef bind를 사용하도록
 설정한다. Target MeshName을 받거나 첫 MeshNode에서 추론하지 않는다. Actor dispatch를 사용하지 않는 STREAM
 node는 호출하지 않는다. 같은 builder에서 두 번 호출하면 startup이 실패한다.

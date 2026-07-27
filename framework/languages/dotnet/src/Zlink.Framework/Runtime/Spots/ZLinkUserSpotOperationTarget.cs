@@ -4,7 +4,7 @@ using Systems.Zlink.Framework.Runtime.Protocol;
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkUserSpotOperationTarget(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     ZLinkSpotNodeCatalog catalog,
     IZLinkBackendSpotNode node,
     ZLinkSpotNodeRegistration registration,

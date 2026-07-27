@@ -14,6 +14,7 @@
 | [Stateful maintenance](stateful-maintenance-runtime.ko.md) | host barrier, authority CAS, Relocation Store, recovery와 STREAM barrier |
 | [STREAM session](stream-session-runtime.ko.md) | connection aggregate, exact Actor binding과 relocation route barrier |
 | [Transport liveness](transport-liveness-runtime.ko.md) | Service probe·fanout beacon, raw monitor, readiness와 reconnect 경계 |
+| [Routing identity runtime](routing-identity-runtime.ko.md) | Automatic RID 생성, descriptor owner claim과 startup 정리 순서 |
 | [Service monitoring](service-monitoring-runtime.ko.md) | monitor reducer, immutable snapshot, bounded event와 observer lifetime |
 | [Concurrency and resources](concurrency-resource-runtime.ko.md) | execution domain, resource tree, synchronization과 bounded shutdown |
 | [Core raw runtime boundary](../../../../../core/doc/internals/runtime-boundary.ko.md) | Core에 남는 raw socket·poller·timer·monitor 내부 구조의 정본 |

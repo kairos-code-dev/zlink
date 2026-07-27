@@ -4,13 +4,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
@@ -18,13 +15,10 @@ import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshDrainResult;
-import systems.zlink.framework.monitoring.ZLinkMeshDrained;
-import systems.zlink.framework.monitoring.ZLinkMeshForceStopped;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
@@ -50,21 +44,6 @@ final class RuntimeMonitoringContractTest {
             ZLinkRouteMeshRuntime.class
                 .getMethod("isReady", String.class)
                 .getReturnType());
-        assertEquals(
-            CompletionStage.class,
-            ZLinkRouteMeshRuntime.class
-                .getMethod("drain", String.class, Duration.class)
-                .getReturnType());
-        assertEquals(
-            CompletionStage.class,
-            ZLinkRouteMeshRuntime.class
-                .getMethod("awaitDrained", String.class)
-                .getReturnType());
-
-        assertTrue(ZLinkMeshDrainResult.class.isSealed());
-        assertEquals(
-            Set.of(ZLinkMeshDrained.class, ZLinkMeshForceStopped.class),
-            Set.of(ZLinkMeshDrainResult.class.getPermittedSubclasses()));
     }
 
     @Test

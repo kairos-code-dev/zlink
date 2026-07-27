@@ -17,7 +17,7 @@ import type {
   ZLinkSpotManager,
   ZLinkSpotOutbound,
   ZLinkSpotPacketHandler,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotRequestHandler
 } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
@@ -159,11 +159,11 @@ export class MultiNodeEntrySpot implements ZLinkEntrySpot<MultiNodeScenarioActor
 
 export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   private static evidence?: EvidenceStore;
-  private static refs?: ZLinkSpotHandleResolver;
+  private static refs?: ZLinkSpotManager;
   private value = 0;
   readonly context!: ZLinkSpotContext<MultiNodeScenarioActor>;
 
-  static configureDependencies(evidence: EvidenceStore, refs: ZLinkSpotHandleResolver): void {
+  static configureDependencies(evidence: EvidenceStore, refs: ZLinkSpotManager): void {
     this.evidence = evidence;
     this.refs = refs;
   }
@@ -189,10 +189,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   }
 
   async requestSend(request: SpotOnlyMeshReq): Promise<StateRes> {
-    const target = await SpotOnlyUserSpot.requireRefs().resolveSpotHandle(
-      SpotServiceNames.spotOnlyMesh,
-      request.targetSpotRid
-    );
+    const target = await SpotOnlyUserSpot.requireRefs().find(request.targetSpotRid);
     const reply = await requestSpotOnlyState(
       this.context.outbound,
       target,
@@ -236,7 +233,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
     return this.evidence;
   }
 
-  static requireRefs(): ZLinkSpotHandleResolver {
+  static requireRefs(): ZLinkSpotManager {
     if (this.refs === undefined) {
       throw new Error('SpotOnlyUserSpot refs are not configured.');
     }
@@ -266,7 +263,7 @@ export class ScaleOutActorProbeHandler
 
 async function requestSpotOnlyState(
   outbound: ZLinkSpotOutbound,
-  target: Awaited<ReturnType<ZLinkSpotHandleResolver['resolveSpotHandle']>>,
+  target: Awaited<ReturnType<ZLinkSpotManager['find']>>,
   request: StateReq
 ): Promise<StateRes> {
   if (target === undefined) {
@@ -280,7 +277,7 @@ async function requestSpotOnlyState(
 
 async function sendSpotOnlyState(
   outbound: ZLinkSpotOutbound,
-  target: Awaited<ReturnType<ZLinkSpotHandleResolver['resolveSpotHandle']>>,
+  target: Awaited<ReturnType<ZLinkSpotManager['find']>>,
   message: StateMsg
 ): Promise<void> {
   if (target === undefined) {
@@ -468,12 +465,12 @@ export async function requestState(
 
 export async function requestStateViaSpotOutbound(
   outbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotHandleResolver,
-  meshName: string,
+  spotRefs: ZLinkSpotManager,
+  _meshName: string,
   spotRid: string,
   delta: number
 ): Promise<StateRes> {
-  const spot = await spotRefs.resolveSpotHandle(meshName, spotRid);
+  const spot = await spotRefs.find(spotRid);
   if (spot === undefined) {
     throw new Error(`SpotRef '${spotRid}' was not found.`);
   }

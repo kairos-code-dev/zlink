@@ -12,6 +12,11 @@ Raw socket monitor는 connect, disconnect, accept, bind, protocol과 transport f
 함께 제공한다. Framework state reducer는 이 event를 peer, topology, mailbox, object, relocation과 host lifecycle에
 적용한 뒤 typed event와 immutable snapshot을 만든다. Application observer는 raw monitor queue를 직접 읽지 않는다.
 
+Location Store의 descriptor, authority row와 resolve miss도 reducer 입력이다. 이 row를 application event payload로
+그대로 전달하지 않는다. Provider가 구현하는 DTO와 owner fence가 application monitoring 계약으로 전파되면 Store
+schema를 바꿀 때 application handler까지 함께 바꿔야 하기 때문이다. Runtime은 row를 provider-neutral topology,
+location health, placement snapshot과 message-flow failure로 변환한 뒤에만 공개한다.
+
 Monitor ingest는 selected connection identity와 protocol failure를 유실하지 않는다. Binding monitor overflow를
 관측하면 raw connection snapshot을 다시 읽거나 해당 topology를 not-ready로 바꾼다. 상태를 추측하지 않는다.
 Send-ready처럼 빈도가 높은 edge는 current readiness를 reducer에 적용한 뒤 counter로 합칠 수 있다. Application
@@ -30,9 +35,9 @@ Reducer는 MeshNode, ClientServer Channel, automatic fanout Channel과 host term
 만든다. Snapshot sequence는 같은 source 안에서만 비교한다. Peer snapshot은 lifecycle generation, descriptor
 revision, selected connection readiness와 service state를 분리한다.
 
-Metric은 queue depth, pending byte, active turn, request terminal reason, reconnect, multicast partial result, object
+Metric은 queue depth, pending byte, active turn, request terminal reason, reconnect, object
 creation, relocation phase와 termination duration을 bounded-cardinality label로 집계한다. Endpoint, NodeRid, ActorId,
-SpotRid, relocation ID, correlation ID와 payload를 label에 넣지 않는다. Trace correlation은 operation ID와 public flow
+SpotId, relocation ID, correlation ID와 payload를 label에 넣지 않는다. Trace correlation은 operation ID와 public flow
 correlation을 runtime 내부에서 연결하며 payload와 application metadata를 event에 복사하지 않는다.
 
 ## 4. Observer lifetime

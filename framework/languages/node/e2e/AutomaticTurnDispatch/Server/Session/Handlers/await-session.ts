@@ -43,20 +43,20 @@ import type {
   ZLinkMessage,
   ZLinkRouteClient,
   ZLinkSpotOutbound,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSession,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext,
   ZLinkSessionFactory
 } from '@zlink-systems/framework';
-import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Support/evidence-store';
 
 class AwaitSession implements ZLinkSession {
   constructor(
     private readonly route: ZLinkRouteClient,
     private readonly outbound: ZLinkSpotOutbound,
-    private readonly spotHandles: ZLinkSpotHandleResolver,
+    private readonly spotHandles: ZLinkSpotManager,
     private readonly evidence: EvidenceStore,
     readonly context: ZLinkSessionContext
   ) {}
@@ -462,7 +462,7 @@ class AwaitSession implements ZLinkSession {
   }
 
   private async requireSpotHandle(spotRid: string, signal?: AbortSignal) {
-    const spot = await this.spotHandles.resolveSpotHandle(spotRid, signal);
+    const spot = await this.spotHandles.find(spotRid, signal);
     if (spot === undefined) {
       throw new Error(`SpotHandle '${spotRid}' was not found.`);
     }
@@ -480,7 +480,7 @@ export class AwaitSessionFactory implements ZLinkSessionFactory<AwaitSession> {
   constructor(
     @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     private readonly evidence: EvidenceStore
   ) {}
 

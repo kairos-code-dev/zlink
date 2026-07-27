@@ -34,8 +34,8 @@ class client_server_location_runtime_t
       message_bus_t bus,
       std::vector<channel_snapshot_t> channels,
       location_runtime_t &locations,
-      client_server_location_store_t &store,
-      owner_lease_store_t &leases,
+      location_store_t &store,
+      location_store_t &leases,
       service_provider_t &services,
       serializer_registry_t &serializers,
       const handler_registry_t &handlers,
@@ -103,8 +103,8 @@ class client_server_location_runtime_t
     detail::channel_runtime_t _channel_runtime;
     std::vector<channel_snapshot_t> _channels;
     location_runtime_t *_locations;
-    client_server_location_store_t *_store;
-    owner_lease_store_t *_leases;
+    location_store_t *_store;
+    location_store_t *_leases;
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;

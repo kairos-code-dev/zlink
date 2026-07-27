@@ -123,7 +123,6 @@ Module({
         builder
           .addRouteMesh('to-actor')
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .channelName('to-actor');
         builder
           .addStreamNode('to-actor-session-stream')

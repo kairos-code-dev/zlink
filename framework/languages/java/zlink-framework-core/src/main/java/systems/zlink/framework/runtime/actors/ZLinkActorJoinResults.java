@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime.actors;
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.messaging.ZLinkMessage;
 

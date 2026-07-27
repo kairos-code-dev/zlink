@@ -136,8 +136,9 @@ public sealed class CoverageCriticalRuntimeTests
         Assert.NotNull(mapped);
         Assert.Equal("orders", mapped.Value.SourceName);
         Assert.Equal(ZLinkSocketEventKind.HandshakeFailed, mapped.Value.Event);
-        Assert.Equal(ZLinkSocketNativeEventType.HandshakeFailedAuth, mapped.Value.Diagnostic!.Value.NativeEvent);
-        Assert.Equal(42U, mapped.Value.Diagnostic!.Value.NativeValue);
+        Assert.Equal(RoutingId.From("peer"), mapped.Value.RoutingId);
+        Assert.Equal("tcp://127.0.0.1:1", mapped.Value.LocalAddr);
+        Assert.Equal("tcp://127.0.0.1:2", mapped.Value.RemoteAddr);
 
         Assert.Null(ZLinkMonitoringEventMapper.MapSocketEvent(
             source,
@@ -157,7 +158,7 @@ public sealed class CoverageCriticalRuntimeTests
                 "",
                 "",
                 0));
-        Assert.Equal(ZLinkSocketEventKind.Internal, internalEvent?.Event);
+        Assert.Null(internalEvent);
     }
 
     [Fact]

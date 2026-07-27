@@ -6,10 +6,6 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 
     public ZLinkDiagnosticsOptionsModel Diagnostics { get; } = new();
 
-    public Type? MessageFlowObserverType { get; private set; }
-
-    public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
-
     public Type? RuntimeMessageFlowObserverType { get; private set; }
 
     public IZLinkRuntimeMessageFlowObserver? RuntimeMessageFlowObserver { get; private set; }
@@ -24,28 +20,6 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;
-
-    public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
-        where TObserver : class, IZLinkMessageFlowObserver
-    {
-        MessageFlowObserverType = typeof(TObserver);
-        MessageFlowObserver = null;
-        return this;
-    }
-
-    public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer)
-    {
-        ArgumentNullException.ThrowIfNull(observer);
-        MessageFlowObserver = observer;
-        MessageFlowObserverType = null;
-        return this;
-    }
-
-    public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode)
-    {
-        Diagnostics.MessageFlow = mode;
-        return this;
-    }
 
     public IZLinkDispatchOptions TraceSampleRate(double rate)
     {
@@ -109,14 +83,8 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
 
     public IZLinkDispatchOptions MessageFlow(ZLinkRuntimeMessageFlowMode mode)
     {
-        Diagnostics.MessageFlow = mode switch
-        {
-            ZLinkRuntimeMessageFlowMode.Off => ZLinkMessageFlowLogMode.Off,
-            ZLinkRuntimeMessageFlowMode.ErrorsOnly => ZLinkMessageFlowLogMode.ErrorsOnly,
-            ZLinkRuntimeMessageFlowMode.KeyTransitions => ZLinkMessageFlowLogMode.KeyTransitions,
-            ZLinkRuntimeMessageFlowMode.Verbose => ZLinkMessageFlowLogMode.Verbose,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode))
-        };
+        if (!Enum.IsDefined(mode)) throw new ArgumentOutOfRangeException(nameof(mode));
+        Diagnostics.MessageFlow = mode;
         return this;
     }
 }
@@ -128,14 +96,14 @@ internal sealed class ZLinkMessageFlowModeCell
 {
     private int _mode;
 
-    public ZLinkMessageFlowModeCell(ZLinkMessageFlowLogMode seed)
+    public ZLinkMessageFlowModeCell(ZLinkRuntimeMessageFlowMode seed)
     {
         _mode = (int)seed;
     }
 
-    public ZLinkMessageFlowLogMode Mode
+    public ZLinkRuntimeMessageFlowMode Mode
     {
-        get => (ZLinkMessageFlowLogMode)Volatile.Read(ref _mode);
+        get => (ZLinkRuntimeMessageFlowMode)Volatile.Read(ref _mode);
         set => Volatile.Write(ref _mode, (int)value);
     }
 }
@@ -154,18 +122,17 @@ internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions
     // Installed by the host at apply (ZLinkFrameworkServiceRegistrar). Shared across
     // surfaces so SetMessageFlowMode flips it live. Null before apply.
     public ZLinkMessageFlowModeCell? LiveMode { get; internal set; }
-    public ZLinkMessageFlowLogMode MessageFlow { get; internal set; } = ZLinkMessageFlowLogMode.ErrorsOnly;
+    public ZLinkRuntimeMessageFlowMode MessageFlow { get; internal set; } =
+        ZLinkRuntimeMessageFlowMode.ErrorsOnly;
 
     public double SampleRate { get; internal set; } = 1.0d;
 
     public bool IncludeMessageSizes { get; internal set; } = true;
 
-    public bool IncludeNativeDiagnostics { get; internal set; }
-
     public string? LogFile { get; internal set; }
 
     public string? Label { get; internal set; }
 
-    public ZLinkMessageFlowLogMode EffectiveMessageFlow =>
+    public ZLinkRuntimeMessageFlowMode EffectiveMessageFlow =>
         LiveMode is { } cell ? cell.Mode : MessageFlow;
 }

@@ -6,7 +6,7 @@
 ## 1. 범위
 
 이 문서는 ZLink Framework 11.0.0의 .NET RouteMesh·MeshNode 공개 인터페이스를 고정한다. 대상 독자는
-.NET framework와 bindings 구현자다. 물리 mesh 등록, 논리 channel membership, manual peer, handler,
+.NET application 개발자와 public provider 구현자다. 물리 mesh 등록, 논리 channel membership, manual peer, handler,
 Spot·Actor 등록과 실행 중 weight 변경의 정확한 C# signature를 이 문서가 소유한다.
 
 ## 2. 등록 인터페이스
@@ -293,11 +293,14 @@ lowercase canonical 문자열로 표현한다. Prefix는 ASCII `[A-Za-z0-9._-]` 
 실패한다. Fixed `SetRoutingId(...)`는 object role과 Store descriptor가 없는 manual topology에서만
 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
-Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-[Spot](../../../../01-glossary.ko.md#spot) type과 stateful object capability collection은 각각 최대 1024개다. [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부는 각
-object capability의 `HasSnapshotAdapter`에 포함하며 별도 contract collection을 만들지 않는다. Runtime은 완성된
-descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면 startup을 실패시키며 collection을
-truncate·split하거나 descriptor 일부를 게시하지 않는다.
+Object Server의 Entry Spot ID에도 같은 prefix를 사용하지만 MeshNode RID와 별도로 생성한 UUID v4를
+붙인다. 형식은 `<prefix>-entry-<lowercase-canonical-uuid-v4>`이며 caller가 fixed Entry Spot ID를 지정하지
+않는다. 이 ID의 전역 충돌과 caller가 지정한 Spot ID의 예약 형식 검증은
+[Spot model](../../../../19-spot-model.ko.md)이 정의한다. Prefix와 생성된 RID·Spot ID를 placement, shard 또는
+stable application identity로 해석하지 않는다.
+
+등록한 MeshNode descriptor는 1 MiB 이하여야 한다. [Spot](../../../../01-glossary.ko.md#spot) type과 stateful object capability collection은 각각
+최대 1024개다. Bound를 넘으면 startup을 실패시키며 일부 registration만 적용하지 않는다.
 
 `SubscriberConnections`는 manual subscriber endpoint 집합의 runtime handle이다. Builder에서 등록한
 endpoint와 같은 집합을 대상으로 연결, 해제와 현재 목록 조회를 제공한다. Automatic subscriber의
@@ -311,9 +314,8 @@ discovery 결과는 이 handle로 변경하지 않는다.
 `Client` 또는 `Server`인 Mesh와 Location Store가 없으면 startup이 실패한다. Global ActorId가 current Mesh와
 owner route를 결정하므로 이 설정은 MeshName을 받지 않는다.
 
-`DefaultRequestTimeout`의 기본값은 30초, `DefaultSocketSendTimeout`의 기본값은 1초다. `Worker`는 bounded
-worker scheduler의 최소·최대 thread 수, idle timeout과 queue 상한을 host startup 전에 설정한다. Raw receiver
-batch와 service protocol claim 크기는 public 설정으로 노출하지 않는다.
+`DefaultRequestTimeout`의 기본값은 30초, `DefaultSocketSendTimeout`의 기본값은 1초다. `Worker`는 worker의
+최소·최대 thread 수, idle timeout과 queue 상한을 host startup 전에 설정한다.
 
 `ConfigureStreamCompression()`과 `IZLinkStreamCompressionBuilder`는 STREAM payload compression을 고른다.
 이 builder는 service transport lifecycle이나 relocation codec을 설정하지 않는다.
@@ -349,6 +351,22 @@ public interface IZLinkMeshPeerConnections
     void Connect(RoutingId expectedRoutingId, string endpoint);
     void Disconnect(string endpoint);
     IReadOnlyList<ZLinkMeshPeerConnection> ListConnections();
+}
+```
+
+Handler filter는 application이 구현하고 root에 등록하는 public extension point다. `next`를 호출하면 남은
+filter와 handler가 실행되고, 호출하지 않으면 현재 dispatch를 종료한다. 적용 범위와 실행 순서는 공통
+Framework API가 정한다.
+
+```csharp
+public delegate ValueTask ZLinkHandlerFilterNext();
+
+public interface IZLinkHandlerFilter
+{
+    ValueTask InvokeAsync(
+        IZLinkMessageContext context,
+        ZLinkHandlerFilterNext next,
+        CancellationToken cancellationToken);
 }
 ```
 
@@ -461,13 +479,10 @@ public interface IZLinkMeshNodeSocketConfig
 }
 ```
 
-`ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)의
-publish는 pending queue 없이 bounded I/O executor에 direct handoff한다. 즉시 worker slot을 얻지 못하면 raw
-socket call을 시작하지 않고 send timeout까지 capacity를 기다린다. Slot을 얻으면 bindings의 public raw
-socket call을 정확히 한 번 시작하며 이 시점에 결과값 없는 terminal이 정상 완료한다. 각 remote target은
-MeshNode ROUTER의 HWM과 send timeout을 따르지만 target별 수락·실패 결과를 기다리거나 public monitoring에
-집계하지 않는다. 앞에서 수락된 target은 뒤 target의 실패 때문에 취소되지 않으며 전체 publish를 자동
-재시도하지 않는다. Target snapshot이 0개여도 정상 완료한다.
+`ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)는
+source-local 실행 용량을 send timeout 안에 확보하면 시작하고 결과값 없이 정상 완료한다. Target별
+수락·실패 결과를 기다리거나 public monitoring에 집계하지 않으며 일부 target 실패 때문에 전체 publish를
+자동 재시도하지 않는다. Target이 없어도 정상 완료한다.
 
 `IZLinkRouteMeshRuntimeOptions`는 public DI singleton이다. 등록되지 않은 membership을 조회하면
 `ZLinkConfigurationException`이다. `MailboxMessageBudget`와 `MailboxByteBudget`은 [owner](../../../../01-glossary.ko.md#owner)별 application
@@ -478,15 +493,12 @@ mailbox의 메시지 수와 byte 수 상한이다. 0은 Framework profile의 유
 실행 중에는 `Mesh(meshName).PlacementWeight`와 `Channel(channelName).Weight`를 변경할 수 있다.
 두 weight는 서로 독립적이며 node weight는 object create·relocation target selection에만 사용한다.
 ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게 고른다. HWM과 timeout은
-`ConfigureRouterSocket()`에서 startup 전에 설정한다. MeshNode가 지원하지 않는 raw ROUTER option을 이
-interface에 노출하지 않는다.
+`ConfigureRouterSocket()`에서 startup 전에 설정한다.
 
-`MaxMessageSize`는 startup 전에만 설정하며 실행 중 setter를 제공하지 않는다. `0`은 bindings 또는
-transport가 수신할 수 있는 최대 complete message 크기로 정규화한다. Transport가 unlimited이면 service
-wire의 `uint32` 표현 한계에서 envelope overhead를 뺀 값을 사용한다. 양수는 그 표현 한계를 넘을 수 없으며
-넘으면 `ZLinkConfigurationException`으로 startup을 실패시킨다. Peer는 정규화한 값을 내부 handshake로
-교환하고 sender와 receiver는 두 값 중 작은 effective bound를 complete message allocation 전에 적용한다.
-이 negotiation을 위한 public option은 제공하지 않는다.
+`MaxMessageSize`는 startup 전에만 설정하며 실행 중 setter를 제공하지 않는다. `0`은 Framework가 지원하는
+최대 complete message 크기를 사용한다. 양수는 public protocol의 표현 한계를 넘을 수 없으며 넘으면
+`ZLinkConfigurationException`으로 startup을 실패시킨다. Peer마다 두 endpoint가 허용한 값 중 작은 값을
+적용한다.
 
 ## 6. 메시징 metadata
 

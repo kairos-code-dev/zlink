@@ -89,43 +89,15 @@ class game_api_store_t
         return count + (unpublished == _unpublished_kills.end () ? 0 : unpublished->second);
     }
 
-    /* notify는 actor가 자기 bound session으로 push한다. store는 projection 기록만 맡는다. */
-    void push_notify (session_actor_manager_t &actors, const notify_quest_progress_msg_t &notify)
+    std::optional<std::string> record_notify (const notify_quest_progress_msg_t &notify)
     {
-        std::string session_id;
-        {
-            const std::lock_guard lock (_mutex);
-            _projections[notify.player_id] = notify.projection;
-            const auto found = _session_ids.find (notify.player_id);
-            if (found == _session_ids.end ()) {
-                std::cerr << "gamequest api: no bound session for player=" << notify.player_id
-                          << "\n";
-                return;
-            }
-            session_id = found->second;
+        const std::lock_guard lock (_mutex);
+        _projections[notify.player_id] = notify.projection;
+        const auto found = _session_ids.find (notify.player_id);
+        if (found == _session_ids.end ()) {
+            return std::nullopt;
         }
-
-        auto actor = actors.find (notify.player_id);
-        if (!actor) {
-            return;
-        }
-        for (const auto &progress : notify.projection) {
-            actor->bound_session ()
-              .send (quest_progress_notify_t{notify.player_id, session_id, progress})
-              .submit ();
-        }
-        if (!notify.completed_quest_id.empty ()) {
-            const auto completed =
-              std::find_if (notify.projection.begin (), notify.projection.end (),
-                            [&] (const quest_progress_t &progress) {
-                                return progress.quest_id == notify.completed_quest_id;
-                            });
-            if (completed != notify.projection.end ()) {
-                actor->bound_session ()
-                  .send (quest_completed_notify_t{notify.player_id, session_id, *completed, true})
-                  .submit ();
-            }
-        }
+        return found->second;
     }
 
     server_assertion_res_t assert_state () const
@@ -207,8 +179,8 @@ struct player_actor_factory_t
 class player_entry_spot_t : public entry_spot_t
 {
   public:
-    player_entry_spot_t (game_api_store_t &store, service_provider_t services) :
-        _store (store), _services (std::move (services))
+    explicit player_entry_spot_t (game_api_store_t &store) :
+        _store (store)
     {
     }
 
@@ -216,7 +188,7 @@ class player_entry_spot_t : public entry_spot_t
     {
         _context = context;
         context.handlers ()
-          .add_handler<&player_entry_spot_t::quest_progress_notified> (
+          .add_actor_send<&player_entry_spot_t::quest_progress_notified> (
             notify_quest_progress_msg_t::packet_name)
           .add_actor_request<&player_entry_spot_t::join_session> (join_session_req_t::packet_name);
     }
@@ -235,21 +207,42 @@ class player_entry_spot_t : public entry_spot_t
     /* session이 join을 actor로 relay한다. actor가 이 노드의 entry spot에 붙어 있어야 owner spot이
      * session binding으로 이 노드를 찾을 수 있다. */
     join_session_res_t join_session (player_actor_t &,
-                                     spot_actor_request_context_t &,
+                                     message_context_t &,
                                      const join_session_req_t &request)
     {
         return {_store.projection (request.player_id)};
     }
 
-    void quest_progress_notified (const notify_quest_progress_msg_t &notify)
+    void quest_progress_notified (player_actor_t &actor,
+                                  message_context_t &,
+                                  const notify_quest_progress_msg_t &notify)
     {
-        auto scope = _services.create_scope ();
-        _store.push_notify (scope.get_required<session_actor_manager_t> (), notify);
+        const auto session_id = _store.record_notify (notify);
+        if (!session_id) {
+            return;
+        }
+        for (const auto &progress : notify.projection) {
+            actor.context.bound_session ()
+              .send (quest_progress_notify_t{notify.player_id, *session_id, progress})
+              .submit ();
+        }
+        if (!notify.completed_quest_id.empty ()) {
+            const auto completed = std::find_if (
+              notify.projection.begin (), notify.projection.end (),
+              [&] (const quest_progress_t &progress) {
+                  return progress.quest_id == notify.completed_quest_id;
+              });
+            if (completed != notify.projection.end ()) {
+                actor.context.bound_session ()
+                  .send (quest_completed_notify_t{
+                    notify.player_id, *session_id, *completed, true})
+                  .submit ();
+            }
+        }
     }
 
   private:
     game_api_store_t &_store;
-    service_provider_t _services;
     entry_spot_context_t _context;
 };
 
@@ -523,7 +516,6 @@ int main (int argc, char **argv)
         auto api_store = std::make_unique<game_api_store_t> ();
         auto *store_ptr = api_store.get ();
         options.services ().add_singleton<game_api_store_t> (std::move (api_store));
-        auto spot_services = options.services ().build_provider ();
         add_gamequest_json_codecs (options.codecs ());
         add_gamequest_location_store (options, topology);
         options.add_client_server_channel (sample_names_t::quest_owner_channel).enable_client ();
@@ -531,16 +523,14 @@ int main (int argc, char **argv)
          * spot은 같은 mesh로 이 노드의 entry spot에 notify를 보낸다. */
         auto quest_spot_route = options.add_route_mesh (sample_names_t::quest_spot_route);
         quest_spot_route.listen (topology.selected_api_spot_route_endpoint ())
-          .use_allocated_routing_id (16, "gamequest-api-route")
           .channel_name (sample_names_t::quest_spot_route);
         options.configure_locations ().spot_router_channels[sample_names_t::quest_spot_discovery] =
           sample_names_t::quest_spot_route;
         auto api_spot = options.add_route_mesh (api_spot_mesh_for (topology.api_name));
         api_spot.channel_name (sample_names_t::quest_spot_route);
-        api_spot.use_allocated_routing_id (16, "gamequest-api")
-          .listen (topology.selected_api_spot_router_endpoint ())
-          .add_entry_spot<player_entry_spot_t> ([store_ptr, spot_services] {
-              return std::make_shared<player_entry_spot_t> (*store_ptr, spot_services);
+        api_spot.listen (topology.selected_api_spot_router_endpoint ())
+          .add_entry_spot<player_entry_spot_t> ([store_ptr] {
+              return std::make_shared<player_entry_spot_t> (*store_ptr);
           })
           .add_actor_factory<player_actor_factory_t> (gamequest_player_actor_type);
         options.add_stream_node (sample_names_t::stream_node)

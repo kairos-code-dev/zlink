@@ -13,7 +13,7 @@ import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
-import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 
 /**

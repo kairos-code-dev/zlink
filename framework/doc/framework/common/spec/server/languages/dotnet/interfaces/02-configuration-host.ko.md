@@ -20,11 +20,6 @@ ChannelName membership, manual peer와 runtime option의 정확한 시그니처�
 | `Zlink.Framework.Codecs.MessagePack` | 선택 MessagePack codec extension |
 | `Zlink.Framework.Locations.Redis` | Redis location store extension |
 
-Server framework는 bindings package의 public raw socket API만 호출한다. Core service C API, bindings의
-service object, non-public member, reflection과 native symbol 직접 호출은 사용하지 않는다. ASP.NET Core
-adapter는 framework runtime을 DI와 hosted service lifecycle에 연결하며 raw socket을 application에 노출하지
-않는다.
-
 ## 3. Host 등록
 
 ASP.NET Core 진입점은 다음 시그니처다.
@@ -50,8 +45,8 @@ public static class ServiceCollectionExtensions
 한 `IServiceCollection`에 framework root를 한 번 등록한다. `IZLinkFrameworkOptions`의 정확한 멤버는
 [Topology configuration §2](03-configuration-topology.ko.md#2-등록-인터페이스)가 소유한다.
 
-Host는 구성 검증, routing ID 확보, public raw socket 생성, bind, peer admission, handler 준비 순서로
-시작한다. Application callback은 handler와 owner queue가 준비된 뒤에만 실행한다. Hosting stop은
+Host startup은 구성 검증과 public listener 준비가 완료되어 application callback을 받을 수 있을 때
+정상 완료한다. Application callback은 handler와 owner queue가 준비된 뒤에만 실행한다. Hosting stop은
 `IZLinkFrameworkRuntime.ShutdownAsync(...)`를 호출한다. Application이 logical continuity를 요구하면 stop 전에
 `RetireAsync(...)`를 명시적으로 호출한다.
 

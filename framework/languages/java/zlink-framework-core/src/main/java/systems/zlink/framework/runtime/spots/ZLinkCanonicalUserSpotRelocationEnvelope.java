@@ -14,7 +14,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkServiceRelocationEnvelopeCodec;
 import systems.zlink.framework.spots.ZLinkSpot;

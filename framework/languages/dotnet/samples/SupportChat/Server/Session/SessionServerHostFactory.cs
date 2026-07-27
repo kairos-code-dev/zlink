@@ -37,7 +37,7 @@ public static class SessionServerHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "session"))
                 .TraceLabel("session");
             options.AddHandlersFromAssemblyOf(typeof(SessionServerHostFactory));

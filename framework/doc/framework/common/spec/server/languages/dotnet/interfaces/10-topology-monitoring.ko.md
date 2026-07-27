@@ -85,19 +85,6 @@ public interface IZLinkFrameworkRuntime
         CancellationToken cancellationToken = default);
 }
 
-[Obsolete("Use IZLinkFrameworkRuntime.ShutdownAsync instead.")]
-public interface IZLinkDrainControl
-{
-    bool IsReady { get; }
-    ValueTask<ZLinkFrameworkTerminationResult> DrainAsync(
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkFrameworkTerminationResult> DrainAsync(
-        TimeSpan deadline,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkFrameworkTerminationResult> AwaitDrainedAsync(
-        CancellationToken cancellationToken = default);
-}
-
 public enum ZLinkMeshNodeState
 {
     Starting = 0,
@@ -407,11 +394,6 @@ Builder에서 선택하거나 `(ChannelName, Role)` registration key로 사용�
 termination result는 제공하지 않는다. 모든 topology의 admission과 resource 종료는 host `RetireAsync` 또는
 `ShutdownAsync`가 한 번에 조정한다.
 
-Host-wide `IZLinkDrainControl`은 source compatibility를 위한 deprecated facade다. `DrainAsync(...)`는 host
-`ShutdownAsync(...)`를 시작하고 `AwaitDrainedAsync(...)`는 같은 operation의 terminal 완료를 기다리며, 둘 다
-`ZLinkFrameworkTerminationResult`를 그대로 반환한다. 별도 drain outcome이나 reason을 정의하지 않고
-continuity가 필요하면 `IZLinkFrameworkRuntime.RetireAsync(...)`를 사용한다.
-
 `IZLinkFanoutRuntime`은 endpoint 없이 등록한 automatic subscriber ChannelName만 받는다. Snapshot의
 `Publishers`와 `ZLinkFanoutRuntimeEvent.PublisherChanged.Entry`는 Publisher RID, lifecycle generation,
 descriptor revision과 endpoint를 하나의 immutable identity로 보존한다.
@@ -497,10 +479,6 @@ public interface IZLinkDispatchOptions
 {
     IZLinkUnhandledDispatchOptions Unhandled { get; }
     IZLinkDiagnosticsOptions Diagnostics { get; }
-    IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
-        where TObserver : class, IZLinkMessageFlowObserver;
-    IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer);
-    IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode);
     IZLinkDispatchOptions TraceSampleRate(double rate);
     IZLinkDispatchOptions IncludeMessageSizes(bool include);
     IZLinkDispatchOptions TraceLogFile(string path);
@@ -550,22 +528,9 @@ Instance activation 계기는 다음 .NET instrument로 투영한다.
 [Spot ID](../../../../01-glossary.ko.md#spot-id), [owner](../../../../01-glossary.ko.md#owner) ID, internal [authority](../../../../01-glossary.ko.md#authority) fields, endpoint와 correlation ID는 label로 기록하지 않는다. Instance one-way
 activation 실패는 `zlink.mesh_node.messages.dropped`에 `surface=instance_spot`으로 기록하며 완료된 submit
 결과를 바꾸거나 reply를 만들지 않는다.
-## 3. Dispatch diagnostics
+## 3. Dispatch policy와 diagnostics configuration
 
 ```csharp
-public interface IZLinkMessageFlowObserver
-{
-    ValueTask OnMessageFlowAsync(
-        ZLinkMessageFlowEvent flow,
-        CancellationToken cancellationToken);
-}
-
-public interface IZLinkMessageFlowControl
-{
-    ZLinkMessageFlowLogMode MessageFlowMode { get; }
-    void SetMessageFlowMode(ZLinkMessageFlowLogMode mode);
-}
-
 public interface IZLinkUnhandledDispatchOptions
 {
     ZLinkUnhandledDispatchAction Request { get; set; }
@@ -575,13 +540,12 @@ public interface IZLinkUnhandledDispatchOptions
 
 public interface IZLinkDiagnosticsOptions
 {
-    ZLinkMessageFlowLogMode MessageFlow { get; }
+    ZLinkRuntimeMessageFlowMode MessageFlow { get; }
     double SampleRate { get; }
     bool IncludeMessageSizes { get; }
-    bool IncludeNativeDiagnostics { get; }
     string? LogFile { get; }
     string? Label { get; }
-    ZLinkMessageFlowLogMode EffectiveMessageFlow { get; }
+    ZLinkRuntimeMessageFlowMode EffectiveMessageFlow { get; }
 }
 
 public enum ZLinkUnhandledDispatchAction
@@ -592,88 +556,9 @@ public enum ZLinkUnhandledDispatchAction
     Throw = 3
 }
 
-public enum ZLinkMessageFlowLogMode
-{
-    Off = 0,
-    ErrorsOnly = 1,
-    KeyTransitions = 2,
-    Verbose = 3,
-    Diagnostic = 4
-}
-
-public enum ZLinkDispatchErrorSurface
-{
-    Channel = 0,
-    RouteMeshChannel = 1,
-    SpotRoute = 2,
-    SpotSubscription = 3,
-    SpotActor = 4,
-    StreamSession = 5
-}
-
-public enum ZLinkDispatchMessageKind
-{
-    Request = 0,
-    Send = 1,
-    Publish = 2,
-    Response = 3,
-    Error = 4,
-    ActorRequest = 5,
-    ActorSend = 6
-}
-
-public enum ZLinkDispatchErrorReason
-{
-    HandlerMissing = 0,
-    PayloadDecodeFailed = 1,
-    HandlerException = 2,
-    InvalidFrame = 3,
-    ReplyPathMissing = 4,
-    UnexpectedReply = 5
-}
-
-public enum ZLinkDispatchErrorAction
-{
-    ReplyError = 0,
-    Drop = 1,
-    FailCaller = 2
-}
-
-public enum ZLinkMessageFlowOutcome
-{
-    Received = 0,
-    Dispatched = 1,
-    Replied = 2,
-    Dropped = 3,
-    Sent = 4,
-    ReplyReceived = 5,
-    Error = 6
-}
-
-public sealed record ZLinkMessageFlowEvent(
-    ZLinkMessageFlowOutcome Outcome,
-    ZLinkDispatchErrorSurface Surface,
-    ZLinkDispatchMessageKind MessageKind,
-    string? PacketName = null,
-    string? ChannelName = null,
-    string? Topic = null,
-    string? CorrelationId = null,
-    string? SourceRid = null,
-    string? LocalRid = null,
-    string? PeerRid = null,
-    string? SocketRole = null,
-    string? SpotId = null,
-    string? ActorId = null,
-    long? MessageSize = null,
-    ZLinkDispatchErrorReason? ErrorReason = null,
-    ZLinkDispatchErrorAction? ErrorAction = null,
-    string? ErrorType = null,
-    string? ErrorMessage = null)
-{
-    public string FlowId { get; init; } = string.Empty;
-    public ZLinkFlowOrigin? FlowOrigin { get; init; }
-}
 ```
 
 `IZLinkDispatchOptions.Diagnostics`는 fluent configuration의 read-only view다. Runtime message flow observer와
-runtime error sink는 dispatch observer의 constructor와 enum을 바꾸지 않는 별도 extension이다.
+runtime error sink는 §2의 한 event model을 사용한다. 실행 중 mode 변경과 bounded event stream 관찰은
+`IZLinkMessageFlowRuntime`이 함께 소유한다. 별도 control interface, observer interface, mode enum과 event DTO를
+병렬로 제공하지 않는다.

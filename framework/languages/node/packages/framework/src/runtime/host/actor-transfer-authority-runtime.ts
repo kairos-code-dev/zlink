@@ -5,12 +5,14 @@ import {
 } from '../foundation/service-runtime-contracts';
 import type {
   ActorRef,
-  RoutingId,
-  ZLinkActorLocation,
+  RoutingId
+} from '../../contracts';
+import type { ZLinkActorLocation } from '../../contracts/Locations/Rows';
+import type { ZLinkActorLocationStore } from '../locations/internal-store-contracts';
+import type {
   ZLinkActorTransferRecord,
   ZLinkActorTransferStore
-} from '../../contracts';
-import type { ZLinkActorLocationStore } from '../../contracts/Locations';
+} from '../../contracts/Locations/ActorTransfer';
 import { toFrameworkActorRef } from '../actors';
 
 export type ZLinkActorTransferAuthorityStore =

@@ -15,6 +15,7 @@ internal sealed record ZLinkCanonicalSpotActorDescriptor(
 internal sealed record ZLinkCanonicalSpotStageContext(
     Guid AggregateId,
     ulong AggregateGeneration,
+    ulong TargetAttemptGeneration,
     string MeshName,
     string SourceNodeRid,
     ulong SourceNodeLifecycleGeneration,
@@ -473,6 +474,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 out var spotPublication))
             throw new ZLinkRelocationDataLostException(
                 $"SPOT authority '{spotAuthority.Key.Value}' has no relocation publication.");
+        if (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                spotAuthority.Snapshot.Payload.Span,
+                out var canonical)
+            || canonical.TargetAttemptGeneration == 0)
+            throw new ZLinkRelocationDataLostException(
+                $"SPOT authority '{spotAuthority.Key.Value}' has no current target attempt.");
 
         var instanceSpot =
             spotAuthority.Snapshot.Allocation.ObjectKind
@@ -555,6 +562,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var request = new ZLinkCanonicalSpotStageContext(
             candidate.Envelope.AggregateId,
             candidate.Envelope.AggregateGeneration,
+            canonical.TargetAttemptGeneration,
             meshName,
             sourceNodeRid.ToHex(),
             sourceNodeGeneration,
@@ -1003,6 +1011,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         Append(request.AggregateId.ToString("N"));
         Append(request.AggregateGeneration.ToString());
+        Append(request.TargetAttemptGeneration.ToString());
         Append(request.MeshName);
         Append(request.SourceNodeRid);
         Append(request.SourceNodeLifecycleGeneration.ToString());
@@ -1082,6 +1091,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         var context = new ZLinkCanonicalSpotStageContext(
             tree.Envelope.AggregateId,
             tree.Envelope.AggregateGeneration,
+            prepare.TargetAttemptGeneration,
             registration.SpotNodes.Values.Single(node =>
                 node.RoutingId == prepare.Candidate.NodeRid).SpotMeshChannelName
                 ?? throw new InvalidOperationException(
@@ -1204,10 +1214,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     aggregateBytes.AsSpan(0, 8)),
                 BinaryPrimitives.ReadUInt64BigEndian(
                     aggregateBytes.AsSpan(8, 8)));
-        targetNode.BeginCanonicalRelocationStaging(canonicalRelocationId, 1);
+        targetNode.BeginCanonicalRelocationStaging(
+            canonicalRelocationId,
+            request.TargetAttemptGeneration);
         if (!targetNode.TryTakeCanonicalRelocationPermit(
                 canonicalRelocationId,
-                1,
+                request.TargetAttemptGeneration,
                 tree.LogicalLength,
                 out var inboundPermit,
                 out var preparedAggregate))
@@ -2476,7 +2488,8 @@ internal sealed record TargetStage(
     ulong TargetAuthorityOwnerGeneration,
     string TargetMeshName,
     ulong TargetNodeLifecycleGeneration,
-    ulong TargetOwnerLeaseGeneration) : ITargetStageEntry
+    ulong TargetOwnerLeaseGeneration,
+    ulong TargetAttemptGeneration) : ITargetStageEntry
 {
     public int AuthorityPublished;
     public int Published;

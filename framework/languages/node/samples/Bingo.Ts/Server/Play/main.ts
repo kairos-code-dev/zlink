@@ -1,13 +1,12 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
-import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
+import type { ZLinkFrameworkRuntime } from '@zlink-systems/framework';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { createBingoPlayModule } from './bingo-play-module';
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
-import { reportBingoRoutingId } from '../Configuration/routing-id-report';
 async function bootstrap(): Promise<void> {
   const BingoPlayModule = createBingoPlayModule();
   const app = await NestFactory.createApplicationContext(BingoPlayModule, {
@@ -15,16 +14,12 @@ async function bootstrap(): Promise<void> {
     abortOnError: false
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
-  await reportBingoRoutingId(app, 'play', 'bingo.play', [
-    SampleNames.roomSpotNode
-  ]);
-
-  const routeMeshRuntime = app.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME);
+  const frameworkRuntime = app.get<ZLinkFrameworkRuntime>(ZLINK_FRAMEWORK_RUNTIME);
   const shutdown = new AbortController();
   const beginDrain = () => {
     console.log('bingo-drain requested');
-    void routeMeshRuntime.drain(SampleNames.roomSpotNode).then((result) => {
-      console.log(`bingo-drain result=${result.kind}`);
+    void frameworkRuntime.retire().then((result) => {
+      console.log(`bingo-retire outcome=${result.outcome} reason=${result.reason}`);
       process.removeListener('SIGUSR2', beginDrain);
       process.removeListener('SIGBREAK', beginDrain);
       shutdown.abort();

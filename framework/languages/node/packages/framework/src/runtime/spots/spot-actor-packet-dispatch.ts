@@ -32,7 +32,7 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import { decodeFrameworkTypedPayloadMessage } from '../messaging/payload-codec';
-import type { ZLinkProviderResolver } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
 export interface ZLinkActorResponseOptions {

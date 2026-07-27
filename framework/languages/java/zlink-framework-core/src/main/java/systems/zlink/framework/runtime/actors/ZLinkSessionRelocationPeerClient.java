@@ -6,7 +6,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 /** Owns the command 44/45 route-switch barrier at the target Actor owner. */
 public final class ZLinkSessionRelocationPeerClient {

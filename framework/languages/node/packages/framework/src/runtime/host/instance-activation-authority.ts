@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityKey,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore,
   ZLinkLocationOwnerToken,
-  ZLinkObjectCreationStore,
   ZLinkRelocationReference,
   ZLinkRelocationStore
 } from '../../contracts/Locations';
+import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException

@@ -12,7 +12,9 @@ internal static class ZLinkActorSessionForwarder
         uint flags,
         ZLinkBackendActorRouteContext routeContext,
         ZlinkStreamHeader header,
-        Message body)
+        Message body,
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
     {
         var route = actorState.Handoff.RouteFrame(
             actorState.NativeActorRef,
@@ -29,7 +31,9 @@ internal static class ZLinkActorSessionForwarder
                 flags,
                 routeContext,
                 header,
-                body);
+                body,
+                sourceNodeGeneration,
+                requestSource);
         }
         if (route == ZLinkActorFrameRoute.Stale)
         {

@@ -58,30 +58,28 @@ inline std::vector<topology_entry_result_t> peer_topology (
   const std::optional<zlink::routing_id_t> &routing_id = std::nullopt,
   zlink::framework::location_role_t role = zlink::framework::location_role_t::router)
 {
-    zlink::framework::peer_location_filter_t filter;
+    zlink::framework::location_topology_filter_t filter;
     filter.mesh_name = api_channel;
-    filter.role = role;
-    if (routing_id) {
-        filter.node_rid = routing_id;
-    }
-    auto result = locations.list_peer_locations (std::move (filter)).result ();
+    filter.node_rid = routing_id;
+    auto result = locations.list_topology (std::move (filter)).result ();
     if (!result) {
         throw std::runtime_error (result.error () ? result.error ()->what ()
                                                  : "location peer query failed");
     }
     std::vector<topology_entry_result_t> entries;
-    for (const auto &peer : result.value ()) {
+    for (const auto &peer : result.value ().items) {
         entries.push_back (topology_entry_result_t{.name = peer.mesh_name,
                                                    .kind = "channel",
                                                    .role = role == zlink::framework::location_role_t::dealer
                                                              ? "dealer"
                                                              : "router",
-                                                   .routing_id = peer.node_rid
-                                                                   ? peer.node_rid->to_string ()
-                                                                   : std::string{},
+                                                   .routing_id = peer.node_rid.to_string (),
                                                    .endpoint = peer.endpoint,
-                                                   .state = "Ready",
-                                                   .weight = peer.weight});
+                                                   .state = peer.state
+                                                              == zlink::framework::location_topology_state_t::ready
+                                                            ? "Ready"
+                                                            : "NotReady",
+                                                   .weight = 100});
     }
     return entries;
 }

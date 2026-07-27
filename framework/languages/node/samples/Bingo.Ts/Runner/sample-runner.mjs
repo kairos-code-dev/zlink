@@ -1,9 +1,5 @@
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
-import { ZLinkLocationAutoConnectType, ZLinkLocationRole } from '@zlink-systems/framework';
-import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 
 export const sampleName = 'Bingo.Ts';
 
@@ -39,12 +35,6 @@ export async function runSample(ctx) {
   await ctx.waitTcp(sessionB.sample.sessionEndpoint);
   await ctx.start('session-a', 'dist/Server/Session/main.js', ['--config', sessionA.path]);
   await ctx.waitTcp(sessionA.sample.sessionEndpoint);
-  await ctx.waitLog('api-b', 'bingo routing allocation ready role=api group=bingo.api slot=1');
-  await ctx.waitLog('api-a', 'bingo routing allocation ready role=api group=bingo.api slot=2');
-  await ctx.waitLog('play-b', 'bingo routing allocation ready role=play group=bingo.play slot=1');
-  await ctx.waitLog('play-replacement', 'bingo routing allocation ready role=play group=bingo.play slot=2');
-  await ctx.waitLog('session-b', 'bingo routing allocation ready role=session group=bingo.session slot=1');
-  await ctx.waitLog('session-a', 'bingo routing allocation ready role=session group=bingo.session slot=2');
   await ctx.waitLog(
     'play-replacement',
     `bingo-room-peer ConnectionReady remote=${sessionB.sample.sessionSpotEndpoint}`
@@ -121,84 +111,16 @@ async function bingoSessionConfig(ctx, suffix, redisKeyPrefix) {
 }
 
 async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint, survivingRoomEndpoint) {
-  const beforeHandoff = await allocationSnapshot(ctx, redisKeyPrefix, 'bingo.play');
-  await waitForPlayPeer(ctx, redisKeyPrefix, oldRoomEndpoint, true);
   const replacement = await bingoPlayConfig(ctx, 'replacement', redisKeyPrefix);
   await ctx.start('play-replacement', 'dist/Server/Play/main.js', ['--config', replacement.path]);
-  await delay(500);
-  if (await canConnect(replacement.sample.playSpotEndpoint)) {
-    throw new Error('Bingo replacement bound a socket before a routing-id slot was available.');
-  }
-  console.log('BINGO-RID-5 state=WaitingForSlot replacement=play-replacement');
+  await ctx.waitTcp(replacement.sample.playSpotEndpoint);
   ctx.signal('play-a', 'SIGUSR2');
   await ctx.waitLog('play-a', 'bingo-drain result=drained');
-  await waitForPlayPeer(ctx, redisKeyPrefix, oldRoomEndpoint, false);
   await ctx.stop('play-a', 'SIGTERM');
-  await ctx.waitTcp(replacement.sample.playSpotEndpoint);
-  await ctx.waitLog('play-replacement', 'bingo routing allocation ready role=play group=bingo.play slot=2');
   await ctx.waitLog(
     'play-replacement',
     `bingo-room-peer ConnectionReady remote=${survivingRoomEndpoint}`
   );
-  const afterHandoff = await allocationSnapshot(ctx, redisKeyPrefix, 'bingo.play');
-  const oldGeneration = generationAt(beforeHandoff, 2);
-  const replacementGeneration = generationAt(afterHandoff, 2);
-  if (replacementGeneration <= oldGeneration) {
-    throw new Error(`Bingo replacement generation ${replacementGeneration} did not exceed ${oldGeneration}.`);
-  }
-  console.log(`BINGO-RID-5 replacement=play-replacement slot=2 generation=${replacementGeneration}`);
+  console.log(`BINGO-ROLLING replacement=play-replacement retired=${oldRoomEndpoint}`);
   return replacement;
-}
-
-async function waitForPlayPeer(ctx, redisKeyPrefix, endpoint, present) {
-  const store = new ZLinkRedisLocationStore({
-    url: `redis://${ctx.redisEndpoint}`,
-    keyPrefix: `${redisKeyPrefix}location`
-  });
-  try {
-    const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline) {
-      const peers = await store.listPeers({
-        autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-        meshName: 'bingo.room',
-        role: ZLinkLocationRole.Router
-      });
-      if (peers.some((peer) => peer.endpoint === endpoint) === present) return;
-      await delay(100);
-    }
-  } finally {
-    await store.dispose();
-  }
-  throw new Error(`Bingo room peer ${endpoint} did not become present=${present}.`);
-}
-
-async function allocationSnapshot(ctx, redisKeyPrefix, groupName) {
-  const store = new ZLinkRedisLocationStore({
-    url: `redis://${ctx.redisEndpoint}`,
-    keyPrefix: `${redisKeyPrefix}location`
-  });
-  try {
-    return await store.listRoutingIdSlots(groupName);
-  } finally {
-    await store.dispose();
-  }
-}
-
-function generationAt(snapshot, slot) {
-  const allocation = snapshot.allocations.find((item) => item.slot === slot);
-  if (!allocation) throw new Error(`Routing-id slot ${slot} is not allocated.`);
-  return allocation.owner.generation;
-}
-
-function canConnect(endpoint) {
-  const url = new URL(endpoint.replace(/^tcp:/, 'http:'));
-  return new Promise((resolve) => {
-    const socket = net.connect({
-      port: Number(url.port),
-      host: url.hostname,
-      signal: AbortSignal.timeout(250)
-    });
-    socket.once('connect', () => { socket.destroy(); resolve(true); });
-    socket.once('error', () => resolve(false));
-  });
 }

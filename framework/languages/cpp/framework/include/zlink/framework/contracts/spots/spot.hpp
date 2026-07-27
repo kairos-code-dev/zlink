@@ -1472,29 +1472,14 @@ namespace detail
 {
 struct spot_lifecycle_callbacks_t
 {
-    std::function<std::shared_ptr<void> ()> create_instance;
     std::function<std::shared_ptr<void> (spot_context_t)> create_spot_context_instance;
     std::function<std::shared_ptr<void> (entry_spot_context_t)> create_entry_context_instance;
     std::function<std::shared_ptr<void> (instance_spot_context_t)> create_instance_context_instance;
-    std::function<void (void *, spot_context_t &)> configure;
-    std::function<void (void *, entry_spot_context_t &)> configure_entry;
     std::function<task_t<spot_create_response_t> (
       void *, const zlink::message_t &, serializer_registry_t &)>
       on_create;
     std::function<void (void *)> on_initialize;
     std::function<void (void *)> on_closing;
-};
-
-template <typename TSpot>
-concept has_configure_callback = requires (TSpot & spot, spot_context_t &context)
-{
-    spot.configure (context);
-};
-
-template <typename TSpot>
-concept has_entry_configure_callback = requires (TSpot & spot, entry_spot_context_t &context)
-{
-    spot.configure (context);
 };
 
 template <typename TSpot>
@@ -1539,77 +1524,6 @@ class spot_node_builder_t
     // straggler forwarding mapping after a completed transfer. Default 5s;
     // deployments override it, tests shorten it.
     spot_node_builder_t &set_actor_transfer_forward_window (std::chrono::milliseconds window);
-    template <typename TSpot>
-    spot_node_builder_t &
-    add_spot (std::string spot_name,
-              user_spot_execution_mode_t execution_mode =
-                user_spot_execution_mode_t::spot_wide)
-    {
-        static_assert (std::is_base_of_v<spot_t, TSpot>,
-                       "SPOT type must derive from zlink::framework::spot_t");
-        static_assert (!std::is_base_of_v<entry_spot_t, TSpot>,
-                       "Entry SPOT type must be registered with add_entry_spot<TEntrySpot>()");
-        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>,
-                       "Instance Spot type must be registered with add_instance_spot_factory<TSpot>()");
-        const auto registered_name = spot_name;
-        auto &builder =
-          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false,
-                            execution_mode);
-        register_lifecycle<TSpot> (registered_name);
-        return builder;
-    }
-
-    template <typename TSpot>
-    spot_node_builder_t &add_spot (std::string spot_name,
-                                   std::function<std::shared_ptr<TSpot> ()> factory,
-                                   user_spot_execution_mode_t execution_mode =
-                                     user_spot_execution_mode_t::spot_wide)
-    {
-        static_assert (std::is_base_of_v<spot_t, TSpot>,
-                       "SPOT type must derive from zlink::framework::spot_t");
-        static_assert (!std::is_base_of_v<entry_spot_t, TSpot>,
-                       "Entry SPOT type must be registered with add_entry_spot<TEntrySpot>()");
-        static_assert (!std::is_base_of_v<instance_spot_t, TSpot>,
-                       "Instance Spot type must be registered with add_instance_spot_factory<TSpot>()");
-        if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "SPOT factory must not be empty");
-        }
-        const auto registered_name = spot_name;
-        auto &builder =
-          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false,
-                            execution_mode);
-        register_lifecycle<TSpot> (registered_name, std::move (factory));
-        return builder;
-    }
-
-    template <typename TEntrySpot> spot_node_builder_t &add_entry_spot ()
-    {
-        static_assert (std::is_base_of_v<entry_spot_t, TEntrySpot>,
-                       "Entry SPOT type must derive from zlink::framework::entry_spot_t");
-        auto &builder =
-          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
-                            user_spot_execution_mode_t::spot_wide);
-        register_lifecycle<TEntrySpot> ("entry");
-        return builder;
-    }
-
-    template <typename TEntrySpot>
-    spot_node_builder_t &add_entry_spot (std::function<std::shared_ptr<TEntrySpot> ()> factory)
-    {
-        static_assert (std::is_base_of_v<entry_spot_t, TEntrySpot>,
-                       "Entry SPOT type must derive from zlink::framework::entry_spot_t");
-        if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "Entry SPOT factory must not be empty");
-        }
-        auto &builder =
-          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
-                            user_spot_execution_mode_t::spot_wide);
-        register_lifecycle<TEntrySpot> ("entry", std::move (factory));
-        return builder;
-    }
-
     template <typename TEntrySpot>
     spot_node_builder_t &add_entry_spot (
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
@@ -1646,24 +1560,6 @@ class spot_node_builder_t
           std::move (spot_name), std::type_index (typeid (TSpot)), false,
           execution_mode);
         register_context_lifecycle<TSpot> (registered_name, std::move (factory));
-        return builder;
-    }
-
-    template <typename TSpot>
-    requires std::derived_from<TSpot, instance_spot_t>
-    spot_node_builder_t &
-    add_instance_spot_factory (std::string stable_type,
-                               std::function<std::shared_ptr<TSpot> ()> factory)
-    {
-        if (!factory) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "Instance Spot factory must not be empty");
-        }
-        const auto registered_type = stable_type;
-        auto &builder = add_spot_factory (
-          std::move (stable_type), std::type_index (typeid (TSpot)), false,
-          user_spot_execution_mode_t::spot_wide, true);
-        register_lifecycle<TSpot> (registered_type, std::move (factory));
         return builder;
     }
 
@@ -1710,11 +1606,11 @@ class spot_node_builder_t
                   }
                   if constexpr (requires {
                                     typed_actor.set_actor_context (
-                                      *static_cast<actor_context_t *> (actor_context));
+                                      std::move (*static_cast<actor_context_t *> (actor_context)));
                                 }) {
                       if (actor_context != nullptr) {
                           typed_actor.set_actor_context (
-                            *static_cast<actor_context_t *> (actor_context));
+                            std::move (*static_cast<actor_context_t *> (actor_context)));
                       }
                   }
               },
@@ -1759,11 +1655,11 @@ class spot_node_builder_t
                   }
                   if constexpr (requires {
                                     typed_actor.set_actor_context (
-                                      *static_cast<actor_context_t *> (actor_context));
+                                      std::move (*static_cast<actor_context_t *> (actor_context)));
                                 }) {
                       if (actor_context != nullptr) {
                           typed_actor.set_actor_context (
-                            *static_cast<actor_context_t *> (actor_context));
+                            std::move (*static_cast<actor_context_t *> (actor_context)));
                       }
                   }
               },
@@ -1873,7 +1769,7 @@ class spot_node_builder_t
         serialize_instance,
       std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
         deserialize_instance,
-      std::function<std::shared_ptr<void> (actor_context_t &)>
+      std::function<std::shared_ptr<void> (actor_context_t)>
         create_context_instance = {},
       detail::actor_join_completion_callback_t on_join_completed = {});
     spot_node_builder_t &add_actor_transfer_erased (
@@ -1881,59 +1777,6 @@ class spot_node_builder_t
       std::type_index actor_instance_type,
       std::function<task_t<message_t> (const void *)> transfer_out,
       std::function<task_t<std::shared_ptr<void>> (std::string, message_t)> transfer_in);
-
-    template <typename TSpot>
-    void register_lifecycle (std::string spot_name,
-                             std::function<std::shared_ptr<TSpot> ()> factory = {})
-    {
-        detail::spot_lifecycle_callbacks_t callbacks;
-        if (factory) {
-            callbacks.create_instance = [factory = std::move (factory)] {
-                return std::static_pointer_cast<void> (factory ());
-            };
-        } else if constexpr (std::is_default_constructible_v<TSpot>) {
-            callbacks.create_instance = [] {
-                return std::static_pointer_cast<void> (std::make_shared<TSpot> ());
-            };
-        }
-        if (callbacks.create_instance) {
-            if constexpr (std::is_base_of_v<entry_spot_t, TSpot>
-                          && detail::has_entry_configure_callback<TSpot>) {
-                callbacks.configure_entry = [] (void *spot, entry_spot_context_t &context) {
-                    static_cast<TSpot *> (spot)->configure (context);
-                };
-            } else if constexpr (detail::has_configure_callback<TSpot>) {
-                callbacks.configure = [] (void *spot, spot_context_t &context) {
-                    static_cast<TSpot *> (spot)->configure (context);
-                };
-            }
-            if constexpr (detail::has_async_framework_create_callback<TSpot>) {
-                callbacks.on_create = [] (void *spot, const zlink::message_t &request,
-                                          serializer_registry_t &serializers) {
-                    return static_cast<TSpot *> (spot)->on_create (
-                      message_t::from_raw (request, &serializers));
-                };
-            } else if constexpr (detail::has_framework_create_callback<TSpot>) {
-                callbacks.on_create = [] (void *spot, const zlink::message_t &request,
-                                          serializer_registry_t &serializers)
-                  -> task_t<spot_create_response_t> {
-                    co_return static_cast<TSpot *> (spot)->on_create (
-                      message_t::from_raw (request, &serializers));
-                };
-            }
-            if constexpr (detail::has_initialize_callback<TSpot>) {
-                callbacks.on_initialize = [] (void *spot) {
-                    static_cast<TSpot *> (spot)->on_initialize ();
-                };
-            }
-            if constexpr (detail::has_closing_callback<TSpot>) {
-                callbacks.on_closing = [] (void *spot) {
-                    static_cast<TSpot *> (spot)->on_closing ();
-                };
-            }
-        }
-        register_lifecycle_erased (std::move (spot_name), std::move (callbacks));
-    }
 
     template <typename TSpot, typename TContext>
     void register_context_lifecycle (

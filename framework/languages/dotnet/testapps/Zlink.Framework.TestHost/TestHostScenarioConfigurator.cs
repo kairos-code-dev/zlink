@@ -214,7 +214,7 @@ internal static class TestHostScenarioConfigurator
         {
             if (!string.IsNullOrWhiteSpace(options.EventFilePath))
                 framework.ConfigureDispatch()
-                    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                    .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                     .TraceLogFile(options.EventFilePath + ".flow")
                     .TraceLabel("dotnet-test-host");
             {

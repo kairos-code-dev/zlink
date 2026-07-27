@@ -2,7 +2,6 @@ import type { ZLinkActor, ZLinkActorFactory } from '../Actors';
 import type {
   ZLinkActorTransferAdapter,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkInstanceSpot,
   ZLinkSpot
 } from '../Spots';
@@ -111,8 +110,7 @@ export interface ZLinkMeshNodeBuilder {
   channel(channelName: string): ZLinkMeshChannelBuilder;
   listen(endpoint: string): this;
   routingId(routingId: RoutingId): this;
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-  setRoutingIdAllocationGroup(groupName: string): this;
+  setRoutingIdPrefix(prefix: string): this;
   setPlacementWeight(weight: number): this;
   setActorLimit(limit: number): this;
   setSpotLimit(limit: number): this;
@@ -124,7 +122,6 @@ export interface ZLinkMeshNodeBuilder {
   objects(): ZLinkMeshObjectRoleBuilder;
   addRouteSendHandler<TMessage>(handlerType: Type<ZLinkRouteSendHandler<TMessage>>): this;
   addRouteRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRouteRequestHandler<TRequest, TReply>>): this;
-  configureEntrySpot(options: ZLinkEntrySpotOptions): this;
   addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
@@ -187,8 +184,7 @@ export interface ZLinkStreamCompressionBuilder {
 export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
   routingId(routingId: string): this;
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-  setRoutingIdAllocationGroup(groupName: string): this;
+  setRoutingIdPrefix(prefix: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
   subscriberConnections(): ZLinkEndpointConnections;

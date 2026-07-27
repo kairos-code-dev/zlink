@@ -124,7 +124,7 @@ internal static class ZLinkActorBoundSessionRelay
         return new ZLinkActorBoundSessionDispatch(isNoBind, scope);
     }
 
-    public static bool TryReplyMissingNoBindActor(
+    public static async ValueTask<bool> TryReplyMissingNoBindActorAsync(
         ZLinkFrameworkRuntime runtime,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
@@ -132,25 +132,30 @@ internal static class ZLinkActorBoundSessionRelay
         ulong requestId,
         uint flags,
         string? replyCapability,
-        ZlinkStreamHeader requestHeader)
+        ZlinkStreamHeader requestHeader,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
+        CancellationToken cancellationToken = default)
     {
         if (requestHeader.Kind != ZlinkStreamMessageKind.Request
             || requestHeader.RequestSeq is null
             || !IsNoBindRequest(requestId, flags))
             return false;
 
-        ReplyNoBind(
-            runtime,
-            actorRef,
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags,
-            replyCapability,
-            requestHeader,
-            ZLinkActorReply.FromError(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                $"Actor '{actorRef.ActorId}' is not available.")));
+        await ReplyNoBindAsync(
+                runtime,
+                actorRef,
+                sourceNodeRid,
+                sourceSessionRid,
+                requestId,
+                flags,
+                replyCapability,
+                requestHeader,
+                ZLinkActorReply.FromError(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor '{actorRef.ActorId}' is not available.")),
+                directReply,
+                cancellationToken)
+            .ConfigureAwait(false);
         return true;
     }
 
@@ -166,20 +171,24 @@ internal static class ZLinkActorBoundSessionRelay
         bool isNoBind,
         ZlinkStreamHeader requestHeader,
         ZLinkActorReply reply,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
         if (isNoBind)
         {
-            ReplyNoBind(
-                runtime,
-                actorRef,
-                sourceNodeRid,
-                sourceSessionRid,
-                requestId,
-                flags,
-                replyCapability,
-                requestHeader,
-                reply);
+            await ReplyNoBindAsync(
+                    runtime,
+                    actorRef,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    requestId,
+                    flags,
+                    replyCapability,
+                    requestHeader,
+                    reply,
+                    directReply,
+                    cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -198,7 +207,8 @@ internal static class ZLinkActorBoundSessionRelay
         string? replyCapability,
         ZlinkStreamHeader requestHeader,
         ZLinkFrameworkException exception,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
         if (requestHeader.Kind != ZlinkStreamMessageKind.Request
             || requestHeader.RequestSeq is null)
@@ -225,7 +235,8 @@ internal static class ZLinkActorBoundSessionRelay
                     dispatch.IsNoBind,
                     requestHeader,
                     ZLinkActorReply.FromError(exception),
-                    cancellationToken)
+                    cancellationToken,
+                    directReply)
                 .ConfigureAwait(false);
             await dispatch.DrainAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -235,7 +246,7 @@ internal static class ZLinkActorBoundSessionRelay
         }
     }
 
-    private static void ReplyNoBind(
+    private static async ValueTask ReplyNoBindAsync(
         ZLinkFrameworkRuntime runtime,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceNodeRid,
@@ -244,18 +255,34 @@ internal static class ZLinkActorBoundSessionRelay
         uint flags,
         string? replyCapability,
         ZlinkStreamHeader requestHeader,
-        ZLinkActorReply reply)
+        ZLinkActorReply reply,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply,
+        CancellationToken cancellationToken)
     {
         var frame = reply.ToFrame(requestHeader);
-        using var replyMessage = Message.From(frame);
-        runtime.ReplyActorNoBind(
-            actorRef,
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags,
-            replyCapability,
-            [replyMessage]);
+        if (directReply is not null)
+            await ZLinkRetryingSubmitter.Async(
+                    () =>
+                    {
+                        using var replyMessage = Message.From(frame);
+                        return directReply([replyMessage], SendFlags.DontWait);
+                    },
+                    runtime.Registration.DefaultRequestTimeout,
+                    "Direct actor request terminal reply failed.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        else
+        {
+            using var replyMessage = Message.From(frame);
+            runtime.ReplyActorNoBind(
+                actorRef,
+                sourceNodeRid,
+                sourceSessionRid,
+                requestId,
+                flags,
+                replyCapability,
+                [replyMessage]);
+        }
         runtime.LogActorHandoff(
             $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
     }

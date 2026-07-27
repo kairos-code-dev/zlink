@@ -1,4 +1,4 @@
-import { ZLinkLocationAutoConnectType, ZLinkLocationRole } from '../../contracts/Locations';
+import { ZLinkLocationAutoConnectType, ZLinkLocationRole } from './internal-location-contracts';
 
 const autoConnectCanonicalNames = new Map<ZLinkLocationAutoConnectType, string>([
   [ZLinkLocationAutoConnectType.RouteMesh, 'route-mesh'],

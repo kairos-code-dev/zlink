@@ -79,15 +79,20 @@ import {
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
 import type {
   ZLinkAuthorityKey,
-  ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore
+  ZLinkAuthoritySnapshot
 } from '../../packages/framework/src/contracts/Locations/Authority';
+import type { ZLinkLocationStore } from '../../packages/framework/src/contracts/Locations/Stores';
 import { ZLinkAuthorityScanCursor } from '../../packages/framework/src/contracts/Locations/Authority';
 import type { ZLinkBackendMeshNode } from '../../packages/framework/src/runtime/backend/contracts';
 import type {
   ZLinkRelocationReference,
   ZLinkRelocationStore
 } from '../../packages/framework/src/contracts/Locations/RelocationStore';
+
+type ZLinkAuthorityStore = Pick<
+  ZLinkLocationStore,
+  'readAuthority' | 'compareExchangeAuthority' | 'listAuthorities'
+>;
 import {
   DefaultZLinkSpotManager,
   DefaultZLinkSpotOutbound,

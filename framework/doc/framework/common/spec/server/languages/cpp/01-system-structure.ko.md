@@ -97,23 +97,10 @@ enum class service_lifetime_t { singleton, scoped, transient };
 | `scoped` | **scope 하나당 하나**(§4.2) |
 | `transient` | resolve할 때마다 새로 만든다 |
 
-### 4.2 Scope 종류
+### 4.2 Scope 경계
 
-**framework가 만드는 scope는 다섯 가지다.** application이 임의로 만들지 않는다.
-
-```cpp
-enum class service_scope_kind_t
-{
-    handler_invocation,  // handler 한 번 호출
-    stream_session,      // STREAM session 하나
-    spot_activation,     // user Spot 하나
-    entry_spot,          // Entry Spot
-    actor_creation       // actor 생성
-};
-```
-
-**scope 경계가 곧 실행 문맥 경계다.** [spot](../../../01-glossary.ko.md#spot) activation scope에서 resolve한 서비스는 그 spot의
-실행 문맥에서만 쓴다([stage-wrapper §3](../../../25-stage-wrapper-on-spot.ko.md)).
+`scoped` service의 생성과 정리는 Framework가 handler, STREAM session과 object lifecycle 경계에서
+수행한다. Application은 scope 종류를 선택하거나 scope를 직접 만들지 않는다.
 
 ### 4.3 등록
 
@@ -158,7 +145,6 @@ public:
     template <typename T> std::optional<std::reference_wrapper<T>> get (); // 없으면 빈 값
 };
 
-class service_scope_t;  // RAII. 소멸 시 scoped 인스턴스를 정리한다
 ```
 
 **handler는 service locator를 받지 않는다.** 생성자 주입만 쓴다.
@@ -171,14 +157,13 @@ class service_scope_t;  // RAII. 소멸 시 scoped 인스턴스를 정리한다
 | **등록되지 않은 타입을 `get_required`** | **실패한다** |
 | 등록되지 않은 타입을 `get` | **빈 값을 돌려준다.** 실패하지 않는다 |
 | **scope 없이 `scoped` 서비스를 resolve** | **실패한다** — scoped는 scope를 요구한다 |
-| **닫힌 provider에서 resolve하거나 scope를 만든다** | **[shutdown](../../../01-glossary.ko.md#shutdown) 경계 오류로 실패한다** |
+| **닫힌 provider에서 resolve한다** | **[shutdown](../../../01-glossary.ko.md#shutdown) 경계 오류로 실패한다** |
 
 ### 4.6 수명과 정리
 
 - **`singleton`은 처음 resolve할 때 만들고 host 수명 동안 재사용한다.**
 - **`scoped`는 그 scope에서 처음 resolve할 때 만들고 scope 안에서 재사용한다.**
-- **scope가 닫히면 그 scope의 `scoped`·`transient` 인스턴스를 함께 정리한다.**
-- **`service_scope_t`는 RAII다.** 소멸하면 닫힌다.
+- **Framework가 scope를 닫으면 그 scope의 `scoped`·`transient` 인스턴스를 함께 정리한다.**
 
 **닫힌 provider는 다시 사용할 수 없다.** 이후의 resolve는 전부 실패한다.
 

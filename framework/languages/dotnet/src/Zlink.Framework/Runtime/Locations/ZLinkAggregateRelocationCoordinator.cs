@@ -38,7 +38,7 @@ internal sealed class ZLinkAuthorityGenerationExhaustedException(string operatio
         $"Authority generation was exhausted while {operation}.");
 
 internal sealed class ZLinkAggregateRelocationCoordinator(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     IZLinkRelocationStore relocationStore)
 {
     private const int MaxConflictRetries = 8;

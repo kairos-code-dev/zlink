@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include "runtime/locations/legacy_location_rows.hpp"
+
 #include <zlink/framework/contracts/locations/keys.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
-
-#include "runtime/locations/location_value_codec.hpp"
 
 #include <string>
 
@@ -14,15 +14,6 @@ namespace zlink::framework::runtime
 class location_key_codec_t
 {
   public:
-    static std::string encode_peer_key (const peer_location_key_t &key)
-    {
-        const auto identity = key.node_rid.has_value () ? key.node_rid->to_hex ()
-                                                        : key.endpoint.value_or (std::string{});
-        return encode (location_value_codec_t::to_canonical_string (key.auto_connect_type),
-                       key.mesh_name, location_value_codec_t::to_canonical_string (key.role),
-                       identity);
-    }
-
     static std::string encode_spot_key (const spot_location_key_t &key)
     {
         detail::require_spot_id (key.spot_id);

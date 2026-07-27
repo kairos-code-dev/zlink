@@ -7,7 +7,7 @@ import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.runtime.monitoring.ZLinkMonitoringRuntime;

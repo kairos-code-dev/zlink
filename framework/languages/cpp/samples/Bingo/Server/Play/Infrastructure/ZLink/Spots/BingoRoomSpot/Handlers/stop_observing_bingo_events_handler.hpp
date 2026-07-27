@@ -22,7 +22,7 @@ bingo_room_spot_t::stop_observing_events (
     if (observer == observers.end ()) {
         throw std::runtime_error ("actor has no observer subscription in this room");
     }
-    co_await _context.leave_actor (
+    co_await _context->leave_actor (
       actor_ref_for (actor), const_cast<player_actor_t &> (actor));
     record_observer_returned_to_entry_spot (actor);
     co_return stop_observing_bingo_events_res_t{true};

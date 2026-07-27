@@ -7,7 +7,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 
 /**
  * Framework-owned Instance Spot activation barrier. Only an Instance-marked

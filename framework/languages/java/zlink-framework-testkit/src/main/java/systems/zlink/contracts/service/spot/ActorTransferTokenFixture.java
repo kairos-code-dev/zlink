@@ -1,4 +1,4 @@
-package systems.zlink.contracts.service.spot;
+package systems.zlink.framework.runtime.internal.binding.spot;
 
 /**
  * Creates opaque Framework transfer tokens for fake backend implementations.

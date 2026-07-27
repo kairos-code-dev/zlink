@@ -27,6 +27,16 @@ transaction에 포함하지 않는다. Actor relocation이 `Completed`까지 끝
 Redis server time이 lease 만료의 기준이다. Application host의 wall clock은
 [authority](01-glossary.ko.md#authority) 판단에 사용하지 않는다.
 
+공식 extension의 Location provider class는 descriptor, owner lease, authority, placement와 aggregate
+operation을 모두 포함하는 하나의 Location Store interface를 구현한다. Descriptor·lease·authority별 public
+interface와 부분 provider 구성은 제공하지 않는다. Relocation payload provider는 별도의 Relocation Store
+interface와 class로 유지한다. Redis Location provider는 change stamp를 구현해 반환하지만, 공통 Location Store
+interface의 기본값은 `null`이며 다른 provider가 stamp를 지원해야 할 의무는 없다.
+
+Root 없는 `Preparing` authority를 steady payload로 되돌리는 recovery primitive는 선택 기능이 아니다. 공식
+Redis provider는 exact StoreVersion과 stored owner token을 하나의 script에서 검증한 뒤 authority payload를
+바꾼다. 이 operation은 통합 Location Store interface에 포함되며 별도 recovery capability를 노출하지 않는다.
+
 ## 2. 저장 영역과 수명
 
 Redis key prefix는 배포 단위에서 설정할 수 있지만 같은 provider transaction domain에서는 다음 논리 영역을
@@ -306,7 +316,7 @@ index write를 한 atomic operation으로 처리한다.
 
 | Transition | 허용 expectation | generation 결과 |
 |---|---|---|
-| Preserve | Active Found | target owner token 없이 ObjectGeneration, AuthorityOwnerGeneration과 allocation 유지, 새 StoreRevision만 발급 |
+| Preserve | Active Found | target owner token 없이 ObjectGeneration, AuthorityOwnerGeneration과 allocation 유지, 새 StoreRevision만 발급. Reserved standalone relocation fence가 있으면 같은 transaction에서 reservation의 expected StoreVersion을 새 StoreRevision으로 갱신 |
 | NewOwner | Active Found | exact target owner lease·capacity fence 검증, target owner와 Active allocation 기록, ObjectGeneration 유지, 새 AuthorityOwnerGeneration과 StoreRevision 발급 |
 | Delete | Active Found | 새 StoreRevision 발급, current active capacity 감소 뒤 row와 current index entry 제거 |
 
@@ -317,8 +327,9 @@ Redis script는 이 token의 owner lease row를 CAS와 같은 operation에서 �
 authority metadata에 기록한다. Preserve와 Delete는 authority row에 저장된 current owner token의 lease를 같은
 transaction에서 확인한다. Required lease가 missing·stale이면 current authority read를 담은 Conflict를 반환하고
 row·index·counter를 변경하지 않는다. Token 존재 규칙을 위반한 mutation은 Redis operation 전에 argument
-validation error로 거부한다. Relocation capacity fence는 NewOwner에서만 반드시 있고 Preserve에서는
-없어야 한다. 이 조합도 Redis operation 전에 거부한다.
+validation error로 거부한다. Relocation capacity fence는 NewOwner에서 반드시 있다. 일반 Preserve에는 없지만
+standalone relocation의 `Captured` root 갱신과 `Prepared` 게시에는 같은 reserved fence가 있을 수 있다.
+이 조합도 Redis operation 전에 검증한다.
 
 Framework가 encode하는 authority payload는 relocation phase, `RelocationId`, immutable
 source와 current target fence, Relocation Store root reference와 checksum, membership, replay·completion count를
@@ -388,7 +399,12 @@ lifecycle·owner lease·capability와 bundle의 모든 limit을 live/exact로 �
 source active count는 이 단계에서 바꾸지 않는다. 같은 ID와 exact request는 같은
 fence를 반환하고 다른 request는 conflict다.
 
-Standalone `NewOwner` CAS는 relocation capacity fence를 필수로 받아 authority owner 전환, source active 감소,
+Fence가 있는 standalone `Preserve` CAS는 reservation의 authority key·expected StoreVersion·source·target owner와
+durable allocation을 exact하게 검증한다. Lua/function은 opaque authority payload를 해석하지 않으며, authority
+payload와 StoreRevision을 바꾸는 transaction 안에서 reservation JSON의 `expectedStoreVersion`만 새 revision으로
+갱신한다. Owner·allocation·capacity counter와 fence의 `Reserved` 상태는 유지한다.
+
+Standalone `NewOwner` CAS는 이렇게 재결합한 relocation capacity fence를 필수로 받아 authority owner 전환, source active 감소,
 target reserved 감소·active 증가와 fence commit을 한 transaction에서 처리한다. Abort는 uncommitted
 standalone fence의 target reserved bundle만 해제하며
 반복 abort는 idempotent하고 committed 또는 다른 fence는 closed result로 구분한다. Reservation에는 TTL을 두지
@@ -645,6 +661,8 @@ Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까�
 - Found·Stored·scan snapshot이 provider-owned Reserved·Active allocation metadata를 완전하게 반환한다.
 - Relocation reserve·standalone commit·aggregate commit이 request source를 durable Active allocation에
   exact-match하고 source descriptor·lease stale recovery는 허용하되 target stale commit은 no-write로 막는다.
+- Standalone `Captured` root 갱신과 `Prepared` Preserve가 reserved fence의 expected StoreVersion을 authority
+  CAS 결과와 같은 transaction에서 재결합하고 capacity와 fence 상태는 바꾸지 않는다.
 - Aggregate relocation prepare가 `NewOwner` participant의 non-zero typed bundle만 한 transaction에서 예약하고
   mixed `Preserve` participant의 allocation을 유지한다.
 - Aggregate completion·steady-normalization prepare가 all-Preserve, zero capacity와 empty membership mutation만

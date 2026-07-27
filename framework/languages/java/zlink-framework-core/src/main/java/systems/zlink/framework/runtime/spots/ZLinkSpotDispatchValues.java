@@ -1,7 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
 
 record ActorDispatchReply(Message message, boolean streamFrame) {
 }

@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 
 final class ZLinkJavaRawMeshNodeRelocationReplyTest {
     @Test
@@ -92,12 +92,12 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
             while ((!source.peers().stream().anyMatch(peer ->
                     peer.routingId().equals(targetRid)
                         && peer.state()
-                            == systems.zlink.contracts.service.spot
+                            == systems.zlink.framework.runtime.internal.binding.spot
                                 .MeshPeerState.ADMITTED)
                     || !target.peers().stream().anyMatch(peer ->
                         peer.routingId().equals(sourceRid)
                             && peer.state()
-                                == systems.zlink.contracts.service.spot
+                                == systems.zlink.framework.runtime.internal.binding.spot
                                     .MeshPeerState.ADMITTED))
                 && System.nanoTime() < deadline) {
                 Thread.sleep(1);
@@ -105,12 +105,12 @@ final class ZLinkJavaRawMeshNodeRelocationReplyTest {
             assertTrue(source.peers().stream().anyMatch(peer ->
                 peer.routingId().equals(targetRid)
                     && peer.state()
-                        == systems.zlink.contracts.service.spot
+                        == systems.zlink.framework.runtime.internal.binding.spot
                             .MeshPeerState.ADMITTED));
             assertTrue(target.peers().stream().anyMatch(peer ->
                 peer.routingId().equals(sourceRid)
                     && peer.state()
-                        == systems.zlink.contracts.service.spot
+                        == systems.zlink.framework.runtime.internal.binding.spot
                             .MeshPeerState.ADMITTED));
             var expectedSource = new ZLinkServiceRelocationWireCodec
                 .RequestSourceFence(

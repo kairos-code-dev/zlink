@@ -27,7 +27,9 @@ internal sealed class ZLinkActorStragglerForwarder
         uint flags,
         ZLinkBackendActorRouteContext routeContext,
         ZlinkStreamHeader header,
-        Message body)
+        Message body,
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
     {
         _runtime.ShutdownToken.ThrowIfCancellationRequested();
         if (!_admissionSlots.Wait(0))
@@ -44,6 +46,8 @@ internal sealed class ZLinkActorStragglerForwarder
                 requestId,
                 flags,
                 routeContext,
+                sourceNodeGeneration,
+                requestSource,
                 header,
                 ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray(),
                 body.ToArray(),
@@ -130,7 +134,9 @@ internal sealed class ZLinkActorStragglerForwarder
                             headerPart,
                             true,
                             SendFlags.DontWait,
-                            frame.ForwardedRouteContext);
+                            frame.ForwardedRouteContext,
+                            frame.SourceNodeGeneration,
+                            frame.RequestSource);
                         if (!headerSubmitted)
                         {
                             await DelayRetryAsync(cancellationToken).ConfigureAwait(false);
@@ -150,7 +156,9 @@ internal sealed class ZLinkActorStragglerForwarder
                             bodyPart,
                             false,
                             SendFlags.DontWait,
-                            frame.ForwardedRouteContext))
+                            frame.ForwardedRouteContext,
+                            frame.SourceNodeGeneration,
+                            frame.RequestSource))
                         return;
                 }
                 catch (ZlinkSubmitException exception)
@@ -302,6 +310,8 @@ internal sealed class ZLinkActorStragglerForwarder
         ulong requestId,
         uint flags,
         ZLinkBackendActorRouteContext routeContext,
+        ulong sourceNodeGeneration,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource,
         ZlinkStreamHeader header,
         byte[] headerBytes,
         byte[] bodyBytes,
@@ -314,6 +324,9 @@ internal sealed class ZLinkActorStragglerForwarder
         public RoutingId SourceSessionRid { get; } = sourceSessionRid;
         public ulong RequestId { get; } = requestId;
         public uint Flags { get; } = flags;
+        public ulong SourceNodeGeneration { get; } = sourceNodeGeneration;
+        public ZLinkServiceWireCodec.RequestSourceFence? RequestSource { get; } =
+            requestSource;
         public ZLinkBackendActorRouteContext ForwardedRouteContext { get; } =
             AdvanceRoute(mapping, routeContext, requestId, flags);
         public ZlinkStreamHeader Header { get; } = header;

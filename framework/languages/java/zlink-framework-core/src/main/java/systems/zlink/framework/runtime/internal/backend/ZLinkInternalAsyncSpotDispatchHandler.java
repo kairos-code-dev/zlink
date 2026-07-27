@@ -1,8 +1,8 @@
 package systems.zlink.framework.runtime.internal.backend;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo;
 
 /**
  * Keeps native claim completion inside the Java backend without changing the

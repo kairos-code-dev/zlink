@@ -36,7 +36,7 @@ internal sealed record ZLinkDeferredJoinCompletionRoot(
 /// the CAS stops referencing it.
 /// </summary>
 internal sealed class ZLinkDeferredActorJoinCompletionJournal(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     IZLinkRelocationStore relocationStore)
 {
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);

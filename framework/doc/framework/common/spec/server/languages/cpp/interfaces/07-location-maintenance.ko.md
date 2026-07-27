@@ -1,12 +1,17 @@
-# C++ maintenance provider exact interface
+# C++ maintenance record와 의미
 
-[C++ exact interface 목차](README.ko.md)
+[C++ exact interface 목차](README.ko.md) · [Location Store SPI](07-location-store.ko.md#3-location-store-구성)
 
 ## 1. Authority와 Relocation provider capability
 
-`location_store_t`는 아래 opaque authority CAS를 필수 capability로 제공한다. Relocation Store 등록 조건과
+`location_store_t`는 아래 record를 사용하는 opaque authority CAS를 필수 capability로 제공한다. Class와
+전체 member declaration은 [Location Store SPI](07-location-store.ko.md#3-location-store-구성)가 유일하게 소유한다. Relocation Store 등록 조건과
 missing·duplicate startup error는 [Configuration과 host](02-configuration-host.ko.md)가 소유한다. Application
 service code는 두 provider operation을 직접 호출하지 않는다.
+
+부분 capability를 따로 등록하거나 조합하는 public interface는 제공하지 않는다. Descriptor, owner lease, authority와 placement
+변경이 같은 transaction domain에 있어야 하므로 provider는 `location_store_t` 하나를 완전하게
+구현한다.
 
 완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과
 recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation
@@ -99,8 +104,13 @@ struct authority_put_t {
     std::optional<location_owner_token_t> target_owner;
     std::optional<relocation_capacity_fence_t> relocation_capacity_fence;
 };
+struct authority_restore_t {
+    std::vector<std::byte> payload;
+    location_owner_token_t expected_owner;
+};
 struct authority_delete_t {};
-using authority_mutation_t = std::variant<authority_put_t, authority_delete_t>;
+using authority_mutation_t =
+  std::variant<authority_put_t, authority_restore_t, authority_delete_t>;
 
 struct authority_stored_t { authority_snapshot_t snapshot; };
 struct authority_deleted_t {
@@ -112,24 +122,6 @@ struct authority_generation_exhausted_t {};
 using authority_compare_exchange_result_t = std::variant<
   authority_stored_t, authority_deleted_t, authority_conflict_t,
   authority_generation_exhausted_t>;
-
-class authority_store_t {
-public:
-    virtual ~authority_store_t() = default;
-    virtual task_t<authority_read_result_t> read_authority(
-      authority_key_t key,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_compare_exchange_result_t> compare_exchange_authority(
-      authority_key_t key,
-      std::string expected_store_version,
-      authority_mutation_t mutation,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<authority_scan_result_t> list_authorities(
-      std::string prefix,
-      std::optional<authority_scan_cursor_t> cursor,
-      std::size_t limit,
-      std::stop_token cancellation = {}) = 0;
-};
 
 struct object_creation_key_t {
     placement_object_kind_t kind;
@@ -312,19 +304,6 @@ enum class relocation_capacity_abort_result_t : std::uint8_t {
     stale = 4
 };
 
-class relocation_capacity_store_t {
-public:
-    virtual ~relocation_capacity_store_t() = default;
-    virtual task_t<relocation_capacity_reserve_result_t>
-    reserve_relocation_capacity(
-      relocation_capacity_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<relocation_capacity_abort_result_t>
-    abort_relocation_capacity(
-      relocation_capacity_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-};
-
 struct aggregate_id_t {
     std::array<std::byte, 16> value;
 };
@@ -379,35 +358,6 @@ enum class aggregate_abort_result_t : std::uint8_t {
     aborted = 1,
     already_aborted = 2,
     stale = 3
-};
-
-class object_creation_store_t {
-public:
-    virtual ~object_creation_store_t() = default;
-    virtual task_t<object_reserve_result_t> reserve(
-      object_reserve_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_commit_result_t> commit(
-      object_commit_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_creation_complete_result_t> complete_creation(
-      object_creation_complete_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<creation_terminal_read_result_t> read_creation_terminal(
-      creation_operation_identity_t operation,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<object_abort_result_t> abort(
-      object_abort_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_prepare_result_t> prepare_aggregate(
-      aggregate_prepare_request_t request,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_commit_result_t> commit_aggregate(
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
-    virtual task_t<aggregate_abort_result_t> abort_aggregate(
-      aggregate_fence_t fence,
-      std::stop_token cancellation = {}) = 0;
 };
 
 struct relocation_stored_t {
@@ -562,6 +512,12 @@ metadata를 해석하지 않는다. `preserve`는 stored current owner lease, `n
 검증한다. Missing·stale lease는 current authority read를 가진
 `authority_conflict_t`로 끝나고 mutation은 0이다. Invalid `target_owner` 조합은 provider 호출 전에
 `std::invalid_argument`로 거부한다. Missing result에 fake StoreVersion을 넣지 않는다.
+
+`authority_restore_t`는 current StoreVersion과 `expected_owner`를 같은 transaction에서 exact하게 검증하고
+opaque payload와 StoreVersion만 바꾼다. Owner, allocation, object generation과 authority owner generation은
+유지하며 current owner lease의 live 상태는 요구하지 않는다. 따라서 이전 process의 lease가 만료된 뒤에도
+startup recovery가 exact authority snapshot을 복구할 수 있다. Provider는 payload의 relocation phase를 해석하지
+않는다.
 `list_authorities`의 first page는 `cursor=nullopt`로 요청한다. Provider는 한 snapshot을 만들고 이어지는
 page에 필요한 모든 상태를 하나의 `authority_scan_cursor_t`에 담는다. 다음 page는 직전 page의
 `next_cursor` 객체를 해석하거나 다시 조립하지 않고 그대로 넘긴다. Cursor의 UTF-8 encoded 크기는
@@ -630,9 +586,9 @@ Relocation put은 content-addressed reference를 확인한 뒤 idempotent하게 
 committed put은 orphan이며 고정 retention과 cleanup으로 제거한다. 이 의미를 표현하는 public result는 추가하지
 않는다.
 
-Location record, owner lease, watch와 Redis provider의 exact declaration은
-[Location Store·Redis](07-location-store.ko.md)가 소유한다. 이 문서는 stateful maintenance에서 추가로
-필요한 authority와 Relocation provider capability만 소유한다. Authority Store를 root에 별도로 등록하는
+`location_store_t` class와 Location record, owner lease, watch, Redis provider의 exact declaration은
+[Location Store·Redis](07-location-store.ko.md)가 소유한다. 이 문서는 stateful maintenance에서 사용하는
+authority·placement·aggregate record와 별도 `relocation_store_t` declaration을 소유한다. Authority Store를 root에 별도로 등록하는
 member는 제공하지 않는다. Location Store와 Relocation Store 등록 member는
 [Configuration과 host](02-configuration-host.ko.md)의 `zlink_framework_options_t`가 소유한다.
 Redis creation-terminal key의 RID segment는 transport `routing_id_t`의 exact raw bytes 길이와 그 raw bytes의

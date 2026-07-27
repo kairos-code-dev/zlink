@@ -35,7 +35,7 @@ import systems.zlink.framework.ZLinkMessageContext;
 
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
@@ -151,7 +151,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestCompletesWhenRouteLoopReceivesRawReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -188,7 +188,7 @@ final class ZLinkChannelRuntimeTest {
     void routeClientSpotRequestUsesRouteBridge() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.requestReplyParts = List.of(Message.from(
@@ -216,7 +216,7 @@ final class ZLinkChannelRuntimeTest {
     @Test
     void routeClientSpotSendUsesRouteBridge() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -240,7 +240,7 @@ final class ZLinkChannelRuntimeTest {
     @Test
     void routeReceiveLoopSkipsRouterProbeFrame() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -288,7 +288,7 @@ final class ZLinkChannelRuntimeTest {
     void routeRequestRetriesRetriableSubmitFailure() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route")
             .enableClient("inproc://play-peer");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
@@ -475,7 +475,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestConsumesNativeReplyEvenWhenRequestSeqIsPresent() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -513,7 +513,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestUnwrapsRoutedSpotEnvelopeReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -556,7 +556,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeNativeCallbackRequestUnwrapsRoutedSpotEnvelopeReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.requestReplyParts = List.of(
@@ -591,7 +591,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeNativeCallbackRequestStripsSpotPacketNameReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.requestReplyParts = List.of(
@@ -625,7 +625,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRequestIgnoresNativeRequestEchoAndWaitsForRouterReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.requestReplyParts = List.of(
@@ -668,7 +668,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRequestIgnoresRouterRequestEchoAndWaitsForRouterReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -717,7 +717,7 @@ final class ZLinkChannelRuntimeTest {
         throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -756,7 +756,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestCompletesBeforeBridgeConsumesActorJoinReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -794,7 +794,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeRawRequestFailsOnFrameworkErrorReplyWithoutBridgeFeedback() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -832,7 +832,7 @@ final class ZLinkChannelRuntimeTest {
     void routeMeshFrameworkErrorRequestIsDroppedWithoutErrorReply() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -863,7 +863,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeDrainFailureDoesNotStopLaterRawReplyCompletion() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -906,7 +906,7 @@ final class ZLinkChannelRuntimeTest {
     void routeBridgeNoDataDrainDoesNotStopLaterRawReplyCompletion() throws Exception {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
-        options.addRouteMeshChannel("play.route")
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "play.route")
             .enableServer("inproc://play-route");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.completeRequests = false;
@@ -1035,7 +1035,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.requestToChannel(channelName, "probe");
             return true;
         } catch (ZLinkFrameworkException failure) {
-            // 05-framework-api.ko.md §13: an empty selectable-target snapshot on a registered
+            // 05-framework-api.ko.md 짠13: an empty selectable-target snapshot on a registered
             // send route is RequestTargetNotFound, not RouteNotConnected.
             assertEquals(
                 ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND, failure.kind());
@@ -1715,7 +1715,7 @@ final class ZLinkChannelRuntimeTest {
         long lastSpotGeneration;
         List<Message> requestReplyParts = List.of();
 
-        @Override public String routingId() { return "entry-spot"; }
+        @Override public String spotId() { return "entry-spot"; }
         @Override public void setRoutingId(String spotId) { }
         @Override public void setSubscription(String topic) { }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }

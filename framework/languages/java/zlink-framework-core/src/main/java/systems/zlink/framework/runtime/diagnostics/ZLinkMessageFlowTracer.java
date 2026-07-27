@@ -16,11 +16,11 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEvent;
 import systems.zlink.framework.monitoring.ZLinkRuntimeErrorEventKind;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 

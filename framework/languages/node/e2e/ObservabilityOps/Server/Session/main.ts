@@ -4,7 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
   type ActorRef,
-  type ZLinkMeshDrainResult,
+  type ZLinkTerminationResult,
+  type ZLinkFrameworkRuntime,
   type ZLinkRouteMeshRuntime,
   type ZLinkMessage,
   type ZLinkSession,
@@ -13,7 +14,7 @@ import {
   type ZLinkSessionFactory
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLINK_ROUTE_MESH_RUNTIME, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_FRAMEWORK_RUNTIME, ZLINK_ROUTE_MESH_RUNTIME, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import {
   ObservabilityOpsNames,
   type BindActorSessionReq,
@@ -122,7 +123,6 @@ Module({
           .traceLabel(options.rid);
         builder.addRouteMesh(ObservabilityOpsNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .channelName(ObservabilityOpsNames.mesh);
         builder.addStreamNode(`${ObservabilityOpsNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
@@ -137,7 +137,8 @@ Module({
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
   const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
-  let drainResult: ZLinkMeshDrainResult | undefined;
+  const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
+  let drainResult: ZLinkTerminationResult | undefined;
   const server = await startHttpServer(options.httpUrl, [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -149,7 +150,7 @@ async function main(): Promise<void> {
     {
       method: 'POST', path: '/drain', handle: (body) => {
         const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
-        void routeMeshRuntime.drain(ObservabilityOpsNames.mesh, deadlineMs)
+        void frameworkRuntime.retire({ deadlineMs })
           .then((result) => { drainResult = result; });
         return { started: true };
       }

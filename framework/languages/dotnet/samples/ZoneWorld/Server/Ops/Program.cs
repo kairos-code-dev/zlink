@@ -62,7 +62,7 @@ builder.Services.AddZLinkFramework(options =>
     locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(500);
 
     options.ConfigureDispatch()
-        .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
+        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
         .TraceLabel("ops");
     options.AddHandlersFromAssemblyOf(typeof(OpsConsoleSession));
 

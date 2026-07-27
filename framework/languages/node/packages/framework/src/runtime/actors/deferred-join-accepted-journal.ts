@@ -4,10 +4,10 @@ import type {
   ZLinkActorJoinCompletion,
   ZLinkActorJoinOperationId,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore,
   ZLinkRelocationReference,
   ZLinkRelocationStore
 } from '../../contracts';
+import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
 import { crc32c } from '../foundation/service-relocation-runtime';

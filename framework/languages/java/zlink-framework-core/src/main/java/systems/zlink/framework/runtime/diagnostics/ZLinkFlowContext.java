@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Executor;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 
 /** Internal flow context. It is deliberately not a public context-capture API. */
 public final class ZLinkFlowContext {

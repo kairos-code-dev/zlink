@@ -206,6 +206,21 @@ internal static class ZLinkRemoteActorJoinPackets
         }
     }
 
+    internal static long MeasureStandaloneMaintenancePayloadUpperBound(
+        bool snapshot)
+    {
+        // Standalone Actor maintenance has no logical-timer payload. Reserve
+        // both the queue captured before the semantic seal and the separate
+        // ingress hold that remains open until the commit boundary.
+        return checked(
+            FrameworkMetadataUpperBound
+            + AcceptedJournalUpperBound
+            + AcceptedJournalUpperBound
+            + (snapshot
+                ? SnapshotApplicationStateReservationBytes
+                : 0));
+    }
+
     public static ZLinkRemoteActorJoinRequest DecodeJoinRequest(IReadOnlyList<Message> parts)
     {
         return (ZLinkRemoteActorJoinRequest?)ZLinkEnvelopeCodec.DecodeBody(

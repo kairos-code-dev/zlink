@@ -4,7 +4,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;

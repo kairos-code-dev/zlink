@@ -2,9 +2,13 @@
 
 [.NET 계약 목차](../README.ko.md)
 
-이 디렉토리는 ZLink Framework 11.0.0 server의 exact C# public interface를 기능별로 소유한다. 공통
+이 디렉토리는 ZLink Framework 11.0.0 server의 exact C# public contract만 기능별로 소유한다. 공통
 Framework spec이 동작을 정하고 다음 문서가 type, member, generic constraint, nullable annotation과 기본값을
-고정한다.
+고정한다. Application이 호출하는 API와 외부 provider가 구현하는 SPI는 포함하지만 Framework 내부에서만
+사용하는 type, phase API, wire command와 구현 절차는 포함하지 않는다. Provider SPI는 문서 제목과 본문에서
+application API와 구분한다. Framework 내부 coordinator, event publisher, native monitor 값, state machine과
+recovery helper는 public contract가 아니므로 선언하지 않는다. Public event는 application이 구현하는 handler와
+handler가 받는 provider-neutral payload까지만 포함한다.
 
 | 문서 | 소유하는 계약 |
 |---|---|
@@ -16,19 +20,15 @@ Framework spec이 동작을 정하고 다음 문서가 type, member, generic con
 | [Actors](06-actors.ko.md) | Actor factory, context, client, manager, relocation adapter와 policy를 정의한다. |
 | [Bound STREAM session](07-bound-stream-session.ko.md) | Actor가 소유한 bound session call을 정의한다. |
 | [STREAM session](07-stream-session.ko.md) | STREAM server session과 handler interface를 정의한다. |
-| [Location과 maintenance](08-location-maintenance.ko.md) | Descriptor, lease, owner authority와 provider interface를 정의한다. |
-| [Authority와 relocation](08-authority-relocation.ko.md) | Provider가 payload를 해석하지 않는 [authority](../../../../01-glossary.ko.md#authority) CAS와 24시간 relocation retention을 정의한다. |
-| [Location provider와 Redis](08-location-provider-redis.ko.md) | Change stamp capability와 공식 Redis provider를 정의한다. |
-| [Routing ID identity](09-routing-id-allocation.ko.md) | Automatic RID 생성, prefix와 MeshNode descriptor [owner](../../../../01-glossary.ko.md#owner) claim을 정의한다. |
+| [Location과 maintenance](08-location-maintenance.ko.md) | Location 운영 API와 외부 provider가 구현하는 `IZLinkLocationStore` SPI를 정의한다. |
+| [Authority operation과 relocation](08-authority-relocation.ko.md) | `IZLinkLocationStore`의 authority member와 `IZLinkRelocationStore` provider SPI를 정의한다. |
+| [Location provider와 Redis](08-location-provider-redis.ko.md) | Optional MeshNode change-stamp member와 공식 Redis provider public API를 정의한다. |
 | [Host와 topology monitoring](10-topology-monitoring.ko.md) | Host state, termination, topology snapshot과 metric을 정의한다. |
 | [Monitoring과 오류](10-monitoring-errors.ko.md) | Monitoring source와 Framework 오류를 정의한다. |
-| [Serialization](11-serialization.ko.md) | Typed payload가 사용하는 JSON 기본 경로를 정의한다. |
-| [Dispatch ownership](12-dispatch-ownership.ko.md) | Dispatch가 message ownership을 넘기는 규칙을 정의한다. |
-| [Configuration 예제](13-examples.ko.md) | Public builder를 조합하는 최소 예제를 제공한다. |
+| [Codec extension](11-serialization.ko.md) | Codec 등록 API와 외부 codec provider SPI를 정의한다. |
 
-Application-facing API는 bindings의 service object, native handle, authority version, relocation phase와 relocation
-reference를 노출하지 않는다. Framework 구현은 bindings package가 제공하는 public raw socket API만 사용하며
-private member, reflection, native symbol 직접 호출과 Core service C API에 의존하지 않는다.
+Application-facing API는 native handle, authority version, relocation phase와 relocation reference를 노출하지
+않는다. 이러한 내부 구현 계약은 이 디렉토리가 아니라 internals 문서에서 설명한다.
 
 Public generation, revision, epoch와 sequence ordinal의 유효 범위는
 `1..9223372036854775807`이다. .NET type이 `ulong`이어도 이 범위를 넓히지 않는다. 최대값에 도달하면

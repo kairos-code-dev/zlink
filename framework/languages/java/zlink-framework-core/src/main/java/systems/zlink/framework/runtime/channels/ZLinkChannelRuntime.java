@@ -4,7 +4,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -66,14 +66,14 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;
@@ -154,7 +154,7 @@ public final class ZLinkChannelRuntime
     private ZLinkFanoutLocationRuntime fanoutLocationRuntime;
 
     public record AutoConnectSurface(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid,
@@ -585,7 +585,7 @@ public final class ZLinkChannelRuntime
         }
         boolean hasAutomaticSubscriber = autoConnectSurfaces().stream()
             .anyMatch(surface ->
-                surface.type() == ZLinkLocationAutoConnectType.FANOUT
+                surface.type() == ZLinkAutoConnectType.FANOUT
                     && surface.role() == ZLinkLocationRole.SUB);
         if (hasAutomaticSubscriber
             && (backendFactory == null
@@ -923,7 +923,7 @@ public final class ZLinkChannelRuntime
 
     /**
      * Resolves the ClientServer send target for a Channel whose ready candidate set is still empty,
-     * per {@code framework/doc/framework/common/spec/11-channel-messaging.ko.md} §3.2: the call
+     * per {@code framework/doc/framework/common/spec/11-channel-messaging.ko.md} 짠3.2: the call
      * waits a bounded period and then fails with no-target. The bound is the shorter of this
      * Channel's request timeout and five seconds, mirroring the .NET reference
      * {@code ZLinkClientServerClientRuntime.WaitForReadyAsync}. Framework startup never waits for

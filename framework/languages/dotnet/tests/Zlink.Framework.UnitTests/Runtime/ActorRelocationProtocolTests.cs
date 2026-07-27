@@ -65,7 +65,7 @@ public sealed class ActorRelocationProtocolTests
         ZLinkEnvelopeHeader? targetContinuation = null;
         var targetIngress = new List<(string Packet, ZLinkFlowValue Flow)>();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
         var dispatcher = new ZLinkSpotRouteDispatcher(
             "actor-route",
             "target-spot",

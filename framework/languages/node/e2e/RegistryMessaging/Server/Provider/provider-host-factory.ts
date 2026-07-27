@@ -5,7 +5,7 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_ROUTE_MESH_RUNTIME,
+  ZLINK_FRAMEWORK_RUNTIME,
   ZLINK_ROUTE_CLIENT,
   ZLinkModule,
   zlinkFramework
@@ -13,7 +13,7 @@ import {
 import type {
   ZLinkChannelClient,
   ZLinkChannelRuntimeOptions,
-  ZLinkRouteMeshRuntime,
+  ZLinkFrameworkRuntime,
   ZLinkRouteClient
 } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
@@ -42,10 +42,10 @@ export async function startProviderHost(): Promise<void> {
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createProviderEndpoints(evidence, channel, route, runtimeOptions, routeMeshRuntime, () => { stopping = true; })
+    createProviderEndpoints(evidence, channel, route, runtimeOptions, frameworkRuntime, () => { stopping = true; })
   );
 
   while (!stopping) {

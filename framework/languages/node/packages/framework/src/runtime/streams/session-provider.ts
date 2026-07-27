@@ -1,9 +1,9 @@
 import type {
   Type,
-  ZLinkProviderResolver,
   ZLinkSession,
   ZLinkSessionFactory
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { DefaultZLinkSessionContext } from './session-context';
 
 export async function createStreamSessionInstance(

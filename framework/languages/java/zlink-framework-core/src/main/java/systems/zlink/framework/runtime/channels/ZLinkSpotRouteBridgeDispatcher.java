@@ -12,7 +12,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 
 final class ZLinkSpotRouteBridgeDispatcher {
     private static final Duration RETRY_DELAY = Duration.ofMillis(10);

@@ -200,10 +200,7 @@ export class ZLinkChannelDispatchPipeline {
     const payload = decodeChannelPayload(envelope, codecs);
     return invokeZLinkHandlerFilters(
       this.filters,
-      {
-        ownerKind: this.options.surface,
-        messageContext: context
-      },
+      context,
       () => Promise.resolve(handler.handle(payload, context))
     ) as Promise<TResult>;
   }

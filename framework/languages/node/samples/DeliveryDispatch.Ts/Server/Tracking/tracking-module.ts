@@ -40,7 +40,7 @@ function createTrackingModule() {
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
             .listen(config.trackingSpotEndpoint)
-            .useAllocatedRoutingId(16, 'delivery-tracking');
+            .setRoutingIdPrefix('delivery-tracking');
           mesh.channelName(SampleNames.trackingChannel).addHandlerGroup('tracking');
           mesh.channelName(SampleNames.routeMesh).setWeight(0);
           return builder.build();

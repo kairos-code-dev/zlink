@@ -4,7 +4,7 @@ import systems.zlink.framework.spots.SpotHandleResolver;
 
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -110,7 +110,7 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         var mesh = options.addRouteMesh("game")
             .listen("inproc://creating-actor")
-            .setRoutingId(RoutingId.from("creating-node"));
+            .setRoutingIdPrefix("creating-node");
         mesh.channelName("game");
         mesh.addActorFactory(
             "blocking-player",
@@ -172,7 +172,7 @@ final class NodesAndServicesTest {
         options.addLocationStore(sharedLocations);
         options.addRelocationStore(new InMemoryRelocationStore());
         var mesh = options.addRouteMesh("game-" + suffix)
-            .setRoutingId(nodeRid)
+            .setRoutingIdPrefix(nodeRid.toString())
             .listen("inproc://route-mesh-request-" + suffix);
         mesh.channelName("game");
         mesh.objects().server()
@@ -242,7 +242,7 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         var mesh = options.addRouteMesh("game")
             .listen("inproc://play-router")
-            .setRoutingId(RoutingId.from("play-node"));
+            .setRoutingIdPrefix("play-node");
         mesh.channelName("game");
         mesh.addSpotFactory(GameSpot.class);
         mesh.addActorFactory("player", PlayerActorFactory.class);

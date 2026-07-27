@@ -38,7 +38,7 @@ function createDispatchCenterModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-            .listen(config.dispatchSpotEndpoint).useAllocatedRoutingId(16, 'delivery-dispatch');
+            .listen(config.dispatchSpotEndpoint).setRoutingIdPrefix('delivery-dispatch');
           mesh.channelName(SampleNames.dispatchChannel).addHandlerGroup('dispatch');
           mesh.channelName(SampleNames.trackingChannel).setWeight(0);
           mesh.channelName(SampleNames.routeMesh);

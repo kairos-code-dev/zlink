@@ -47,7 +47,7 @@ internal static class ConsumerHostFactory
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix)));
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "consumer-flow.log"))
                 .TraceLabel("consumer");
             JoinConsumerMesh(framework, "consumer");

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 
 final class ZLinkActorContextStateRelocationTest {
     @Test

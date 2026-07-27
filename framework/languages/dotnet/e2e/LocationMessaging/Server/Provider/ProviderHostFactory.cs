@@ -49,8 +49,8 @@ internal static class ProviderHostFactory
                                   ?? throw new InvalidOperationException(
                                       "Shared.RedisKeyPrefix is required."))));
             framework.ConfigureDispatch()
-                .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
 

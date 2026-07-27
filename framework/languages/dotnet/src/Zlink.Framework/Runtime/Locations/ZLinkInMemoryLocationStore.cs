@@ -17,16 +17,13 @@ internal sealed record ZLinkOwnerLease(
 
 /// <summary>
 /// Single-process store for local development, unit tests, and sample smoke
-/// tests. It backs every location store interface plus the owner lease store
-/// in one instance, which satisfies the contract requirement that location
+/// tests. It backs the complete location store contract in one instance,
+/// which satisfies the contract requirement that location
 /// rows and owner leases share one physical store. Never use it for
 /// production topologies where processes must share location data.
 /// </summary>
 internal sealed partial class ZLinkInMemoryLocationStore :
-    IZLinkLocationStore,
-    IZLinkClientServerLocationStore,
-    IZLinkFanoutLocationStore,
-    IZLinkLocationChangeStampStore
+    IZLinkLocationStore
 {
     private readonly object _gate = new();
     private readonly TimeProvider _time;
@@ -37,7 +34,8 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         new(StringComparer.Ordinal);
     private readonly RowTable<ZLinkClientServerServerDescriptor> _clientServers = new();
     private readonly RowTable<ZLinkFanoutPublisherDescriptor> _fanoutPublishers = new();
-    private readonly Dictionary<ZLinkLocationChangeStampScope, ulong> _stamps = [];
+    private readonly Dictionary<string, ulong> _meshNodeStamps =
+        new(StringComparer.Ordinal);
 
     public ZLinkInMemoryLocationStore(TimeProvider? timeProvider = null)
     {
@@ -104,7 +102,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             _meshNodes.Rows[key] = WithCurrentPlacementCapacity(
                 descriptor with { UpdatedAt = now });
             PublishEntrySpotIdNoLock(current, descriptor, key);
-            Bump(ZLinkLocationChangeScopeKind.MeshNode, descriptor.MeshName);
+            BumpMeshNodeStamp(descriptor.MeshName);
             return ValueTask.FromResult(
                 ZLinkLocationWriteResult.Stored(generation, now));
         }
@@ -127,7 +125,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
 
             _meshNodes.Rows.Remove(canonicalKey);
             RemoveEntrySpotIdClaimNoLock(row, canonicalKey);
-            Bump(ZLinkLocationChangeScopeKind.MeshNode, key.MeshName);
+            BumpMeshNodeStamp(key.MeshName);
             return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
         }
     }
@@ -844,9 +842,12 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             var ownedDescriptors = _meshNodes.Rows
                 .Where(pair => pair.Value.OwnerId == owner.OwnerId)
                 .ToArray();
-            removed += RemoveByOwnerNoLock(
-                _meshNodes, owner.OwnerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.MeshNode,
-                static row => row.MeshName);
+            foreach (var descriptor in ownedDescriptors)
+            {
+                _meshNodes.Rows.Remove(descriptor.Key);
+                BumpMeshNodeStamp(descriptor.Value.MeshName);
+                removed++;
+            }
             foreach (var descriptor in ownedDescriptors)
                 RemoveEntrySpotIdClaimNoLock(
                     descriptor.Value,
@@ -860,113 +861,30 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 _clientServers.Rows.Remove(key);
                 removed++;
             }
+            var fanoutKeys = _fanoutPublishers.Rows
+                .Where(pair => pair.Value.OwnerId == owner.OwnerId)
+                .Select(static pair => pair.Key)
+                .ToArray();
+            foreach (var key in fanoutKeys)
+            {
+                _fanoutPublishers.Rows.Remove(key);
+                removed++;
+            }
             return ValueTask.FromResult(removed);
         }
     }
 
-    public ValueTask<ulong> GetChangeStampAsync(
-        ZLinkLocationChangeStampScope scope,
+    public ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            _stamps.TryGetValue(scope, out var stamp);
-            return ValueTask.FromResult(stamp);
+            _meshNodeStamps.TryGetValue(meshName, out var stamp);
+            return ValueTask.FromResult<ulong?>(stamp);
         }
-    }
-
-    private ZLinkLocationWriteResult Write<TRow>(
-        RowTable<TRow> table,
-        string key,
-        TRow row,
-        ZLinkLocationWriteIntent intent,
-        string ownerId,
-        Func<TRow, string> ownerOf,
-        Func<TRow, DateTimeOffset, ulong, TRow> finalize,
-        ZLinkLocationChangeScopeKind kind,
-        string? meshName)
-        where TRow : class
-    {
-        lock (_gate)
-        {
-            var now = _time.GetUtcNow();
-            var exists = table.Rows.TryGetValue(key, out var current);
-            table.Generations.TryGetValue(key, out var last);
-            switch (intent)
-            {
-                case ZLinkLocationWriteIntent.NewClaim when exists && IsOwnerLive(ownerOf(current!), now):
-                    return ZLinkLocationWriteResult.RejectedConflict;
-
-                case ZLinkLocationWriteIntent.NewClaim:
-                case ZLinkLocationWriteIntent.Takeover:
-                {
-                    // The store issues the fencing generation atomically per
-                    // key; counters survive removal so a re-claim can never
-                    // reuse an old generation.
-                    var next = last + 1;
-                    table.Generations[key] = next;
-                    table.Rows[key] = finalize(row, now, next);
-                    Bump(kind, meshName);
-                    return ZLinkLocationWriteResult.Stored(next, now);
-                }
-
-                case ZLinkLocationWriteIntent.Renew
-                    when exists && ownerOf(current!) == ownerId:
-                    table.Rows[key] = finalize(row, now, last);
-                    Bump(kind, meshName);
-                    return ZLinkLocationWriteResult.Stored(last, now);
-
-                default:
-                    return ZLinkLocationWriteResult.IgnoredStale;
-            }
-        }
-    }
-
-    private ZLinkLocationWriteStatus Remove<TRow>(
-        RowTable<TRow> table,
-        string key,
-        ZLinkLocationOwnerToken owner,
-        Func<TRow, string> ownerOf,
-        ZLinkLocationChangeScopeKind kind,
-        string? meshName)
-        where TRow : class
-    {
-        lock (_gate)
-        {
-            table.Generations.TryGetValue(key, out var current);
-            if (!table.Rows.TryGetValue(key, out var row)
-                || ownerOf(row) != owner.OwnerId
-                || current != checked((ulong)owner.LeaseGeneration))
-            {
-                return ZLinkLocationWriteStatus.IgnoredStale;
-            }
-
-            table.Rows.Remove(key);
-            Bump(kind, meshName);
-            return ZLinkLocationWriteStatus.Stored;
-        }
-    }
-
-    private long RemoveByOwnerNoLock<TRow>(
-        RowTable<TRow> table,
-        string ownerId,
-        Func<TRow, string> ownerOf,
-        ZLinkLocationChangeScopeKind kind,
-        Func<TRow, string?> meshOf)
-        where TRow : class
-    {
-        var removedKeys = table.Rows
-            .Where(pair => ownerOf(pair.Value) == ownerId)
-            .Select(pair => pair.Key)
-            .ToArray();
-        foreach (var key in removedKeys)
-        {
-            var mesh = meshOf(table.Rows[key]);
-            table.Rows.Remove(key);
-            Bump(kind, mesh);
-        }
-
-        return removedKeys.Length;
     }
 
     private bool IsOwnerLive(string ownerId, DateTimeOffset now) =>
@@ -996,19 +914,10 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             throw new ArgumentOutOfRangeException(nameof(leaseTtl));
     }
 
-    private void Bump(ZLinkLocationChangeScopeKind kind, string? meshName)
+    private void BumpMeshNodeStamp(string meshName)
     {
-        BumpScope(new ZLinkLocationChangeStampScope(kind, meshName));
-        if (meshName is not null)
-        {
-            BumpScope(new ZLinkLocationChangeStampScope(kind, null));
-        }
-    }
-
-    private void BumpScope(ZLinkLocationChangeStampScope scope)
-    {
-        _stamps.TryGetValue(scope, out var stamp);
-        _stamps[scope] = stamp + 1;
+        _meshNodeStamps.TryGetValue(meshName, out var stamp);
+        _meshNodeStamps[meshName] = stamp + 1;
     }
 
     private sealed class RowTable<TRow>

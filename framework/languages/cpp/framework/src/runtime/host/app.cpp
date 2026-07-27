@@ -22,6 +22,7 @@
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/actor_authority_payload.hpp"
 #include "runtime/configuration/endpoint_connections.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
@@ -70,23 +71,26 @@ class store_actor_directory_t final : public actor_directory_t
 
     task_t<std::optional<actor_ref_t>> find (std::string actor_id) override
     {
-        auto row = _store
-                     .resolve_actor (
-                       actor_location_key_t{*_actor_mesh_name, std::move (actor_id)})
-                     .result ();
-        if (!row) {
+        auto read = _store.read_authority (authority_key_t{"1:" + actor_id}).result ();
+        if (!read) {
             return task_t<std::optional<actor_ref_t>> (
               result_t<std::optional<actor_ref_t>>::failure (
-                row.error_kind (),
-                row.error () ? row.error ()->what () : "actor location lookup failed",
-                row.error () && row.error ()->is_retriable ()));
+                read.error_kind (),
+                read.error () ? read.error ()->what () : "actor authority lookup failed",
+                read.error () && read.error ()->is_retriable ()));
         }
-        if (!row.value () || !_actor_locations->accepts (*row.value ())) {
+        const auto *snapshot = std::get_if<authority_snapshot_t> (&read.value ());
+        const auto projection = snapshot
+          ? runtime::decode_actor_authority_payload (snapshot->payload)
+          : std::nullopt;
+        if (!snapshot || snapshot->allocation.state != placement_allocation_state_t::active
+            || snapshot->allocation.object_kind != placement_object_kind_t::actor
+            || !projection || projection->actor.actor_id () != actor_id) {
             return task_t<std::optional<actor_ref_t>> (
               result_t<std::optional<actor_ref_t>>::success (std::nullopt));
         }
         return task_t<std::optional<actor_ref_t>> (
-          result_t<std::optional<actor_ref_t>>::success (row.value ()->actor_ref));
+          result_t<std::optional<actor_ref_t>>::success (projection->actor));
     }
 
   private:
@@ -152,25 +156,13 @@ bool monitoring_socket_source_exists (const std::vector<channel_snapshot_t> &cha
 }
 
 void validate_monitoring_sources (const monitoring_builder_t &monitoring,
-                                  const std::vector<channel_snapshot_t> &channels,
-                                  const std::vector<spot_node_snapshot_t> &spot_nodes)
+                                  const std::vector<channel_snapshot_t> &channels)
 {
     const auto state = monitoring_runtime_t::from (monitoring).state ();
     for (const auto &source : state->socket_sources) {
         if (!monitoring_socket_source_exists (channels, source.source_name)) {
             throw framework_exception_t (framework_error_kind_t::request_protocol_error,
                                          "socket monitoring source '" + source.source_name
-                                           + "' is not registered");
-        }
-    }
-    for (const auto &source : state->spot_sources) {
-        const auto exists = std::any_of (spot_nodes.begin (), spot_nodes.end (),
-                                         [&] (const spot_node_snapshot_t &spot_node) {
-                                             return spot_node.name == source.source_name;
-                                         });
-        if (!exists) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "spot monitoring source '" + source.source_name
                                            + "' is not registered");
         }
     }
@@ -608,7 +600,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           service_lifetime_t::singleton);
     }
     if (_state->services.contains (
-          std::type_index (typeid (authority_store_t)))
+          std::type_index (typeid (location_store_t)))
         && !_state->services.contains (
           std::type_index (
             typeid (runtime::stateful::authority_relocation_port_t)))) {
@@ -619,7 +611,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 runtime::stateful::authority_relocation_port_t> (
                 std::make_unique<
                   runtime::stateful::public_authority_store_adapter_t> (
-                  provider.get_required<authority_store_t> ()));
+                  provider.get_required<location_store_t> ()));
           },
           service_lifetime_t::singleton);
     }
@@ -628,11 +620,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         _state->services.add_factory<location_store_t> (
           [store] (service_provider_t &) {
               return std::static_pointer_cast<location_store_t> (store);
-          },
-          service_lifetime_t::singleton);
-        _state->services.add_factory<location_change_stamp_store_t> (
-          [store] (service_provider_t &) {
-              return std::static_pointer_cast<location_change_stamp_store_t> (store);
           },
           service_lifetime_t::singleton);
     }
@@ -673,15 +660,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               return std::make_unique<runtime::store_location_resolvers_t> (
                 provider.get_required<runtime::live_location_reader_t> (), resolver_location_options,
                 actor_location_observer);
-          },
-          service_lifetime_t::singleton);
-    }
-    if (!_state->services.contains (std::type_index (typeid (peer_location_resolver_t)))) {
-        _state->services.add_factory<peer_location_resolver_t> (
-          [] (service_provider_t &provider) {
-              return std::shared_ptr<peer_location_resolver_t> (
-                &provider.get_required<runtime::store_location_resolvers_t> (),
-                [] (peer_location_resolver_t *) noexcept {});
           },
           service_lifetime_t::singleton);
     }
@@ -1370,22 +1348,21 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 actor, target_node, request, timeout);
           });
         actor_gateway_runtime.on_join_spot (
-          [application_mesh, actor_gateway_runtime, live_locations =
+          [application_mesh, actor_gateway_runtime, spot_locations =
              &_state->services.build_provider ()
-                .get_required<runtime::live_location_reader_t> ()] (
+                .get_required<runtime::spot_address_resolver_t> ()] (
             const actor_ref_t &actor,
             spot_id_t target_spot,
             const zlink::message_t &request,
             std::chrono::milliseconds timeout) {
               const auto deadline =
                 std::chrono::steady_clock::now () + timeout;
-              result_t<std::optional<spot_location_t>> located =
-                result_t<std::optional<spot_location_t>>::success (std::nullopt);
+              result_t<std::optional<runtime::spot_address_t>> located =
+                result_t<std::optional<runtime::spot_address_t>>::success (std::nullopt);
               do {
-                  located =
-                    live_locations
-                      ->resolve_spot (spot_location_key_t{target_spot})
-                      .result ();
+                  located = spot_locations
+                    ->resolve_spot_address ({}, target_spot)
+                    .result ();
                   if (located && located.value ())
                       break;
                   std::this_thread::sleep_for (std::chrono::milliseconds (50));
@@ -1403,7 +1380,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                     "target Spot location was not found");
               }
               const auto &target = *located.value ();
-              if (target.spot_generation == 0) {
+              if (target.object_generation == 0) {
                   return result_t<detail::actor_join_reply_t>::failure (
                     framework_error_kind_t::spot_route_not_found,
                     "target Spot lifecycle generation was not published");
@@ -1412,7 +1389,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 actor_gateway_runtime.bound_session_route (actor);
               return application_mesh->join_application_actor_to_spot (
                 actor, node_rid_t::from_string (target.node_rid.to_string ()),
-                target_spot, target.spot_generation,
+                target_spot, target.object_generation,
                 request, timeout,
                 bound_session
                   ? std::make_optional (bound_session->node_rid)
@@ -1524,7 +1501,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
     }
     const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
-    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, {});
+    detail::validate_monitoring_sources (_state->monitoring, channel_snapshot);
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
       _state->zlink.message_bus (), channel_snapshot, _state->handlers,
       _state->serializers,
@@ -1805,9 +1782,6 @@ retire_topology_blocker (detail::app_state_t &state)
     try {
         auto provider = state.services.build_provider ();
         auto &store = provider.get_required<location_store_t> ();
-        auto *mesh_store = dynamic_cast<mesh_node_location_store_t *> (&store);
-        if (mesh_store == nullptr)
-            return termination_reason_t::store_unavailable;
         auto &live = provider.get_required<runtime::live_location_reader_t> ();
 
         std::set<std::string> local_rids;
@@ -1829,8 +1803,8 @@ retire_topology_blocker (detail::app_state_t &state)
             std::vector<mesh_node_descriptor_t> descriptors;
             location_page_request_t page;
             do {
-                auto listed = mesh_store
-                                ->list_mesh_nodes (node->mesh_name (), page)
+                auto listed = store
+                                .list_mesh_nodes (node->mesh_name (), page)
                                 .result ()
                                 .value ();
                 descriptors.insert (
@@ -1956,9 +1930,7 @@ task_t<termination_result_t> app_t::terminate (
           !_state->services.contains (
             std::type_index (typeid (relocation_store_t)))
           || !_state->services.contains (
-            std::type_index (typeid (authority_store_t)))
-          || !_state->services.contains (
-            std::type_index (typeid (object_creation_store_t)))) {
+            std::type_index (typeid (location_store_t)))) {
             blocker = termination_reason_t::store_unavailable;
         }
     }
@@ -2022,10 +1994,11 @@ void app_t::run_shared_termination (
       started_at + state.termination_operation.deadline;
     const auto effective_intent =
       state.termination_operation.effective_intent;
-    auto publisher = state.monitoring.publisher ();
+    auto monitoring = detail::monitoring_runtime_t::from (state.monitoring);
     auto emit_state = [&] (drain_state_t drain_state) {
         try {
-            publisher.publish (drain_event_t{runtime_event_base_t{"drain"}, drain_state});
+            monitoring.publish_drain (
+              drain_event_t{runtime_event_base_t{"drain"}, drain_state});
             runtime::runtime_metrics_t drain_metrics (
               detail::monitoring_runtime_t::from (state.monitoring).state ());
             if (drain_metrics.enabled ()) {
@@ -2168,7 +2141,7 @@ void app_t::run_shared_termination (
             auto provider = state.services.build_provider ();
             while (std::chrono::steady_clock::now () < deadline_at) {
                 bool pass_completed = true;
-                auto peers = provider.get<peer_location_resolver_t> ();
+                auto peers = provider.get<runtime::store_location_resolvers_t> ();
                 for (auto *mesh_service : mesh_services) {
                     for (const auto &node : mesh_service->nodes ()) {
                         auto spot_runtime = detail::spot_node_runtime_t::from (
@@ -2182,14 +2155,10 @@ void app_t::run_shared_termination (
                             pass_completed = false;
                             continue;
                         }
-                        std::vector<peer_location_t> live;
+                        std::vector<mesh_node_descriptor_t> live;
                         try {
                             live = peers->get ()
-                                     .list_live_peers (peer_location_filter_t{
-                                       .auto_connect_type =
-                                         location_auto_connect_type_t::spot_mesh,
-                                       .mesh_name = node->mesh_name (),
-                                       .role = location_role_t::spot})
+                                     .list_live_mesh_nodes (node->mesh_name ())
                                      .result ()
                                      .value ();
                         }
@@ -2199,17 +2168,22 @@ void app_t::run_shared_termination (
                         }
                         const auto local_rid = node->routing_id ();
                         for (const auto &actor : actors) {
-                            const auto capability =
-                              "actor:" + std::string (actor.actor_type ());
                             const auto target = std::find_if (
                               live.begin (), live.end (), [&] (const auto &peer) {
-                                  return !peer.draining && peer.node_rid
+                                  return peer.state != framework_runtime_state_t::retiring
+                                         && peer.state != framework_runtime_state_t::draining
                                          && (!local_rid
-                                             || peer.node_rid->to_hex ()
+                                             || peer.rid.to_hex ()
                                                   != local_rid->to_hex ())
-                                         && std::find (peer.capabilities.begin (),
-                                                       peer.capabilities.end (), capability)
-                                              != peer.capabilities.end ();
+                                         && std::any_of (
+                                           peer.object_capabilities.begin (),
+                                           peer.object_capabilities.end (),
+                                           [&] (const auto &capability) {
+                                               return capability.object_kind
+                                                        == placement_object_kind_t::actor
+                                                      && capability.stable_type
+                                                           == actor.actor_type ();
+                                           });
                               });
                             if (target == live.end ()) {
                                 pass_completed = false;
@@ -2226,7 +2200,7 @@ void app_t::run_shared_termination (
                                           deadline_at - now));
                             auto moved = node->join_application_actor_to_entry_spot (
                               actor,
-                              node_rid_t::from_string (target->node_rid->to_string ()),
+                              node_rid_t::from_string (target->rid.to_string ()),
                               zlink::message_t{}, remaining);
                             if (!moved || moved.value ().result_code != 0)
                                 pass_completed = false;

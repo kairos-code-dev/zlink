@@ -2,54 +2,19 @@ namespace Zlink.Framework.AspNetCore;
 
 internal sealed class ZLinkMonitoringPollingRunner(
     ZLinkMonitoringRegistration registration,
-    Action<ZLinkSpotEvent> dispatchSpotEvent,
     Action<ZLinkLocationRuntimeEvent> dispatchLocationRuntimeEvent)
 {
     public async Task RunAsync(
-        ZLinkFrameworkRuntime? frameworkRuntime,
         IZLinkLocationRuntimeQuery? locationQuery,
         CancellationToken cancellationToken)
     {
-        var tasks = new List<Task>(
-            registration.SpotSources.Count + registration.LocationRuntimeSources.Count);
-
-        if (frameworkRuntime is not null)
-            foreach (var source in registration.SpotSources.Values)
-                tasks.Add(RunSpotLoopAsync(source, frameworkRuntime, cancellationToken));
+        var tasks = new List<Task>(registration.LocationRuntimeSources.Count);
 
         if (locationQuery is not null)
             foreach (var source in registration.LocationRuntimeSources.Values)
                 tasks.Add(RunLocationRuntimeLoopAsync(source, locationQuery, cancellationToken));
 
         if (tasks.Count > 0) await Task.WhenAll(tasks);
-    }
-
-    private async Task RunSpotLoopAsync(
-        ZLinkPollingMonitoringRegistration source,
-        ZLinkFrameworkRuntime frameworkRuntime,
-        CancellationToken cancellationToken)
-    {
-        var diff = new ZLinkSpotPollingEventDiff(source.SourceName);
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            ZLinkSpotMonitoringSnapshot snapshot;
-            try
-            {
-                snapshot = frameworkRuntime.GetSpotMonitoringSnapshot(source.SourceName);
-            }
-            catch (InvalidOperationException)
-            {
-                // Source configuration is validated before this loop starts.
-                // A later failure means the runtime generation ended between
-                // polls because of drain or host shutdown.
-                return;
-            }
-
-            var timestamp = DateTimeOffset.UtcNow;
-            diff.DispatchChanges(snapshot, timestamp, dispatchSpotEvent);
-            await Task.Delay(source.Interval, cancellationToken);
-        }
     }
 
     private async Task RunLocationRuntimeLoopAsync(

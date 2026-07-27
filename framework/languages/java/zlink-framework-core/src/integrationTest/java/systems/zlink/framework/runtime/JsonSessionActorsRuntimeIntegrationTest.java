@@ -53,7 +53,7 @@ final class JsonSessionActorsRuntimeIntegrationTest {
     private static ZLinkFrameworkRuntime startLocalJsonRuntime() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(JsonSessionActorsRuntimeIntegrationTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(SessionActorsRuntimeIntegrationTest.GameSpot.class);
                 node.addEntrySpot(SessionActorsRuntimeIntegrationTest.GameEntrySpot.class);
                 node.addActorFactory(

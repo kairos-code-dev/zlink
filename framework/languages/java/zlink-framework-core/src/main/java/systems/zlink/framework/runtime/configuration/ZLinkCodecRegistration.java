@@ -1,4 +1,4 @@
-package systems.zlink.framework.runtime.configuration;
+package systems.zlink.framework.runtime.internal.configuration;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

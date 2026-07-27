@@ -36,23 +36,21 @@ internal sealed class ZLinkMessageFlowTracer
     }
 
     public bool CaptureEnabled =>
-        _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off
-        || ObserverEnabled
+        _options.Diagnostics.EffectiveMessageFlow != ZLinkRuntimeMessageFlowMode.Off
         || RuntimeObserverEnabled;
 
     // Cheap mode gate (relaxed/volatile read of the live mode). Build the event only
     // after this returns true.
     public bool Enabled(ZLinkMessageFlowOutcome outcome)
     {
-        return ShouldLog(outcome) || ObserverEnabled || RuntimeObserverEnabled;
+        return ShouldLog(outcome) || RuntimeObserverEnabled;
     }
 
     public void Trace(ZLinkMessageFlowEvent flow)
     {
         var logEnabled = ShouldLog(flow.Outcome);
-        var observerEnabled = ObserverEnabled;
         var runtimeObserverEnabled = RuntimeObserverEnabled;
-        if (!logEnabled && !observerEnabled && !runtimeObserverEnabled) return;
+        if (!logEnabled && !runtimeObserverEnabled) return;
 
         flow = NormalizeFlowPair(flow);
         if (string.IsNullOrEmpty(flow.FlowId))
@@ -66,7 +64,7 @@ internal sealed class ZLinkMessageFlowTracer
         var logSampled = logEnabled
                          && (flow.Outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
                              || Sample(ZLinkTraceFormat.FlowIdKey(flow) ?? string.Empty));
-        if (!logSampled && !observerEnabled && !runtimeObserverEnabled) return;
+        if (!logSampled && !runtimeObserverEnabled) return;
 
         if (logSampled)
         {
@@ -80,14 +78,6 @@ internal sealed class ZLinkMessageFlowTracer
             }
         }
 
-        if (observerEnabled)
-        {
-            if (_runtime is not null)
-                _runtime.TryEnqueueMessageFlowObserver(flow);
-            else
-                _observerPump?.Enqueue(flow);
-        }
-
         if (runtimeObserverEnabled
             && ZLinkRuntimeMessageFlowProjection.TryProject(
                 flow,
@@ -99,9 +89,6 @@ internal sealed class ZLinkMessageFlowTracer
                 _observerPump?.EnqueueRuntime(projected);
         }
     }
-
-    private bool ObserverEnabled =>
-        _options.MessageFlowObserver is not null || _options.MessageFlowObserverType is not null;
 
     private bool RuntimeObserverEnabled =>
         _options.RuntimeMessageFlowObserver is not null
@@ -122,11 +109,11 @@ internal sealed class ZLinkMessageFlowTracer
     internal static ILogger CreateLogger(ILoggerFactory? factory, ILogger? fallback = null) =>
         factory?.CreateLogger(LoggerCategory) ?? fallback ?? ZLinkStandardErrorLogger.Instance;
 
-    private static ZLinkMessageFlowLogMode RequiredMode(ZLinkMessageFlowOutcome outcome)
+    private static ZLinkRuntimeMessageFlowMode RequiredMode(ZLinkMessageFlowOutcome outcome)
     {
         return outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
-            ? ZLinkMessageFlowLogMode.ErrorsOnly
-            : ZLinkMessageFlowLogMode.KeyTransitions;
+            ? ZLinkRuntimeMessageFlowMode.ErrorsOnly
+            : ZLinkRuntimeMessageFlowMode.KeyTransitions;
     }
 
     private bool Sample(string flowId)
@@ -152,7 +139,7 @@ internal sealed class ZLinkMessageFlowTracer
     {
         var diagnostics = _options.Diagnostics;
         long? size = flow.MessageSize is { } messageSize
-                     && (int)diagnostics.EffectiveMessageFlow >= (int)ZLinkMessageFlowLogMode.Verbose
+                     && (int)diagnostics.EffectiveMessageFlow >= (int)ZLinkRuntimeMessageFlowMode.Verbose
                      && diagnostics.IncludeMessageSizes
             ? messageSize
             : null;

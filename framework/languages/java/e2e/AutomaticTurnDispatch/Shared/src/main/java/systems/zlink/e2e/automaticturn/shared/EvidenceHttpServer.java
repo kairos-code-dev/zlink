@@ -15,24 +15,23 @@ import java.util.Map;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ForceStopped;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
-import systems.zlink.framework.monitoring.ZLinkDrainResult;
+import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
+import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.runtime.host.ZLinkTerminationResult;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final EvidenceStore evidence;
     private final ObjectMapper json;
     private final String endpoint;
     private final MeterRegistry metrics;
-    private final ZLinkDrainControl drain;
+    private final ZLinkFrameworkLifecycle drain;
     private final java.util.function.Supplier<ZLinkLocationRuntimeQuery> locations;
     private final DrainEvidence drainEvidence;
     private final java.util.function.Function<systems.zlink.contracts.core.RoutingId,
         CompletionStage<Boolean>> closeSpot;
     private final java.util.function.Supplier<CompletionStage<String>> routeProbe;
-    private volatile CompletionStage<ZLinkDrainResult> drainResult;
+    private volatile CompletionStage<ZLinkTerminationResult> drainResult;
     private HttpServer server;
     private boolean running;
 
@@ -53,7 +52,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ObjectMapper json,
         String endpoint,
         MeterRegistry metrics,
-        ZLinkDrainControl drain,
+        ZLinkFrameworkLifecycle drain,
         java.util.function.Supplier<ZLinkLocationRuntimeQuery> locations,
         DrainEvidence drainEvidence,
         java.util.function.Function<systems.zlink.contracts.core.RoutingId,
@@ -94,7 +93,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     return;
                 }
                 long deadlineMs = queryLong(exchange.getRequestURI().getRawQuery(), "deadlineMs", 30000L);
-                drainResult = drain.drain(Duration.ofMillis(deadlineMs));
+                drainResult = drain.retire(Duration.ofMillis(deadlineMs));
                 write(exchange, "{\"accepted\":true}");
             });
             server.createContext("/drain/status", exchange -> write(
@@ -132,7 +131,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         snapshot.put("ready", ready);
         snapshot.put("events", drainEvidence == null ? List.of() : drainEvidence.events().stream()
             .map(event -> Map.of(
-                "state", event.state().name(),
+                "state", event.state(),
                 "timestamp", event.timestamp().toString()))
             .toList());
         if (locations != null) {
@@ -144,24 +143,29 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     "ownerLeaseHealthy", status.ownerLeaseHealthy(),
                     "ownerLeaseRenewedAt", status.ownerLeaseRenewedAt() == null
                         ? "" : status.ownerLeaseRenewedAt().toString()));
-                snapshot.put("peerRows", query.listPeerLocations(ZLinkPeerLocationFilter.all())
-                    .toCompletableFuture().join().stream().map(peer -> Map.of(
-                        "nodeRid", peer.nodeRid() == null ? "" : peer.nodeRid().toString(),
+                snapshot.put("peerRows", query.listTopology(
+                        ZLinkLocationTopologyFilter.all(),
+                        new ZLinkPageRequest(1_000, null))
+                    .toCompletableFuture().join().items().stream().map(peer -> Map.of(
+                        "nodeRid", peer.nodeRid().toString(),
                         "meshName", peer.meshName(),
-                        "role", peer.role().name().toLowerCase(),
+                        "role", "mesh-node",
                         "draining", peer.draining(),
-                        "ownerId", peer.ownerId() == null ? "" : peer.ownerId())).toList());
+                        "ownerId", "")).toList());
             } catch (RuntimeException error) {
                 snapshot.put("locationError", error.toString());
             }
         }
-        CompletionStage<ZLinkDrainResult> current = drainResult;
+        CompletionStage<ZLinkTerminationResult> current = drainResult;
         if (current != null && current.toCompletableFuture().isDone()) {
             try {
-                ZLinkDrainResult result = current.toCompletableFuture().join();
-                snapshot.put("result", result instanceof Drained ? "drained" : "force_stopped");
-                if (result instanceof ForceStopped forced) {
-                    snapshot.put("reason", forced.reason().name().toLowerCase());
+                ZLinkTerminationResult result = current.toCompletableFuture().join();
+                snapshot.put("result", result.outcome()
+                    == systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.STOPPED
+                        ? "drained" : "force_stopped");
+                if (result.outcome()
+                    == systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.FORCE_STOPPED) {
+                    snapshot.put("reason", result.reason().name().toLowerCase());
                 }
             } catch (RuntimeException error) {
                 snapshot.put("resultError", error.toString());

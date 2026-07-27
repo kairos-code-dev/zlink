@@ -6,7 +6,7 @@ import {
   type ZLinkLocationRuntimeQuery,
   type ZLinkSpotManager,
   type ZLinkSpotOutbound,
-  type ZLinkSpotHandleResolver
+  type ZLinkSpotManager
 } from '@zlink-systems/framework';
 import type {
   CreateSpotReq,
@@ -30,7 +30,7 @@ export function createMultiNodeEndpoints(
   evidence: EvidenceStore,
   spots: ZLinkSpotManager,
   outbound: ZLinkSpotOutbound,
-  spotRefs: ZLinkSpotHandleResolver,
+  spotRefs: ZLinkSpotManager,
   actors: ZLinkActorManager,
   actorClient: ZLinkActorClient,
   locations: ZLinkLocationRuntimeQuery,
@@ -185,7 +185,7 @@ export function createMultiNodeEndpoints(
 
 async function waitForScaleOutReadiness(
   locations: ZLinkLocationRuntimeQuery,
-  spotRefs: ZLinkSpotHandleResolver,
+  spotRefs: ZLinkSpotManager,
   request: ScaleOutReadinessReq
 ): Promise<ScaleOutReadinessRes> {
   const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 30_000));
@@ -197,10 +197,7 @@ async function waitForScaleOutReadiness(
     });
     const peer = rows.find((row) => String(row.nodeRid) === request.nodeRid);
     const capabilities = peer?.capabilities ?? [];
-    const entrySpotReady = await spotRefs.resolveSpotHandle(
-      SpotServiceNames.spotOnlyMesh,
-      request.nodeRid
-    ) !== undefined;
+    const entrySpotReady = await spotRefs.find(request.nodeRid) !== undefined;
     if (peer !== undefined
       && capabilities.includes(`actor:${SpotServiceNames.actorType}`)
       && entrySpotReady) {

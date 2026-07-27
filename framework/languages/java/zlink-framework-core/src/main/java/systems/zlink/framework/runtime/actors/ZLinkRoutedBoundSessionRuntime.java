@@ -9,8 +9,8 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 

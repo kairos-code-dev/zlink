@@ -20,7 +20,7 @@ bingo_entry_spot_t::match_bingo (const player_actor_t &actor,
                      .submit<match_bingo_api_res_t> ();
     const auto join_request = bingo_room_join_req_t{
       matched.room_id, actor.actor.actor_id, display_name};
-    actor.context.join_spot (matched.room_id, join_request).defer ();
+    actor.context->join_spot (matched.room_id, join_request).defer ();
     co_return match_bingo_res_t{
       matched.room_id,
       bingo_room_state_t{.room_id = matched.room_id}};

@@ -151,7 +151,7 @@ RouteMesh에 참여하여 message를 보내거나 받는 runtime node다. Object
 | 항목 | 내용 |
 |---|---|
 | 형태 | Distributed provider capability |
-| .NET 표기 | `IZLinkLocationStore`; authority transaction은 `IZLinkAuthorityStore` |
+| .NET 표기 | `IZLinkLocationStore`; descriptor, owner lease와 authority transaction을 하나의 provider interface로 제공한다. |
 | 공개 구성 | Descriptor, host owner lease, Spot·Actor location, durable authority, placement reservation과 generation counter를 관리한다. |
 | 수명 | Host마다 하나의 provider instance를 등록한다. Ephemeral descriptor와 durable authority는 서로 다른 수명 규칙을 사용한다. |
 
@@ -1003,8 +1003,8 @@ request reply는 deadline까지 처리한 뒤 descriptor, owner lease와 listene
 | 항목 | 내용 |
 |---|---|
 | 형태 | Lifecycle process와 closed state |
-| .NET 표기 | `IZLinkDrainControl`, `ZLinkDrainState`, `ZLinkDrainEvent` |
-| 공개 구성 | `Serving`, `Draining`, `Drained`, `ForceStopping` 상태와 drain deadline을 사용한다. |
+| .NET 표기 | `IZLinkFrameworkRuntime`, `ZLinkFrameworkRuntimeState`, `ZLinkFrameworkRuntimeEvent` |
+| 공개 구성 | `RetireAsync`·`ShutdownAsync`, host runtime state와 deadline을 사용한다. |
 | 수명 | Drain 시작부터 정상 정리 또는 force-stop 완료까지 진행하며 이미 수락한 작업의 deadline을 보존한다. |
 
 <a id="drain-deadline"></a>

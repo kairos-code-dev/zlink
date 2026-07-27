@@ -3,7 +3,7 @@ import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
   type ZLinkPeerLocation
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import {
   zlinkLocationAutoConnectTypeName,
   zlinkLocationRoleName

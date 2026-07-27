@@ -20,6 +20,20 @@ relocation envelope과 relocation phase를 해석하지 않는다.
 
 Location Store와 Relocation Store는 서로 별도로 등록한다.
 
+각 언어에서 provider가 구현하는 public SPI도 Location Store와 Relocation Store 두 개뿐이다. Location Store는
+MeshNode·ClientServer·fanout descriptor, owner lease, object authority, placement reservation과 aggregate commit
+operation을 모두 직접 제공한다. 이 책임을 descriptor·lease·authority별 public interface로 나누거나 일부
+capability만 구현한 Store를 조합하지 않는다. Relocation Store는 immutable relocation payload만 제공한다.
+Application이 사용하는 operational query와 readiness API는 provider SPI가 아니며 그대로 분리한다.
+
+Change stamp는 `IZLinkLocationStore`의 선택적 최적화다. Provider가 stamp를 유지하면 현재 값을 반환하고,
+지원하지 않으면 `null`을 반환한다. Framework는 `null`일 때 목록을 매 polling tick마다 읽는다. 따라서 stamp
+지원 여부는 startup capability 검사가 아니며 correctness나 공개된 discovery 결과를 바꾸지 않는다.
+
+반면 root 없는 `Preparing` authority를 정리하는 exact recovery primitive는 모든 Location Store provider의
+필수 member다. Startup recovery는 stored owner token과 StoreVersion을 함께 검증해 steady payload로 되돌린다.
+이를 선택 capability나 application API로 분리하지 않으며 runtime은 provider type을 downcast하지 않는다.
+
 [Location Store](01-glossary.ko.md#location-store)는 “현재 누가 처리 권한을 가지는가”와 “이동이 어느 단계까지
 확정되었는가”를 저장한다. Owner와 위치, generation, membership, placement
 reservation뿐 아니라 relocation ID, source·target 검증 정보, 이동 payload의
@@ -202,7 +216,8 @@ mutation은 Active `Found`의 exact expected StoreVersion만 받는다. Missing�
 전담하므로 public compare-exchange에 Missing expectation을 제공하지 않는다.
 
 - Preserve는 Active allocation에서 target owner token 없이 object, authority owner generation과 placement
-  allocation을 유지하고 StoreRevision만 바꾼다.
+  allocation을 유지하고 StoreRevision만 바꾼다. Standalone relocation의 `Captured` root 갱신과 `Prepared`
+  게시에는 이미 예약된 exact relocation capacity fence를 함께 전달할 수 있다.
 - NewOwner는 Active allocation에서 exact target owner token과 relocation capacity fence를 받아 ObjectGeneration을
   유지한 채 새 AuthorityOwnerGeneration을 발급하고 target Active allocation으로 교체한다.
 - Delete는 Active allocation에서만 row와 current index entry를 제거하고 current active capacity delta를 같은
@@ -215,8 +230,11 @@ NewOwner에서 반드시 있어야 한다. Provider는 이 token으로 owner ID�
 lease를, NewOwner는 mutation의 target owner token lease를 같은 transaction에서 검증한다. Lease가
 missing·stale이면 current authority read를 담은 Conflict로 끝내고 row·index·counter를 변경하지 않는다. Token
 존재 규칙을 위반한 mutation은 provider I/O 전에 argument validation error로 거부한다. Relocation capacity
-fence는 `NewOwner`에서만 반드시 있고 `Preserve`에서는 없어야 한다. 이 조합도 provider I/O 전에
-검증한다.
+fence는 `NewOwner`에서 반드시 있다. 일반 `Preserve`에는 없지만 standalone relocation의 `Captured` root 갱신과
+`Prepared` 게시에는 같은 reserved fence가 있을 수 있다. Provider는 payload나 phase를 해석하지 않고 fence에
+저장된 authority key·expected StoreVersion·source·target owner와 durable allocation을 exact하게 검증한다.
+Fence를 포함한 `Preserve`가 성공하면 payload CAS와 같은 transaction에서 reservation의 expected StoreVersion을
+새 StoreVersion으로 바꾼다. 이때 owner와 capacity는 바꾸지 않고 fence도 `Reserved`로 유지한다.
 
 Missing→Reserved allocation은 generic `Reserve`, Reserved→Active는 exact reservation `Commit`, Reserved→Missing은
 exact `Abort`만 수행한다. Active→다른 Active는 capacity fence를 소비하는 NewOwner 또는 aggregate commit,
@@ -497,9 +515,11 @@ Target descriptor lifecycle·owner lease·capability·reserved capacity는 같�
 검증하고 target reserved capacity를 예약한다. 같은 reservation ID와 exact request의 재호출은
 같은 fence를 반환하고, 다른 내용은 conflict다. 이 operation은 authority owner나 source admission을 바꾸지 않는다.
 
-Standalone Actor의 `NewOwner` Put은 exact relocation capacity fence를 반드시 포함한다. Provider는 authority CAS와
-같은 transaction에서 source active capacity를 줄이고 target reserved을 active로 바꾼 뒤 fence를 committed로
-닫는다. User Spot aggregate는 standalone relocation capacity fence를 사용하지 않는다. 모든 `NewOwner`
+Standalone Actor는 initial `Captured` authority version으로 capacity를 예약한다. Target restore 뒤 final queue·timer
+delta를 저장하면 같은 fence를 포함한 `Preserve` CAS로 `Captured` root를 갱신하고, `Prepared` 게시에서도 같은
+방식으로 fence를 다음 authority version에 재결합한다. 이어지는 `NewOwner` Put은 재결합된 exact fence를 반드시
+포함한다. Provider는 authority CAS와 같은 transaction에서 source active capacity를 줄이고 target reserved을
+active로 바꾼 뒤 fence를 committed로 닫는다. User Spot aggregate는 standalone relocation capacity fence를 사용하지 않는다. 모든 `NewOwner`
 participant의 allocation delta를 합한 단일 typed capacity bundle을 aggregate prepare가 같은 transaction에서
 예약하고, aggregate commit이 모든 capacity·owner·membership mutation을 함께 적용한다. Commit 전 abort는
 aggregate fence가 소유한 target reserved만 해제한다. 이미 committed
@@ -548,7 +568,7 @@ pending-to-active로 바꾼다. Completion·steady-normalization mode에서는 e
 
 | Phase | Main owner와 target rule |
 |---|---|
-| `Preparing`, `Captured` | Main owner는 relocation을 시작한 source로 고정된다. 이 phase에는 target attempt, target token과 target reservation이 없다. |
+| `Preparing`, `Captured` | Main owner는 relocation을 시작한 source로 고정된다. 이 phase에는 target attempt와 target token이 없다. Initial `Captured`는 reservation 전이고, final root를 게시하는 `Captured` 갱신은 이미 예약된 fence를 다음 StoreVersion에 재결합할 수 있다. |
 | `Prepared` | Main owner는 source다. 0이 아닌 exact target attempt, target owner lease, target node, target reservation과 relocation root가 모두 존재해야 한다. |
 | `Committed`부터 `Completed`까지 | Main owner는 exact current target이다. 같은 target attempt, reservation과 relocation root를 계속 사용한다. |
 | `Aborted` | Main owner는 source다. Abort ACK, cleanup과 steady source normalization이 끝날 때까지 application admission을 닫아 둔다. |

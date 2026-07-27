@@ -19,7 +19,7 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(
             node,
-            messageFlowMode: ZLinkMessageFlowLogMode.KeyTransitions,
+            messageFlowMode: ZLinkRuntimeMessageFlowMode.KeyTransitions,
             includeJoinTarget: true);
         try
         {
@@ -71,7 +71,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(
             node,
             observer,
-            messageFlowMode: ZLinkMessageFlowLogMode.KeyTransitions);
+            messageFlowMode: ZLinkRuntimeMessageFlowMode.KeyTransitions);
         try
         {
             var actor = RegisterProbeActor(runtime, actorRef);
@@ -86,18 +86,18 @@ public sealed partial class EntrySpotActorDispatchTests
                 await Task.Delay(5);
 
             var events = observer.Events
-                .Where(flow => flow.Surface == ZLinkDispatchErrorSurface.SpotActor
-                               && flow.MessageKind == ZLinkDispatchMessageKind.ActorRequest
+                .Where(flow => flow.Surface == "actor"
+                               && flow.MessageKind == "request"
                                && flow.ActorId == actor.ActorId)
                 .ToArray();
             Assert.Equal(2, events.Length);
             Assert.Equal(
-                [ZLinkMessageFlowOutcome.Received, ZLinkMessageFlowOutcome.Replied],
-                events.Select(flow => flow.Outcome));
+                ["received", "replied"],
+                events.Select(flow => flow.Phase));
             Assert.All(events, flow =>
             {
                 Assert.Equal(ExactActorFlowId, flow.FlowId);
-                Assert.Equal(ZLinkFlowOrigin.Application, flow.FlowOrigin);
+                Assert.Equal("application", flow.FlowOrigin);
                 Assert.Equal("corr-1", flow.CorrelationId);
             });
         }
@@ -112,8 +112,8 @@ public sealed partial class EntrySpotActorDispatchTests
         string actorId)
     {
         return observer.Events.Count(flow =>
-            flow.Surface == ZLinkDispatchErrorSurface.SpotActor
-            && flow.MessageKind == ZLinkDispatchMessageKind.ActorRequest
+            flow.Surface == "actor"
+            && flow.MessageKind == "request"
             && flow.ActorId == actorId);
     }
 

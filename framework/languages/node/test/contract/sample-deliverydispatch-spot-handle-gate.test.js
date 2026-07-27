@@ -9,19 +9,15 @@ function read(relativePath) {
   return fs.readFileSync(path.join(nodeRoot, relativePath), 'utf8');
 }
 
-test('DeliveryDispatch addresses courier entry spots through opaque handles', () => {
+test('DeliveryDispatch uses public Actor APIs without internal Spot handle resolvers', () => {
   for (const source of [
     'samples/DeliveryDispatch.Ts/Server/DispatchCenter/dispatch-worker.ts',
     'samples/DeliveryDispatch.Ts/Server/CourierSession/courier-session.ts'
   ]) {
     const content = read(source);
-    assert.match(content, /ZLINK_SPOT_HANDLE_RESOLVER/);
-    assert.match(content, /ZLINK_SPOT_OUTBOUND/);
-    assert.match(
-      content,
-      /resolveSpotHandle\(\s*SampleNames\.routeMesh,\s*courierActorNodeRid\(courierId\)\s*\)/
-    );
-    assert.doesNotMatch(content, /ZLINK_ROUTE_CLIENT|requestToNode|sendToNode/);
+    assert.doesNotMatch(content, /ZLINK_SPOT_HANDLE_RESOLVER|resolveSpotHandle/);
+    assert.match(content, /ZLINK_ACTOR_CLIENT|ZLINK_ACTOR_MANAGER/);
+    assert.doesNotMatch(content, /requestToNode|sendToNode/);
   }
 
   const names = read('samples/DeliveryDispatch.Ts/Shared/Configuration/sample-names.ts');

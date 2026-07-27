@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;

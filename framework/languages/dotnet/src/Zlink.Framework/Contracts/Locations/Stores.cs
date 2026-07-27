@@ -1,25 +1,12 @@
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
-/// Provides descriptor, owner lease, and object authority capabilities in
-/// one transaction domain.
+/// Provides every descriptor, owner lease, and object authority operation in
+/// one transaction domain. A provider implements one complete location store;
+/// callers do not assemble partial capabilities. This is a provider SPI;
+/// application code uses the framework object and operational query APIs.
 /// </summary>
-public interface IZLinkLocationStore :
-    IZLinkMeshNodeLocationStore,
-    IZLinkOwnerLeaseStore,
-    IZLinkAuthorityStore
-{
-    /// <summary>
-    /// Removes ephemeral descriptors owned by the exact host lease token.
-    /// Durable object authority and reservations remain until an explicit
-    /// versioned authority operation removes or completes them.
-    /// </summary>
-    ValueTask<long> RemoveAllByOwnerAsync(
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkMeshNodeLocationStore
+public interface IZLinkLocationStore
 {
     ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,
@@ -35,10 +22,7 @@ public interface IZLinkMeshNodeLocationStore
         string meshName,
         ZLinkPageRequest page,
         CancellationToken cancellationToken = default);
-}
 
-public interface IZLinkClientServerLocationStore
-{
     ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
         ZLinkClientServerServerDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
@@ -53,10 +37,7 @@ public interface IZLinkClientServerLocationStore
         string channelName,
         ZLinkPageRequest page,
         CancellationToken cancellationToken = default);
-}
 
-public interface IZLinkFanoutLocationStore
-{
     ValueTask<ZLinkLocationWriteResult> UpdateFanoutPublisherAsync(
         ZLinkFanoutPublisherDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
@@ -71,10 +52,7 @@ public interface IZLinkFanoutLocationStore
         string channelName,
         ZLinkPageRequest page,
         CancellationToken cancellationToken = default);
-}
 
-public interface IZLinkOwnerLeaseStore
-{
     ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
         string ownerId,
         TimeSpan leaseTtl,
@@ -92,17 +70,81 @@ public interface IZLinkOwnerLeaseStore
     ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
         ZLinkLocationOwnerToken token,
         CancellationToken cancellationToken = default);
-}
 
-/// <summary>
-/// Optional. Returns a counter the store increments on every row change in
-/// the scope, so a polling tick whose stamp is unchanged can skip the full
-/// list query. The stamp is an optimization, never a correctness authority
-/// (06-location-store §7).
-/// </summary>
-public interface IZLinkLocationChangeStampStore
-{
-    ValueTask<ulong> GetChangeStampAsync(
-        ZLinkLocationChangeStampScope scope,
+    ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        ZLinkAuthorityKey key,
         CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
+        ZLinkAuthorityKey key,
+        string expectedStoreVersion,
+        ZLinkAuthorityMutation mutation,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+        string prefix,
+        ZLinkAuthorityScanCursor? cursor,
+        int limit,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+        ZLinkObjectReservationRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkObjectCommitResult> CommitAsync(
+        ZLinkObjectReservation reservation,
+        ReadOnlyMemory<byte> readyPayload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        ZLinkObjectReservation reservation,
+        ZLinkObjectCreationCompletion completion,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        ZLinkCreationOperationId operation,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkObjectAbortResult> AbortAsync(
+        ZLinkObjectReservation reservation,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
+        ZLinkRelocationCapacityReservationRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
+        ZLinkRelocationCapacityFence fence,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
+        ZLinkAggregatePrepareRequest request,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
+        ZLinkAggregateFence fence,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
+        ZLinkAggregateFence fence,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes ephemeral descriptors owned by the exact host lease token.
+    /// Durable object authority and reservations remain until an explicit
+    /// versioned authority operation removes or completes them.
+    /// </summary>
+    ValueTask<long> RemoveAllByOwnerAsync(
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns an optional counter that changes whenever a MeshNode descriptor
+    /// in the named mesh changes. Providers that do not maintain this counter
+    /// return null; polling remains the correctness path.
+    /// </summary>
+    ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<ulong?>(null);
 }

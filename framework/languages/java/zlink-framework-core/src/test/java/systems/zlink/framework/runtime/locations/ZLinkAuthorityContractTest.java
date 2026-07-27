@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
@@ -21,11 +22,13 @@ import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
 import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityMutation;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.locations.ZLinkAuthorityRestore;
 import systems.zlink.framework.locations.ZLinkAuthorityReadResult;
 import systems.zlink.framework.locations.ZLinkAuthorityScanCursor;
 import systems.zlink.framework.locations.ZLinkAuthorityScanResult;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
 import systems.zlink.framework.locations.ZLinkAuthorityStored;
 import systems.zlink.framework.locations.ZLinkAuthorityWriteResult;
 import systems.zlink.framework.locations.ZLinkObjectAbortResult;
@@ -51,13 +54,13 @@ final class ZLinkAuthorityContractTest {
     void exactAuthorityStoreMethodsArePublic() throws Exception {
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "read",
                 String.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "compareExchange",
                 String.class,
                 ZLinkAuthorityExpectation.class,
@@ -65,7 +68,7 @@ final class ZLinkAuthorityContractTest {
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "list",
                 String.class,
                 Optional.class,
@@ -73,22 +76,27 @@ final class ZLinkAuthorityContractTest {
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "prepareAggregate",
                 ZLinkAggregatePrepareRequest.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "reserveRelocationCapacity",
                 ZLinkRelocationCapacityReservationRequest.class,
                 ZLinkStoreCancellation.class).getReturnType());
         assertEquals(
             CompletionStage.class,
-            ZLinkAuthorityStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                 "abortRelocationCapacity",
                 ZLinkRelocationCapacityFence.class,
                 ZLinkStoreCancellation.class).getReturnType());
+        assertEquals(
+            CompletionStage.class,
+            ZLinkLocationStore.class.getMethod(
+                "getMeshNodeChangeStamp",
+                String.class).getReturnType());
     }
 
     @Test
@@ -121,6 +129,12 @@ final class ZLinkAuthorityContractTest {
         assertArrayEquals(
             new Class<?>[] {ZLinkAuthorityExpectFound.class},
             ZLinkAuthorityExpectation.class.getPermittedSubclasses());
+        assertEquals(
+            Set.of(
+                ZLinkAuthorityPut.class,
+                ZLinkAuthorityRestore.class,
+                systems.zlink.framework.locations.ZLinkAuthorityDelete.class),
+            Set.of(ZLinkAuthorityMutation.class.getPermittedSubclasses()));
     }
 
     @Test
@@ -225,28 +239,19 @@ final class ZLinkAuthorityContractTest {
 
     @Test
     void registeredLocationCapabilityExposesTheSameAuthorityProvider() {
-        ZLinkAuthorityStore authority = new ContractAuthorityStore();
+        ZLinkLocationStore authority = new ContractAuthorityStore();
         ZLinkRegisteredLocationStores stores =
-            new ZLinkRegisteredLocationStores(
-                null,
-                null,
-                null,
-                null,
-                null,
-                authority,
-                null,
-                null,
-                null);
+            ZLinkRegisteredLocationStores.fromUnified(authority);
         ZLinkHandlerActivator.MutableServices services =
             ZLinkHandlerActivator.services();
 
         stores.addTo(services);
 
-        assertSame(authority, services.create(ZLinkAuthorityStore.class));
+        assertSame(authority, services.create(ZLinkLocationStore.class));
     }
 
     private static final class ContractAuthorityStore
-        implements ZLinkAuthorityStore {
+        extends ZLinkLocationStoreTestAdapter {
         @Override
         public CompletionStage<ZLinkAuthorityReadResult> read(
             String key,

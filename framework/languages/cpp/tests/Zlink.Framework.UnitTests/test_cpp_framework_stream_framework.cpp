@@ -282,7 +282,6 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
             const std::lock_guard lock (_mutex);
             ++_errors;
             _last_error = error.error ();
-            _last_native_code = error.native_code ();
         }
         _changed.notify_all ();
         co_return;
@@ -317,12 +316,6 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
         return _last_error;
     }
 
-    int last_native_code () const
-    {
-        const std::lock_guard lock (_mutex);
-        return _last_native_code;
-    }
-
   private:
     void record (int &counter)
     {
@@ -348,7 +341,73 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
     int _packets = 0;
     zlink::framework::stream_session_error_t _last_error =
       zlink::framework::stream_session_error_t::internal;
-    int _last_native_code = 0;
+};
+
+class rejected_connected_session_t final : public zlink::framework::packet_stream_session_t
+{
+  public:
+    zlink::framework::task_t<void> on_connected (zlink::framework::stream_t &stream) override
+    {
+        {
+            const std::lock_guard lock (_mutex);
+            _stream = stream;
+            _manager_was_attached = &stream.actors () != nullptr;
+        }
+        _changed.notify_all ();
+        return zlink::framework::task_t<void> (
+          zlink::framework::result_t<void>::failure (
+            zlink::framework::framework_error_kind_t::request_failed,
+            "connection callback rejected"));
+    }
+
+    zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
+    {
+        co_return;
+    }
+
+    zlink::framework::task_t<void> on_error (
+      zlink::framework::stream_t &,
+      const zlink::framework::stream_error_t &) override
+    {
+        co_return;
+    }
+
+    bool wait_until_actor_manager_is_detached ()
+    {
+        {
+            std::unique_lock lock (_mutex);
+            if (!_changed.wait_for (lock, std::chrono::seconds (2),
+                                    [&] { return _stream.has_value (); })) {
+                return false;
+            }
+            if (!_manager_was_attached) {
+                return false;
+            }
+        }
+        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (2);
+        while (std::chrono::steady_clock::now () < deadline) {
+            zlink::framework::stream_t observed;
+            {
+                const std::lock_guard lock (_mutex);
+                observed = *_stream;
+            }
+            try {
+                (void) observed.actors ();
+            }
+            catch (const zlink::framework::framework_exception_t &error) {
+                return error.kind ()
+                       == zlink::framework::framework_error_kind_t::invalid_configuration;
+            }
+            std::this_thread::sleep_for (std::chrono::milliseconds (10));
+        }
+        return false;
+    }
+
+  private:
+    std::mutex _mutex;
+    std::condition_variable _changed;
+    std::optional<zlink::framework::stream_t> _stream;
+    bool _manager_was_attached = false;
 };
 
 std::uint16_t reserve_loopback_port ()
@@ -822,7 +881,7 @@ int main ()
     const auto transport_error = runtime.dispatch_error (
       error_session, error_stream,
       zlink::framework::stream_error_t (zlink::framework::stream_session_error_t::transport_error,
-                                        100, "transport"));
+                                        "transport"));
     if (!transport_error || error_session.events.size () != 1
         || error_session.events[0] != "error:transport") {
         return 14;
@@ -1040,8 +1099,7 @@ int main ()
     const bool transport_disconnect_reported = transport_session.wait_disconnected (2);
     if (!transport_failure_reported || !transport_disconnect_reported
         || transport_session.last_error ()
-             != zlink::framework::stream_session_error_t::transport_error
-        || transport_session.last_native_code () == 0) {
+             != zlink::framework::stream_session_error_t::transport_error) {
         transport_host.stop ();
         return 32;
     }
@@ -1071,5 +1129,35 @@ int main ()
     }
 
     transport_host.stop ();
+
+    const auto rejected_port = reserve_loopback_port ();
+    const auto rejected_endpoint =
+      "tcp://127.0.0.1:" + std::to_string (rejected_port);
+    zlink::framework::zlink_builder_t rejected_zlink;
+    zlink::framework::zlink_framework_options_t rejected_options (
+      transport_services, transport_handlers, transport_serializers, rejected_zlink,
+      transport_monitoring);
+    rejected_options.add_stream_node ("rejected-stream")
+      .bind (rejected_endpoint)
+      .register_session ("rejected-session");
+    rejected_options.apply ();
+    rejected_connected_session_t rejected_session;
+    zlink::framework::runtime::stream_host_service_t rejected_host (
+      zlink::framework::detail::stream_runtime_t::from (rejected_zlink),
+      zlink::framework::detail::stream_runtime_t::from (rejected_zlink).snapshots (),
+      {{"rejected-session",
+        [&rejected_session] (zlink::framework::service_provider_t &)
+          -> zlink::framework::packet_stream_session_t & { return rejected_session; }}});
+    rejected_host.start (transport_provider);
+    const int rejected_client = connect_loopback (rejected_port);
+    if (rejected_client < 0 || !rejected_session.wait_until_actor_manager_is_detached ()) {
+        if (rejected_client >= 0) {
+            ::close (rejected_client);
+        }
+        rejected_host.stop ();
+        return 37;
+    }
+    ::close (rejected_client);
+    rejected_host.stop ();
     return 0;
 }

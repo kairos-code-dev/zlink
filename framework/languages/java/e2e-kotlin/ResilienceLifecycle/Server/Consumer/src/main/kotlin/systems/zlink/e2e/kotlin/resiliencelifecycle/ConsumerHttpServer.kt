@@ -11,14 +11,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.springframework.context.SmartLifecycle
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
-import systems.zlink.framework.locations.ZLinkLocationRole
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter
+import systems.zlink.framework.locations.ZLinkLocationStore
+import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 
 class ConsumerHttpServer(
     private val client: ZLinkClient,
     private val lifecycle: ZLinkFrameworkLifecycle,
+    private val locations: ZLinkLocationStore,
     private val json: ObjectMapper,
     private val endpoint: String,
 ) : SmartLifecycle {
@@ -80,20 +80,15 @@ class ConsumerHttpServer(
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
         while (System.nanoTime() < deadline) {
             val matches = try {
-                lifecycle.monitoringLocationRuntimeQuery()
-                    .listPeerLocations(
-                        ZLinkPeerLocationFilter(
-                            ZLinkLocationAutoConnectType.CLIENT_SERVER,
-                            Contracts.CHANNEL,
-                            ZLinkLocationRole.ROUTER,
-                            null,
-                            null,
-                        ),
-                    )
+                locations.listClientServers(
+                    Contracts.CHANNEL,
+                    ZLinkPageRequest(1_000, null),
+                )
                     .toCompletableFuture()
                     .get(3, TimeUnit.SECONDS)
+                    .items()
                     .asSequence()
-                    .filter { request.routingId == null || it.nodeRid().toString() == request.routingId }
+                    .filter { request.routingId == null || it.serverRid().toString() == request.routingId }
                     .filter { request.endpoint == null || it.endpoint() == request.endpoint }
                     .count()
             } catch (_: Exception) {
@@ -112,19 +107,13 @@ class ConsumerHttpServer(
 
     private fun readTopology(): Contracts.TopologyReadRes {
         return try {
-            val matches = lifecycle.monitoringLocationRuntimeQuery()
-                .listPeerLocations(
-                    ZLinkPeerLocationFilter(
-                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
-                        Contracts.CHANNEL,
-                        ZLinkLocationRole.ROUTER,
-                        null,
-                        null,
-                    ),
-                )
+            val matches = locations.listClientServers(
+                Contracts.CHANNEL,
+                ZLinkPageRequest(1_000, null),
+            )
                 .toCompletableFuture()
                 .get(3, TimeUnit.SECONDS)
-                .count()
+                .items().count()
             Contracts.TopologyReadRes("ok", matches, null)
         } catch (error: Exception) {
             Contracts.TopologyReadRes("error", 0, error.javaClass.simpleName)

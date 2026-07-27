@@ -76,6 +76,10 @@ public final class ChannelRegistration {
         return fanout.publisherBinds;
     }
 
+    String fanoutAdvertiseHost() {
+        return fanout.advertiseHost;
+    }
+
     List<String> subscriberManualEndpoints() {
         return subscriberConnections.listConnections();
     }
@@ -265,6 +269,15 @@ public final class ChannelRegistration {
 
     void addPublisherBind(String endpoint) {
         fanout.publisherBinds.add(requireEndpoint(endpoint));
+    }
+
+    void replacePublisherBind(String endpoint) {
+        fanout.publisherBinds.clear();
+        fanout.publisherBinds.add(requireEndpoint(endpoint));
+    }
+
+    void setFanoutAdvertiseHost(String host) {
+        fanout.advertiseHost = host;
     }
 
     void addSubscriberManualEndpoint(String endpoint) {
@@ -586,6 +599,7 @@ public final class ChannelRegistration {
 
     private static final class FanoutState {
         private final List<String> publisherBinds = new ArrayList<>();
+        private String advertiseHost;
         private final List<String> subscriberManualEndpoints = new ArrayList<>();
         private final List<ChannelPublishHandlerRegistration> publishHandlers = new ArrayList<>();
         private boolean publisherEnabled;

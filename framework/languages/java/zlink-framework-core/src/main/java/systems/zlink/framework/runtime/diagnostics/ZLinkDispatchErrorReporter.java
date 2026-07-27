@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 

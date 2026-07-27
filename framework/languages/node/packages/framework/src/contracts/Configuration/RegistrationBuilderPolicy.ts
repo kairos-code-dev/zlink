@@ -69,57 +69,12 @@ export function registerActorFactory(
   options.actorFactories[type] = factoryType;
 }
 
-export interface MutableZLinkRoutingIdAllocationOptions {
-  slotCount: number;
-  routingIdPrefix: string;
-  groupName?: string;
-}
-
-export function createRoutingIdAllocation(
-  slotCount: number,
-  routingIdPrefix: string,
-  groupName?: string
-): MutableZLinkRoutingIdAllocationOptions {
-  if (!Number.isInteger(slotCount) || slotCount < 1) {
-    throw new ZLinkConfigurationException('Routing-id allocation slot count must be a positive integer.');
+export function validateRoutingIdPrefix(prefix: string): string {
+  if (prefix.trim().length === 0 || prefix !== prefix.trim()) {
+    throw new ZLinkConfigurationException('Routing-id prefix must not be empty or padded.');
   }
-  if (routingIdPrefix.trim().length === 0) {
-    throw new ZLinkConfigurationException('Routing-id allocation prefix must not be empty.');
+  if (Buffer.byteLength(`${prefix}-00000000-0000-0000-0000-000000000000`, 'utf8') > 255) {
+    throw new ZLinkConfigurationException('Routing-id prefix is too long for a generated routing id.');
   }
-  return { slotCount, routingIdPrefix, groupName };
-}
-
-export function setRoutingIdAllocationGroup(
-  groupName: string,
-  allocation: MutableZLinkRoutingIdAllocationOptions | undefined,
-  defaultPrefix: string
-): MutableZLinkRoutingIdAllocationOptions {
-  if (groupName.trim().length === 0) {
-    throw new ZLinkConfigurationException('Routing-id allocation group name must not be empty.');
-  }
-  return allocation === undefined
-    ? { slotCount: 0, routingIdPrefix: defaultPrefix, groupName }
-    : { ...allocation, groupName };
-}
-
-export function rejectFixedRoutingId(
-  routingId: unknown,
-  memberName: string
-): void {
-  if (routingId !== undefined) {
-    throw new ZLinkConfigurationException(
-      `Routing-id allocation member '${memberName}' cannot combine fixed and allocated routing ids.`
-    );
-  }
-}
-
-export function rejectAllocatedRoutingId(
-  allocation: MutableZLinkRoutingIdAllocationOptions | undefined,
-  memberName: string
-): void {
-  if (allocation !== undefined) {
-    throw new ZLinkConfigurationException(
-      `Routing-id allocation member '${memberName}' cannot combine fixed and allocated routing ids.`
-    );
-  }
+  return prefix;
 }

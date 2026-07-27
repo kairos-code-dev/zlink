@@ -61,7 +61,8 @@ internal static class ZLinkRemoteSessionBindingHandler
                 boundSession.IsNoBind,
                 frame.Header,
                 AcknowledgedReply(response),
-                cancellationToken)
+                cancellationToken,
+                frame.DirectReply)
             .ConfigureAwait(false);
         await boundSession.DrainAsync(cancellationToken).ConfigureAwait(false);
         return true;

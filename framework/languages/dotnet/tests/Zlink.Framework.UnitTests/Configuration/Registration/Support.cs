@@ -8,7 +8,7 @@ public abstract class RegistrationValidationSupport
     protected sealed class TestFilter : IZLinkHandlerFilter
     {
         public ValueTask InvokeAsync(
-            ZLinkHandlerInvocation invocation,
+            IZLinkMessageContext context,
             ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {

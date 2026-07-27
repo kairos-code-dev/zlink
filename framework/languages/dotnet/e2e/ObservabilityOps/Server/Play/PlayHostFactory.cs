@@ -47,7 +47,7 @@ internal static class PlayHostFactory
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             locations.PollingInterval = TimeSpan.FromMilliseconds(250);
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(PlayHostFactory));
@@ -72,9 +72,9 @@ internal static class PlayHostFactory
         var app = builder.Build();
         if (options.MetricsEnabled) _ = app.Services.GetRequiredService<MetricEvidenceCollector>();
         app.MapGet("/health", () => Results.Ok(new { status = "ready", options.Rid }));
-        app.MapPost("/message-flow/off", (IZLinkMessageFlowControl flow) =>
+        app.MapPost("/message-flow/off", (IZLinkMessageFlowRuntime flow) =>
         {
-            flow.SetMessageFlowMode(ZLinkMessageFlowLogMode.Off);
+            flow.Mode = ZLinkRuntimeMessageFlowMode.Off;
             return Results.Ok(new { mode = "off" });
         });
         app.MapPost("/rooms", async (CreateRoomReq request, IZLinkSpotManager spots,

@@ -27,8 +27,8 @@
     "forbidden_fragments": ["CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
   },
   "java_kotlin_termination_owners": {
-    "members": ["drain", "awaitDrained", "retire", "shutdown"],
-    "allowed": ["ZLinkFrameworkRuntime", "ZLinkDrainControl"],
+    "members": ["retire", "shutdown"],
+    "allowed": ["ZLinkFrameworkRuntime"],
     "forbidden_topologies": [
       "ZLinkRouteMeshRuntime",
       "ZLinkClientServerRuntime",
@@ -72,8 +72,7 @@
       "forbidden_file_fragments": {
         "05-spots.ko.md": ["InstanceSpotAddress", "public abstract class SpotHandle", "IZLinkSpotHandleResolver", "ZLinkCreatableSpotKind"],
         "06-actors.ko.md": ["IZLinkActorDirectory", "IZLinkActorSpotHandleResolver"],
-        "08-authority-relocation.ko.md": ["ReservePlacementAsync(", "CommitPlacementAsync(", "AbortPlacementAsync(", "Checkpoint"],
-        "09-routing-id-allocation.ko.md": ["IZLinkRoutingIdSlot", "IZLinkAllocatedRoutingIdProvider"]
+        "08-authority-relocation.ko.md": ["ReservePlacementAsync(", "CommitPlacementAsync(", "AbortPlacementAsync(", "Checkpoint"]
       }
     },
     "cpp": {
@@ -126,10 +125,10 @@
         "interface ZLinkActorRelocationAdapter<TActor extends",
         "interface ZLinkSpotRelocationAdapter<TSpot>",
         "default CompletionStage<Void> onActorRelocated(TActor actor)",
-        "int maxActiveOutboundRelocations();",
+        "ZLinkLocationOptions configureLocations();",
         "RETIRING(2)",
         "MANUAL_TOPOLOGY_UNSUPPORTED(9)",
-        "boolean hasSnapshotAdapter",
+        "CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(",
         "public final class systems.zlink.framework.actors.ActorRef",
         "public final class systems.zlink.framework.spots.SpotRef",
         "public interface systems.zlink.framework.actors.ZLinkActorManager",
@@ -143,7 +142,7 @@
         "void addRelocationStore(ZLinkRelocationStore store);",
         "interface ZLinkRelocationStore",
         "class ZLinkRedisRelocationStore",
-        "long checksumCrc32c",
+        "ZLinkStoreCancellation cancellation",
         "public interface ZLinkRuntimeQuery",
         "public record ZLinkFrameworkRuntimeSnapshot(",
         "public record ZLinkFrameworkRuntimeEvent(",
@@ -174,7 +173,7 @@
           "public record ZLinkInstanceSpotTypeSnapshot(",
           "public interface ZLinkClientServerRuntime {",
           "public interface ZLinkFanoutRuntime {",
-          "MeshName을 받는 partial termination operation과 component termination result는 제공하지 않는다.",
+          "별도 drain control과 component termination result는 제공하지 않는다.",
           "위의 host와 topology exact source signature가 11.0 monitoring public type의 정본이다."
         ],
         "configuration-host.ko.md": [
@@ -229,18 +228,14 @@
         "ZLinkActorRelocationAdapter<TActor>",
         "ZLinkSpotRelocationAdapter<TSpot>",
         "onActorRelocatedSuspending(",
-        "active outbound\n64, active inbound 64",
         "`RETIRING(2)`",
         "`MANUAL_TOPOLOGY_UNSUPPORTED(9)`",
-        "hasSnapshotAdapter()",
         "actor: ActorRef",
         "protected abstract suspend fun createActor(",
-        "protected abstract suspend fun reserveSuspending(",
-        "class ZLinkSuspendingLocationStore",
-        "class ZLinkSuspendingRelocationStore",
-        "prepareAggregateSuspending(",
-        "commitAggregateSuspending(",
-        "abortAggregateSuspending(",
+        "suspend fun ZLinkLocationRuntimeQuery.status()",
+        "fun ZLinkLocationRuntimeQuery.meshNodes(",
+        "Provider mutation을 `suspend` 함수로 한 번 더 복제하지 않는다.",
+        "별도 Kotlin Store interface나 abstract Store base class를",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
@@ -254,7 +249,7 @@
       "forbidden_file_fragments": {
         "actors.ko.md": ["ZLinkActorDirectory", "ZLinkActorSpotHandleResolver"],
         "spots.ko.md": ["InstanceSpotAddress", "target: SpotHandle,", "ZLinkSpotHandleResolver"],
-        "location-maintenance.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider", "reservePlacementSuspending(", "commitPlacementSuspending(", "abortPlacementSuspending(", "Checkpoint"],
+        "location-maintenance.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider", "reservePlacementSuspending(", "commitPlacementSuspending(", "abortPlacementSuspending(", "ZLinkSuspendingLocationStore", "ZLinkSuspendingRelocationStore", "reserveSuspending(", "prepareAggregateSuspending(", "commitAggregateSuspending(", "abortAggregateSuspending(", "Checkpoint"],
         "monitoring.ko.md": [
           "fun <T> Publisher<T>.asFlow(): Flow<T>"
         ]
@@ -290,17 +285,17 @@
         "export interface ZLinkLocationStore",
         "addRelocationStore(store: ZLinkRelocationStore): this",
         "export interface ZLinkRelocationStore",
-        "export declare class ZLinkRedisRelocationStore",
+        "export class ZLinkRedisRelocationStore",
         "readonly checksumCrc32c: number;",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
       "forbidden_file_fragments": {
         "01-foundation-configuration.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {"],
+        "03-location-observability.ko.md": ["ZLinkMeshDrainSnapshot", "ZLinkMeshDrainResult", "ZLinkDrainForceReason", "readonly drain:", "drain(", "awaitDrained("],
         "04-spots.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {", "ZLinkSpotHandleResolver", "create(spotKind:"],
         "05-actors.ko.md": ["ZLinkActorDirectory", "ZLinkActorSpotHandleResolver"],
-        "08-location-maintenance.ko.md": ["Checkpoint"],
-        "09-routing-id-allocation.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider"]
+        "08-location-maintenance.ko.md": ["Checkpoint"]
       }
     }
   },
@@ -338,6 +333,12 @@
     "\\b(?:ZLinkMeshNodeDrainPolicy|mesh_node_drain_policy_t|DrainNatural|ReleaseAndRecreate)\\b",
     "\\b(?:IZLinkRelocationStateAdapter|ZLinkRelocationStateAdapter|relocation_state_adapter_t)\\b",
     "\\b(?:IZLinkActorRelocationStore|actor_relocation_store_t|ZLinkActorRelocationStore|IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore)\\b",
+    "\\b(?:IZLinkAuthorityStore|IZLinkMeshNodeLocationStore|IZLinkOwnerLeaseStore|IZLinkClientServerLocationStore|IZLinkFanoutLocationStore|ZLinkAuthorityStore|ZLinkMeshNodeLocationStore|ZLinkOwnerLeaseStore|ZLinkClientServerLocationStore|ZLinkFanoutLocationStore|authority_store_t|mesh_node_location_store_t|owner_lease_store_t|client_server_location_store_t|fanout_location_store_t)\\b",
+    "\\b(?:IZLinkRoutingIdSlot|IZLinkAllocatedRoutingIdProvider|ZLinkRoutingIdSlot|ZLinkAllocatedRoutingIdProvider|routing_id_slot_t|allocated_routing_id_provider_t)\\b",
+    "\\b(?:ZLinkHandlerInvocation|handler_invocation_t|ZLinkRuntimeEventPublisher|IZLinkRuntimeEventPublisher|runtime_event_publisher_t|ZLinkRuntimeEventDispatcher)\\b",
+    "\\b(?:ZLinkMeshDrainSnapshot|ZLinkMeshDrainResult|ZLinkDrainForceReason|ZLinkOwnerLeaseSnapshot|ZLinkOwnerLeaseRenewal)\\b",
+    "\\b(?:ZLinkSpotNodeStatus|ZLinkSpotNodePeerEntry|ZLinkSpotNodeSubjectEntry|ZLinkSpotPeerKind|ZLinkSpotPeerSource|ZLinkSpotPeerState|spot_node_status_t|spot_node_peer_entry_t|spot_node_subject_entry_t|spot_peer_kind_t|spot_peer_source_t|spot_peer_state_t)\\b",
+    "\\b(?:ZLinkStreamDiagnostic|nativeCode|native_code|native_event|native_value|pending_operation_t|service_scope_kind_t|service_scope_t|add_spot_events)\\b",
     "\\bzlink_(?:mesh_node|instance_spot|spot)_[a-z0-9_]+\\s*\\("
   ],
   "consolidated_internal_document_sets": [
@@ -353,7 +354,8 @@
         "stream-session-runtime.ko.md",
         "transport-liveness-runtime.ko.md",
         "service-monitoring-runtime.ko.md",
-        "concurrency-resource-runtime.ko.md"
+        "concurrency-resource-runtime.ko.md",
+        "routing-identity-runtime.ko.md"
       ],
       "readme_required_fragments": [
         "Framework 공통 내부 구조",

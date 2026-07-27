@@ -6,19 +6,14 @@ package systems.zlink.framework.kotlin
 import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import systems.zlink.framework.locations.ZLinkActorLocation
-import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkLocationPage
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
 import systems.zlink.framework.locations.ZLinkLocationTopologyEntry
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
 import systems.zlink.framework.locations.ZLinkPageRequest
-import systems.zlink.framework.locations.ZLinkRouteLocation
-import systems.zlink.framework.locations.ZLinkRouteLocationFilter
-import systems.zlink.framework.locations.ZLinkSpotLocation
-import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 
-fun <T> locationPages(
+internal fun <T> locationPages(
     firstPage: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
     load: (ZLinkPageRequest) -> CompletionStage<ZLinkLocationPage<T>>,
 ): Flow<T> = flow {
@@ -36,26 +31,14 @@ fun <T> locationPages(
     }
 }
 
-fun ZLinkLocationRuntimeQuery.spots(
-    filter: ZLinkSpotLocationFilter,
-    pageSize: Int,
-): Flow<ZLinkSpotLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listSpotLocations(filter, page) }
-
-fun ZLinkLocationRuntimeQuery.actors(
-    filter: ZLinkActorLocationFilter,
-    pageSize: Int,
-): Flow<ZLinkActorLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listActorLocations(filter, page) }
-
-fun ZLinkLocationRuntimeQuery.routes(
-    filter: ZLinkRouteLocationFilter,
-    pageSize: Int,
-): Flow<ZLinkRouteLocation> =
-    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listRouteLocations(filter, page) }
+fun ZLinkLocationRuntimeQuery.meshNodes(
+    meshName: String,
+    pageSize: Int = 100,
+): Flow<ZLinkMeshNodeDescriptor> =
+    locationPages(ZLinkPageRequest(pageSize, null)) { page -> listMeshNodes(meshName, page) }
 
 fun ZLinkLocationRuntimeQuery.topology(
     filter: ZLinkLocationTopologyFilter,
-    pageSize: Int,
+    pageSize: Int = 100,
 ): Flow<ZLinkLocationTopologyEntry> =
     locationPages(ZLinkPageRequest(pageSize, null)) { page -> listTopology(filter, page) }

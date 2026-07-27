@@ -5,7 +5,7 @@ using Systems.Zlink.Framework.Runtime.Protocol;
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorOperationTarget(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendSpotNode node,
     string meshName,

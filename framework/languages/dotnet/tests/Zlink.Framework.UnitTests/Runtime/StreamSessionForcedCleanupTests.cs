@@ -51,7 +51,7 @@ public sealed class StreamSessionForcedCleanupTests
         var root = Path.Combine(Path.GetTempPath(), $"zlink-stream-flow-{Guid.NewGuid():N}");
         var logPath = Path.Combine(root, "flow.log");
         var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         registration.DispatchOptions.TraceLogFile(logPath);
         var lifetime = new StreamFlowLifetime();
         var loggerFactory = new StreamFlowLoggerFactory();
@@ -124,7 +124,7 @@ public sealed class StreamSessionForcedCleanupTests
         var root = Path.Combine(Path.GetTempPath(), $"zlink-stream-no-corr-{Guid.NewGuid():N}");
         var logPath = Path.Combine(root, "flow.log");
         var registration = new ZLinkFrameworkRegistration();
-        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         registration.DispatchOptions.TraceLogFile(logPath);
         var lifetime = new StreamFlowLifetime();
         ZLinkFrameworkRuntime runtime = null!;
@@ -275,6 +275,197 @@ public sealed class StreamSessionForcedCleanupTests
     }
 
     [Fact]
+    public async Task Packet_before_connection_ready_waits_for_connected_lifecycle()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "packet-before-ready",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var session = RoutingId.From("session-c");
+        try
+        {
+            node.Start();
+            EmitJson(socket, session, new SessionOrderingMessage());
+            await Task.Delay(50);
+            Assert.Empty(lifetime.Events(session));
+
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                session,
+                "local-c",
+                "remote-c",
+                0));
+
+            await lifetime.WaitDispatchCompletedAsync(session);
+            Assert.Equal(
+                new[] { "connected", "dispatch-start", "dispatch-end" },
+                lifetime.Events(session));
+        }
+        finally
+        {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Unidentified_monitor_lifecycle_does_not_attach_to_a_later_session()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "unidentified-monitor",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var session = RoutingId.From("session-b");
+        try
+        {
+            node.Start();
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                null,
+                "stale-local",
+                "stale-remote",
+                0));
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.Disconnected,
+                null,
+                "stale-local",
+                "stale-remote",
+                0));
+            await monitor.WaitReceivedAsync(2);
+
+            EmitJson(socket, session, new SessionOrderingMessage());
+            await Task.Delay(50);
+            Assert.Empty(lifetime.Events(session));
+
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                session,
+                "local-b",
+                "remote-b",
+                0));
+
+            await lifetime.WaitDispatchCompletedAsync(session);
+            Assert.Equal(
+                ("local-b", "remote-b"),
+                lifetime.ConnectedAddresses(session));
+        }
+        finally
+        {
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Concurrent_sessions_use_only_exact_monitor_identity()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var lifetime = new SessionOrderingLifetime();
+        ZLinkFrameworkRuntime runtime = null!;
+        var services = new ServiceCollection()
+            .AddSingleton(registration)
+            .AddSingleton(lifetime)
+            .AddSingleton(_ => runtime);
+        await using var provider = services.BuildServiceProvider();
+        runtime = CreateRuntime(provider, registration);
+        var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
+        var runner = new ZLinkRuntimeTaskRunner(
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            runtime.ExecutionOwner);
+        var node = new ZLinkStreamNodeRuntime(
+            "concurrent-monitor-identity",
+            provider,
+            socket,
+            monitor,
+            typeof(SessionOrderingSession),
+            runner,
+            "test");
+        var first = RoutingId.From("session-a");
+        var second = RoutingId.From("session-b");
+        try
+        {
+            node.Start();
+            EmitJson(socket, first, new SessionOrderingMessage());
+            EmitJson(socket, second, new SessionOrderingMessage());
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                null,
+                "ambiguous-local-a",
+                "ambiguous-remote-a",
+                0));
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                null,
+                "ambiguous-local-b",
+                "ambiguous-remote-b",
+                0));
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                second,
+                "local-b",
+                "remote-b",
+                0));
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                first,
+                "local-a",
+                "remote-a",
+                0));
+
+            await lifetime.WaitDispatchCompletedAsync(second);
+            await lifetime.WaitDispatchStartedAsync(first);
+            Assert.Equal(("local-a", "remote-a"), lifetime.ConnectedAddresses(first));
+            Assert.Equal(("local-b", "remote-b"), lifetime.ConnectedAddresses(second));
+        }
+        finally
+        {
+            lifetime.ReleaseFirst.TrySetResult();
+            await node.DisposeAsync();
+            await runner.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task Stream_node_preserves_typed_routing_id_from_backend_callback()
     {
         var registration = new ZLinkFrameworkRegistration();
@@ -295,6 +486,7 @@ public sealed class StreamSessionForcedCleanupTests
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 registration));
         var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
         var runner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
             CancellationToken.None,
@@ -303,7 +495,7 @@ public sealed class StreamSessionForcedCleanupTests
             "typed-routing-id",
             provider,
             socket,
-            new TestSocketMonitor(),
+            monitor,
             typeof(RoutingIdentitySession),
             runner,
             "test");
@@ -311,6 +503,12 @@ public sealed class StreamSessionForcedCleanupTests
         {
             node.Start();
             var expected = RoutingId.From([0x00, 0x7f, 0x80, 0xff]);
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                expected,
+                "local",
+                "remote",
+                0));
             var header = new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
                 ZlinkStreamCodec.Json,
@@ -357,6 +555,7 @@ public sealed class StreamSessionForcedCleanupTests
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 registration));
         var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
         var runner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
             CancellationToken.None,
@@ -365,13 +564,20 @@ public sealed class StreamSessionForcedCleanupTests
             "forced-cancellation",
             provider,
             socket,
-            new TestSocketMonitor(),
+            monitor,
             typeof(CancellationAwareSession),
             runner,
             "test");
         try
         {
             node.Start();
+            var routingId = RoutingId.From("node-force");
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                routingId,
+                "local",
+                "remote",
+                0));
             var header = new ZlinkStreamHeader(
                 ZlinkStreamMessageKind.Send,
                 ZlinkStreamCodec.Json,
@@ -380,7 +586,7 @@ public sealed class StreamSessionForcedCleanupTests
                 nameof(CancellationAwareMessage),
                 ZlinkStreamMetadata.Empty);
             socket.Emit(
-                RoutingId.From("node-force"),
+                routingId,
                 Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
                 Message.From(ZLinkStreamPacketPayloadCodec.EncodeJson(
                     new CancellationAwareMessage(),
@@ -419,6 +625,7 @@ public sealed class StreamSessionForcedCleanupTests
         await using var provider = services.BuildServiceProvider();
         runtime = CreateRuntime(provider, registration);
         var socket = new TestStreamSocket();
+        var monitor = new TestSocketMonitor();
         var runner = new ZLinkRuntimeTaskRunner(
             new ZLinkRuntimeErrorSink(),
             CancellationToken.None,
@@ -427,14 +634,21 @@ public sealed class StreamSessionForcedCleanupTests
             "terminal-cancellation",
             provider,
             socket,
-            new TestSocketMonitor(),
+            monitor,
             typeof(TerminalCancellationSession),
             runner,
             "test");
         try
         {
             node.Start();
-            EmitJson(socket, RoutingId.From("terminal-force"), new TerminalCancellationMessage());
+            var routingId = RoutingId.From("terminal-force");
+            monitor.Emit(new ZLinkBackendSocketMonitorEvent(
+                ZLinkSocketNativeEventType.ConnectionReady,
+                routingId,
+                "local",
+                "remote",
+                0));
+            EmitJson(socket, routingId, new TerminalCancellationMessage());
             await lifetime.DisconnectedStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             var shutdown = node.DisposeAsync().AsTask();
@@ -518,7 +732,7 @@ public sealed class StreamSessionForcedCleanupTests
         session.RequestStop();
         session.EnqueueDisconnected(new ZLinkStreamError(
             ZLinkStreamSessionError.TransportError,
-            new ZLinkStreamDiagnostic(0, "transport closed")));
+            "transport closed"));
 
         await lifetime.CleanupCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await session.DisposeAsync();
@@ -556,7 +770,7 @@ public sealed class StreamSessionForcedCleanupTests
         session.RequestStop();
         var rejectedTerminal = Task.Run(() => session.EnqueueDisconnected(new ZLinkStreamError(
             ZLinkStreamSessionError.TransportError,
-            new ZLinkStreamDiagnostic(0, "transport closed"))));
+            "transport closed")));
         await socket.DisconnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var forcedClose = session.ForceCloseForShutdownAsync().AsTask();
@@ -1201,6 +1415,10 @@ public sealed class StreamSessionForcedCleanupTests
         public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            lifetime.RecordConnected(
+                Context.RoutingId!.Value,
+                Context.LocalAddr!,
+                Context.RemoteAddr!);
             lifetime.Record(Context.RoutingId!.Value, "connected");
             lifetime.SignalConnected(Context.RoutingId.Value);
             return ValueTask.CompletedTask;
@@ -1249,6 +1467,8 @@ public sealed class StreamSessionForcedCleanupTests
         private readonly Dictionary<string, TaskCompletionSource> _dispatchStarted = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TaskCompletionSource> _dispatchCompleted = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TaskCompletionSource> _disconnected = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (string LocalAddr, string RemoteAddr)>
+            _connectedAddresses = new(StringComparer.Ordinal);
 
         public TaskCompletionSource ReleaseFirst { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1270,6 +1490,21 @@ public sealed class StreamSessionForcedCleanupTests
                 return _events.TryGetValue(routingId.ToHex(), out var events)
                     ? events.ToArray()
                     : [];
+        }
+
+        public void RecordConnected(
+            RoutingId routingId,
+            string localAddr,
+            string remoteAddr)
+        {
+            lock (_gate)
+                _connectedAddresses[routingId.ToHex()] = (localAddr, remoteAddr);
+        }
+
+        public (string LocalAddr, string RemoteAddr) ConnectedAddresses(
+            RoutingId routingId)
+        {
+            lock (_gate) return _connectedAddresses[routingId.ToHex()];
         }
 
         public bool IsDispatchCompleted(RoutingId routingId)
@@ -1409,6 +1644,7 @@ public sealed class StreamSessionForcedCleanupTests
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<ZLinkBackendSocketMonitorEvent> _events = new();
         private int _emptyPollCount;
+        private int _receivedCount;
 
         public int EmptyPollCount => Volatile.Read(ref _emptyPollCount);
 
@@ -1416,9 +1652,20 @@ public sealed class StreamSessionForcedCleanupTests
 
         public void Emit(ZLinkBackendSocketMonitorEvent monitorEvent) => _events.Enqueue(monitorEvent);
 
+        public async Task WaitReceivedAsync(int count)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            while (Volatile.Read(ref _receivedCount) < count)
+                await Task.Delay(5, timeout.Token);
+        }
+
         public bool TryRecv(out ZLinkBackendSocketMonitorEvent monitorEvent)
         {
-            if (_events.TryDequeue(out monitorEvent)) return true;
+            if (_events.TryDequeue(out monitorEvent))
+            {
+                Interlocked.Increment(ref _receivedCount);
+                return true;
+            }
             Interlocked.Increment(ref _emptyPollCount);
             return false;
         }

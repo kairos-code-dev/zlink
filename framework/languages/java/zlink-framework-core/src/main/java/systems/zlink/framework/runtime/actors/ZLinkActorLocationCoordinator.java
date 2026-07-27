@@ -9,7 +9,6 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.runtime.locations.ZLinkLocationLifecycle;
@@ -75,8 +74,8 @@ final class ZLinkActorLocationCoordinator {
         if (resolvers == null) {
             return CompletableFuture.completedFuture(Optional.empty());
         }
-        return resolvers.resolveActorRow(new ZLinkActorLocationKey(actorId))
-            .thenApply(row -> row == null || row.actorRef() == null
+        return resolvers.resolveActor(actorId)
+            .thenApply(row -> row == null
                 ? Optional.empty()
                 : Optional.of(row.actorRef()));
     }

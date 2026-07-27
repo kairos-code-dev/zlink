@@ -6,8 +6,8 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 import systems.zlink.contracts.sockets.Socket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 
 interface ZLinkJavaSocketBacked
     extends ZLinkBackendObject, ZLinkJavaAdmissionBacked {

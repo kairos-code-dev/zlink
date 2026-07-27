@@ -1,4 +1,4 @@
-import type { ZLinkProviderResolver } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
   ZLinkMessageFlowLogMode
 } from '../../contracts';

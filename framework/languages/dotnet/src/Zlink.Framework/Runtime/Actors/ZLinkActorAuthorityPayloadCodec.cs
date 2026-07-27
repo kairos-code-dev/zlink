@@ -34,12 +34,15 @@ internal sealed record ZLinkActorRelocationAuthorityPayload(
     Guid RelocationId,
     ZLinkActorRelocationAuthorityPhase Phase,
     ZLinkRemoteActorBoundSessionRoute BoundSessionRoute,
-    ReadOnlyMemory<byte> ApplicationPayload);
+    ReadOnlyMemory<byte> ApplicationPayload,
+    uint AcceptedRequestCount = 0,
+    uint TerminalCompletionCount = 0,
+    uint PendingRelayCount = 0);
 
 internal static class ZLinkActorRelocationAuthorityPayloadCodec
 {
     private const uint Magic = 0x50414c5a; // ZLAP
-    private const ushort Version = 2;
+    private const ushort Version = 3;
     private const int MaximumBytes = 1024 * 1024;
 
     internal static byte[] Encode(ZLinkActorRelocationAuthorityPayload value)
@@ -74,6 +77,9 @@ internal static class ZLinkActorRelocationAuthorityPayloadCodec
         }
         writer.Write(value.ApplicationPayload.Length);
         writer.Write(value.ApplicationPayload.Span);
+        writer.Write(value.AcceptedRequestCount);
+        writer.Write(value.TerminalCompletionCount);
+        writer.Write(value.PendingRelayCount);
         writer.Flush();
         writer.Write(ZLinkCrc32C.Compute(stream.GetBuffer().AsSpan(
             0,
@@ -101,8 +107,10 @@ internal static class ZLinkActorRelocationAuthorityPayloadCodec
                 encoded[..^sizeof(uint)].ToArray(),
                 writable: false);
             using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-            if (reader.ReadUInt32() != Magic || reader.ReadUInt16() != Version)
+            if (reader.ReadUInt32() != Magic)
                 return false;
+            var version = reader.ReadUInt16();
+            if (version is not (2 or Version)) return false;
             var relocationId = new Guid(ReadExact(reader, 16));
             var phase = (ZLinkActorRelocationAuthorityPhase)reader.ReadByte();
             ZLinkRemoteActorBoundSessionRoute route = default;
@@ -127,16 +135,30 @@ internal static class ZLinkActorRelocationAuthorityPayloadCodec
             if (applicationSize is < 1 or > MaximumBytes)
                 return false;
             var applicationPayload = ReadExact(reader, applicationSize);
+            var acceptedRequestCount = version >= 3
+                ? reader.ReadUInt32()
+                : 0;
+            var terminalCompletionCount = version >= 3
+                ? reader.ReadUInt32()
+                : 0;
+            var pendingRelayCount = version >= 3
+                ? reader.ReadUInt32()
+                : 0;
             if (stream.Position != stream.Length
                 || relocationId == Guid.Empty
                 || phase is < ZLinkActorRelocationAuthorityPhase.Activated
-                    or > ZLinkActorRelocationAuthorityPhase.Steady)
+                    or > ZLinkActorRelocationAuthorityPhase.Steady
+                || pendingRelayCount > terminalCompletionCount
+                || terminalCompletionCount > acceptedRequestCount)
                 return false;
             value = new ZLinkActorRelocationAuthorityPayload(
                 relocationId,
                 phase,
                 route,
-                applicationPayload);
+                applicationPayload,
+                acceptedRequestCount,
+                terminalCompletionCount,
+                pendingRelayCount);
             return true;
         }
         catch (Exception error) when (error is IOException

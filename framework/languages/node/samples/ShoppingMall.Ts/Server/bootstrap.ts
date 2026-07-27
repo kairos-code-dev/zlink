@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import http from 'node:http';
 import { URL } from 'node:url';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkLocationRuntimeQuery, ZLinkSpotHandleResolver, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
-import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_HANDLE_RESOLVER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
+import type { ZLinkLocationRuntimeQuery, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
+import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND } from '@zlink-systems/nestjs';
 import { SHOPPINGMALL_SAMPLE_CONFIG } from './Configuration/sample-config';
 import { createCommerceApiServer } from './CommerceApi/commerce-api-server';
 import { createShoppingMallCommerceApiModule } from './CommerceApi/commerce-api-module';
@@ -34,7 +34,6 @@ async function bootstrapShoppingMall(role: ShoppingMallRole): Promise<void> {
     ? createHealthServer(role, endpoint, {
         locations: app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }),
         spots: app.get(ZLINK_SPOT_MANAGER, { strict: false }),
-        spotRefs: app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }),
         outbound: app.get(ZLINK_SPOT_OUTBOUND, { strict: false })
       })
     : createCommerceApiServer(
@@ -61,7 +60,6 @@ async function bootstrapShoppingMall(role: ShoppingMallRole): Promise<void> {
 function createHealthServer(roleName: string, baseEndpoint: string, dependencies: {
   locations: ZLinkLocationRuntimeQuery;
   spots: ZLinkSpotManager;
-  spotRefs: ZLinkSpotHandleResolver;
   outbound: ZLinkSpotOutbound;
 }): http.Server {
   return http.createServer(async (request, response) => {
@@ -78,10 +76,7 @@ function createHealthServer(roleName: string, baseEndpoint: string, dependencies
             { orderId: probeId }
           );
         }
-        const handle = await dependencies.spotRefs.resolveSpotHandle(
-          SampleNames.orderWorkflowSpotMesh,
-          probeId
-        );
+        const handle = await dependencies.spots.find(probeId);
         if (handle === undefined) throw new Error('Topology readiness spot was not resolved.');
         const probe = await dependencies.outbound.requestToSpot(handle, new ShoppingMallTopologyReadyReq(probeId))
           .timeout(SampleNames.requestTimeout)

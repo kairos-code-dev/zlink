@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 internal interface IZLinkBackendSpotNode : IAsyncDisposable
 {
+    ValueTask ForceStopAsync(CancellationToken cancellationToken) => DisposeAsync();
+
     RoutingId RoutingId { get; }
 
     void SetRoutingId(RoutingId routingId);
@@ -278,6 +280,10 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 internal interface IZLinkBackendRelocationReplyRelay
 {
     void SetRelocationReplyRelayTarget(IRelocationReplyRelayTarget target);
+
+    ZLinkRelocationReplyCompletion TryCompleteRelocationReply(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        IReadOnlyList<Message> payload);
 
     ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord> RelayRelocationReplyAsync(
         RoutingId targetNodeRid,

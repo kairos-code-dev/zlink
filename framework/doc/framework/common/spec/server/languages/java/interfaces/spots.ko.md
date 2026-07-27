@@ -2,8 +2,8 @@
 
 Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
 callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
+target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
@@ -240,8 +240,8 @@ authority 경쟁만 보여 준다. Handler의 terminal completion 또는 reply, 
 pointer 제거는 번호 목록의 후반 단계에 정의한다.
 
 User·Instance Spot relocation에서는 Framework가 `addTimer(...)`로 만든 logical timer registration, 마지막 완료
-tick sequence, 다음 예정 시각과 아직 실행하지 않은 pending tick을 relocation payload에 포함한다. Target은 새
-native timer handle을 만들며 application이 timer를 다시 등록하지 않는다. 현재 실행 중인 timer callback만 source에서
+tick sequence, 다음 예정 시각과 아직 실행하지 않은 pending tick을 relocation payload에 포함한다. Target은
+logical timer registration을 복원하므로 application이 timer를 다시 등록하지 않는다. 현재 실행 중인 timer callback만 source에서
 완료하고, target Ready 전에는 복원한 tick을 application handler에 제출하지 않는다.
 
 User Spot의 `close()`는 active Actor membership이 있으면 `false`를 반환한다. Spot state, admission과 authority는
@@ -285,7 +285,7 @@ SpotId는 UTF-8 encoded 크기 1..255 bytes의 global logical ID다. `SpotRef.ob
 unbounded list는 제공하지 않는다. User Spot Create/GetOrCreate call과 Instance cold activation call은 option
 중복을 `INVALID_CONFIGURATION`, submit 중복을 `ALREADY_SUBMITTED`로 끝낸다.
 
-Ref JSON의 unknown property는 무시하고 duplicate property, required property 누락, 숫자 generation token과
+Ref JSON의 unknown property, duplicate property, required property 누락, 숫자 generation token과
 범위 밖 값은 거부한다.
 
 ## Exact public member inventory

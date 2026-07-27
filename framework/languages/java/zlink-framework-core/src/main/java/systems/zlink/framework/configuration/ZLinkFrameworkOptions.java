@@ -6,16 +6,11 @@ import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkRelocationStore;
-import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 
 public interface ZLinkFrameworkOptions {
     Duration defaultRequestTimeout();
 
     void setDefaultRequestTimeout(Duration timeout);
-
-    Duration actorTransferForwardWindow();
-
-    void setActorTransferForwardWindow(Duration window);
 
     ZLinkCodecRegistryBuilder codecs();
 
@@ -29,17 +24,19 @@ public interface ZLinkFrameworkOptions {
 
     FanoutChannelBuilder addFanoutChannel(String channelName);
 
-    RouteMeshChannelBuilder addRouteMeshChannel(String channelName);
-
-    ZLinkSpotMeshBuilder addSpotMesh(String channelName);
-
     ZLinkStreamNodeBuilder addStreamNode(String streamNodeName);
 
     void addLocationStore(ZLinkLocationStore store);
 
     void addRelocationStore(ZLinkRelocationStore store);
 
+    void setApplicationVersion(long version);
+
+    void setMaintenanceWave(String waveId);
+
     ZLinkLocationOptions configureLocations();
+
+    ZLinkNetworkOptions configureNetwork();
 
     void useFilter(Class<? extends ZLinkHandlerFilter> filterType);
 
@@ -52,6 +49,4 @@ public interface ZLinkFrameworkOptions {
     void useVirtualThreadHandlers();
 
     void useHandlerExecutor(Executor executor);
-
-    void useSuspendHandlerInvoker(ZLinkSuspendInvocationAdapter invoker);
 }

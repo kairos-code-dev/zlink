@@ -144,6 +144,7 @@ public sealed class InstanceSpotActivationJournalTests
         var operation = Operation(new MeshOperationId(11, 17));
         var activation = ZLinkInstanceSpotActivationEnvelopeCodec.Encode(
             operation,
+            RequestSource(operation),
             new byte[] { 1, 2 },
             [new byte[] { 3, 4 }]);
         var expected = new InstanceSpotActivationTerminal(
@@ -161,6 +162,7 @@ public sealed class InstanceSpotActivationJournalTests
             out var terminal));
         Assert.Equal(operation.OperationId, original.OperationId);
         Assert.Equal(operation.SourceNodeRid, original.SourceNodeRid);
+        Assert.Equal(RequestSource(operation), original.RequestSource);
         Assert.Equal(expected.Result, terminal.Result);
         Assert.Equal(expected.ReplyParts[0].ToArray(), terminal.ReplyParts[0].ToArray());
     }
@@ -172,6 +174,7 @@ public sealed class InstanceSpotActivationJournalTests
         var encoded = ZLinkInstanceSpotActivationEnvelopeCodec.EncodeTerminal(
             ZLinkInstanceSpotActivationEnvelopeCodec.Encode(
                 operation,
+                RequestSource(operation),
                 null,
                 [new byte[] { 7 }]),
             new InstanceSpotActivationTerminal(
@@ -252,6 +255,14 @@ public sealed class InstanceSpotActivationJournalTests
             7,
             4_102_444_800_000);
 
+    private static ZLinkServiceWireCodec.RequestSourceFence RequestSource(
+        InstanceSpotActivationOperation operation) =>
+        new(
+            "source-owner",
+            11,
+            operation.SourceNodeRid,
+            operation.SourceNodeGeneration);
+
     private static async Task<(
         ZLinkInMemoryLocationStore Store,
         ZLinkObjectReservation Reservation,
@@ -307,6 +318,7 @@ public sealed class InstanceSpotActivationJournalTests
         var operation = Operation(new MeshOperationId(101, 103));
         var envelope = ZLinkInstanceSpotActivationEnvelopeCodec.Encode(
             operation,
+            RequestSource(operation),
             null,
             [new byte[] { 1 }]);
         var key = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);

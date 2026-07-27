@@ -1,4 +1,4 @@
-import { readZLinkDecoratorMetadata } from '../../contracts';
+import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { ZLinkConfigurationException } from '../configuration';
 
 const STRUCTURAL_PAYLOAD_NAMES = new Set([

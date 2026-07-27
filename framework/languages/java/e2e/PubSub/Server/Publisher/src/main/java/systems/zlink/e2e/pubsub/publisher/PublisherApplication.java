@@ -49,7 +49,7 @@ public final class PublisherApplication {
         systems.zlink.framework.channels.ZLinkFanoutClient fanout,
         EvidenceStore evidence,
         ObjectMapper json,
-        systems.zlink.framework.monitoring.ZLinkDrainControl drain) {
+        systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle drain) {
         return new PublisherEndpoints(options, fanout, evidence, json, drain);
     }
 

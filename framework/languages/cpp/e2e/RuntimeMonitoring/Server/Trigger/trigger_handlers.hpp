@@ -217,17 +217,6 @@ class interval_validation_handler_t
     }
 };
 
-class missing_spot_validation_handler_t
-{
-  public:
-    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
-    {
-        zlink::framework::http_response_t response;
-        response.body = nlohmann::json (verify_missing_spot_source ()).dump ();
-        return response;
-    }
-};
-
 class missing_socket_validation_handler_t
 {
   public:

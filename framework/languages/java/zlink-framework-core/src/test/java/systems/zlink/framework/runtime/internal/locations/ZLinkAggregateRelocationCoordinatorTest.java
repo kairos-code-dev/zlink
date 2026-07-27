@@ -23,6 +23,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
+import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
 
 final class ZLinkAggregateRelocationCoordinatorTest {
     private static final ZLinkStoreCancellation NEVER = () -> false;
@@ -556,7 +557,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         }
     }
 
-    private static final class FakeAuthorityStore implements ZLinkAuthorityStore {
+    private static final class FakeAuthorityStore extends ZLinkLocationStoreTestAdapter {
         private ZLinkAggregatePrepareRequest prepared;
         private ZLinkAggregatePrepareResult prepareResult;
         private int prepareCount;

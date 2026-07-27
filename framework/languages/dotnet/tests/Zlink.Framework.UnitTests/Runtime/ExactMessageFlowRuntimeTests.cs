@@ -14,7 +14,7 @@ public sealed class ExactMessageFlowRuntimeTests
     {
         var options = new ZLinkDispatchOptionsModel();
         options.Diagnostics.LiveMode = new ZLinkMessageFlowModeCell(
-            ZLinkMessageFlowLogMode.ErrorsOnly);
+            ZLinkRuntimeMessageFlowMode.ErrorsOnly);
         var runtime = new ZLinkMessageFlowRuntimeService(options);
 
         Assert.Equal(
@@ -22,7 +22,7 @@ public sealed class ExactMessageFlowRuntimeTests
             runtime.Mode);
         runtime.Mode = ZLinkRuntimeMessageFlowMode.Verbose;
         Assert.Equal(
-            ZLinkMessageFlowLogMode.Verbose,
+            ZLinkRuntimeMessageFlowMode.Verbose,
             options.Diagnostics.EffectiveMessageFlow);
 
         using var timeout = new CancellationTokenSource(

@@ -45,6 +45,7 @@ class stream_state_t
     std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
       transport_writer;
     serializer_registry_t *serializers = nullptr;
+    std::atomic<session_actor_manager_t *> actors{nullptr};
     std::shared_ptr<const stream_compression_codec_t> compression_codec;
 };
 

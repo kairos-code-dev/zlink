@@ -5,7 +5,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HexFormat;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
 
 final class ZLinkRedisLocationKeys {
@@ -83,10 +82,6 @@ final class ZLinkRedisLocationKeys {
 
     String leaseGenerationKey() {
         return counterKey();
-    }
-
-    String routingIdSlotGroupKey(String groupName) {
-        return prefix + ":routing-id-slots:" + groupName;
     }
 
     String stampKey(String tag, String meshName) {
@@ -446,13 +441,4 @@ final class ZLinkRedisLocationKeys {
             .toLowerCase(java.util.Locale.ROOT);
     }
 
-    static String tagOf(ZLinkLocationKind kind) {
-        return switch (kind) {
-            case PEER -> "peer";
-            case SPOT -> "spot";
-            case ACTOR -> "actor";
-            case ROUTE -> "route";
-            case INVALID -> throw new IllegalArgumentException("invalid location kind");
-        };
-    }
 }

@@ -50,6 +50,7 @@
         <Compile Include="Documentation/Regression.cs"/>
         <Compile Include="Support/TestActorContext.cs"/>
         <Compile Include="Support/OwnerLeaseTestSupport.cs"/>
+        <Compile Include="Support/ZLinkLocationStoreTestDouble.cs"/>
         <Compile Include="Runtime/AutoConnectLoopTests.cs"/>
         <Compile Include="Runtime/AutoConnectLifecycleCoordinatorTests.cs"/>
         <Compile Include="Runtime/AutoConnectReconcilerTests.cs"/>
@@ -78,7 +79,6 @@
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/HttpExecutionSchedulerTests.cs"/>
         <Compile Include="Runtime/InMemoryLocationStoreTests.cs"/>
-        <Compile Include="Runtime/LocationEventEmitterTests.cs"/>
         <Compile Include="Runtime/LocationLifecycleTests.cs"/>
         <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
@@ -108,9 +108,11 @@
         <Compile Include="Runtime/SpotPeerConnectorTests.cs"/>
         <Compile Include="Runtime/SpotAutoRegistrationScannerTests.cs"/>
         <Compile Include="Runtime/RequestFailureMappingTests.cs"/>
+        <Compile Include="Runtime/RemoteRelayFrameAssemblerTests.cs"/>
         <Compile Include="Runtime/ReconciliationRunnerTests.cs"/>
         <Compile Include="Runtime/RelocationRuntimeTests.cs"/>
         <Compile Include="Runtime/StandaloneActorRelocationRuntimeTests.cs"/>
+        <Compile Include="Runtime/StandaloneActorRelocationPrecommitTests.cs"/>
         <Compile Include="Runtime/CanonicalActorAcceptedJournalTests.cs"/>
         <Compile Include="Runtime/CanonicalRelocationReservationOwnerTests.cs"/>
         <Compile Include="Runtime/RelocationStartupRecoveryTests.cs"/>

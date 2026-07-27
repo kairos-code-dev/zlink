@@ -71,6 +71,33 @@ internal sealed partial class ZLinkInMemoryLocationStore
                                 current with { StoreNow = now })));
             }
 
+            if (mutation is ZLinkAuthorityMutation.Restore restore)
+            {
+                ValidateAuthorityPayload(restore.Payload);
+                if (string.IsNullOrWhiteSpace(restore.ExpectedOwner.OwnerId)
+                    || restore.ExpectedOwner.LeaseGeneration <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(mutation));
+                if (current.OwnerId != restore.ExpectedOwner.OwnerId
+                    || current.OwnerLeaseGeneration
+                    != restore.ExpectedOwner.LeaseGeneration)
+                    return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
+                        new ZLinkAuthorityCompareExchangeResult.Conflict(
+                            new ZLinkAuthorityReadResult.Found(
+                                current with { StoreNow = now })));
+                if (!CanIncrement(_authorityRevision))
+                    return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
+                        new ZLinkAuthorityCompareExchangeResult.GenerationExhausted());
+                var restored = current with
+                {
+                    StoreVersion = Next(ref _authorityRevision).ToString(),
+                    Payload = restore.Payload.ToArray(),
+                    StoreNow = now
+                };
+                _authorities[key.Value] = restored;
+                return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
+                    new ZLinkAuthorityCompareExchangeResult.Stored(restored));
+            }
+
             if (mutation is ZLinkAuthorityMutation.Delete)
             {
                 if (!MatchesLiveOwnerLease(
@@ -115,9 +142,9 @@ internal sealed partial class ZLinkInMemoryLocationStore
                                 current with { StoreNow = now })));
             }
             RelocationCapacityState? relocationCapacity = null;
-            if (needsOwner
+            if (put.RelocationCapacityFence is { } relocationFence
                 && (!_relocationCapacityReservations.TryGetValue(
-                        put.RelocationCapacityFence.GetValueOrDefault().Value,
+                        relocationFence.Value,
                         out relocationCapacity)
                     || relocationCapacity.Status
                     != RelocationCapacityStatus.Reserved
@@ -128,8 +155,9 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     != new ZLinkLocationOwnerToken(
                         current.OwnerId,
                         current.OwnerLeaseGeneration)
-                    || relocationCapacity.Request.TargetOwner
-                    != put.TargetOwner.GetValueOrDefault()
+                    || needsOwner
+                    && relocationCapacity.Request.TargetOwner
+                       != put.TargetOwner.GetValueOrDefault()
                     || !MatchesSourceAllocation(
                         current.Allocation,
                         relocationCapacity.Request)
@@ -176,11 +204,25 @@ internal sealed partial class ZLinkInMemoryLocationStore
             _authorities[key.Value] = stored;
             if (put.RelocationCapacityFence is { } capacityFence)
             {
-                MoveRelocationCapacity(
-                    current.Allocation,
-                    relocationCapacity!.Request);
-                _relocationCapacityReservations[capacityFence.Value].Status =
-                    RelocationCapacityStatus.Committed;
+                if (needsOwner)
+                {
+                    MoveRelocationCapacity(
+                        current.Allocation,
+                        relocationCapacity!.Request);
+                    _relocationCapacityReservations[capacityFence.Value].Status =
+                        RelocationCapacityStatus.Committed;
+                }
+                else
+                {
+                    // Prepared publication and relocation capacity must become
+                    // one durable fence. Rebind the reserved request to the
+                    // StoreVersion produced by this same authority CAS so the
+                    // following NewOwner CAS can consume the exact fence.
+                    relocationCapacity!.Request = relocationCapacity.Request with
+                    {
+                        ExpectedStoreVersion = stored.StoreVersion
+                    };
+                }
             }
             return ValueTask.FromResult<ZLinkAuthorityCompareExchangeResult>(
                 new ZLinkAuthorityCompareExchangeResult.Stored(stored));
@@ -1369,8 +1411,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
             put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner;
         if (!preserve && !newOwner)
             throw new ArgumentOutOfRangeException(nameof(put));
-        if (preserve && (put.TargetOwner is not null
-                         || put.RelocationCapacityFence is not null)
+        if (preserve && put.TargetOwner is not null
             || newOwner && (put.TargetOwner is null
                             || put.RelocationCapacityFence is null)
             || put.TargetOwner is { } owner
@@ -1543,7 +1584,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
         ZLinkRelocationCapacityReservationRequest request,
         RelocationCapacityStatus status)
     {
-        internal ZLinkRelocationCapacityReservationRequest Request { get; } =
+        internal ZLinkRelocationCapacityReservationRequest Request { get; set; } =
             request;
         internal RelocationCapacityStatus Status { get; set; } = status;
     }

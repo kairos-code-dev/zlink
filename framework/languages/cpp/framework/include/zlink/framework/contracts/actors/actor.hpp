@@ -160,7 +160,7 @@ class actor_factory_t
   public:
     virtual ~actor_factory_t () = default;
     virtual task_t<std::shared_ptr<TActor>>
-    create (actor_context_t &context,
+    create (actor_context_t context,
             std::stop_token operation_cancellation) = 0;
 };
 
@@ -807,8 +807,11 @@ spot_node_builder_t::add_actor_factory (
         -> std::optional<zlink::message_t> { return std::nullopt; },
       [] (void *, const zlink::message_t &, serializer_registry_t &) {},
       [factory = std::move (factory)] (
-        actor_context_t &context) -> std::shared_ptr<void> {
-          auto created = factory->create (context, {}).result ();
+        actor_context_t context) -> std::shared_ptr<void> {
+          auto expected = actor_context_t (
+            context._state, context.actor_ref (),
+            context._source_binding_generation, context._mesh_name);
+          auto created = factory->create (std::move (context), {}).result ();
           if (!created) {
               const auto *error = created.error ();
               throw framework_exception_t (
@@ -821,7 +824,7 @@ spot_node_builder_t::add_actor_factory (
                 framework_error_kind_t::actor_route_not_found,
                 "Actor factory returned null");
           }
-          if (!created.value ()->context ().has_same_source_fence (context)) {
+          if (!created.value ()->context ().has_same_source_fence (expected)) {
               throw framework_exception_t (
                 framework_error_kind_t::invalid_configuration,
                 "Actor factory must return an Actor that exposes the provided Context");

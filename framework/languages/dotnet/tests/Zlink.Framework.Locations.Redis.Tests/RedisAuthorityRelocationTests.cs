@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Locations.Redis.Tests;
 
@@ -130,7 +131,7 @@ public sealed class RedisAuthorityRelocationTests(
     public void Official_Providers_Expose_Separate_Store_Capabilities()
     {
         Assert.Contains(
-            typeof(IZLinkAuthorityStore),
+            typeof(IZLinkLocationStore),
             typeof(ZLinkRedisLocationStore).GetInterfaces());
         Assert.Contains(
             typeof(IZLinkRelocationStore),
@@ -271,6 +272,66 @@ public sealed class RedisAuthorityRelocationTests(
         var entry = Assert.Single(page.Value.Items);
         Assert.Equal(key, entry.Key);
         Assert.Equal("updated"u8.ToArray(), entry.Snapshot.Payload.ToArray());
+    }
+
+    [SkippableFact]
+    public async Task Preparing_recovery_preserves_exact_authority_after_owner_release()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore();
+        var ownerId = $"preparing-recovery-{Guid.NewGuid():N}";
+        var owner = await store.ClaimLiveOwnerAsync(
+            ownerId,
+            TimeSpan.FromMinutes(1));
+        await PublishDescriptorAsync(store, owner, RoutingId.From(ownerId));
+        var key = new ZLinkAuthorityKey(
+            $"zla1:a:preparing-recovery-{Guid.NewGuid():N}");
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(Request(key, owner, key.Value)));
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                reserved.Reservation,
+                "preparing"u8.ToArray()));
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await store.ReleaseOwnerLeaseAsync(owner));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    "steady"u8.ToArray(),
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    null)));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Conflict>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Restore(
+                    "steady"u8.ToArray(),
+                    owner with
+                    {
+                        LeaseGeneration = checked(owner.LeaseGeneration + 1)
+                    })));
+
+        var recovered = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Restore(
+                    "steady"u8.ToArray(),
+                    owner)));
+
+        Assert.Equal("steady"u8.ToArray(),
+            recovered.Snapshot.Payload.ToArray());
+        Assert.Equal(committed.Snapshot.ObjectGeneration,
+            recovered.Snapshot.ObjectGeneration);
+        Assert.Equal(committed.Snapshot.AuthorityOwnerGeneration,
+            recovered.Snapshot.AuthorityOwnerGeneration);
+        Assert.Equal(owner, new ZLinkLocationOwnerToken(
+            recovered.Snapshot.OwnerId,
+            recovered.Snapshot.OwnerLeaseGeneration));
     }
 
     [SkippableFact]
@@ -657,6 +718,69 @@ public sealed class RedisAuthorityRelocationTests(
                     new ZLinkAuthorityKey("zla1:a:active-overflow"),
                     owner,
                     "active-overflow")));
+    }
+
+    [SkippableFact]
+    public async Task Relocation_Prepared_Preserve_Rebinds_Reserved_Fence()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore();
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "prepared-source",
+                TimeSpan.FromMinutes(1))).Token;
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "prepared-target",
+                TimeSpan.FromMinutes(1))).Token;
+        await PublishDescriptorAsync(
+            store,
+            source,
+            RoutingId.From(source.OwnerId));
+        await PublishDescriptorAsync(
+            store,
+            target,
+            RoutingId.From(target.OwnerId));
+        var key = new ZLinkAuthorityKey(
+            $"zla1:a:prepared-{Guid.NewGuid():N}");
+        var creation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(Request(key, source, key.Value)));
+        var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                creation.Reservation,
+                "ready"u8.ToArray()));
+        var request = RelocationRequest(ready.Snapshot, source, target) with
+        {
+            Key = key
+        };
+        var capacity = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await store.ReserveRelocationCapacityAsync(request));
+
+        var prepared = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                ready.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    "prepared"u8.ToArray(),
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    capacity.Fence)));
+        Assert.Equal(source.OwnerId, prepared.Snapshot.OwnerId);
+
+        var committed = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                prepared.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    "committed"u8.ToArray(),
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    target,
+                    capacity.Fence)));
+        Assert.Equal(target.OwnerId, committed.Snapshot.OwnerId);
+        Assert.Equal(
+            ZLinkRelocationCapacityAbortResult.AlreadyCommitted,
+            await store.AbortRelocationCapacityAsync(capacity.Fence));
     }
 
     [SkippableFact]

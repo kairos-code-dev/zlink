@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <zlink/framework/contracts/channels/pending_operation.hpp>
+#include "runtime/messaging/pending_operation.hpp"
 
 #include <atomic>
 #include <exception>

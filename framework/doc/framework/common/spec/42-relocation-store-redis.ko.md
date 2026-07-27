@@ -172,9 +172,10 @@ Provider가 영구 `Missing`을 확정하거나 checksum·inventory digest가 �
 자신의 connection 설정과 비어 있지 않은 key prefix를 가진다. 한 class가 두 Store interface를 함께 구현하거나
 두 capability를 한 번에 root에 등록하는 Redis 전용 API는 제공하지 않는다.
 
-같은 Redis deployment를 사용할 때도 prefix가 겹치면 startup을 실패한다. 별도 deployment를 사용할 때 Location
-authority의 availability와 Relocation payload의 availability는 독립적이며 한쪽 Redis script가 다른 Store의 key를
-읽거나 변경하지 않는다.
+같은 Redis deployment를 사용할 때는 운영 데이터와 정리 범위를 분리할 수 있도록 서로 다른 prefix를 권장한다.
+Framework root는 opaque provider 설정에서 deployment identity나 prefix 중복을 추측하지 않는다. 별도 deployment를
+사용할 때 Location authority의 availability와 Relocation payload의 availability는 독립적이며 한쪽 Redis operation이
+다른 Store의 key를 읽거나 변경하지 않는다.
 
 ## 7. 구현 및 contract test 검증 요구
 

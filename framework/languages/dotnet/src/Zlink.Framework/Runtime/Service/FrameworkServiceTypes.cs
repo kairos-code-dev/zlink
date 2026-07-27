@@ -234,9 +234,21 @@ internal interface IRelocationReplyRelayTarget
     ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord?> RelayAsync(
         ZLinkServiceWireCodec.ReplyRelayRecord relay,
         RoutingId sourceNodeRid,
+        ulong sourceNodeGeneration,
         IReadOnlyList<Message> payload,
         CancellationToken cancellationToken);
 }
+
+internal enum ZLinkRelocationReplyCompletionState : byte
+{
+    NotFound = 0,
+    TerminalReceived = 1,
+    AlreadyTerminal = 2
+}
+
+internal readonly record struct ZLinkRelocationReplyCompletion(
+    ZLinkRelocationReplyCompletionState State,
+    ZLinkServiceWireCodec.RequestSourceFence RequestSource);
 
 internal interface ICanonicalRelocationReservationTarget
 {
@@ -388,7 +400,8 @@ internal readonly struct MeshReceiveRecord
         ulong targetNodeGeneration = 0,
         ulong authorityOwnerGeneration = 0,
         ulong ownerLeaseGeneration = 0,
-        byte forwardingHopCount = 0)
+        byte forwardingHopCount = 0,
+        ulong replyRouteId = 0)
     {
         Kind = kind; Domain = domain; SourceNodeRid = sourceNodeRid;
         SourceSpotId = sourceSpotId; SourceBindingGeneration = sourceBindingGeneration;
@@ -401,6 +414,7 @@ internal readonly struct MeshReceiveRecord
         AuthorityOwnerGeneration = authorityOwnerGeneration;
         OwnerLeaseGeneration = ownerLeaseGeneration;
         ForwardingHopCount = forwardingHopCount;
+        ReplyRouteId = replyRouteId;
     }
     public MeshRecordKind Kind { get; }
     public MeshReadyDomains Domain { get; }
@@ -421,6 +435,7 @@ internal readonly struct MeshReceiveRecord
     public ulong AuthorityOwnerGeneration { get; }
     public ulong OwnerLeaseGeneration { get; }
     public byte ForwardingHopCount { get; }
+    public ulong ReplyRouteId { get; }
     public MeshRecordPayload? KindData { get; }
     public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
     public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;
@@ -433,6 +448,8 @@ internal readonly struct MeshReceiveRecord
     public ActorDestroyCompletion? ActorDestroyCompletion =>
         KindData as ActorDestroyCompletion;
     public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
+    internal Func<IReadOnlyList<Message>, SendFlags, SubmitResult>?
+        CaptureReplyRoute() => _reply;
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None) =>
         _reply?.Invoke(parts, flags) ?? SubmitResult.Terminated;
     public SubmitResult ReplyJoin(
@@ -465,6 +482,7 @@ internal readonly struct MeshReceiveRecord
 
 internal interface IMeshNode : IDisposable, IAsyncDisposable
 {
+    ValueTask ForceStopAsync(CancellationToken cancellationToken);
     RoutingId RoutingId { get; }
     MeshOperationId AllocateOperationId();
     long MaxMessageSize { get; set; }

@@ -9,13 +9,6 @@ import java.util.concurrent.Flow.Subscription
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import systems.zlink.framework.locations.ZLinkLocationChanged
-import systems.zlink.framework.locations.ZLinkLocationWatchFilter
-import systems.zlink.framework.locations.ZLinkLocationWatchStore
-
-fun ZLinkLocationWatchStore.changes(filter: ZLinkLocationWatchFilter): Flow<ZLinkLocationChanged> =
-    watch(filter).asFlow()
-
 fun <T> Publisher<T>.asFlow(): Flow<T> = callbackFlow {
     val subscriber = object : Subscriber<T> {
         private var subscription: Subscription? = null

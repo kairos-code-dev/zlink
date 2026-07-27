@@ -4,7 +4,7 @@ import {
   type ZLinkPeerLocationKey,
   type ZLinkRouteLocationKey,
   type ZLinkSpotLocationKey
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import { zlinkLocationAutoConnectTypeName, zlinkLocationRoleName } from './canonical-codec';
 import { encodeRoutingIdStorageHex } from '../routing-id';
 

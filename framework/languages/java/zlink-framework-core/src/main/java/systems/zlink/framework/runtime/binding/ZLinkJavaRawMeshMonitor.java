@@ -1,10 +1,10 @@
 package systems.zlink.framework.runtime.binding;
 
 import java.util.function.Supplier;
-import systems.zlink.contracts.service.spot.MeshMonitorEvent;
-import systems.zlink.contracts.service.spot.MeshMonitorStatus;
-import systems.zlink.contracts.service.spot.MeshNodeMonitor;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorEvent;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
 import systems.zlink.contracts.sockets.RecvFlags;
 
 /** Pull monitor snapshot for the Framework-owned raw MeshNode. */

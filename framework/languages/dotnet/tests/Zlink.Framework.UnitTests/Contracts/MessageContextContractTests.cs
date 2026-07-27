@@ -39,17 +39,17 @@ public sealed class MessageContextContractTests
     }
 
     [Fact]
-    public void HandlerInvocation_ExposesOwnerAndMessageContextOnly()
+    public void HandlerFilter_ReceivesTheUnifiedMessageContextDirectly()
     {
-        var properties = typeof(ZLinkHandlerInvocation)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .ToDictionary(static property => property.Name, StringComparer.Ordinal);
-
-        Assert.Equal(2, properties.Count);
-        Assert.Equal(typeof(string), properties["OwnerKind"].PropertyType);
-        Assert.Equal(typeof(IZLinkMessageContext), properties["MessageContext"].PropertyType);
-        Assert.DoesNotContain("Message", properties.Keys);
-        Assert.DoesNotContain("Context", properties.Keys);
+        Assert.Equal(
+            typeof(IZLinkMessageContext),
+            typeof(IZLinkHandlerFilter)
+                .GetMethod(nameof(IZLinkHandlerFilter.InvokeAsync))!
+                .GetParameters()[0]
+                .ParameterType);
+        Assert.DoesNotContain(
+            typeof(IZLinkHandlerFilter).Assembly.GetTypes(),
+            static type => type.Name == "ZLinkHandlerInvocation");
     }
 
     [Fact]
@@ -119,9 +119,7 @@ public sealed class MessageContextContractTests
                 CancellationToken.None));
 
         Assert.Equal("VALUE", result.Value);
-        Assert.NotNull(probe.Invocation);
-        Assert.Equal("Channel", probe.Invocation.OwnerKind);
-        Assert.Same(context, probe.Invocation.MessageContext);
+        Assert.Same(context, probe.FilterContext);
         var handlerContext = Assert.IsAssignableFrom<IZLinkMessageContext>(probe.HandlerContext);
         Assert.Same(context, handlerContext);
         Assert.Equal("alpha", handlerContext.Metadata.Find("tenant"));
@@ -155,7 +153,7 @@ public sealed class MessageContextContractTests
 
     private sealed class FilterProbe
     {
-        public ZLinkHandlerInvocation? Invocation { get; set; }
+        public IZLinkMessageContext? FilterContext { get; set; }
 
         public IZLinkMessageContext? HandlerContext { get; set; }
     }
@@ -163,12 +161,12 @@ public sealed class MessageContextContractTests
     private sealed class CapturingFilter(FilterProbe probe) : IZLinkHandlerFilter
     {
         public async ValueTask InvokeAsync(
-            ZLinkHandlerInvocation invocation,
+            IZLinkMessageContext context,
             ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            probe.Invocation = invocation;
+            probe.FilterContext = context;
             await next();
         }
     }

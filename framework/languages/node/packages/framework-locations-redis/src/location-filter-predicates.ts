@@ -1,3 +1,4 @@
+import type { RoutingId } from '@zlink-systems/framework';
 import type {
   ZLinkActorLocation,
   ZLinkActorLocationFilter,
@@ -5,10 +6,9 @@ import type {
   ZLinkPeerLocationFilter,
   ZLinkRouteLocation,
   ZLinkRouteLocationFilter,
-  RoutingId,
   ZLinkSpotLocation,
   ZLinkSpotLocationFilter
-} from '@zlink-systems/framework';
+} from '../../framework/src/contracts/Locations/Models';
 import { routingIdHex } from './redis-row-keys';
 
 export function matchesPeer(row: ZLinkPeerLocation, filter: ZLinkPeerLocationFilter): boolean {

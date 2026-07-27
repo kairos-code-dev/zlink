@@ -414,9 +414,8 @@ public static class Scenarios
     }
 
     /// <summary>
-    /// A zone spot's timer handler fails. Ops cannot subscribe to a remote node's spot events
-    /// — a spot event source only covers the SpotNode in the same process — so the node
-    /// observes the failure locally and reports it (§8.1). The console sees it as an alert.
+    /// A zone spot's timer handler fails. The owning node receives the provider-neutral timer
+    /// failure event and reports it to Ops (§8.1). The console sees it as an alert.
     /// </summary>
     private static async ValueTask C4SpotEventReported(ClientOptions options, CancellationToken ct)
     {

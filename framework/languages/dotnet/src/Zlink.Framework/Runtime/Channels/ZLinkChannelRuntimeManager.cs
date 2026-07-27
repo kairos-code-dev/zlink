@@ -99,6 +99,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                             channel.Subscriber.SocketConfig,
                             receiveLoop,
                             fanoutRuntime,
+                            state.ErrorSink,
                             state.StopTokenSource.Token));
                     continue;
                 }
@@ -111,6 +112,7 @@ internal sealed class ZLinkChannelRuntimeManager(
                     ct => new ValueTask(receiveLoop.RunSubscriberLoopAsync(
                         channelName,
                         (IZLinkBackendSubscriberSocket)bundle.Socket,
+                        state.ErrorSink,
                         ct))));
             }
         }
@@ -135,9 +137,9 @@ internal sealed class ZLinkChannelRuntimeManager(
                     ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token);
                 state.ClientServerClientRuntimes.Add(entry.Key, runtime);
-                channel.Client.ManualConnections.Attach(
+                runtime.OwnManualConnectionAttachment(channel.Client.ManualConnections.Attach(
                     runtime.AddManual,
-                    runtime.RemoveManual);
+                    runtime.RemoveManual));
                 if (!registration.Locations.Enabled
                     && channel.HasClientServerServer
                     && state.ClientServerServerBundles.TryGetValue(

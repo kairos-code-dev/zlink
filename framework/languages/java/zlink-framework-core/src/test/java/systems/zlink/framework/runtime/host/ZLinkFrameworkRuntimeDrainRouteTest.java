@@ -16,6 +16,8 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 
 final class ZLinkFrameworkRuntimeDrainRouteTest {
@@ -122,8 +124,8 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     @Test
     void drainTransferUsesSpotMeshRouteChannel() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addRouteMeshChannel("game-spots");
-        options.addSpotMesh("game-spots");
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(options, "game-spots");
+        systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game-spots");
 
         assertEquals(
             "game-spots",
@@ -134,9 +136,9 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     @Test
     void drainTransferRequiresActorHostCapabilityAndRejectsLocalNode() {
         RoutingId remote = RoutingId.from("play-b");
-        ZLinkPeerLocation capable = peer(remote, List.of("actor:player"));
-        ZLinkPeerLocation wrongType = peer(RoutingId.from("enemy-a"), List.of("actor:enemy"));
-        ZLinkPeerLocation prefixOnly = peer(RoutingId.from("play-a"), List.of("actor:play"));
+        ZLinkAutoConnectPeer capable = peer(remote, List.of("actor:player"));
+        ZLinkAutoConnectPeer wrongType = peer(RoutingId.from("enemy-a"), List.of("actor:enemy"));
+        ZLinkAutoConnectPeer prefixOnly = peer(RoutingId.from("play-a"), List.of("actor:play"));
 
         assertTrue(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(capable, "player", Set.of()));
         assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(wrongType, "player", Set.of()));
@@ -149,37 +151,37 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     void automaticRetireRequiresNonDrainingExactGenerationAdmittedPeer() {
         RoutingId local = RoutingId.from("blue-a");
         RoutingId green = RoutingId.from("green-b");
-        ZLinkPeerLocation descriptor = new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+        ZLinkAutoConnectPeer descriptor = new ZLinkAutoConnectPeer(
+            ZLinkAutoConnectType.ROUTE_MESH,
             "game",
             green,
             ZLinkLocationRole.ROUTER,
             "tcp://green:9000",
             100,
             false,
-            0,
+            7,
             Map.of(),
             List.of(),
             "green-owner",
             7,
             Instant.now());
-        var admitted = new systems.zlink.contracts.service.spot.MeshPeerEntry(
+        var admitted = new systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry(
             green,
             "tcp://green:9000",
             1,
-            systems.zlink.contracts.service.spot.MeshPeerSource.DISCOVERY,
-            systems.zlink.contracts.service.spot.MeshPeerState.ADMITTED,
+            systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.DISCOVERY,
+            systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.ADMITTED,
             7,
             1,
             0,
             0,
             0);
-        var stale = new systems.zlink.contracts.service.spot.MeshPeerEntry(
+        var stale = new systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry(
             green,
             "tcp://green:9000",
             1,
-            systems.zlink.contracts.service.spot.MeshPeerSource.DISCOVERY,
-            systems.zlink.contracts.service.spot.MeshPeerState.ADMITTED,
+            systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.DISCOVERY,
+            systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.ADMITTED,
             6,
             1,
             0,
@@ -194,9 +196,9 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
             List.of(descriptor), local, List.of(admitted)));
     }
 
-    private static ZLinkPeerLocation peer(RoutingId nodeRid, List<String> capabilities) {
-        return new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.SPOT_MESH, "game-spots", nodeRid,
+    private static ZLinkAutoConnectPeer peer(RoutingId nodeRid, List<String> capabilities) {
+        return new ZLinkAutoConnectPeer(
+            ZLinkAutoConnectType.SPOT_MESH, "game-spots", nodeRid,
             ZLinkLocationRole.SPOT, "", 100, false, 0, Map.of(), capabilities,
             "owner", 1, Instant.now());
     }

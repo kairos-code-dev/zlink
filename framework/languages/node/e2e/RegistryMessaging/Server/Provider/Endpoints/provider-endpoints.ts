@@ -2,7 +2,7 @@ import {
   ZLinkFrameworkException,
   type ZLinkChannelClient,
   type ZLinkChannelRuntimeOptions,
-  type ZLinkRouteMeshRuntime,
+  type ZLinkFrameworkRuntime,
   type ZLinkRouteClient
 } from '@zlink-systems/framework';
 import {
@@ -23,7 +23,7 @@ export function createProviderEndpoints(
   channel: ZLinkChannelClient,
   route: ZLinkRouteClient,
   runtimeOptions: ZLinkChannelRuntimeOptions,
-  routeMeshRuntime: ZLinkRouteMeshRuntime,
+  frameworkRuntime: ZLinkFrameworkRuntime,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -97,7 +97,7 @@ export function createProviderEndpoints(
       method: 'POST', path: '/drain',
       handle: async () => {
         runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
-        const result = await routeMeshRuntime.drain('profile', 30_000);
+        const result = await frameworkRuntime.retire({ deadlineMs: 30_000 });
         stop();
         return result;
       }

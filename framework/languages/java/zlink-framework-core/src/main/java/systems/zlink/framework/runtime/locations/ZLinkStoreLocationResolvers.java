@@ -4,44 +4,34 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicBoolean;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationChanged;
-import systems.zlink.framework.locations.ZLinkLocationKind;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
-import systems.zlink.framework.locations.ZLinkLocationWatchFilter;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
-import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
-import systems.zlink.framework.locations.ZLinkRouteLocation;
-import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotLocation;
-import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeerResolver;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
+/** Resolves public handles from durable authority without legacy location rows. */
 public final class ZLinkStoreLocationResolvers
-    implements ZLinkPeerLocationResolver, AutoCloseable {
+    implements ZLinkAutoConnectPeerResolver, AutoCloseable {
     private final ZLinkRegisteredLocationStores stores;
     private final ZLinkLiveLocationRows liveRows;
     private final Duration routeCacheMaxAge;
-    private final Map<ZLinkSpotLocationKey, CachedRoute<ZLinkSpotLocation>> spotRoutes =
-        new ConcurrentHashMap<>();
-    private final Map<ZLinkActorLocationKey, CachedRoute<ZLinkActorLocation>> actorRoutes =
-        new ConcurrentHashMap<>();
+    private final Map<String, CachedRoute<SpotRoute>> spotRoutes = new ConcurrentHashMap<>();
+    private final Map<String, CachedRoute<ActorRoute>> actorRoutes = new ConcurrentHashMap<>();
     private final ZLinkServiceAuthorityPayloadCodec spotAuthorityCodec =
         new ZLinkServiceAuthorityPayloadCodec();
     private final ZLinkActorAuthorityPayloadCodec actorAuthorityCodec =
         new ZLinkActorAuthorityPayloadCodec();
-    private final CopyOnWriteArrayList<Flow.Subscription> watchSubscriptions =
-        new CopyOnWriteArrayList<>();
     private final AtomicBoolean authorityStoreFailure = new AtomicBoolean();
-    private volatile boolean closed;
 
     public ZLinkStoreLocationResolvers(
         ZLinkRegisteredLocationStores stores,
@@ -55,47 +45,73 @@ public final class ZLinkStoreLocationResolvers
         this.stores = Objects.requireNonNull(stores, "stores");
         this.liveRows = Objects.requireNonNull(liveRows, "liveRows");
         this.routeCacheMaxAge = liveRows.routeCacheMaxAge();
-        subscribeToAuthorityChanges();
+    }
+
+    public CompletionStage<SpotRoute> resolveSpot(String spotId) {
+        SpotRoute cached = cached(spotRoutes, spotId);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached);
+        }
+        return observeAuthorityRead(stores.unifiedStore()
+            .read(ZLinkAuthorityKeyCodec.spot(spotId), () -> false))
+            .thenCompose(read -> resolveReadySpot(spotId, read));
+    }
+
+    public CompletionStage<ActorRoute> resolveActor(String actorId) {
+        ActorRoute cached = cached(actorRoutes, actorId);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached);
+        }
+        return observeAuthorityRead(stores.unifiedStore()
+            .read(ZLinkAuthorityKeyCodec.actor(actorId), () -> false))
+            .thenCompose(read -> resolveReadyActor(actorId, read));
     }
 
     @Override
-    public CompletionStage<List<ZLinkPeerLocation>> listLivePeers(ZLinkPeerLocationFilter filter) {
-        return stores.peerStore().listPeerLocations(filter)
-            .thenCompose(liveRows::filterLivePeers);
+    public CompletionStage<List<ZLinkAutoConnectPeer>> listPeers(
+        ZLinkAutoConnectType type,
+        String meshName,
+        ZLinkLocationRole role) {
+        return listMeshNodes(meshName, null, new java.util.ArrayList<>())
+            .thenApply(nodes -> nodes.stream().map(node -> new ZLinkAutoConnectPeer(
+                type,
+                node.meshName(),
+                node.rid(),
+                role == null ? ZLinkLocationRole.ROUTER : role,
+                node.endpoint(),
+                node.placementWeight(),
+                node.state() != systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState.SERVING,
+                node.lifecycleGeneration(),
+                Map.of(),
+                node.objectCapabilities().stream()
+                    .filter(capability -> capability.objectKind()
+                        == systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR)
+                    .map(capability -> "actor:" + capability.stableType())
+                    .toList(),
+                node.ownerId(),
+                node.leaseGeneration(),
+                node.updatedAt())).toList());
     }
 
-    CompletionStage<ZLinkSpotLocation> resolveSpotRow(ZLinkSpotLocationKey key) {
-        ZLinkSpotLocation cached = cached(spotRoutes, key);
-        if (cached != null) {
-            return CompletableFuture.completedFuture(cached);
-        }
-        if (stores.authorityStore() == null) {
-            return liveRows.resolveLiveSpot(stores.spotStore().resolveSpot(key));
-        }
-        return observeAuthorityRead(stores.authorityStore()
-            .read(ZLinkAuthorityKeyCodec.spot(key.spotId()), () -> false))
-            .thenCompose(read -> resolveReadySpot(key, read));
+    private CompletionStage<List<ZLinkMeshNodeDescriptor>> listMeshNodes(
+        String meshName,
+        String continuation,
+        List<ZLinkMeshNodeDescriptor> values) {
+        return stores.unifiedStore().listMeshNodes(
+            meshName, new ZLinkPageRequest(1000, continuation)).thenCompose(page -> {
+                values.addAll(page.items());
+                return page.continuationToken() == null
+                    ? CompletableFuture.completedFuture(List.copyOf(values))
+                    : listMeshNodes(meshName, page.continuationToken(), values);
+            });
     }
 
-    public CompletionStage<ZLinkActorLocation> resolveActorRow(ZLinkActorLocationKey key) {
-        ZLinkActorLocation cached = cached(actorRoutes, key);
-        if (cached != null) {
-            return CompletableFuture.completedFuture(cached);
-        }
-        if (stores.authorityStore() == null) {
-            return CompletableFuture.completedFuture(null);
-        }
-        return observeAuthorityRead(stores.authorityStore()
-            .read(ZLinkAuthorityKeyCodec.actor(key.actorId()), () -> false))
-            .thenCompose(read -> resolveReadyActor(key, read));
+    public void invalidateActorRoute(String actorId) {
+        actorRoutes.remove(Objects.requireNonNull(actorId, "actorId"));
     }
 
-    public void invalidateActorRoute(ZLinkActorLocationKey key) {
-        actorRoutes.remove(Objects.requireNonNull(key, "key"));
-    }
-
-    public void invalidateSpotRoute(ZLinkSpotLocationKey key) {
-        spotRoutes.remove(Objects.requireNonNull(key, "key"));
+    public void invalidateSpotRoute(String spotId) {
+        spotRoutes.remove(Objects.requireNonNull(spotId, "spotId"));
     }
 
     public void invalidateAllRoutes() {
@@ -103,108 +119,73 @@ public final class ZLinkStoreLocationResolvers
         actorRoutes.clear();
     }
 
-    private CompletionStage<ZLinkSpotLocation> resolveReadySpot(
-        ZLinkSpotLocationKey key,
-        Object read) {
-        if (!(read instanceof systems.zlink.framework.locations
-                .ZLinkAuthoritySnapshot snapshot)
+    private CompletionStage<SpotRoute> resolveReadySpot(String spotId, Object read) {
+        if (!(read instanceof systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot)
             || snapshot.allocation().state()
                 != systems.zlink.framework.locations.ZLinkPlacementAllocationState.ACTIVE) {
-            spotRoutes.remove(key);
+            spotRoutes.remove(spotId);
             return CompletableFuture.completedFuture(null);
         }
         var authority = spotAuthorityCodec.decode(snapshot.payload()).orElse(null);
         if (authority == null
             || authority.state() != ZLinkServiceAuthorityPayloadCodec.State.READY
-            || !authority.spotId().equals(key.spotId())
+            || !authority.spotId().equals(spotId)
             || !authority.ownerId().equals(snapshot.ownerId())
-            || authority.ownerLeaseGeneration() != snapshot.ownerLeaseGeneration()
-            || snapshot.allocation().objectKind()
-                != (authority.kind() == ZLinkServiceAuthorityPayloadCodec.Kind.USER
-                    ? systems.zlink.framework.locations.ZLinkPlacementObjectKind.USER_SPOT
-                    : systems.zlink.framework.locations.ZLinkPlacementObjectKind.INSTANCE_SPOT)) {
-            spotRoutes.remove(key);
+            || authority.ownerLeaseGeneration() != snapshot.ownerLeaseGeneration()) {
+            spotRoutes.remove(spotId);
             return CompletableFuture.completedFuture(null);
         }
-        ZLinkSpotLocation row = new ZLinkSpotLocation(
+        SpotRoute route = new SpotRoute(
             authority.meshName(),
             authority.spotId(),
             snapshot.objectGeneration(),
-            authority.stableType(),
             authority.nodeRid(),
+            snapshot.authorityOwnerGeneration(),
             authority.kind() == ZLinkServiceAuthorityPayloadCodec.Kind.USER
                 ? ZLinkSpotKind.USER
-                : ZLinkSpotKind.INSTANCE,
-            null,
-            snapshot.ownerId(),
-            snapshot.authorityOwnerGeneration(),
-            snapshot.storeNow());
+                : ZLinkSpotKind.INSTANCE);
         return admitPositiveRoute(
-            spotRoutes,
-            key,
-            row,
-            snapshot.ownerId(),
-            snapshot.ownerLeaseGeneration(),
-            snapshot.storeVersion(),
-            snapshot.allocation().descriptorLifecycleGeneration());
+            spotRoutes, spotId, route, snapshot.ownerId(),
+            snapshot.ownerLeaseGeneration(), snapshot.storeVersion());
     }
 
-    private CompletionStage<ZLinkActorLocation> resolveReadyActor(
-        ZLinkActorLocationKey key,
-        Object read) {
-        if (!(read instanceof systems.zlink.framework.locations
-                .ZLinkAuthoritySnapshot snapshot)
+    private CompletionStage<ActorRoute> resolveReadyActor(String actorId, Object read) {
+        if (!(read instanceof systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot)
             || snapshot.allocation().state()
                 != systems.zlink.framework.locations.ZLinkPlacementAllocationState.ACTIVE
             || snapshot.allocation().objectKind()
                 != systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR) {
-            actorRoutes.remove(key);
+            actorRoutes.remove(actorId);
             return CompletableFuture.completedFuture(null);
         }
         var authority = actorAuthorityCodec.decode(snapshot.payload()).orElse(null);
         if (authority == null
             || authority.state() != ZLinkActorAuthorityPayloadCodec.State.READY
-            || !authority.actorId().equals(key.actorId())
+            || !authority.actorId().equals(actorId)
             || !authority.ownerId().equals(snapshot.ownerId())
             || authority.ownerLeaseGeneration() != snapshot.ownerLeaseGeneration()) {
-            actorRoutes.remove(key);
+            actorRoutes.remove(actorId);
             return CompletableFuture.completedFuture(null);
         }
-        ZLinkActorLocation row = new ZLinkActorLocation(
-            authority.actorId(),
-            authority.stableType(),
-            new systems.zlink.framework.actors.ActorRef(
-                authority.actorId(),
-                snapshot.objectGeneration(),
-                authority.meshName(),
-                authority.nodeRid()),
-            authority.nodeRid(),
-            authority.currentSpotKind() == 1
-                ? ZLinkSpotKind.ENTRY
-                : ZLinkSpotKind.USER,
-            authority.meshName(),
+        ActorRoute route = new ActorRoute(
+            new ActorRef(actorId, snapshot.objectGeneration(), authority.meshName(), authority.nodeRid()),
+            authority.currentSpotKind() == 1 ? ZLinkSpotKind.ENTRY : ZLinkSpotKind.USER,
             authority.currentSpotId(),
-            snapshot.ownerId(),
-            snapshot.authorityOwnerGeneration(),
-            snapshot.storeNow());
+            authority.meshName(),
+            authority.nodeRid(),
+            snapshot.authorityOwnerGeneration());
         return admitPositiveRoute(
-            actorRoutes,
-            key,
-            row,
-            snapshot.ownerId(),
-            snapshot.ownerLeaseGeneration(),
-            snapshot.storeVersion(),
-            snapshot.allocation().descriptorLifecycleGeneration());
+            actorRoutes, actorId, route, snapshot.ownerId(),
+            snapshot.ownerLeaseGeneration(), snapshot.storeVersion());
     }
 
-    private <K, V> CompletionStage<V> admitPositiveRoute(
-        Map<K, CachedRoute<V>> cache,
-        K key,
-        V row,
+    private <V> CompletionStage<V> admitPositiveRoute(
+        Map<String, CachedRoute<V>> cache,
+        String key,
+        V value,
         String ownerId,
         long ownerLeaseGeneration,
-        String storeVersion,
-        long nodeLifecycleGeneration) {
+        String storeVersion) {
         return liveRows.ownerLeaseRemaining(ownerId, ownerLeaseGeneration)
             .thenApply(remaining -> {
                 if (remaining == null) {
@@ -213,22 +194,16 @@ public final class ZLinkStoreLocationResolvers
                 }
                 if (!routeCacheMaxAge.isZero()) {
                     Duration lifetime = remaining.compareTo(routeCacheMaxAge) < 0
-                        ? remaining
-                        : routeCacheMaxAge;
+                        ? remaining : routeCacheMaxAge;
                     cache.put(key, new CachedRoute<>(
-                        row,
-                        storeVersion,
-                        ownerId,
-                        ownerLeaseGeneration,
-                        nodeLifecycleGeneration,
-                        System.nanoTime(),
-                        boundedNanos(lifetime)));
+                        value, storeVersion, ownerId, ownerLeaseGeneration,
+                        System.nanoTime(), boundedNanos(lifetime)));
                 }
-                return row;
+                return value;
             });
     }
 
-    private static <K, V> V cached(Map<K, CachedRoute<V>> cache, K key) {
+    private static <V> V cached(Map<String, CachedRoute<V>> cache, String key) {
         CachedRoute<V> route = cache.get(key);
         if (route == null) {
             return null;
@@ -237,7 +212,7 @@ public final class ZLinkStoreLocationResolvers
             cache.remove(key, route);
             return null;
         }
-        return route.row();
+        return route.value();
     }
 
     private static long boundedNanos(Duration value) {
@@ -248,8 +223,7 @@ public final class ZLinkStoreLocationResolvers
         }
     }
 
-    private <T> CompletionStage<T> observeAuthorityRead(
-        CompletionStage<T> read) {
+    private <T> CompletionStage<T> observeAuthorityRead(CompletionStage<T> read) {
         return read.whenComplete((ignored, failure) -> {
             if (failure != null) {
                 authorityStoreFailure.set(true);
@@ -259,123 +233,66 @@ public final class ZLinkStoreLocationResolvers
         });
     }
 
-    private void invalidateOwnerLease(
-        String ownerId,
-        long ownerLeaseGeneration) {
-        spotRoutes.entrySet().removeIf(entry ->
-            entry.getValue().sameOwner(ownerId, ownerLeaseGeneration));
-        actorRoutes.entrySet().removeIf(entry ->
-            entry.getValue().sameOwner(ownerId, ownerLeaseGeneration));
-    }
-
-    private void subscribeToAuthorityChanges() {
-        if (stores.watchStore() == null) {
-            return;
-        }
-        subscribe(new ZLinkLocationWatchFilter(
-            ZLinkLocationKind.SPOT,
-            null,
-            systems.zlink.framework.locations.ZLinkRouteKind.INVALID));
-        subscribe(new ZLinkLocationWatchFilter(
-            ZLinkLocationKind.ACTOR,
-            null,
-            systems.zlink.framework.locations.ZLinkRouteKind.INVALID));
-    }
-
-    private void subscribe(ZLinkLocationWatchFilter filter) {
-        try {
-            stores.watchStore().watch(filter).subscribe(new CacheSubscriber());
-        } catch (RuntimeException failure) {
-            authorityStoreFailure.set(true);
-        }
+    private void invalidateOwnerLease(String ownerId, long ownerLeaseGeneration) {
+        spotRoutes.entrySet().removeIf(entry -> entry.getValue().sameOwner(ownerId, ownerLeaseGeneration));
+        actorRoutes.entrySet().removeIf(entry -> entry.getValue().sameOwner(ownerId, ownerLeaseGeneration));
     }
 
     @Override
     public void close() {
-        closed = true;
-        watchSubscriptions.forEach(Flow.Subscription::cancel);
-        watchSubscriptions.clear();
         invalidateAllRoutes();
     }
 
+    public record SpotRoute(
+        String meshName,
+        String spotId,
+        long spotGeneration,
+        RoutingId nodeRid,
+        long authorityOwnerGeneration,
+        ZLinkSpotKind spotKind) {
+    }
+
+    public record ActorRoute(
+        ActorRef actorRef,
+        ZLinkSpotKind locationKind,
+        String spotId,
+        String meshName,
+        RoutingId nodeRid,
+        long authorityOwnerGeneration) {
+    }
+
     private record CachedRoute<V>(
-        V row,
+        V value,
         String storeVersion,
         String ownerId,
         long ownerLeaseGeneration,
-        long nodeLifecycleGeneration,
         long storedAtNanos,
         long lifetimeNanos) {
-        private boolean sameOwner(
-            String candidateOwnerId,
-            long candidateLeaseGeneration) {
+        private boolean sameOwner(String candidateOwnerId, long candidateLeaseGeneration) {
             return ownerId.equals(candidateOwnerId)
                 && ownerLeaseGeneration == candidateLeaseGeneration;
         }
     }
 
-    private final class CacheSubscriber
-        implements Flow.Subscriber<ZLinkLocationChanged> {
-        @Override
-        public void onSubscribe(Flow.Subscription subscription) {
-            if (closed) {
-                subscription.cancel();
-                return;
-            }
-            watchSubscriptions.add(subscription);
-            subscription.request(Long.MAX_VALUE);
-        }
-
-        @Override
-        public void onNext(ZLinkLocationChanged change) {
-            if (change.key() instanceof systems.zlink.framework.locations
-                    .ZLinkLocationKey.Spot spot) {
-                invalidateSpotRoute(spot.key());
-            } else if (change.key() instanceof systems.zlink.framework.locations
-                    .ZLinkLocationKey.Actor actor) {
-                invalidateActorRoute(actor.key());
-            }
-        }
-
-        @Override
-        public void onError(Throwable failure) {
-            authorityStoreFailure.set(true);
-            invalidateAllRoutes();
-        }
-
-        @Override
-        public void onComplete() {
-            invalidateAllRoutes();
-        }
-    }
-
-    CompletionStage<ZLinkRouteLocation> resolveRouteRow(ZLinkRouteLocationKey key) {
-        return liveRows.resolveLiveRoute(stores.routeStore().resolveRoute(key));
-    }
-
     public static final class AddressResolvers {
-        private final ZLinkStoreLocationResolvers rows;
+        private final ZLinkStoreLocationResolvers routes;
 
-        public AddressResolvers(
-            List<String> meshNames,
-            ZLinkStoreLocationResolvers rows) {
+        public AddressResolvers(List<String> meshNames, ZLinkStoreLocationResolvers routes) {
             Objects.requireNonNull(meshNames, "meshNames");
-            this.rows = Objects.requireNonNull(rows, "rows");
+            this.routes = Objects.requireNonNull(routes, "routes");
         }
 
-        public CompletionStage<ZLinkActorLocation> resolveActorSpotRow(String actorId) {
-            return rows.resolveActorRow(new ZLinkActorLocationKey(actorId));
+        public CompletionStage<ActorRoute> resolveActor(String actorId) {
+            return routes.resolveActor(actorId);
         }
 
-        public CompletionStage<ZLinkSpotLocation> resolveSpotRow(
-            String meshName,
-            String spotId) {
-            return rows.resolveSpotRow(new ZLinkSpotLocationKey(spotId));
+        public CompletionStage<SpotRoute> resolveSpot(String meshName, String spotId) {
+            return routes.resolveSpot(spotId).thenApply(route ->
+                route != null && route.meshName().equals(meshName) ? route : null);
         }
 
-        public CompletionStage<ZLinkSpotLocation> resolveAnySpotRow(
-            String spotId) {
-            return rows.resolveSpotRow(new ZLinkSpotLocationKey(spotId));
+        public CompletionStage<SpotRoute> resolveSpot(String spotId) {
+            return routes.resolveSpot(spotId);
         }
 
         public String routerChannelId(String meshName) {

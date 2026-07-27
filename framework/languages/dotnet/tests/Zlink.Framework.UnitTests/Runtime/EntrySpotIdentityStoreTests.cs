@@ -70,8 +70,6 @@ public sealed class EntrySpotIdentityStoreTests
         var runtimeOptions = new ZLinkLocationOptions();
         var runtime = new ZLinkLocationRuntime(
             runtimeOptions,
-            store,
-            store,
             store);
         await runtime.RenewOwnerLeaseOnceAsync();
         var existingOwner = await ClaimOwnerAsync(store, "existing-owner");
@@ -80,7 +78,6 @@ public sealed class EntrySpotIdentityStoreTests
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, runtimeOptions);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store,
             store,
             tracker,
             new ZLinkObservedLocationGenerations());

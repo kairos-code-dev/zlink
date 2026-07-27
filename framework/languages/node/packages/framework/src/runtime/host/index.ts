@@ -34,10 +34,10 @@ import type {
   ZLinkFrameworkRuntimeSnapshot,
   ZLinkTerminationOptions,
   ZLinkTerminationResult,
-  ZLinkProviderResolver,
-  ZLinkRouteMeshRuntime,
-  ZLinkRuntimeEventPublisher
+  ZLinkRouteMeshRuntime
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
   ZLinkFrameworkErrorKind,
@@ -113,7 +113,6 @@ import {
 } from '../streams';
 import {
   ZLinkOwnerCleanupError,
-  ZLinkAllocatedRoutingIdRuntime,
   ZLinkAuthoritySpotRouteResolver,
   type ZLinkLocationRuntime,
   type ZLinkStoreLocationResolvers
@@ -137,9 +136,7 @@ import { ZLinkSpotNodeRuntimeOptionsFactory } from './spot-node-runtime-options-
 import { rollbackRuntimeStart, stopRuntimeParts } from './runtime-shutdown';
 import { ZLinkRuntimeAdmissionGate } from '../admission';
 import { ZLinkRouteMeshRuntimeCoordinator } from './route-mesh-runtime';
-import { collectRoutingIdAllocationMembers } from '../../contracts/Configuration/RoutingIdAllocationRegistration';
 import { ZLinkConfigurationException } from '../../contracts/Configuration/ConfigurationException';
-import type { ZLinkAllocatedRoutingId, ZLinkAllocatedRoutingIdProvider } from '../../contracts/Locations';
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 import { ZLinkStatefulAuthorityRouteRuntime } from './stateful-authority-route-runtime';
 import { ZLinkInstanceActivationAuthority } from './instance-activation-authority';
@@ -173,8 +170,7 @@ export interface ZLinkFrameworkRuntimeHostOptions {
 export class ZLinkFrameworkRuntimeHost implements
   ZLinkFrameworkRuntimeLifecycle,
   ZLinkFrameworkRuntime,
-  ZLinkMessageFlowControl,
-  ZLinkAllocatedRoutingIdProvider {
+  ZLinkMessageFlowControl {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
   private executionState?: ZLinkFrameworkExecutionState;
@@ -189,7 +185,6 @@ export class ZLinkFrameworkRuntimeHost implements
   private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
   private monitoringRuntime?: ZLinkMonitoringRuntime;
-  private allocatedRoutingIdRuntime?: ZLinkAllocatedRoutingIdRuntime;
   private statefulAuthorityRoutes?: ZLinkStatefulAuthorityRouteRuntime;
   private readonly locationOwner: ZLinkLocationRuntimeOwner;
   private readonly meshRouters: MeshRouterResolver;
@@ -210,10 +205,7 @@ export class ZLinkFrameworkRuntimeHost implements
   private readonly meshSubmitters: ZLinkMeshSubmitterRegistry;
   private readonly localMeshRouteInFlight = new Map<string, number>();
   private readonly localMeshRouteCapacity = 4096;
-  private readonly allocatedRoutingIdGroupNames: ReadonlySet<string>;
-  private allocationRuntimeReady!: Promise<ZLinkAllocatedRoutingIdRuntime>;
   private cachedLocationSpotRouteResolver?: ZLinkSpotRouteResolver;
-  private resolveAllocationRuntime!: (runtime: ZLinkAllocatedRoutingIdRuntime) => void;
   // Shared, runtime-mutable message-flow mode cell — installed once so
   // setMessageFlowMode flips every surface live. Seeded from config at start().
   private readonly messageFlowModeCell: ZLinkMessageFlowModeCell = {
@@ -286,16 +278,12 @@ export class ZLinkFrameworkRuntimeHost implements
       defaultRequestTimeoutMs: options.registration.requestTimeoutMs ?? 30_000
     });
     this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
-    this.allocatedRoutingIdGroupNames = new Set(
-      collectRoutingIdAllocationMembers(options.registration).map((member) => member.groupName)
-    );
     this.locationOwner = new ZLinkLocationRuntimeOwner({
       registration: options.registration,
       runtimeEventPublisher: this.runtimeEventPublisher,
       metrics: this.metrics,
       fallbackNodeRid: `node-${randomUUID()}`
     });
-    this.resetAllocationRuntimeReady();
     this.streamBindingRuntime = new ZLinkStreamBindingRuntime({
       streamPayloadCodec: resolveStreamPayloadCodec(options.registration),
       streamCompression: options.registration.streamCompression,
@@ -660,16 +648,6 @@ export class ZLinkFrameworkRuntimeHost implements
     return this.runtimeEventPublisher;
   }
 
-  async waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<ZLinkAllocatedRoutingId> {
-    if (!this.allocatedRoutingIdGroupNames.has(groupName)) {
-      throw new ZLinkConfigurationException(
-        `Routing-id allocation group '${groupName}' is not registered.`
-      );
-    }
-    const runtime = await waitForAllocationRuntime(this.allocationRuntimeReady, signal);
-    return await runtime.waitForReadyAllocation(groupName, signal);
-  }
-
   /**
    * Runtime toggle (ZLinkMessageFlowControl): flip the shared live-mode cell so every
    * surface starts/stops tracing without a restart.
@@ -711,7 +689,6 @@ export class ZLinkFrameworkRuntimeHost implements
     let spotNodeRuntime: ZLinkSpotNodeRuntimeManager | undefined;
     let streamRuntime: ZLinkStreamRuntimeManager | undefined;
     let startedLocationRuntime: ZLinkLocationRuntime | undefined;
-    let allocatedRoutingIdRuntime: ZLinkAllocatedRoutingIdRuntime | undefined;
     let statefulAuthorityRoutes: ZLinkStatefulAuthorityRouteRuntime | undefined;
     try {
       this.executionState = new ZLinkFrameworkExecutionState(context);
@@ -720,34 +697,6 @@ export class ZLinkFrameworkRuntimeHost implements
         this.options.registration.dispatch?.diagnostics.messageFlow ??
         ZLinkMessageFlowLogMode.ErrorsOnly;
       const dispatchErrors = this.createDispatchErrorReporter(this.executionState.errorSink);
-      if (this.allocatedRoutingIdGroupNames.size > 0) {
-        const locationRuntime = this.locationOwner.ensureRuntime(this.meshRouters.primaryMeshName());
-        const allocationStore = this.locationOwner.routingIdAllocationStore();
-        if (locationRuntime === undefined || allocationStore === undefined) {
-          throw new ZLinkConfigurationException(
-            'Allocated routing ids require a location store with slot-allocation capability.'
-          );
-        }
-        allocatedRoutingIdRuntime = new ZLinkAllocatedRoutingIdRuntime(
-          this.options.registration,
-          allocationStore,
-          locationRuntime,
-          (error) => {
-            queueMicrotask(() => {
-              void this.stop().catch((stopError) =>
-                this.runtimeOrPreStartErrorSink.reportRuntimeTaskException(
-                  'allocated routing-id fencing',
-                  new AggregateError([error, stopError])
-                ));
-            });
-          }
-        );
-        this.allocatedRoutingIdRuntime = allocatedRoutingIdRuntime;
-        this.resolveAllocationRuntime(allocatedRoutingIdRuntime);
-        await allocatedRoutingIdRuntime.start(this.executionState.abortController.signal);
-        await locationRuntime.start(this.locationOwner.ownerNodeRid(), this.executionState.abortController.signal);
-        startedLocationRuntime = locationRuntime;
-      }
       channelRuntime = new ZLinkChannelRuntimeManager(
         this.options.registration,
         channelAdapter,
@@ -858,7 +807,6 @@ export class ZLinkFrameworkRuntimeHost implements
         this.monitoringRuntime = new ZLinkMonitoringRuntime({
           registration: this.options.registration,
           channelRuntime,
-          meshNodes: spotNodeRuntime.meshNodesByName,
           locationRuntime,
           monitoringAdapter: this.backendAdapterFactory.createMonitoringAdapter(),
           publisher: this.runtimeEventPublisher
@@ -872,9 +820,7 @@ export class ZLinkFrameworkRuntimeHost implements
       this.routeMeshCoordinator.markServing();
       this.setRuntimeState(ZLinkFrameworkRuntimeState.Serving);
       this.lifecycleSink?.push('framework:started');
-      allocatedRoutingIdRuntime?.markReady();
     } catch (error) {
-      allocatedRoutingIdRuntime?.fail(error);
       await statefulAuthorityRoutes?.stop();
       await rollbackRuntimeStart({
         context,
@@ -882,19 +828,16 @@ export class ZLinkFrameworkRuntimeHost implements
         monitoringRuntime: this.monitoringRuntime,
         streamRuntime,
         spotNodeRuntime,
-        channelRuntime,
-        allocatedRoutingIdRuntime
+        channelRuntime
       });
       this.executionState = undefined;
       this.channelRuntime = undefined;
       this.spotNodeRuntime = undefined;
       this.streamRuntime = undefined;
       this.monitoringRuntime = undefined;
-      this.allocatedRoutingIdRuntime = undefined;
       this.statefulAuthorityRoutes = undefined;
       this.locationOwner.clearForStop();
       this.cachedLocationSpotRouteResolver = undefined;
-      this.resetAllocationRuntimeReady();
       throw error;
     }
   }
@@ -913,7 +856,6 @@ export class ZLinkFrameworkRuntimeHost implements
     const spotNodeRuntime = this.spotNodeRuntime;
     const streamRuntime = this.streamRuntime;
     const monitoringRuntime = this.monitoringRuntime;
-    const allocatedRoutingIdRuntime = this.allocatedRoutingIdRuntime;
     const statefulAuthorityRoutes = this.statefulAuthorityRoutes;
     const locationSnapshot = this.locationOwner.clearForStop();
     this.executionState = undefined;
@@ -921,7 +863,6 @@ export class ZLinkFrameworkRuntimeHost implements
     this.spotNodeRuntime = undefined;
     this.streamRuntime = undefined;
     this.monitoringRuntime = undefined;
-    this.allocatedRoutingIdRuntime = undefined;
     this.statefulAuthorityRoutes = undefined;
     this.cachedLocationSpotRouteResolver = undefined;
     this.lifecycleSink?.push('framework:stop');
@@ -933,11 +874,9 @@ export class ZLinkFrameworkRuntimeHost implements
       streamRuntime,
       spotNodeRuntime,
       channelRuntime,
-      allocatedRoutingIdRuntime,
       serviceRelocation: this.serviceRelocation
     });
     this.meshSubmitters.dispose();
-    this.resetAllocationRuntimeReady();
     this.lifecycleSink?.push('framework:stopped');
     if (this.terminationOperation === undefined) {
       this.setRuntimeState(ZLinkFrameworkRuntimeState.Stopped);
@@ -1329,7 +1268,7 @@ export class ZLinkFrameworkRuntimeHost implements
             `RouteMesh '${meshName}' has no object-client role.`
           );
         }
-        const descriptors = (await locationStore.listMeshNodes(meshName, signal))
+        const descriptors = (await locationStore.listMeshNodes(meshName, undefined, signal)).items
           .filter(descriptor => {
             const capability = descriptor.objectCapabilities.find(candidate =>
               candidate.objectKind === 'user_spot'
@@ -1929,12 +1868,6 @@ export class ZLinkFrameworkRuntimeHost implements
     );
   }
 
-  private resetAllocationRuntimeReady(): void {
-    this.allocationRuntimeReady = new Promise((resolve) => {
-      this.resolveAllocationRuntime = resolve;
-    });
-  }
-
 }
 
 export function hasUnsupportedManualTopology(
@@ -2012,18 +1945,6 @@ export {
   type ZLinkUserSpotCreationRequest,
   type ZLinkUserSpotCreationResult
 } from './user-spot-creation-coordinator';
-
-function waitForAllocationRuntime<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (signal === undefined) return operation;
-  if (signal.aborted) return Promise.reject(signal.reason);
-  return new Promise<T>((resolve, reject) => {
-    const aborted = () => reject(signal.reason);
-    signal.addEventListener('abort', aborted, { once: true });
-    operation.then(resolve, reject).finally(() => {
-      signal.removeEventListener('abort', aborted);
-    }).catch(() => undefined);
-  });
-}
 
 async function waitForForcedSessionNotification(operation: Promise<void> | undefined): Promise<void> {
   if (operation === undefined) return;

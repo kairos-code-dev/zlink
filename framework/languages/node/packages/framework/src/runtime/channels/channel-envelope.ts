@@ -68,7 +68,7 @@ export function encodeChannelEnvelopeParts(
   createFlow = true,
   metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs, { packetName });
+  const encoded = encodePayload(payload, codecs);
   const flow = currentOrCreateFlow('Application', createFlow);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
@@ -96,7 +96,7 @@ export function encodeChannelPublishEnvelopeParts(
   createFlow = true,
   metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs, { packetName });
+  const encoded = encodePayload(payload, codecs);
   const flow = currentOrCreateFlow('Application', createFlow);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
@@ -120,7 +120,7 @@ export function encodeChannelReplyParts(
   payload: unknown,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs, { packetName: request.messageName });
+  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Response,
@@ -256,13 +256,12 @@ export function closeMessages(parts: readonly MessageLike[]): void {
 
 function encodePayload(
   value: unknown,
-  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
-  context: { readonly packetName?: string } = {}
+  codecs: ZLinkChannelEnvelopeCodecRegistry | undefined
 ): {
   readonly contentType: string;
   readonly message: MessageLike;
 } {
-  const serializer = selectSerializer(value, codecs, context);
+  const serializer = selectSerializer(value, codecs);
   if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
     const contentType = requireDefaultSerializerContentType(codecs, serializer);
     return { contentType, message: serializer.serialize(value).data() };

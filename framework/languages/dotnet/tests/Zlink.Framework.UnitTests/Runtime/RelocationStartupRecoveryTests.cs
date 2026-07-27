@@ -1,9 +1,105 @@
+using System.Buffers.Binary;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
 
 public sealed class RelocationStartupRecoveryTests
 {
+    [Theory]
+    [InlineData((byte)2)]
+    [InlineData((byte)3)]
+    public async Task StandaloneActorSourceOwnedPrecommitRootIsRecovered(
+        byte phase)
+    {
+        var relocation = new RecoveryRelocationStore();
+        var canonical = CreateCanonicalActorRoot();
+        var stored = await ZLinkRelocationTreeStore.PutAsync(
+            relocation,
+            canonical.Envelope,
+            TimeSpan.FromHours(24),
+            CancellationToken.None);
+        var state = PrecommitState(
+            canonical.Envelope.AggregateId,
+            phase,
+            stored.Root.Reference,
+            stored.Root.ChecksumCrc32c);
+        var payload = ZLinkCanonicalRelocationAuthorityStateCodec
+            .ReplaceRelocationState(
+                canonical.SteadyPayload,
+                state,
+                canonical.Envelope);
+        var authority = new RecoveryAuthorityStore(
+        [
+            CanonicalEntry(canonical.Participant, payload)
+        ]);
+        ZLinkRelocationRecoveryCandidate? recovered = null;
+
+        await new ZLinkRelocationStartupRecovery(authority, relocation)
+            .RecoverAsync((candidate, _) =>
+            {
+                recovered = candidate;
+                return ValueTask.CompletedTask;
+            });
+
+        Assert.NotNull(recovered);
+        Assert.Equal(canonical.Envelope.AggregateId, recovered.Envelope.AggregateId);
+        Assert.Equal("source-owner", recovered.Authorities.Single().Snapshot.OwnerId);
+        Assert.True(ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+            recovered.Authorities.Single().Snapshot.Payload.Span,
+            out var projection));
+        Assert.Equal(phase, projection.Phase);
+    }
+
+    [Fact]
+    public async Task StandaloneActorPreparingWithoutRootIsNotPublishedRecovery()
+    {
+        var canonical = CreateCanonicalActorRoot();
+        var payload = ZLinkCanonicalRelocationAuthorityStateCodec
+            .ReplaceRelocationState(
+                canonical.SteadyPayload,
+                PrecommitState(
+                    canonical.Envelope.AggregateId,
+                    phase: 1,
+                    reference: string.Empty,
+                    checksum: 0),
+                root: null);
+        var authority = new RecoveryAuthorityStore(
+        [
+            CanonicalEntry(canonical.Participant, payload)
+        ]);
+        var recovery = new ZLinkRelocationStartupRecovery(
+            authority,
+            new RecoveryRelocationStore());
+        var offered = 0;
+        ZLinkAuthorityEntry? preparing = null;
+
+        await recovery.RecoverAsync(
+            (_, _) =>
+            {
+                offered++;
+                return ValueTask.CompletedTask;
+            },
+            (entry, _) =>
+            {
+                preparing = entry;
+                return ValueTask.CompletedTask;
+            });
+
+        await recovery.RecoverAsync((_, _) =>
+        {
+            offered++;
+            return ValueTask.CompletedTask;
+        });
+        var exact = await recovery.TryReadExactPublishedAsync(
+            canonical.Envelope);
+
+        Assert.Equal(0, offered);
+        Assert.NotNull(preparing);
+        Assert.Equal(canonical.Participant.AuthorityKey, preparing.Key);
+        Assert.Null(exact);
+    }
+
     [Fact]
     public async Task ActorAndUserSpotAuthoritiesResumeOneAggregatePerScan()
     {
@@ -274,6 +370,104 @@ public sealed class RelocationStartupRecoveryTests
                     DateTimeOffset.UnixEpoch));
     }
 
+    private static (
+        ZLinkRelocationEnvelope Envelope,
+        ZLinkRelocationParticipantEnvelope Participant,
+        byte[] SteadyPayload) CreateCanonicalActorRoot()
+    {
+        var relocationId = Guid.NewGuid();
+        var participant = new ZLinkRelocationParticipantEnvelope(
+            new ZLinkAuthorityKey($"zla1:a:recovery-{relocationId:N}"),
+            ZLinkPlacementObjectKind.Actor,
+            11,
+            3,
+            new byte[] { 1 },
+            [],
+            [])
+        {
+            CanonicalParticipantId = 1
+        };
+        var inventory = new ZLinkRelocationEnvelope(
+            relocationId,
+            1,
+            Enumerable.Repeat((byte)0x42, 32).ToArray(),
+            [participant]);
+        var envelope = ZLinkCanonicalActorRelocationWriter.CreateInitial(
+            inventory,
+            applicationVersion: 7);
+        var sourceRid = RoutingId.From("startup-source");
+        var steady = ZLinkActorAuthorityPayloadCodec.Encode(
+            new ZLinkActorAuthorityPayload(
+                ZLinkActorAuthorityState.Ready,
+                "Game.Actor",
+                $"actor-{relocationId:N}",
+                "source-entry",
+                5,
+                ZLinkSpotKind.Entry,
+                "source-owner",
+                3,
+                "mesh",
+                sourceRid,
+                5));
+        return (envelope, envelope.Participants.Single(), steady);
+    }
+
+    private static ZLinkCanonicalRelocationAuthorityState PrecommitState(
+        Guid relocationId,
+        byte phase,
+        string reference,
+        uint checksum)
+    {
+        Span<byte> id = stackalloc byte[16];
+        relocationId.TryWriteBytes(id, bigEndian: true, out _);
+        var targetOwnedFields = phase == 3;
+        return new ZLinkCanonicalRelocationAuthorityState(
+            BinaryPrimitives.ReadUInt64BigEndian(id),
+            BinaryPrimitives.ReadUInt64BigEndian(id[8..]),
+            targetOwnedFields ? 1UL : 0,
+            RoutingId.From("startup-source").ToHex(),
+            5,
+            "source-owner",
+            3,
+            targetOwnedFields ? RoutingId.From("startup-target").ToHex() : string.Empty,
+            targetOwnedFields ? 6UL : 0,
+            targetOwnedFields ? "target-owner" : string.Empty,
+            targetOwnedFields ? 4UL : 0,
+            targetOwnedFields ? 1UL : 0,
+            "source-owner",
+            3,
+            RoutingId.From("startup-source").ToHex(),
+            5,
+            phase,
+            reference,
+            checksum,
+            7,
+            0);
+    }
+
+    private static ZLinkAuthorityEntry CanonicalEntry(
+        ZLinkRelocationParticipantEnvelope participant,
+        ReadOnlyMemory<byte> payload) => new(
+        participant.AuthorityKey,
+        new ZLinkAuthoritySnapshot(
+            "source-version",
+            payload,
+            participant.ObjectGeneration,
+            participant.AuthorityOwnerGeneration,
+            "source-owner",
+            3,
+            new ZLinkPlacementAllocation(
+                ZLinkPlacementAllocationState.Active,
+                ZLinkPlacementObjectKind.Actor,
+                "Game.Actor",
+                new ZLinkMeshNodeDescriptorKey(
+                    "mesh",
+                    RoutingId.From("startup-source")),
+                5,
+                new ZLinkCapacityVector(1, 0, null)),
+            null,
+            DateTimeOffset.UnixEpoch));
+
     private sealed class RecoveryRelocationStore : IZLinkRelocationStore
     {
         private readonly Dictionary<string, byte[]> _roots =
@@ -332,14 +526,14 @@ public sealed class RelocationStartupRecoveryTests
     }
 
     private sealed class RecoveryAuthorityStore(
-        IReadOnlyList<ZLinkAuthorityEntry> entries) : IZLinkAuthorityStore
+        IReadOnlyList<ZLinkAuthorityEntry> entries) : ZLinkLocationStoreTestDouble
     {
         internal List<ZLinkAuthorityKey> CompareExchangeCalls { get; } = [];
         internal List<ZLinkAuthorityKey> ReadCalls { get; } = [];
         internal IReadOnlyList<ZLinkAuthorityEntry> Entries => entries;
         internal int ScanCalls { get; private set; }
 
-        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key,
             CancellationToken cancellationToken = default)
         {
@@ -350,7 +544,7 @@ public sealed class RelocationStartupRecoveryTests
                     : new ZLinkAuthorityReadResult.Missing(DateTimeOffset.UnixEpoch));
         }
 
-        public ValueTask<ZLinkAuthorityCompareExchangeResult>
+        public override ValueTask<ZLinkAuthorityCompareExchangeResult>
             CompareExchangeAuthorityAsync(
                 ZLinkAuthorityKey key,
                 string expectedStoreVersion,
@@ -368,7 +562,7 @@ public sealed class RelocationStartupRecoveryTests
                         new ZLinkAuthorityReadResult.Found(entry.Snapshot)));
         }
 
-        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+        public override ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
             string prefix,
             ZLinkAuthorityScanCursor? cursor,
             int limit,
@@ -386,59 +580,5 @@ public sealed class RelocationStartupRecoveryTests
                         null)));
         }
 
-        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
-            ZLinkObjectReservationRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
-            ZLinkObjectReservation reservation,
-            ReadOnlyMemory<byte> readyPayload,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
-            ZLinkObjectReservation reservation,
-            ZLinkObjectCreationCompletion completion,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkCreationTerminalReadResult>
-            ReadCreationTerminalAsync(
-                ZLinkCreationOperationId operation,
-                CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
-            ZLinkObjectReservation reservation,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityReserveResult>
-            ReserveRelocationCapacityAsync(
-                ZLinkRelocationCapacityReservationRequest request,
-                CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkRelocationCapacityAbortResult>
-            AbortRelocationCapacityAsync(
-                ZLinkRelocationCapacityFence fence,
-                CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
-            ZLinkAggregatePrepareRequest request,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
-            ZLinkAggregateFence fence,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 }

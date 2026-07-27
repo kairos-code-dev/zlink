@@ -5,7 +5,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -29,7 +29,7 @@ import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -40,7 +40,7 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationA
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActors;
@@ -48,7 +48,6 @@ import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -285,7 +284,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     public CompletionStage<byte[]> handleSessionRelocationRoute(
         RoutingId transportSource,
         byte[] command44) {
-        var codec = new systems.zlink.framework.runtime.service
+        var codec = new systems.zlink.framework.runtime.internal.service
             .ZLinkServiceM6BWireCodec();
         var command = codec.decodeSessionRelocationRoute(command44);
         if (!command.targetNodeRid().equals(transportSource)) {
@@ -762,7 +761,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         String message) {
         return ZLinkHandlerStages.fromStageSupplier(() -> state.session().onError(new ZLinkStreamError(
                 ZLinkStreamSessionError.TRANSPORT_ERROR,
-                Optional.of(new ZLinkStreamDiagnostic(nativeCode, message)))))
+                message)))
             .thenCompose(ignored -> notifyBoundActorsDisconnectedBestEffort(state))
             .thenCompose(ignored -> ZLinkHandlerStages.fromStageSupplier(state.session()::onDisconnected));
     }

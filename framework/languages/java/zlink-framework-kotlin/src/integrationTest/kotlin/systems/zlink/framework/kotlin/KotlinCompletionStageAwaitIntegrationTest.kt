@@ -1,7 +1,6 @@
 package systems.zlink.framework.kotlin
 
 import java.util.concurrent.CompletableFuture
-import java.time.Duration
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
@@ -9,8 +8,6 @@ import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
-import systems.zlink.framework.monitoring.ZLinkDrainControl
-import systems.zlink.framework.monitoring.ZLinkDrainResult
 
 class KotlinCompletionStageAwaitIntegrationTest {
     @Test
@@ -37,20 +34,4 @@ class KotlinCompletionStageAwaitIntegrationTest {
         assertEquals(expected.message, actual.message)
     }
 
-    @Test
-    fun `cancelling Kotlin drain waiter does not cancel shared drain`() = runBlocking {
-        val sharedDrain = CompletableFuture<ZLinkDrainResult>()
-        val control = object : ZLinkDrainControl {
-            override fun drain() = sharedDrain
-            override fun drain(deadline: Duration) = sharedDrain
-            override fun awaitDrained() = sharedDrain
-            override fun isReady() = false
-        }
-        val waiter = async { control.awaitDrained().await() }
-        yield()
-
-        waiter.cancelAndJoin()
-
-        assertFalse(sharedDrain.isCancelled)
-    }
 }

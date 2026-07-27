@@ -67,7 +67,7 @@ function createTicTacToePlayModule() {
             .registerSession(PlaySessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playSpotNode)
             .listen(config.playSpotEndpoint)
-            .useAllocatedRoutingId(16, 'tictactoe-play')
+            .setRoutingIdPrefix('tictactoe-play')
             .addEntrySpot(PlayEntrySpot)
             .addSpotFactory(TicTacToeGameSpot)
             .actorFactory(SampleNames.playerActorType, PlayActorFactory)

@@ -13,19 +13,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 
 /**
@@ -46,21 +46,21 @@ final class ZLinkJavaRawSpot
         new ConcurrentLinkedQueue<>();
     private final Set<String> topics = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private volatile String routingId;
+    private volatile String spotId;
     private volatile ZLinkBackendSpotDispatchHandler dispatchHandler;
 
     ZLinkJavaRawSpot(
         ZLinkJavaRawSpotNode owner,
-        String routingId,
+        String spotId,
         long lifecycleGeneration) {
         this.owner = owner;
-        this.routingId = routingId;
+        this.spotId = spotId;
         this.lifecycleGeneration = lifecycleGeneration;
     }
 
     @Override
     public String name() {
-        return "rawSpot." + routingId;
+        return "rawSpot." + spotId;
     }
 
     @Override
@@ -69,8 +69,8 @@ final class ZLinkJavaRawSpot
     }
 
     @Override
-    public String routingId() {
-        return routingId;
+    public String spotId() {
+        return spotId;
     }
 
     @Override
@@ -80,9 +80,9 @@ final class ZLinkJavaRawSpot
 
     @Override
     public void setRoutingId(String value) {
-        owner.rekeySpot(this, routingId, java.util.Objects.requireNonNull(
-            value, "routingId"));
-        routingId = value;
+        owner.rekeySpot(this, spotId, java.util.Objects.requireNonNull(
+            value, "spotId"));
+        spotId = value;
     }
 
     @Override

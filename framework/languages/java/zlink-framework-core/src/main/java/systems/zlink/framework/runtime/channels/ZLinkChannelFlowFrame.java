@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime.channels;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 final class ZLinkChannelFlowFrame {

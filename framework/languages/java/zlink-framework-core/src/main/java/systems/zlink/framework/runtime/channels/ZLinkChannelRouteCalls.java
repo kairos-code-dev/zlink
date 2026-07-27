@@ -1,6 +1,6 @@
 package systems.zlink.framework.runtime.channels;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.sockets.SubmitResult;
@@ -61,10 +61,10 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
-import systems.zlink.framework.runtime.configuration.ZLinkCodecRegistration;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.configuration.ZLinkCodecRegistration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.handlers.ZLinkFilterPipeline;

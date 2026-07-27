@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 
 public record ZLinkStreamHeader(
     ZLinkStreamMessageKind kind,

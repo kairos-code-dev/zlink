@@ -43,7 +43,6 @@ namespace
 {
 
 using zlink::framework::actor_location_t;
-using zlink::framework::location_auto_connect_type_t;
 using zlink::framework::location_kind_t;
 using zlink::framework::location_event_kind_t;
 using zlink::framework::location_event_payload_t;
@@ -61,10 +60,8 @@ using zlink::framework::location_topology_entry_t;
 using zlink::framework::location_topology_state_t;
 using zlink::framework::location_write_intent_t;
 using zlink::framework::location_write_status_t;
-using zlink::framework::peer_location_t;
 using zlink::framework::route_kind_t;
 using zlink::framework::route_location_key_t;
-using zlink::framework::route_location_t;
 using zlink::framework::spot_location_t;
 using zlink::framework::runtime::in_memory_location_store_t;
 using zlink::framework::runtime::location_auto_connect_host_service_t;
@@ -86,6 +83,55 @@ location_owner_token_t live_owner_token (
         throw std::runtime_error (
           "test owner lease is not active");
     return found->token;
+}
+
+std::vector<std::byte> user_spot_authority_payload (
+  std::string_view spot_id,
+  std::uint64_t generation)
+{
+    const auto value = "zlink:user-spot:ready:v1\nplay\n"
+                       + std::string (spot_id) + "\n"
+                       + std::to_string (generation) + "\n1";
+    std::vector<std::byte> payload;
+    payload.reserve (value.size ());
+    for (const auto character : value)
+        payload.push_back (static_cast<std::byte> (
+          static_cast<unsigned char> (character)));
+    return payload;
+}
+
+void seed_mesh_node (
+  in_memory_location_store_t &store,
+  std::string owner_id,
+  std::string mesh_name,
+  std::string rid,
+  std::string endpoint,
+  zlink::framework::framework_runtime_state_t state =
+    zlink::framework::framework_runtime_state_t::serving)
+{
+    const auto claim = store.claim_owner_lease (
+      owner_id, std::chrono::seconds (30)).result ().value ();
+    const auto *claimed =
+      std::get_if<zlink::framework::owner_lease_claimed_t> (&claim);
+    if (claimed == nullptr)
+        throw std::runtime_error ("mesh descriptor owner seed failed");
+    const auto owner = claimed->token;
+    const auto result = store.update_mesh_node (
+      zlink::framework::mesh_node_descriptor_t{
+        .mesh_name = std::move (mesh_name),
+        .rid = zlink::routing_id_t::from (rid),
+        .lifecycle_generation = 1,
+        .descriptor_revision = 1,
+        .endpoint = std::move (endpoint),
+        .application_version = 1,
+        .object_role = zlink::framework::object_role_t::server,
+        .state = state,
+        .security_identity = "test",
+        .owner_id = owner.owner_id,
+        .lease_generation = owner.lease_generation},
+      location_write_intent_t::new_claim).result ().value ();
+    if (result.status != location_write_status_t::stored)
+        throw std::runtime_error ("mesh descriptor seed failed");
 }
 
 class test_location_store_t : public zlink::framework::location_store_t
@@ -128,106 +174,51 @@ class test_location_store_t : public zlink::framework::location_store_t
     }
 
     zlink::framework::task_t<zlink::framework::location_write_result_t>
-    update_peer (zlink::framework::peer_location_t peer,
-                 zlink::framework::location_write_intent_t intent) override
+    update_client_server (
+      zlink::framework::client_server_server_descriptor_t descriptor,
+      zlink::framework::location_write_intent_t intent) override
     {
-        return _inner.update_peer (std::move (peer), intent);
+        return _inner.update_client_server (std::move (descriptor), intent);
+    }
+
+    zlink::framework::task_t<zlink::framework::location_write_status_t>
+    remove_client_server (
+      zlink::framework::client_server_server_descriptor_key_t key,
+      zlink::framework::location_owner_token_t owner) override
+    {
+        return _inner.remove_client_server (std::move (key), std::move (owner));
+    }
+
+    zlink::framework::task_t<zlink::framework::location_page_t<
+      zlink::framework::client_server_server_descriptor_t>>
+    list_client_servers (std::string channel_name,
+                         zlink::framework::location_page_request_t page = {}) override
+    {
+        return _inner.list_client_servers (std::move (channel_name), std::move (page));
     }
 
     zlink::framework::task_t<zlink::framework::location_write_result_t>
-    remove_peer (zlink::framework::peer_location_key_t key,
-                 zlink::framework::location_owner_token_t owner) override
+    update_fanout_publisher (
+      zlink::framework::fanout_publisher_descriptor_t descriptor,
+      zlink::framework::location_write_intent_t intent) override
     {
-        return _inner.remove_peer (std::move (key), std::move (owner));
+        return _inner.update_fanout_publisher (std::move (descriptor), intent);
     }
 
-    zlink::framework::task_t<std::vector<zlink::framework::peer_location_t>>
-    list_peers (zlink::framework::peer_location_filter_t filter) override
+    zlink::framework::task_t<zlink::framework::location_write_status_t>
+    remove_fanout_publisher (
+      zlink::framework::fanout_publisher_descriptor_key_t key,
+      zlink::framework::location_owner_token_t owner) override
     {
-        return _inner.list_peers (std::move (filter));
+        return _inner.remove_fanout_publisher (std::move (key), std::move (owner));
     }
 
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    update_spot (zlink::framework::spot_location_t spot,
-                 zlink::framework::location_write_intent_t intent) override
+    zlink::framework::task_t<zlink::framework::location_page_t<
+      zlink::framework::fanout_publisher_descriptor_t>>
+    list_fanout_publishers (std::string channel_name,
+                            zlink::framework::location_page_request_t page = {}) override
     {
-        return _inner.update_spot (std::move (spot), intent);
-    }
-
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    remove_spot (zlink::framework::spot_location_key_t key,
-                 zlink::framework::location_owner_token_t owner) override
-    {
-        return _inner.remove_spot (std::move (key), std::move (owner));
-    }
-
-    zlink::framework::task_t<std::optional<zlink::framework::spot_location_t>>
-    resolve_spot (zlink::framework::spot_location_key_t key) override
-    {
-        resolve_spot_count.fetch_add (1, std::memory_order_relaxed);
-        return _inner.resolve_spot (std::move (key));
-    }
-
-    zlink::framework::task_t<zlink::framework::location_page_t<zlink::framework::spot_location_t>>
-    list_spots (zlink::framework::spot_location_filter_t filter,
-                zlink::framework::location_page_request_t page = {}) override
-    {
-        return _inner.list_spots (std::move (filter), std::move (page));
-    }
-
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    update_actor (zlink::framework::actor_location_t actor,
-                  zlink::framework::location_write_intent_t intent) override
-    {
-        return _inner.update_actor (std::move (actor), intent);
-    }
-
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    remove_actor (zlink::framework::actor_location_key_t key,
-                  zlink::framework::location_owner_token_t owner) override
-    {
-        return _inner.remove_actor (std::move (key), std::move (owner));
-    }
-
-    zlink::framework::task_t<std::optional<zlink::framework::actor_location_t>>
-    resolve_actor (zlink::framework::actor_location_key_t key) override
-    {
-        resolve_actor_count.fetch_add (1, std::memory_order_relaxed);
-        return _inner.resolve_actor (std::move (key));
-    }
-
-    zlink::framework::task_t<zlink::framework::location_page_t<zlink::framework::actor_location_t>>
-    list_actors (zlink::framework::actor_location_filter_t filter,
-                 zlink::framework::location_page_request_t page = {}) override
-    {
-        return _inner.list_actors (std::move (filter), std::move (page));
-    }
-
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    update_route (zlink::framework::route_location_t route,
-                  zlink::framework::location_write_intent_t intent) override
-    {
-        return _inner.update_route (std::move (route), intent);
-    }
-
-    zlink::framework::task_t<zlink::framework::location_write_result_t>
-    remove_route (zlink::framework::route_location_key_t key,
-                  zlink::framework::location_owner_token_t owner) override
-    {
-        return _inner.remove_route (std::move (key), std::move (owner));
-    }
-
-    zlink::framework::task_t<std::optional<zlink::framework::route_location_t>>
-    resolve_route (zlink::framework::route_location_key_t key) override
-    {
-        return _inner.resolve_route (std::move (key));
-    }
-
-    zlink::framework::task_t<zlink::framework::location_page_t<zlink::framework::route_location_t>>
-    list_routes (zlink::framework::route_location_filter_t filter,
-                 zlink::framework::location_page_request_t page = {}) override
-    {
-        return _inner.list_routes (std::move (filter), std::move (page));
+        return _inner.list_fanout_publishers (std::move (channel_name), std::move (page));
     }
 
     zlink::framework::task_t<
@@ -309,6 +300,15 @@ class test_location_store_t : public zlink::framework::location_store_t
           std::move (prefix), std::move (cursor), limit, cancellation);
     }
 
+    zlink::framework::task_t<std::optional<
+      zlink::framework::creation_terminal_record_t>>
+    read_creation_terminal (
+      zlink::framework::creation_operation_identity_t operation,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.read_creation_terminal (std::move (operation), cancellation);
+    }
+
     zlink::framework::task_t<zlink::framework::object_reserve_result_t>
     reserve (zlink::framework::object_reserve_request_t request,
              std::stop_token cancellation = {}) override
@@ -324,6 +324,15 @@ class test_location_store_t : public zlink::framework::location_store_t
                     zlink::framework::authority_snapshot_t{}}));
         }
         return _inner.reserve (std::move (request), cancellation);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::object_complete_creation_result_t>
+    complete_creation (
+      zlink::framework::object_complete_creation_request_t request,
+      std::stop_token cancellation = {}) override
+    {
+        return _inner.complete_creation (std::move (request), cancellation);
     }
 
     zlink::framework::task_t<zlink::framework::object_commit_result_t>
@@ -397,36 +406,6 @@ class other_test_location_store_t : public test_location_store_t
 {
 };
 
-class scripted_actor_location_store_t final : public test_location_store_t
-{
-  public:
-    std::optional<actor_location_t> actor;
-
-    zlink::framework::task_t<std::optional<actor_location_t>>
-    resolve_actor (zlink::framework::actor_location_key_t) override
-    {
-        return completed (actor);
-    }
-
-    zlink::framework::task_t<location_page_t<actor_location_t>>
-    list_actors (zlink::framework::actor_location_filter_t,
-                 location_page_request_t = {}) override
-    {
-        location_page_t<actor_location_t> page;
-        if (actor) {
-            page.items.push_back (*actor);
-        }
-        return completed (std::move (page));
-    }
-
-  private:
-    template <typename T> static zlink::framework::task_t<T> completed (T value)
-    {
-        return zlink::framework::task_t<T> (
-          zlink::framework::result_t<T>::success (std::move (value)));
-    }
-};
-
 class failing_owner_lease_store_t final : public test_location_store_t
 {
   public:
@@ -462,31 +441,11 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
                                                     .owner_lease_healthy = true});
     }
 
-    zlink::framework::task_t<std::vector<peer_location_t>>
-    list_peer_locations (zlink::framework::peer_location_filter_t) override
+    zlink::framework::task_t<location_page_t<zlink::framework::mesh_node_descriptor_t>>
+    list_mesh_node_descriptors (std::string,
+                                location_page_request_t = {}) override
     {
-        return completed (std::vector<peer_location_t>{});
-    }
-
-    zlink::framework::task_t<location_page_t<spot_location_t>>
-    list_spot_locations (zlink::framework::spot_location_filter_t,
-                         location_page_request_t = {}) override
-    {
-        return completed (location_page_t<spot_location_t>{});
-    }
-
-    zlink::framework::task_t<location_page_t<actor_location_t>>
-    list_actor_locations (zlink::framework::actor_location_filter_t,
-                          location_page_request_t = {}) override
-    {
-        return completed (location_page_t<actor_location_t>{});
-    }
-
-    zlink::framework::task_t<location_page_t<route_location_t>>
-    list_route_locations (zlink::framework::route_location_filter_t,
-                          location_page_request_t = {}) override
-    {
-        return completed (location_page_t<route_location_t>{});
+        return completed (location_page_t<zlink::framework::mesh_node_descriptor_t>{});
     }
 
     zlink::framework::task_t<location_page_t<location_topology_entry_t>>
@@ -496,27 +455,22 @@ class fake_location_runtime_query_t final : public location_runtime_query_t
             return failed<location_page_t<location_topology_entry_t>> ();
         }
         return completed (location_page_t<location_topology_entry_t>{
-          .items = {location_topology_entry_t{.kind = location_kind_t::peer,
-                                              .mesh_name = std::string ("mesh-a"),
-                                              .role = location_role_t::router,
+          .items = {location_topology_entry_t{.mesh_name = "mesh-a",
                                               .state = location_topology_state_t::ready,
-                                              .desired_count = 1,
-                                              .ready_count = 1}}});
+                                              }}});
     }
 
-    zlink::framework::task_t<std::vector<location_service_summary_t>>
-    list_service_summaries (location_service_summary_filter_t) override
+    zlink::framework::task_t<location_page_t<location_service_summary_t>>
+    list_service_summaries (location_service_summary_filter_t,
+                            location_page_request_t = {}) override
     {
         if (fail_lists) {
-            return failed<std::vector<location_service_summary_t>> ();
+            return failed<location_page_t<location_service_summary_t>> ();
         }
-        return completed (std::vector<location_service_summary_t>{
-          location_service_summary_t{.mesh_name = "mesh-a",
-                                     .auto_connect_type =
-                                       location_auto_connect_type_t::client_server,
-                                     .role = location_role_t::router,
-                                     .total_count = 1,
-                                     .ready_count = 1}});
+        return completed (location_page_t<location_service_summary_t>{
+          .items = {location_service_summary_t{.mesh_name = "mesh-a",
+                                               .total_count = 1,
+                                               .ready_count = 1}}});
     }
 
   private:
@@ -630,7 +584,6 @@ class stream_roundtrip_client_t final : public zlink::framework::hosted_service_
         _app (&app), _endpoint (std::move (endpoint)), _runtime (std::move (runtime))
     {
     }
-
     void start (zlink::framework::service_provider_t &) override
     {
         for (int attempt = 0; attempt < 80; ++attempt) {
@@ -905,7 +858,6 @@ class missing_auto_connect_request_client_t final
         _app (&app)
     {
     }
-
     void start (zlink::framework::service_provider_t &) override
     {
         auto reply = _app->advanced ().zlink ().request_client ("orders")
@@ -929,15 +881,33 @@ class missing_auto_connect_request_client_t final
 
 class local_user_spot_t final : public zlink::framework::spot_t
 {
+  public:
+    explicit local_user_spot_t (zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    void configure () {}
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 class context_owned_user_spot_t final : public zlink::framework::spot_t
 {
   public:
     explicit context_owned_user_spot_t (
-      zlink::framework::spot_context_t context) :
-        _context (std::move (context))
+      zlink::framework::spot_context_t context,
+      std::shared_ptr<std::atomic<int>> destruction_count = {}) :
+        _context (std::move (context)),
+        _destruction_count (std::move (destruction_count))
     {
+    }
+
+    ~context_owned_user_spot_t () override
+    {
+        if (_destruction_count)
+            _destruction_count->fetch_add (1, std::memory_order_relaxed);
     }
 
     zlink::framework::spot_context_t &context () noexcept { return _context; }
@@ -946,6 +916,7 @@ class context_owned_user_spot_t final : public zlink::framework::spot_t
 
   private:
     zlink::framework::spot_context_t _context;
+    std::shared_ptr<std::atomic<int>> _destruction_count;
 };
 
 class mismatched_context_user_spot_t final : public zlink::framework::spot_t
@@ -1012,16 +983,32 @@ class context_factory_rejection_client_t final
 
 class occupied_user_spot_t final : public zlink::framework::spot_t
 {
+  public:
+    explicit occupied_user_spot_t (zlink::framework::spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    void configure () {}
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 class failing_user_spot_t final : public zlink::framework::spot_t
 {
   public:
-    failing_user_spot_t ()
+    explicit failing_user_spot_t (zlink::framework::spot_context_t context) :
+        _context (std::move (context))
     {
         throw std::runtime_error (
           "intentional User Spot materialization failure");
     }
+    zlink::framework::spot_context_t &context () noexcept { return _context; }
+    void configure () {}
+
+  private:
+    zlink::framework::spot_context_t _context;
 };
 
 class user_spot_manager_client_t final
@@ -1292,24 +1279,6 @@ location_owner_token_t claim_test_owner (
     return value->token;
 }
 
-void seed_peer (in_memory_location_store_t &store,
-                std::string owner_id,
-                peer_location_t peer)
-{
-    if (std::holds_alternative<
-          zlink::framework::owner_lease_missing_t> (
-          store.read_owner_lease (owner_id)
-            .result ()
-            .value ()))
-        (void) claim_test_owner (store, owner_id);
-    peer.owner_id = std::move (owner_id);
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_peer (std::move (peer), location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-}
-
 bool wait_until (const std::function<bool ()> &predicate)
 {
     for (int attempt = 0; attempt < 40; ++attempt) {
@@ -1360,20 +1329,24 @@ std::uint16_t bindable_loopback_port (std::uint16_t base_port)
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
 {
-    in_memory_location_store_t store;
+    test_location_store_t store;
     (void) claim_test_owner (store, "owner-a");
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_spot (spot_location_t{.mesh_name = "mesh-a",
-                                                  .spot_id = "spot-a",
-                                                  .spot_type = "play",
-                                                  .node_rid =
-                                                    zlink::routing_id_t::from ("node-a"),
-                                                  .spot_kind = zlink::spot_kind::user,
-                                                  .owner_id = "owner-a"},
-                                  location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
+    const auto owner = live_owner_token (store, "owner-a");
+    store.set_authority (
+      "zla1:s:6:spot-a",
+      zlink::framework::authority_snapshot_t{
+        .store_version = "1",
+        .payload = user_spot_authority_payload ("spot-a", 1),
+        .object_generation = 1,
+        .authority_owner_generation = 1,
+        .owner = owner,
+        .allocation = {.state = zlink::framework::placement_allocation_state_t::active,
+                       .object_kind = zlink::framework::placement_object_kind_t::user_spot,
+                       .stable_type = "play",
+                       .target = {.mesh_name = "mesh-a",
+                                  .node_rid = zlink::framework::node_rid_t::from_string ("node-a"),
+                                  .node_lifecycle_generation = 1,
+                                  .owner = owner}}});
     store_location_resolvers_t resolvers (store);
 
     const auto address =
@@ -1391,18 +1364,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers, DirectReadyRouteUsesPositiveCacheOnl
 {
     test_location_store_t store;
     (void) claim_test_owner (store, "owner-cache");
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_spot (spot_location_t{.mesh_name = "mesh-cache",
-                                                  .spot_id = "spot-cache",
-                                                  .node_rid =
-                                                    zlink::routing_id_t::from ("node-cache"),
-                                                  .spot_kind = zlink::spot_kind::user,
-                                                  .owner_id = "owner-cache"},
-                                  location_write_intent_t::new_claim)
-                 .result ().value ().status);
     const auto owner = live_owner_token (store, "owner-cache");
     auto authority = zlink::framework::authority_snapshot_t{
         .store_version = "10",
+        .payload = user_spot_authority_payload ("spot-cache", 1),
         .object_generation = 1,
         .authority_owner_generation = 1,
         .owner = owner,
@@ -1422,22 +1387,22 @@ TEST (ZLinkFrameworkStoreLocationResolvers, DirectReadyRouteUsesPositiveCacheOnl
 
     ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
     ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
-    EXPECT_EQ (1u, store.resolve_spot_count.load ());
+    EXPECT_EQ (0u, store.resolve_spot_count.load ());
 
     authority.store_version = "11";
     authority.authority_owner_generation = 2;
     store.set_authority ("zla1:s:10:spot-cache", authority);
     resolvers.observe_spot_authority_version ("spot-cache", "11", 1, 2);
     ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
-    EXPECT_EQ (2u, store.resolve_spot_count.load ());
+    EXPECT_EQ (0u, store.resolve_spot_count.load ());
 
     resolvers.invalidate_all_routes_after_store_recovery ();
     ASSERT_TRUE (resolvers.resolve_spot_address ({}, "spot-cache").result ().value ());
-    EXPECT_EQ (3u, store.resolve_spot_count.load ());
+    EXPECT_EQ (0u, store.resolve_spot_count.load ());
 
     EXPECT_FALSE (resolvers.resolve_spot_address ({}, "missing").result ().value ());
     EXPECT_FALSE (resolvers.resolve_spot_address ({}, "missing").result ().value ());
-    EXPECT_EQ (5u, store.resolve_spot_count.load ());
+    EXPECT_EQ (0u, store.resolve_spot_count.load ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AddLocationStoreRegistersUnifiedInstance)
@@ -1528,52 +1493,25 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     }
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, PendingActorEntrySpotResolvesAsMiss)
-{
-    in_memory_location_store_t store;
-    (void) claim_test_owner (store, "owner-a");
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_actor (actor_location_t{.mesh_name = "mesh",
-                                                    .actor_id = "actor-a",
-                                                    .actor_type = "player",
-                                                    .actor_ref = {},
-                                                    .owner_node_rid =
-                                                      zlink::routing_id_t::from ("node-a"),
-                                                    .owner_node_generation = 1,
-                                                    .spot_id = "entry-spot",
-                                                    .spot_generation = 1,
-                                                    .spot_kind = zlink::spot_kind::entry,
-                                                    .membership_epoch = 1,
-                                                    .owner_id = "owner-a"},
-                                   location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    store_location_resolvers_t resolvers (store, {},
-      std::make_shared<zlink::framework::runtime::actor_location_observer_t> (), "mesh");
-
-    const auto address =
-      resolvers.resolve_actor_address ("actor-a").result ().value ();
-
-    EXPECT_FALSE (address.has_value ());
-}
-
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossMeshes)
 {
-    in_memory_location_store_t store;
+    test_location_store_t store;
     (void) claim_test_owner (store, "owner-a");
-    const auto initial_write =
-      store.update_spot (spot_location_t{.mesh_name = "mesh-b",
-                                         .spot_id = "spot-b",
-                                         .spot_generation = 41,
-                                         .spot_type = "play",
-                                         .node_rid = zlink::routing_id_t::from ("node-a"),
-                                         .spot_kind = zlink::spot_kind::user,
-                                         .owner_id = "owner-a"},
-                         location_write_intent_t::new_claim)
-        .result ()
-        .value ();
-    ASSERT_EQ (location_write_status_t::stored, initial_write.status);
+    const auto owner = live_owner_token (store, "owner-a");
+    auto authority = zlink::framework::authority_snapshot_t{
+      .store_version = "1",
+      .payload = user_spot_authority_payload ("spot-b", 41),
+      .object_generation = 41,
+      .authority_owner_generation = 1,
+      .owner = owner,
+      .allocation = {.state = zlink::framework::placement_allocation_state_t::active,
+                     .object_kind = zlink::framework::placement_object_kind_t::user_spot,
+                     .stable_type = "play",
+                     .target = {.mesh_name = "mesh-b",
+                                .node_rid = zlink::framework::node_rid_t::from_string ("node-a"),
+                                .node_lifecycle_generation = 1,
+                                .owner = owner}}};
+    store.set_authority ("zla1:s:6:spot-b", authority);
     location_options_t options;
     options.route_cache_max_age = std::chrono::milliseconds::zero ();
     store_location_resolvers_t resolvers (store, options);
@@ -1584,20 +1522,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossM
     EXPECT_EQ ("spot-b", initial->spot_id);
     EXPECT_EQ (41u, initial->spot_generation);
 
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_spot (spot_location_t{.mesh_name = "mesh-b",
-                                                  .spot_id = "spot-b",
-                                                  .spot_generation = 42,
-                                                  .spot_type = "play",
-                                                  .node_rid =
-                                                    zlink::routing_id_t::from ("node-a"),
-                                                  .spot_kind = zlink::spot_kind::user,
-                                                  .owner_id = "owner-a",
-                                                  .generation = initial_write.generation},
-                                  location_write_intent_t::renew)
-                 .result ()
-                 .value ()
-                 .status);
+    authority.store_version = "2";
+    authority.payload = user_spot_authority_payload ("spot-b", 42);
+    authority.object_generation = 42;
+    store.set_authority ("zla1:s:6:spot-b", authority);
     const auto renewed = resolvers.resolve_spot_address ({}, "spot-b").result ().value ();
     ASSERT_TRUE (renewed.has_value ());
     EXPECT_EQ (42u, renewed->spot_generation);
@@ -1609,28 +1537,28 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressByGlobalIdAcrossM
 
 TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
 {
-    in_memory_location_store_t store;
+    test_location_store_t store;
     (void) claim_test_owner (store, "owner-a");
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_actor (actor_location_t{.mesh_name = "mesh-b",
-                                                    .actor_id = "actor-b",
-                                                    .actor_type = "player",
-                                                    .actor_ref = zlink::framework::actor_ref_t (
-                                                      zlink::framework::node_rid_t::from_string (
-                                                        "node-a"),
-                                                      "player", "actor-b", 1),
-                                                    .owner_node_rid =
-                                                      zlink::routing_id_t::from ("node-a"),
-                                                    .owner_node_generation = 1,
-                                                    .spot_id = "spot-b",
-                                                    .spot_generation = 1,
-                                                    .spot_kind = zlink::spot_kind::user,
-                                                    .membership_epoch = 1,
-                                                    .owner_id = "owner-a"},
-                                   location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
+    const auto owner = live_owner_token (store, "owner-a");
+    store.set_authority (
+      "zla1:a:7:actor-b",
+      zlink::framework::authority_snapshot_t{
+        .store_version = "1",
+        .payload = zlink::framework::runtime::encode_actor_authority_payload (
+          zlink::framework::actor_ref_t (
+            zlink::framework::node_rid_t::from_string ("node-a"),
+            "player", "actor-b", 1),
+          "spot-b", 1),
+        .object_generation = 1,
+        .authority_owner_generation = 1,
+        .owner = owner,
+        .allocation = {.state = zlink::framework::placement_allocation_state_t::active,
+                       .object_kind = zlink::framework::placement_object_kind_t::actor,
+                       .stable_type = "player",
+                       .target = {.mesh_name = "mesh-b",
+                                  .node_rid = zlink::framework::node_rid_t::from_string ("node-a"),
+                                  .node_lifecycle_generation = 1,
+                                  .owner = owner}}});
     store_location_resolvers_t resolvers (store, {},
       std::make_shared<zlink::framework::runtime::actor_location_observer_t> (), "mesh-b");
 
@@ -1642,91 +1570,67 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
     EXPECT_FALSE (missing.has_value ());
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, RejectsPendingAndRegressedActorGenerations)
+TEST (ZLinkFrameworkStoreLocationResolvers, RejectsMalformedActorAuthorityPayload)
 {
-    scripted_actor_location_store_t store;
-    auto observer =
-      std::make_shared<zlink::framework::runtime::actor_location_observer_t> ();
+    test_location_store_t store;
     location_options_t options;
     options.route_cache_max_age = std::chrono::milliseconds::zero ();
-    store_location_resolvers_t resolvers (store, options, observer, "mesh");
-    location_runtime_t runtime (store, options, "owner-query");
-    store_location_runtime_query_t query (store, runtime, options, observer);
+    store_location_resolvers_t resolvers (store, options);
     (void) claim_test_owner (store, "owner");
-    auto row = [] (std::uint64_t membership_epoch,
-                   zlink::framework::actor_ref_t actor_ref,
-                   std::string node) {
-        return actor_location_t{.mesh_name = "mesh",
-                                .actor_id = "actor-observed",
-                                .actor_type = "player",
-                                .actor_ref = std::move (actor_ref),
-                                .owner_node_rid = zlink::routing_id_t::from (node),
-                                .owner_node_generation = 1,
-                                .spot_id = "spot-observed",
-                                .spot_generation = 1,
-                                .spot_kind = zlink::spot_kind::user,
-                                .membership_epoch = membership_epoch,
-                                .owner_id = "owner",
-                                .updated_at = {}};
-    };
-    auto actor_ref = [] (std::uint64_t generation, const std::string &node) {
-        return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (node), "player", "actor-observed",
-          generation);
-    };
-
-    store.actor = row (2, actor_ref (2, "node-new"), "node-new");
-    ASSERT_TRUE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
-
-    store.actor = row (1, actor_ref (1, "node-stale"), "node-stale");
+    const auto owner = live_owner_token (store, "owner");
+    auto authority = zlink::framework::authority_snapshot_t{
+      .store_version = "1",
+      .payload = {std::byte{1}},
+      .object_generation = 1,
+      .authority_owner_generation = 1,
+      .owner = owner,
+      .allocation = {.state = zlink::framework::placement_allocation_state_t::active,
+                     .object_kind = zlink::framework::placement_object_kind_t::actor,
+                     .stable_type = "player",
+                     .target = {.mesh_name = "mesh",
+                                .node_rid = zlink::framework::node_rid_t::from_string ("node"),
+                                .node_lifecycle_generation = 1,
+                                .owner = owner}}};
+    store.set_authority ("zla1:a:14:actor-observed", authority);
     EXPECT_FALSE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
-    EXPECT_TRUE (query.list_actor_locations ({}).result ().value ().items.empty ());
-
-    store.actor = row (3, {}, "node-pending");
-    EXPECT_FALSE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
-    EXPECT_TRUE (query.list_actor_locations ({}).result ().value ().items.empty ());
-
-    store.actor = row (3, actor_ref (3, "node-committed"), "node-committed");
-    const auto committed =
-      resolvers.resolve_actor_address ("actor-observed").result ().value ();
+    authority.payload = zlink::framework::runtime::encode_actor_authority_payload (
+      zlink::framework::actor_ref_t (
+        zlink::framework::node_rid_t::from_string ("node"),
+        "player", "actor-observed", 3),
+      "spot-observed", 2);
+    store.set_authority ("zla1:a:14:actor-observed", authority);
+    const auto committed = resolvers.resolve_actor_address ("actor-observed").result ().value ();
     ASSERT_TRUE (committed);
-    EXPECT_EQ ("node-committed", committed->node_rid.to_string ());
-    EXPECT_EQ (1u, query.list_actor_locations ({}).result ().value ().items.size ());
+    EXPECT_EQ ("node", committed->node_rid.to_string ());
+    EXPECT_EQ ("spot-observed", committed->spot_id);
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)
+TEST (ZLinkFrameworkStoreLocationResolvers, ResolverFiltersExpiredMeshNodeDescriptors)
 {
     in_memory_location_store_t store;
-    seed_peer (store, "owner-live",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-a",
-                               .node_rid = zlink::routing_id_t::from ("node-live"),
-                               .role = location_role_t::router,
-                               .endpoint = "tcp://127.0.0.1:7001",
-                               .weight = 100});
-    (void) claim_test_owner (
-      store, "owner-expired",
-      std::chrono::milliseconds (20));
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_peer (peer_location_t{
-                                    .auto_connect_type =
-                                      location_auto_connect_type_t::client_server,
-                                    .mesh_name = "mesh-a",
-                                    .node_rid = zlink::routing_id_t::from ("node-expired"),
-                                    .role = location_role_t::router,
-                                    .endpoint = "tcp://127.0.0.1:7002",
-                                    .weight = 100,
-                                    .owner_id = "owner-expired"},
-                                  location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
+    seed_mesh_node (store, "owner-live", "mesh-a", "node-live",
+                    "tcp://127.0.0.1:7001");
+    const auto expired = claim_test_owner (
+      store, "owner-expired", std::chrono::milliseconds (20));
+    ASSERT_EQ (
+      location_write_status_t::stored,
+      store.update_mesh_node (
+        zlink::framework::mesh_node_descriptor_t{
+          .mesh_name = "mesh-a",
+          .rid = zlink::routing_id_t::from ("node-expired"),
+          .lifecycle_generation = 1,
+          .descriptor_revision = 1,
+          .endpoint = "tcp://127.0.0.1:7002",
+          .application_version = 1,
+          .object_role = zlink::framework::object_role_t::server,
+          .state = zlink::framework::framework_runtime_state_t::serving,
+          .security_identity = "test",
+          .owner_id = expired.owner_id,
+          .lease_generation = expired.lease_generation},
+        location_write_intent_t::new_claim).result ().value ().status);
     std::this_thread::sleep_for (std::chrono::milliseconds (25));
 
-    const auto raw_rows =
-      store.list_peers (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
-        .result ()
-        .value ();
+    const auto raw_rows = store.list_mesh_nodes ("mesh-a").result ().value ().items;
     ASSERT_EQ (2u, raw_rows.size ());
 
     location_options_t options;
@@ -1734,48 +1638,16 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolverAndRuntimeQueryListLiveRows)
     zlink::framework::runtime::live_location_reader_t live_reader (store, options);
     store_location_resolvers_t resolvers (live_reader);
     const auto resolver_rows =
-      resolvers
-        .list_live_peers (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
-        .result ()
-        .value ();
+      resolvers.list_live_mesh_nodes ("mesh-a").result ().value ();
 
     ASSERT_EQ (1u, resolver_rows.size ());
-    EXPECT_EQ ("node-live", resolver_rows.front ().node_rid->to_string ());
+    EXPECT_EQ ("node-live", resolver_rows.front ().rid.to_string ());
 
     location_runtime_t runtime (store, options, "owner-query");
     store_location_runtime_query_t query (live_reader, runtime, options);
-    const auto query_rows =
-      query
-        .list_peer_locations (zlink::framework::peer_location_filter_t{.mesh_name = "mesh-a"})
-        .result ()
-        .value ();
+    const auto query_rows = query.list_mesh_node_descriptors ("mesh-a").result ().value ();
 
-    ASSERT_EQ (1u, query_rows.size ());
-    EXPECT_EQ ("node-live", query_rows.front ().node_rid->to_string ());
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesRouteFromStore)
-{
-    in_memory_location_store_t store;
-    (void) claim_test_owner (store, "owner-a");
-    const auto key = route_location_key_t{route_kind_t::spot_name, "route-a"};
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_route (route_location_t{.route_kind = route_kind_t::spot_name,
-                                                    .route_key = "route-a",
-                                                    .owner_node_rid =
-                                                      zlink::routing_id_t::from ("node-a"),
-                                                    .owner_id = "owner-a",
-                                                    .value = {1, 2, 3}},
-                                   location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    store_location_resolvers_t resolvers (store);
-
-    const auto route = resolvers.resolve_route (key).result ().value ();
-
-    ASSERT_TRUE (route.has_value ());
-    EXPECT_EQ (std::vector<std::uint8_t> ({1, 2, 3}), route->value);
+    ASSERT_EQ (2u, query_rows.items.size ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsHealthyStoreStatus)
@@ -1817,214 +1689,46 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryReportsStoreFailureAsSta
     runtime.stop ();
 }
 
-TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryListsTopologyWithFiltersAndPaging)
+TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsMeshNodeDescriptors)
 {
     in_memory_location_store_t store;
-    seed_peer (store, "owner-a",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-a",
-                               .node_rid = zlink::routing_id_t::from ("node-a"),
-                               .role = location_role_t::router,
-                               .endpoint = "tcp://127.0.0.1:7001",
-                               .weight = 100});
-    seed_peer (store, "owner-b",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-a",
-                               .node_rid = zlink::routing_id_t::from ("node-b"),
-                               .role = location_role_t::dealer,
-                               .endpoint = "tcp://127.0.0.1:7002",
-                               .weight = 0});
-    seed_peer (store, "owner-c",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::fanout,
-                               .mesh_name = "mesh-b",
-                               .node_rid = zlink::routing_id_t::from ("node-c"),
-                               .role = location_role_t::pub,
-                               .endpoint = "tcp://127.0.0.1:7003",
-                               .weight = 100});
-    location_options_t options;
-    location_runtime_t runtime (store, options, "owner-query");
-    store_location_runtime_query_t query (store, runtime, options);
-
-    auto first_page =
-      query
-        .list_topology (location_topology_filter_t{.kind = location_kind_t::peer,
-                                                   .mesh_name = std::string ("mesh-a")},
-                        {.page_size = 1})
-        .result ()
-        .value ();
-    ASSERT_EQ (1u, first_page.items.size ());
-    ASSERT_TRUE (first_page.continuation_token.has_value ());
-
-    auto second_page =
-      query
-        .list_topology (location_topology_filter_t{.kind = location_kind_t::peer,
-                                                   .mesh_name = std::string ("mesh-a")},
-                        {.page_size = 1,
-                         .continuation_token = first_page.continuation_token})
-        .result ()
-        .value ();
-    ASSERT_EQ (1u, second_page.items.size ());
-    EXPECT_FALSE (second_page.continuation_token.has_value ());
-    std::vector<location_topology_state_t> states{first_page.items.front ().state,
-                                                  second_page.items.front ().state};
-    EXPECT_TRUE (std::all_of (states.begin (), states.end (), [] (auto state) {
-        return state == location_topology_state_t::ready;
-    })) << "peer weight is placement input, not a lifecycle state";
-
-    auto invalid_offset =
-      query
-        .list_topology (location_topology_filter_t{.role = location_role_t::router},
-                        {.page_size = 1, .continuation_token = std::string ("not-a-number")})
-        .result ()
-        .value ();
-    ASSERT_EQ (1u, invalid_offset.items.size ());
-    EXPECT_EQ (location_role_t::router, *invalid_offset.items.front ().role);
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsEveryLocationKind)
-{
-    in_memory_location_store_t store;
-    const std::string owner = "owner-topology";
-    (void) claim_test_owner (store, owner);
-    seed_peer (store, owner,
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-topology",
-                               .node_rid = zlink::routing_id_t::from ("node-topology"),
-                               .role = location_role_t::router,
-                               .endpoint = "tcp://127.0.0.1:7999",
-                               .weight = 0});
-    ASSERT_EQ (location_write_status_t::stored,
-               store
-                 .update_spot (spot_location_t{.mesh_name = "mesh-topology",
-                                               .spot_id = "spot-1",
-                                               .node_rid = zlink::routing_id_t::from (
-                                                 "node-topology"),
-                                               .owner_id = owner},
-                               location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    const auto actor_ref = zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string ("node-topology"), "PlayerActor", "player-1", 1);
-    ASSERT_EQ (location_write_status_t::stored,
-               store
-                 .update_actor (actor_location_t{.mesh_name = "mesh-topology",
-                                                 .actor_id = "player-1",
-                                                 .actor_type = "PlayerActor",
-                                                 .actor_ref = actor_ref,
-                                                 .owner_node_rid = zlink::routing_id_t::from (
-                                                   "node-topology"),
-                                                 .owner_node_generation = 1,
-                                                 .spot_id = "spot-1",
-                                                 .spot_generation = 1,
-                                                 .spot_kind = zlink::spot_kind::user,
-                                                 .membership_epoch = 1,
-                                                 .owner_id = owner},
-                                location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    ASSERT_EQ (location_write_status_t::stored,
-               store
-                 .update_route (route_location_t{.route_kind = route_kind_t::framework_route,
-                                                 .route_key = "profile",
-                                                 .owner_node_rid = zlink::routing_id_t::from (
-                                                   "node-topology"),
-                                                 .owner_id = owner},
-                                location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-
-    location_options_t options;
-    location_runtime_t runtime (store, options, "owner-query");
-    store_location_runtime_query_t query (store, runtime, options);
-    for (const auto kind : {location_kind_t::peer, location_kind_t::spot,
-                            location_kind_t::actor, location_kind_t::route}) {
-        const auto page = query.list_topology (location_topology_filter_t{.kind = kind})
-                            .result ()
-                            .value ();
-        ASSERT_EQ (1u, page.items.size ()) << static_cast<int> (kind);
-        EXPECT_EQ (location_topology_state_t::ready, page.items.front ().state);
-        EXPECT_EQ (1u, page.items.front ().desired_count);
-        EXPECT_EQ (1u, page.items.front ().ready_count);
+    const auto owner = claim_test_owner (store, "owner-a");
+    for (const auto &[rid, state] :
+         std::vector<std::pair<std::string, zlink::framework::framework_runtime_state_t>>{
+           {"node-a", zlink::framework::framework_runtime_state_t::serving},
+           {"node-b", zlink::framework::framework_runtime_state_t::draining}}) {
+        ASSERT_EQ (location_write_status_t::stored,
+                   store.update_mesh_node (
+                     zlink::framework::mesh_node_descriptor_t{
+                       .mesh_name = "mesh-a",
+                       .rid = zlink::routing_id_t::from (rid),
+                       .lifecycle_generation = 1,
+                       .descriptor_revision = 1,
+                       .endpoint = "tcp://127.0.0.1:7001",
+                       .application_version = 1,
+                       .object_role = zlink::framework::object_role_t::server,
+                       .capacity = {.actors = {.limit = 128},
+                                    .spots = {.limit = 128}},
+                       .activation_concurrency = {.limit = 128},
+                       .state = state,
+                       .security_identity = "test",
+                       .owner_id = owner.owner_id,
+                       .lease_generation = owner.lease_generation},
+                     location_write_intent_t::new_claim).result ().value ().status);
     }
-
-    const std::string expired_owner = "owner-expired";
-    (void) claim_test_owner (
-      store, expired_owner,
-      std::chrono::milliseconds (20));
-    auto expired_peer = peer_location_t{
-      .auto_connect_type = location_auto_connect_type_t::client_server,
-      .mesh_name = "mesh-topology",
-      .node_rid = zlink::routing_id_t::from ("node-expired"),
-      .role = location_role_t::dealer,
-      .endpoint = "tcp://127.0.0.1:7998",
-      .weight = 100,
-      .owner_id = expired_owner};
-    ASSERT_EQ (location_write_status_t::stored,
-               store.update_peer (std::move (expired_peer), location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    std::this_thread::sleep_for (std::chrono::milliseconds (25));
-    const auto expired = query
-                           .list_topology (location_topology_filter_t{
-                             .kind = location_kind_t::peer,
-                             .node_rid = zlink::routing_id_t::from ("node-expired")})
-                           .result ()
-                           .value ();
-    ASSERT_EQ (1u, expired.items.size ());
-    EXPECT_EQ (location_topology_state_t::lost, expired.items.front ().state);
-    EXPECT_EQ (0u, expired.items.front ().ready_count);
-}
-
-TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryListsServiceSummaries)
-{
-    in_memory_location_store_t store;
-    seed_peer (store, "owner-a",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-a",
-                               .node_rid = zlink::routing_id_t::from ("node-a"),
-                               .role = location_role_t::router,
-                               .endpoint = "tcp://127.0.0.1:7001",
-                               .weight = 100});
-    seed_peer (store, "owner-b",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                               .mesh_name = "mesh-a",
-                               .node_rid = zlink::routing_id_t::from ("node-b"),
-                               .role = location_role_t::router,
-                               .endpoint = "tcp://127.0.0.1:7002",
-                               .weight = 0});
-    seed_peer (store, "owner-c",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::fanout,
-                               .mesh_name = "mesh-b",
-                               .node_rid = zlink::routing_id_t::from ("node-c"),
-                               .role = location_role_t::pub,
-                               .endpoint = "tcp://127.0.0.1:7003",
-                               .weight = 100});
     location_options_t options;
     location_runtime_t runtime (store, options, "owner-query");
     store_location_runtime_query_t query (store, runtime, options);
 
-    const auto summaries =
-      query
-        .list_service_summaries (
-          location_service_summary_filter_t{.mesh_name = std::string ("mesh-a"),
-                                            .auto_connect_type =
-                                              location_auto_connect_type_t::client_server,
-                                            .role = location_role_t::router})
-        .result ()
-        .value ();
-
-    ASSERT_EQ (1u, summaries.size ());
-    EXPECT_EQ ("mesh-a", summaries.front ().mesh_name);
-    EXPECT_EQ (location_auto_connect_type_t::client_server,
-               summaries.front ().auto_connect_type);
-    EXPECT_EQ (location_role_t::router, summaries.front ().role);
-    EXPECT_EQ (2u, summaries.front ().total_count);
-    EXPECT_EQ (2u, summaries.front ().ready_count);
-    EXPECT_EQ (0u, summaries.front ().lost_count);
+    const auto topology = query.list_topology ({.mesh_name = "mesh-a"}).result ().value ();
+    ASSERT_EQ (2u, topology.items.size ());
+    EXPECT_TRUE (std::any_of (topology.items.begin (), topology.items.end (),
+                              [] (const auto &entry) { return entry.draining; }));
+    const auto summaries = query.list_service_summaries ({.mesh_name = "mesh-a"})
+                             .result ().value ();
+    ASSERT_EQ (1u, summaries.items.size ());
+    EXPECT_EQ (2u, summaries.items.front ().total_count);
+    EXPECT_EQ (2u, summaries.items.front ().ready_count);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLocalPeers)
@@ -2074,8 +1778,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
       handlers, serializers);
     service.start (provider);
 
-    const auto rows = store->list_peers ({}).result ().value ();
-    ASSERT_TRUE (rows.empty ());
     const auto client_servers =
       store->list_client_servers ("orders").result ().value ();
     ASSERT_EQ (1u, client_servers.items.size ());
@@ -2100,7 +1802,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
                fanout_publishers.items.front ().state);
 
     service.stop ();
-    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
     EXPECT_TRUE (
       store->list_client_servers ("orders").result ().value ().items.empty ());
     EXPECT_TRUE (
@@ -2167,7 +1868,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ (0, app.run (0, nullptr));
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
-    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
@@ -2242,7 +1942,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
         node.set_routing_id (
               zlink::routing_id_t::from ("spot-local-node"))
           .listen (endpoint)
-          .add_spot<local_user_spot_t> ("room");
+          .add_spot<local_user_spot_t> (
+            "room", [] (zlink::framework::spot_context_t context) {
+                return std::make_shared<local_user_spot_t> (std::move (context));
+            });
     });
     auto service =
       std::make_unique<user_spot_manager_client_t> (app);
@@ -2266,6 +1969,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     std::string observed_node;
     std::string observed_spot;
     std::uint64_t observed_generation = 0;
+    auto destruction_count = std::make_shared<std::atomic<int>> (0);
 
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
@@ -2282,7 +1986,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
                 observed_spot = context.spot_id ();
                 observed_generation = context.object_generation ();
                 return std::make_shared<context_owned_user_spot_t> (
-                  std::move (context));
+                  std::move (context), destruction_count);
             });
     });
     auto service =
@@ -2297,6 +2001,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ ("context-node", observed_node);
     EXPECT_EQ ("local-user-spot", observed_spot);
     EXPECT_EQ (1u, observed_generation);
+    EXPECT_EQ (1, destruction_count->load (std::memory_order_relaxed))
+      << "host teardown must release the Spot instance/context ownership cycle";
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
@@ -2350,8 +2056,14 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
               zlink::routing_id_t::from (
                 "spot-collision-node"))
           .listen (endpoint)
-          .add_spot<occupied_user_spot_t> ("occupied")
-          .add_spot<local_user_spot_t> ("room");
+          .add_spot<occupied_user_spot_t> (
+            "occupied", [] (zlink::framework::spot_context_t context) {
+                return std::make_shared<occupied_user_spot_t> (std::move (context));
+            })
+          .add_spot<local_user_spot_t> (
+            "room", [] (zlink::framework::spot_context_t context) {
+                return std::make_shared<local_user_spot_t> (std::move (context));
+            });
     });
     auto service =
       std::make_unique<
@@ -2385,7 +2097,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
               zlink::routing_id_t::from (
                 "source-cleanup-node"))
           .listen (endpoint)
-          .add_spot<failing_user_spot_t> ("failing");
+          .add_spot<failing_user_spot_t> (
+            "failing", [] (zlink::framework::spot_context_t context) {
+                return std::make_shared<failing_user_spot_t> (std::move (context));
+            });
     });
     auto service =
       std::make_unique<source_cleanup_client_t> (app);
@@ -2652,7 +2367,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AppFanoutPublishUsesLocationAutoConn
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
     EXPECT_GT (auto_connect_event_handler_t::observed_value.load (std::memory_order_acquire), 0);
-    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshConnections)
@@ -2663,20 +2377,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
     auto runtime = std::make_shared<location_runtime_t> (*store, options, "owner-route-local");
     runtime->start (zlink::routing_id_t::from ("route-z-local-node"));
 
-    seed_peer (*store, "owner-route-remote",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                               .mesh_name = "route.mesh",
-                               .node_rid = zlink::routing_id_t::from ("route-a-remote-node"),
-                               .role = location_role_t::router,
-                               .endpoint = "inproc://route-remote",
-                               .weight = 42});
-    seed_peer (*store, "owner-route-invalid-dealer",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                               .mesh_name = "route.mesh",
-                               .node_rid = zlink::routing_id_t::from ("route-dealer-peer"),
-                               .role = location_role_t::dealer,
-                               .endpoint = "inproc://route-invalid-dealer",
-                               .weight = 100});
+    seed_mesh_node (*store, "owner-route-remote", "route.mesh",
+                    "route-a-remote-node", "inproc://route-remote");
+    seed_mesh_node (*store, "owner-route-invalid-dealer", "route.mesh",
+                    "route-dealer-peer", "inproc://route-invalid-dealer",
+                    zlink::framework::framework_runtime_state_t::stopped);
 
     zlink::framework::zlink_builder_t zlink;
     zlink.route_channel ("route.mesh")
@@ -2717,15 +2422,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
         return std::find (connections.begin (), connections.end (), "inproc://route-remote")
                != connections.end ();
     }));
-    EXPECT_TRUE (wait_until ([&] {
-        const auto rows = store->list_peers ({}).result ().value ();
-        return std::any_of (rows.begin (), rows.end (), [] (const auto &row) {
-            return row.owner_id == "owner-route-local"
-                   && row.auto_connect_type == location_auto_connect_type_t::route_mesh
-                   && row.mesh_name == "route.mesh" && row.role == location_role_t::router
-                   && row.endpoint.empty ();
-        });
-    }));
     auto connected = route.list_connections ();
     EXPECT_NE (connected.end (),
                std::find (connected.begin (), connected.end (), "inproc://route-manual"));
@@ -2758,7 +2454,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
                      "owner-route-invalid-dealer"))
                  .result ()
                  .value ());
-    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
     runtime->stop ();
 }
 
@@ -2771,13 +2466,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto lower_runtime =
       std::make_shared<location_runtime_t> (*store, options, "owner-route-lower-local");
     lower_runtime->start (zlink::routing_id_t::from ("route-a-local-node"));
-    seed_peer (*store, "owner-route-higher-remote",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                               .mesh_name = "route.lower",
-                               .node_rid = zlink::routing_id_t::from ("route-z-remote-node"),
-                               .role = location_role_t::router,
-                               .endpoint = "inproc://route-higher-remote",
-                               .weight = 100});
+    seed_mesh_node (*store, "owner-route-higher-remote", "route.lower",
+                    "route-z-remote-node", "inproc://route-higher-remote");
 
     zlink::framework::zlink_builder_t lower_zlink;
     lower_zlink.route_channel ("route.lower")
@@ -2825,15 +2515,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
                              && target.peer_rid->to_string () == "route-z-remote-node";
                   });
     }));
-    {
-        const auto rows = store->list_peers ({}).result ().value ();
-        EXPECT_EQ (rows.end (), std::find_if (rows.begin (), rows.end (), [] (const auto &row) {
-                       return row.owner_id == "owner-route-lower-local"
-                              && row.auto_connect_type == location_auto_connect_type_t::route_mesh
-                              && row.mesh_name == "route.lower"
-                              && row.role == location_role_t::dealer;
-                   }));
-    }
     lower_service.stop ();
     lower_runtime->stop ();
 
@@ -2850,13 +2531,8 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto higher_runtime =
       std::make_shared<location_runtime_t> (*store, options, "owner-route-higher-local");
     higher_runtime->start (zlink::routing_id_t::from ("route-z-local-node"));
-    seed_peer (*store, "owner-route-lower-remote",
-               peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                               .mesh_name = "route.higher",
-                               .node_rid = zlink::routing_id_t::from ("route-a-remote-node"),
-                               .role = location_role_t::router,
-                               .endpoint = "inproc://route-lower-remote",
-                               .weight = 100});
+    seed_mesh_node (*store, "owner-route-lower-remote", "route.higher",
+                    "route-a-remote-node", "inproc://route-lower-remote");
 
     zlink::framework::zlink_builder_t higher_zlink;
     higher_zlink.route_channel ("route.higher")
@@ -2911,7 +2587,6 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
             "owner-route-lower-remote"))
         .result ()
         .value ());
-    EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, LocationMonitoringHostPublishesSnapshots)

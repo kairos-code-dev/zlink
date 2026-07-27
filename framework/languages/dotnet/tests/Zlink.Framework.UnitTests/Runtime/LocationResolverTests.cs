@@ -22,7 +22,7 @@ public sealed class LocationResolverTests
         };
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            fixture.Store, fixture.Store,
+            fixture.Store,
             new ZLinkOwnerLeaseTracker(
                 fixture.Store, options, fixture.Time),
             observed,
@@ -58,7 +58,6 @@ public sealed class LocationResolverTests
             OwnerLeaseFencingMargin = TimeSpan.FromSeconds(5)
         };
         var resolvers = new ZLinkStoreLocationResolvers(
-            fixture.Store,
             fixture.Store,
             new ZLinkOwnerLeaseTracker(fixture.Store, options, fixture.Time),
             new ZLinkObservedLocationGenerations(),
@@ -945,7 +944,7 @@ public sealed class LocationResolverTests
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var observed = new ZLinkObservedLocationGenerations();
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, observed);
+            store, tracker, observed);
         return new ResolverFixture(store, resolvers, time, ownerA, ownerB);
     }
 

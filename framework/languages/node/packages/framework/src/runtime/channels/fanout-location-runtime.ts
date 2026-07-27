@@ -3,10 +3,10 @@ import {
   ZLinkFrameworkRuntimeState,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  type ZLinkFanoutLocationStore,
   type ZLinkFanoutPublisherDescriptor,
   type ZLinkLocationOwnerToken
 } from '../../contracts/Locations';
+import type { ZLinkFanoutLocationStore } from '../locations/internal-store-contracts';
 import {
   zlinkRuntimeDefaultLocationOptions,
   type ZLinkLocationOptionOverrides
@@ -129,7 +129,8 @@ export class ZLinkFanoutLocationRuntime {
         `0x${randomUUID().replaceAll('-', '').slice(0, 16)}`
       ) & 0x7fff_ffff_ffff_ffffn;
       const identity = this.publisherIdentities.get(channelName) ?? {
-        publisherRid: channel.routingId ?? `fanout-${randomUUID()}`,
+        publisherRid: channel.routingId
+          ?? `${channel.routingIdPrefix ?? 'fanout'}-${randomUUID()}`,
         lifecycleGeneration: generatedLifecycle === 0n
           ? 1n
           : generatedLifecycle

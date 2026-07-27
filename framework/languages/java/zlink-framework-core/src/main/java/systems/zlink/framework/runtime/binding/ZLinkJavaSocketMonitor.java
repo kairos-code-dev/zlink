@@ -2,9 +2,9 @@ package systems.zlink.framework.runtime.binding;
 
 import systems.zlink.contracts.eventing.MonitorEvent;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorHandler;
 
 record ZLinkJavaSocketMonitor(SocketMonitor monitor) implements ZLinkBackendSocketMonitor {
     @Override public String name() { return "socketMonitor"; }

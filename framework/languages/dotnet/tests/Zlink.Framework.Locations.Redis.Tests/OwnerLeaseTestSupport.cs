@@ -3,7 +3,7 @@ namespace Zlink.Framework.Locations.Redis.Tests;
 internal static class OwnerLeaseTestSupport
 {
     internal static async ValueTask<ZLinkLocationOwnerToken> ClaimLiveOwnerAsync(
-        this IZLinkOwnerLeaseStore store,
+        this IZLinkLocationStore store,
         string ownerId,
         TimeSpan leaseTtl)
     {
@@ -16,7 +16,7 @@ internal static class OwnerLeaseTestSupport
     }
 
     internal static async ValueTask<ZLinkLocationOwnerToken> RenewLiveOwnerAsync(
-        this IZLinkOwnerLeaseStore store,
+        this IZLinkLocationStore store,
         string ownerId,
         TimeSpan leaseTtl)
     {

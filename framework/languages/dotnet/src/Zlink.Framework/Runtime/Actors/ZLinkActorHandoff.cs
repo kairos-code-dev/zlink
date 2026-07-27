@@ -7,6 +7,13 @@ internal enum ZLinkActorFrameRoute
     Stale
 }
 
+internal enum ZLinkActorHandoffCaptureResult
+{
+    NotSealed,
+    Captured,
+    Full
+}
+
 internal sealed class ZLinkActorHandoffRejectedException(
     string message,
     Exception? innerException = null) : InvalidOperationException(message, innerException);
@@ -21,10 +28,26 @@ internal sealed record ZLinkActorHandoffFrame(
     byte[] Header,
     byte[] Body,
     long ArrivalIndex,
-    ZLinkBackendActorRouteContext RouteContext = default);
+    ZLinkBackendActorRouteContext RouteContext = default,
+    ulong SourceNodeGeneration = 0,
+    ZLinkServiceWireCodec.RequestSourceFence? RequestSource = null,
+    ulong RelocationReplyRouteId = 0,
+    long CanonicalEncodedLength = 0);
+
+internal sealed record ZLinkActorAcceptedRecord(
+    ZLinkActorHandoffFrame Frame,
+    ZLinkServiceWireCodec.RequestSourceFence RequestSource,
+    ZLinkBackendActorRef? FrozenTargetActor = null);
+
+internal readonly record struct ZLinkActorHandoffCommitBoundary(
+    IReadOnlyList<ZLinkActorHandoffFrame> Frames,
+    ulong AcceptedHighWater,
+    int RemainingHoldRecords,
+    long RemainingHoldBytes);
 
 internal static class ZLinkActorHandoffFrames
 {
+
     public static ZLinkActorHandoffFrame Capture(
         ZLinkSpotActorFrame frame,
         long arrivalIndex)
@@ -39,7 +62,23 @@ internal static class ZLinkActorHandoffFrames
             ZLinkStreamProtocolDefaults.EncodeHeader(frame.Header).ToArray(),
             frame.Body.ToArray(),
             arrivalIndex,
-            frame.RouteContext);
+            frame.RouteContext,
+            frame.SourceNodeGeneration,
+            frame.RequestSource,
+            frame.RelocationReplyRouteId);
+    }
+
+    internal static long CanonicalEncodedLength(
+        ZLinkActorHandoffFrame frame,
+        ZLinkBackendActorRef targetActor)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        var source = frame.RequestSource
+                     ?? throw new ZLinkActorHandoffRejectedException(
+                         "Canonical Actor ingress requires a request-source fence.");
+        return ZLinkCanonicalActorAcceptedJournal.Encode(
+            new ZLinkActorAcceptedRecord(frame, source, targetActor),
+            targetActor).LongLength;
     }
 
     private static RoutingId RidOrDefault(byte[] rid) =>
@@ -58,7 +97,7 @@ internal static class ZLinkActorHandoffFrames
                     RidOrDefault(frame.ReplyActorNodeRid),
                     actor.ActorId,
                     frame.ReplyActorGeneration);
-                restored.Add(new ZLinkSpotActorFrame(
+                var restoredFrame = new ZLinkSpotActorFrame(
                     actor,
                     replyActor,
                     RidOrDefault(frame.SourceNodeRid),
@@ -68,7 +107,13 @@ internal static class ZLinkActorHandoffFrames
                     frame.Flags,
                     frame.RouteContext,
                     ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header),
-                    Message.From(frame.Body)));
+                    Message.From(frame.Body),
+                    frame.SourceNodeGeneration,
+                    frame.RequestSource);
+                if (frame.RelocationReplyRouteId != 0)
+                    restoredFrame.BindRelocationReplyRoute(
+                        frame.RelocationReplyRouteId);
+                restored.Add(restoredFrame);
             }
 
             return new ZLinkSpotActorFrameBatch(restored);
@@ -78,5 +123,32 @@ internal static class ZLinkActorHandoffFrames
             foreach (var frame in restored) frame.Dispose();
             throw;
         }
+    }
+
+    internal static ZLinkSpotActorFrameBatch RestoreCanonical(
+        ZLinkBackendActorRef currentActor,
+        ZLinkBackendActorRef expectedSourceActor,
+        IReadOnlyList<ZLinkActorAcceptedRecord> accepted)
+    {
+        if (currentActor.ActorId != expectedSourceActor.ActorId
+            || currentActor.Generation != expectedSourceActor.Generation)
+            throw new ZLinkRelocationDataLostException(
+                "Standalone Actor relocation changed the logical Actor generation.");
+        foreach (var record in accepted)
+        {
+            var frozen = record.FrozenTargetActor
+                         ?? throw new ZLinkRelocationDataLostException(
+                             "Standalone Actor frozen record lost its source target fence.");
+            if (frozen != expectedSourceActor)
+                throw new ZLinkRelocationDataLostException(
+                    "Standalone Actor frozen record does not match the relocation source fence.");
+        }
+
+        // The immutable frozen records keep the source target fence. Only this
+        // replay endpoint, after validating that fence against the root, binds
+        // dispatch to the materialized target instance.
+        return Restore(
+            currentActor,
+            accepted.Select(static record => record.Frame).ToArray());
     }
 }

@@ -27,8 +27,6 @@ inline std::string socket_kind_name (zlink::framework::socket_event_kind_t kind)
             return "HandshakeFailed";
         case zlink::framework::socket_event_kind_t::peer_admission_changed:
             return "PeerAdmissionChanged";
-        case zlink::framework::socket_event_kind_t::internal:
-            return "Internal";
     }
     return "Unknown";
 }
@@ -36,12 +34,6 @@ inline std::string socket_kind_name (zlink::framework::socket_event_kind_t kind)
 inline std::string spot_kind_name (zlink::framework::spot_event_kind_t kind)
 {
     switch (kind) {
-        case zlink::framework::spot_event_kind_t::status_changed:
-            return "StatusChanged";
-        case zlink::framework::spot_event_kind_t::peers_changed:
-            return "PeersChanged";
-        case zlink::framework::spot_event_kind_t::subjects_changed:
-            return "SubjectsChanged";
         case zlink::framework::spot_event_kind_t::timer_handler_failed:
             return "TimerHandlerFailed";
         case zlink::framework::spot_event_kind_t::timer_stopped_after_unhandled_exception:
@@ -74,9 +66,8 @@ inline void record_spot_event (evidence_store_t &evidence,
                                const zlink::framework::spot_event_payload_t &event)
 {
     evidence.add (
-      "monitor-spot|source=" + event.source_name + "|node=" + event.spot_node_name
-      + "|kind=" + spot_kind_name (event.event) + "|peers=" + std::to_string (event.peers.size ())
-      + "|subjects=" + std::to_string (event.subjects.size ()) + "|timer="
+      "monitor-spot|source=" + event.source_name + "|kind=" + spot_kind_name (event.event)
+      + "|timer="
       + (event.timer_diagnostic ? event.timer_diagnostic->timer_name : std::string ("<null>")));
 }
 
@@ -86,13 +77,11 @@ inline void record_location_event (evidence_store_t &evidence,
     std::vector<std::string> nodes;
     std::vector<std::string> routes;
     for (const auto &entry : event.topology) {
-        if (!entry.node_rid) {
-            continue;
-        }
-        const auto rid = entry.node_rid->to_string ();
+        const auto rid = entry.node_rid.to_string ();
         nodes.push_back (rid);
-        if (entry.endpoint && entry.state == zlink::framework::location_topology_state_t::ready) {
-            routes.push_back (rid + "@" + *entry.endpoint);
+        if (!entry.endpoint.empty ()
+            && entry.state == zlink::framework::location_topology_state_t::ready) {
+            routes.push_back (rid + "@" + entry.endpoint);
         }
     }
     auto join_unique = [] (std::vector<std::string> values) {

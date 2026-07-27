@@ -2,18 +2,18 @@ package systems.zlink.framework.spring;
 
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class ZLinkDrainReadinessContributor implements HealthIndicator {
-    private final ZLinkDrainControl drainControl;
+    private final ZLinkFrameworkLifecycle lifecycle;
 
-    public ZLinkDrainReadinessContributor(ZLinkDrainControl drainControl) {
-        this.drainControl = java.util.Objects.requireNonNull(drainControl, "drainControl");
+    public ZLinkDrainReadinessContributor(ZLinkFrameworkLifecycle lifecycle) {
+        this.lifecycle = java.util.Objects.requireNonNull(lifecycle, "lifecycle");
     }
 
     @Override
     public Health health() {
-        return drainControl.isReady()
+        return lifecycle.isReady()
             ? Health.up().build()
             : Health.outOfService().withDetail("state", "draining").build();
     }

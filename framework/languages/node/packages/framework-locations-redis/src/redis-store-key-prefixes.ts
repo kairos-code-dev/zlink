@@ -202,10 +202,6 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:descriptor:mesh:`;
   }
 
-  routingIdAllocationGroup(groupName: string): string {
-    return `${this.keyPrefix}:ridalloc:${groupName}`;
-  }
-
   actorTransfer(actorRowKey: string, transferId: string): string {
     return `${this.keyPrefix}:transfer:${actorRowKey}:${transferId}`;
   }

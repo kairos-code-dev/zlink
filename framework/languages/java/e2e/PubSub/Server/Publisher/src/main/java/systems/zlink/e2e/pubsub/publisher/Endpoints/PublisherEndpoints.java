@@ -15,15 +15,14 @@ import systems.zlink.e2e.pubsub.publisher.Configuration.PublisherOptions;
 import systems.zlink.e2e.pubsub.publisher.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class PublisherEndpoints implements SmartLifecycle {
     private final PublisherOptions options;
     private final ZLinkFanoutClient fanout;
     private final EvidenceStore evidence;
     private final ObjectMapper json;
-    private final ZLinkDrainControl drain;
+    private final ZLinkFrameworkLifecycle drain;
     private HttpServer server;
     private boolean running;
 
@@ -32,7 +31,7 @@ public final class PublisherEndpoints implements SmartLifecycle {
         ZLinkFanoutClient fanout,
         EvidenceStore evidence,
         ObjectMapper json,
-        ZLinkDrainControl drain) {
+        ZLinkFrameworkLifecycle drain) {
         this.options = options;
         this.fanout = fanout;
         this.evidence = evidence;
@@ -52,8 +51,11 @@ public final class PublisherEndpoints implements SmartLifecycle {
             server.createContext("/publish/missing", exchange ->
                 publish(exchange, Contracts.MISSING_PACKET));
             server.createContext("/admin/drain", exchange -> {
-                var result = drain.drain(Duration.ofSeconds(30)).toCompletableFuture().join();
-                writeText(exchange, 200, result instanceof Drained ? "Drained\n" : "ForceStopped\n");
+                var result = drain.retire(Duration.ofSeconds(30)).toCompletableFuture().join();
+                writeText(exchange, 200,
+                    result.outcome() == systems.zlink.framework.runtime.host
+                        .ZLinkTerminationOutcome.STOPPED
+                        ? "Drained\n" : "ForceStopped\n");
             });
             server.start();
             running = true;

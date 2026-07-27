@@ -119,14 +119,6 @@ struct owner_lease_found_t {
 struct owner_lease_missing_t {};
 using owner_lease_read_result_t =
   std::variant<owner_lease_found_t, owner_lease_missing_t>;
-enum class location_auto_connect_type_t {
-    invalid = 0,
-    route_mesh = 1,
-    client_server = 2,
-    dealer_mesh = 3,
-    fanout = 4,
-    spot_mesh = 5
-};
 enum class location_role_t : std::uint16_t {
     invalid = 0,
     spot = 2,
@@ -134,54 +126,6 @@ enum class location_role_t : std::uint16_t {
     dealer = 4,
     pub = 5,
     sub = 6
-};
-enum class route_kind_t {
-    invalid = 0,
-    actor_session = 1,
-    spot_name = 2,
-    framework_route = 3
-};
-enum class location_kind_t {
-    invalid = 0,
-    peer = 1,
-    spot = 2,
-    actor = 3,
-    route = 4
-};
-
-struct peer_location_t {
-    location_auto_connect_type_t auto_connect_type =
-      location_auto_connect_type_t::invalid;
-    std::string mesh_name;
-    std::optional<zlink::routing_id_t> node_rid;
-    location_role_t role = location_role_t::invalid;
-    std::string endpoint;
-    int weight = 100;
-    std::int64_t value = 0;
-    std::map<std::string, std::string> metadata;
-    std::vector<std::string> capabilities;
-    std::string owner_id;
-    std::int64_t lease_generation = 0;
-    std::int64_t generation = 0;
-    std::chrono::system_clock::time_point updated_at{};
-    bool draining = false;
-};
-
-struct peer_location_key_t {
-    location_auto_connect_type_t auto_connect_type =
-      location_auto_connect_type_t::invalid;
-    std::string mesh_name;
-    location_role_t role = location_role_t::invalid;
-    std::optional<zlink::routing_id_t> node_rid;
-    std::optional<std::string> endpoint;
-};
-
-struct peer_location_filter_t {
-    std::optional<location_auto_connect_type_t> auto_connect_type;
-    std::optional<std::string> mesh_name;
-    std::optional<location_role_t> role;
-    std::optional<zlink::routing_id_t> node_rid;
-    std::optional<std::string> endpoint;
 };
 
 enum class placement_object_kind_t {
@@ -278,82 +222,6 @@ struct fanout_publisher_descriptor_key_t {
     zlink::routing_id_t publisher_rid;
 };
 
-struct spot_location_t {
-    std::string mesh_name;
-    spot_id_t spot_id;
-    std::uint64_t spot_generation = 0;
-    zlink::routing_id_t owner_node_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
-    std::uint64_t owner_node_generation = 0;
-    zlink::spot_kind spot_kind = zlink::spot_kind::invalid;
-    std::string spot_type;
-    std::string owner_id;
-    std::int64_t lease_generation = 0;
-    std::chrono::system_clock::time_point updated_at{};
-};
-struct spot_location_key_t {
-    spot_id_t spot_id;
-};
-
-struct spot_location_filter_t {
-    std::optional<std::string> mesh_name;
-    std::optional<std::string> spot_type;
-    std::optional<zlink::routing_id_t> node_rid;
-    std::optional<zlink::spot_kind> spot_kind;
-};
-
-struct actor_location_t {
-    std::string mesh_name;
-    std::string actor_id;
-    std::string actor_type;
-    actor_ref_t actor_ref;
-    zlink::routing_id_t owner_node_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
-    std::uint64_t owner_node_generation = 0;
-    spot_id_t spot_id;
-    std::uint64_t spot_generation = 0;
-    zlink::spot_kind spot_kind = zlink::spot_kind::invalid;
-    std::string owner_id;
-    std::int64_t lease_generation = 0;
-    std::chrono::system_clock::time_point updated_at{};
-};
-struct actor_location_key_t { actor_id_t actor_id; };
-
-struct actor_location_filter_t {
-    std::optional<std::string> mesh_name;
-    std::optional<std::string> actor_type;
-    std::optional<zlink::routing_id_t> owner_node_rid;
-    std::optional<spot_id_t> spot_id;
-    std::optional<zlink::spot_kind> spot_kind;
-};
-
-struct route_location_t {
-    route_kind_t route_kind = route_kind_t::invalid;
-    std::string route_key;
-    zlink::routing_id_t owner_node_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
-    std::string owner_id;
-    std::int64_t lease_generation = 0;
-    std::int64_t generation = 0;
-    std::vector<std::uint8_t> value;
-    std::chrono::system_clock::time_point updated_at{};
-};
-struct route_location_key_t {
-    route_kind_t route_kind = route_kind_t::invalid;
-    std::string route_key;
-};
-struct route_location_filter_t {
-    std::optional<route_kind_t> route_kind;
-    std::optional<zlink::routing_id_t> owner_node_rid;
-    std::optional<std::string> owner_id;
-};
-
-using location_key_t = std::variant<
-  peer_location_key_t,
-  spot_location_key_t,
-  actor_location_key_t,
-  route_location_key_t>;
-
 struct location_page_request_t {
     int page_size = 100;
     std::optional<std::string> continuation_token;
@@ -363,89 +231,6 @@ template <typename T>
 struct location_page_t {
     std::vector<T> items;
     std::optional<std::string> continuation_token;
-};
-
-class mesh_node_location_store_t {
-public:
-    virtual task_t<location_write_result_t> update_mesh_node(
-      mesh_node_descriptor_t descriptor, location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_mesh_node(
-      mesh_node_descriptor_key_t key, location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<mesh_node_descriptor_t>> list_mesh_nodes(
-      std::string mesh_name,
-      location_page_request_t page = {}) = 0;
-};
-
-class client_server_location_store_t {
-public:
-    virtual task_t<location_write_result_t> update_client_server(
-      client_server_server_descriptor_t descriptor,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_client_server(
-      client_server_server_descriptor_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<client_server_server_descriptor_t>>
-      list_client_servers(
-        std::string channel_name,
-        location_page_request_t page = {}) = 0;
-};
-
-class fanout_location_store_t {
-public:
-    virtual task_t<location_write_result_t> update_fanout_publisher(
-      fanout_publisher_descriptor_t descriptor,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_status_t> remove_fanout_publisher(
-      fanout_publisher_descriptor_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<fanout_publisher_descriptor_t>>
-      list_fanout_publishers(
-        std::string channel_name,
-        location_page_request_t page = {}) = 0;
-};
-
-class peer_location_store_t {
-public:
-    virtual ~peer_location_store_t() = default;
-    virtual task_t<location_write_result_t> update_peer(
-      peer_location_t peer,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_result_t> remove_peer(
-      peer_location_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<location_page_t<peer_location_t>> list_peers(
-      peer_location_filter_t filter,
-      location_page_request_t page = {}) = 0;
-};
-
-class route_location_store_t {
-public:
-    virtual ~route_location_store_t() = default;
-    virtual task_t<location_write_result_t> update_route(
-      route_location_t route,
-      location_write_intent_t intent) = 0;
-    virtual task_t<location_write_result_t> remove_route(
-      route_location_key_t key,
-      location_owner_token_t owner) = 0;
-    virtual task_t<std::optional<route_location_t>> resolve_route(
-      route_location_key_t key) = 0;
-    virtual task_t<location_page_t<route_location_t>> list_routes(
-      route_location_filter_t filter,
-      location_page_request_t page = {}) = 0;
-};
-
-class owner_lease_store_t {
-public:
-    virtual ~owner_lease_store_t() = default;
-    virtual task_t<owner_lease_claim_result_t> claim_owner_lease(
-      std::string owner_id, std::chrono::milliseconds lease_ttl) = 0;
-    virtual task_t<owner_lease_read_result_t> read_owner_lease(
-      std::string owner_id) = 0;
-    virtual task_t<owner_lease_renew_result_t> renew_owner_lease(
-      location_owner_token_t token,
-      std::chrono::milliseconds lease_ttl) = 0;
-    virtual task_t<owner_lease_release_result_t> release_owner_lease(
-      location_owner_token_t token) = 0;
 };
 
 } // namespace zlink::framework
@@ -468,7 +253,7 @@ Target admission 직전에
 `read_owner_lease(owner_id)`로 exact token을 다시 확인한다. [Owner lease](../../../../01-glossary.ko.md#owner-lease) 전체 목록과 [snapshot](../../../../01-glossary.ko.md#snapshot) type은 public
 surface에 제공하지 않는다.
 
-Descriptor와 peer enumeration은 `location_page_request_t`와 `location_page_t<T>`를 사용한다. Effective
+Descriptor enumeration은 `location_page_request_t`와 `location_page_t<T>`를 사용한다. Effective
 `page_size`는 `1..1000`이며 continuation token은 provider만 해석하는 opaque value다. Framework reconciler는
 provider가 encoded page 4 MiB에 먼저 도달하면 요청보다 적은 item과 다음 token을 반환하며 byte limit public
 option은 제공하지 않는다. Framework reconciler는 scope change stamp를 읽고 모든 page를 조립한 뒤 stamp를 다시 읽는다. 두 stamp가 같을 때만 full snapshot을
@@ -485,8 +270,8 @@ Descriptor capacity는 candidate를 빠르게 거르는 비권위 projection이�
 
 User·Instance Spot owner state는 global SpotId에서 파생한 하나의 opaque authority key를 공유한다. Manager
 Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 pending capacity를 원자적으로
-결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
-payload와 page를 decode해서 만드는 운영 조회 projection이며 provider write·remove·resolve interface가 아니다.
+결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. Framework는 opaque
+authority payload를 application-facing Spot·Actor reference와 운영 조회 projection으로 변환한다.
 Provider는 Spot kind, type, owner state와 Actor relocation phase를 해석하지 않는다.
 `spot_ref_t::object_generation()`과 `actor_ref_t::object_generation()`은 provider의
 `object_generation`을 그대로 사용한다. Authority envelope의 `authority_owner_generation`은 authority owner
@@ -496,52 +281,9 @@ Maintenance owner 이관은 `new_owner`로 owner generation만 바꾸고 object 
 Ref는 immutable location snapshot이며 이전 owner route에서 bounded forwarding mapping만 사용할 수 있다. Exact
 close·destroy·bind는 stale 또는 moving 결과에서 fresh incarnation으로 자동 retry하지 않는다.
 
-## 2.1 Watch와 runtime query
+## 2.1 Runtime query
 
 ```cpp
-struct location_watch_filter_t {
-    location_kind_t kind = location_kind_t::peer;
-    std::optional<std::string> mesh_name;
-    std::optional<route_kind_t> route_kind;
-};
-
-enum class location_change_type_t {
-    upserted = 1,
-    removed = 2,
-    expired = 3
-};
-
-struct location_changed_t {
-    location_kind_t kind = location_kind_t::peer;
-    location_key_t key;
-    location_change_type_t change_type = location_change_type_t::upserted;
-    std::int64_t generation = 0;
-    std::chrono::system_clock::time_point updated_at{};
-};
-
-struct location_change_stamp_scope_t {
-    location_kind_t kind = location_kind_t::peer;
-    std::optional<std::string> mesh_name;
-};
-
-using location_watch_callback_t =
-  std::function<void(location_changed_t)>;
-
-class location_watch_store_t {
-public:
-    virtual ~location_watch_store_t() = default;
-    virtual task_t<void> watch_locations(
-      location_watch_filter_t filter,
-      location_watch_callback_t callback) = 0;
-};
-
-class location_change_stamp_store_t {
-public:
-    virtual ~location_change_stamp_store_t() = default;
-    virtual task_t<std::int64_t> get_change_stamp(
-      location_change_stamp_scope_t scope) = 0;
-};
-
 class location_readiness_t {
 public:
     virtual ~location_readiness_t() = default;
@@ -571,90 +313,163 @@ enum class location_topology_state_t {
 };
 
 struct location_topology_filter_t {
-    std::optional<location_kind_t> kind;
     std::optional<std::string> mesh_name;
-    std::optional<location_role_t> role;
     std::optional<zlink::routing_id_t> node_rid;
     std::optional<location_topology_state_t> state;
 };
 
 struct location_topology_entry_t {
-    location_kind_t kind = location_kind_t::peer;
-    std::optional<std::string> mesh_name;
-    std::optional<location_role_t> role;
-    std::optional<zlink::routing_id_t> node_rid;
-    std::optional<spot_id_t> spot_id;
-    std::optional<std::string> actor_id;
-    std::optional<std::string> endpoint;
+    std::string mesh_name;
+    zlink::routing_id_t node_rid;
+    std::string endpoint;
+    bool draining = false;
     location_topology_state_t state = location_topology_state_t::discovered;
-    std::uint32_t desired_count = 0;
-    std::uint32_t ready_count = 0;
-    int error_code = 0;
     std::chrono::system_clock::time_point updated_at{};
 };
 
 struct location_service_summary_filter_t {
     std::optional<std::string> mesh_name;
-    std::optional<location_auto_connect_type_t> auto_connect_type;
-    std::optional<location_role_t> role;
 };
 
 struct location_service_summary_t {
     std::string mesh_name;
-    location_auto_connect_type_t auto_connect_type =
-      location_auto_connect_type_t::invalid;
-    location_role_t role = location_role_t::invalid;
     std::uint32_t total_count = 0;
     std::uint32_t ready_count = 0;
-    std::uint32_t lost_count = 0;
     std::uint32_t error_count = 0;
+    std::uint32_t stopped_count = 0;
+    std::chrono::system_clock::time_point last_updated_at{};
 };
 
 class location_runtime_query_t {
 public:
     virtual ~location_runtime_query_t() = default;
     virtual task_t<location_runtime_status_t> get_status() = 0;
-    virtual task_t<std::vector<peer_location_t>> list_peer_locations(
-      peer_location_filter_t filter) = 0;
-    virtual task_t<location_page_t<spot_location_t>> list_spot_locations(
-      spot_location_filter_t filter,
-      location_page_request_t page = {}) = 0;
-    virtual task_t<location_page_t<actor_location_t>> list_actor_locations(
-      actor_location_filter_t filter,
-      location_page_request_t page = {}) = 0;
-    virtual task_t<location_page_t<route_location_t>> list_route_locations(
-      route_location_filter_t filter,
+    virtual task_t<location_page_t<mesh_node_descriptor_t>>
+      list_mesh_node_descriptors(std::string mesh_name,
       location_page_request_t page = {}) = 0;
     virtual task_t<location_page_t<location_topology_entry_t>> list_topology(
       location_topology_filter_t filter,
       location_page_request_t page = {}) = 0;
-    virtual task_t<std::vector<location_service_summary_t>>
-      list_service_summaries(location_service_summary_filter_t filter) = 0;
+    virtual task_t<location_page_t<location_service_summary_t>>
+      list_service_summaries(location_service_summary_filter_t filter,
+                             location_page_request_t page = {}) = 0;
 };
 ```
 
 ## 3. Location Store 구성
 
+`location_store_t`는 application이 root에 등록하고 provider가 완전하게 구현해야 하는 단일 public SPI다.
+이 문서가 class와 전체 member declaration을 유일하게 소유한다. Authority, creation, placement와 aggregate
+operation에 사용하는 public record·result type과 동작 조건은
+[Maintenance record와 의미](07-location-maintenance.ko.md)가 정의한다.
+
 ```cpp
 namespace zlink::framework {
 
-class location_store_t : public mesh_node_location_store_t,
-                         public owner_lease_store_t,
-                         public authority_store_t,
-                         public object_creation_store_t,
-                         public relocation_capacity_store_t {
+class location_store_t {
 public:
-    ~location_store_t() override = default;
+    virtual ~location_store_t() = default;
+    virtual task_t<location_write_result_t> update_mesh_node(
+      mesh_node_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_mesh_node(
+      mesh_node_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<mesh_node_descriptor_t>> list_mesh_nodes(
+      std::string mesh_name,
+      location_page_request_t page = {}) = 0;
+    virtual task_t<location_write_result_t> update_client_server(
+      client_server_server_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_client_server(
+      client_server_server_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<client_server_server_descriptor_t>>
+      list_client_servers(
+        std::string channel_name,
+        location_page_request_t page = {}) = 0;
+    virtual task_t<location_write_result_t> update_fanout_publisher(
+      fanout_publisher_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_fanout_publisher(
+      fanout_publisher_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<fanout_publisher_descriptor_t>>
+      list_fanout_publishers(
+        std::string channel_name,
+        location_page_request_t page = {}) = 0;
+    virtual task_t<owner_lease_claim_result_t> claim_owner_lease(
+      std::string owner_id,
+      std::chrono::milliseconds lease_ttl) = 0;
+    virtual task_t<owner_lease_read_result_t> read_owner_lease(
+      std::string owner_id) = 0;
+    virtual task_t<owner_lease_renew_result_t> renew_owner_lease(
+      location_owner_token_t token,
+      std::chrono::milliseconds lease_ttl) = 0;
+    virtual task_t<owner_lease_release_result_t> release_owner_lease(
+      location_owner_token_t token) = 0;
+    virtual task_t<authority_read_result_t> read_authority(
+      authority_key_t key,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<authority_compare_exchange_result_t>
+      compare_exchange_authority(
+        authority_key_t key,
+        std::string expected_store_version,
+        authority_mutation_t mutation,
+        std::stop_token cancellation = {}) = 0;
+    virtual task_t<authority_scan_result_t> list_authorities(
+      std::string prefix,
+      std::optional<authority_scan_cursor_t> cursor,
+      std::size_t limit,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<creation_terminal_read_result_t> read_creation_terminal(
+        creation_operation_identity_t operation,
+        std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_reserve_result_t> reserve(
+      object_reserve_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_creation_complete_result_t> complete_creation(
+      object_creation_complete_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_commit_result_t> commit(
+      object_commit_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_abort_result_t> abort(
+      object_abort_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_capacity_reserve_result_t>
+      reserve_relocation_capacity(
+        relocation_capacity_reserve_request_t request,
+        std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_capacity_abort_result_t>
+      abort_relocation_capacity(
+        relocation_capacity_fence_t fence,
+        std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_prepare_result_t> prepare_aggregate(
+      aggregate_prepare_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_commit_result_t> commit_aggregate(
+      aggregate_fence_t fence,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_abort_result_t> abort_aggregate(
+      aggregate_fence_t fence,
+      std::stop_token cancellation = {}) = 0;
     virtual task_t<std::int64_t> remove_all_by_owner(
       location_owner_token_t owner) = 0;
+    virtual task_t<std::optional<std::uint64_t>>
+      get_mesh_node_change_stamp(std::string mesh_name) {
+        (void) mesh_name;
+        return task_t<std::optional<std::uint64_t>>(
+          result_t<std::optional<std::uint64_t>>::success(std::nullopt));
+    }
 };
 
 } // namespace zlink::framework
 ```
 
-`location_store_t`는 descriptor, owner lease와 opaque authority CAS를 하나의
-등록 capability로 제공한다. 여기서 필수 descriptor는 [MeshNode](../../../../01-glossary.ko.md#meshnode)다. ClientServer, fanout, generic peer와 route
-capability는 해당 기능을 구성할 때 provider가 추가로 구현한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) owner와 Actor
+`location_store_t`는 descriptor, owner lease, opaque authority CAS, creation reservation과
+aggregate commit을 하나의 등록 capability로 제공한다. Provider가 일부 기능 interface를 골라
+조합하거나 runtime이 `dynamic_cast`로 capability를 탐색하지 않는다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) owner와 Actor
 relocation state machine은 Framework 내부 payload다. Provider는 payload 형식, [Spot kind](../../../../01-glossary.ko.md#spot-kind), phase와 recovery
 cursor를 해석하지 않는다.
 Relocation payload 보관은 별도 `relocation_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도
@@ -671,36 +486,27 @@ namespace zlink::framework {
 namespace zlink::framework::locations::redis {
 
 struct redis_location_options_t {
-    std::string connection_string;
-    std::string key_prefix;
-
-    redis_location_options_t &set_connection_string(std::string value);
-    redis_location_options_t &set_key_prefix(std::string value);
+    std::string connection_string = "127.0.0.1:6379";
+    std::string key_prefix = "zlink:locations";
+    std::chrono::milliseconds operation_timeout{2000};
 };
 
 struct redis_relocation_options_t {
-    std::string connection_string;
-    std::string key_prefix;
-
-    redis_relocation_options_t &set_connection_string(std::string value);
-    redis_relocation_options_t &set_key_prefix(std::string value);
+    std::string connection_string = "127.0.0.1:6379";
+    std::string key_prefix = "zlink:relocations";
+    std::chrono::milliseconds operation_timeout{2000};
 };
 
-class redis_location_store_t final : public location_store_t,
-                                     public client_server_location_store_t,
-                                     public fanout_location_store_t,
-                                     public peer_location_store_t,
-                                     public route_location_store_t,
-                                     public location_change_stamp_store_t {
+class redis_location_store_t final : public location_store_t {
 public:
-    explicit redis_location_store_t(redis_location_options_t options);
-    ~redis_location_store_t();
+    explicit redis_location_store_t(redis_location_options_t options = {});
+    const redis_location_options_t &options() const noexcept;
 };
 
 class redis_relocation_store_t final : public relocation_store_t {
 public:
-    explicit redis_relocation_store_t(redis_relocation_options_t options);
-    ~redis_relocation_store_t();
+    explicit redis_relocation_store_t(redis_relocation_options_t options = {});
+    const redis_relocation_options_t &options() const noexcept;
 };
 
 } // namespace zlink::framework::locations::redis
@@ -725,8 +531,8 @@ MeshNode descriptor의 `object_capabilities`는 startup 전에 등록한 stable 
 Snapshot adapter 등록 여부와 optional active·pending limit을 한 항목에 함께 둔다.
 `application_version`은 0 이상인 signed 64-bit
 deployment ordinal이다. Object capacity, maintenance wave와 runtime state는
-descriptor revision을 증가시켜 갱신한다. `spot_location_t`는 authority row를 Framework가 decode한
-projection이며 endpoint를 복제하지 않고 owner node RID와 object generation을 보존한다. Redis provider는
+descriptor revision을 증가시켜 갱신한다. Framework가 만드는 Spot projection은 endpoint를 복제하지 않고
+owner node RID와 object generation을 보존한다. Redis provider는
 `redis_location_store_t`는 authority CAS만 구현하고 `redis_relocation_store_t`는 opaque state, accepted journal,
 full inventory와 replay payload만 저장한다. [Location Store](../../../../01-glossary.ko.md#location-store)가 phase, relocation reference와 checksum, canonical
 participant set과 mutation, aggregate generation, membership·aggregate count와 inventory digest를 소유한다.

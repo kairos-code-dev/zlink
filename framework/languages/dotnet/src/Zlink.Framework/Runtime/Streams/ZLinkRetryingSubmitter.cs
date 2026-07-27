@@ -40,6 +40,29 @@ internal static class ZLinkRetryingSubmitter
         }
     }
 
+    public static ValueTask Async(
+        Func<SubmitResult> submit,
+        TimeSpan timeout,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        return Async(
+            () =>
+            {
+                var result = submit();
+                return result switch
+                {
+                    SubmitResult.Ok => true,
+                    SubmitResult.Backpressured or SubmitResult.NotConnected => false,
+                    _ => throw new InvalidOperationException(
+                        $"{failureMessage} Submit result: {result}.")
+                };
+            },
+            timeout,
+            failureMessage,
+            cancellationToken);
+    }
+
     private static bool IsRoutePending(ZlinkSubmitException error)
     {
         return error.Result == ZlinkSubmitException.ErrorCode.NotConnected;

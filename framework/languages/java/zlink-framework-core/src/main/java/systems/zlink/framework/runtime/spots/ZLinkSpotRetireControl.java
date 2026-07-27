@@ -23,7 +23,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 
 /**
  * Infrastructure-only request/reply bridge for User Spot relocation control.

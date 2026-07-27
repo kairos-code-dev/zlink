@@ -25,7 +25,33 @@ export type {
 export * from './Errors';
 export * from './Eventing';
 export * from './Handlers';
-export * from './Locations';
+export type { ZLinkLocationOptions } from './Locations/Options';
+export { zlinkDefaultLocationOptions } from './Locations/Options';
+export type { ZLinkLocationStore } from './Locations/Stores';
+export { ZLinkLocationRole } from './Locations/Values';
+export { ZLinkFrameworkRuntimeState, ZLinkObjectRole } from './Locations/Rows';
+export type {
+  ZLinkClientServerServerDescriptor,
+  ZLinkFanoutPublisherDescriptor,
+  ZLinkMeshNodeDescriptor,
+  ZLinkObjectCapability,
+  ZLinkObjectMaintenancePolicyKind,
+  ZLinkPopulationCapacity,
+  ZLinkSpotTypeCapacity
+} from './Locations/Rows';
+export type {
+  ZLinkClientServerServerDescriptorKey,
+  ZLinkFanoutPublisherDescriptorKey,
+  ZLinkLocationPage,
+  ZLinkMeshNodeDescriptorKey,
+  ZLinkPageRequest
+} from './Locations/Keys';
+export * from './Locations/Writes';
+export * from './Locations/Diagnostics';
+export * from './Locations/RuntimeQuery';
+export * from './Locations/Readiness';
+export * from './Locations/RelocationStore';
+export * from './Locations/Authority';
 export * from './RouteMesh';
 export * from './Spots';
 export * from './Streams';

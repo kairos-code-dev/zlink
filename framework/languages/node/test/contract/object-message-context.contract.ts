@@ -4,7 +4,6 @@ import type {
   ZLinkActorFactory,
   ZLinkEntrySpot,
   ZLinkEntrySpotActorRequestHandler,
-  ZLinkHandlerInvocation,
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
@@ -16,14 +15,12 @@ import type {
 function exactContextSurface(
   actorContext: ZLinkActorContext,
   spotContext: ZLinkSpotContext,
-  invocation: ZLinkHandlerInvocation
+  messageContext: ZLinkMessageContext
 ): void {
   const actorId: string = actorContext.actorId;
   const actorGeneration: bigint = actorContext.objectGeneration;
   const spotGeneration: number = spotContext.objectGeneration;
-  const ownerKind: string = invocation.ownerKind;
-  const messageContext: ZLinkMessageContext = invocation.messageContext;
-  void [actorId, actorGeneration, spotGeneration, ownerKind, messageContext];
+  void [actorId, actorGeneration, spotGeneration, messageContext];
 
   // @ts-expect-error Actor handler registration belongs to the containing Spot.
   actorContext.handlers;
@@ -31,10 +28,8 @@ function exactContextSurface(
   actorContext.leaveSpot();
   // @ts-expect-error routingId is not a public Spot context identity alias.
   spotContext.routingId;
-  // @ts-expect-error Filters receive messageContext, not the legacy context field.
-  invocation.context;
-  // @ts-expect-error Filters do not receive the decoded message as a public field.
-  invocation.message;
+  // @ts-expect-error Filters receive the message context directly, without an owner wrapper.
+  messageContext.ownerKind;
 }
 
 class ExactActor implements ZLinkActor {

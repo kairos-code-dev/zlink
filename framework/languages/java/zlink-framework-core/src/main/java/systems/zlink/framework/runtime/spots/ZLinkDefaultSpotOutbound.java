@@ -19,7 +19,7 @@ import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolv
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;

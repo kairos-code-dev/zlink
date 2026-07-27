@@ -31,7 +31,6 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly IZLinkAutoConnectExecutor _executor;
     private readonly ZLinkLocationOptions _options;
-    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _reconcileGate = new(1, 1);
     private IDisposable? _peerMetricRegistration;
@@ -68,7 +67,6 @@ internal sealed class ZLinkAutoConnectReconciler
         IZLinkAutoConnectExecutor executor,
         ZLinkLocationOptions options,
         TimeProvider? timeProvider = null,
-        ZLinkLocationEventEmitter? events = null,
         bool retainRemovedMembers = false,
         bool initiallyPublished = false,
         ulong initialStoreGeneration = 0)
@@ -80,7 +78,6 @@ internal sealed class ZLinkAutoConnectReconciler
         _peers = peers;
         _executor = executor;
         _options = options;
-        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
         _retainRemovedMembers = retainRemovedMembers;
         _localPublished = initiallyPublished;
@@ -408,8 +405,6 @@ internal sealed class ZLinkAutoConnectReconciler
             _retainedMemberRids = retained;
         }
 
-        var connected = new List<string>();
-        var disconnected = new List<string>();
         foreach (var (key, target) in desired)
         {
             if (!_active.TryGetValue(key, out var current))
@@ -420,7 +415,6 @@ internal sealed class ZLinkAutoConnectReconciler
                 if (accepted)
                 {
                     _active[key] = target;
-                    connected.Add(target.Endpoint);
                 }
                 continue;
             }
@@ -429,12 +423,10 @@ internal sealed class ZLinkAutoConnectReconciler
             {
                 // An endpoint change needs a new transport connection.
                 if (!_executor.Disconnect(current)) continue;
-                disconnected.Add(current.Endpoint);
                 _active.Remove(key);
                 if (_executor.Connect(target))
                 {
                     _active[key] = target;
-                    connected.Add(target.Endpoint);
                 }
             }
             else if (OwnerChanged(current, target) || current.Draining != target.Draining)
@@ -454,19 +446,11 @@ internal sealed class ZLinkAutoConnectReconciler
             {
                 if (_executor.Disconnect(_active[key]))
                 {
-                    disconnected.Add(_active[key].Endpoint);
                     _active.Remove(key);
                 }
             }
         }
 
-        if (connected.Count > 0 || disconnected.Count > 0)
-        {
-            await _events.DesiredSetChangedAsync(
-                new ZLinkAutoConnectDesiredSetChange(
-                    _local.AutoConnectType, _local.MeshName, connected, disconnected),
-                cancellationToken).ConfigureAwait(false);
-        }
     }
 
     private void EnterStoreFailure()
@@ -517,6 +501,7 @@ internal sealed class ZLinkAutoConnectReconciler
         ZLinkAutoConnectTarget target) =>
         RequiresConnectionHandover(current, target)
         || OwnerChanged(current, target)
+        || current.OwnerLeaseGeneration != target.OwnerLeaseGeneration
         || current.LifecycleGeneration != target.LifecycleGeneration
         || current.Draining != target.Draining;
 

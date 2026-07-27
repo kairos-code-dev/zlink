@@ -20,7 +20,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 
 /**
  * Prepares an immutable relocation root and publishes all participant routes
@@ -30,11 +30,11 @@ public final class ZLinkAggregateRelocationCoordinator {
     private static final Duration RETENTION = Duration.ofHours(24);
     private static final ZLinkStoreCancellation NEVER_CANCELLED = () -> false;
 
-    private final ZLinkAuthorityStore authorityStore;
+    private final ZLinkLocationStore authorityStore;
     private final ZLinkRelocationStore relocationStore;
 
     public ZLinkAggregateRelocationCoordinator(
-        ZLinkAuthorityStore authorityStore,
+        ZLinkLocationStore authorityStore,
         ZLinkRelocationStore relocationStore) {
         this.authorityStore = Objects.requireNonNull(
             authorityStore,

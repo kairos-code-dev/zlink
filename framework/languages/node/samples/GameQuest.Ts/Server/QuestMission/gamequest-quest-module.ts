@@ -60,7 +60,7 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
           gameQuestLocationOptions(builder.configureLocations());
           const spotMesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[spotRouterEndpointKey])
-            .useAllocatedRoutingId(16, 'gamequest-mission')
+            .setRoutingIdPrefix('gamequest-mission')
             .addSpotFactory(PlayerQuestSpot);
           spotMesh.channelName(questMissionInstanceChannel(instanceId)).addHandlerGroup('quest-owner');
           spotMesh.channelName(SampleNames.playerQuestSpotMesh);

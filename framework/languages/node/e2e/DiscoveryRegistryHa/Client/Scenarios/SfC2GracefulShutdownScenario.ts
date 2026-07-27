@@ -1,5 +1,9 @@
 // SF-C2: Shutdown 대조 (owner 정리) 시나리오를 검증한다.
-import type { ZLinkMeshDrainResult } from '@zlink-systems/framework';
+import {
+  ZLinkTerminationOutcome,
+  ZLinkTerminationReason,
+  type ZLinkTerminationResult
+} from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson, postJsonWithin } from '../../../http-client';
@@ -14,7 +18,7 @@ interface PeerDto {
 export async function runSfC2(options: ClientOptions): Promise<void> {
   ensure(options.providerBUrl !== undefined, 'SF-C2 requires the api-b HTTP endpoint.');
   const drainStartedAt = Date.now();
-  const drain = postJsonWithin<ZLinkMeshDrainResult>(options.providerBUrl, '/drain', {}, 35_000);
+  const drain = postJsonWithin<ZLinkTerminationResult>(options.providerBUrl, '/drain', {}, 35_000);
 
   await waitForDrainingPeer(options.consumerUrl, 'api-b');
   await waitForProviderReply(options.consumerUrl, 'api-a', 'sf-c2-draining', 20);
@@ -27,7 +31,10 @@ export async function runSfC2(options: ClientOptions): Promise<void> {
   }
 
   const result = await drain;
-  ensure(result.kind === 'drained', `SF-C2 drain ended as '${result.kind}'.`);
+  ensure(
+    result.outcome === ZLinkTerminationOutcome.Stopped && result.reason === ZLinkTerminationReason.None,
+    `SF-C2 retire ended as '${result.outcome}/${result.reason}'.`
+  );
   ensure(Date.now() - drainStartedAt < 30_000, 'SF-C2 drain exceeded the 30 second deadline.');
   await waitForMissingPeer(options.consumerUrl, 'api-b', 3_000);
 

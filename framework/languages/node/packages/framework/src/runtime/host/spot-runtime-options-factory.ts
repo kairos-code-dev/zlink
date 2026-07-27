@@ -1,7 +1,7 @@
 import type {
-  ActorRef,
-  ZLinkRuntimeEventPublisher
+  ActorRef
 } from '../../contracts';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import { ZLinkUserSpotExecutionMode } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
@@ -69,6 +69,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
         this.options.spotNodeRuntime()?.meshNode(meshName)?.status().lifecycleGeneration,
       entryNodeRid: undefined,
       entryNodeRidProvider: () => this.primaryNodeRoutingId(),
+      entrySpotIdProvider: meshName =>
+        this.options.spotNodeRuntime()?.entrySpotIdForMesh(meshName),
       entrySpotCallbacks: {
         onLeaveActor: (actor, signal, actorRef, membershipEpoch) =>
           this.options.spotNodeRuntime()?.notifyPrimaryEntrySpotActorLeft(

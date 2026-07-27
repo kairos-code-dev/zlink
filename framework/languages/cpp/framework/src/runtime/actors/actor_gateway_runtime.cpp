@@ -5,6 +5,7 @@
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
+#include "runtime/streams/stream_runtime.hpp"
 
 #include <utility>
 
@@ -1003,6 +1004,7 @@ std::uint64_t session_actor_manager_t::bind_current_session (
 void detail::session_actor_manager_access_t::attach (session_actor_manager_t &manager,
                                                      stream_t stream)
 {
+    stream._state->actors.store (&manager, std::memory_order_release);
     const std::lock_guard lock (manager._binding_context->mutex);
     manager._binding_context->session_id = stream.session_id ();
     manager._binding_context->stream = std::move (stream);
@@ -1035,6 +1037,10 @@ void detail::session_actor_manager_access_t::disconnect (session_actor_manager_t
         bindings = manager._binding_context->actor_tokens;
         manager._binding_context->actor_tokens.clear ();
         session_id = manager._binding_context->session_id;
+        if (manager._binding_context->stream) {
+            manager._binding_context->stream->_state->actors.store (
+              nullptr, std::memory_order_release);
+        }
         manager._binding_context->stream.reset ();
     }
     for (const auto &[actor_id, token] : bindings) {

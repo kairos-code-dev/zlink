@@ -5,10 +5,9 @@ import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
-import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.kotlin.toactormessaging.shared.Contracts;
 import systems.zlink.e2e.kotlin.toactormessaging.shared.Env;
@@ -18,14 +17,16 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkAuthorityConflict;
+import systems.zlink.framework.locations.ZLinkAuthorityDelete;
+import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
+import systems.zlink.framework.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -40,8 +41,6 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 @EnableZLinkFramework
 @SpringBootApplication(proxyBeanMethods = false)
 public final class Program {
-    private final ConcurrentHashMap<String, ZLinkActorLocation> liveActorRows = new ConcurrentHashMap<>();
-
     private Program() {
     }
 
@@ -87,26 +86,45 @@ public final class Program {
         });
         boot("http route fault stale");
         http.post("/fault/stale", Contracts.ActorFaultRequest.class, request -> {
-            ZLinkActorLocation live = ensureLiveRow(actors, locations, request.actorId());
-            liveActorRows.put(request.actorId(), live);
-            writeActorRow(locations, staleRow(live));
-            return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "stale");
+            ZLinkAuthoritySnapshot live = ensureLiveAuthority(
+                actors, locations, request.actorId());
+            var result = locations.compareExchange(
+                    ZLinkAuthorityKeyCodec.actor(request.actorId()),
+                    new ZLinkAuthorityExpectFound("stale-" + live.storeVersion()),
+                    new ZLinkAuthorityPut(
+                        live.payload(),
+                        ZLinkAuthorityGenerationTransition.PRESERVE,
+                        Optional.empty(),
+                        Optional.empty()),
+                    () -> false)
+                .toCompletableFuture().join();
+            if (!(result instanceof ZLinkAuthorityConflict)) {
+                throw new IllegalStateException(
+                    "stale authority CAS was not rejected actorId=" + request.actorId());
+            }
+            return Contracts.ActorCallResponse.ok(
+                request.scenario(), request.actorId(), "stale-rejected");
         });
         boot("http route fault route");
         http.post("/fault/route-disconnected", Contracts.ActorFaultRequest.class, request -> {
-            ZLinkActorLocation live = ensureLiveRow(actors, locations, request.actorId());
-            liveActorRows.put(request.actorId(), live);
-            writeActorRow(locations, disconnectedRouteRow(live));
-            return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "route-disconnected");
+            ZLinkAuthoritySnapshot live = ensureLiveAuthority(
+                actors, locations, request.actorId());
+            var result = locations.compareExchange(
+                    ZLinkAuthorityKeyCodec.actor(request.actorId()),
+                    new ZLinkAuthorityExpectFound("stale-" + live.storeVersion()),
+                    new ZLinkAuthorityDelete(),
+                    () -> false)
+                .toCompletableFuture().join();
+            if (!(result instanceof ZLinkAuthorityConflict)) {
+                throw new IllegalStateException(
+                    "stale authority delete was not rejected actorId=" + request.actorId());
+            }
+            return Contracts.ActorCallResponse.ok(
+                request.scenario(), request.actorId(), "route-delete-rejected");
         });
         boot("http route fault restore");
         http.post("/fault/restore", Contracts.ActorFaultRequest.class, request -> {
-            ZLinkActorLocation current = resolveActorRow(locations, request.actorId());
-            ZLinkActorLocation live = liveActorRows.get(request.actorId());
-            if (live == null) {
-                live = ensureLiveRow(actors, locations, request.actorId());
-            }
-            writeActorRow(locations, restoreRow(live, current));
+            ensureLiveAuthority(actors, locations, request.actorId());
             return Contracts.ActorCallResponse.ok(request.scenario(), request.actorId(), "restored");
         });
         boot("http start");
@@ -146,85 +164,32 @@ public final class Program {
         };
     }
 
-    private static ZLinkActorLocation ensureLiveRow(
+    private static ZLinkAuthoritySnapshot ensureLiveAuthority(
         ZLinkActorManager actors,
         ZLinkRedisLocationStore locations,
         String actorId) {
         actors.getOrCreate(actorId, Contracts.ACTOR_TYPE, ZLinkMessage.of("create"))
             .toCompletableFuture()
             .join();
-        return waitForActorRow(locations, actorId);
+        return waitForActorAuthority(locations, actorId);
     }
 
-    private static ZLinkActorLocation waitForActorRow(ZLinkRedisLocationStore locations, String actorId) {
+    private static ZLinkAuthoritySnapshot waitForActorAuthority(
+        ZLinkRedisLocationStore locations,
+        String actorId) {
         long deadline = System.nanoTime() + 5_000_000_000L;
-        ZLinkActorLocation row = null;
         while (System.nanoTime() < deadline) {
-            row = resolveActorRow(locations, actorId);
-            if (row != null) {
-                return row;
+            var result = locations.read(
+                    ZLinkAuthorityKeyCodec.actor(actorId),
+                    () -> false)
+                .toCompletableFuture().join();
+            if (result instanceof ZLinkAuthoritySnapshot snapshot) {
+                return snapshot;
             }
             sleepBriefly();
         }
-        throw new IllegalStateException("actor location row was not published actorId=" + actorId);
-    }
-
-    private static ZLinkActorLocation resolveActorRow(ZLinkRedisLocationStore locations, String actorId) {
-        return locations.resolveActor(new ZLinkActorLocationKey(actorId))
-            .toCompletableFuture()
-            .join();
-    }
-
-    private static ZLinkActorLocation staleRow(ZLinkActorLocation live) {
-        return copy(
-            live,
-            live.nodeRid(),
-            new ActorRef(live.actorRef().nodeRid(), live.actorRef().actorId(), live.actorRef().generation() + 1000),
-            live.generation() + 1);
-    }
-
-    private static ZLinkActorLocation disconnectedRouteRow(ZLinkActorLocation live) {
-        RoutingId disconnectedRid = RoutingId.from("missing-route-" + live.actorId());
-        return copy(
-            live,
-            disconnectedRid,
-            new ActorRef(disconnectedRid, live.actorRef().actorId(), live.actorRef().generation()),
-            live.generation() + 1);
-    }
-
-    private static ZLinkActorLocation restoreRow(ZLinkActorLocation live, ZLinkActorLocation current) {
-        long generation = Math.max(live.generation(), current == null ? 0 : current.generation()) + 1;
-        return copy(live, live.nodeRid(), live.actorRef(), generation);
-    }
-
-    private static ZLinkActorLocation copy(
-        ZLinkActorLocation source,
-        RoutingId nodeRid,
-        ActorRef actorRef,
-        long generation) {
-        return ZLinkActorLocation.fromActorRef(
-            source.actorId(),
-            source.actorType(),
-            actorRef,
-            nodeRid,
-            source.locationKind(),
-            source.spotMeshName(),
-            source.spotRid(),
-            source.ownerId(),
-            generation,
-            Instant.now());
-    }
-
-    private static void writeActorRow(ZLinkRedisLocationStore locations, ZLinkActorLocation row) {
-        var result = locations.updateActor(row, ZLinkLocationWriteIntent.TAKEOVER)
-            .toCompletableFuture()
-            .join();
-        if (result.status() != ZLinkLocationWriteStatus.STORED) {
-            throw new IllegalStateException("actor location write failed actorId="
-                + row.actorId()
-                + " status="
-                + result.status());
-        }
+        throw new IllegalStateException(
+            "actor authority was not published actorId=" + actorId);
     }
 
     private static void sleepBriefly() {

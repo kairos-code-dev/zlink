@@ -34,7 +34,7 @@ public static class ApiServerHostFactory
                 .SetConnectionString(configuration.RedisEndpoint)
                 .SetKeyPrefix(configuration.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))
                 .TraceLabel(traceLabel);
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));

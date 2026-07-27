@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotHandleResolver } from '@zlink-systems/framework';
-import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { createSpotServiceConfigurationModule } from '../../configuration';
 import { validatePlayOptions } from './Configuration/play-options';
@@ -169,9 +169,8 @@ export async function startPlayHost(): Promise<void> {
   const evidence = app.get(EvidenceStore);
   const spotManager = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const spotOutbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
-  const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
   const routeClient = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
-  const server = await startHttpServer(options.httpUrl, createPlayEndpoints(evidence, spotManager, spotOutbound, spotRefs, routeClient, () => { stopping = true; }));
+  const server = await startHttpServer(options.httpUrl, createPlayEndpoints(evidence, spotManager, spotOutbound, spotManager, routeClient, () => { stopping = true; }));
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

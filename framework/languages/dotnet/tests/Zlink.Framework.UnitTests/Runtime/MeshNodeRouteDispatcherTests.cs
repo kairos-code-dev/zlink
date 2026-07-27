@@ -125,7 +125,7 @@ public sealed partial class EntrySpotActorDispatchTests
         };
         registration.HandlerAssemblies.Add(typeof(MeshAutoRequestHandler).Assembly);
         registration.FreezeScannedHandlerCatalog();
-        registration.DispatchOptions.MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+        registration.DispatchOptions.MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
         var spotNode = new ZLinkSpotNodeRegistration
         {
             SpotNodeName = "mesh",

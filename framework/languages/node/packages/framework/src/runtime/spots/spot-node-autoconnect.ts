@@ -1,13 +1,10 @@
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
-  ZLinkLocationChangeStampStore,
-  ZLinkLocationWatchStore,
-  ZLinkPeerLocation
+  ZLinkLocationStore,
 } from '../../contracts';
-import {
-  ZLinkLocationAutoConnectType,
-  ZLinkLocationRole
-} from '../../contracts';
+import type { ZLinkPeerLocation } from '../../contracts/Locations/Rows';
+import { ZLinkLocationAutoConnectType } from '../../contracts/Locations/Values';
+import { ZLinkLocationRole } from '../../contracts';
 import type { ZLinkSpotNodeOptions } from '../configuration';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import { toBindingRoutingId } from '../routing-id';
@@ -29,8 +26,7 @@ export interface ZLinkSpotNodeLocationAutoConnectContext {
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly resolver: ZLinkStoreLocationResolvers;
   readonly events?: ZLinkLocationEventSink;
-  readonly changeStampStore?: ZLinkLocationChangeStampStore;
-  readonly watchStore?: ZLinkLocationWatchStore;
+  readonly changeStampStore?: Pick<ZLinkLocationStore, 'getMeshNodeChangeStamp'>;
 }
 
 export interface ZLinkSpotNodeAutoConnectCapability {
@@ -60,8 +56,7 @@ export function createSpotNodeLocationAutoConnectContext(
       events
     }),
     events,
-    changeStampStore: isLocationChangeStampStore(stores.peerStore) ? stores.peerStore : undefined,
-    watchStore: isLocationWatchStore(stores.peerStore) ? stores.peerStore : undefined
+    changeStampStore: stores.locationStore
   };
 }
 
@@ -185,16 +180,4 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
 
 function connectionKey(target: ZLinkAutoConnectTarget): string {
   return `${target.nodeRid ?? ''}\0${target.lifecycleGeneration}\0${target.endpoint}`;
-}
-
-function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {
-  return value !== null
-    && typeof value === 'object'
-    && typeof (value as { getChangeStamp?: unknown }).getChangeStamp === 'function';
-}
-
-function isLocationWatchStore(value: unknown): value is ZLinkLocationWatchStore {
-  return value !== null
-    && typeof value === 'object'
-    && typeof (value as { watch?: unknown }).watch === 'function';
 }

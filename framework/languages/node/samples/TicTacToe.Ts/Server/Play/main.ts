@@ -1,10 +1,13 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
-import { ZLINK_FRAMEWORK_RUNTIME } from '@zlink-systems/nestjs';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
 import { closeNestRuntime, waitForShutdown } from '../runtime-support';
 import { TICTACTOE_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { TicTacToeSampleConfig } from '../Configuration/sample-config';
+import { SampleNames } from '../Configuration/sample-settings';
 import { createTicTacToePlayModule } from './tictactoe-play-module';
+
 async function main(): Promise<void> {
   const TicTacToePlayModule = createTicTacToePlayModule();
   const channelApp = await NestFactory.createApplicationContext(TicTacToePlayModule, {
@@ -12,16 +15,8 @@ async function main(): Promise<void> {
     abortOnError: false
   });
   const config = channelApp.get<TicTacToeSampleConfig>(TICTACTOE_SAMPLE_CONFIG);
-  const runtime = channelApp.get(ZLINK_FRAMEWORK_RUNTIME) as unknown as {
-        spotNodeRuntime?: {
-          primaryMeshNode?: {
-        entrySpot(): { routingId: unknown };
-            status(): { admittedPeerCount?: number };
-        peers(): unknown[];
-      };
-    };
-  };
-  void logSpotPeerReady(runtime);
+  const routeMeshRuntime = channelApp.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME);
+  void logSpotPeerReady(routeMeshRuntime, SampleNames.playSpotNode);
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: config.playSpotEndpoint,
@@ -32,26 +27,24 @@ async function main(): Promise<void> {
   await closeNestRuntime(channelApp);
 }
 
-async function logSpotPeerReady(runtime: {
-    spotNodeRuntime?: {
-      primaryMeshNode?: {
-      status(): { admittedPeerCount?: number };
-    };
-  };
-}): Promise<void> {
-  const node = runtime.spotNodeRuntime?.primaryMeshNode;
-  if (node === undefined) {
+async function logSpotPeerReady(runtime: ZLinkRouteMeshRuntime, meshName: string): Promise<void> {
+  const hasReadyPeer = (): boolean => runtime.snapshot(meshName).peers.some((peer) => peer.ready);
+  if (hasReadyPeer()) {
+    process.stdout.write(`${JSON.stringify({ event: 'spotPeerReady' })}\n`);
     return;
   }
-  const deadline = Date.now() + 3000;
-  while (Date.now() < deadline) {
-    if ((node.status().admittedPeerCount ?? 0) > 0) {
+
+  const signal = AbortSignal.timeout(3000);
+  try {
+    for await (const _event of runtime.observe(meshName, 64, signal)) {
+      if (!hasReadyPeer()) continue;
       process.stdout.write(`${JSON.stringify({ event: 'spotPeerReady' })}\n`);
       return;
     }
-    await new Promise((resolve) => setImmediate(resolve));
+  } catch (error: unknown) {
+    if (!signal.aborted) throw error;
   }
-  process.stderr.write('Timed out waiting for Play SpotNode peer connection.\n');
+  process.stderr.write('Timed out waiting for a ready Play RouteMesh peer.\n');
 }
 
 main().catch((error: unknown) => {

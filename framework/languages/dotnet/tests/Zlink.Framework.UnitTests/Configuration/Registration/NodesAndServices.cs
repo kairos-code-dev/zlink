@@ -855,9 +855,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         await using var provider = services.BuildServiceProvider();
 
         Assert.Same(backing, provider.GetRequiredService<IZLinkLocationStore>());
-        Assert.Same(backing, provider.GetRequiredService<IZLinkMeshNodeLocationStore>());
-        Assert.Same(backing, provider.GetRequiredService<IZLinkOwnerLeaseStore>());
-        Assert.Same(backing, provider.GetRequiredService<IZLinkLocationChangeStampStore>());
 
         // The location runtime surface comes up on top of the hook exactly
         // as it does for the per-role registrations.
@@ -988,7 +985,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         var provider = services.BuildServiceProvider();
 
         Assert.Same(store, provider.GetRequiredService<IZLinkLocationStore>());
-        Assert.Same(store, provider.GetRequiredService<IZLinkOwnerLeaseStore>());
+        Assert.Same(store, provider.GetRequiredService<IZLinkLocationStore>());
         _ = provider.GetServices<IHostedService>().ToArray();
         await provider.DisposeAsync();
 

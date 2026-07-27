@@ -19,7 +19,7 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.*;
 
-final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
+final class ZLinkInMemoryAuthorityStore {
     private final Object gate;
     private final Clock clock;
     private final Predicate<ZLinkLocationOwnerToken> ownerLeaseIsLive;
@@ -86,7 +86,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkAuthorityReadResult> read(
         String key,
         ZLinkStoreCancellation cancellation) {
@@ -99,7 +98,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
         String key,
         ZLinkAuthorityExpectation expectation,
@@ -132,6 +130,30 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 return completed(new ZLinkAuthorityDeleted(
                     nextVersion(),
                     now));
+            }
+            if (mutation instanceof systems.zlink.framework.locations
+                .ZLinkAuthorityRestore restore) {
+                if (current == null
+                    || current.allocation.state()
+                        != ZLinkPlacementAllocationState.ACTIVE
+                    || !current.owner.equals(restore.expectedOwner())) {
+                    return completed(new ZLinkAuthorityConflict(
+                        current == null
+                            ? new ZLinkAuthorityMissing(now)
+                            : snapshot(current, now)));
+                }
+                if (revision == Long.MAX_VALUE) {
+                    return completed(new ZLinkAuthorityGenerationExhausted());
+                }
+                Row stored = new Row(
+                    nextVersion(),
+                    restore.payload(),
+                    current.objectGeneration,
+                    current.authorityOwnerGeneration,
+                    current.owner,
+                    current.allocation);
+                rows.put(key, stored);
+                return completed(stored(stored, now));
             }
             ZLinkAuthorityPut put = (ZLinkAuthorityPut) mutation;
             if (current == null
@@ -202,7 +224,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkAuthorityScanResult> list(
         String prefix,
         Optional<ZLinkAuthorityScanCursor> cursor,
@@ -239,7 +260,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkObjectReserveResult> reserve(
         ZLinkObjectReservationRequest request,
         ZLinkStoreCancellation cancellation) {
@@ -332,7 +352,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkObjectCommitResult> commit(
         ZLinkObjectReservation reservation,
         byte[] readyPayload,
@@ -342,7 +361,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkObjectCommitResult> commit(
         ZLinkObjectReservation reservation,
         byte[] readyPayload,
@@ -416,7 +434,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             return ZLinkObjectCommitResult.COMMITTED;
     }
 
-    @Override
     public CompletionStage<ZLinkObjectRejectResult> reject(
         ZLinkObjectReservation reservation,
         ZLinkCreationOperationTerminal terminal,
@@ -461,7 +478,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation,
         ZLinkStoreCancellation cancellation) {
@@ -491,7 +507,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation,
         ZLinkCreationOperationTerminal terminal,
@@ -534,7 +549,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkCreationTerminalReadResult>
         readCreationTerminal(
             ZLinkCreationOperationIdentity operation,
@@ -612,7 +626,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkRelocationCapacityReserveResult>
         reserveRelocationCapacity(
             ZLinkRelocationCapacityReservationRequest request,
@@ -680,7 +693,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkRelocationCapacityAbortResult>
         abortRelocationCapacity(
             ZLinkRelocationCapacityFence fence,
@@ -713,7 +725,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
         ZLinkAggregatePrepareRequest request,
         ZLinkStoreCancellation cancellation) {
@@ -816,7 +827,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                         participant.authorityKey().equals(authorityKey)));
     }
 
-    @Override
     public CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation) {
@@ -900,7 +910,6 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         }
     }
 
-    @Override
     public CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation) {

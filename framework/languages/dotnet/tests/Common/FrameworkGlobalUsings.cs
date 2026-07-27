@@ -23,6 +23,7 @@ global using Zlink.Framework.Contracts.Locations;
 global using Zlink.Framework.Runtime.Actors;
 global using Zlink.Framework.Runtime.Diagnostics;
 global using Zlink.Framework.Runtime.Execution;
+global using Zlink.Framework.Runtime.Eventing;
 global using Zlink.Framework.Runtime.Host;
 global using Zlink.Framework.Runtime.Channels;
 global using Zlink.Framework.Runtime.Spots;

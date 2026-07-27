@@ -2,17 +2,17 @@ import type { InjectionToken, OnModuleDestroy, OnModuleInit, Provider } from '@n
 import { DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
-  ZLinkProviderResolver,
   ZLinkRuntimeEvent,
-  ZLinkRuntimeEventHandler,
-  ZLinkRuntimeEventPublisher
+  ZLinkRuntimeEventHandler
 } from '@zlink-systems/framework';
-import type { ZLinkFrameworkRegistration } from './framework-integration-contracts';
+import type {
+  ZLinkFrameworkRegistration,
+  ZLinkProviderResolver,
+  ZLinkRuntimeEventPublisher
+} from './framework-integration-contracts';
 import {
   ZLINK_ACTOR_CLIENT,
-  ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
   ZLINK_ACTOR_MANAGER,
-  ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
   ZLINK_BOUND_SESSION_FACTORY,
   ZLINK_CHANNEL_CLIENT,
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
@@ -25,13 +25,16 @@ import {
   ZLINK_MESSAGE_METADATA_POLICY,
   ZLINK_ROUTE_CLIENT,
   ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
-  ZLINK_RUNTIME_EVENT_PUBLISHER,
   ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND,
   ZLINK_SPOT_PUBLISHER_CLIENT,
-  ZLINK_SPOT_HANDLE_RESOLVER
 } from './tokens';
+import {
+  ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
+  ZLINK_RUNTIME_EVENT_PUBLISHER,
+  ZLINK_SPOT_HANDLE_RESOLVER
+} from './internal-tokens';
 import {
   claimRuntimeEventHandler,
   isNestRuntimeEventHandler
@@ -107,7 +110,6 @@ export function alwaysAvailableClientTokens(): InjectionToken[] {
     ZLINK_ROUTE_CLIENT,
     ZLINK_FANOUT_CLIENT,
     ZLINK_BOUND_SESSION_FACTORY,
-    ZLINK_RUNTIME_EVENT_PUBLISHER,
     ZLINK_MESSAGE_METADATA_POLICY,
   ];
 }
@@ -157,12 +159,6 @@ const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[
     requiresRuntime: true,
     isEnabled: (registration) => registration.spotNodes.size > 0,
     create: (_registration, runtime) => requireRuntime(runtime).routeMeshRuntime
-  },
-  {
-    token: ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
-    requiresRuntime: true,
-    isEnabled: (registration) => hasAllocatedRoutingIds(registration),
-    create: (_registration, runtime) => requireRuntime(runtime)
   },
   {
     token: ZLINK_SPOT_MANAGER,
@@ -319,22 +315,13 @@ function requireRuntime(runtime: FrameworkRuntimeHost | undefined): FrameworkRun
 
 export function conditionalClientTokens(): InjectionToken[] {
   return [
-    ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
     ZLINK_SPOT_MANAGER,
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
     ZLINK_ACTOR_CLIENT,
     ZLINK_ACTOR_MANAGER,
-    ZLINK_SPOT_HANDLE_RESOLVER,
-    ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
     ZLINK_LOCATION_RUNTIME_QUERY
   ];
-}
-
-function hasAllocatedRoutingIds(registration: ZLinkFrameworkRegistration): boolean {
-  return [...registration.channels.values()].some((channel) => channel.routingIdAllocation !== undefined)
-    || [...registration.routeChannelOptions.values()].some((channel) => channel.routingIdAllocation !== undefined)
-    || [...registration.spotNodes.values()].some((spotNode) => spotNode.routingIdAllocation !== undefined);
 }
 
 function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {

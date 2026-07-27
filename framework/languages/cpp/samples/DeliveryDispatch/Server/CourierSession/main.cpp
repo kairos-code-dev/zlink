@@ -19,13 +19,6 @@ using namespace framework;
 class courier_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types = dependency_list_t<session_actor_manager_t>;
-
-    explicit courier_session_t (session_actor_manager_t &actors) :
-        _actors (actors)
-    {
-    }
-
     task_t<void> on_connected (stream_t &) override { co_return; }
 
     task_t<void> on_disconnected (stream_t &) override
@@ -42,11 +35,12 @@ class courier_session_t final : public packet_stream_session_t
     {
         std::cerr << "deliverydispatch courier-session: dispatch packet="
                   << dispatch.packet_name () << "\n";
+        auto &actors = stream.actors ();
         if (dispatch.packet_name () == bind_courier_session_req_t::packet_name) {
             const auto request = payload.parse_json<bind_courier_session_req_t> ();
             /* Global ActorId로 current owner를 찾거나 eligible node에 생성한다. Application은
              * courier id에서 physical NodeRid를 계산하지 않는다. */
-            auto located = _actors.get_or_create (
+            auto located = actors.get_or_create (
               sample_names_t::courier_actor_type, request.courier_id,
               ensure_courier_actor_req_t{request.courier_id});
             if (!located) {
@@ -59,7 +53,7 @@ class courier_session_t final : public packet_stream_session_t
 
             const std::string session_route = "courier-session:" + request.courier_id;
             auto actor =
-              co_await _actors
+              co_await actors
                 .bind_or_get (actor_ref.to_actor_ref (sample_names_t::courier_actor_type))
                 .submit ();
             const auto actor_id = std::string (actor.actor_id ());
@@ -76,20 +70,21 @@ class courier_session_t final : public packet_stream_session_t
         }
         if (dispatch.packet_name () == courier_decision_msg_t::packet_name) {
             auto actor =
-              require_bound_actor (payload.parse_json<courier_decision_msg_t> ().courier_id);
+              require_bound_actor (
+                stream, payload.parse_json<courier_decision_msg_t> ().courier_id);
             co_await actor.relay (payload);
             co_return;
         }
     }
 
   private:
-    session_actor_t require_bound_actor (const std::string &actor_id)
+    session_actor_t require_bound_actor (stream_t &stream, const std::string &actor_id)
     {
         if (!_bound_actors.contains (actor_id)) {
             throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
                                          "courier actor is not bound: " + actor_id);
         }
-        auto actor = _actors.find (actor_id);
+        auto actor = stream.actors ().find (actor_id);
         if (!actor) {
             throw framework_exception_t (framework_error_kind_t::actor_route_not_found,
                                          "bound courier actor route is not found: " + actor_id);
@@ -97,7 +92,6 @@ class courier_session_t final : public packet_stream_session_t
         return *actor;
     }
 
-    session_actor_manager_t &_actors;
     std::set<std::string> _bound_actors;
 };
 
@@ -119,7 +113,6 @@ int main (int argc, char **argv)
         add_deliverydispatch_json_codecs (options.codecs ());
         add_deliverydispatch_location_store (options, topology);
         options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .use_allocated_routing_id (16, "delivery-session")
           .listen (topology.courier_session_spot_router_endpoint)
           .channel_name (sample_names_t::courier_actor_discovery);
         options.add_stream_node (sample_names_t::courier_stream_node)

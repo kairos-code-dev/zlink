@@ -7,7 +7,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkFanoutDiscovery : IAsyncDisposable
 {
-    private readonly IZLinkFanoutLocationStore _store;
+    private readonly IZLinkLocationStore _store;
     private readonly ZLinkLocationRuntime _locationRuntime;
     private readonly ZLinkLocationOptions _options;
     private readonly ZLinkOwnerLeaseTracker? _leases;
@@ -15,7 +15,7 @@ internal sealed class ZLinkFanoutDiscovery : IAsyncDisposable
     private readonly List<SubscriberLoop> _subscribers = [];
 
     internal ZLinkFanoutDiscovery(
-        IZLinkFanoutLocationStore store,
+        IZLinkLocationStore store,
         ZLinkLocationRuntime locationRuntime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases)
@@ -188,7 +188,7 @@ internal sealed class ZLinkFanoutDiscovery : IAsyncDisposable
 
     private sealed class SubscriberLoop(
         string channelName,
-        IZLinkFanoutLocationStore store,
+        IZLinkLocationStore store,
         ZLinkAutomaticFanoutSubscriberRuntime runtime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases,

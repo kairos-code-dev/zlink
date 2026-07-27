@@ -1,59 +1,69 @@
 import type {
   ZLinkLocationRuntimeQuery,
-  ZLinkActorLocation,
-  ZLinkActorLocationKey,
-  ZLinkLocationKey,
-  ZLinkAutoConnectDesiredSetChange,
-  ZLinkLocationActorEvent,
-  ZLinkLocationMonitoringRegistration,
-  ZLinkLocationPeerEvent,
-  ZLinkPeerLocation,
-  ZLinkLocationRouteEvent,
   ZLinkLocationRuntimeEvent,
   ZLinkLocationRuntimeEventKind,
   ZLinkLocationRuntimeStatus,
   ZLinkLocationTopologyEntry,
   ZLinkLocationServiceSummary,
-  ZLinkLocationSpotEvent,
   ZLinkPollingMonitoringRegistration,
-  ZLinkRouteLocation,
-  ZLinkRouteLocationKey,
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
-  ZLinkRuntimeEventPublisher as ZLinkRuntimeEventPublisherContract,
   ZLinkSocketEvent,
   ZLinkSocketEventKind,
   ZLinkSocketMonitoringRegistration,
-  ZLinkSocketNativeEventType,
-  ZLinkSpotLocation,
-  ZLinkSpotLocationKey,
-  ZLinkMeshNodeSnapshot,
-  ZLinkMeshPeerSnapshot,
-  ZLinkSpotEvent,
+} from '../../contracts';
+import type {
+  ZLinkActorLocation,
+  ZLinkPeerLocation,
+  ZLinkRouteLocation,
+  ZLinkSpotLocation
+} from '../../contracts/Locations/Rows';
+import type {
+  ZLinkActorLocationKey,
+  ZLinkLocationKey,
+  ZLinkRouteLocationKey,
+  ZLinkSpotLocationKey
+} from '../../contracts/Locations/Keys';
+import {
+  ZLinkLocationRuntimeEventKind as LocationRuntimeEventKind,
+  ZLinkSocketEventKind as SocketEventKind
 } from '../../contracts';
 import {
   ZLinkLocationActorEventKind as ActorLocationEventKind,
   ZLinkLocationPeerEventKind as PeerLocationEventKind,
   ZLinkLocationRouteEventKind as RouteLocationEventKind,
-  ZLinkLocationRuntimeEventKind as LocationRuntimeEventKind,
   ZLinkLocationSpotEventKind as SpotLocationEventKind,
-  ZLinkSocketEventKind as SocketEventKind,
+  ZLinkSocketNativeEventType,
   ZLinkSocketNativeEventType as SocketNativeEventType,
-  ZLinkMeshNodeState,
-  ZLinkObjectRole,
-  ZLinkSpotEventKind as SpotEventKind
-} from '../../contracts';
+  type ZLinkAutoConnectDesiredSetChange,
+  type ZLinkLocationActorEvent,
+  type ZLinkLocationMonitoringRegistration,
+  type ZLinkLocationPeerEvent,
+  type ZLinkLocationRouteEvent,
+  type ZLinkLocationSpotEvent
+} from './internal-event-contracts';
+export {
+  ZLinkLocationActorEventKind,
+  ZLinkLocationPeerEventKind,
+  ZLinkLocationRouteEventKind,
+  ZLinkLocationSpotEventKind,
+  ZLinkSocketNativeEventType
+} from './internal-event-contracts';
 import type {
-  ZLinkBackendMeshNode,
   ZLinkBackendSocketMonitor,
   ZLinkBackendSocketMonitorEvent
 } from '../backend';
-import type { ZLinkSpotNodeOptions } from '../configuration';
 import { normalizeOpaqueRoutingId } from '../routing-id';
 
 const ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED = 3;
 
-export class DefaultZLinkRuntimeEventPublisher implements ZLinkRuntimeEventPublisherContract {
+/** Runtime composition port. It is intentionally absent from the public contract barrel. */
+export interface ZLinkRuntimeEventPublisher {
+  register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void;
+  publish<TEvent extends ZLinkRuntimeEvent>(event: TEvent): Promise<void>;
+}
+
+export class DefaultZLinkRuntimeEventPublisher implements ZLinkRuntimeEventPublisher {
   private readonly handlers: ZLinkRuntimeEventHandler<ZLinkRuntimeEvent>[] = [];
 
   register<TEvent extends ZLinkRuntimeEvent>(handler: ZLinkRuntimeEventHandler<TEvent>): void {
@@ -78,7 +88,7 @@ export class ZLinkSocketMonitoringSource {
   constructor(
     private readonly registration: ZLinkSocketMonitoringRegistration,
     private readonly monitor: ZLinkBackendSocketMonitor,
-    private readonly publisher: ZLinkRuntimeEventPublisherContract
+    private readonly publisher: ZLinkRuntimeEventPublisher
   ) {
     validateSourceName(registration.sourceName);
     this.enabledEvents = registration.events === undefined
@@ -113,7 +123,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
   constructor(
     private readonly registration: ZLinkPollingMonitoringRegistration,
     private readonly query: ZLinkLocationRuntimeQuery,
-    private readonly publisher: ZLinkRuntimeEventPublisherContract
+    private readonly publisher: ZLinkRuntimeEventPublisher
   ) {
     validateSourceName(registration.sourceName);
     validatePollingInterval('Location runtime', registration.intervalMs);
@@ -127,7 +137,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
       [status, topology, serviceSummary] = await Promise.all([
         this.query.getStatus(signal),
         this.query.listTopology({}, undefined, signal),
-        this.query.listServiceSummaries({}, signal)
+        this.query.listServiceSummaries({}, undefined, signal)
       ]);
     } catch (error) {
       if (!this.storeFailure) {
@@ -169,7 +179,7 @@ export class ZLinkLocationRuntimeMonitoringSource {
       this.registration.sourceName,
       LocationRuntimeEventKind.ServiceSummaryChanged,
       this.previousServiceSummary,
-      serviceSummary
+      serviceSummary.items
     );
   }
 }
@@ -184,7 +194,7 @@ export class ZLinkLocationMonitoringEventEmitter {
       readonly actor?: ZLinkLocationMonitoringRegistration;
       readonly route?: ZLinkLocationMonitoringRegistration;
     },
-    private readonly publisher?: ZLinkRuntimeEventPublisherContract
+    private readonly publisher?: ZLinkRuntimeEventPublisher
   ) {
     for (const source of [registration.peer, registration.spot, registration.actor, registration.route]) {
       if (source !== undefined) {
@@ -283,147 +293,6 @@ export class ZLinkLocationMonitoringEventEmitter {
   }
 }
 
-export class ZLinkMeshMonitoringSource {
-  private previousStatus?: string;
-  private previousPeers?: string;
-
-  constructor(
-    private readonly registration: ZLinkPollingMonitoringRegistration,
-    private readonly meshNode: ZLinkBackendMeshNode,
-    private readonly publisher: ZLinkRuntimeEventPublisherContract,
-    private readonly meshOptions?: ZLinkSpotNodeOptions
-  ) {
-    validateSourceName(registration.sourceName);
-    validatePollingInterval('Mesh', registration.intervalMs);
-  }
-
-  async pollOnce(): Promise<void> {
-    const status = this.meshNode.status();
-    const backendPeers = this.meshNode.peers();
-    const channels = backendPeers.map((peer) => peer.routingId === null
-      ? { peerRid: '', generation: peer.lifecycleGeneration, names: [], weights: [] }
-      : {
-          peerRid: String(peer.routingId),
-          generation: peer.lifecycleGeneration,
-          ...this.meshNode.peerChannels(peer.routingId, peer.lifecycleGeneration)
-        });
-    const peers = backendPeers.map((peer, index): ZLinkMeshPeerSnapshot => ({
-      rid: peer.routingId === null ? '' : String(peer.routingId),
-      lifecycleGeneration: peer.lifecycleGeneration,
-      descriptorRevision: peer.descriptorRevision,
-      endpoint: peer.endpoint,
-      admissionState: meshPeerStateName(peer.state),
-      ready: peer.state === 3 && peer.routingId !== null,
-      drainState: peer.state === 4 ? 'draining' : 'active',
-      channelNames: [...(channels[index]?.names ?? [])],
-      lastFailure: peer.lastError === 0 ? undefined : String(peer.lastError)
-    }));
-    const localChannels = Object.entries(this.meshOptions?.meshChannels ?? {}).map(([channelName, channel]) => {
-      const readyMemberCount = BigInt(channels.filter((entry, index) =>
-        peers[index]?.ready === true
-        && entry.names.some((name, channelIndex) =>
-          name === channelName && (entry.weights[channelIndex] ?? 0) > 0)
-      ).length);
-      const localWeight = channel.weight ?? 1;
-      return {
-        channelName,
-        localWeight,
-        readyMemberCount,
-        selectable: localWeight > 0 || readyMemberCount > 0n
-      };
-    });
-    const snapshot: ZLinkMeshNodeSnapshot = {
-      meshName: status.meshName,
-      rid: String(status.routingId),
-      lifecycleGeneration: status.lifecycleGeneration,
-      descriptorRevision: status.descriptorRevision,
-      endpoint: status.localEndpoint,
-      objectRole: this.meshOptions?.objectRole === 'server'
-        ? ZLinkObjectRole.Server
-        : this.meshOptions?.objectRole === 'client'
-          ? ZLinkObjectRole.Client
-          : ZLinkObjectRole.None,
-      placementWeight: this.meshOptions?.placementWeight ?? 0,
-      populationCapacity: {
-        actors: {
-          active: 0,
-          reserved: 0,
-          limit: this.meshOptions?.actorLimit ?? 0
-        },
-        spots: {
-          active: 0,
-          reserved: 0,
-          limit: this.meshOptions?.spotLimit ?? 0
-        },
-        spotTypes: []
-      },
-      activationConcurrency: {
-        active: 0,
-        limit: this.meshOptions?.activationConcurrencyLimit ?? 128
-      },
-      applicationVersion: 0n,
-      placementReservationFailureCount: 0n,
-      objectCapabilities: [],
-      state: meshNodeState(status.state),
-      sequence: status.lastChangedMs,
-      observedAt: new Date(),
-      descriptorSources: [],
-      peers,
-      channels: localChannels,
-      instanceSpots: [],
-      claims: {
-        applicationActive: status.pendingApplicationMessages > 0n,
-        pendingApplicationWork: status.pendingApplicationMessages,
-        infrastructureActive: status.pendingInfrastructureMessages > 0n,
-        pendingInfrastructureWork: status.pendingInfrastructureMessages
-      },
-      location: { state: 'unknown' },
-      drain: {
-        state: meshNodeState(status.state),
-        workSealed: status.state >= 5,
-        pendingRequestCount: 0n,
-        pendingTransferCount: 0n,
-        pendingStreamBarrierCount: 0n
-      }
-    };
-
-    this.previousStatus = await publishMeshStatusIfChanged(
-      this.publisher,
-      this.registration.sourceName,
-      this.previousStatus,
-      snapshot
-    );
-    this.previousPeers = await publishMeshPeersIfChanged(
-      this.publisher,
-      this.registration.sourceName,
-      this.previousPeers,
-      snapshot.peers
-    );
-  }
-}
-
-function meshPeerStateName(state: number): string {
-  switch (state) {
-    case 1: return 'configured';
-    case 2: return 'connecting';
-    case 3: return 'ready';
-    case 4: return 'draining';
-    default: return 'closed';
-  }
-}
-
-function meshNodeState(state: number): ZLinkMeshNodeState {
-  switch (state) {
-    case 1: return ZLinkMeshNodeState.Starting;
-    case 2:
-    case 3:
-    case 4: return ZLinkMeshNodeState.Serving;
-    case 5: return ZLinkMeshNodeState.Draining;
-    case 6: return ZLinkMeshNodeState.Stopped;
-    default: return ZLinkMeshNodeState.Faulted;
-  }
-}
-
 export * from './topology-runtime-projections';
 
 function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent): ZLinkSocketEvent | undefined {
@@ -437,11 +306,7 @@ function toSocketEvent(sourceName: string, raw: ZLinkBackendSocketMonitorEvent):
     event,
     routingId: raw.routingId === undefined ? undefined : normalizeOpaqueRoutingId(raw.routingId),
     localAddr: raw.localAddr,
-    remoteAddr: raw.remoteAddr,
-    diagnostic: {
-      nativeEvent: raw.nativeEvent as ZLinkSocketNativeEventType,
-      nativeValue: raw.value
-    }
+    remoteAddr: raw.remoteAddr
   };
 }
 
@@ -474,46 +339,8 @@ function mapSocketEvent(
   }
 }
 
-async function publishMeshStatusIfChanged(
-  publisher: ZLinkRuntimeEventPublisherContract,
-  sourceName: string,
-  previous: string | undefined,
-  snapshot: ZLinkMeshNodeSnapshot
-): Promise<string> {
-  const current = stableSnapshot(snapshot);
-  if (current === previous) {
-    return previous;
-  }
-  await publisher.publish<ZLinkSpotEvent>({
-    sourceName,
-    timestamp: new Date(),
-    event: SpotEventKind.StatusChanged,
-    status: snapshot
-  });
-  return current;
-}
-
-async function publishMeshPeersIfChanged(
-  publisher: ZLinkRuntimeEventPublisherContract,
-  sourceName: string,
-  previous: string | undefined,
-  peers: readonly ZLinkMeshPeerSnapshot[]
-): Promise<string> {
-  const current = stableSnapshot(peers);
-  if (current === previous) {
-    return previous;
-  }
-  await publisher.publish<ZLinkSpotEvent>({
-    sourceName,
-    timestamp: new Date(),
-    event: SpotEventKind.PeersChanged,
-    peers
-  });
-  return current;
-}
-
 async function publishLocationRuntimeIfChanged<T>(
-  publisher: ZLinkRuntimeEventPublisherContract,
+  publisher: ZLinkRuntimeEventPublisher,
   sourceName: string,
   event: ZLinkLocationRuntimeEventKind,
   previous: string | undefined,

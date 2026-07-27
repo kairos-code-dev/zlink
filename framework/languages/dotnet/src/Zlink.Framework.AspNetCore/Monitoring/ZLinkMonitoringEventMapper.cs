@@ -18,20 +18,18 @@ internal static class ZLinkMonitoringEventMapper
             ZLinkSocketNativeEventType.Closed => ZLinkSocketEventKind.Closed,
             ZLinkSocketNativeEventType.CloseFailed => ZLinkSocketEventKind.Closed,
             ZLinkSocketNativeEventType.MonitorStopped => ZLinkSocketEventKind.Closed,
-            _ => ZLinkSocketEventKind.Internal
+            _ => (ZLinkSocketEventKind?)null
         };
 
-        if (source.Events.Count > 0 && !source.Events.Contains(eventKind)) return null;
+        if (eventKind is null) return null;
+        if (source.Events.Count > 0 && !source.Events.Contains(eventKind.Value)) return null;
 
         return new ZLinkSocketEvent(
             source.SourceName,
             DateTimeOffset.UtcNow,
-            eventKind,
+            eventKind.Value,
             monitorEvent.RoutingId,
             monitorEvent.LocalAddr,
-            monitorEvent.RemoteAddr,
-            new ZLinkSocketDiagnostic(
-                monitorEvent.NativeEvent,
-                monitorEvent.Value));
+            monitorEvent.RemoteAddr);
     }
 }

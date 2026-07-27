@@ -11,9 +11,8 @@ public interface IMaintenanceStorePort
 }
 
 /// <summary>
-/// What this node tells the Ops console. Ops cannot subscribe to a remote node's spot
-/// events — a spot event source only covers the SpotNode in the same process — so the
-/// node observes them locally and reports them explicitly (§8.1).
+/// What this node tells the Ops console. Provider-neutral timer failure events are received
+/// by the owning node and reported explicitly (§8.1).
 /// </summary>
 public interface IOpsReportPort
 {

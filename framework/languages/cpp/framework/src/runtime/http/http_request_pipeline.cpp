@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/http/http_request_pipeline.hpp"
+#include "runtime/configuration/service_scope.hpp"
 
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
@@ -660,7 +661,8 @@ void invoke_matched_route (http::response<http::string_body> &response,
                            const http::request<http::string_body> &request,
                            const matched_route_t &match)
 {
-    auto request_scope = services.create_scope (service_scope_kind_t::handler_invocation);
+    auto request_scope = detail::service_scope_t::create (
+      services, detail::service_scope_kind_t::handler_invocation);
     auto &request_services = request_scope.provider ();
     std::vector<middleware_invocation_t> middleware_invocations;
     middleware_invocations.reserve (options.middleware.size ());

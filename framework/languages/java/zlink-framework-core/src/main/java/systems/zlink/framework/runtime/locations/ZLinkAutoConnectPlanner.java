@@ -4,16 +4,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 
 final class ZLinkAutoConnectPlanner {
     private ZLinkAutoConnectPlanner() {
     }
 
     record Local(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         String meshName,
         ZLinkLocationRole role,
         RoutingId nodeRid,
@@ -31,7 +31,7 @@ final class ZLinkAutoConnectPlanner {
     }
 
     record PeerDecision(
-        ZLinkPeerLocation peer,
+        ZLinkAutoConnectPeer peer,
         Target target,
         String skipReason) {
 
@@ -41,7 +41,7 @@ final class ZLinkAutoConnectPlanner {
     }
 
     static boolean isRoleAllowed(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         ZLinkLocationRole role) {
         return switch (type) {
             case ROUTE_MESH -> role == ZLinkLocationRole.ROUTER;
@@ -55,9 +55,9 @@ final class ZLinkAutoConnectPlanner {
         };
     }
 
-    static Map<String, Target> computeDesired(Local local, List<ZLinkPeerLocation> peers) {
+    static Map<String, Target> computeDesired(Local local, List<ZLinkAutoConnectPeer> peers) {
         Map<String, Target> desired = new HashMap<>();
-        for (ZLinkPeerLocation peer : peers) {
+        for (ZLinkAutoConnectPeer peer : peers) {
             PeerDecision decision = decide(local, peer);
             if (decision.shouldDial()) {
                 desired.put(decision.target().key(), decision.target());
@@ -66,16 +66,16 @@ final class ZLinkAutoConnectPlanner {
         return desired;
     }
 
-    static Target trackableTarget(Local local, ZLinkPeerLocation peer) {
+    static Target trackableTarget(Local local, ZLinkAutoConnectPeer peer) {
         PeerDecision decision = validate(local, peer);
         return decision.skipReason() == null ? targetOf(peer) : null;
     }
 
-    static List<PeerDecision> decideAll(Local local, List<ZLinkPeerLocation> peers) {
+    static List<PeerDecision> decideAll(Local local, List<ZLinkAutoConnectPeer> peers) {
         return peers.stream().map(peer -> decide(local, peer)).toList();
     }
 
-    private static PeerDecision decide(Local local, ZLinkPeerLocation peer) {
+    private static PeerDecision decide(Local local, ZLinkAutoConnectPeer peer) {
         PeerDecision validated = validate(local, peer);
         if (validated.skipReason() != null) {
             return validated;
@@ -86,7 +86,7 @@ final class ZLinkAutoConnectPlanner {
         return new PeerDecision(peer, targetOf(peer), null);
     }
 
-    private static PeerDecision validate(Local local, ZLinkPeerLocation peer) {
+    private static PeerDecision validate(Local local, ZLinkAutoConnectPeer peer) {
         if (peer.autoConnectType() != local.type()) {
             return skip(peer, "type-mismatch");
         }
@@ -105,7 +105,7 @@ final class ZLinkAutoConnectPlanner {
         return new PeerDecision(peer, null, null);
     }
 
-    private static Target targetOf(ZLinkPeerLocation peer) {
+    private static Target targetOf(ZLinkAutoConnectPeer peer) {
         return new Target(
             targetKeyOf(peer),
             peer.nodeRid(),
@@ -116,11 +116,11 @@ final class ZLinkAutoConnectPlanner {
             lifecycleGenerationOf(peer));
     }
 
-    private static PeerDecision skip(ZLinkPeerLocation peer, String reason) {
+    private static PeerDecision skip(ZLinkAutoConnectPeer peer, String reason) {
         return new PeerDecision(peer, null, reason);
     }
 
-    private static String targetKeyOf(ZLinkPeerLocation peer) {
+    private static String targetKeyOf(ZLinkAutoConnectPeer peer) {
         String identity = hasRid(peer.nodeRid())
             ? peer.nodeRid().toHex()
             : peer.endpoint();
@@ -131,11 +131,11 @@ final class ZLinkAutoConnectPlanner {
             + lifecycleGenerationOf(peer);
     }
 
-    private static long lifecycleGenerationOf(ZLinkPeerLocation peer) {
-        return peer.value() > 0 ? peer.value() : peer.generation();
+    private static long lifecycleGenerationOf(ZLinkAutoConnectPeer peer) {
+        return peer.generation();
     }
 
-    private static boolean isSelf(Local local, ZLinkPeerLocation peer) {
+    private static boolean isSelf(Local local, ZLinkAutoConnectPeer peer) {
         if (hasRid(local.nodeRid()) && hasRid(peer.nodeRid())
             && local.nodeRid().equals(peer.nodeRid())) {
             return true;
@@ -143,7 +143,7 @@ final class ZLinkAutoConnectPlanner {
         return peer.endpoint().equals(local.endpoint());
     }
 
-    private static boolean shouldDial(Local local, ZLinkPeerLocation peer) {
+    private static boolean shouldDial(Local local, ZLinkAutoConnectPeer peer) {
         return switch (local.type()) {
             case ROUTE_MESH -> local.role() == ZLinkLocationRole.ROUTER
                 && peer.role() == ZLinkLocationRole.ROUTER
@@ -161,7 +161,7 @@ final class ZLinkAutoConnectPlanner {
         };
     }
 
-    private static boolean localIsInitiator(Local local, ZLinkPeerLocation peer) {
+    private static boolean localIsInitiator(Local local, ZLinkAutoConnectPeer peer) {
         if (local.endpoint() == null || local.endpoint().isBlank()) {
             return true;
         }

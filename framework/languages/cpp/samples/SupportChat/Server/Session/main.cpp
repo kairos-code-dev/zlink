@@ -193,12 +193,10 @@ int main (int argc, char **argv)
         options.add_client_server_channel ("supportchat.api").enable_client ();
         auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
         actor_route.listen (topology.session_actor_route_endpoint)
-          .use_allocated_routing_id (16, "support-session-route")
           .channel_name ("supportchat.session.actor.route");
         auto support_spot = options.add_route_mesh ("supportchat.support.spot");
         support_spot.channel_name ("supportchat.session.actor.route");
-        support_spot.use_allocated_routing_id (16, "support-session")
-          .listen (topology.session_spot_router_endpoint);
+        support_spot.listen (topology.session_spot_router_endpoint);
         options.add_stream_node ("supportchat-session-stream")
           .bind (topology.session_stream_endpoint)
           .register_session<supportchat_session_t> ();

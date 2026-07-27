@@ -3,6 +3,7 @@
 #include "runtime/mesh/mesh_node_host_service.hpp"
 #include "runtime/actors/actor_manager_access.hpp"
 #include "runtime/locations/sha256.hpp"
+#include "runtime/locations/actor_authority_payload.hpp"
 
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
@@ -575,7 +576,12 @@ mesh_node_host_service_t::create_actor (
             if (accepted)
                 completion =
                   object_creation_completed_t{
-                    envelope, publication};
+                    encode_actor_authority_payload (
+                      created.value (),
+                      target.entry_spot_id.value_or (
+                        target.rid.to_string ()),
+                      target.lifecycle_generation),
+                    publication};
             else
                 completion =
                   object_creation_rejected_t{publication};
@@ -665,25 +671,22 @@ mesh_node_host_service_t::find_actor_spot (
         return task_t<std::optional<spot_ref_t>> (
           result_t<std::optional<spot_ref_t>>::success (
             std::nullopt));
-    location_page_request_t page;
-    do {
-        const auto rows =
-          _location_store
-            ->list_actors ({}, page)
-            .result ()
-            .value ();
-        for (const auto &row : rows.items)
-            if (row.actor_id == actor_id)
-                return task_t<std::optional<spot_ref_t>> (
-                  result_t<std::optional<spot_ref_t>>::success (
-                    spot_ref_t{
-                      row.spot_id, row.spot_generation,
-                      row.mesh_name,
-                      node_rid_t::from_string (
-                        row.owner_node_rid.to_string ())}));
-        page.continuation_token =
-          rows.continuation_token;
-    } while (page.continuation_token);
+    const auto read = _location_store
+      ->read_authority (authority_key_t{"1:" + std::string (actor_id)})
+      .result ()
+      .value ();
+    const auto *snapshot = std::get_if<authority_snapshot_t> (&read);
+    if (snapshot
+        && snapshot->allocation.object_kind == placement_object_kind_t::actor
+        && snapshot->allocation.state == placement_allocation_state_t::active) {
+        const auto projection = decode_actor_authority_payload (snapshot->payload);
+        if (projection && projection->actor.actor_id () == actor_id)
+            return task_t<std::optional<spot_ref_t>> (
+              result_t<std::optional<spot_ref_t>>::success (
+                spot_ref_t{projection->spot_id, projection->spot_generation,
+                           snapshot->allocation.target.mesh_name,
+                           snapshot->allocation.target.node_rid}));
+    }
     return task_t<std::optional<spot_ref_t>> (
       result_t<std::optional<spot_ref_t>>::success (
         std::nullopt));

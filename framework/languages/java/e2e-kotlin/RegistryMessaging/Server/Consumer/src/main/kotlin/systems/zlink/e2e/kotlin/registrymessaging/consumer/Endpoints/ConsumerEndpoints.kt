@@ -27,10 +27,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
-import systems.zlink.framework.locations.ZLinkLocationRole
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
+import systems.zlink.framework.locations.ZLinkLocationStore
+import systems.zlink.framework.locations.ZLinkPageRequest
 
 class ConsumerEndpoints(
     private val options: ConsumerOptions,
@@ -38,7 +36,7 @@ class ConsumerEndpoints(
 ) {
     private val mapper = jacksonObjectMapper()
     private val channels = context.getBean(ZLinkClient::class.java)
-    private val lifecycle = context.getBean(ZLinkFrameworkLifecycle::class.java)
+    private val locations = context.getBean(ZLinkLocationStore::class.java)
 
     fun start(): HttpServer {
         val uri = URI.create(options.httpUrl)
@@ -69,21 +67,14 @@ class ConsumerEndpoints(
             exchange.writeJson(reply)
         }
         server.createContext("/locations/peers") { exchange ->
-            val peers = lifecycle.monitoringLocationRuntimeQuery()
-                .listPeerLocations(
-                    ZLinkPeerLocationFilter(
-                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
-                        Contracts.PROFILE_CHANNEL,
-                        ZLinkLocationRole.ROUTER,
-                        null,
-                        null,
-                    ),
-                )
-                .thenApply { peers -> peers.map {
+            val peers = locations.listClientServers(
+                Contracts.PROFILE_CHANNEL,
+                ZLinkPageRequest(1_000, null),
+            ).thenApply { page -> page.items().map {
                     mapOf(
-                        "meshName" to it.meshName(),
-                        "role" to it.role().name,
-                        "nodeRid" to it.nodeRid().toString(),
+                        "meshName" to it.channelName(),
+                        "role" to "ROUTER",
+                        "nodeRid" to it.serverRid().toString(),
                         "endpoint" to it.endpoint(),
                         "ownerId" to it.ownerId(),
                     )

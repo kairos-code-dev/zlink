@@ -48,11 +48,13 @@ public final class Program {
         ObjectMapper json,
         systems.zlink.framework.channels.ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
+        systems.zlink.framework.locations.ZLinkLocationStore locations,
         ConsumerOptions options) {
         return new ConsumerEndpoints(
             json,
             client,
             lifecycle,
+            locations,
             options.httpEndpoint());
     }
 

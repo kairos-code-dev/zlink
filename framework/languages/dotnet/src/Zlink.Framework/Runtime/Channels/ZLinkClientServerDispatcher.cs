@@ -9,6 +9,7 @@ internal sealed class ZLinkClientServerDispatcher(
         string channelName,
         IZLinkBackendRouterSocket router,
         Received received,
+        ZLinkChannelReplyGate replyGate,
         CancellationToken cancellationToken)
     {
         ZLinkEnvelopeHeader header;
@@ -27,6 +28,7 @@ internal sealed class ZLinkClientServerDispatcher(
                 channelName,
                 router,
                 received,
+                replyGate,
                 protocolError.Header,
                 protocolError.Message);
             return;
@@ -48,8 +50,8 @@ internal sealed class ZLinkClientServerDispatcher(
                         received.Parts,
                         header,
                         (replyHeader, reply, replyType) =>
-                            Reply(router, received, replyHeader, reply, replyType),
-                        errorHeader => Reply(router, received, errorHeader, null, null),
+                            Reply(replyGate, router, received, replyHeader, reply, replyType),
+                        errorHeader => Reply(replyGate, router, received, errorHeader, null, null),
                         cancellationToken)
                     .ConfigureAwait(false);
                 break;
@@ -58,9 +60,41 @@ internal sealed class ZLinkClientServerDispatcher(
                     channelName,
                     router,
                     received,
+                    replyGate,
                     header,
                     $"ClientServer server cannot accept '{header.Kind}' envelopes.");
                 break;
+        }
+    }
+
+    internal void RejectOverloaded(
+        string channelName,
+        IZLinkBackendRouterSocket router,
+        Received received,
+        ZLinkChannelReplyGate replyGate)
+    {
+        try
+        {
+            var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+            if (header.Kind != ZLinkMessageKind.Request
+                || !StringComparer.Ordinal.Equals(header.ChannelName, channelName))
+                return;
+            Reply(
+                replyGate,
+                router,
+                received,
+                ZLinkChannelReplyWriter.CreateErrorHeader(
+                    channelName,
+                    header,
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.RequestRejected,
+                        $"ClientServer channel '{channelName}' application queue is full.",
+                        isRetriable: true)),
+                null,
+                null);
+        }
+        catch (ZLinkEnvelopeProtocolException)
+        {
         }
     }
 
@@ -68,12 +102,14 @@ internal sealed class ZLinkClientServerDispatcher(
         string channelName,
         IZLinkBackendRouterSocket router,
         Received received,
+        ZLinkChannelReplyGate replyGate,
         ZLinkEnvelopeHeader request,
         string message)
     {
         if (!ZLinkEnvelopeCodec.CanCorrelateReply(request))
             return;
         Reply(
+            replyGate,
             router,
             received,
             ZLinkChannelReplyWriter.CreateProtocolErrorHeader(
@@ -85,24 +121,32 @@ internal sealed class ZLinkClientServerDispatcher(
     }
 
     private void Reply(
+        ZLinkChannelReplyGate replyGate,
         IZLinkBackendRouterSocket router,
         Received received,
         ZLinkEnvelopeHeader header,
         object? body,
         Type? bodyType)
     {
-        if (received.RoutingId is not { } sourceRid
-            || received.RequestSeq is not { } requestSeq)
-            return;
+        replyGate.TryInvoke(() =>
+        {
+            if (received.RoutingId is not { } sourceRid
+                || received.RequestSeq is not { } requestSeq)
+                return;
 
-        var reply = ZLinkEnvelopeCodec.EncodeParts(header, body, bodyType, codecs);
-        try
-        {
-            router.Reply(sourceRid, requestSeq, reply);
-        }
-        finally
-        {
-            ZLinkMessageParts.DisposeAll(reply);
-        }
+            var reply = ZLinkEnvelopeCodec.EncodeParts(
+                header,
+                body,
+                bodyType,
+                codecs);
+            try
+            {
+                router.Reply(sourceRid, requestSeq, reply);
+            }
+            finally
+            {
+                ZLinkMessageParts.DisposeAll(reply);
+            }
+        });
     }
 }

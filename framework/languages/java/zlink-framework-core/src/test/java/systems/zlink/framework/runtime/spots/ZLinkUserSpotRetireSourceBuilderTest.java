@@ -59,7 +59,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
                     MESH,
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture().get().items().stream()
-                .filter(value -> value.rid().equals(SOURCE_RID))
+                .filter(value -> value.rid().equals(nodeRegistration.routingId()))
                 .findFirst().orElseThrow();
             long sourceGeneration = source.lifecycleGeneration();
             ZLinkLocationOwnerToken targetOwner = assertInstanceOf(
@@ -84,7 +84,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
             ZLinkUserSpotRetireSourceBuilder builder =
                 new ZLinkUserSpotRetireSourceBuilder(
                     MESH,
-                    SOURCE_RID,
+                    nodeRegistration.routingId(),
                     sourceGeneration,
                     locations,
                     coordinator,
@@ -155,7 +155,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
         options.addLocationStore(locations);
         options.addRelocationStore(relocations);
         var mesh = options.addRouteMesh(MESH)
-            .setRoutingId(SOURCE_RID)
+            .setRoutingIdPrefix(SOURCE_RID.toString())
             .listen("inproc://retire-source");
         mesh.channelName(MESH);
         mesh.objects().server().addSpotFactory(

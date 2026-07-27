@@ -83,6 +83,19 @@
 비자명한 설계는 두 가지 이상을 비교하고, public interface가 더 작으며 transport 지식이 덜 노출되는
 방식을 선택한다.
 
+### 6.1 언어별 exact interface의 공개 경계
+
+언어별 exact interface 문서는 application이 직접 사용하는 API와 외부 provider package가 반드시
+구현해야 하는 SPI만 기록한다. runtime 내부 배선, 저장 row와 key, 상태 전이용 command, change watch,
+publisher, dispatcher invocation과 native diagnostic은 public contract가 아니다. 이런 타입은 구현에
+필요하더라도 package 내부에 두고 공통 또는 언어별 internals에서 책임과 동작을 설명한다.
+
+하나의 provider가 같은 일관성 경계를 구현할 수 있는 기능을 세부 capability interface로 나누어
+application registration에 노출하지 않는다. 외부 provider 구현에 필요한 최소 operation은 하나의 깊은
+SPI에 모으고, 선택 기능은 기본 구현이나 capability query로 흡수한다. 외부에서 구현하거나 호출할 공개
+declaration이 하나도 남지 않은 exact interface 문서는 삭제한다. 이 기준은 .NET, Java, Kotlin,
+Node.js와 C++에 동일하게 적용한다.
+
 ## 7. 검증
 
 각 언어의 contract test는 최소한 다음을 확인한다.

@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 
 class ZLinkJavaMeshSpotTest {
     @Test

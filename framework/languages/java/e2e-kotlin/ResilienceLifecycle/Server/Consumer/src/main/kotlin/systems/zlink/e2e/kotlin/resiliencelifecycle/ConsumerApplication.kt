@@ -8,6 +8,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
+import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
@@ -46,11 +47,13 @@ open class ConsumerApplication {
     open fun consumerHttpServer(
         client: ZLinkClient,
         lifecycle: ZLinkFrameworkLifecycle,
+        locations: ZLinkLocationStore,
         json: ObjectMapper,
     ): ConsumerHttpServer =
         ConsumerHttpServer(
             client,
             lifecycle,
+            locations,
             json,
             Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
         )

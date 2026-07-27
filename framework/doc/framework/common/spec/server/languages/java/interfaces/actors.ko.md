@@ -2,8 +2,8 @@
 
 Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
 callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
+target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
@@ -331,7 +331,7 @@ typed creation failure다.
 
 `ActorRef.objectGeneration()`은 `1..Long.MAX_VALUE`다. Typed JSON은 required property `actorId`,
 `objectGeneration`, `meshName`, `nodeRid`를 사용하며 generation은 leading-zero 없는 decimal string으로 encode한다.
-Unknown property는 무시하고 duplicate property, required property 누락, 숫자 token과 범위 밖 값은 거부한다.
+Unknown property, duplicate property, required property 누락, 숫자 token과 범위 밖 값은 거부한다.
 
 Actor request에 선언된 `yield(...)`는 현재 Actor handler가 `SpotWide` User Spot의 shared execution
 gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면 operation을

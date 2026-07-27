@@ -35,7 +35,10 @@ import {
   type ZLinkSpotContext,
   type ZLinkSpotManager
 } from '@zlink-systems/framework';
-import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import {
+  ZLinkRedisLocationStore,
+  ZLinkRedisRelocationStore
+} from '@zlink-systems/framework-locations-redis';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,
@@ -551,8 +554,12 @@ Module({
           url: `redis://${options.redisEndpoint}`,
           keyPrefix: options.redisKeyPrefix
         });
+        const relocationStore = new ZLinkRedisRelocationStore({
+          url: `redis://${options.redisEndpoint}`,
+          keyPrefix: options.redisKeyPrefix
+        });
         builder.addLocationStore(store);
-        builder.addRelocationStore(store);
+        builder.addRelocationStore(relocationStore);
         Object.assign(builder.configureLocations(), {
           pollingIntervalMs: 100,
           heartbeatIntervalMs: 1000,
@@ -564,8 +571,7 @@ Module({
           .traceLabel(options.rid);
         builder.setActorTransferForwardWindow(500);
         const mesh = builder.addRouteMesh(SpotActorTransferNames.mesh)
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid });
+          .listen(options.routerEndpoint).routingId(options.rid);
         const objects = mesh.objects().server();
         objects.addEntrySpot(TransferEntrySpot);
         objects.addActorFactory(

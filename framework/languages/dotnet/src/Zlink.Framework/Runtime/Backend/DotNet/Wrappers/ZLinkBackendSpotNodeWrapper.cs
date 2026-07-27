@@ -14,6 +14,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendRelocationReplyRelay,
     IZLinkBackendCanonicalRelocationReservation,
     IZLinkBackendAuthorityObserver,
+    IZLinkBackendRequestSourceFenceObserver,
     IZLinkBackendLocalActorAuthorityReader
 {
     private readonly IMeshNode _node;
@@ -50,6 +51,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public void SetLocalOwnerLeaseGeneration(ulong ownerLeaseGeneration) =>
         RequireManagedNode().SetLocalOwnerLeaseGeneration(ownerLeaseGeneration);
+
+    public void SetLocalRequestSourceFence(
+        ZLinkServiceWireCodec.RequestSourceFence source) =>
+        RequireManagedNode().SetLocalRequestSourceFence(source);
+
+    public void ObserveRequestSourceFence(
+        ZLinkServiceWireCodec.RequestSourceFence source) =>
+        _pump.ObserveRequestSourceFence(source);
 
     public void ObserveActorAuthority(
         ZLinkBackendActorRef actor,
@@ -219,6 +228,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     {
         _node.SetRelocationReplyRelayTarget(target);
     }
+
+    public ZLinkRelocationReplyCompletion TryCompleteRelocationReply(
+        ZLinkServiceWireCodec.ReplyRelayRecord relay,
+        IReadOnlyList<Message> payload) =>
+        RequireManagedNode().TryCompleteRelocationReply(relay, payload);
 
     public void SetCanonicalRelocationReservationTarget(
         ICanonicalRelocationReservationTarget target)
@@ -943,16 +957,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         uint flags,
         IReadOnlyList<Message> parts)
     {
-        // A no-bind actor request replies through the inbound record's core
-        // reply token (registered by the dispatch pump); there is no session
-        // binding to carry the reply. A missing token means the requester is
-        // gone or the record was evicted — the reply is dropped by contract.
-        if (!_pump.TryTakeActorReply(requestId, out var reply))
-            return false;
-
-        _ = reply(parts, SendFlags.DontWait);
-        ZLinkMessageParts.DisposeAll(parts);
-        return true;
+        // Managed direct Actor requests carry their source-owned reply route on
+        // the inbound frame and are completed before this legacy backend seam.
+        // Session-bound traffic continues through its binding route.
+        return false;
     }
 
     // Forwards a straggler bound-session frame to the actor's currently bound
@@ -1029,12 +1037,32 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public async ValueTask DisposeAsync()
     {
+        if (!TryBeginDispose()) return;
+        await DisposeCoreAsync(forceStop: false, CancellationToken.None)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask ForceStopAsync(CancellationToken cancellationToken)
+    {
+        if (!TryBeginDispose()) return;
+        await DisposeCoreAsync(forceStop: true, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private bool TryBeginDispose()
+    {
         lock (_lifecycleGate)
         {
-            if (_disposed) return;
+            if (_disposed) return false;
             _disposed = true;
+            return true;
         }
+    }
 
+    private async Task DisposeCoreAsync(
+        bool forceStop,
+        CancellationToken cancellationToken)
+    {
         lock (_forwardGate)
         {
             foreach (var pending in _forwardBuffers.Values)
@@ -1044,6 +1072,9 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         }
 
         await _pump.DisposeAsync().ConfigureAwait(false);
-        await _node.DisposeAsync().ConfigureAwait(false);
+        if (forceStop)
+            await _node.ForceStopAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await _node.DisposeAsync().ConfigureAwait(false);
     }
 }

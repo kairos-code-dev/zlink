@@ -13,8 +13,6 @@ internal sealed class ZLinkStreamSessionTable(
     ZLinkAsyncSubmitter sendSubmitter)
 {
     private readonly object _gate = new();
-    private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
-    private readonly Queue<string> _unaddressedMonitorSessions = [];
     private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
     private bool _rejectNewSessions;
     private bool _stopping;
@@ -50,8 +48,6 @@ internal sealed class ZLinkStreamSessionTable(
             _stopping = true;
             var sessions = _sessions.Values.ToArray();
             _sessions.Clear();
-            _pendingConnectionMetadata.Clear();
-            _unaddressedMonitorSessions.Clear();
             return sessions;
         }
     }
@@ -90,7 +86,8 @@ internal sealed class ZLinkStreamSessionTable(
                 transport,
                 timeProvider,
                 actorDispatchEnabled,
-                sendSubmitter)
+                sendSubmitter,
+                requireConnectionReady: true)
             .ConfigureAwait(false);
         ZLinkStreamSessionRuntime? duplicate = null;
         lock (_gate)
@@ -159,60 +156,17 @@ internal sealed class ZLinkStreamSessionTable(
         foreach (var session in sessions) session.RequestForceStopForDrain();
     }
 
-    public void QueueConnectionMetadata(string localAddr, string remoteAddr)
-    {
-        lock (_gate)
-        {
-            if (!_stopping) _pendingConnectionMetadata.Enqueue((localAddr, remoteAddr));
-        }
-    }
-
-    public void ApplyPendingConnectionMetadata(ZLinkStreamSessionRuntime session)
-    {
-        (string LocalAddr, string RemoteAddr)? metadata = null;
-
-        lock (_gate)
-        {
-            if (session.Stream.LocalAddr is null
-                && session.Stream.RemoteAddr is null
-                && _pendingConnectionMetadata.Count > 0)
-            {
-                metadata = _pendingConnectionMetadata.Dequeue();
-                _unaddressedMonitorSessions.Enqueue(session.Stream.SessionId);
-            }
-        }
-
-        if (metadata is { } value) session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
-    }
-
     public bool TryResolveMonitorSession(
         RoutingId? routingId,
         out ZLinkStreamSessionRuntime session)
     {
         lock (_gate)
         {
-            if (routingId is RoutingId streamRoutingId)
+            if (routingId is RoutingId streamRoutingId
+                && _sessions.TryGetValue(streamRoutingId.ToHex(), out var existing))
             {
-                var sessionId = streamRoutingId.ToHex();
-                if (_sessions.TryGetValue(sessionId, out var existing))
-                {
-                    session = existing;
-                    return true;
-                }
-            }
-
-            if (_unaddressedMonitorSessions.Count > 0)
-            {
-                // Some STREAM transports do not attach a routing id to monitor events. Match
-                // those disconnects to the same FIFO order used when their connection metadata
-                // was assigned. A removed id is an intentional tombstone: consuming it without
-                // falling through prevents a late disconnect from terminating a newer session.
-                var sessionId = _unaddressedMonitorSessions.Dequeue();
-                if (_sessions.TryGetValue(sessionId, out var existing))
-                {
-                    session = existing;
-                    return true;
-                }
+                session = existing;
+                return true;
             }
         }
 

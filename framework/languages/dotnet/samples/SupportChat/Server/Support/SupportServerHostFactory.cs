@@ -48,7 +48,7 @@ public static class SupportServerHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, "support"))
                 .TraceLabel("support");
             options.AddHandlersFromAssemblyOf(typeof(SupportServerHostFactory));

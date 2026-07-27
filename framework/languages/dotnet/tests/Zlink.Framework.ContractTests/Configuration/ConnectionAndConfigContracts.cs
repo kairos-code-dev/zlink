@@ -146,22 +146,6 @@ public sealed class ConnectionAndConfigContracts
 
         public IZLinkDiagnosticsOptions Diagnostics { get; } = new DiagnosticsOptions();
 
-        public IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
-            where TObserver : class, IZLinkMessageFlowObserver
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer)
-        {
-            return this;
-        }
-
-        public IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowLogMode mode)
-        {
-            return this;
-        }
-
         public IZLinkDispatchOptions TraceSampleRate(double rate)
         {
             return this;
@@ -224,18 +208,16 @@ public sealed class ConnectionAndConfigContracts
 
     private sealed class DiagnosticsOptions : IZLinkDiagnosticsOptions
     {
-        public ZLinkMessageFlowLogMode MessageFlow { get; set; }
+        public ZLinkRuntimeMessageFlowMode MessageFlow { get; set; }
 
         public double SampleRate { get; set; }
 
         public bool IncludeMessageSizes { get; set; }
 
-        public bool IncludeNativeDiagnostics { get; set; }
-
         public string? LogFile { get; set; }
 
         public string? Label { get; set; }
 
-        public ZLinkMessageFlowLogMode EffectiveMessageFlow => MessageFlow;
+        public ZLinkRuntimeMessageFlowMode EffectiveMessageFlow => MessageFlow;
     }
 }

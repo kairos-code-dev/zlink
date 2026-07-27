@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.configuration;
 
+import systems.zlink.framework.runtime.internal.configuration.ZLinkCodecRegistration;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

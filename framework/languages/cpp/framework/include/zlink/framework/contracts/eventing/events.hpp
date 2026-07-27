@@ -49,8 +49,7 @@ enum class socket_event_kind_t
     disconnected = 2,
     handshake_failed = 3,
     peer_admission_changed = 4,
-    closed = 5,
-    internal = 6
+    closed = 5
 };
 
 enum class location_event_kind_t
@@ -62,11 +61,8 @@ enum class location_event_kind_t
 
 enum class spot_event_kind_t
 {
-    status_changed = 0,
-    peers_changed = 1,
-    subjects_changed = 2,
-    timer_handler_failed = 3,
-    timer_stopped_after_unhandled_exception = 4
+    timer_handler_failed = 0,
+    timer_stopped_after_unhandled_exception = 1
 };
 
 enum class stream_event_kind_t
@@ -93,36 +89,6 @@ struct runtime_event_base_t
     std::string node_name;
     std::string correlation_id;
     health_status_t health = health_status_t::healthy;
-};
-
-class runtime_event_publisher_t
-{
-  public:
-    runtime_event_publisher_t ();
-    ~runtime_event_publisher_t ();
-
-    runtime_event_publisher_t (runtime_event_publisher_t &&) noexcept;
-    runtime_event_publisher_t &operator= (runtime_event_publisher_t &&) noexcept;
-    runtime_event_publisher_t (const runtime_event_publisher_t &) = default;
-    runtime_event_publisher_t &operator= (const runtime_event_publisher_t &) = default;
-
-    template <typename TEvent> void publish (TEvent event) const
-    {
-        event.timestamp = std::chrono::system_clock::now ();
-        publish_erased (std::type_index (typeid (TEvent)), event, &event);
-    }
-
-  private:
-    friend class monitoring_builder_t;
-    friend class metrics_builder_t;
-    friend class detail::monitoring_runtime_t;
-
-    explicit runtime_event_publisher_t (std::shared_ptr<detail::monitoring_runtime_state_t> state);
-    void publish_erased (std::type_index event_type,
-                         const runtime_event_base_t &base,
-                         const void *event) const;
-
-    std::shared_ptr<detail::monitoring_runtime_state_t> _state;
 };
 
 /* Runtime metric catalog fields (runtime-metrics §3, cpp-monitoring §8).
@@ -172,11 +138,9 @@ struct metric_event_payload_t : runtime_event_base_t
 
 struct socket_event_payload_t : runtime_event_base_t
 {
-    socket_event_kind_t event = socket_event_kind_t::internal;
+    socket_event_kind_t event = socket_event_kind_t::connected;
     std::string local_address;
     std::string remote_address;
-    std::uint32_t native_event = 0;
-    std::uint32_t native_value = 0;
 };
 
 struct location_event_payload_t : runtime_event_base_t
@@ -201,10 +165,7 @@ struct spot_timer_diagnostic_t
 
 struct spot_event_payload_t : runtime_event_base_t
 {
-    spot_event_kind_t event = spot_event_kind_t::status_changed;
-    std::string spot_node_name;
-    std::vector<std::string> peers;
-    std::vector<std::string> subjects;
+    spot_event_kind_t event = spot_event_kind_t::timer_handler_failed;
     std::optional<spot_timer_diagnostic_t> timer_diagnostic;
 };
 
@@ -241,13 +202,9 @@ class monitoring_builder_t
                                              std::initializer_list<socket_event_kind_t> events);
     monitoring_builder_t &add_location_events (std::string source_name,
                                                std::chrono::milliseconds interval);
-    monitoring_builder_t &add_spot_events (std::string source_name,
-                                           std::chrono::milliseconds interval);
     monitoring_builder_t &add_stream_events (std::string source_name);
     monitoring_builder_t &add_actor_events (std::string source_name);
     monitoring_builder_t &on_trace (std::function<void (const runtime_event_base_t &)> hook);
-    runtime_event_publisher_t publisher () const;
-
     template <typename TEvent>
     monitoring_builder_t &on (std::function<void (const TEvent &)> handler)
     {

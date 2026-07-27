@@ -37,7 +37,8 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         ulong authorityOwnerGeneration = 0,
         ulong ownerLeaseGeneration = 0,
         byte forwardingHopCount = 0,
-        ulong sourceNodeGeneration = 0)
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
@@ -52,6 +53,7 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         OwnerLeaseGeneration = ownerLeaseGeneration;
         ForwardingHopCount = forwardingHopCount;
         SourceNodeGeneration = sourceNodeGeneration;
+        RequestSource = requestSource;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -83,10 +85,9 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
 
     public ulong SourceNodeGeneration { get; }
 
-    public bool CanReply => _reply is not null;
+    public ZLinkServiceWireCodec.RequestSourceFence? RequestSource { get; }
 
-    internal Func<IReadOnlyList<Message>, SendFlags, SubmitResult>?
-        CaptureReplyRoute() => _reply;
+    public bool CanReply => _reply is not null;
 
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
     {

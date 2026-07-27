@@ -16,7 +16,7 @@ import kotlin.coroutines.suspendCoroutine
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerMethodInvoker
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter
 
-class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendInvocationAdapter {
+internal class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendInvocationAdapter {
     private val scope: CoroutineScope
     private val dispatcher: CoroutineDispatcher
 

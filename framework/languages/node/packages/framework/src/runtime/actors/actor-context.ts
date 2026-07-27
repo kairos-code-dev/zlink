@@ -385,15 +385,13 @@ async function notifyJoinCompletion(
   actor: ZLinkActor,
   operationId: { readonly high: bigint; readonly low: bigint },
   result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>,
-  messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
+  _messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
 ): Promise<void> {
-  // The completion carries the registered codecs so the application decodes the
-  // join reply with the same serializer it configured for the request.
+  // The completion preserves the encoded reply without exposing serializer selection.
   const reply = result.reply === undefined
     ? undefined
     : ZLinkMessage.fromEncoded(
-      ZLinkEncodedPayload.from(result.reply.data()),
-      messageSerializers
+      ZLinkEncodedPayload.from(result.reply.data())
     );
   result.reply?.close();
   // `reply`는 계약상 선택 항목이라 없을 때는 key 자체를 만들지 않는다.

@@ -33,7 +33,7 @@ import type {
   ZLinkRelocationCapacityFence,
   ZLinkRelocationCapacityReservationRequest,
   ZLinkRelocationCapacityReserveResult
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import { encodeAuthorityKey } from './authority-key-codec';
 
 const MAX_GENERATION = 0x7fff_ffff_ffff_ffffn;
@@ -149,6 +149,23 @@ export class ZLinkInMemoryAuthorityStore {
     }
 
     validatePayload(mutation.payload);
+    if (mutation.kind === 'restore') {
+      if (!sameOwner(mutation.expectedOwner, {
+        ownerId: row.snapshot.ownerId,
+        leaseGeneration: row.snapshot.ownerLeaseGeneration
+      })) {
+        return { kind: 'conflict', current: this.read(keyValue) };
+      }
+      const nextVersion = this.tryNextStoreVersion();
+      if (nextVersion === undefined) return { kind: 'generationExhausted' };
+      row.snapshot = {
+        ...row.snapshot,
+        storeVersion: version(nextVersion),
+        payload: Buffer.from(mutation.payload)
+      };
+      this.scanRevision++;
+      return this.stored(row.snapshot);
+    }
     if (mutation.generationTransition === 'preserve') {
       if (!this.isOwnerLive(row.snapshot)) {
         return { kind: 'conflict', current: this.read(keyValue) };
@@ -838,7 +855,7 @@ export class ZLinkInMemoryAuthorityStore {
 }
 
 function validateAuthorityMutation(mutation: ZLinkAuthorityMutation): void {
-  if (mutation.kind === 'delete') return;
+  if (mutation.kind === 'delete' || mutation.kind === 'restore') return;
   const hasOwner = mutation.targetOwner !== undefined;
   const hasFence = mutation.relocationCapacityFence !== undefined;
   if (mutation.generationTransition === 'preserve' ? (hasOwner || hasFence) : (!hasOwner || !hasFence)) {

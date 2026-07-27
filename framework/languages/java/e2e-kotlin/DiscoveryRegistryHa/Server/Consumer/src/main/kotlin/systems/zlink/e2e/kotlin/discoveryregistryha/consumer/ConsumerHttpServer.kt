@@ -17,14 +17,14 @@ import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
 import systems.zlink.e2e.kotlin.discoveryregistryha.consumer.Configuration.ConsumerOptions
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType
-import systems.zlink.framework.locations.ZLinkLocationRole
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter
+import systems.zlink.framework.locations.ZLinkLocationStore
+import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle
 
 class ConsumerHttpServer(
     private val client: ZLinkClient,
     private val lifecycle: ZLinkFrameworkLifecycle,
+    private val locations: ZLinkLocationStore,
     private val json: ObjectMapper,
     private val options: ConsumerOptions,
     private val delayState: LocationStoreDelayState,
@@ -118,23 +118,16 @@ class ConsumerHttpServer(
             .submit(Contracts.WorkRes::class.java)
 
     private fun peers(): CompletionStage<List<Map<String, Any>>> =
-        lifecycle.monitoringLocationRuntimeQuery()
-            .listPeerLocations(
-                ZLinkPeerLocationFilter(
-                    ZLinkLocationAutoConnectType.CLIENT_SERVER,
-                    Contracts.CHANNEL,
-                    ZLinkLocationRole.ROUTER,
-                    null,
-                    null,
-                ),
-            )
-            .thenApply { peers -> peers.map { peer ->
+        locations.listClientServers(
+            Contracts.CHANNEL,
+            ZLinkPageRequest(1_000, null),
+        ).thenApply { page -> page.items().map { server ->
                 mapOf(
-                    "nodeRid" to peer.nodeRid().toString(),
-                    "endpoint" to peer.endpoint(),
-                    "ownerId" to peer.ownerId(),
-                    "role" to peer.role().name,
-                    "meshName" to peer.meshName(),
+                    "nodeRid" to server.serverRid().toString(),
+                    "endpoint" to server.endpoint(),
+                    "ownerId" to server.ownerId(),
+                    "role" to "ROUTER",
+                    "meshName" to server.channelName(),
                 )
             } }
 

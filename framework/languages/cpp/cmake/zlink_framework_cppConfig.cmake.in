@@ -9,6 +9,7 @@ include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 find_dependency(nlohmann_json CONFIG)
 @ZLINK_HTTP_CLIENT_EXPORT_OPENSSL_DEPENDENCY@
+@ZLINK_FRAMEWORK_REDIS_EXPORT_DEPENDENCIES@
 
 if(NOT TARGET libzlink)
   if(WIN32)

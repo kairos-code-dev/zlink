@@ -9,7 +9,7 @@ const {
   readZLinkDecoratorMetadata
 } = require('../../packages/framework/dist');
 
-test('handler decorators accumulate metadata without requiring reflect-metadata', () => {
+test('handler decorators work without exposing scanner metadata', () => {
   class Handler {}
 
   ZLinkHandlerGroup('api')(Handler);
@@ -17,12 +17,7 @@ test('handler decorators accumulate metadata without requiring reflect-metadata'
   ZLinkRequest('getProfile')(Handler.prototype, 'getProfile', descriptor());
   ZLinkSend('updateProfile')(Handler.prototype, 'updateProfile', descriptor());
 
-  assert.deepEqual(readZLinkDecoratorMetadata(Handler), [
-    { kind: 'handlerGroup', groupName: 'api' },
-    { kind: 'packet', packetName: 'profile.changed' },
-    { kind: 'request', packetName: 'getProfile', methodName: 'getProfile' },
-    { kind: 'send', packetName: 'updateProfile', methodName: 'updateProfile' }
-  ]);
+  assert.equal(readZLinkDecoratorMetadata, undefined);
 });
 
 function descriptor() {

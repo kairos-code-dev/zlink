@@ -7,7 +7,7 @@ export async function runMonB2(options: ClientOptions): Promise<void> {
   const evidence = await Promise.all([
     postJson<string>(options.triggerUrl, '/validation/registration/duplicate-source', {}),
     postJson<string>(options.triggerUrl, '/validation/registration/interval', {}),
-    postJson<string>(options.triggerUrl, '/validation/registration/missing-spot', {}),
+    postJson<string>(options.triggerUrl, '/validation/registration/missing-location-store', {}),
     postJson<string>(options.triggerUrl, '/validation/registration/missing-socket', {})
   ]);
 
@@ -20,8 +20,8 @@ export async function runMonB2(options: ClientOptions): Promise<void> {
     'MON-B2 interval validation evidence missing.'
   );
   ensure(
-    evidence.some((line) => line.includes('mon-b2|missing-spot=not registered')),
-    'MON-B2 missing spot validation evidence missing.'
+    evidence.some((line) => line.includes('mon-b2|missing-location-store=required')),
+    'MON-B2 missing Location Store validation evidence missing.'
   );
   ensure(
     evidence.some((line) => line.includes('mon-b2|missing-socket=not registered')),

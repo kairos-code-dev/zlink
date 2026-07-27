@@ -17,8 +17,8 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 

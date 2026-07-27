@@ -39,6 +39,7 @@ export interface ZLinkActorNativeJoinCoordinatorOptions {
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly shutdownSignal?: AbortSignal;
   readonly actorTransferTimeoutMs?: number;
+  readonly entrySpotIdProvider?: (meshName: string | undefined) => string | undefined;
 }
 
 /** Selects local native join or remote two-phase transfer for each destination. */
@@ -66,6 +67,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       sourceTransfer: options.sourceTransfer,
       messageSerializers: options.messageSerializers,
       postCommitErrorReporter: options.postCommitErrorReporter,
+      entrySpotIdProvider: options.entrySpotIdProvider,
       remoteActivationWaiter: async (actorId, targetNodeRid, timeoutMs, signal) => {
         const deadline = Date.now() + Math.min(timeoutMs ?? 10_000, 10_000);
         for (;;) {

@@ -2,7 +2,7 @@ namespace Zlink.Framework.Runtime.Locations;
 
 internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
 {
-    private readonly IZLinkClientServerLocationStore _store;
+    private readonly IZLinkLocationStore _store;
     private readonly ZLinkLocationRuntime _locationRuntime;
     private readonly ZLinkLocationOptions _options;
     private readonly ZLinkOwnerLeaseTracker? _leases;
@@ -10,7 +10,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
     private readonly List<LocalServer> _servers = [];
 
     internal ZLinkClientServerDiscovery(
-        IZLinkClientServerLocationStore store,
+        IZLinkLocationStore store,
         ZLinkLocationRuntime locationRuntime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases)
@@ -234,7 +234,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
 
     private sealed class ClientLoop(
         string channelName,
-        IZLinkClientServerLocationStore store,
+        IZLinkLocationStore store,
         ZLinkClientServerClientRuntime runtime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases,

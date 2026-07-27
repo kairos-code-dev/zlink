@@ -10,7 +10,7 @@ import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 public final class ZLinkStreamHeaderCodec {

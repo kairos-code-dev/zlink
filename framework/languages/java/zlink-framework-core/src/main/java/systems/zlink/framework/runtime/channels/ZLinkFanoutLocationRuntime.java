@@ -21,22 +21,22 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkFanoutLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
-import systems.zlink.framework.runtime.service.ZLinkClassicFanoutLiveness;
+import systems.zlink.framework.runtime.internal.service.ZLinkClassicFanoutLiveness;
 
 /**
  * Dedicated classic fanout descriptor publication and subscriber discovery.
@@ -46,7 +46,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private static final int MAX_DESCRIPTORS_PER_CHANNEL = 1024;
     private static final int MAX_RECEIVES_PER_TICK = 64;
 
-    private final ZLinkFanoutLocationStore store;
+    private final ZLinkLocationStore store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
     private final ZLinkChannelBackendAdapter backend;
     private final ZLinkMonitoringBackendAdapter monitoring;
@@ -72,7 +72,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private volatile boolean reconciling;
 
     ZLinkFanoutLocationRuntime(
-        ZLinkFanoutLocationStore store,
+        ZLinkLocationStore store,
         Supplier<ZLinkLocationOwnerToken> owner,
         ZLinkChannelBackendAdapter backend,
         ZLinkMonitoringBackendAdapter monitoring,
@@ -142,8 +142,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
         List<ZLinkChannelRuntime.AutoConnectSurface> surfaces) {
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
             if (surface.type()
-                != systems.zlink.framework.locations
-                    .ZLinkLocationAutoConnectType.FANOUT) {
+                != systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType.FANOUT) {
                 continue;
             }
             if (surface.role()

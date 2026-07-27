@@ -27,25 +27,25 @@ export function verifyPollingInterval(): string {
   const interval = assertThrows(() => {
     ZLinkModule.forRoot(zlinkFramework().options({
       monitoring: {
-        spot: [{ sourceName: 'spot', intervalMs: 0 }]
+        locationRuntime: [{ sourceName: 'location', intervalMs: 0 }]
       }
     }).build());
   });
   return `mon-b2|interval=${interval.message}`;
 }
 
-export function verifyMissingSpotSource(): string {
+export function verifyMissingLocationStore(): string {
   const missing = assertThrows(() => {
     ZLinkModule.forRoot(zlinkFramework().options({
       monitoring: {
-        spot: [{ sourceName: 'missing.spot', intervalMs: 100 }]
+        locationRuntime: [{ sourceName: 'missing.location', intervalMs: 100 }]
       }
     }).build());
   });
-  if (!missing.message.includes('not registered')) {
-    throw new Error('MON-B2 missing spot source startup error was not explicit.');
+  if (!missing.message.includes('location stores')) {
+    throw new Error('MON-B2 missing Location Store startup error was not explicit.');
   }
-  return 'mon-b2|missing-spot=not registered';
+  return 'mon-b2|missing-location-store=required';
 }
 
 export async function verifyMissingSocketSource(): Promise<string> {

@@ -843,6 +843,10 @@ if op == 'cas' then
         or row.storeVersion ~= tostring(request.expectedStoreVersion) then
         return cjson.encode({kind = 'conflict', current = snapshot(row)})
     end
+    if request.mutationKind == 'restore'
+        and not sameOwner(row, request.expectedOwner) then
+        return cjson.encode({kind = 'conflict', current = snapshot(row)})
+    end
     if request.mutationKind == 'delete' or request.transition == 'preserve' then
         if not leaseLive({ownerId = row.ownerId,
             leaseGeneration = row.ownerLeaseGeneration}, KEYS[15]) then

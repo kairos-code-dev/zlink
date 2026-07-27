@@ -9,7 +9,7 @@ import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
 import systems.zlink.framework.configuration.ZLinkDispatchFailure;
 import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkDispatchErrorReporter;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 

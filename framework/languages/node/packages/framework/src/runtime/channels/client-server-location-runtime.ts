@@ -2,10 +2,10 @@ import {
   ZLinkFrameworkRuntimeState,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  type ZLinkClientServerLocationStore,
   type ZLinkClientServerServerDescriptor,
   type ZLinkLocationOwnerToken
 } from '../../contracts/Locations';
+import type { ZLinkClientServerLocationStore } from '../locations/internal-store-contracts';
 import {
   zlinkRuntimeDefaultLocationOptions,
   type ZLinkLocationOptionOverrides

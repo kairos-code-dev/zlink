@@ -54,18 +54,18 @@ internal sealed class ApplicationJoinCoordinator(
 }
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageFlowObserver
+    : IZLinkRuntimeMessageFlowObserver
 {
     public ValueTask OnMessageFlowAsync(
-        ZLinkMessageFlowEvent flow,
+        ZLinkRuntimeMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             "dispatch-error"
             + $"|surface={flow.Surface}"
-            + $"|reason={flow.ErrorReason}"
-            + $"|action={flow.ErrorAction}"
+            + $"|reason={flow.Reason}"
+            + $"|action={flow.Action}"
             + $"|packet={flow.PacketName ?? "<null>"}");
         return ValueTask.CompletedTask;
     }

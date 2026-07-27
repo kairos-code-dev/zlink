@@ -10,6 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ActorRefSnapshot;
+import systems.zlink.framework.spots.SpotRef;
 
 final class ZLinkJsonMessageSerializerTest {
     @Test
@@ -80,6 +81,38 @@ final class ZLinkJsonMessageSerializerTest {
                     + "\"nodeRid\":\"004142\"}")
                 .getBytes(StandardCharsets.UTF_8)),
             ActorRef.class));
+        assertThrows(IllegalArgumentException.class, () -> serializer.deserialize(
+            ZLinkEncodedPayload.from((
+                "{\"actorId\":\"courier-a\",\"objectGeneration\":\"7\","
+                    + "\"meshName\":\"game\",\"nodeRid\":\"004142\","
+                    + "\"unknown\":true}")
+                .getBytes(StandardCharsets.UTF_8)),
+            ActorRef.class));
+    }
+
+    @Test
+    void spotRefUsesTheExactTypedJsonContract() {
+        ZLinkJsonMessageSerializer serializer = new ZLinkJsonMessageSerializer();
+        SpotRef expected = new SpotRef(
+            "room-a",
+            11,
+            "game",
+            RoutingId.from(new byte[] {0, 65, 66}));
+
+        ZLinkEncodedPayload encoded = serializer.serialize(expected);
+        assertEquals(
+            "{\"spotId\":\"room-a\",\"objectGeneration\":\"11\","
+                + "\"meshName\":\"game\",\"nodeRid\":\"004142\"}",
+            new String(encoded.bytes(), StandardCharsets.UTF_8));
+        assertEquals(expected, serializer.deserialize(encoded, SpotRef.class));
+
+        assertThrows(IllegalArgumentException.class, () -> serializer.deserialize(
+            ZLinkEncodedPayload.from((
+                "{\"spotId\":\"room-a\",\"objectGeneration\":\"11\","
+                    + "\"meshName\":\"game\",\"nodeRid\":\"004142\","
+                    + "\"unknown\":true}")
+                .getBytes(StandardCharsets.UTF_8)),
+            SpotRef.class));
     }
 
     record ProfileReply(String value) {

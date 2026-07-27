@@ -1,6 +1,6 @@
 package systems.zlink.framework.testkit;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,14 +35,13 @@ import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
-import systems.zlink.framework.streams.ZLinkStreamDiagnostic;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
 final class StreamSessionTest {
     @Test
     void streamNodeBindsAndAttachesConfiguredSessionRelaySpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://stream-relay-play-node");
                 node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class); }; };
@@ -292,7 +291,7 @@ final class StreamSessionTest {
             backendFactory.dispatchStreamTransportError(222, "remote-disconnect");
 
             awaitCondition(() -> GameSession.errors.size() == 1);
-            assertEquals(List.of("TRANSPORT_ERROR:222:remote-disconnect"), GameSession.errors);
+            assertEquals(List.of("TRANSPORT_ERROR:remote-disconnect"), GameSession.errors);
             assertEquals(1, GameSession.disconnectedCount);
         }
 
@@ -340,7 +339,7 @@ final class StreamSessionTest {
     void constructorSessionContextExposesClientAndActorsFromFrameworkRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh;
                 node.enableRouter("inproc://stream-context-play-node");
                 node.setRoutingId(RoutingId.from("play-node"));
                 node.addSpotFactory(GameSpot.class);
@@ -375,7 +374,7 @@ final class StreamSessionTest {
     void gatewayAttachedSessionContextExposesActorsWithoutLocalActorRuntime() {
         ContextSession.reset();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh
                 .enableRouter("inproc://session-node")
                 .setRoutingId(RoutingId.from("session-node")); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway");
@@ -645,9 +644,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onError(ZLinkStreamError error) {
-            errors.add(error.error()
-                + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::nativeCode).orElse(0)
-                + ":" + error.diagnostic().map(ZLinkStreamDiagnostic::message).orElse(""));
+            errors.add(error.error() + ":" + error.message());
             return CompletableFuture.completedFuture(null);
         }
 

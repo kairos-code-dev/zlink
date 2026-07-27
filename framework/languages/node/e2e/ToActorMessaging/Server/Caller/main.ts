@@ -46,7 +46,6 @@ Module({
         builder
           .addRouteMesh('to-actor')
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .channelName('to-actor');
         return builder.build();
       }

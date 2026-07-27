@@ -6,7 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 
 final class ZLinkSpotRouteBridgeDrainer {
     private static final long DRAIN_INTERVAL_MILLIS = 10;

@@ -1303,31 +1303,6 @@ class zlink_framework_options_t
               return std::static_pointer_cast<location_store_t> (store);
           },
           service_lifetime_t::singleton);
-        if (auto authority_store =
-              std::dynamic_pointer_cast<authority_store_t> (store)) {
-            _services->add_factory<authority_store_t> (
-              [authority_store] (service_provider_t &) {
-                  return authority_store;
-              },
-              service_lifetime_t::singleton);
-        }
-        if (auto creation_store =
-              std::dynamic_pointer_cast<object_creation_store_t> (store)) {
-            _services->add_factory<object_creation_store_t> (
-              [creation_store] (service_provider_t &) {
-                  return creation_store;
-              },
-              service_lifetime_t::singleton);
-        }
-        if (auto change_stamp_store =
-              std::dynamic_pointer_cast<location_change_stamp_store_t> (store)) {
-            _services->add_factory<location_change_stamp_store_t> (
-              [change_stamp_store] (service_provider_t &) {
-                  return std::static_pointer_cast<location_change_stamp_store_t> (
-                    change_stamp_store);
-              },
-              service_lifetime_t::singleton);
-        }
     }
 
     service_collection_t *_services;

@@ -95,11 +95,11 @@ final class HandlerContractTest {
     }
 
     @Test
-    void handlerFilterUsesInvocationContextAndTypedNext() throws NoSuchMethodException {
+    void handlerFilterUsesMessageContextAndTypedNext() throws NoSuchMethodException {
         Method method = ZLinkHandlerFilter.class.getMethod(
             "invoke",
-            ZLinkHandlerInvocation.class,
-            ZLinkNext.class);
+            ZLinkMessageContext.class,
+            ZLinkHandlerFilterNext.class);
 
         assertEquals(1, method.getTypeParameters().length);
     }
@@ -121,6 +121,9 @@ final class HandlerContractTest {
 
         assertClassIsAbsent("systems.zlink.framework.ZLinkHandlerContext");
         assertClassIsAbsent("systems.zlink.framework.ZLinkInvocationContext");
+        assertClassIsAbsent("systems.zlink.framework.ZLinkHandlerInvocation");
+        assertClassIsAbsent("systems.zlink.framework.ZLinkNext");
+        assertClassIsAbsent("systems.zlink.framework.MeshNodePublisher");
         assertClassIsAbsent("systems.zlink.framework.channels.ZLinkRequestContext");
         assertClassIsAbsent("systems.zlink.framework.channels.ZLinkSendContext");
         assertClassIsAbsent("systems.zlink.framework.channels.ZLinkPublishContext");

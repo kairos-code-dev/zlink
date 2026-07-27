@@ -266,8 +266,15 @@ internal sealed record ZLinkRemoteActorFrameRelay(
     ulong TargetNodeGeneration,
     ulong AuthorityOwnerGeneration,
     ulong OwnerLeaseGeneration,
+    string RelayNodeRid,
+    ulong RelayNodeGeneration,
     string SourceNodeRid,
+    ulong SourceNodeGeneration,
     string SourceSessionRid,
+    string? RequestSourceOwnerId,
+    ulong RequestSourceLeaseGeneration,
+    string? RequestSourceNodeRid,
+    ulong RequestSourceNodeGeneration,
     ulong OperationIdHigh,
     ulong OperationIdLow,
     byte ForwardingHopCount,
@@ -293,6 +300,7 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
+        var requestSource = DecodeRequestSource(message);
         await runtime.DispatchRemoteActorFrameAsync(
                 message.ActorId,
                 message.ActorGeneration,
@@ -300,13 +308,18 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 message.TargetNodeGeneration,
                 message.AuthorityOwnerGeneration,
                 message.OwnerLeaseGeneration,
+                context.SourceNodeRid,
+                RoutingId.FromHex(message.RelayNodeRid),
+                message.RelayNodeGeneration,
                 message.SourceNodeRid is { Length: > 0 } nodeHex
                     ? RoutingId.FromHex(nodeHex)
                     : default,
+                message.SourceNodeGeneration,
                 // A forwarded caller-routed frame carries no session identity.
                 message.SourceSessionRid is { Length: > 0 } sessionHex
                     ? RoutingId.FromHex(sessionHex)
                     : default,
+                requestSource,
                 new MeshOperationId(
                     message.OperationIdHigh,
                     message.OperationIdLow),
@@ -318,6 +331,28 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
                 message.Body,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static ZLinkServiceWireCodec.RequestSourceFence? DecodeRequestSource(
+        ZLinkRemoteActorFrameRelay message)
+    {
+        var hasOwner = !string.IsNullOrWhiteSpace(message.RequestSourceOwnerId);
+        var hasNode = !string.IsNullOrWhiteSpace(message.RequestSourceNodeRid);
+        var hasFence = hasOwner
+                       || message.RequestSourceLeaseGeneration != 0
+                       || hasNode
+                       || message.RequestSourceNodeGeneration != 0;
+        if (!hasFence) return null;
+        if (!hasOwner || message.RequestSourceLeaseGeneration == 0
+            || !hasNode || message.RequestSourceNodeGeneration == 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{message.ActorId}' relay request-source fence is incomplete.");
+        return new ZLinkServiceWireCodec.RequestSourceFence(
+            message.RequestSourceOwnerId!,
+            message.RequestSourceLeaseGeneration,
+            RoutingId.FromHex(message.RequestSourceNodeRid!),
+            message.RequestSourceNodeGeneration);
     }
 }
 

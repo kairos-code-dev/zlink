@@ -43,20 +43,24 @@ public sealed class CanonicalActorAcceptedJournalTests
                 31,
                 ReplyRequestId: 73,
                 ReplyFlags: 5,
-                ReplyCapability: "actor-reply"));
+                ReplyCapability: "actor-reply"),
+            source.NodeGeneration,
+            RelocationReplyRouteId: 73);
 
         var encoded = ZLinkCanonicalActorAcceptedJournal.Encode(
-            frame, source, target);
+            new ZLinkActorAcceptedRecord(frame, source), target);
         var decoded = ZLinkCanonicalActorAcceptedJournal.Decode(
-            encoded, frame.ArrivalIndex, source);
+            encoded, frame.ArrivalIndex);
 
         Assert.True(ZLinkRelocationEnvelopeCodec
             .TryValidateCanonicalFrozenRecord(encoded));
         Assert.Equal(source, decoded.Source);
+        Assert.Equal(source, decoded.Frame.RequestSource);
         Assert.Equal(target, decoded.TargetActor);
         Assert.Equal(frame.RouteContext.OperationId,
             decoded.Frame.RouteContext.OperationId);
         Assert.Equal<ulong>(73, decoded.Frame.RouteContext.ReplyRequestId);
+        Assert.Equal<ulong>(73, decoded.Frame.RelocationReplyRouteId);
         Assert.Equal<ulong>(23,
             decoded.Frame.RouteContext.TargetNodeGeneration);
         Assert.Equal<ulong>(29,
@@ -71,21 +75,26 @@ public sealed class CanonicalActorAcceptedJournalTests
     }
 
     [Fact]
-    public void Decode_rejects_request_source_mismatch()
+    public void Aggregate_preserves_distinct_request_source_fences()
     {
-        var source = SourceFence("source-owner", 41);
-        var frame = Frame(source);
-        var encoded = ZLinkCanonicalActorAcceptedJournal.Encode(
-            frame,
-            source,
-            new ZLinkBackendActorRef(
-                RoutingId.From("target-node"), "actor-1", 17));
+        var first = SourceFence("source-owner-a", 41, "source-node-a", 37);
+        var second = SourceFence("source-owner-b", 42, "source-node-b", 38);
+        var target = new ZLinkBackendActorRef(
+            RoutingId.From("target-node"), "actor-1", 17);
 
-        Assert.Throws<InvalidDataException>(() =>
-            ZLinkCanonicalActorAcceptedJournal.Decode(
-                encoded,
-                1,
-                SourceFence("replacement-owner", 42)));
+        var decoded = new[] { first, second }
+            .Select((source, index) =>
+                ZLinkCanonicalActorAcceptedJournal.Decode(
+                    ZLinkCanonicalActorAcceptedJournal.Encode(
+                        new ZLinkActorAcceptedRecord(Frame(source), source),
+                        target),
+                    index + 1))
+            .ToArray();
+
+        Assert.Equal(first, decoded[0].Accepted.RequestSource);
+        Assert.Equal(second, decoded[1].Accepted.RequestSource);
+        Assert.NotEqual(decoded[0].Accepted.RequestSource,
+            decoded[1].Accepted.RequestSource);
     }
 
     [Fact]
@@ -96,10 +105,52 @@ public sealed class CanonicalActorAcceptedJournalTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             ZLinkCanonicalActorAcceptedJournal.Encode(
-                frame,
-                default,
+                new ZLinkActorAcceptedRecord(frame, default),
                 new ZLinkBackendActorRef(
                     RoutingId.From("target-node"), "actor-1", 17)));
+    }
+
+    [Fact]
+    public void Encode_rejects_frame_and_request_source_mismatch()
+    {
+        var source = SourceFence("source-owner", 41);
+        var replacement = SourceFence(
+            "replacement-owner", 42, "replacement-node", 43);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ZLinkCanonicalActorAcceptedJournal.Encode(
+                new ZLinkActorAcceptedRecord(Frame(source), replacement),
+                new ZLinkBackendActorRef(
+                    RoutingId.From("target-node"), "actor-1", 17)));
+    }
+
+    [Fact]
+    public void Late_reply_ack_requires_the_decoded_request_source_fence()
+    {
+        var source = SourceFence("source-owner", 41);
+        var target = new ZLinkBackendActorRef(
+            RoutingId.From("target-node"), "actor-1", 17);
+        var decoded = ZLinkCanonicalActorAcceptedJournal.Decode(
+            ZLinkCanonicalActorAcceptedJournal.Encode(
+                new ZLinkActorAcceptedRecord(Frame(source), source), target),
+            1);
+        var exact = decoded.Accepted.RequestSource;
+
+        Assert.True(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            exact.NodeRid, exact.NodeGeneration, exact, exact));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            exact.NodeRid, exact.NodeGeneration, exact,
+            exact with { LeaseGeneration = exact.LeaseGeneration + 1 }));
+        Assert.False(ZLinkManagedMeshNode.IsExactReplyRelayAckSource(
+            exact.NodeRid, exact.NodeGeneration, exact,
+            exact with { NodeGeneration = exact.NodeGeneration + 1 }));
+    }
+
+    [Fact]
+    public void Decode_rejects_malformed_record()
+    {
+        Assert.Throws<InvalidDataException>(() =>
+            ZLinkCanonicalActorAcceptedJournal.Decode([9, 1, 0], 1));
     }
 
     private static ZLinkActorHandoffFrame Frame(
@@ -118,14 +169,18 @@ public sealed class CanonicalActorAcceptedJournalTests
             7, 1, header.ToArray(), [1], 1,
             new ZLinkBackendActorRouteContext(
                 new MeshOperationId(1, 2), 0, 3, 4, 5,
-                ReplyRequestId: 7));
+                ReplyRequestId: 7),
+            source.NodeGeneration,
+            RelocationReplyRouteId: 7);
     }
 
     private static ZLinkServiceWireCodec.RequestSourceFence SourceFence(
         string ownerId,
-        ulong lease) => new(
+        ulong lease,
+        string nodeRid = "source-node",
+        ulong nodeGeneration = 37) => new(
         ownerId,
         lease,
-        RoutingId.From("source-node"),
-        37);
+        RoutingId.From(nodeRid),
+        nodeGeneration);
 }

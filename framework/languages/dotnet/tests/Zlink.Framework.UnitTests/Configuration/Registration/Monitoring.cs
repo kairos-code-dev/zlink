@@ -192,42 +192,15 @@ public sealed class MonitoringTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public async Task AddZLinkMonitoring_Throws_WhenSpotSourceDoesNotMatchRegisteredSpotNode()
-    {
-        var builder = Host.CreateApplicationBuilder();
-        var endpoint = $"inproc://monitoring-{Guid.NewGuid():N}";
-
-        builder.Services.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.AddRouteMesh("game.stage").Listen(endpoint).Channel("game.stage").Server();
-        });
-        builder.Services.AddZLinkMonitoring(options =>
-        {
-            options.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
-        });
-        builder.Services.AddSingleton<IZLinkBackendAdapterFactory, FailIfRuntimeStartsBackendAdapterFactory>();
-
-        using var host = builder.Build();
-        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
-
-        Assert.Contains("SPOT node 'stage-node' is not registered", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void AddZLinkMonitoring_RequiresPositivePollingIntervals()
     {
         var registration = new ZLinkMonitoringRegistration();
         var options = new ZLinkMonitoringOptionsModel(registration);
 
-        var spot = Assert.Throws<ZLinkConfigurationException>(() =>
-            options.AddSpotEvents("game.stage", TimeSpan.Zero));
         var location = Assert.Throws<ZLinkConfigurationException>(() =>
             options.AddLocationRuntimeEvents("locations", TimeSpan.FromMilliseconds(-1)));
 
-        Assert.Contains("greater than zero", spot.Message, StringComparison.Ordinal);
         Assert.Contains("greater than zero", location.Message, StringComparison.Ordinal);
-        Assert.Empty(registration.SpotSources);
         Assert.Empty(registration.LocationRuntimeSources);
     }
 
@@ -243,114 +216,6 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             validator.ValidateRequiredRuntimes(frameworkRuntime: null, locationQuery: null));
 
         Assert.Contains("location stores", exception.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AddZLinkMonitoring_UsesExplicitSpotSourceWithoutAutoDiscovery()
-    {
-        var services = new ServiceCollection();
-        services.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.AddRouteMesh("game.stage").Listen("tcp://127.0.0.1:9000").Channel("game.stage").Server();
-        });
-        services.AddZLinkMonitoring(options =>
-        {
-            options.AddSpotEvents("game.stage", TimeSpan.FromSeconds(1));
-        });
-
-        using var provider = services.BuildServiceProvider();
-        var framework = provider.GetRequiredService<ZLinkFrameworkRegistration>();
-        var monitoring = provider.GetRequiredService<ZLinkMonitoringRegistration>();
-
-        Assert.Equal("game.stage", Assert.Single(framework.SpotNodes.Keys));
-        Assert.Equal("game.stage", Assert.Single(monitoring.SpotSources.Keys));
-    }
-
-    [Fact]
-    public void SpotPollingEventDiff_EmitsSealedVariantsOnlyForChangedSnapshotParts()
-    {
-        var timestamp = DateTimeOffset.Parse("2026-07-12T00:00:00Z");
-        var diff = new ZLinkSpotPollingEventDiff("game.stage");
-        var events = new List<ZLinkSpotEvent>();
-        var initial = Snapshot();
-
-        diff.DispatchChanges(initial, timestamp, events.Add);
-
-        Assert.Collection(
-            events,
-            item => Assert.IsType<ZLinkSpotEvent.StatusChanged>(item),
-            item => Assert.IsType<ZLinkSpotEvent.PeersChanged>(item),
-            item => Assert.IsType<ZLinkSpotEvent.SubjectsChanged>(item));
-        Assert.All(events, item => Assert.Equal("game.stage", item.SourceName));
-
-        events.Clear();
-        diff.DispatchChanges(initial, timestamp.AddSeconds(1), events.Add);
-        Assert.Empty(events);
-
-        var changed = initial with
-        {
-            Peers =
-            [
-                new ZLinkSpotNodePeerEntry(
-                    "game.stage",
-                    "tcp://127.0.0.1:9000",
-                    "tcp://127.0.0.1:9001",
-                    ZLinkSpotPeerSource.Manual,
-                    ZLinkSpotPeerKind.SpotMesh,
-                    ZLinkSpotPeerState.Connected,
-                    100,
-                    1,
-                    2)
-            ]
-        };
-
-        diff.DispatchChanges(changed, timestamp.AddSeconds(2), events.Add);
-
-        var peersChanged = Assert.IsType<ZLinkSpotEvent.PeersChanged>(Assert.Single(events));
-        Assert.Equal(changed.Peers, peersChanged.Peers);
-
-        events.Clear();
-        var statusAndSubjectsChanged = changed with
-        {
-            Status = changed.Status with { ActivePeerCount = 1, LastChangedMs = 3 },
-            Subjects =
-            [
-                new ZLinkSpotNodeSubjectEntry(
-                    ZLinkSpotRole.Sub,
-                    "players.*",
-                    ZLinkSubjectKind.Pattern,
-                    1,
-                    1,
-                    3)
-            ]
-        };
-
-        diff.DispatchChanges(statusAndSubjectsChanged, timestamp.AddSeconds(3), events.Add);
-
-        Assert.Collection(
-            events,
-            item => Assert.IsType<ZLinkSpotEvent.StatusChanged>(item),
-            item => Assert.IsType<ZLinkSpotEvent.SubjectsChanged>(item));
-    }
-
-    private static ZLinkSpotMonitoringSnapshot Snapshot()
-    {
-        return new ZLinkSpotMonitoringSnapshot(
-            new ZLinkSpotNodeStatus(
-                "game.stage",
-                "tcp://127.0.0.1:9000",
-                RoutingId.From("stage-node"),
-                ZLinkSpotNodeState.Ready,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1),
-            [],
-            []);
     }
 
     private sealed class FailIfRuntimeStartsBackendAdapterFactory : IZLinkBackendAdapterFactory

@@ -106,7 +106,6 @@ Module({
           .traceLabel(options.rid);
         builder.addRouteMesh(SpotActorTransferNames.mesh)
           .listen(options.routerEndpoint).routingId(options.rid)
-          .configureEntrySpot({ routingId: options.rid })
           .channelName(SpotActorTransferNames.mesh);
         builder.addStreamNode(`${SpotActorTransferNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)

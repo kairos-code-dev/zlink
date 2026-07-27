@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 
 final class ZLinkAdmissionRuntimeTest {
     @Test

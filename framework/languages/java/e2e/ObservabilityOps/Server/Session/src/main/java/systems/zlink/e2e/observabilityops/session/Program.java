@@ -71,13 +71,12 @@ public final class Program {
         EvidenceStore evidence,
         ObjectMapper json,
         MeterRegistry metrics,
-        systems.zlink.framework.monitoring.ZLinkDrainControl drain,
         ZLinkFrameworkLifecycle lifecycle,
         DrainEvidence drainEvidence,
         SessionOptions config) {
         return new EvidenceHttpServer(
             evidence, json, config.httpEndpoint(), metrics,
-            drain, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, null, null);
+            lifecycle, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, null, null);
     }
 
     @Bean

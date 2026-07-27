@@ -58,11 +58,18 @@ class play_server_host_factory_t
             auto game_spot = options.add_route_mesh (sample_names_t::game_spot_node);
             game_spot.peer_connections ().connect (
               topology.peer_play_spot_router_endpoint ());
-            game_spot
-              .use_allocated_routing_id (16, "tictactoe-play")
-              .listen (topology.selected_play_spot_router_endpoint ())
-              .add_entry_spot<tictactoe_entry_spot_t> ()
-              .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
+            game_spot.listen (topology.selected_play_spot_router_endpoint ())
+              .add_entry_spot<tictactoe_entry_spot_t> (
+                [] (entry_spot_context_t context) {
+                    return std::make_shared<tictactoe_entry_spot_t> (
+                      std::move (context));
+                })
+              .add_spot<tictactoe_game_spot_t> (
+                sample_names_t::match_spot,
+                [] (spot_context_t context) {
+                    return std::make_shared<tictactoe_game_spot_t> (
+                      std::move (context));
+                })
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type)
               .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
                 sample_names_t::actor_type);

@@ -24,7 +24,7 @@ import systems.zlink.framework.locations.ZLinkRelocationFound;
 import systems.zlink.framework.locations.ZLinkRelocationStore;
 import systems.zlink.framework.locations.ZLinkStoreCancellation;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 
 /**
  * Stores and replays the cross-node Accepted completion as part of the

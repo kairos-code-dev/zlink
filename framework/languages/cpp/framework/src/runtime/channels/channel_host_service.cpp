@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/channels/channel_host_service.hpp"
+#include "runtime/configuration/service_scope.hpp"
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
@@ -181,7 +182,8 @@ class channel_host_service_t::server_loop_t
             trace_channel ("server dispatch channel=" + _channel_name
                            + " parts=" + std::to_string (request_parts.size ()));
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
-            auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
+            auto scope = detail::service_scope_t::create (
+              *_services, detail::service_scope_kind_t::handler_invocation);
             auto reply = dispatcher.dispatch_server_message (
               _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
             if (!reply || reply.value ().size () == 0 || !routing_id || !request_seq) {
@@ -303,15 +305,14 @@ class channel_host_service_t::server_loop_t
                            && _pending_handshake_remotes.erase (event->remote_addr) != 0) {
                     _runtime.publish_socket_event (
                       _channel_name, socket_event_kind_t::handshake_failed, event->local_addr,
-                      event->remote_addr, static_cast<std::uint32_t> (event->event), event->value);
+                      event->remote_addr);
                 }
             }
             trace_channel ("server monitor channel=" + _channel_name + " kind="
                            + std::to_string (static_cast<std::uint32_t> (*kind))
                            + " local=" + event->local_addr + " remote=" + event->remote_addr);
             _runtime.publish_socket_event (_channel_name, *kind, event->local_addr,
-                                           event->remote_addr,
-                                           static_cast<std::uint32_t> (event->event), event->value);
+                                           event->remote_addr);
         }
     }
 
@@ -432,7 +433,8 @@ class channel_host_service_t::subscriber_loop_t
         std::lock_guard<std::mutex> lock (_workers_mutex);
         _workers.emplace_back ([this, parts = std::move (parts)] () mutable {
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
-            auto scope = _services->create_scope (service_scope_kind_t::handler_invocation);
+            auto scope = detail::service_scope_t::create (
+              *_services, detail::service_scope_kind_t::handler_invocation);
             (void) dispatcher.dispatch_server_message (_channel_name, parts, scope.provider (),
                                                        *_serializers, *_handlers);
         });

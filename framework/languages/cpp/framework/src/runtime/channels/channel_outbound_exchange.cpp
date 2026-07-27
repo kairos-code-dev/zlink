@@ -665,8 +665,7 @@ class channel_native_client_t
             const auto kind = map_socket_monitor_event (event->event);
             if (kind) {
                 _runtime.publish_socket_event (
-                  _channel_name, *kind, event->local_addr, event->remote_addr,
-                  static_cast<std::uint32_t> (event->event), event->value);
+                  _channel_name, *kind, event->local_addr, event->remote_addr);
             }
         }
     }

@@ -99,7 +99,7 @@ public interface IZLinkRouteClient
         string channelName,
         TMessage message);
 
-    IZLinkChannelRequestCall RequestToChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -110,8 +110,8 @@ Node direct는 target RID 하나로 submit한다. Channel operation은 process-l
 round-robin으로 선택하고 같은 operation에서 submit하며 client는 선택된 RID를 반환하지 않는다.
 ClientServer의 같은 ChannelName에 local Server가 있으면 remote Server와 같은 readiness·weight·drain
 조건으로 candidate에 포함하고 local 우선순위나 remote 제외를 적용하지 않는다. Local Server를 선택해도
-Client DEALER에서 Server ROUTER로 실제 transport message를 전달하므로 codec, HWM, timeout,
-cancellation, correlation과 terminal completion을 우회하지 않는다.
+remote Server와 같은 codec, timeout, cancellation, correlation과 terminal completion 계약을 적용한다.
+Local handler를 직접 호출하는 별도 public 경로는 제공하지 않는다.
 
 `IZLinkMessageContext`는 nullable MeshName과 ChannelName을 제공한다. RouteMesh·Spot·Actor handler의
 MeshName은 non-null이고 ClientServer·STREAM handler에서는 null이다. Channel handler의 ChannelName은
@@ -143,9 +143,8 @@ public interface IZLinkFanoutHandler<in TEvent>
 ```
 
 `IZLinkFanoutClient.Publish(...)`는 ChannelName과 typed event를 받고, 명시적인 topic이 필요한 호출은 [topic](../../../../01-glossary.ko.md#topic)
-overload를 사용한다. Topic을 생략하면 Framework가 event의 [packet name](../../../../01-glossary.ko.md#packet-name)을 topic으로 사용한다. 반환한 전용
-call을 만들 때 topic이 내부 liveness용 exact byte `01 5A 4C 46 31`이면 transport를 시작하지 않고
-`ArgumentException`을 발생시킨다. 반환한 전용
-call의 `Async(...)`는 local publisher transport가 event를 수락하면 정상 완료한다. Subscriber 수와 수신
+overload를 사용한다. Topic을 생략하면 Framework가 event의 [packet name](../../../../01-glossary.ko.md#packet-name)을 topic으로 사용한다. 예약된 topic은
+`ArgumentException`으로 거부한다. 반환한 전용 call의 `Async(...)`는 source-local publish admission이
+완료되면 정상 완료한다. Subscriber 수와 수신
 완료는 반환하지 않는다. `IZLinkPublishCall`은 Logical Multicast 전용 call이며
 [classic fanout](../../../../01-glossary.ko.md#classic-fanout)에 사용하지 않는다.

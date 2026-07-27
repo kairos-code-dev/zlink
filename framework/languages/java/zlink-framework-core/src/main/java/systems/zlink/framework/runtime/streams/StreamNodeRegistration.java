@@ -9,6 +9,7 @@ import systems.zlink.framework.streams.ZLinkSession;
 public final class StreamNodeRegistration {
     private final String name;
     private final List<String> bindEndpoints = new ArrayList<>();
+    private String advertiseHost;
     private TlsServerRegistration tlsServer;
     private Class<? extends ZLinkSession> sessionType;
     private String actorDispatchMeshName;
@@ -61,6 +62,32 @@ public final class StreamNodeRegistration {
             throw new ZLinkConfigurationException("stream bind endpoint is required: " + name);
         }
         bindEndpoints.add(endpoint);
+    }
+
+    void replaceBind(String endpoint) {
+        bindEndpoints.clear();
+        bind(endpoint);
+    }
+
+    void setAdvertiseHost(String host) {
+        advertiseHost = host;
+    }
+
+    public String advertisedEndpoint(String actualEndpoint) {
+        if (advertiseHost == null || actualEndpoint == null
+            || !actualEndpoint.startsWith("tcp://")) {
+            return actualEndpoint;
+        }
+        java.net.URI value = java.net.URI.create(actualEndpoint);
+        try {
+            return new java.net.URI(
+                value.getScheme(), value.getUserInfo(), advertiseHost,
+                value.getPort(), value.getPath(), value.getQuery(), value.getFragment())
+                .toString();
+        } catch (java.net.URISyntaxException invalid) {
+            throw new ZLinkConfigurationException(
+                "invalid stream advertise host: " + advertiseHost);
+        }
     }
 
     void setTlsServer(

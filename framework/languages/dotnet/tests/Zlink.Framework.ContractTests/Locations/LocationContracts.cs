@@ -35,14 +35,14 @@ public sealed class LocationContracts
 
         var renew = Assert.Single(publicMethods.Where(
             static method => method.Name == nameof(
-                IZLinkOwnerLeaseStore.RenewOwnerLeaseAsync)));
+                IZLinkLocationStore.RenewOwnerLeaseAsync)));
         Assert.Equal(
             typeof(ZLinkLocationOwnerToken),
             renew.GetParameters()[0].ParameterType);
 
         var release = Assert.Single(publicMethods.Where(
             static method => method.Name == nameof(
-                IZLinkOwnerLeaseStore.ReleaseOwnerLeaseAsync)));
+                IZLinkLocationStore.ReleaseOwnerLeaseAsync)));
         Assert.Equal(
             typeof(ZLinkLocationOwnerToken),
             release.GetParameters()[0].ParameterType);
@@ -57,17 +57,50 @@ public sealed class LocationContracts
     }
 
     [Fact]
-    [ContractExample(
-        typeof(IZLinkLocationStore),
-        typeof(IZLinkAuthorityStore),
-        typeof(IZLinkOwnerLeaseStore))]
+    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task Location_store_combines_authority_and_owner_lease_transaction_domain()
     {
-        Assert.Contains(typeof(IZLinkAuthorityStore), typeof(IZLinkLocationStore).GetInterfaces());
-        Assert.Contains(typeof(IZLinkOwnerLeaseStore), typeof(IZLinkLocationStore).GetInterfaces());
+        var assembly = typeof(IZLinkLocationStore).Assembly;
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkAuthorityStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkOwnerLeaseStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkClientServerLocationStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkFanoutLocationStore"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.IZLinkLocationChangeStampStore"));
+        Assert.Equal(
+            new[]
+            {
+                nameof(IZLinkLocationStore),
+                nameof(IZLinkRelocationStore)
+            },
+            assembly.GetExportedTypes()
+                .Where(static type =>
+                    type.IsInterface
+                    && type.Namespace == "Zlink.Framework.Contracts.Locations"
+                    && type.Name.EndsWith("Store", StringComparison.Ordinal))
+                .Select(static type => type.Name)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
         Assert.Contains(
-            typeof(IZLinkAuthorityStore).GetMethods(),
-            static method => method.Name == nameof(IZLinkAuthorityStore.CompareExchangeAuthorityAsync));
+            typeof(IZLinkLocationStore).GetMethods(),
+            static method => method.Name == nameof(IZLinkLocationStore.CompareExchangeAuthorityAsync));
+        Assert.DoesNotContain(
+            typeof(IZLinkLocationStore).GetMethods(),
+            static method => method.Name.Contains(
+                "Preparing",
+                StringComparison.Ordinal));
+        Assert.NotNull(typeof(ZLinkAuthorityMutation).GetNestedType(
+            nameof(ZLinkAuthorityMutation.Restore)));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope"));
 
         // Owner lease: the provider issues the exact generation token and
         // returns its own clock with each read.
@@ -82,11 +115,7 @@ public sealed class LocationContracts
     }
 
     [Fact]
-    [ContractExample(
-        typeof(IZLinkLocationStore),
-        typeof(IZLinkMeshNodeLocationStore),
-        typeof(IZLinkFanoutLocationStore),
-        typeof(IZLinkAuthorityStore))]
+    [ContractExample(typeof(IZLinkLocationStore))]
     public async Task MeshNode_lists_are_paged_and_object_authority_is_opaque()
     {
         // One physical store registers for every role at once:
@@ -114,7 +143,7 @@ public sealed class LocationContracts
         // of the public contract.
         Assert.DoesNotContain(
             typeof(IZLinkLocationStore).GetMethods(),
-            static method => method.Name.StartsWith("List", StringComparison.Ordinal));
+            static method => method.Name is "ListSpotsAsync" or "ListActorsAsync");
         Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
             "Zlink.Framework.Contracts.Locations.IZLinkInstanceSpotLocationStore"));
         Assert.Null(typeof(IZLinkLocationStore).Assembly.GetType(
@@ -133,32 +162,34 @@ public sealed class LocationContracts
             "Zlink.Framework.Contracts.Locations.IZLinkActorSpotHandleResolver"));
         Assert.Null(assembly.GetType(
             "Zlink.Framework.Contracts.Locations.SpotHandle"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocationKey"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkLocationKind"));
+        Assert.Null(assembly.GetType(
+            "Zlink.Framework.Contracts.Locations.ZLinkRouteKind"));
     }
 
     [Fact]
-    public void Public_object_location_rows_exclude_internal_authority_axes()
+    public void Runtime_location_projections_are_not_exported()
     {
-        var spotProperties = typeof(ZLinkSpotLocation).GetProperties()
-            .Select(static property => property.Name)
+        var exportedTypeNames = typeof(IZLinkLocationStore).Assembly
+            .GetExportedTypes()
+            .Select(static type => type.FullName)
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Contains(nameof(ZLinkSpotLocation.LeaseGeneration), spotProperties);
-        Assert.DoesNotContain("AuthorityOwnerGeneration", spotProperties);
-        Assert.DoesNotContain("OwnerLeaseGeneration", spotProperties);
 
-        var actorProperties = typeof(ZLinkActorLocation).GetProperties()
-            .Select(static property => property.Name)
-            .ToHashSet(StringComparer.Ordinal);
-        Assert.Contains(nameof(ZLinkActorLocation.LeaseGeneration), actorProperties);
-        Assert.DoesNotContain("MembershipEpoch", actorProperties);
-        Assert.DoesNotContain("AuthorityOwnerGeneration", actorProperties);
-        Assert.DoesNotContain("OwnerLeaseGeneration", actorProperties);
+        Assert.DoesNotContain(typeof(ZLinkSpotLocation).FullName, exportedTypeNames);
+        Assert.DoesNotContain(typeof(ZLinkActorLocation).FullName, exportedTypeNames);
+        Assert.DoesNotContain(typeof(ZLinkSpotLocationKey).FullName, exportedTypeNames);
+        Assert.DoesNotContain(typeof(ZLinkActorLocationKey).FullName, exportedTypeNames);
+        Assert.DoesNotContain(typeof(ZLinkLocationAutoConnectType).FullName, exportedTypeNames);
     }
 
     [Fact]
     [ContractExample(
         typeof(IZLinkLocationRuntimeQuery),
         typeof(IZLinkLocationReadiness),
-        typeof(IZLinkLocationChangeStampStore))]
+        typeof(IZLinkLocationStore))]
     public async Task Runtime_query_reads_store_directly_and_change_stamp_is_optional()
     {
         var query = new ExampleLocationRuntimeQuery();
@@ -185,8 +216,7 @@ public sealed class LocationContracts
         // A poller skips the full list query while the stamp is unchanged.
         // The stamp is an optimization, never a correctness authority.
         var stamps = new ExampleChangeStampStore();
-        var stamp = await stamps.GetChangeStampAsync(
-            new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play"));
+        var stamp = await stamps.GetMeshNodeChangeStampAsync("play");
         Assert.Equal(1UL, stamp);
     }
 
@@ -202,12 +232,12 @@ public sealed class LocationContracts
         LeaseGeneration: 1,
         UpdatedAt: StoreNow);
 
-    private sealed class ExampleOwnerLeaseStore : IZLinkOwnerLeaseStore
+    private sealed class ExampleOwnerLeaseStore : LocationStoreContractExample
     {
         private readonly Dictionary<string, Lease> _leases = [];
         private long _generation;
 
-        public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
+        public override ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
             string ownerId,
             TimeSpan leaseTtl,
             CancellationToken cancellationToken = default)
@@ -224,7 +254,7 @@ public sealed class LocationContracts
                     token, expiresAt, StoreNow));
         }
 
-        public ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+        public override ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
             string ownerId,
             CancellationToken cancellationToken = default)
         {
@@ -240,7 +270,7 @@ public sealed class LocationContracts
                     StoreNow));
         }
 
-        public ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+        public override ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
             ZLinkLocationOwnerToken token,
             TimeSpan leaseTtl,
             CancellationToken cancellationToken = default)
@@ -259,7 +289,7 @@ public sealed class LocationContracts
                     expiresAt, StoreNow));
         }
 
-        public ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+        public override ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
             ZLinkLocationOwnerToken token,
             CancellationToken cancellationToken = default)
         {
@@ -276,11 +306,11 @@ public sealed class LocationContracts
             DateTimeOffset LeaseExpiresAt);
     }
 
-    private sealed class ExampleMeshNodeLocationStore : IZLinkMeshNodeLocationStore
+    private sealed class ExampleMeshNodeLocationStore : LocationStoreContractExample
     {
         private ZLinkMeshNodeDescriptor? _row;
 
-        public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+        public override ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
             ZLinkMeshNodeDescriptor descriptor,
             ZLinkLocationWriteIntent intent,
             CancellationToken cancellationToken = default)
@@ -290,7 +320,7 @@ public sealed class LocationContracts
                 ZLinkLocationWriteResult.Stored(descriptor.LifecycleGeneration, StoreNow));
         }
 
-        public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+        public override ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
             ZLinkMeshNodeDescriptorKey key,
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default)
@@ -299,7 +329,7 @@ public sealed class LocationContracts
             return ValueTask.FromResult(ZLinkLocationWriteStatus.Stored);
         }
 
-        public ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        public override ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
             string meshName,
             ZLinkPageRequest page,
             CancellationToken cancellationToken = default)
@@ -388,11 +418,11 @@ public sealed class LocationContracts
         }
     }
 
-    private sealed class ExampleChangeStampStore : IZLinkLocationChangeStampStore
+    private sealed class ExampleChangeStampStore : LocationStoreContractExample
     {
-        public ValueTask<ulong> GetChangeStampAsync(
-            ZLinkLocationChangeStampScope scope,
+        public override ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+            string meshName,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(1UL);
+            ValueTask.FromResult<ulong?>(1UL);
     }
 }

@@ -9,8 +9,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeStatus;
@@ -21,17 +21,19 @@ import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
+import systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketDiagnostic;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorEvent;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
 
 public final class ZLinkMonitoringRuntime implements AutoCloseable {
     private final List<ZLinkBackendSocketMonitor> socketMonitors = new ArrayList<>();
@@ -171,8 +173,8 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 sourceName,
                 Instant.now(),
                 ZLinkSpotEventKind.STATUS_CHANGED,
-                Optional.of(current.status()),
-                current.peers(),
+                Optional.of(toPublicState(current.status().state())),
+                current.peers().stream().map(ZLinkMonitoringRuntime::toPublicPeer).toList(),
                 current.subjects(),
                 Optional.empty()));
         }
@@ -182,7 +184,7 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 Instant.now(),
                 ZLinkSpotEventKind.PEERS_CHANGED,
                 Optional.empty(),
-                current.peers(),
+                current.peers().stream().map(ZLinkMonitoringRuntime::toPublicPeer).toList(),
                 current.subjects(),
                 Optional.empty()));
         }
@@ -191,8 +193,13 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
     private void pollLocationRuntime(String sourceName, ZLinkLocationRuntimeQuery query) {
         query.getStatus()
             .thenCompose(status -> listAllTopology(query)
-                .thenCompose(topology -> query.listServiceSummaries(ZLinkLocationServiceSummaryFilter.all())
-                    .thenApply(summary -> new LocationSnapshot(status, topology, List.copyOf(summary)))))
+                .thenCompose(topology -> query.listServiceSummaries(
+                        ZLinkLocationServiceSummaryFilter.all(),
+                        ZLinkPageRequest.firstPage())
+                    .thenApply(summary -> new LocationSnapshot(
+                        status,
+                        topology,
+                        List.copyOf(summary.items())))))
             .whenComplete((current, failure) -> {
                 if (failure != null) {
                     dispatcher.publish(new ZLinkLocationRuntimeEvent(
@@ -288,6 +295,37 @@ public final class ZLinkMonitoringRuntime implements AutoCloseable {
                 List.copyOf(spotNode.peers()),
                 List.of());
         }
+    }
+
+    private static ZLinkMeshNodeState toPublicState(
+        systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState state) {
+        return switch (state) {
+            case CREATED, STARTED, PARTIAL_READY -> ZLinkMeshNodeState.STARTING;
+            case READY -> ZLinkMeshNodeState.SERVING;
+            case DRAINING -> ZLinkMeshNodeState.DRAINING;
+            case STOPPED -> ZLinkMeshNodeState.STOPPED;
+            case ERROR -> ZLinkMeshNodeState.FAULTED;
+        };
+    }
+
+    private static ZLinkMeshPeerSnapshot toPublicPeer(MeshPeerEntry peer) {
+        boolean ready = peer.state()
+            == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.ADMITTED;
+        return new ZLinkMeshPeerSnapshot(
+            peer.routingId(),
+            peer.lifecycleGeneration(),
+            peer.descriptorRevision(),
+            peer.endpoint(),
+            peer.state().name(),
+            ready,
+            peer.state()
+                    == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.DRAINING
+                ? "DRAINING"
+                : "ACTIVE",
+            List.of(),
+            peer.lastError() == 0
+                ? Optional.empty()
+                : Optional.of(Integer.toString(peer.lastError())));
     }
 
     private record LocationSnapshot(

@@ -40,7 +40,7 @@ internal static class ConsumerHostFactory
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
                 .TraceLabel(options.TraceLabel);
 

@@ -6,13 +6,13 @@ import java.time.Duration;
 import java.util.function.Consumer;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshNodeMonitor;
-import systems.zlink.contracts.service.spot.PeerChannels;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceRelocationWireCodec;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
+import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 
 public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     void setBind(String endpoint);

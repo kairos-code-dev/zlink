@@ -1,9 +1,9 @@
 package systems.zlink.framework.runtime.binding;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
-import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkStreamBackendAdapter;
 
 final class ZLinkJavaStreamBackendAdapter implements ZLinkStreamBackendAdapter {
     @Override

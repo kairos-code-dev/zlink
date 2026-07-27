@@ -149,7 +149,7 @@ struct route_mesh_runtime_service_t::state_t :
 
     std::map<std::string, std::shared_ptr<hub_t>> hubs;
     location_runtime_query_t *location_runtime = nullptr;
-    mesh_node_location_store_t *location_store = nullptr;
+    location_store_t *location_store = nullptr;
     drain_callback_t drain_callback;
     await_drained_callback_t await_drained_callback;
     mutable std::mutex sequence_mutex;
@@ -324,7 +324,7 @@ route_mesh_runtime_service_t::route_mesh_runtime_service_t (
   location_runtime_query_t *location_runtime,
   drain_callback_t drain,
   await_drained_callback_t await_drained,
-  mesh_node_location_store_t *location_store) :
+  location_store_t *location_store) :
     _state (std::make_shared<state_t> ())
 {
     _state->location_runtime = location_runtime;

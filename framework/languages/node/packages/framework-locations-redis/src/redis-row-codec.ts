@@ -1,18 +1,28 @@
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
-  ZLinkLocationKind,
   ZLinkFrameworkRuntimeState,
   zlinkSpotKindFromWire,
   zlinkSpotKindToWire,
   type RoutingId,
-  type ZLinkActorLocation,
   type ZLinkClientServerServerDescriptor,
   type ZLinkFanoutPublisherDescriptor,
   type ZLinkMeshNodeDescriptor,
-  type ZLinkPeerLocation,
-  type ZLinkRouteLocation,
-  type ZLinkSpotLocation
 } from '@zlink-systems/framework';
+import type {
+  ZLinkActorLocation,
+  ZLinkPeerLocation,
+  ZLinkRouteLocation,
+  ZLinkSpotLocation
+} from '../../framework/src/contracts/Locations/Rows';
+
+const enum ZLinkLocationKind {
+  Invalid = 0,
+  Peer = 1,
+  Spot = 2,
+  Actor = 3,
+  Route = 4,
+  ClientServer = 5
+}
 import {
   encodeActorKey,
   encodeClientServerServerKey,

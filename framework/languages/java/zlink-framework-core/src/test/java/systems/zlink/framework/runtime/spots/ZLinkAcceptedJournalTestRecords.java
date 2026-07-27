@@ -6,11 +6,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.service.ZLinkServiceFrozenRecordCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6AWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceFrozenRecordCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 final class ZLinkAcceptedJournalTestRecords {
     private ZLinkAcceptedJournalTestRecords() {

@@ -73,7 +73,11 @@ final class ZLinkFrameworkLocationSubsystem {
             locationStores,
             locationRuntime,
             registration.locations().options(),
-            liveLocationRows);
+            liveLocationRows,
+            registration.meshNodes().stream()
+                .map(systems.zlink.framework.runtime.mesh.MeshNodeRegistration::meshName)
+                .distinct()
+                .toList());
         ZLinkLocationLifecycle locationLifecycle = new ZLinkLocationLifecycle(locationRuntime);
         ZLinkStoreLocationResolvers storeLocationResolvers =
             new ZLinkStoreLocationResolvers(locationStores, liveLocationRows);

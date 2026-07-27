@@ -5,6 +5,14 @@ import systems.zlink.contracts.core.RoutingId;
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
 
+    FanoutChannelBuilder enablePublisher();
+
+    FanoutChannelBuilder enablePublisher(int port);
+
+    FanoutChannelBuilder setBindHost(String host);
+
+    FanoutChannelBuilder setAdvertiseHost(String host);
+
     FanoutChannelBuilder setRoutingId(RoutingId routingId);
 
     FanoutChannelBuilder enableSubscriber();

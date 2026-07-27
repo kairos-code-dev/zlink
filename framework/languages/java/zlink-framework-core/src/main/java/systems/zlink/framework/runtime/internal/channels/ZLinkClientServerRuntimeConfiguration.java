@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
-import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 
@@ -12,19 +12,19 @@ import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
  * Internal host-to-channel dependency for the ClientServer location runtime.
  */
 public final class ZLinkClientServerRuntimeConfiguration {
-    private final ZLinkClientServerLocationStore store;
+    private final ZLinkLocationStore store;
     private final ZLinkLocationOptions options;
     private volatile ZLinkLocationOwnerToken owner;
     private Lifecycle lifecycle;
 
     public ZLinkClientServerRuntimeConfiguration(
-        ZLinkClientServerLocationStore store,
+        ZLinkLocationStore store,
         ZLinkLocationOptions options) {
         this.store = store;
         this.options = Objects.requireNonNull(options, "options");
     }
 
-    public ZLinkClientServerLocationStore store() {
+    public ZLinkLocationStore store() {
         return store;
     }
 

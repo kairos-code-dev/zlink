@@ -4,7 +4,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -19,18 +19,15 @@ import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
-import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSocketEvent;
 import systems.zlink.framework.monitoring.ZLinkSocketEventKind;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
@@ -152,7 +149,9 @@ final class MonitoringEventsTest {
             locationOptions.ownerLeaseTtl(),
             locationOptions.ownerLeaseRenewInterval());
         locationRuntime.start(RoutingId.from("node-a")).toCompletableFuture().get();
-        store.updatePeer(peer(locationRuntime.ownerId()), ZLinkLocationWriteIntent.NEW_CLAIM)
+        store.updateMeshNode(
+                descriptor(locationRuntime.currentOwnerToken()),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
         ZLinkRuntimeEventDispatcher dispatcher = new ZLinkRuntimeEventDispatcher();
@@ -168,7 +167,13 @@ final class MonitoringEventsTest {
                  socket -> null,
                  Map.of(),
                  Map.of(),
-                 new ZLinkLocationRuntimeQueryService(stores, locationRuntime, locationOptions),
+                 new ZLinkLocationRuntimeQueryService(
+                     stores,
+                     locationRuntime,
+                     locationOptions,
+                     systems.zlink.framework.runtime.locations.ZLinkLiveLocationRows
+                         .create(stores, locationOptions),
+                     List.of("mesh")),
                  dispatcher)) {
             runtime.pollSnapshots();
             ZLinkLocationRuntimeEvent event = topologyChanged.get(2, TimeUnit.SECONDS);
@@ -199,20 +204,30 @@ final class MonitoringEventsTest {
             "tcp://127.0.0.1:7100");
     }
 
-    private static ZLinkPeerLocation peer(String ownerId) {
-        return new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+    private static systems.zlink.framework.locations.ZLinkMeshNodeDescriptor descriptor(
+        systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
+        return new systems.zlink.framework.locations.ZLinkMeshNodeDescriptor(
             "mesh",
             RoutingId.from("node-a"),
-            ZLinkLocationRole.ROUTER,
-            "tcp://127.0.0.1:6000",
             1,
-            false,
-            0,
+            1,
+            "tcp://127.0.0.1:6000",
             Map.of(),
-            List.of(),
-            ownerId,
             0,
+            List.of(),
+            systems.zlink.framework.locations.ZLinkMeshNodeObjectRole.SERVER,
+            Optional.of("mesh-entry-00000000-0000-4000-8000-000000000001"),
+            100,
+            new systems.zlink.framework.locations.ZLinkPlacementCapacity(
+                new systems.zlink.framework.locations.ZLinkCapacityUsage(0, 0, 0),
+                new systems.zlink.framework.locations.ZLinkCapacityUsage(0, 0, 0),
+                List.of()),
+            new systems.zlink.framework.locations.ZLinkActivationConcurrency(0, 128),
+            Optional.empty(),
+            systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            owner.ownerId(),
+            owner.leaseGeneration(),
             java.time.Instant.EPOCH);
     }
 

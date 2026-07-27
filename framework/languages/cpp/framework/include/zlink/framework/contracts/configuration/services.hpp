@@ -21,6 +21,7 @@ namespace detail
 {
 class service_registry_t;
 class service_scope_state_t;
+class service_scope_access_t;
 } // namespace detail
 
 enum class service_lifetime_t
@@ -29,17 +30,6 @@ enum class service_lifetime_t
     scoped = 1,
     transient = 2
 };
-
-enum class service_scope_kind_t
-{
-    handler_invocation = 0,
-    stream_session = 1,
-    spot_activation = 2,
-    entry_spot = 3,
-    actor_creation = 4
-};
-
-class service_scope_t;
 
 class service_provider_t
 {
@@ -66,14 +56,12 @@ class service_provider_t
         return std::ref (*std::static_pointer_cast<T> (resolved));
     }
 
-    service_scope_t
-    create_scope (service_scope_kind_t kind = service_scope_kind_t::handler_invocation);
     void close () noexcept;
     bool is_closed () const noexcept;
 
   private:
     friend class service_collection_t;
-    friend class service_scope_t;
+    friend class detail::service_scope_access_t;
 
     service_provider_t (std::shared_ptr<detail::service_registry_t> registry,
                         std::shared_ptr<detail::service_scope_state_t> scope);
@@ -83,27 +71,6 @@ class service_provider_t
 
     std::shared_ptr<detail::service_registry_t> _registry;
     std::shared_ptr<detail::service_scope_state_t> _scope;
-};
-
-class service_scope_t
-{
-  public:
-    explicit service_scope_t (service_provider_t provider);
-    ~service_scope_t ();
-
-    service_scope_t (service_scope_t &&) noexcept;
-    service_scope_t &operator= (service_scope_t &&) noexcept;
-    service_scope_t (const service_scope_t &) = delete;
-    service_scope_t &operator= (const service_scope_t &) = delete;
-
-    template <typename T> T &get_required () { return _provider.get_required<T> (); }
-
-    service_provider_t &provider () noexcept { return _provider; }
-    service_scope_kind_t kind () const noexcept;
-    void close () noexcept;
-
-  private:
-    service_provider_t _provider;
 };
 
 class service_collection_t

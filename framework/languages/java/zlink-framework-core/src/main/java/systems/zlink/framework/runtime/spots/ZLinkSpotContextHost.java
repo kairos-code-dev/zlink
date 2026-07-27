@@ -4,7 +4,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 abstract class ZLinkSpotContextHost {

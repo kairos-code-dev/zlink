@@ -1,4 +1,3 @@
-using System.Reflection;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Handlers;
@@ -55,10 +54,9 @@ public sealed class HandlerContracts
             },
             publicProperties);
 
-        Assert.Null(
-            typeof(ZLinkHandlerInvocation).GetProperty(
-                "Services",
-                BindingFlags.Instance | BindingFlags.NonPublic));
+        Assert.DoesNotContain(
+            typeof(IZLinkHandlerFilter).Assembly.GetTypes(),
+            static type => type.Name == "ZLinkHandlerInvocation");
     }
 
     private sealed record Authenticate(string PlayerId);
@@ -110,7 +108,7 @@ public sealed class HandlerContracts
     private sealed class AuditingFilter : IZLinkHandlerFilter
     {
         public ValueTask InvokeAsync(
-            ZLinkHandlerInvocation invocation,
+            IZLinkMessageContext context,
             ZLinkHandlerFilterNext next,
             CancellationToken cancellationToken)
         {

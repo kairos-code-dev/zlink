@@ -15,21 +15,21 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 /**
  * Framework-owned service runtime projected over the raw MeshNode transport.
@@ -341,7 +341,7 @@ final class ZLinkJavaRawSpotNode
         if (actors.putIfAbsent(actorId, created) != null) {
             throw new IllegalStateException("actor already exists: " + actorId);
         }
-        actorSpots.put(actorId, entrySpot().routingId());
+        actorSpots.put(actorId, entrySpot().spotId());
         actorMembershipEpochs.put(actorId, 1L);
         rememberActorAuthority(created, created.generation());
         return created;
@@ -390,7 +390,7 @@ final class ZLinkJavaRawSpotNode
         if (target == null || !actors.containsKey(actor.actorId())) {
             return CompletableFuture.completedFuture(
                 new ZLinkBackendActorJoinResult(
-                    systems.zlink.framework.runtime.backend
+                    systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendRequestResult.NOT_FOUND,
                     1,
                     actor,
@@ -421,7 +421,7 @@ final class ZLinkJavaRawSpotNode
                 actorMembershipEpochs.put(actor.actorId(), epoch);
             }
             return new ZLinkBackendActorJoinResult(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 reply.resultCode(),
                 actor,
@@ -442,12 +442,12 @@ final class ZLinkJavaRawSpotNode
             || !actors.containsKey(actor.actorId())) {
             return CompletableFuture.completedFuture(
                 new ZLinkBackendActorJoinEntrySpotResult(
-                    systems.zlink.framework.runtime.backend
+                    systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendRequestResult.NOT_FOUND,
                     1,
                     actor,
                     targetNodeRid,
-                    entrySpot().routingId(),
+                    entrySpot().spotId(),
                     actorMembershipEpochs.getOrDefault(actor.actorId(), 0L),
                     0,
                     List.of()));
@@ -471,16 +471,16 @@ final class ZLinkJavaRawSpotNode
                 actor.actorId(), 1L);
             if (reply.resultCode() == 0) {
                 epoch = epoch == Long.MAX_VALUE ? Long.MAX_VALUE : epoch + 1;
-                actorSpots.put(actor.actorId(), target.routingId());
+                actorSpots.put(actor.actorId(), target.spotId());
                 actorMembershipEpochs.put(actor.actorId(), epoch);
             }
             return new ZLinkBackendActorJoinEntrySpotResult(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 reply.resultCode(),
                 actor,
                 targetNodeRid,
-                target.routingId(),
+                target.spotId(),
                 epoch,
                 0,
                 reply.parts());
@@ -502,7 +502,7 @@ final class ZLinkJavaRawSpotNode
         nextEpoch = nextEpoch == Long.MAX_VALUE
             ? Long.MAX_VALUE
             : nextEpoch + 1;
-        actorSpots.put(actor.actorId(), entrySpot().routingId());
+        actorSpots.put(actor.actorId(), entrySpot().spotId());
         actorMembershipEpochs.put(actor.actorId(), nextEpoch);
         ZLinkBackendActorLifecycleEvent left =
             new ZLinkBackendActorLifecycleEvent(
@@ -511,7 +511,7 @@ final class ZLinkJavaRawSpotNode
                     actor,
                     actor,
                     Optional.of(currentSpotId),
-                    Optional.of(entrySpot().routingId()),
+                    Optional.of(entrySpot().spotId()),
                     nextEpoch,
                     0));
         return current.enqueueLifecycle(left).thenApply(ignored -> List.of());
@@ -761,10 +761,10 @@ final class ZLinkJavaRawSpotNode
     }
 
     void removeSpot(ZLinkJavaRawSpot spot) {
-        spots.remove(spot.routingId(), spot);
+        spots.remove(spot.spotId(), spot);
         spotAuthorities.remove(new SpotAuthorityKey(
             routingId(),
-            spot.routingId(),
+            spot.spotId(),
             spot.lifecycleGeneration()));
     }
 
@@ -849,9 +849,9 @@ final class ZLinkJavaRawSpotNode
                 != header.target().authorityOwnerGeneration()) {
             return false;
         }
-        target.enqueueRoute(new systems.zlink.framework.runtime.backend
+        target.enqueueRoute(new systems.zlink.framework.runtime.internal.backend
             .ZLinkBackendReceived(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(source.sourceNodeRid()),
                 Optional.of(header.sourceSpotId()),
@@ -1300,9 +1300,9 @@ final class ZLinkJavaRawSpotNode
                 != header.route().objectGeneration()) {
             return false;
         }
-        target.enqueueRoute(new systems.zlink.framework.runtime.backend
+        target.enqueueRoute(new systems.zlink.framework.runtime.internal.backend
             .ZLinkBackendReceived(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(sourceNodeRid),
                 Optional.ofNullable(header.sourceSpotId()),
@@ -1464,7 +1464,7 @@ final class ZLinkJavaRawSpotNode
                 continue;
             }
             target.enqueueTopic(
-                new systems.zlink.framework.runtime.backend
+                new systems.zlink.framework.runtime.internal.backend
                 .ZLinkBackendTopicMessage(
                     Optional.of(sourceNodeRid),
                     channelName,
@@ -1483,7 +1483,7 @@ final class ZLinkJavaRawSpotNode
         List<Message> parts) {
         if (!routingId().equals(targetNodeRid)) {
             return owner.sendSpot(
-                source.routingId(),
+                source.spotId(),
                 targetNodeRid,
                 targetSpotId,
                 targetGeneration,
@@ -1496,18 +1496,18 @@ final class ZLinkJavaRawSpotNode
             return false;
         }
         byte[] acceptedRecord = owner.encodeLocalSpotAccepted(
-            source.routingId(),
+            source.spotId(),
             targetSpotId,
             targetGeneration,
             metadata,
             parts,
             null);
-        target.enqueueRoute(new systems.zlink.framework.runtime.backend
+        target.enqueueRoute(new systems.zlink.framework.runtime.internal.backend
             .ZLinkBackendReceived(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(routingId()),
-                Optional.of(source.routingId()),
+                Optional.of(source.spotId()),
                 Optional.empty(),
                 metadata,
                 acceptedRecord,
@@ -1528,7 +1528,7 @@ final class ZLinkJavaRawSpotNode
         Duration timeout) {
         if (!routingId().equals(targetNodeRid)) {
             return owner.requestSpot(
-                source.routingId(),
+                source.spotId(),
                 targetNodeRid,
                 targetSpotId,
                 targetGeneration,
@@ -1544,7 +1544,7 @@ final class ZLinkJavaRawSpotNode
         }
         long sequence = nextRequestSequence.getAndIncrement();
         byte[] acceptedRecord = owner.encodeLocalSpotAccepted(
-            source.routingId(),
+            source.spotId(),
             targetSpotId,
             targetGeneration,
             metadata,
@@ -1552,12 +1552,12 @@ final class ZLinkJavaRawSpotNode
             sequence);
         AtomicBoolean terminal = new AtomicBoolean();
         CompletionStage<Void> enqueued = target.enqueueRoute(
-            new systems.zlink.framework.runtime.backend
+            new systems.zlink.framework.runtime.internal.backend
             .ZLinkBackendReceived(
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(routingId()),
-                Optional.of(source.routingId()),
+                Optional.of(source.spotId()),
                 Optional.of(sequence),
                 metadata,
                 acceptedRecord,
@@ -1566,9 +1566,9 @@ final class ZLinkJavaRawSpotNode
                     if (!terminal.compareAndSet(false, true)) {
                         return;
                     }
-                    callback.handle(new systems.zlink.framework.runtime.backend
+                    callback.handle(new systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendReceived(
-                            systems.zlink.framework.runtime.backend
+                            systems.zlink.framework.runtime.internal.backend
                                 .ZLinkBackendRequestResult.OK,
                             Optional.of(targetNodeRid),
                             Optional.of(targetSpotId),
@@ -1578,9 +1578,9 @@ final class ZLinkJavaRawSpotNode
                 () -> { }));
         enqueued.whenComplete((ignored, failure) -> {
             if (failure != null && terminal.compareAndSet(false, true)) {
-                callback.handle(new systems.zlink.framework.runtime.backend
+                callback.handle(new systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendReceived(
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendRequestResult.INTERNAL_ERROR,
                         Optional.of(targetNodeRid),
                         Optional.of(targetSpotId),
@@ -1593,9 +1593,9 @@ final class ZLinkJavaRawSpotNode
                 timeout.toNanos(),
                 java.util.concurrent.TimeUnit.NANOSECONDS).execute(() -> {
                     if (terminal.compareAndSet(false, true)) {
-                        callback.handle(new systems.zlink.framework.runtime.backend
+                        callback.handle(new systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendReceived(
-                                systems.zlink.framework.runtime.backend
+                                systems.zlink.framework.runtime.internal.backend
                                     .ZLinkBackendRequestResult.TIMED_OUT,
                                 Optional.of(targetNodeRid),
                                 Optional.of(targetSpotId),

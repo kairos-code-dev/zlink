@@ -93,13 +93,18 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
             var coordinatorNodeRid = relocation.Text8();
             var coordinatorNodeGeneration = relocation.U64();
             var phase = relocation.U8();
-            if (relocation.U8() != 1)
+            var pointerPresence = relocation.U8();
+            if (pointerPresence > 1)
                 return false;
             var pointer = new Reader(relocation.Bytes(relocation.U16()));
-            var reference = pointer.Text16();
-            var checksum = pointer.U32();
-            if (!pointer.End)
-                return false;
+            var reference = string.Empty;
+            var checksum = 0U;
+            if (pointerPresence == 1)
+            {
+                reference = pointer.Text16();
+                checksum = pointer.U32();
+            }
+            if (!pointer.End) return false;
             var applicationVersion = relocation.I64();
             var progressCount = relocation.U32AsInt();
             _ = relocation.Bytes(checked(progressCount * 3 * sizeof(ulong)));
@@ -183,9 +188,12 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
         _ = relocation.Text8();
         _ = relocation.U64();
         _ = relocation.U8();
-        if (relocation.U8() != 1)
+        var pointerPresence = relocation.U8();
+        if (pointerPresence > 1)
             throw new InvalidDataException();
-        _ = relocation.Bytes(relocation.U16());
+        var pointer = relocation.Bytes(relocation.U16());
+        if (pointerPresence == 0 && pointer.Length != 0)
+            throw new InvalidDataException();
         _ = relocation.U64();
         var progressCount = relocation.U32AsInt();
         _ = relocation.Bytes(checked(progressCount * 3 * sizeof(ulong)));
@@ -195,11 +203,12 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
     internal static byte[] ReplaceRelocationState(
         ReadOnlySpan<byte> authorityPayload,
         ZLinkCanonicalRelocationAuthorityState state,
-        ZLinkRelocationEnvelope root)
+        ZLinkRelocationEnvelope? root)
     {
-        if (root.CanonicalLogicalStream.IsEmpty
-            || root.CanonicalRelocationHigh != state.RelocationHigh
-            || root.CanonicalRelocationLow != state.RelocationLow)
+        if (root is not null
+            && (root.CanonicalLogicalStream.IsEmpty
+                || root.CanonicalRelocationHigh != state.RelocationHigh
+                || root.CanonicalRelocationLow != state.RelocationLow))
             throw new ArgumentException(
                 "Canonical authority relocation identity differs from its root.",
                 nameof(root));
@@ -248,7 +257,7 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
 
     private static byte[] EncodeSlot(
         ZLinkCanonicalRelocationAuthorityState value,
-        ZLinkRelocationEnvelope root)
+        ZLinkRelocationEnvelope? root)
     {
         if (value.Phase is < 1 or > 9 || value.SourceCleanupState > 2
             || value.ApplicationVersion < 0)
@@ -257,13 +266,40 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
                  {
                      value.SourceNodeGeneration,
                      value.SourceOwnerLeaseGeneration,
-                     value.TargetNodeGeneration,
-                     value.TargetOwnerLeaseGeneration,
                      value.CoordinatorLeaseGeneration,
                      value.CoordinatorNodeGeneration
                  })
             if (fence == 0)
                 throw new ArgumentOutOfRangeException(nameof(value));
+        var sourceOnly = value.Phase is 1 or 2;
+        if (sourceOnly
+            && (value.TargetAttemptGeneration != 0
+                || value.TargetNodeGeneration != 0
+                || value.TargetOwnerLeaseGeneration != 0
+                || value.ReservationGeneration != 0
+                || value.TargetNodeRid.Length != 0
+                || value.TargetOwnerId.Length != 0)
+            || !sourceOnly
+            && value.Phase != 9
+            && (value.TargetAttemptGeneration == 0
+                || value.TargetNodeGeneration == 0
+                || value.TargetOwnerLeaseGeneration == 0
+                || value.ReservationGeneration == 0
+                || value.TargetNodeRid.Length == 0
+                || value.TargetOwnerId.Length == 0))
+            throw new ArgumentException(
+                "Canonical relocation target fields do not match the phase.",
+                nameof(value));
+        if (value.Phase == 1
+            && (root is not null
+                || value.RelocationReference.Length != 0
+                || value.RelocationChecksumCrc32c != 0)
+            || value.Phase != 1
+            && (root is null
+                || value.RelocationReference.Length == 0))
+            throw new ArgumentException(
+                "Canonical relocation root does not match the phase.",
+                nameof(value));
         using var body = new MemoryStream();
         WriteU64(body, value.RelocationHigh);
         WriteU64(body, value.RelocationLow);
@@ -282,8 +318,14 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
         WriteText8(body, value.CoordinatorNodeRid, optional: false);
         WriteU64(body, value.CoordinatorNodeGeneration);
         body.WriteByte(value.Phase);
-        using (var pointer = new MemoryStream())
+        if (root is null)
         {
+            body.WriteByte(0);
+            WriteU16(body, 0);
+        }
+        else
+        {
+            using var pointer = new MemoryStream();
             WriteText16(pointer, value.RelocationReference);
             WriteU32(pointer, value.RelocationChecksumCrc32c);
             body.WriteByte(1);
@@ -292,8 +334,9 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
             pointer.CopyTo(body);
         }
         WriteI64(body, value.ApplicationVersion);
-        WriteU32(body, checked((uint)root.Participants.Count));
-        foreach (var participant in root.Participants.OrderBy(
+        WriteU32(body, checked((uint)(root?.Participants.Count ?? 0)));
+        foreach (var participant in (root?.Participants
+                     ?? Array.Empty<ZLinkRelocationParticipantEnvelope>()).OrderBy(
                      static participant => participant.CanonicalParticipantId))
         {
             if (participant.CanonicalParticipantId == 0)
@@ -303,10 +346,10 @@ internal static class ZLinkCanonicalRelocationAuthorityStateCodec
             WriteU64(body, participant.AcceptedBoundary);
             WriteU64(body, participant.ReplayCursor);
         }
-        WriteU32(body, checked((uint)root.Participants.Sum(
-            static participant => participant.TerminalCompletions.Count)));
-        WriteU32(body, checked((uint)root.Participants.Sum(
-            static participant => participant.PendingRelayCount)));
+        WriteU32(body, checked((uint)(root?.Participants.Sum(
+            static participant => participant.TerminalCompletions.Count) ?? 0)));
+        WriteU32(body, checked((uint)(root?.Participants.Sum(
+            static participant => participant.PendingRelayCount) ?? 0)));
         body.WriteByte(value.SourceCleanupState);
         using var slot = new MemoryStream();
         slot.WriteByte(1);

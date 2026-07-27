@@ -1,6 +1,6 @@
 import { Inject } from '@nestjs/common';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND,
   zlinkSpotActorRequestHandler
 } from '@zlink-systems/nestjs';
@@ -12,7 +12,7 @@ import { SampleNames } from '../../../../../../Configuration/sample-names';
 import type {
   ZLinkSpotActorRequestContext,
   ZLinkSpotActorRequestHandler,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { StopObservingBingoEventsReq } from '../../../../../../../Shared/Contracts/messages';
@@ -30,7 +30,7 @@ interface StopObservationDecision {
 class StopObservingBingoEventsHandler
   implements ZLinkSpotActorRequestHandler<PlayerActor, StopObservingBingoEventsReq, StopObservingBingoEventsRes> {
   constructor(
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
   ) {}
 
@@ -41,7 +41,7 @@ class StopObservingBingoEventsHandler
   ): Promise<StopObservingBingoEventsRes> {
     const spotRid = actor.context.spotRid;
     if (spotRid === undefined) throw new Error(`Bingo actor '${actor.actorId}' has no joined room.`);
-    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.roomSpotNode, spotRid);
+    const spot = await this.spotHandles.find(spotRid);
     if (spot === undefined) throw new Error(`Bingo room '${String(spotRid)}' could not be resolved.`);
     const decision = await this.spotOutbound
       .requestToSpot(spot, new VerifyStopObservingAtSpotReq(actor.actorId, request.roomId))

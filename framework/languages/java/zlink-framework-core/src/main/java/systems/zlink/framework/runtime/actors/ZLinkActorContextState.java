@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 final class ZLinkActorContextState {

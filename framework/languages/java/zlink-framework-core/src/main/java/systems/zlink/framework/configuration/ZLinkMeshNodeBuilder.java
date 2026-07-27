@@ -1,7 +1,6 @@
 package systems.zlink.framework.configuration;
 
 import java.time.Duration;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
@@ -14,7 +13,16 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshNodeBuilder listen(String endpoint);
 
-    ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
+    ZLinkMeshNodeBuilder listen();
+
+    ZLinkMeshNodeBuilder listen(int port);
+
+    ZLinkMeshNodeBuilder setBindHost(String host);
+
+    ZLinkMeshNodeBuilder setAdvertiseHost(String host);
+
+    ZLinkMeshNodeBuilder setRoutingId(
+        systems.zlink.contracts.core.RoutingId routingId);
 
     ZLinkMeshNodeBuilder setRoutingIdPrefix(String prefix);
 
@@ -26,12 +34,6 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshNodeBuilder setActivationConcurrency(
         int maxConcurrentActivations);
-
-    ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount);
-
-    ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount, String routingIdPrefix);
-
-    ZLinkMeshNodeBuilder setRoutingIdAllocationGroup(String groupName);
 
     ZLinkMeshNodeSocketConfig configureRouterSocket();
 

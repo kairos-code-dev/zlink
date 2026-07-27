@@ -24,6 +24,7 @@ namespace zlink::framework
 
 class zlink_builder_t;
 class stream_node_options_builder_t;
+class session_actor_manager_t;
 
 namespace detail
 {
@@ -31,6 +32,7 @@ class stream_builder_state_t;
 class stream_state_t;
 class stream_runtime_t;
 class actor_gateway_runtime_t;
+class session_actor_manager_access_t;
 enum class stream_message_kind_t : std::uint8_t
 {
     send = 1,
@@ -109,15 +111,13 @@ class stream_error_t
 {
   public:
     stream_error_t () = default;
-    stream_error_t (stream_session_error_t error, int native_code, std::string message);
+    stream_error_t (stream_session_error_t error, std::string message);
 
     stream_session_error_t error () const noexcept;
-    int native_code () const noexcept;
     std::string_view message () const noexcept;
 
   private:
     stream_session_error_t _error = stream_session_error_t::internal;
-    int _native_code = 0;
     std::string _message;
 };
 
@@ -215,12 +215,14 @@ class stream_t
     stream_t &operator= (const stream_t &) = default;
 
     std::string session_id () const;
+    session_actor_manager_t &actors ();
     task_t<void> close ();
     stream_send_call_t write_packet (const zlink::message_t &payload);
     stream_write_call_t reply_packet (const zlink::message_t &payload);
 
   private:
     friend class detail::actor_gateway_runtime_t;
+    friend class detail::session_actor_manager_access_t;
     friend class detail::stream_runtime_t;
     explicit stream_t (std::shared_ptr<detail::stream_state_t> state);
     stream_write_call_t write_packet_with_header (detail::stream_header_t header,

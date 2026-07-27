@@ -5,7 +5,6 @@ import { createBingoApiModule } from './bingo-api-module';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import { SampleNames } from '../Configuration/sample-names';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
-import { reportBingoRoutingId } from '../Configuration/routing-id-report';
 async function bootstrap(): Promise<void> {
   const BingoApiModule = createBingoApiModule();
   const app = await NestFactory.createApplicationContext(BingoApiModule, {
@@ -13,10 +12,6 @@ async function bootstrap(): Promise<void> {
     abortOnError: false
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
-  await reportBingoRoutingId(app, 'api', 'bingo.api', [
-    SampleNames.roomSpotNode
-  ]);
-
   process.stdout.write(`${JSON.stringify({
     event: 'ready',
     endpoint: config.apiEndpoint,

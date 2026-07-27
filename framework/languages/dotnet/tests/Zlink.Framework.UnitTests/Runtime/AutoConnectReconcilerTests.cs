@@ -147,12 +147,14 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Theory]
-    [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
-    [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]
+    [InlineData((int)ZLinkLocationAutoConnectType.DealerMesh, (int)ZLinkLocationRole.Dealer)]
+    [InlineData((int)ZLinkLocationAutoConnectType.RouteMesh, (int)ZLinkLocationRole.Router)]
     public void Symmetric_Mesh_Pairwise_Initiator_Connects_From_The_Smaller_Side_Only(
-        ZLinkLocationAutoConnectType type,
-        ZLinkLocationRole role)
+        int typeValue,
+        int roleValue)
     {
+        var type = (ZLinkLocationAutoConnectType)typeValue;
+        var role = (ZLinkLocationRole)roleValue;
         var smaller = Local(type, role, "aa", "tcp://a:1");
         var bigger = Local(type, role, "bb", "tcp://b:1");
         var rowSmaller = Descriptor("aa", "tcp://a:1");
@@ -416,7 +418,7 @@ public sealed class AutoConnectReconcilerTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         var preparing = Descriptor("local", "tcp://l:1") with
         {
@@ -431,7 +433,7 @@ public sealed class AutoConnectReconcilerTests
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var reconciler = new ZLinkAutoConnectReconciler(
             Local(
                 ZLinkLocationAutoConnectType.SpotMesh,
@@ -622,7 +624,7 @@ public sealed class AutoConnectReconcilerTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
         await store.UpdateMeshNodeAsync(
@@ -631,7 +633,7 @@ public sealed class AutoConnectReconcilerTests
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
 
         // An EnableClient() dealer has neither a routing id nor an endpoint:
@@ -687,13 +689,13 @@ public sealed class AutoConnectReconcilerTests
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
         configure?.Invoke(options);
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var failable = new FailablePeerResolver(resolvers);
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(

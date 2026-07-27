@@ -6,10 +6,7 @@ import type {
   ZLinkRelocationStore,
   ZLinkRelocationStored
 } from '@zlink-systems/framework';
-import {
-  MutableZLinkRedisRelocationOptions,
-  type ZLinkRedisRelocationOptions
-} from './redis-options';
+import type { ZLinkRedisRelocationOptions } from './redis-options';
 import { ZLinkRedisLocationStore } from './store';
 
 class RedisRelocationStoreBackend extends ZLinkRedisLocationStore {
@@ -48,14 +45,8 @@ class RedisRelocationStoreBackend extends ZLinkRedisLocationStore {
 export class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
   private readonly store: RedisRelocationStoreBackend;
 
-  constructor(
-    options: ZLinkRedisRelocationOptions
-      | ((options: MutableZLinkRedisRelocationOptions) => void)
-  ) {
-    const configured = typeof options === 'function'
-      ? configureRelocationOptions(options)
-      : options;
-    this.store = new RedisRelocationStoreBackend(configured);
+  constructor(options: ZLinkRedisRelocationOptions) {
+    this.store = new RedisRelocationStoreBackend(options);
   }
 
   putRelocation(payload: Uint8Array, retentionMs: number, signal?: AbortSignal): Promise<ZLinkRelocationStored> {
@@ -83,12 +74,4 @@ export class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
 
   close(): Promise<void> { return this.store.dispose(); }
   dispose(): Promise<void> { return this.store.dispose(); }
-}
-
-function configureRelocationOptions(
-  configure: (options: MutableZLinkRedisRelocationOptions) => void
-): ZLinkRedisRelocationOptions {
-  const options = new MutableZLinkRedisRelocationOptions();
-  configure(options);
-  return options;
 }

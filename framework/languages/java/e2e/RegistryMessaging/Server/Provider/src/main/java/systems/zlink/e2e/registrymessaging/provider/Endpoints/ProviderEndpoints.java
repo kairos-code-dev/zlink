@@ -13,21 +13,20 @@ import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
 import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 @RestController
 public final class ProviderEndpoints {
     private final ScenarioState state;
     private final ZLinkClient client;
     private final ZLinkRouteClient routes;
-    private final ZLinkDrainControl drain;
+    private final ZLinkFrameworkLifecycle drain;
 
     public ProviderEndpoints(
         ScenarioState state,
         ZLinkClient client,
         ZLinkRouteClient routes,
-        ZLinkDrainControl drain) {
+        ZLinkFrameworkLifecycle drain) {
         this.state = state;
         this.client = client;
         this.routes = routes;
@@ -52,9 +51,10 @@ public final class ProviderEndpoints {
 
     @PostMapping("/admin/drain")
     public CompletionStage<java.util.Map<String, String>> drain() {
-        return drain.drain(Duration.ofSeconds(30))
+        return drain.retire(Duration.ofSeconds(30))
             .thenApply(result -> java.util.Map.of(
-                "result", result instanceof Drained ? "Drained" : "ForceStopped"));
+                "result", result.outcome() == systems.zlink.framework.runtime.host
+                    .ZLinkTerminationOutcome.STOPPED ? "Drained" : "ForceStopped"));
     }
 
     @PostMapping("/evidence/wait")

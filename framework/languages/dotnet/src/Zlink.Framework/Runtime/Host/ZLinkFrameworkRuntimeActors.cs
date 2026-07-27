@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -990,10 +990,10 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private ZLinkDeferredActorJoinCompletionJournal? CreateDeferredJoinCompletionJournal()
     {
-        return Registration.Locations.ResolveStore() is IZLinkAuthorityStore authorityStore
+        return Registration.Locations.ResolveStore() is { } locationStore
                && Registration.Locations.RelocationStoreInstance is { } relocationStore
             ? new ZLinkDeferredActorJoinCompletionJournal(
-                authorityStore,
+                locationStore,
                 relocationStore)
             : null;
     }
@@ -1018,12 +1018,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         if (Registration.Locations.ResolveStore()
-                is not IZLinkAuthorityStore authorityStore
+                is not { } locationStore
             || Registration.Locations.RelocationStoreInstance
                 is not { } relocationStore)
             return;
         await new ZLinkRelocationStartupRecovery(
-                authorityStore,
+                locationStore,
                 relocationStore)
             .RecoverAsync(
                 async (candidate, token) =>
@@ -1239,8 +1239,54 @@ internal sealed partial class ZLinkFrameworkRuntime
                             token)
                         .ConfigureAwait(false);
                 },
+                async (entry, token) =>
+                {
+                    if (entry.Snapshot.Allocation.ObjectKind
+                        != ZLinkPlacementObjectKind.Actor)
+                        return;
+                    if (!ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                            entry.Snapshot.Payload.Span,
+                            out var preparing)
+                        || preparing.Phase != 1
+                        || !ZLinkActorAuthorityPayloadCodec.TryDecodeRelocating(
+                            entry.Snapshot.Payload.Span,
+                            out var actorPayload))
+                        throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.RelocationDataLost,
+                            $"Actor authority '{entry.Key.Value}' has an invalid Preparing marker.",
+                            isRetriable: false);
+                    var takeover =
+                        new ZLinkStandaloneActorRelocationTakeoverCoordinator(
+                            this,
+                            _actorSessionManager,
+                            Registration);
+                    if (await takeover.HasLiveRemoteRecoveryOwnerAsync(
+                            preparing,
+                            actorPayload.MeshName,
+                            token)
+                        .ConfigureAwait(false))
+                        return;
+                    await new ZLinkStandaloneActorRelocationPrecommitCoordinator(
+                            locationStore)
+                        .AbortPreparingAsync(
+                            entry.Key,
+                            DecodeCanonicalRelocationId(preparing),
+                            token)
+                        .ConfigureAwait(false);
+                },
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static Guid DecodeCanonicalRelocationId(
+        ZLinkCanonicalRelocationAuthorityProjection projection)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(
+            bytes[..8], projection.RelocationHigh);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(
+            bytes[8..], projection.RelocationLow);
+        return new Guid(bytes, bigEndian: true);
     }
 
     private async ValueTask RecoverDeferredJoinCompletionAsync(
@@ -1587,7 +1633,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     private async ValueTask ValidateActorRelocationTargetAsync(
         ZLinkRemoteActorJoinRequest request,
         ActorHandoffTarget target,
-        IZLinkAuthorityStore authorityStore,
+        IZLinkLocationStore authorityStore,
         CancellationToken cancellationToken)
     {
         var nodeGeneration = GetSpotNodeRuntime(target.NodeRid)
@@ -1625,7 +1671,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string spotId,
         ulong objectGeneration,
         ulong authorityOwnerGeneration,
-        IZLinkAuthorityStore authorityStore,
+        IZLinkLocationStore authorityStore,
         CancellationToken cancellationToken)
     {
         var read = await authorityStore.ReadAuthorityAsync(
@@ -2247,8 +2293,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         ulong targetNodeGeneration,
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration,
+        RoutingId authenticatedRelayNodeRid,
+        RoutingId relayNodeRid,
+        ulong relayNodeGeneration,
         RoutingId sourceNodeRid,
+        ulong sourceNodeGeneration,
         RoutingId sourceSessionRid,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource,
         MeshOperationId operationId,
         byte forwardingHopCount,
         ulong replyRequestId,
@@ -2270,6 +2321,17 @@ internal sealed partial class ZLinkFrameworkRuntime
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
                 $"Actor '{actorId}' session relay target lifecycle is stale.");
+        if (authenticatedRelayNodeRid.IsEmpty
+            || relayNodeRid.IsEmpty
+            || authenticatedRelayNodeRid != relayNodeRid
+            || relayNodeGeneration == 0
+            || !targetNode.MeshPeers().Any(peer =>
+                peer.State == MeshPeerState.Admitted
+                && peer.RoutingId == authenticatedRelayNodeRid
+                && peer.LifecycleGeneration == relayNodeGeneration))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' relay peer identity is stale.");
         var state = GetOrCreateActorState(actorId);
         var actorRef = new ZLinkBackendActorRef(
             targetNodeRid,
@@ -2284,10 +2346,15 @@ internal sealed partial class ZLinkFrameworkRuntime
             replyRequestId,
             replyFlags,
             replyCapability);
+        ValidateRemoteActorFrameSource(
+            actorId,
+            routeContext,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            requestSource);
         if (routeContext.IsDirectRoute)
         {
             if (forwardingHopCount is 0 or > 8
-                || sourceNodeRid.IsEmpty
                 || targetNode is not IZLinkBackendLocalActorAuthorityReader authorityReader
                 || !authorityReader.TryGetLocalActorAuthority(
                     actorRef,
@@ -2322,10 +2389,14 @@ internal sealed partial class ZLinkFrameworkRuntime
         {
             new ZLinkBackendActorPart(
                 actorRef, sourceNodeRid, sourceSessionRid, replyRequestId, replyFlags,
-                Message.From(header), More: true, RouteContext: routeContext),
+                Message.From(header), More: true, RouteContext: routeContext,
+                SourceNodeGeneration: sourceNodeGeneration,
+                RequestSource: requestSource),
             new ZLinkBackendActorPart(
                 actorRef, sourceNodeRid, sourceSessionRid, replyRequestId, replyFlags,
-                Message.From(body), More: false, RouteContext: routeContext)
+                Message.From(body), More: false, RouteContext: routeContext,
+                SourceNodeGeneration: sourceNodeGeneration,
+                RequestSource: requestSource)
         };
         var batch = ZLinkActorHandoffIngress.CaptureMovingFrames(this, parts);
         if (batch.Count == 0) return;
@@ -2392,6 +2463,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         ZLinkBackendActorRouteContext routeContext,
+        ulong sourceNodeGeneration,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource,
         byte[] header,
         byte[] body)
     {
@@ -2408,6 +2481,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         // identity; only the reply-route node rid is mandatory. The target's
         // dispatch binds nothing for an identity-less frame.
         if (sessionNodeRid.IsEmpty) return false;
+        ValidateRemoteActorFrameSource(
+            actor.ActorId,
+            routeContext,
+            sessionNodeRid,
+            sourceNodeGeneration,
+            requestSource);
+        var relayStatus = nodeRuntime.Node.MeshStatus();
+        if (relayStatus.RoutingId.IsEmpty || relayStatus.LifecycleGeneration == 0)
+            return false;
         var relayMessage = new ZLinkRemoteActorFrameRelay(
             actor.ActorId,
             actor.Generation,
@@ -2415,8 +2497,15 @@ internal sealed partial class ZLinkFrameworkRuntime
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
+            relayStatus.RoutingId.ToHex(),
+            relayStatus.LifecycleGeneration,
             sessionNodeRid.ToHex(),
+            sourceNodeGeneration,
             sourceSessionRid.ToHex(),
+            requestSource?.OwnerId,
+            requestSource?.LeaseGeneration ?? 0,
+            requestSource is { } source ? source.NodeRid.ToHex() : null,
+            requestSource?.NodeGeneration ?? 0,
             routeContext.OperationId.High,
             routeContext.OperationId.Low,
             routeContext.ForwardingHopCount,
@@ -2437,6 +2526,36 @@ internal sealed partial class ZLinkFrameworkRuntime
         var submit = nodeRuntime.Node.SendToNode(actor.NodeRid, parts, SendFlags.DontWait);
         ZLinkMessageParts.DisposeAll(parts);
         return submit == SubmitResult.Ok;
+    }
+
+    internal static void ValidateRemoteActorFrameSource(
+        string actorId,
+        ZLinkBackendActorRouteContext routeContext,
+        RoutingId sourceNodeRid,
+        ulong sourceNodeGeneration,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource)
+    {
+        if (!routeContext.IsDirectRoute)
+        {
+            // Bound-session frames are authenticated by their session binding,
+            // not by a node-owner lease. They must never synthesize a durable
+            // request-source identity for relocation capture.
+            if (sourceNodeGeneration == 0 && requestSource is null) return;
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' non-direct relay carried a request-source fence.");
+        }
+
+        if (sourceNodeRid.IsEmpty
+            || sourceNodeGeneration == 0
+            || requestSource is not { } source
+            || string.IsNullOrWhiteSpace(source.OwnerId)
+            || source.LeaseGeneration == 0
+            || source.NodeRid != sourceNodeRid
+            || source.NodeGeneration != sourceNodeGeneration)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor '{actorId}' direct relay request-source identity is stale.");
     }
 
     /// <summary>Session-node entry for a relayed remote push: delivers the
@@ -2775,7 +2894,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         Message message,
         bool hasMore,
         SendFlags flags,
-        ZLinkBackendActorRouteContext routeContext = default)
+        ZLinkBackendActorRouteContext routeContext = default,
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
     {
         return _actorBoundSessionCoordinator.ForwardPart(
             actorRef,
@@ -2789,7 +2910,9 @@ internal sealed partial class ZLinkFrameworkRuntime
             targetNodeGeneration,
             authorityOwnerGeneration,
             ownerLeaseGeneration,
-            routeContext);
+            routeContext,
+            sourceNodeGeneration,
+            requestSource);
     }
 
     internal ValueTask CloseActorBoundSessionAsync(

@@ -13,6 +13,10 @@ target, owner fence, operation ID, metadata와 retained payload를 포함한다.
 buffer와 poller event는 포함하지 않는다. Typed decode가 실패하면 handler를 호출하지 않고 request terminal
 error 또는 one-way diagnostic으로 끝낸다.
 
+Dispatch record가 queue에 있는 동안 Framework가 retained payload를 소유한다. Handler callback에는 읽기 전용
+message context와 typed payload view만 전달하고, callback completion 뒤 reply correlation, route envelope와
+retained payload를 함께 해제한다. Application callback에 native message storage나 dispose 책임을 전달하지 않는다.
+
 ## 2. Mailbox domain
 
 Runtime은 application과 infrastructure work를 별도 bounded mailbox로 관리한다.

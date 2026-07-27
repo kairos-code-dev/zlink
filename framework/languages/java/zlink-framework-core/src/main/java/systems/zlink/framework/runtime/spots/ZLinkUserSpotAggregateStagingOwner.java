@@ -12,7 +12,7 @@ import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.relocation
     .ZLinkRelocationAdapterRegistry;
 import systems.zlink.framework.spots.ZLinkSpot;

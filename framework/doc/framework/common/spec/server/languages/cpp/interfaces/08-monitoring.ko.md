@@ -270,8 +270,7 @@ enum class socket_event_kind_t {
     disconnected = 2,
     handshake_failed = 3,
     peer_admission_changed = 4,
-    closed = 5,
-    internal = 6
+    closed = 5
 };
 enum class location_event_kind_t {
     status_changed = 0,
@@ -279,11 +278,8 @@ enum class location_event_kind_t {
     service_summary_changed = 2
 };
 enum class spot_event_kind_t {
-    status_changed = 0,
-    peers_changed = 1,
-    subjects_changed = 2,
-    timer_handler_failed = 3,
-    timer_stopped_after_unhandled_exception = 4
+    timer_handler_failed = 0,
+    timer_stopped_after_unhandled_exception = 1
 };
 enum class stream_event_kind_t {
     connected = 0,
@@ -319,11 +315,9 @@ struct drain_event_t : runtime_event_base_t {
 };
 
 struct socket_event_payload_t : runtime_event_base_t {
-    socket_event_kind_t event = socket_event_kind_t::internal;
+    socket_event_kind_t event = socket_event_kind_t::connected;
     std::string local_address;
     std::string remote_address;
-    std::uint32_t native_event = 0;
-    std::uint32_t native_value = 0;
 };
 
 struct location_event_payload_t : runtime_event_base_t {
@@ -345,10 +339,7 @@ struct spot_timer_diagnostic_t {
 };
 
 struct spot_event_payload_t : runtime_event_base_t {
-    spot_event_kind_t event = spot_event_kind_t::status_changed;
-    std::string spot_node_name;
-    std::vector<std::string> peers;
-    std::vector<std::string> subjects;
+    spot_event_kind_t event = spot_event_kind_t::timer_handler_failed;
     std::optional<spot_timer_diagnostic_t> timer_diagnostic;
 };
 
@@ -367,19 +358,6 @@ struct actor_event_payload_t : runtime_event_base_t {
     std::string message;
 };
 
-class runtime_event_publisher_t {
-public:
-    runtime_event_publisher_t();
-    ~runtime_event_publisher_t();
-    runtime_event_publisher_t(runtime_event_publisher_t &&) noexcept;
-    runtime_event_publisher_t &operator=(runtime_event_publisher_t &&) noexcept;
-    runtime_event_publisher_t(const runtime_event_publisher_t &) = default;
-    runtime_event_publisher_t &operator=(const runtime_event_publisher_t &) = default;
-
-    template <typename TEvent>
-    void publish(TEvent event) const;
-};
-
 class monitoring_builder_t {
 public:
     monitoring_builder_t();
@@ -396,22 +374,23 @@ public:
     monitoring_builder_t &add_location_events(
       std::string source_name,
       std::chrono::milliseconds interval);
-    monitoring_builder_t &add_spot_events(
-      std::string source_name,
-      std::chrono::milliseconds interval);
     monitoring_builder_t &add_stream_events(std::string source_name);
     monitoring_builder_t &add_actor_events(std::string source_name);
     monitoring_builder_t &on_trace(
       std::function<void(const runtime_event_base_t &)> hook);
-    runtime_event_publisher_t publisher() const;
-
     template <typename TEvent>
     monitoring_builder_t &on(std::function<void(const TEvent &)> handler);
 };
 ```
 
+Application은 `monitoring_builder_t::on<TEvent>(...)`으로 Framework가 발행한 event를
+관찰한다. 임의 runtime event를 주입하는 publisher는 공개하지 않는다. Event 생성과 발행은
+Framework runtime의 내부 책임이다.
+
 **source별로 표면을 나누는 근거는 [runtime-monitoring §2](../../../../50-runtime-monitoring.ko.md)가
-소유한다.** timer 실패는 **timer 실행을 계속하는 실패**와 **timer가 중단된 실패**를 구분한다.
+소유한다.** Spot 상태·peer·subject 목록은 별도 polling source로 공개하지 않고
+`route_mesh_runtime_t`의 snapshot과 event로 관찰한다. Spot timer failure handler는 별도 Spot source
+등록 없이 받을 수 있으며, **timer 실행을 계속하는 실패**와 **timer가 중단된 실패**를 구분한다.
 
 **metric:**
 

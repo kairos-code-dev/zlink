@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using System.Text.Json;
+using Zlink.Framework.Runtime.Locations;
 using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using StackExchange.Redis;
@@ -48,14 +49,27 @@ public sealed partial class ZLinkRedisLocationStore
             ValidateAuthorityPayload(put.Payload);
             ValidateAuthorityMutation(put);
         }
+        else if (mutation is ZLinkAuthorityMutation.Restore restore)
+        {
+            ValidateAuthorityPayload(restore.Payload);
+            if (string.IsNullOrWhiteSpace(restore.ExpectedOwner.OwnerId)
+                || restore.ExpectedOwner.LeaseGeneration <= 0)
+                throw new ArgumentOutOfRangeException(nameof(mutation));
+        }
 
         var expectedVersion = expectedStoreVersion;
-        var mutationName = mutation is ZLinkAuthorityMutation.Delete
-            ? "delete"
-            : "put";
-        var payload = mutation is ZLinkAuthorityMutation.Put value
-            ? value.Payload.ToArray()
-            : [];
+        var mutationName = mutation switch
+        {
+            ZLinkAuthorityMutation.Delete => "delete",
+            ZLinkAuthorityMutation.Restore => "restore",
+            _ => "put"
+        };
+        var payload = mutation switch
+        {
+            ZLinkAuthorityMutation.Put value => value.Payload.ToArray(),
+            ZLinkAuthorityMutation.Restore value => value.Payload.ToArray(),
+            _ => []
+        };
         var transition = mutation is ZLinkAuthorityMutation.Put putValue
             ? putValue.GenerationTransition switch
             {
@@ -70,7 +84,9 @@ public sealed partial class ZLinkRedisLocationStore
             }
             ? owner
             : default;
-        var validationOwner = targetOwner;
+        var validationOwner = mutation is ZLinkAuthorityMutation.Restore restored
+            ? restored.ExpectedOwner
+            : targetOwner;
         if (validationOwner.OwnerId is null)
         {
             var current = await ReadAuthorityAsync(key, cancellationToken)
@@ -91,6 +107,7 @@ public sealed partial class ZLinkRedisLocationStore
                 {
                     RedisKey? descriptor = null;
                     RedisKey? admission = null;
+                    string? reservationTargetOwnerId = null;
                     RedisKey? targetLease = targetOwner.OwnerId is null
                         ? (RedisKey?)null
                         : _keys.HybridOwnerLeaseKey(targetOwner.OwnerId);
@@ -111,6 +128,10 @@ public sealed partial class ZLinkRedisLocationStore
                             var targetDescriptorKey = comparable
                                 .GetProperty("targetDescriptorKey")
                                 .GetString()!;
+                            reservationTargetOwnerId = comparable
+                                .GetProperty("targetOwner")
+                                .GetProperty("ownerId")
+                                .GetString();
                             descriptor = _keys.HybridDescriptorKey(
                                 targetDescriptorKey);
                             admission =
@@ -118,6 +139,11 @@ public sealed partial class ZLinkRedisLocationStore
                                     targetDescriptorKey);
                         }
                     }
+                    if (targetLease is null
+                        && !string.IsNullOrWhiteSpace(
+                            reservationTargetOwnerId))
+                        targetLease = _keys.HybridOwnerLeaseKey(
+                            reservationTargetOwnerId);
                     return await AuthorityCallAsync(
                             database,
                             "cas",
@@ -1421,8 +1447,7 @@ public sealed partial class ZLinkRedisLocationStore
         var newOwner =
             put.GenerationTransition == ZLinkAuthorityGenerationTransition.NewOwner;
         if (!preserve && !newOwner
-            || preserve && (put.TargetOwner is not null
-                            || put.RelocationCapacityFence is not null)
+            || preserve && put.TargetOwner is not null
             || newOwner && (put.TargetOwner is null
                             || put.RelocationCapacityFence is null)
             || put.TargetOwner is { } owner

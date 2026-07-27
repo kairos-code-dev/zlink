@@ -48,10 +48,9 @@ public final class ConsumerApplication {
             .setConnectionString(options.redisLocationEndpoint())
             .setKeyPrefix(options.locationKeyPrefix())
             .setCommandTimeout(Duration.ofMillis(options.redisCommandTimeoutMillis())));
-        return switch (options.storeMode()) {
-            case "polling" -> new PollingOnlyLocationStore(redisStore);
-            default -> redisStore;
-        };
+        // The unified provider SPI is polled by the runtime; it no longer
+        // exposes a separate change-notification capability to suppress here.
+        return redisStore;
     }
 
     @Bean
@@ -59,8 +58,10 @@ public final class ConsumerApplication {
         ConsumerOptions options,
         systems.zlink.framework.channels.ZLinkClient client,
         systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle lifecycle,
+        ZLinkLocationStore locationStore,
         LocationStoreDelayState delayState,
         ObjectMapper json) {
-        return new ConsumerEndpoints(options, client, lifecycle, delayState, json);
+        return new ConsumerEndpoints(
+            options, client, lifecycle, locationStore, delayState, json);
     }
 }

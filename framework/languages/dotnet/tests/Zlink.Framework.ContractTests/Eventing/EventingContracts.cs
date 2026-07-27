@@ -7,47 +7,34 @@ public sealed class EventingContracts
 {
     [Fact]
     [ContractExample(
-        typeof(IZLinkMessageFlowControl),
-        typeof(IZLinkMessageFlowObserver),
+        typeof(IZLinkMessageFlowRuntime),
+        typeof(IZLinkRuntimeMessageFlowObserver),
         typeof(IZLinkMonitoringOptions),
         typeof(IZLinkRuntimeEvent),
-        typeof(IZLinkRuntimeEventHandler<>),
-        typeof(IZLinkRuntimeEventPublisher))]
+        typeof(IZLinkRuntimeEventHandler<>))]
     public async Task Eventing_contracts_wire_event_sources_to_typed_runtime_handlers()
     {
         var options = new ExampleMonitoringOptions();
         options.AddSocketEvents("router", ZLinkSocketEventKind.Connected);
-        options.AddSpotEvents("spot-node", TimeSpan.FromSeconds(1));
+        options.AddMeshNodeEvents("orders");
         options.AddLocationRuntimeEvents("locations", TimeSpan.FromSeconds(1));
-        options.AddLocationPeerEvents("location-peer");
-        options.AddLocationSpotEvents("location-spot");
-        options.AddLocationActorEvents("location-actor");
-        options.AddLocationRouteEvents("location-route");
 
         var handler = new SocketEventHandler();
-        var publisher = new ExampleRuntimeEventPublisher();
-        publisher.Subscribe(handler);
-
         var @event = new ZLinkSocketEvent(
             "router",
             DateTimeOffset.UtcNow,
             ZLinkSocketEventKind.Connected,
             RoutingId.From("node-a"),
             "tcp://127.0.0.1:1",
-            "tcp://127.0.0.1:2",
-            null);
+            "tcp://127.0.0.1:2");
 
-        await publisher.PublishAsync(@event, CancellationToken.None);
+        await handler.HandleAsync(@event, CancellationToken.None);
 
         Assert.Equal(
             [
                 "router:socket",
-                "spot-node:spot",
-                "locations:location-runtime",
-                "location-peer:location-peer",
-                "location-spot:location-spot",
-                "location-actor:location-actor",
-                "location-route:location-route"
+                "orders:mesh",
+                "locations:location-runtime"
             ],
             options.Sources);
         Assert.Equal(ZLinkSocketEventKind.Connected, handler.LastEvent?.Event);
@@ -57,27 +44,38 @@ public sealed class EventingContracts
     [ContractExample(typeof(IZLinkFrameworkRuntime))]
     public void Observability_and_termination_contracts_match_the_exact_surface()
     {
+        var frameworkAssembly = typeof(IZLinkMonitoringOptions).Assembly;
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEventPublisher"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkSocketNativeEventType"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkDrainState"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkDrainEvent"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkLocationSpotEvent"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Eventing.ZLinkLocationActorEvent"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Dispatch.IZLinkMessageFlowControl"));
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Dispatch.IZLinkMessageFlowObserver"));
+        Assert.False(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Dispatch.ZLinkMessageFlowEvent")!.IsPublic);
+        Assert.Null(frameworkAssembly.GetType(
+            "Zlink.Framework.Contracts.Dispatch.ZLinkMessageFlowLogMode"));
+        Assert.Null(typeof(ZLinkSocketEvent).GetProperty("Diagnostic"));
+        Assert.Equal(6, Assert.Single(typeof(ZLinkSocketEvent).GetConstructors()).GetParameters().Length);
+
         Assert.Equal("zlink.framework", ZLinkMeters.Framework);
         Assert.Equal(
             new[] { "Application", "Inbound", "Lifecycle", "Timer" },
             Enum.GetNames<ZLinkFlowOrigin>().Order(StringComparer.Ordinal).ToArray());
-        AssertEnumValues<ZLinkMessageFlowOutcome>(
-            ("Received", 0), ("Dispatched", 1), ("Replied", 2), ("Dropped", 3),
-            ("Sent", 4), ("ReplyReceived", 5), ("Error", 6));
-        AssertEnumValues<ZLinkDispatchErrorSurface>(
-            ("Channel", 0), ("RouteMeshChannel", 1), ("SpotRoute", 2),
-            ("SpotSubscription", 3), ("SpotActor", 4), ("StreamSession", 5));
-        AssertEnumValues<ZLinkDispatchMessageKind>(
-            ("Request", 0), ("Send", 1), ("Publish", 2), ("Response", 3),
-            ("Error", 4), ("ActorRequest", 5), ("ActorSend", 6));
-        AssertEnumValues<ZLinkDispatchErrorReason>(
-            ("HandlerMissing", 0), ("PayloadDecodeFailed", 1), ("HandlerException", 2),
-            ("InvalidFrame", 3), ("ReplyPathMissing", 4), ("UnexpectedReply", 5));
-        AssertEnumValues<ZLinkDispatchErrorAction>(
-            ("ReplyError", 0), ("Drop", 1), ("FailCaller", 2));
-        AssertEnumValues<ZLinkDrainState>(
-            ("Serving", 0), ("Draining", 1), ("Drained", 2), ("ForceStopping", 3));
-
+        AssertEnumValues<ZLinkRuntimeMessageFlowMode>(
+            ("Off", 0), ("ErrorsOnly", 1), ("KeyTransitions", 2), ("Verbose", 3));
         var contract = typeof(IZLinkFrameworkRuntime);
         var isReady = contract.GetProperty(nameof(IZLinkFrameworkRuntime.IsReady));
         Assert.NotNull(isReady);
@@ -99,45 +97,23 @@ public sealed class EventingContracts
             typeof(Microsoft.Extensions.DependencyInjection.IHealthChecksBuilder),
             healthExtension.ReturnType);
 
-        var flow = typeof(ZLinkMessageFlowEvent);
-        Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowId))!.PropertyType);
+        var flow = typeof(ZLinkRuntimeMessageFlowEvent);
+        Assert.Equal(typeof(string), flow.GetProperty(nameof(ZLinkRuntimeMessageFlowEvent.FlowId))!.PropertyType);
         Assert.Equal(
-            typeof(ZLinkFlowOrigin?),
-            flow.GetProperty(nameof(ZLinkMessageFlowEvent.FlowOrigin))!.PropertyType);
-        var emptyFlow = new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowOutcome.Received,
-            ZLinkDispatchErrorSurface.Channel,
-            ZLinkDispatchMessageKind.Send);
-        Assert.Equal(string.Empty, emptyFlow.FlowId);
-        Assert.Null(emptyFlow.FlowOrigin);
+            typeof(string),
+            flow.GetProperty(nameof(ZLinkRuntimeMessageFlowEvent.FlowOrigin))!.PropertyType);
         var flowConstructor = Assert.Single(flow.GetConstructors());
         var flowParameters = flowConstructor.GetParameters();
-        Assert.Equal(18, flowParameters.Length);
-        Assert.All(flowParameters.Skip(3), static parameter => Assert.True(parameter.HasDefaultValue));
-        Assert.All(flowParameters.Skip(3), static parameter => Assert.Null(parameter.DefaultValue));
+        Assert.Equal(25, flowParameters.Length);
+        Assert.All(flowParameters, static parameter => Assert.False(parameter.HasDefaultValue));
 
         AssertClosedEventUnion(
             typeof(ZLinkLocationRuntimeEvent),
             "ServiceSummaryChanged", "StatusChanged", "StoreFailure", "StoreRecovered", "TopologyChanged");
         AssertClosedEventUnion(
-            typeof(ZLinkLocationPeerEvent),
-            "DesiredSetChanged", "RowRemoved", "RowUpdated");
-        AssertClosedEventUnion(
-            typeof(ZLinkLocationSpotEvent),
-            "ResolveMiss", "RowRemoved", "RowUpdated");
-        AssertClosedEventUnion(
-            typeof(ZLinkLocationActorEvent),
-            "ResolveMiss", "RowRemoved", "RowUpdated");
-        AssertClosedEventUnion(
             typeof(ZLinkSpotEvent),
-            "PeersChanged", "StatusChanged", "SubjectsChanged", "TimerHandlerFailed",
-            "TimerStoppedAfterUnhandledException");
+            "TimerHandlerFailed", "TimerStoppedAfterUnhandledException");
 
-        var now = DateTimeOffset.UtcNow;
-        var drainEvent = new ZLinkDrainEvent(now, ZLinkDrainState.Draining);
-        Assert.Equal(now, drainEvent.Timestamp);
-        Assert.Equal(ZLinkDrainState.Draining, drainEvent.State);
-        Assert.Equal("drain", drainEvent.SourceName);
     }
 
     private static void AssertClosedEventUnion(Type root, params string[] expectedVariants)
@@ -181,13 +157,6 @@ public sealed class EventingContracts
             _sources.Add($"{sourceName}:socket");
         }
 
-        public void AddSpotEvents(
-            string sourceName,
-            TimeSpan interval)
-        {
-            _sources.Add($"{sourceName}:spot");
-        }
-
         public void AddMeshNodeEvents(string meshName)
         {
             _sources.Add($"{meshName}:mesh");
@@ -200,25 +169,6 @@ public sealed class EventingContracts
             _sources.Add($"{sourceName}:location-runtime");
         }
 
-        public void AddLocationPeerEvents(string sourceName)
-        {
-            _sources.Add($"{sourceName}:location-peer");
-        }
-
-        public void AddLocationSpotEvents(string sourceName)
-        {
-            _sources.Add($"{sourceName}:location-spot");
-        }
-
-        public void AddLocationActorEvents(string sourceName)
-        {
-            _sources.Add($"{sourceName}:location-actor");
-        }
-
-        public void AddLocationRouteEvents(string sourceName)
-        {
-            _sources.Add($"{sourceName}:location-route");
-        }
     }
 
     private sealed class SocketEventHandler : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
@@ -234,24 +184,4 @@ public sealed class EventingContracts
         }
     }
 
-    private sealed class ExampleRuntimeEventPublisher : IZLinkRuntimeEventPublisher
-    {
-        private SocketEventHandler? _handler;
-
-        public ValueTask PublishAsync<TEvent>(
-            TEvent @event,
-            CancellationToken cancellationToken)
-            where TEvent : IZLinkRuntimeEvent
-        {
-            if (@event is ZLinkSocketEvent socketEvent && _handler is not null)
-                return _handler.HandleAsync(socketEvent, cancellationToken);
-
-            return ValueTask.CompletedTask;
-        }
-
-        public void Subscribe(SocketEventHandler handler)
-        {
-            _handler = handler;
-        }
-    }
 }

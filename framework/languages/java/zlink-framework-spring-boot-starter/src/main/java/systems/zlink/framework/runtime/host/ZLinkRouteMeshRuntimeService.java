@@ -16,30 +16,23 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 import java.util.function.BiFunction;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.MeshMonitorEvent;
-import systems.zlink.contracts.service.spot.MeshMonitorEventKind;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.contracts.service.spot.MeshPeerState;
-import systems.zlink.contracts.service.spot.PeerChannels;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorEvent;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorEventKind;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
+import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ForceStopped;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshDrainResult;
-import systems.zlink.framework.monitoring.ZLinkMeshDrainSnapshot;
-import systems.zlink.framework.monitoring.ZLinkMeshDrained;
-import systems.zlink.framework.monitoring.ZLinkMeshForceStopped;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
 import systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
@@ -55,7 +48,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
     private final Supplier<ZLinkLocationRuntimeQuery> locationRuntime;
     private final BiFunction<String, RoutingId, ZLinkMeshNodeMonitoringProjection>
         placementProjection;
-    private final ZLinkDrainControl drainControl;
     private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
     private final Map<String, MonitorHub> monitorHubs = new ConcurrentHashMap<>();
     private final AtomicReference<Instant> lastLocationFailure = new AtomicReference<>();
@@ -65,33 +57,28 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         this(
             lifecycle::monitoringSpotSources,
             lifecycle::monitoringLocationRuntimeQuery,
-            lifecycle::monitoringMeshNodeProjection,
-            lifecycle);
+            lifecycle::monitoringMeshNodeProjection);
     }
 
     ZLinkRouteMeshRuntimeService(
         Supplier<Map<String, ZLinkInternalMeshNode>> nodes,
-        Supplier<ZLinkLocationRuntimeQuery> locationRuntime,
-        ZLinkDrainControl drainControl) {
+        Supplier<ZLinkLocationRuntimeQuery> locationRuntime) {
         this(
             nodes,
             locationRuntime,
-            (meshName, rid) -> defaultPlacement(nodes.get().get(meshName)),
-            drainControl);
+            (meshName, rid) -> defaultPlacement(nodes.get().get(meshName)));
     }
 
     ZLinkRouteMeshRuntimeService(
         Supplier<Map<String, ZLinkInternalMeshNode>> nodes,
         Supplier<ZLinkLocationRuntimeQuery> locationRuntime,
-        BiFunction<String, RoutingId, ZLinkMeshNodeMonitoringProjection> placementProjection,
-        ZLinkDrainControl drainControl) {
+        BiFunction<String, RoutingId, ZLinkMeshNodeMonitoringProjection> placementProjection) {
         this.nodes = java.util.Objects.requireNonNull(nodes, "nodes");
         this.locationRuntime =
             java.util.Objects.requireNonNull(locationRuntime, "locationRuntime");
         this.placementProjection = java.util.Objects.requireNonNull(
             placementProjection,
             "placementProjection");
-        this.drainControl = java.util.Objects.requireNonNull(drainControl, "drainControl");
     }
 
     @Override
@@ -143,14 +130,7 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             placement.activationConcurrency(),
             placement.objectCapabilities(),
             placement.placementReservationFailureCount(),
-            placement.lastPlacementReservationFailure(),
-            new ZLinkMeshDrainSnapshot(
-                state,
-                Optional.empty(),
-                state == ZLinkMeshNodeState.DRAINED || state == ZLinkMeshNodeState.STOPPED,
-                status.pendingApplicationMessages(),
-                0,
-                0));
+            placement.lastPlacementReservationFailure());
     }
 
     @Override
@@ -178,23 +158,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
     }
 
     @Override
-    public java.util.concurrent.CompletionStage<ZLinkMeshDrainResult> drain(
-        String meshName,
-        java.time.Duration deadline) {
-        requireHostScopedDrainSafe(meshName);
-        return drainControl.drain(deadline)
-            .thenApply(ZLinkRouteMeshRuntimeService::mapDrainResult);
-    }
-
-    @Override
-    public java.util.concurrent.CompletionStage<ZLinkMeshDrainResult> awaitDrained(
-        String meshName) {
-        requireHostScopedDrainSafe(meshName);
-        return drainControl.awaitDrained()
-            .thenApply(ZLinkRouteMeshRuntimeService::mapDrainResult);
-    }
-
-    @Override
     public void close() {
         new ArrayList<>(monitorHubs.values()).forEach(MonitorHub::close);
         monitorHubs.clear();
@@ -208,15 +171,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         if (node == null) {
             throw new ZLinkConfigurationException(
                 "RouteMesh is not configured: " + meshName);
-        }
-        return node;
-    }
-
-    private ZLinkInternalMeshNode requireHostScopedDrainSafe(String meshName) {
-        ZLinkInternalMeshNode node = requireNode(meshName);
-        if (nodes.get().size() != 1) {
-            throw new ZLinkConfigurationException(
-                "mesh-scoped drain is unavailable when a host contains multiple RouteMesh nodes");
         }
         return node;
     }
@@ -256,17 +210,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
     private long nextSequence(String meshName) {
         return sequences.computeIfAbsent(meshName, ignored -> new AtomicLong())
             .incrementAndGet();
-    }
-
-    private static ZLinkMeshDrainResult mapDrainResult(
-        systems.zlink.framework.monitoring.ZLinkDrainResult result) {
-        if (result instanceof Drained) {
-            return new ZLinkMeshDrained();
-        }
-        if (result instanceof ForceStopped forced) {
-            return new ZLinkMeshForceStopped(forced.reason());
-        }
-        throw new IllegalStateException("unknown drain result: " + result);
     }
 
     private static ZLinkMeshPeerSnapshot mapPeer(
@@ -339,11 +282,11 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
 
     private static List<String> descriptorSources(List<MeshPeerEntry> peers) {
         boolean manual = peers.stream().anyMatch(peer ->
-            peer.source() == systems.zlink.contracts.service.spot.MeshPeerSource.MANUAL
-                || peer.source() == systems.zlink.contracts.service.spot.MeshPeerSource.MIXED);
+            peer.source() == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.MANUAL
+                || peer.source() == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.MIXED);
         boolean redis = peers.stream().anyMatch(peer ->
-            peer.source() == systems.zlink.contracts.service.spot.MeshPeerSource.DISCOVERY
-                || peer.source() == systems.zlink.contracts.service.spot.MeshPeerSource.MIXED);
+            peer.source() == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.DISCOVERY
+                || peer.source() == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource.MIXED);
         if (manual && redis) {
             return List.of("manual_and_redis");
         }
@@ -494,7 +437,7 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         }
 
         private void pump() {
-            systems.zlink.contracts.service.spot.MeshNodeMonitor monitor = null;
+            systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor monitor = null;
             try {
                 try {
                     monitor = node.openMonitor();

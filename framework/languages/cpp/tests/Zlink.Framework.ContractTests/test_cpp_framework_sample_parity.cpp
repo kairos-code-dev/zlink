@@ -112,9 +112,6 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     sample_topology_t topology;
     const allocate_bingo_room_res_t allocated{"two-player-room-1"};
 
-    zlink::framework::service_collection_t entry_services;
-    entry_services.add_scoped<zlink::framework::session_actor_manager_t> ();
-    bingo_entry_spot_t entry_spot (topology, entry_services.build_provider ());
     const actor_ref_snapshot_t actor{node_rid_t{}, authenticated.actor_id, 1};
 
     player_actor_factory_t actor_factory;
@@ -131,19 +128,26 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     const auto join_reply = joined.reply->decode<bingo_room_join_res_t> ();
     EXPECT_EQ (join_reply.state.players.size (), 1U);
 
-    zlink::framework::spot_context_t room_context;
-    room_spot.configure (room_context);
-    const auto room_handlers = room_context.handlers ().descriptors ();
-    ASSERT_EQ (room_handlers.size (), 4U);
-    EXPECT_EQ (room_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
-    EXPECT_EQ (room_handlers[0].packet_name, submit_bingo_card_req_t::packet_name);
+    const auto room_source = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp");
+    EXPECT_NE (room_source.find ("add_actor_request<&bingo_room_spot_t::submit_card>"),
+               std::string::npos);
+    EXPECT_NE (room_source.find ("add_actor_request<&bingo_room_spot_t::observe_events>"),
+               std::string::npos);
+    EXPECT_NE (room_source.find ("add_actor_request<&bingo_room_spot_t::stop_observing_events>"),
+               std::string::npos);
+    EXPECT_NE (room_source.find ("add_subscribe<&bingo_room_spot_t::on_reward_acquired>"),
+               std::string::npos);
 
-    zlink::framework::spot_context_t entry_context;
-    entry_spot.configure (entry_context);
-    const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 2U);
-    EXPECT_EQ (entry_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
-    EXPECT_EQ (entry_handlers[0].packet_name, match_bingo_req_t::packet_name);
+    const auto entry_source = read_file (
+      cpp_language_root ()
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/bingo_entry_spot.hpp");
+    EXPECT_NE (entry_source.find ("add_actor_request<&bingo_entry_spot_t::match_bingo>"),
+               std::string::npos);
+    EXPECT_NE (
+      entry_source.find ("add_actor_request<&bingo_entry_spot_t::observe_bingo_events>"),
+      std::string::npos);
 
     auto second_actor = actor_factory.create (actor_ref_snapshot_t{{}, "player-2", 1}, "Player 2");
     const auto second_joined = room_spot.on_actor_join (
@@ -255,7 +259,7 @@ TEST (CppFrameworkSampleParity, BingoRoomClosesAfterItsLastActorLeaves)
 
     EXPECT_NE (room.find ("if (actors.empty () && observers.empty ())"), std::string::npos)
       << "Bingo room must close only after both player and observer occupancy are empty";
-    EXPECT_NE (room.find ("co_await _context.close ()"), std::string::npos)
+    EXPECT_NE (room.find ("co_await _context->close ()"), std::string::npos)
       << "Bingo room must request spot closure after its last actor leaves";
 }
 
@@ -357,24 +361,25 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (first_move.board, "X........");
     EXPECT_EQ (first_move.next_turn, tictactoe_marks_t::o);
 
-    tictactoe_entry_spot_t entry_spot;
-    tictactoe_game_spot_t game_spot;
+    const auto game_source = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp");
+    EXPECT_NE (game_source.find ("add_actor_request<&tictactoe_game_spot_t::place_mark>"),
+               std::string::npos);
+    EXPECT_NE (game_source.find ("add_actor_send<&tictactoe_game_spot_t::leave_game>"),
+               std::string::npos);
 
-    zlink::framework::spot_context_t game_context;
-    game_spot.configure (game_context);
-    const auto game_handlers = game_context.handlers ().descriptors ();
-    ASSERT_EQ (game_handlers.size (), 2U);
-    EXPECT_EQ (game_handlers[0].kind, zlink::framework::spot_handler_kind_t::actor_request);
-    EXPECT_EQ (game_handlers[0].packet_name, place_mark_req_t::packet_name);
-    EXPECT_EQ (game_handlers[1].packet_name, leave_game_req_t::packet_name);
-
-    zlink::framework::spot_context_t entry_context;
-    entry_spot.configure (entry_context);
-    const auto entry_handlers = entry_context.handlers ().descriptors ();
-    ASSERT_EQ (entry_handlers.size (), 3U);
-    EXPECT_EQ (entry_handlers[0].packet_name, join_game_req_t::packet_name);
-    EXPECT_EQ (entry_handlers[1].packet_name, observe_milestone_req_t::packet_name);
-    EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
+    const auto entry_source = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp");
+    EXPECT_NE (entry_source.find ("add_actor_request<&tictactoe_entry_spot_t::join_game>"),
+               std::string::npos);
+    EXPECT_NE (
+      entry_source.find ("add_actor_request<&tictactoe_entry_spot_t::observe_milestone>"),
+      std::string::npos);
+    EXPECT_NE (
+      entry_source.find ("add_subscribe<&tictactoe_entry_spot_t::on_player_win_milestone>"),
+      std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeRegistersDeferredRoomJoin)
@@ -1207,14 +1212,36 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.entry_spot_path << " must show Entry Spot leave callback";
         EXPECT_NE (entry.find ("on_disconnect_actor"), std::string::npos)
           << sample.entry_spot_path << " must show Entry Spot disconnect callback";
-        EXPECT_NE (entry.find (".destroy_actor ("), std::string::npos)
+        EXPECT_NE (entry.find ("destroy_actor ("), std::string::npos)
           << sample.entry_spot_path << " must destroy actors from Entry Spot context";
         EXPECT_NE (entry.find ("destroy_after_entry_spot_join"), std::string::npos)
           << sample.entry_spot_path << " must guard destroy after Entry Spot re-entry";
         EXPECT_NE (entry.find ("mark_disconnected"), std::string::npos)
           << sample.entry_spot_path << " must mark actor disconnect state";
-        EXPECT_NE (user.find (".leave_actor ("), std::string::npos)
+        EXPECT_NE (user.find ("leave_actor ("), std::string::npos)
           << sample.user_spot_path << " must return actors to Entry Spot with leave_actor";
+        EXPECT_NE (entry.find ("entry_spot_context_t _context;"), std::string::npos)
+          << sample.entry_spot_path << " must own its move-only context for its full lifetime";
+        EXPECT_NE (entry.find ("entry_spot_context_t context"), std::string::npos)
+          << sample.entry_spot_path << " must receive context through the exact factory";
+        EXPECT_NE (entry.find ("_context (std::move (context))"), std::string::npos)
+          << sample.entry_spot_path << " must move the factory context into the Spot";
+        EXPECT_EQ (entry.find ("entry_spot_context_t entry_context"), std::string::npos)
+          << sample.entry_spot_path << " must not construct an Entry Spot context";
+        EXPECT_NE (user.find ("spot_context_t context"), std::string::npos)
+          << sample.user_spot_path << " must receive context through the exact factory";
+        EXPECT_NE (user.find ("_context (std::move (context))"), std::string::npos)
+          << sample.user_spot_path << " must move the factory context into the Spot";
+        EXPECT_NE (actor.find ("std::unique_ptr<actor_context_t> context;"), std::string::npos)
+          << sample.actor_path << " must own the context injected by the framework";
+        EXPECT_NE (actor.find ("set_actor_context (actor_context_t actor_context)"),
+                   std::string::npos)
+          << sample.actor_path << " must receive actor context by move";
+        EXPECT_NE (actor.find ("std::make_unique<actor_context_t> (std::move (actor_context))"),
+                   std::string::npos)
+          << sample.actor_path << " must retain actor context beyond the injection frame";
+        EXPECT_EQ (actor.find ("actor_context_t *"), std::string::npos)
+          << sample.actor_path << " must not retain a raw pointer to an injected context";
         EXPECT_NE (user.find ("on_disconnect_actor"), std::string::npos)
           << sample.user_spot_path << " must show user Spot disconnect callback";
         EXPECT_NE (user.find ("mark_for_destroy_after_room_leave"), std::string::npos)
@@ -1288,9 +1315,11 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (api_factory.find (".enable_client (endpoint)"), std::string::npos);
     EXPECT_NE (play_factory.find (".enable_client (endpoint)"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ()"), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)"),
+    EXPECT_NE (play_factory.find (".add_entry_spot<tictactoe_entry_spot_t> ("),
                std::string::npos);
+    EXPECT_NE (play_factory.find ("[] (entry_spot_context_t context)"), std::string::npos);
+    EXPECT_NE (play_factory.find (".add_spot<tictactoe_game_spot_t> ("), std::string::npos);
+    EXPECT_NE (play_factory.find ("[] (spot_context_t context)"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<tictactoe_match_t>"), std::string::npos);
     EXPECT_NE (play_factory.find (".peer_connections ()"), std::string::npos);
     EXPECT_NE (play_factory.find ("options.add_stream_node (sample_names_t::stream_name)"),
@@ -1367,8 +1396,10 @@ TEST (CppFrameworkSampleParity, BingoHostsUseRouteMeshCapabilities)
     EXPECT_NE (play_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (session_factory.find ("options.add_route_mesh"), std::string::npos);
     EXPECT_NE (play_factory.find (".add_entry_spot<bingo_entry_spot_t> ("), std::string::npos);
-    EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> (sample_names_t::room_spot)"),
+    EXPECT_NE (play_factory.find (".add_spot<bingo_room_spot_t> ("), std::string::npos);
+    EXPECT_NE (play_factory.find ("[topology] (entry_spot_context_t context)"),
                std::string::npos);
+    EXPECT_NE (play_factory.find ("[] (spot_context_t context)"), std::string::npos);
     EXPECT_EQ (play_factory.find (".add_spot<bingo_room_t>"), std::string::npos);
     EXPECT_NE (api_framework.find ("use_default_bingo_codecs (options.codecs ())"),
                std::string::npos);

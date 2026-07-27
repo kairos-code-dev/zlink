@@ -1,10 +1,10 @@
 package systems.zlink.framework.runtime.host;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
@@ -25,7 +25,7 @@ final class ZLinkFrameworkStreamSubsystem {
         ZLinkHandlerActivator.MutableServices runtimeHandlers,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         systems.zlink.framework.runtime.mesh.ZLinkMeshNodesRuntime meshNodes,
-        systems.zlink.framework.runtime.backend.ZLinkBackendContext backendContext,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext backendContext,
         ZLinkSpotRuntime spots,
         ZLinkActorRuntime actors) {
         ZLinkStreamRuntime streams = options.registration().streamNodes().isEmpty()

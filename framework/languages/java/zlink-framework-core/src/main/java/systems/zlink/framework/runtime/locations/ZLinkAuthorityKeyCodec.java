@@ -49,6 +49,10 @@ public final class ZLinkAuthorityKeyCodec {
         return "zla1:s:";
     }
 
+    static String actorPrefix() {
+        return "zla1:a:";
+    }
+
     private static boolean isUnreserved(int value) {
         return value >= 'A' && value <= 'Z'
             || value >= 'a' && value <= 'z'

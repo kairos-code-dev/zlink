@@ -311,7 +311,8 @@ test('location readiness returns false when ready state is missing or query fail
   const ready = new internal.DefaultZLinkLocationReadiness({
     async listTopology(filter) {
       assert.equal(filter.meshName, 'play');
-      assert.equal(filter.role, framework.ZLinkLocationRole.Router);
+      assert.equal(filter.role, undefined);
+      assert.equal(filter.kind, undefined);
       assert.equal(filter.state, framework.ZLinkLocationTopologyState.Ready);
       return { items: [{ nodeRid: rid('node-a') }] };
     }

@@ -20,8 +20,8 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;

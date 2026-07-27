@@ -350,7 +350,7 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
     assertChannelNameAvailable(channels, name, 'FanoutChannel');
     channels[name] = {
       routingId: channel.routingId,
-      routingIdAllocation: channel.routingIdAllocation,
+      routingIdPrefix: channel.routingIdPrefix,
       publishHandlers: channel.publishHandlers,
       publisher: channel.publisher,
       subscriber: channel.subscriber

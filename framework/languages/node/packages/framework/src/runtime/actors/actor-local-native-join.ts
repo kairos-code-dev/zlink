@@ -47,6 +47,7 @@ export interface ZLinkLocalNativeActorJoinOptions {
   readonly sourceTransfer?: ZLinkActorSourceTransfer;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly postCommitErrorReporter?: (error: unknown) => void;
+  readonly entrySpotIdProvider?: (meshName: string | undefined) => string | undefined;
   readonly remoteActivationWaiter?: (
     actorId: string,
     targetNodeRid: RoutingId,
@@ -101,13 +102,13 @@ export class ZLinkLocalNativeActorJoin {
         request,
         targetSpotId: target.spotId,
         routerChannelId: target.routerChannelId,
-        sourceSpotId: state.spotId ?? toFrameworkRoutingId(node.entrySpot().routingId),
+        sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
         boundSessionTarget: enrichBoundSessionTransferTarget(state),
         phase: REMOTE_ACTOR_JOIN_COMMIT,
         transferId,
         transferAdapterKey: prepared.adapterKey,
         transferState: Buffer.from(
-          prepared.state.toEncodedPayload(this.options.messageSerializers).data()
+          prepared.state.toEncodedPayload().data()
         ),
         handoffBacklog: prepared.handoffBacklog,
         completionOperationId
@@ -405,6 +406,20 @@ function requireTransferId(transferId: string | undefined): string {
     throw new Error('Remote actor join has no private transfer id.');
   }
   return transferId;
+}
+
+function requireEntrySpotId(
+  options: ZLinkLocalNativeActorJoinOptions,
+  meshName: string | undefined
+): string {
+  const spotId = options.entrySpotIdProvider?.(meshName);
+  if (spotId === undefined) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.ActorRouteNotFound,
+      'Actor source Entry Spot identity is not available.'
+    );
+  }
+  return spotId;
 }
 
 async function submitJoinWhenConnected<T>(

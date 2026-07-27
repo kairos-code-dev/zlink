@@ -42,12 +42,9 @@ public static class ZoneWorldNames
     public const string OpsStreamNode = "zoneworld.ops";
 
     /// <summary>
-    /// Monitoring source names (§8.1). The socket source names the one physical mesh and its
-    /// server capability; a spot source names the MeshNode. They are not free-form labels — the runtime
-    /// resolves them against what was actually registered.
+    /// Monitoring source name used by the location runtime projection (§8.1).
     /// </summary>
     public const string OpsLocationSource = "zoneworld.ops.location";
-    public const string ZoneSpotSource = MeshName;
 }
 
 public static class HandlerGroups

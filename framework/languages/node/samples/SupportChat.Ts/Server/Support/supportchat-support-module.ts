@@ -62,7 +62,7 @@ function createSupportChatSupportModule() {
           builder.addLocationStore(createSupportChatLocationStore(config));
           supportChatLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
-              .listen(config.supportSpotEndpoint).useAllocatedRoutingId(16, 'support-owner')
+              .listen(config.supportSpotEndpoint).setRoutingIdPrefix('support-owner')
               .addEntrySpot(SupportEntrySpot)
               .addSpotFactory(ConversationSpot)
               .actorFactory('support.user', SupportUserActorFactory);

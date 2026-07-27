@@ -95,7 +95,6 @@ public static class MoveRejectReasons
 public static class NodeAlertKinds
 {
     public const string TimerHandlerFailed = "TimerHandlerFailed";
-    public const string PeersChanged = "PeersChanged";
 }
 
 public static class ZoneWorldErrors

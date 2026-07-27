@@ -139,19 +139,48 @@ public sealed class InMemoryLocationStoreTests
             endpoint: "tcp://127.0.0.1:5002",
             nodeRid: "node-b",
             leaseGeneration: 2);
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
 
         await store.UpdateMeshNodeAsync(descriptorA, ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateMeshNodeAsync(descriptorB, ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateClientServerAsync(
+            new ZLinkClientServerServerDescriptor(
+                "orders",
+                RoutingId.From("server-a"),
+                1,
+                1,
+                "tcp://127.0.0.1:5101",
+                100,
+                ZLinkFrameworkRuntimeState.Serving,
+                "test",
+                OwnerA,
+                ownerAToken.LeaseGeneration,
+                default),
+            ZLinkLocationWriteIntent.NewClaim);
+        await store.UpdateFanoutPublisherAsync(
+            new ZLinkFanoutPublisherDescriptor(
+                "events",
+                RoutingId.From("publisher-a"),
+                1,
+                1,
+                "tcp://127.0.0.1:5201",
+                ZLinkFrameworkRuntimeState.Serving,
+                "test",
+                OwnerA,
+                ownerAToken.LeaseGeneration,
+                default),
+            ZLinkLocationWriteIntent.NewClaim);
         await CreateAuthorityAsync(store, OwnerA, "actor-a");
         await CreateAuthorityAsync(store, OwnerB, "actor-b");
 
-        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
-            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
         var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
-        Assert.Equal(2, removed);
+        Assert.Equal(4, removed);
         Assert.DoesNotContain((await store.ListMeshNodesAsync("play", default)).Items, row => row.OwnerId == OwnerA);
         Assert.Contains((await store.ListMeshNodesAsync("play", default)).Items, row => row.OwnerId == OwnerB);
+        Assert.Empty((await store.ListClientServersAsync("orders", default)).Items);
+        Assert.Empty((await store.ListFanoutPublishersAsync("events", default)).Items);
         Assert.IsType<ZLinkAuthorityReadResult.Found>(
             await store.ReadAuthorityAsync(AuthorityKey("actor-a")));
         Assert.IsType<ZLinkAuthorityReadResult.Found>(
@@ -224,13 +253,11 @@ public sealed class InMemoryLocationStoreTests
     public async Task Change_Stamp_Increments_On_Writes_And_Is_Stable_On_Reads()
     {
         var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA);
-        var scope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, "play");
-
-        var before = await store.GetChangeStampAsync(scope);
+        var before = await store.GetMeshNodeChangeStampAsync("play");
         await store.UpdateMeshNodeAsync(MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        var afterWrite = await store.GetChangeStampAsync(scope);
+        var afterWrite = await store.GetMeshNodeChangeStampAsync("play");
         await store.ListMeshNodesAsync("play", default);
-        var afterRead = await store.GetChangeStampAsync(scope);
+        var afterRead = await store.GetMeshNodeChangeStampAsync("play");
 
         Assert.True(afterWrite > before);
         Assert.Equal(afterWrite, afterRead);

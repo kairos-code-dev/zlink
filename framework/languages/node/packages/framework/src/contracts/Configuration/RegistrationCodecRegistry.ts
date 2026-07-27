@@ -53,14 +53,10 @@ export class RegistrationCodecRegistryBuilder implements ZLinkCodecRegistryBuild
     return this;
   }
 
-  addSerializer(
-    contentType: string,
-    serializer: ZLinkMessageSerializer,
-    canSerialize?: (payloadType: import('../Common').Type) => boolean
-  ): this {
+  addSerializer(contentType: string, serializer: ZLinkMessageSerializer): this {
     const normalized = normalizeCodecContentType(contentType);
     const existing = this.options.serializers.findIndex((entry) => entry.contentType === normalized);
-    const registration = { contentType: normalized, serializer, canSerialize };
+    const registration = { contentType: normalized, serializer };
     if (existing >= 0) {
       this.options.serializers[existing] = registration;
     } else {

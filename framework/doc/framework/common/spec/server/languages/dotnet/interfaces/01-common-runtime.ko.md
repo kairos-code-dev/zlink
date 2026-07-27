@@ -37,14 +37,6 @@ public interface IZLinkRequestCall : IZLinkMetadataCall<IZLinkRequestCall>
     IZLinkRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkChannelRequestCall :
-    IZLinkMetadataCall<IZLinkChannelRequestCall>
-{
-    IZLinkChannelRequestCall Timeout(TimeSpan timeout);
-    ValueTask<TReply> Async<TReply>(
-        CancellationToken cancellationToken = default);
     ValueTask<TReply> Yield<TReply>(
         CancellationToken cancellationToken = default);
 }
@@ -86,25 +78,19 @@ capacity signal을 기다리고, deadline 안에 공간이 생기면 message를 
 completion한다. Actor·Spot·Mesh·session target 부재는 operation family가 정의한 기존 오류 kind를 사용한다.
 `CancellationToken`이 먼저 확정되면 cancelled `ValueTask`로 완료한다.
 
-RouteMesh node·channel, Spot과 Actor는 선택한 MeshNode ROUTER send timeout을 사용한다. ClientServer는
-client DEALER, classic fanout은 publisher socket, STREAM send·reply는 해당 STREAM socket의 send timeout을
-사용한다. Bound session은 local·remote Actor route가 바뀌어도 framework socket send timeout 하나를
-사용한다. 공개 설정이 없을 때의 기본값은 1초이며 timeout을 늘려 backpressure나 reconnect 문제를
-숨기지 않는다.
+각 one-way call은 해당 public configuration에 설정한 send timeout을 사용한다. 공개 설정이 없을 때의
+기본값은 1초다.
 
-Logical Multicast의 `IZLinkPublishCall`은 bounded I/O executor에 direct handoff한다. 즉시 worker slot을 얻지
-못하면 send timeout까지 capacity를 기다린다. Slot을 얻으면 bindings의 public raw socket publish를 정확히
-한 번 호출하며, 이 시점이 operation commit barrier다. Transaction이 시작된 뒤 개별 target 실패는 이미
-수락한 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote transport와 local Spot
-queue의 target별 수락·실패 결과는 반환하거나 monitoring에 집계하지 않는다. Target snapshot이 0개여도
+Logical Multicast의 `IZLinkPublishCall`은 source-local 실행 용량을 send timeout 안에 확보하면 publish를
+시작하고 결과값 없이 정상 완료한다. 시작한 뒤에는 개별 target 실패를 전체 실패로 바꾸거나 자동으로
+재시도하지 않는다. Target별 수락·실패 결과는 반환하거나 monitoring에 집계하지 않으며 target이 없어도
 정상 완료한다.
 
 `CancellationToken`이 admission보다 먼저 확정되면 cancelled `ValueTask`로 한 번만 완료한다.
 Pre-cancellation은 runtime admission을 시작하지 않는다. Admission·timeout·[shutdown](../../../../01-glossary.ko.md#shutdown)과
 cancellation이 경쟁하면 원자 terminal winner 하나만 완료하고 timeout이나 cancellation 뒤에 late admission을
-만들지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)는 raw socket call이 시작되기 전 cancellation만 operation 시작을 막는다.
-Public raw socket
-call이 시작된 뒤에는 snapshot operation을 끝까지 실행한다.
+만들지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)는 publish가 시작되기 전 cancellation만 operation 시작을 막는다.
+Publish가 시작된 뒤에는 선택한 target 집합에 대한 제출을 끝까지 진행한다.
 
 잘못된 인자·handle·상태, 중복 terminal과 이미 사용한 reply token은 .NET exceptional completion으로
 처리한다. Timeout이나 cancellation 뒤에는 operation을 자동으로 다시 제출하지 않는다.

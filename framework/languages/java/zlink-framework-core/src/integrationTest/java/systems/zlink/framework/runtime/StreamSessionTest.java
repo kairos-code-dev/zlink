@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,7 +48,7 @@ final class StreamSessionTest {
     void streamNodeStartsWithoutExplicitSessionRelayAttach() {
         Zlink.version();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://play-router");
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.enableRouter("inproc://play-router");
                 node.addSpotFactory(GameSpot.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("inproc://gateway-" + System.nanoTime());
             stream.registerSession(GameSession.class); };
@@ -121,7 +121,7 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         { var stream = options.addStreamNode("gateway"); stream.bind("tcp://127.0.0.1:" + port);
             stream.registerSession(ActorRelaySession.class); };
@@ -147,7 +147,7 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class);
                 node.addSpotFactory(UserSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
@@ -192,7 +192,7 @@ final class StreamSessionTest {
         int port = reservePort();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(StreamSessionTest.class);
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game"); { var node = mesh; node.setRoutingId(RoutingId.from("play-node"));
                 node.addEntrySpot(GameEntrySpot.class);
                 node.addSpotFactory(UserSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };

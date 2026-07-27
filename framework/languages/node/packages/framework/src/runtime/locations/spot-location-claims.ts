@@ -4,7 +4,7 @@ import {
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
   type ZLinkSpotLocation
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import { ZLinkSpotKind } from '../../contracts/Spots';
 import { ZLinkLocationKeyCodec } from './key-codec';
 import type {

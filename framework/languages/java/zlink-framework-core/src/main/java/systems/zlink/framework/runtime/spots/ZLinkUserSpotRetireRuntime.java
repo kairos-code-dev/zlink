@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkRelocationStore;
@@ -38,7 +38,7 @@ public final class ZLinkUserSpotRetireRuntime {
         List<MeshNodeRegistration> registrations,
         Map<String, ZLinkInternalMeshNode> nodes,
         ZLinkLocationStore locations,
-        ZLinkAuthorityStore authorities,
+        ZLinkLocationStore authorities,
         ZLinkRelocationStore relocationStore,
         ZLinkLocationOptions options,
         ZLinkRelocationAdapterRegistry adapters) {

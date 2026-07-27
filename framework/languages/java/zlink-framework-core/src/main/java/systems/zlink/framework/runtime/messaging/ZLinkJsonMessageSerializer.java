@@ -21,6 +21,7 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.spots.SpotRef;
 
 public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer {
     private final ObjectMapper mapper;
@@ -32,6 +33,7 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
             .findAndAddModules()
             .addModule(routingIdModule())
             .addModule(actorRefModule())
+            .addModule(spotRefModule())
             .build());
     }
 
@@ -163,7 +165,8 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
                             parser, context, field);
                         case "nodeRid" -> nodeRid = requireString(
                             parser, context, field);
-                        default -> parser.skipChildren();
+                        default -> throw JsonMappingException.from(parser,
+                            "unknown ActorRef property: " + field);
                     }
                 }
                 if (actorId == null || objectGeneration == null
@@ -199,5 +202,94 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
             }
         });
         return module;
+    }
+
+    private static SimpleModule spotRefModule() {
+        SimpleModule module = new SimpleModule("zlink-spot-ref");
+        module.addSerializer(SpotRef.class, new JsonSerializer<>() {
+            @Override
+            public void serialize(
+                SpotRef value,
+                JsonGenerator generator,
+                SerializerProvider serializers) throws IOException {
+                generator.writeStartObject();
+                generator.writeStringField("spotId", value.spotId());
+                generator.writeStringField(
+                    "objectGeneration",
+                    Long.toString(value.objectGeneration()));
+                generator.writeStringField("meshName", value.meshName());
+                generator.writeStringField("nodeRid", value.nodeRid().toHex());
+                generator.writeEndObject();
+            }
+        });
+        module.addDeserializer(SpotRef.class, new JsonDeserializer<>() {
+            @Override
+            public SpotRef deserialize(
+                JsonParser parser,
+                DeserializationContext context) throws IOException {
+                if (parser.currentToken() != JsonToken.START_OBJECT) {
+                    throw JsonMappingException.from(parser,
+                        "SpotRef must be a JSON object");
+                }
+                String spotId = null;
+                String objectGeneration = null;
+                String meshName = null;
+                String nodeRid = null;
+                Set<String> seen = new HashSet<>();
+                while (parser.nextToken() != JsonToken.END_OBJECT) {
+                    String field = parser.currentName();
+                    parser.nextToken();
+                    if (!seen.add(field)) {
+                        throw context.weirdStringException(
+                            field,
+                            SpotRef.class,
+                            "duplicate SpotRef property");
+                    }
+                    switch (field) {
+                        case "spotId" -> spotId = requireRefString(
+                            parser, field, "SpotRef");
+                        case "objectGeneration" -> objectGeneration =
+                            requireRefString(parser, field, "SpotRef");
+                        case "meshName" -> meshName = requireRefString(
+                            parser, field, "SpotRef");
+                        case "nodeRid" -> nodeRid = requireRefString(
+                            parser, field, "SpotRef");
+                        default -> throw JsonMappingException.from(parser,
+                            "unknown SpotRef property: " + field);
+                    }
+                }
+                if (spotId == null || objectGeneration == null
+                    || meshName == null || nodeRid == null
+                    || !objectGeneration.matches("[1-9][0-9]*")) {
+                    throw JsonMappingException.from(parser,
+                        "SpotRef requires spotId, positive decimal-string "
+                            + "objectGeneration, meshName and nodeRid");
+                }
+                try {
+                    return new SpotRef(
+                        spotId,
+                        Long.parseLong(objectGeneration),
+                        meshName,
+                        RoutingId.fromHex(nodeRid));
+                } catch (RuntimeException failure) {
+                    throw context.weirdStringException(
+                        objectGeneration,
+                        SpotRef.class,
+                        "invalid SpotRef");
+                }
+            }
+        });
+        return module;
+    }
+
+    private static String requireRefString(
+        JsonParser parser,
+        String field,
+        String typeName) throws IOException {
+        if (parser.currentToken() != JsonToken.VALUE_STRING) {
+            throw JsonMappingException.from(parser,
+                typeName + " " + field + " must be a string");
+        }
+        return parser.getText();
     }
 }

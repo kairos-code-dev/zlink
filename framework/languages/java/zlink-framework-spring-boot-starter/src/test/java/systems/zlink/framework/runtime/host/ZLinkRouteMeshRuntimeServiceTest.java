@@ -1,31 +1,27 @@
 package systems.zlink.framework.runtime.host;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Flow;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.service.spot.MeshMonitorEvent;
-import systems.zlink.contracts.service.spot.MeshMonitorStatus;
-import systems.zlink.contracts.service.spot.MeshNodeMonitor;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.contracts.service.spot.MeshPeerSource;
-import systems.zlink.contracts.service.spot.MeshPeerState;
-import systems.zlink.contracts.service.spot.PeerChannels;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorEvent;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerSource;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
+import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
@@ -33,11 +29,7 @@ import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
-import systems.zlink.framework.monitoring.ZLinkActivationConcurrency;
-import systems.zlink.framework.monitoring.Drained;
-import systems.zlink.framework.monitoring.ZLinkDrainControl;
-import systems.zlink.framework.monitoring.ZLinkDrainResult;
-import systems.zlink.framework.monitoring.ZLinkMeshDrained;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeState;
 import systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
@@ -154,62 +146,6 @@ final class ZLinkRouteMeshRuntimeServiceTest {
     }
 
     @Test
-    void drainDelegatesToHostControlAfterValidatingMeshName() {
-        FakeNode node = new FakeNode();
-        try (var runtime = runtime(node)) {
-            assertInstanceOf(
-                ZLinkMeshDrained.class,
-                runtime.drain("mesh", Duration.ofSeconds(1))
-                    .toCompletableFuture()
-                    .join());
-        }
-    }
-
-    @Test
-    void multipleMeshesRejectHostGlobalDrainWithoutInvokingIt() {
-        AtomicInteger drainCalls = new AtomicInteger();
-        ZLinkDrainControl control = new ZLinkDrainControl() {
-            @Override
-            public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain() {
-                drainCalls.incrementAndGet();
-                return CompletableFuture.completedFuture(new Drained());
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain(
-                Duration deadline) {
-                return drain();
-            }
-
-            @Override
-            public java.util.concurrent.CompletionStage<ZLinkDrainResult> awaitDrained() {
-                drainCalls.incrementAndGet();
-                return CompletableFuture.completedFuture(new Drained());
-            }
-
-            @Override
-            public boolean isReady() {
-                return true;
-            }
-        };
-        try (var runtime = new ZLinkRouteMeshRuntimeService(
-            () -> Map.of("mesh-a", new FakeNode(), "mesh-b", new FakeNode()),
-            () -> {
-                throw new ZLinkConfigurationException("not configured");
-            },
-            control)) {
-            assertThrows(
-                ZLinkConfigurationException.class,
-                () -> runtime.drain("mesh-a", Duration.ofSeconds(1)));
-            assertThrows(
-                ZLinkConfigurationException.class,
-                () -> runtime.awaitDrained("mesh-a"));
-        }
-
-        assertEquals(0, drainCalls.get());
-    }
-
-    @Test
     void runtimeOptionsApplyLiveMessageSizeChannelAndPlacementWeights() {
         FakeNode node = new FakeNode();
         var options = new ZLinkRouteMeshRuntimeOptionsService(
@@ -232,28 +168,6 @@ final class ZLinkRouteMeshRuntimeServiceTest {
             () -> Map.of("mesh", node),
             () -> {
                 throw new ZLinkConfigurationException("not configured");
-            },
-            new ZLinkDrainControl() {
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain() {
-                    return CompletableFuture.completedFuture(new Drained());
-                }
-
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain(
-                    Duration deadline) {
-                    return drain();
-                }
-
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> awaitDrained() {
-                    return drain();
-                }
-
-                @Override
-                public boolean isReady() {
-                    return true;
-                }
             });
     }
 
@@ -265,29 +179,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
             () -> {
                 throw new ZLinkConfigurationException("not configured");
             },
-            (meshName, rid) -> placement.get(),
-            new ZLinkDrainControl() {
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain() {
-                    return CompletableFuture.completedFuture(new Drained());
-                }
-
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> drain(
-                    Duration deadline) {
-                    return drain();
-                }
-
-                @Override
-                public java.util.concurrent.CompletionStage<ZLinkDrainResult> awaitDrained() {
-                    return drain();
-                }
-
-                @Override
-                public boolean isReady() {
-                    return true;
-                }
-            });
+            (meshName, rid) -> placement.get());
     }
 
     private static ZLinkMeshNodeMonitoringProjection placement(

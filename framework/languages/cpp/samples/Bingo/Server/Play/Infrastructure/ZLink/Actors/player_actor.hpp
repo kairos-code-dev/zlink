@@ -5,6 +5,8 @@
 
 #include <zlink/framework.hpp>
 
+#include <memory>
+
 namespace zlink::samples::bingo
 {
 
@@ -15,10 +17,31 @@ using framework::message_t;
 struct player_actor_t
 {
     mutable actor_ref_snapshot_t actor;
-    mutable actor_context_t context;
+    mutable std::unique_ptr<actor_context_t> context;
     std::string display_name;
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
+
+    player_actor_t () = default;
+    player_actor_t (const player_actor_t &other) :
+        actor (other.actor), display_name (other.display_name),
+        destroy_after_entry_spot_join (other.destroy_after_entry_spot_join),
+        disconnected (other.disconnected)
+    {
+    }
+    player_actor_t &operator= (const player_actor_t &other)
+    {
+        if (this != &other) {
+            actor = other.actor;
+            display_name = other.display_name;
+            destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
+            disconnected = other.disconnected;
+            context.reset ();
+        }
+        return *this;
+    }
+    player_actor_t (player_actor_t &&) noexcept = default;
+    player_actor_t &operator= (player_actor_t &&) noexcept = default;
 
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
@@ -27,7 +50,10 @@ struct player_actor_t
         actor.generation = actor_ref.generation ();
     }
 
-    void set_actor_context (const actor_context_t &actor_context) const { context = actor_context; }
+    void set_actor_context (actor_context_t actor_context) const
+    {
+        context = std::make_unique<actor_context_t> (std::move (actor_context));
+    }
 
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
 
@@ -35,7 +61,7 @@ struct player_actor_t
 
     template <typename TNotify> void push (const TNotify &notify) const
     {
-        context.bound_session ().send (notify).submit ();
+        context->bound_session ().send (notify).submit ();
     }
 };
 

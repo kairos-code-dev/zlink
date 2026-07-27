@@ -1,13 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
-  SpotHandle,
+  SpotRef,
   ZLinkRequestHandler,
-  ZLinkSpotHandleResolver,
   ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
   ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND,
   zlinkRequestHandler
@@ -38,12 +36,11 @@ import { OrderWorkflowSpot } from './Spots/OrderWorkflowSpot/order-workflow-spot
 class StartOrderWorkflowRouteHandler implements ZLinkRequestHandler<StartOrderWorkflowReq, StartOrderWorkflowRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotRefs: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
   async handle(request: StartOrderWorkflowReq): Promise<StartOrderWorkflowRes> {
-    const spot = await resolveOrderSpot(this.spots, this.spotRefs, request.orderId);
+    const spot = await resolveOrderSpot(this.spots, request.orderId);
     const started = await requestSpot<StartOrderWorkflowRes>(this.outbound, spot, new StartOrderWorkflowReq(
       request.orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
       request.idempotencyKey, request.lines, request.amount, request.currency
@@ -61,12 +58,11 @@ class StartOrderWorkflowRouteHandler implements ZLinkRequestHandler<StartOrderWo
 class PrepareInventoryReservedRouteHandler implements ZLinkRequestHandler<PrepareInventoryReservedReq, StartOrderWorkflowRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotRefs: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
   async handle(request: PrepareInventoryReservedReq): Promise<StartOrderWorkflowRes> {
-    const spot = await resolveOrderSpot(this.spots, this.spotRefs, request.orderId);
+    const spot = await resolveOrderSpot(this.spots, request.orderId);
     const prepared = await requestSpot<StartOrderWorkflowRes>(this.outbound, spot, new PrepareInventoryReservedReq(
       request.orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
       request.idempotencyKey, request.lines, request.amount, request.currency
@@ -80,12 +76,11 @@ class PrepareInventoryReservedRouteHandler implements ZLinkRequestHandler<Prepar
 class PrepareInventoryEffectRouteHandler implements ZLinkRequestHandler<PrepareInventoryEffectReq, StartOrderWorkflowRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotRefs: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
   async handle(request: PrepareInventoryEffectReq): Promise<StartOrderWorkflowRes> {
-    const spot = await resolveOrderSpot(this.spots, this.spotRefs, request.orderId);
+    const spot = await resolveOrderSpot(this.spots, request.orderId);
     return requestSpot(this.outbound, spot, new PrepareInventoryEffectReq(
       request.orderId, request.cartId, request.shippingAddressId, request.paymentMethodId,
       request.idempotencyKey, request.lines, request.amount, request.currency
@@ -98,12 +93,11 @@ class PrepareInventoryEffectRouteHandler implements ZLinkRequestHandler<PrepareI
 class ContinueOrderWorkflowRouteHandler implements ZLinkRequestHandler<ContinueOrderWorkflowReq, ContinueOrderWorkflowRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotRefs: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
   async handle(request: ContinueOrderWorkflowReq): Promise<ContinueOrderWorkflowRes> {
-    return requestSpot(this.outbound, await resolveOrderSpot(this.spots, this.spotRefs, request.orderId), new ContinueOrderWorkflowReq(request.orderId));
+    return requestSpot(this.outbound, await resolveOrderSpot(this.spots, request.orderId), new ContinueOrderWorkflowReq(request.orderId));
   }
 }
 
@@ -112,12 +106,11 @@ class ContinueOrderWorkflowRouteHandler implements ZLinkRequestHandler<ContinueO
 class RebuildOrderProjectionRouteHandler implements ZLinkRequestHandler<RebuildOrderProjectionReq, RebuildOrderProjectionRes> {
   constructor(
     @Inject(ZLINK_SPOT_MANAGER) private readonly spots: ZLinkSpotManager,
-    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotRefs: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
   ) {}
 
   async handle(request: RebuildOrderProjectionReq): Promise<RebuildOrderProjectionRes> {
-    return requestSpot(this.outbound, await resolveOrderSpot(this.spots, this.spotRefs, request.orderId), new RebuildOrderProjectionReq(request.orderId));
+    return requestSpot(this.outbound, await resolveOrderSpot(this.spots, request.orderId), new RebuildOrderProjectionReq(request.orderId));
   }
 }
 
@@ -134,14 +127,14 @@ class VerifyExpectedVersionFenceRouteHandler implements ZLinkRequestHandler<Veri
   }
 }
 
-async function resolveOrderSpot(spots: ZLinkSpotManager, spotRefs: ZLinkSpotHandleResolver, orderId: string): Promise<SpotHandle> {
+async function resolveOrderSpot(spots: ZLinkSpotManager, orderId: string): Promise<SpotRef> {
   await spots.getOrCreate(SampleNames.orderWorkflowSpotMesh, OrderWorkflowSpot, orderId, { orderId });
-  const spot = await spotRefs.resolveSpotHandle(SampleNames.orderWorkflowSpotMesh, orderId);
+  const spot = await spots.find(orderId);
   if (spot === undefined) throw new Error(`Order workflow spot '${orderId}' was not resolved.`);
   return spot;
 }
 
-function requestSpot<T>(outbound: ZLinkSpotOutbound, spot: SpotHandle, body: object): Promise<T> {
+function requestSpot<T>(outbound: ZLinkSpotOutbound, spot: SpotRef, body: object): Promise<T> {
   return outbound.requestToSpot(spot, body).timeout(SampleNames.requestTimeout).submit<T>();
 }
 

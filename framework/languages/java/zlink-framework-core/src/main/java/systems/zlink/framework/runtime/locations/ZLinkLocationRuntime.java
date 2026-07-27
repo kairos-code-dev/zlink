@@ -5,34 +5,19 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationStore;
-import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
-import systems.zlink.framework.locations.ZLinkLocationWriteResult;
-import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationKey;
-import systems.zlink.framework.locations.ZLinkRouteLocation;
-import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotLocation;
-import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 
 public final class ZLinkLocationRuntime implements AutoCloseable {
     private final ZLinkRegisteredLocationStores stores;
     private final String ownerId;
     private final Duration ownerLeaseTtl;
     private final Duration heartbeatInterval;
-    private final CopyOnWriteArrayList<BiConsumer<ZLinkLocationKind, String>> ownershipLostListeners = new CopyOnWriteArrayList<>();
     private final ScheduledExecutorService heartbeatExecutor;
     private final Object stateGate = new Object();
     private final java.util.concurrent.atomic.AtomicBoolean heartbeatInFlight =
@@ -212,93 +197,6 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             });
     }
 
-    CompletionStage<ZLinkLocationWriteResult> writePeer(
-        ZLinkPeerLocation peer,
-        ZLinkLocationWriteIntent intent) {
-        ZLinkPeerLocation stamped = new ZLinkPeerLocation(
-            peer.autoConnectType(), peer.meshName(), peer.nodeRid(), peer.role(), peer.endpoint(),
-            peer.weight(), peer.draining(), peer.value(), peer.metadata(), peer.capabilities(), ownerId,
-            peer.generation(), peer.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodePeerKey(new ZLinkPeerLocationKey(
-            peer.autoConnectType(), peer.meshName(), peer.role(), peer.nodeRid(), peer.endpoint()));
-        return stores.peerStore().updatePeer(stamped, intent)
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, key));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> writeSpot(
-        ZLinkSpotLocation spot,
-        ZLinkLocationWriteIntent intent) {
-        ZLinkSpotLocation stamped = new ZLinkSpotLocation(
-            spot.meshName(), spot.spotId(), spot.spotGeneration(), spot.spotType(),
-            spot.nodeRid(), spot.spotKind(),
-            spot.routeEndpoint(), ownerId, spot.generation(), spot.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.spotId()));
-        return stores.spotStore().updateSpot(stamped, intent)
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, key));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> writeActor(
-        ZLinkActorLocation actor,
-        ZLinkLocationWriteIntent intent) {
-        ZLinkActorLocation stamped = new ZLinkActorLocation(
-            actor.actorId(), actor.actorType(), actor.actorRef(), actor.nodeRid(), actor.locationKind(),
-            actor.spotMeshName(), actor.spotId(), ownerId, actor.generation(), actor.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId()));
-        return stores.actorStore().updateActor(stamped, intent)
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, key));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> writeRoute(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent) {
-        ZLinkRouteLocation stamped = new ZLinkRouteLocation(
-            route.routeKind(), route.routeKey(), route.ownerNodeRid(), ownerId,
-            route.generation(), route.value(), route.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodeRouteKey(new ZLinkRouteLocationKey(route.routeKind(), route.routeKey()));
-        return stores.routeStore().updateRoute(stamped, intent)
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, key));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> removeSpot(
-        ZLinkSpotLocationKey key,
-        long generation) {
-        String canonicalKey = ZLinkLocationKeyCodec.encodeSpotKey(key);
-        return stores.spotStore().removeSpot(key, new ZLinkLocationOwnerToken(ownerId, generation))
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, canonicalKey));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> removePeer(
-        ZLinkPeerLocationKey key,
-        long generation) {
-        String canonicalKey = ZLinkLocationKeyCodec.encodePeerKey(key);
-        return stores.peerStore().removePeer(key, new ZLinkLocationOwnerToken(ownerId, generation))
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.PEER, canonicalKey));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> removeActor(
-        ZLinkActorLocationKey key,
-        long generation) {
-        String canonicalKey = ZLinkLocationKeyCodec.encodeActorKey(key);
-        return stores.actorStore().removeActor(key, new ZLinkLocationOwnerToken(ownerId, generation))
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, canonicalKey));
-    }
-
-    CompletionStage<ZLinkLocationWriteResult> removeRoute(
-        ZLinkRouteLocationKey key,
-        long generation) {
-        String canonicalKey = ZLinkLocationKeyCodec.encodeRouteKey(key);
-        return stores.routeStore().removeRoute(key, new ZLinkLocationOwnerToken(ownerId, generation))
-            .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ROUTE, canonicalKey));
-    }
-
-    void addOwnershipLostListener(BiConsumer<ZLinkLocationKind, String> listener) {
-        ownershipLostListeners.add(Objects.requireNonNull(listener, "listener"));
-    }
-
-    void removeOwnershipLostListener(BiConsumer<ZLinkLocationKind, String> listener) {
-        ownershipLostListeners.remove(listener);
-    }
-
     @Override
     public void close() {
         synchronized (stateGate) {
@@ -334,18 +232,6 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             ownerLeaseHealthy = true;
             lastError = null;
         }
-    }
-
-    private ZLinkLocationWriteResult notifyIfStale(
-        ZLinkLocationWriteResult result,
-        ZLinkLocationKind kind,
-        String canonicalKey) {
-        if (result.status() == ZLinkLocationWriteStatus.IGNORED_STALE) {
-            for (BiConsumer<ZLinkLocationKind, String> listener : ownershipLostListeners) {
-                listener.accept(kind, canonicalKey);
-            }
-        }
-        return result;
     }
 
     private void recordFailure(String message) {

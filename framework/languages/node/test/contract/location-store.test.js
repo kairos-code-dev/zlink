@@ -72,8 +72,8 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
 
   const peers = await store.listPeers({ meshName: 'play', role: framework.ZLinkLocationRole.Router });
   assert.equal(peers.length, 2);
-  assert.equal((await store.getChangeStamp({ kind: framework.ZLinkLocationKind.Peer, meshName: 'play' })), 2n);
-  assert.equal((await store.getChangeStamp({ kind: framework.ZLinkLocationKind.Peer })), 2n);
+  assert.equal((await store.getChangeStamp({ kind: internal.ZLinkLocationKind.Peer, meshName: 'play' })), 2n);
+  assert.equal((await store.getChangeStamp({ kind: internal.ZLinkLocationKind.Peer })), 2n);
 
   const firstPage = await store.listSpots({ meshName: 'play' }, { pageSize: 1 });
   assert.equal(firstPage.items.length, 1);
@@ -85,11 +85,11 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
   assert.equal(secondPage.items.length, 1);
   assert.equal(secondPage.continuationToken, undefined);
 
-  const resolvedSpot = await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') });
+  const resolvedSpot = await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' });
   assert.equal(resolvedSpot.spotType, 'game');
 
   const resolvedRoute = await store.resolveRoute({
-    routeKind: framework.ZLinkRouteKind.ActorSession,
+    routeKind: internal.ZLinkRouteKind.ActorSession,
     routeKey: 'route-1'
   });
   assert.deepEqual([...resolvedRoute.value], [1, 2, 3, 4]);
@@ -140,13 +140,13 @@ test('in-memory location store matches the formal operation trace for core write
   record('spot-claim-2',
     await store.updateSpot(spot('owner-a', 'spot-2'), framework.ZLinkLocationWriteIntent.NewClaim));
   recordStatus('spot-remove-wrong-owner', await store.removeSpot(
-    { meshName: 'play', spotId: rid('spot-1') },
+    { meshName: 'play', spotId: 'spot-1' },
     { ownerId: 'owner-b', leaseGeneration: 1n }
   ));
   const routeClaim = await store.updateRoute(route('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
   record('route-claim', routeClaim);
   record('route-remove', await store.removeRoute(
-    { routeKind: framework.ZLinkRouteKind.ActorSession, routeKey: 'route-1' },
+    { routeKind: internal.ZLinkRouteKind.ActorSession, routeKey: 'route-1' },
     { ownerId: 'owner-a', leaseGeneration: routeClaim.generation }
   ));
   record('route-reclaim',
@@ -197,12 +197,14 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     objectRole: framework.ZLinkObjectRole.Server,
     entrySpotId: 'game-entry-123e4567-e89b-42d3-a456-426614174000',
     placementWeight: 100,
-    objectCapacity: {
-      activeObjects: 0,
-      pendingActivations: 0,
-      maxActiveObjects: 100,
-      maxPendingActivations: 100
+    populationCapacity: {
+      actors: { active: 0, reserved: 0, limit: 100 },
+      spots: { active: 0, reserved: 0, limit: 100 },
+      spotTypes: [{
+        objectKind: 'instance_spot', stableType: 'room', active: 0, reserved: 0, limit: 100
+      }]
     },
+    activationConcurrency: { active: 0, limit: 100 },
     channelWeights: { orders: 100, world: 50 },
     applicationVersion: 1n,
     spotTypes: ['room'],
@@ -211,10 +213,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
       stableType: 'room',
       policy: 'recreate',
       hasSnapshotAdapter: false,
-      active: 0,
-      reserved: 0,
-      activeLimit: 100,
-      pendingLimit: 100
+      limit: 100
     }],
     state: framework.ZLinkFrameworkRuntimeState.Serving,
     securityIdentity: 'cluster-a',
@@ -227,7 +226,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     framework.ZLinkLocationWriteIntent.NewClaim
   );
   assert.equal(descriptorClaim.status, framework.ZLinkLocationWriteStatus.Stored);
-  assert.deepEqual(await store.listMeshNodes('game'), [{
+  assert.deepEqual((await store.listMeshNodes('game')).items, [{
     ...descriptor,
     updatedAt: new Date(nowMs)
   }]);
@@ -254,7 +253,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     conflictingEntryIdentity.status,
     framework.ZLinkLocationWriteStatus.RejectedConflict
   );
-  assert.equal((await store.listMeshNodes('game')).length, 1);
+  assert.equal((await store.listMeshNodes('game')).items.length, 1);
   assert.equal(
     await store.removeMeshNode(
       { meshName: 'game', rid: rid('game-a') },
@@ -355,7 +354,7 @@ function actorTransferRequest() {
 
 function peer(ownerId, nodeRid = 'node-1') {
   return {
-    autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
+    autoConnectType: internal.ZLinkLocationAutoConnectType.RouteMesh,
     meshName: 'play',
     nodeRid: rid(nodeRid),
     role: framework.ZLinkLocationRole.Router,
@@ -373,7 +372,7 @@ function peer(ownerId, nodeRid = 'node-1') {
 function spot(ownerId, spotId) {
   return {
     meshName: 'play',
-    spotId: rid(spotId),
+    spotId,
     spotType: 'game',
     spotGeneration: 1n,
     ownerNodeRid: rid('node-1'),
@@ -386,7 +385,7 @@ function spot(ownerId, spotId) {
 
 function route(ownerId, routeKey = 'route-1') {
   return {
-    routeKind: framework.ZLinkRouteKind.ActorSession,
+    routeKind: internal.ZLinkRouteKind.ActorSession,
     routeKey,
     ownerNodeRid: rid('node-1'),
     ownerId,

@@ -324,7 +324,13 @@ class offer_deadline_sweeper_t final : public hosted_service_t
   public:
     void start (service_provider_t &services) override
     {
-        _services = services;
+        _state = &services.get_required<dispatch_state_t> ();
+        _worker = std::make_unique<dispatch_worker_t> (
+          make_worker (*_state,
+                       services.get_required<courier_selection_policy_t> (),
+                       services.get_required<actor_directory_t> (),
+                       services.get_required<actor_client_t> (),
+                       services.get_required<channel_client_t> ()));
         _running.store (true);
         _thread = std::thread ([this] { run (); });
     }
@@ -340,18 +346,10 @@ class offer_deadline_sweeper_t final : public hosted_service_t
   private:
     void run ()
     {
-        /* 재제안 task가 이 scope의 client들을 쓴다. scope는 sweeper와 수명을 같이한다. */
-        auto scope = _services->create_scope ();
-        auto worker = make_worker (scope.get_required<dispatch_state_t> (),
-                                   scope.get_required<courier_selection_policy_t> (),
-                                   scope.get_required<actor_directory_t> (),
-                                   scope.get_required<actor_client_t> (),
-                                   scope.get_required<channel_client_t> ());
-        auto &state = scope.get_required<dispatch_state_t> ();
         while (_running.load ()) {
             std::this_thread::sleep_for (sample_timings_t::offer_sweep_interval);
             try {
-                sweep (state, worker);
+                sweep (*_state, *_worker);
             }
             catch (const std::exception &error) {
                 std::cerr << "deliverydispatch dispatch: sweep failed: " << error.what () << "\n";
@@ -389,7 +387,8 @@ class offer_deadline_sweeper_t final : public hosted_service_t
         });
     }
 
-    std::optional<service_provider_t> _services;
+    dispatch_state_t *_state = nullptr;
+    std::unique_ptr<dispatch_worker_t> _worker;
     std::atomic_bool _running{false};
     std::thread _thread;
     std::vector<task_t<void>> _reassignments;
@@ -472,15 +471,15 @@ int main (int argc, char **argv)
           .add_singleton<evidence_store_t> (std::make_unique<evidence_store_t> (configuration.evidence_path ()))
           .add_singleton<dispatch_state_t> ()
           .add_singleton<courier_selection_policy_t> ();
-        options.add_client_server_channel (sample_names_t::dispatch_route_channel)
-          .enable_server (topology.dispatch_route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (sample_names_t::dispatch_route_node))
-          .enable_client ()
-          .use_handler_group ("dispatch");
-        options.add_client_server_channel (sample_names_t::tracking_route_channel)
-          .enable_client ();
+        auto dispatch_channel =
+          options.add_client_server_channel (sample_names_t::dispatch_route_channel);
+        dispatch_channel.server ()
+          .set_bind_host (host_from_tcp_endpoint (topology.dispatch_route_endpoint))
+          .listen (port_from_http_url (topology.dispatch_route_endpoint))
+          .add_handler_group ("dispatch");
+        dispatch_channel.client ();
+        options.add_client_server_channel (sample_names_t::tracking_route_channel).client ();
         options.add_route_mesh (sample_names_t::courier_actor_discovery)
-          .use_allocated_routing_id (16, "delivery-dispatch")
           .listen (topology.dispatch_spot_router_endpoint)
           .channel_name (sample_names_t::courier_actor_discovery);
         options.handlers ()

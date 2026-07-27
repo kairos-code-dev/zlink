@@ -66,7 +66,7 @@ final class EntrySpotAdmissionBurstBenchmark {
         BenchActorSendHandler.reset(total);
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(EntrySpotAdmissionBurstBenchmark.class);
-        { var mesh = options.addSpotMesh("bench"); { var node = mesh;
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "bench"); { var node = mesh;
                 node.enableRouter("inproc://entry-admission-bench-router");
                 node.addEntrySpot(SpotRuntimeFakeBackendTest.LifecycleEntrySpot.class);
                 node.addActorFactory("player", SpotRuntimeFakeBackendTest.PlayerActorFactory.class); }; };

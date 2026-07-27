@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ZLinkProviderResolver } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
   MESSAGE_FLOW_MODE_RANK,
   ZLinkMessageFlowLogMode

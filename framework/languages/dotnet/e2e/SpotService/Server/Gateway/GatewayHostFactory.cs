@@ -60,7 +60,7 @@ internal static class GatewayHostFactory
                 locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             }
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             var externalMesh = framework.AddRouteMesh(SpotServiceNames.ExternalSpotChannel)

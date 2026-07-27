@@ -17,7 +17,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
@@ -82,7 +82,7 @@ final class ZLinkSpotLifecycle {
         requireRegistered(spotType);
         return createBackendSpotAsync()
             .thenCompose(backendSpot -> {
-                String spotId = backendSpot.routingId();
+                String spotId = backendSpot.spotId();
                 if (spots.containsKey(spotId)) {
                     backendSpot.close();
                     throw duplicateSpot(spotId);
@@ -431,7 +431,7 @@ final class ZLinkSpotLifecycle {
 
     EntrySpotActivation entrySpotActivationFor(String spotId) {
         for (EntrySpotActivation activation : entrySpots) {
-            if (activation.backendSpot.routingId().equals(spotId)) {
+            if (activation.backendSpot.spotId().equals(spotId)) {
                 return activation;
             }
         }
@@ -488,7 +488,7 @@ final class ZLinkSpotLifecycle {
         }
         for (SpotActivation spot : closingSpots) {
             cleanups.add(locations.releaseUserSpotAsync(
-                    primaryNode.routingId(), spot.backendSpot.routingId())
+                    primaryNode.routingId(), spot.backendSpot.spotId())
                 .handle((ignored, error) -> {
                     recordCloseFailure(firstFailure, error);
                     return (Void) null;
@@ -555,7 +555,7 @@ final class ZLinkSpotLifecycle {
         List<CompletableFuture<Void>> cleanups = new java.util.ArrayList<>(released.size());
         for (SpotActivation activation : released) {
             cleanups.add(locations.releaseUserSpotAsync(
-                    primaryNode.routingId(), activation.backendSpot.routingId())
+                    primaryNode.routingId(), activation.backendSpot.spotId())
                 .handle((ignored, error) -> {
                     recordCloseFailure(firstFailure, error);
                     ZLinkRuntimeMetrics.add("zlink.spot.count", -1, Map.of("kind", "user"));
@@ -619,7 +619,7 @@ final class ZLinkSpotLifecycle {
         Class<? extends ZLinkSpot<?>> spotType,
         ZLinkBackendSpot backendSpot,
         ZLinkMessage request) {
-        String spotId = backendSpot.routingId();
+        String spotId = backendSpot.spotId();
         return activationFactory.activate(spotType, backendSpot, request)
             .thenCompose(result -> createResultAsync(
                 spotId,

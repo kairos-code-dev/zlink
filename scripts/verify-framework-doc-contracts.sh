@@ -96,8 +96,8 @@ if (!Array.isArray(inventory.consolidated_internal_document_sets)
 if (!inventory.plan_consolidation || typeof inventory.plan_consolidation !== 'object') {
   fail('v11 document inventory plan_consolidation object is missing');
 }
-const expectedTerminationMembers = ['drain', 'awaitDrained', 'retire', 'shutdown'];
-const expectedTerminationOwners = ['ZLinkFrameworkRuntime', 'ZLinkDrainControl'];
+const expectedTerminationMembers = ['retire', 'shutdown'];
+const expectedTerminationOwners = ['ZLinkFrameworkRuntime'];
 const expectedTopologyOwners = [
   'ZLinkRouteMeshRuntime',
   'ZLinkClientServerRuntime',
@@ -688,7 +688,7 @@ for (const accessor of ['routeMeshRuntime', 'clientServerRuntime', 'fanoutRuntim
 }
 const javaCommonNormalized = javaCommonCode.replace(/\s+/gu, ' ');
 for (const fragment of [
-  'implements AutoCloseable, ZLinkMessageFlowControl, ZLinkDrainControl, ZLinkRuntimeQuery',
+  'implements AutoCloseable, ZLinkMessageFlowControl, ZLinkRuntimeQuery',
   'public static final Duration DEFAULT_TERMINATION_DEADLINE = Duration.ofSeconds(30);',
 ]) {
   if (!javaCommonNormalized.includes(fragment)) {
@@ -841,7 +841,7 @@ for (const fixture of terminationOwnerNegativeFixtures) {
 }
 for (const fixture of [
   'public final class ZLinkFrameworkRuntime { public void shutdown(); }',
-  'public interface ZLinkDrainControl { void drain(); }',
+  'public final class ZLinkFrameworkRuntime { public void retire(); }',
 ]) {
   const messages = terminationOwnerFailures([{
     relative: '<allowed:host termination>',

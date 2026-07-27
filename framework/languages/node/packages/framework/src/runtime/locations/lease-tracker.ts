@@ -4,9 +4,9 @@ import {
 } from '../../contracts/Locations/Options';
 import {
   type ZLinkLocationOwnerToken,
-  type ZLinkOwnerLeaseReadResult,
-  type ZLinkOwnerLeaseStore
-} from '../../contracts/Locations';
+  type ZLinkOwnerLeaseReadResult
+} from './internal-location-contracts';
+import type { ZLinkOwnerLeaseStore } from './internal-store-contracts';
 
 export interface ZLinkOwnerLeaseTrackerOptions {
   readonly store: ZLinkOwnerLeaseStore;

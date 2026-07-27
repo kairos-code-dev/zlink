@@ -5,7 +5,7 @@ import {
   ZLinkLocationWriteStatus,
   ZLinkRouteKind,
   type ZLinkRouteLocation
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import { ZLinkLocationKeyCodec } from './key-codec';
 import type {
   IZLinkLocationLifecycleRuntime,

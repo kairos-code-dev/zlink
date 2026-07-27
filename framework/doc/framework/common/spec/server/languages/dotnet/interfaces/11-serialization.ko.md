@@ -1,19 +1,19 @@
-# .NET typed serialization 공개 인터페이스
+# .NET codec extension 공개 인터페이스
 
-[.NET exact interface 목차](README.ko.md)
+[.NET exact interface 목차](README.ko.md) · [공통 메시지 계약](../../../../03-message-model.ko.md) ·
+[공통 Framework API](../../../../05-framework-api.ko.md#9-codec)
 
-## 1. Typed JSON 기본 경로
+## 1. 범위
 
-Handler와 client의 generic payload는 기본 JSON serializer로 encode/decode한다. JSON용 message-specific
-codec registration 함수는 public contract에 없다. `ZLinkMessage`를 받는 overload는 lifecycle state나
-명시적인 encoded payload가 필요한 경계에만 사용한다.
+이 문서는 application이 codec extension을 등록할 때 사용하는 C# API와 외부 codec provider가 구현하는 SPI만
+고정한다. JSON 기본 동작, packet name 결정, global object reference의 JSON 형식과 payload ownership은 공통
+메시지 계약이 소유한다. 내부 registry, codec 선택 cache와 dispatch 구현은 이 문서의 계약이 아니다.
 
-Packet name은 message type descriptor에서 결정한다. 선언적 packet metadata가 있으면 그 이름을 사용하고,
-없으면 nominal type 이름을 사용한다. Codec, payload instance와 handler가 [packet name](../../../../01-glossary.ko.md#packet-name) 결정을 반복하지
-않는다.
+JSON만 사용하는 application은 codec API를 호출하지 않는다. 선택 codec package를 사용하는 application은
+`IZLinkCodecRegistryBuilder.Use(...)`에 extension instance 하나를 등록한다. `IZLinkCodecRegistrar`,
+`IZLinkMessageSerializer`와 `ZLinkEncodedPayload`는 custom codec provider가 구현할 때만 사용하는 SPI다.
 
-Custom serializer는 content type 단위 extension으로 등록한다. Message type마다 codec을 등록하는 API는
-제공하지 않는다.
+## 2. Codec 등록 API와 provider SPI
 
 ```csharp
 public interface IZLinkCodecExtension
@@ -65,9 +65,8 @@ public readonly struct ZLinkEncodedPayload : IEquatable<ZLinkEncodedPayload>
 }
 ```
 
-Framework codec 확장 패키지는 같은 codec instance를 Framework message serializer와 stream connector payload
-codec에 등록한다. `Default`는 별도 상태를 갖지 않는 공유 instance다. Application은 message type마다 codec을
-등록하지 않고, 사용할 content type의 extension을 한 번 등록한다.
+공식 codec package의 `Default`는 별도 상태를 갖지 않는 공유 instance다. 두 class는 Framework server의 codec
+extension과 Stream Connector의 typed payload codec을 함께 구현한다.
 
 ```csharp
 public sealed class ZLinkMessagePackCodec :
@@ -92,52 +91,3 @@ public sealed class ZLinkProtobufCodec :
     public TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload);
 }
 ```
-
-Handler filter의 exact extension 경계는 다음과 같다.
-
-```csharp
-public sealed class ZLinkHandlerInvocation
-{
-    public string OwnerKind { get; }
-    public IZLinkMessageContext MessageContext { get; }
-}
-
-public delegate ValueTask ZLinkHandlerFilterNext();
-
-public interface IZLinkHandlerFilter
-{
-    ValueTask InvokeAsync(
-        ZLinkHandlerInvocation invocation,
-        ZLinkHandlerFilterNext next,
-        CancellationToken cancellationToken);
-}
-```
-
-## 2. Global object reference JSON
-
-`ActorRef`와 `SpotRef`의 typed JSON contract는 다음 property 이름과 JSON type으로 고정한다. 모든 property는
-required이고 중복 property, `null`, unknown property와 범위를 벗어난 generation을 거부한다. Property 이름은
-case-sensitive다. `objectGeneration`은 unsigned 63-bit 범위를 잃지 않도록 decimal JSON string으로 encode한다.
-`actorId`와 `spotId`는 global logical ID이고 `meshName`과 `nodeRid`는 조회 시점의 location snapshot이다.
-
-```json
-{
-  "actorId": "player-42",
-  "objectGeneration": "17",
-  "meshName": "game",
-  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
-}
-```
-
-```json
-{
-  "spotId": "room-42",
-  "objectGeneration": "9",
-  "meshName": "game",
-  "nodeRid": "game-node-0123456789abcdef0123456789abcdef"
-}
-```
-
-`objectGeneration`은 `"1"`..`"9223372036854775807"`의 leading-zero 없는 decimal string이다. 숫자 token,
-부호, 소수점과 exponent는 허용하지 않는다. ID와 route string은 각 public type의 validation을 그대로 적용하며
-deserialization에서 normalization하지 않는다.

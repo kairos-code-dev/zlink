@@ -30,7 +30,7 @@ function createSupportChatApiModule() {
           supportChatLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.conversationSpotMesh)
             .listen(config.apiChannelEndpoint)
-            .useAllocatedRoutingId(16, 'support-api');
+            .setRoutingIdPrefix('support-api');
           mesh.channelName(SampleNames.apiChannel).addHandlerGroup('api');
           mesh.channelName(SampleNames.supportChannel).setWeight(0);
           mesh.channelName(SampleNames.conversationSpotMesh).setWeight(0);

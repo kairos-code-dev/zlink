@@ -297,7 +297,7 @@ final class SpotActorTransferContractTest {
     }
 
     @Test
-    void drainSelectsServingTargetAndTransfersActorState() throws Exception {
+    void retireSelectsServingTargetAndTransfersActorState() throws Exception {
         try (Harness harness = Harness.start(true)) {
             ContractActor actor = harness.createSourceActor("drain-handoff", "stateful", 73);
             RoutingId sourceRoom = RoutingId.from("drain-source-room");
@@ -306,14 +306,14 @@ final class SpotActorTransferContractTest {
             actor.context().joinSpot(sourceRoom, "source").submit().toCompletableFuture().join();
             EVENTS.clear();
 
-            systems.zlink.framework.monitoring.ZLinkDrainResult result = harness.source
-                .drain(Duration.ofSeconds(12))
+            systems.zlink.framework.runtime.host.ZLinkTerminationResult result = harness.source
+                .retire(Duration.ofSeconds(12))
                 .toCompletableFuture()
                 .get(13, TimeUnit.SECONDS);
 
-            assertInstanceOf(
-                systems.zlink.framework.monitoring.Drained.class,
-                result,
+            assertEquals(
+                systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.STOPPED,
+                result.outcome(),
                 () -> "result=" + result + ", events=" + EVENTS + ", actors=" + ACTORS.keySet());
             assertEquals(73, harness.targetActor("drain-handoff").stateVersion);
             assertOrder("transfer-out", "source-leave", "transfer-in", "target-entry-joined");
@@ -321,20 +321,21 @@ final class SpotActorTransferContractTest {
     }
 
     @Test
-    void drainWithoutServingTargetKeepsActorUntilDeadline() throws Exception {
+    void retireWithoutServingTargetIsBlockedAndKeepsActor() throws Exception {
         try (Harness harness = Harness.start(false)) {
             ContractActor actor = harness.createSourceActor("drain-zero-target", "stateful", 91);
 
-            systems.zlink.framework.monitoring.ZLinkDrainResult result = harness.source
-                .drain(Duration.ofMillis(100))
+            systems.zlink.framework.runtime.host.ZLinkTerminationResult result = harness.source
+                .retire(Duration.ofMillis(100))
                 .toCompletableFuture()
                 .get(3, TimeUnit.SECONDS);
 
-            systems.zlink.framework.monitoring.ForceStopped forced = assertInstanceOf(
-                systems.zlink.framework.monitoring.ForceStopped.class, result);
             assertEquals(
-                systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED,
-                forced.reason());
+                systems.zlink.framework.runtime.host.ZLinkTerminationOutcome.BLOCKED,
+                result.outcome());
+            assertEquals(
+                systems.zlink.framework.runtime.host.ZLinkTerminationReason.TARGET_UNAVAILABLE,
+                result.reason());
             assertEquals(91, actor.stateVersion);
         }
     }

@@ -40,7 +40,7 @@ internal static class SessionHostFactory
                 .SetKeyPrefix(options.RedisKeyPrefix)));
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             var controlMesh = framework.AddRouteMesh(AutomaticTurnDispatchNames.ControlChannel)

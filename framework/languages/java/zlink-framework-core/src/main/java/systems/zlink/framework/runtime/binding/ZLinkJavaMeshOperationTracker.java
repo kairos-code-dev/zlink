@@ -5,8 +5,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.errors.ZlinkRequestException;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 

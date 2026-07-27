@@ -55,7 +55,7 @@ class spot_node_builder_state_t
     struct pending_spot_creation_t
     {
         std::string spot_name;
-        std::shared_future<local_spot_create_result_t> future;
+        std::shared_future<void> future;
     };
     std::map<std::string, pending_spot_creation_t> pending_spot_creations_by_id;
     std::weak_ptr<service::mesh_node_t> native_node;
@@ -116,7 +116,7 @@ class spot_node_builder_state_t
           serialize_instance;
         std::function<void (void *, const zlink::message_t &, serializer_registry_t &)>
           deserialize_instance;
-        std::function<std::shared_ptr<void> (actor_context_t &)>
+        std::function<std::shared_ptr<void> (actor_context_t)>
           create_context_instance;
         actor_join_completion_callback_t on_join_completed;
     };
@@ -188,7 +188,6 @@ class spot_node_builder_state_t
     };
     std::vector<queued_actor_packet_t> queued_actor_packets;
     std::map<std::string, std::function<std::optional<spot_route_t> (spot_id_t)>> resolvers;
-    std::vector<std::string> last_monitoring_peers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
     std::uint64_t next_spot_id = 1;
 };
@@ -236,15 +235,37 @@ inline void record_actor_instance_index_unlocked (spot_node_builder_state_t &nod
                                            std::string (actor_ref.actor_id ())};
 }
 
-class spot_context_state_t
+class spot_context_state_t : public std::enable_shared_from_this<spot_context_state_t>
 {
   public:
+    void detach_application_instance (bool notify_closing)
+    {
+        auto lifetime_guard = shared_from_this ();
+        auto instance = std::move (spot_instance);
+        std::exception_ptr callback_error;
+        if (notify_closing && lifecycle.on_closing && instance) {
+            try {
+                lifecycle.on_closing (instance.get ());
+            }
+            catch (...) {
+                callback_error = std::current_exception ();
+            }
+        }
+        cancel_timers ();
+        node.reset ();
+        instance.reset ();
+        if (callback_error) {
+            std::rethrow_exception (callback_error);
+        }
+    }
+
     bool close_now ()
     {
-        if (!node) {
+        auto owner = node;
+        if (!owner) {
             return false;
         }
-        std::lock_guard<std::recursive_mutex> node_lock (node->mutex);
+        std::lock_guard<std::recursive_mutex> node_lock (owner->mutex);
         if (closed || actor_count != 0) {
             return false;
         }
@@ -252,26 +273,23 @@ class spot_context_state_t
             std::lock_guard<std::mutex> callback_lock (callback_mutex);
             close_requested = false;
         }
-        if (lifecycle.on_closing && spot_instance) {
-            lifecycle.on_closing (spot_instance.get ());
-        }
-        cancel_timers ();
         const auto rid = std::string (spot_id);
-        if (node->location_lifecycle) {
-            (void) node->location_lifecycle->release_spot (
+        if (owner->location_lifecycle) {
+            (void) owner->location_lifecycle->release_spot (
               spot_location_key_t{rid});
         }
-        node->spot_contexts_by_id.erase (rid);
-        node->spot_names_by_id.erase (rid);
-        node->native_spots_by_id.erase (rid);
-        for (auto iterator = node->spot_ids_by_name.begin ();
-             iterator != node->spot_ids_by_name.end (); ++iterator) {
+        owner->spot_contexts_by_id.erase (rid);
+        owner->spot_names_by_id.erase (rid);
+        owner->native_spots_by_id.erase (rid);
+        for (auto iterator = owner->spot_ids_by_name.begin ();
+             iterator != owner->spot_ids_by_name.end (); ++iterator) {
             if (iterator->second == rid) {
-                node->spot_ids_by_name.erase (iterator);
+                owner->spot_ids_by_name.erase (iterator);
                 break;
             }
         }
         closed = true;
+        detach_application_instance (true);
         return true;
     }
 
@@ -465,7 +483,6 @@ class spot_node_runtime_t
       const spot_id_t &target_spot_id,
       runtime::messaging::message_parts_t parts,
       std::chrono::milliseconds timeout) const;
-    void poll_monitoring ();
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,

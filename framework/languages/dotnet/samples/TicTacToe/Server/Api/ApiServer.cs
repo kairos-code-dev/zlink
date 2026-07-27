@@ -24,7 +24,7 @@ internal sealed class ApiServer(SampleSettings settings)
         {
             options.DisableImplicitHandlerAutoRegistration();
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
             var mesh = options.AddRouteMesh(SampleNodes.Mesh)

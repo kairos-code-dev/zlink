@@ -5,7 +5,7 @@ public delegate ValueTask ZLinkHandlerFilterNext();
 public interface IZLinkHandlerFilter
 {
     ValueTask InvokeAsync(
-        ZLinkHandlerInvocation invocation,
+        IZLinkMessageContext context,
         ZLinkHandlerFilterNext next,
         CancellationToken cancellationToken);
 }

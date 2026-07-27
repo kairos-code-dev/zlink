@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
@@ -166,12 +166,12 @@ final class ZLinkSpotActivationFactory {
     private static void registerDispatchHandler(
         ZLinkBackendSpot backendSpot,
         java.util.function.Function<
-            systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo,
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo,
             CompletionStage<Void>> handler) {
         backendSpot.onDispatchEvent(new ZLinkInternalAsyncSpotDispatchHandler() {
             @Override
             public CompletionStage<Void> handleAsync(
-                systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo info) {
+                systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo info) {
                 return handler.apply(info);
             }
         });

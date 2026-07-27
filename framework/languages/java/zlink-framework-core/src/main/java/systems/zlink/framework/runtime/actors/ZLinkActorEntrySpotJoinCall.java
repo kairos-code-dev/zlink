@@ -11,7 +11,7 @@ import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;

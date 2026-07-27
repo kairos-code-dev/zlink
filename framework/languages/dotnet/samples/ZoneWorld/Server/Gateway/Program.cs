@@ -31,7 +31,7 @@ builder.Services.AddZLinkFramework(options =>
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
     options.ConfigureDispatch()
-        .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
+        .MessageFlow(ZLinkRuntimeMessageFlowMode.ErrorsOnly)
         .TraceLabel("gateway");
     options.AddHandlersFromAssemblyOf(typeof(PlayerSession));
 

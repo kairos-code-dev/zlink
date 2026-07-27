@@ -7,7 +7,6 @@ import type {
   ZLinkCodecRegistrar,
   ZLinkDispatchOptionsBuilder,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkLocationStore,
   ZLinkLocationOptionValues,
   ZLinkLocationOptions,
@@ -335,19 +334,14 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
   }
 
   routingId(routingId: string | undefined): this {
-    framework.rejectAllocatedRoutingId(this.channelOptions.routingIdAllocation, this.name);
+    rejectGeneratedRoutingId(this.channelOptions.routingIdPrefix, this.name);
     this.channelOptions.routingId = routingId;
     return this;
   }
 
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    framework.rejectFixedRoutingId(this.channelOptions.routingId, this.name);
-    this.channelOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.channelOptions.routingIdAllocation?.groupName);
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.channelOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.channelOptions.routingIdAllocation, this.name);
+  setRoutingIdPrefix(prefix: string): this {
+    rejectFixedRoutingId(this.channelOptions.routingId, this.name);
+    this.channelOptions.routingIdPrefix = framework.validateRoutingIdPrefix(prefix);
     return this;
   }
 
@@ -514,6 +508,22 @@ function requireClientServerText(value: string, label: string): void {
   }
 }
 
+function rejectFixedRoutingId(routingId: string | undefined, memberName: string): void {
+  if (routingId !== undefined) {
+    throw new framework.ZLinkConfigurationException(
+      `Mesh member '${memberName}' cannot combine a fixed routing id with a generated prefix.`
+    );
+  }
+}
+
+function rejectGeneratedRoutingId(prefix: string | undefined, memberName: string): void {
+  if (prefix !== undefined) {
+    throw new framework.ZLinkConfigurationException(
+      `Mesh member '${memberName}' cannot combine a generated routing-id prefix with a fixed id.`
+    );
+  }
+}
+
 class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestStreamNodeBuilder {
   constructor(state: ZLinkNestBuilderState, private readonly streamOptions: Mutable<ZLinkStreamNodeOptions>) {
     super(state);
@@ -591,7 +601,7 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
   }
 
   routingId(routingId: string | undefined): this {
-    framework.rejectAllocatedRoutingId(this.spotOptions.routingIdAllocation, this.name);
+    rejectGeneratedRoutingId(this.spotOptions.routingIdPrefix, this.name);
     this.spotOptions.routingId = routingId;
     if (this.spotOptions.router !== undefined) {
       (this.spotOptions.router as Mutable<NonNullable<ZLinkSpotNodeOptions['router']>>).routingId = routingId;
@@ -602,14 +612,9 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    framework.rejectFixedRoutingId(this.spotOptions.routingId, this.name);
-    this.spotOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.spotOptions.routingIdAllocation?.groupName);
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.spotOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.spotOptions.routingIdAllocation, this.name);
+  setRoutingIdPrefix(prefix: string): this {
+    rejectFixedRoutingId(this.spotOptions.routingId, this.name);
+    this.spotOptions.routingIdPrefix = framework.validateRoutingIdPrefix(prefix);
     return this;
   }
 
@@ -649,11 +654,6 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
       ...(this.spotOptions.routeRequestHandlers ?? []),
       { packetName, handlerType }
     ];
-    return this;
-  }
-
-  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
-    this.spotOptions.entrySpot = { ...options };
     return this;
   }
 

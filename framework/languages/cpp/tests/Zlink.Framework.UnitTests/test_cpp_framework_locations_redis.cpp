@@ -18,30 +18,15 @@
 namespace
 {
 
-using zlink::framework::actor_location_t;
-using zlink::framework::actor_location_key_t;
-using zlink::framework::actor_ref_t;
-using zlink::framework::client_server_location_store_t;
 using zlink::framework::client_server_server_descriptor_key_t;
 using zlink::framework::client_server_server_descriptor_t;
 using zlink::framework::creation_operation_identity_t;
-using zlink::framework::fanout_location_store_t;
 using zlink::framework::fanout_publisher_descriptor_key_t;
 using zlink::framework::fanout_publisher_descriptor_t;
 using zlink::framework::framework_runtime_state_t;
-using zlink::framework::location_auto_connect_type_t;
-using zlink::framework::location_kind_t;
 using zlink::framework::location_owner_token_t;
 using zlink::framework::location_role_t;
 using zlink::framework::node_rid_t;
-using zlink::framework::peer_location_filter_t;
-using zlink::framework::peer_location_key_t;
-using zlink::framework::peer_location_t;
-using zlink::framework::route_kind_t;
-using zlink::framework::route_location_key_t;
-using zlink::framework::route_location_t;
-using zlink::framework::spot_location_key_t;
-using zlink::framework::spot_location_t;
 using zlink::framework::location_write_status_t;
 using zlink::framework::locations::redis::detail::redis_location_key_schema_t;
 using zlink::framework::locations::redis::detail::redis_location_row_codec_t;
@@ -49,6 +34,8 @@ using zlink::framework::locations::redis::detail::redis_location_script_result_t
 using zlink::framework::locations::redis::detail::redis_location_scripts_t;
 using zlink::framework::locations::redis::redis_location_options_t;
 using zlink::framework::locations::redis::redis_location_store_t;
+using zlink::framework::locations::redis::redis_relocation_options_t;
+using zlink::framework::locations::redis::redis_relocation_store_t;
 
 std::string unique_prefix ()
 {
@@ -320,32 +307,6 @@ const nlohmann::json &fixture_row (const nlohmann::json &fixture, std::string_vi
     throw std::runtime_error ("fixture row was not found");
 }
 
-actor_location_t make_actor_location (std::string mesh_name,
-                                      std::string actor_id,
-                                      std::string node_rid,
-                                      std::string spot_id,
-                                      zlink::spot_kind spot_kind,
-                                      std::string owner_id,
-                                      std::uint64_t actor_generation = 1,
-                                      std::uint64_t owner_node_generation = 1,
-                                      std::uint64_t spot_generation = 1,
-                                      std::uint64_t membership_epoch = 1)
-{
-    const auto actor_type = std::string{"player"};
-    return actor_location_t{
-      .mesh_name = std::move (mesh_name),
-      .actor_id = actor_id,
-      .actor_type = actor_type,
-      .actor_ref = actor_ref_t (node_rid_t::from_string (node_rid), actor_type,
-                                actor_id, actor_generation),
-      .owner_node_rid = zlink::routing_id_t::from (node_rid),
-      .owner_node_generation = owner_node_generation,
-      .spot_id = std::move (spot_id),
-      .spot_generation = spot_generation,
-      .spot_kind = spot_kind,
-      .membership_epoch = membership_epoch,
-      .owner_id = std::move (owner_id)};
-}
 
 TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
 {
@@ -353,25 +314,64 @@ TEST (ZLinkFrameworkLocationsRedis, StoreTypeExposesUnifiedLocationContracts)
       .connection_string = "tcp://127.0.0.1:6379", .key_prefix = "zlink:test"});
 
     zlink::framework::location_store_t *location_store = &store;
-    client_server_location_store_t *client_server_store = &store;
-    fanout_location_store_t *fanout_store = &store;
-    zlink::framework::peer_location_store_t *peer_store = &store;
-    zlink::framework::spot_location_store_t *spot_store = &store;
-    zlink::framework::actor_location_store_t *actor_store = &store;
-    zlink::framework::route_location_store_t *route_store = &store;
-    zlink::framework::owner_lease_store_t *lease_store = &store;
-    zlink::framework::location_change_stamp_store_t *stamp_store = &store;
-
     EXPECT_NE (nullptr, location_store);
-    EXPECT_NE (nullptr, client_server_store);
-    EXPECT_NE (nullptr, fanout_store);
-    EXPECT_NE (nullptr, peer_store);
-    EXPECT_NE (nullptr, spot_store);
-    EXPECT_NE (nullptr, actor_store);
-    EXPECT_NE (nullptr, route_store);
-    EXPECT_NE (nullptr, lease_store);
-    EXPECT_NE (nullptr, stamp_store);
     EXPECT_EQ ("zlink:test", store.options ().key_prefix);
+
+    redis_relocation_store_t relocation_store (
+      redis_relocation_options_t{
+        .connection_string = "tcp://127.0.0.1:6379",
+        .key_prefix = "zlink:test:relocations"});
+    zlink::framework::relocation_store_t *relocation =
+      &relocation_store;
+    EXPECT_NE (nullptr, relocation);
+    EXPECT_EQ ("zlink:test:relocations",
+               relocation_store.options ().key_prefix);
+}
+
+TEST (ZLinkFrameworkLocationsRedis, RelocationStoreRoundTripsImmutablePayload)
+{
+#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+    GTEST_SKIP () << "redis-plus-plus is not available in this build";
+#else
+    const auto location_options = find_redis_options ();
+    if (!location_options)
+        GTEST_SKIP () << "Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT to enable";
+
+    redis_relocation_store_t store (
+      redis_relocation_options_t{
+        .connection_string = location_options->connection_string,
+        .key_prefix = location_options->key_prefix + ":relocations"});
+    const std::vector<std::byte> payload{
+      std::byte{0x01}, std::byte{0x7f}, std::byte{0xff}};
+    const auto stored = store
+                          .put_relocation (payload, std::chrono::hours (1))
+                          .result ()
+                          .value ();
+    EXPECT_FALSE (stored.reference.empty ());
+    EXPECT_GT (stored.expires_at, stored.store_now);
+
+    const auto read = store.get_relocation (stored.reference).result ().value ();
+    const auto *found =
+      std::get_if<zlink::framework::relocation_found_t> (&read);
+    ASSERT_NE (nullptr, found);
+    EXPECT_EQ (payload, found->payload);
+
+    const auto renewed = store
+                           .renew_relocation (stored.reference,
+                                              std::chrono::hours (2))
+                           .result ()
+                           .value ();
+    EXPECT_NE (nullptr,
+               std::get_if<zlink::framework::relocation_renewed_t> (
+                 &renewed));
+    EXPECT_EQ (zlink::framework::relocation_delete_result_t::deleted,
+               store.delete_relocation (stored.reference)
+                 .result ()
+                 .value ());
+    EXPECT_TRUE (std::holds_alternative<
+                 zlink::framework::relocation_missing_t> (
+      store.get_relocation (stored.reference).result ().value ()));
+#endif
 }
 
 TEST (ZLinkFrameworkLocationsRedis,
@@ -567,162 +567,6 @@ TEST (ZLinkFrameworkLocationsRedis,
                decoded.activation_concurrency.limit);
 }
 
-TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
-{
-    redis_location_store_t store (redis_location_options_t{
-      .connection_string = "tcp://127.0.0.1:1", .key_prefix = "zlink:test"});
-
-    try {
-    auto claim = store.update_actor (
-      make_actor_location ("play", "alice", "node-a", "spot-a",
-                           zlink::spot_kind::user, "owner-a"),
-      zlink::framework::location_write_intent_t::new_claim);
-    EXPECT_FALSE (claim.result ().has_value ());
-    ASSERT_NE (nullptr, claim.result ().error ());
-    EXPECT_TRUE (claim.result ().error ()->is_retriable ());
-
-    auto lease = store.claim_owner_lease (
-      "owner-a", std::chrono::milliseconds (500));
-    EXPECT_FALSE (lease.result ().has_value ());
-    ASSERT_NE (nullptr, lease.result ().error ());
-    EXPECT_TRUE (lease.result ().error ()->is_retriable ());
-
-    auto peer = store.update_peer (
-      peer_location_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                      .mesh_name = "api",
-                      .role = location_role_t::dealer,
-                      .endpoint = "tcp://127.0.0.1:7777",
-                      .owner_id = "owner-a"},
-      zlink::framework::location_write_intent_t::new_claim);
-    EXPECT_FALSE (peer.result ().has_value ());
-    ASSERT_NE (nullptr, peer.result ().error ());
-    EXPECT_TRUE (peer.result ().error ()->is_retriable ());
-
-    auto spot = store.update_spot (
-      spot_location_t{.mesh_name = "play",
-                      .spot_id = "spot-a",
-                      .spot_type = "room",
-                      .node_rid = zlink::routing_id_t::from ("node-a"),
-                      .owner_id = "owner-a"},
-      zlink::framework::location_write_intent_t::new_claim);
-    EXPECT_FALSE (spot.result ().has_value ());
-    ASSERT_NE (nullptr, spot.result ().error ());
-    EXPECT_TRUE (spot.result ().error ()->is_retriable ());
-
-    auto route = store.update_route (
-      route_location_t{.route_kind = route_kind_t::spot_name,
-                       .route_key = "room-a",
-                       .owner_node_rid = zlink::routing_id_t::from ("node-a"),
-                       .owner_id = "owner-a",
-                       .value = {1, 2, 3}},
-      zlink::framework::location_write_intent_t::new_claim);
-    EXPECT_FALSE (route.result ().has_value ());
-    ASSERT_NE (nullptr, route.result ().error ());
-    EXPECT_TRUE (route.result ().error ()->is_retriable ());
-
-    auto read = store.resolve_actor (
-      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
-    EXPECT_FALSE (read.result ().has_value ());
-    ASSERT_NE (nullptr, read.result ().error ());
-    EXPECT_TRUE (read.result ().error ()->is_retriable ());
-
-    auto read_spot = store.resolve_spot (
-      spot_location_key_t{.spot_id = "spot-a"});
-    EXPECT_FALSE (read_spot.result ().has_value ());
-    ASSERT_NE (nullptr, read_spot.result ().error ());
-    EXPECT_TRUE (read_spot.result ().error ()->is_retriable ());
-
-    auto read_route = store.resolve_route (
-      route_location_key_t{.route_kind = route_kind_t::spot_name, .route_key = "room-a"});
-    EXPECT_FALSE (read_route.result ().has_value ());
-    ASSERT_NE (nullptr, read_route.result ().error ());
-    EXPECT_TRUE (read_route.result ().error ()->is_retriable ());
-
-    auto list = store.list_actors (zlink::framework::actor_location_filter_t{},
-                                   zlink::framework::location_page_request_t{.page_size = 2});
-    EXPECT_FALSE (list.result ().has_value ());
-    ASSERT_NE (nullptr, list.result ().error ());
-    EXPECT_TRUE (list.result ().error ()->is_retriable ());
-
-    auto peers = store.list_peers (zlink::framework::peer_location_filter_t{});
-    EXPECT_FALSE (peers.result ().has_value ());
-    ASSERT_NE (nullptr, peers.result ().error ());
-    EXPECT_TRUE (peers.result ().error ()->is_retriable ());
-
-    auto spots = store.list_spots (zlink::framework::spot_location_filter_t{},
-                                   zlink::framework::location_page_request_t{.page_size = 2});
-    EXPECT_FALSE (spots.result ().has_value ());
-    ASSERT_NE (nullptr, spots.result ().error ());
-    EXPECT_TRUE (spots.result ().error ()->is_retriable ());
-
-    auto routes = store.list_routes (zlink::framework::route_location_filter_t{},
-                                     zlink::framework::location_page_request_t{.page_size = 2});
-    EXPECT_FALSE (routes.result ().has_value ());
-    ASSERT_NE (nullptr, routes.result ().error ());
-    EXPECT_TRUE (routes.result ().error ()->is_retriable ());
-
-    auto removed_peer = store.remove_peer (
-      peer_location_key_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                          .mesh_name = "api",
-                          .role = location_role_t::dealer,
-                          .endpoint = "tcp://127.0.0.1:7777"},
-      location_owner_token_t{"owner-a", 0});
-    EXPECT_FALSE (removed_peer.result ().has_value ());
-    ASSERT_NE (nullptr, removed_peer.result ().error ());
-    EXPECT_TRUE (removed_peer.result ().error ()->is_retriable ());
-
-    auto removed_spot = store.remove_spot (
-      spot_location_key_t{.spot_id = "spot-a"},
-      location_owner_token_t{"owner-a", 0});
-    EXPECT_FALSE (removed_spot.result ().has_value ());
-    ASSERT_NE (nullptr, removed_spot.result ().error ());
-    EXPECT_TRUE (removed_spot.result ().error ()->is_retriable ());
-
-    auto removed_route = store.remove_route (
-      route_location_key_t{.route_kind = route_kind_t::spot_name, .route_key = "room-a"},
-      location_owner_token_t{"owner-a", 0});
-    EXPECT_FALSE (removed_route.result ().has_value ());
-    ASSERT_NE (nullptr, removed_route.result ().error ());
-    EXPECT_TRUE (removed_route.result ().error ()->is_retriable ());
-
-    auto removed_actor = store.remove_actor (
-      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"},
-      location_owner_token_t{"owner-a", 0});
-    EXPECT_FALSE (removed_actor.result ().has_value ());
-    ASSERT_NE (nullptr, removed_actor.result ().error ());
-    EXPECT_TRUE (removed_actor.result ().error ()->is_retriable ());
-
-    auto removed = store.remove_all_by_owner (
-      location_owner_token_t{"owner-a", 1});
-    EXPECT_FALSE (removed.result ().has_value ());
-    ASSERT_NE (nullptr, removed.result ().error ());
-    EXPECT_TRUE (removed.result ().error ()->is_retriable ());
-
-    auto removed_lease = store.release_owner_lease (
-      location_owner_token_t{"owner-a", 1});
-    EXPECT_FALSE (removed_lease.result ().has_value ());
-    ASSERT_NE (nullptr, removed_lease.result ().error ());
-    EXPECT_TRUE (removed_lease.result ().error ()->is_retriable ());
-
-    auto leases = store.read_owner_lease ("owner-a");
-    EXPECT_FALSE (leases.result ().has_value ());
-    ASSERT_NE (nullptr, leases.result ().error ());
-    EXPECT_TRUE (leases.result ().error ()->is_retriable ());
-
-    auto stamp = store.get_change_stamp (
-      zlink::framework::location_change_stamp_scope_t{.kind = location_kind_t::spot,
-                                                      .mesh_name = "play"});
-    EXPECT_FALSE (stamp.result ().has_value ());
-    ASSERT_NE (nullptr, stamp.result ().error ());
-    EXPECT_TRUE (stamp.result ().error ()->is_retriable ());
-    }
-    catch (const std::exception &error) {
-        EXPECT_NE (
-          std::string::npos,
-          std::string (error.what ()).find (
-            "failed to connect to Redis"));
-    }
-}
 
 TEST (ZLinkFrameworkLocationsRedis,
       TypedCapacityProjectionRoundTripsAndAffectsImmutableDigest)
@@ -786,117 +630,6 @@ TEST (ZLinkFrameworkLocationsRedis,
         descriptor));
 }
 
-TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
-{
-#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-    GTEST_SKIP () << "redis-plus-plus is not available in this build";
-#else
-    const auto options = find_redis_options ();
-    if (!options) {
-        GTEST_SKIP () << "Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT to enable";
-    }
-
-    redis_location_store_t store (*options);
-    const auto owner_a_token =
-      claim_owner (store, "owner-a", std::chrono::seconds (5));
-    const auto lease =
-      std::get<zlink::framework::owner_lease_found_t> (
-        store.read_owner_lease ("owner-a")
-          .result ()
-          .value ());
-    EXPECT_GT (lease.lease_expires_at, lease.store_now);
-
-    // The location store owns a persistent async connection. An idle interval
-    // between the host lease and the first row claim must not close it.
-    std::this_thread::sleep_for (std::chrono::milliseconds (600));
-
-    const auto before =
-      store.get_change_stamp ({.kind = location_kind_t::actor, .mesh_name = std::nullopt})
-        .result ()
-        .value ();
-    auto claim = store.update_actor (
-      make_actor_location ("play", "alice", "node-a", "spot-a",
-                           zlink::spot_kind::user, "owner-a"),
-      zlink::framework::location_write_intent_t::new_claim);
-    ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
-    ASSERT_GT (claim.result ().value ().generation, 0);
-
-    sw::redis::Redis redis (options->connection_string);
-    const auto actor_hash_key = redis_location_key_schema_t::row_key (
-      options->key_prefix, location_kind_t::actor,
-      redis_location_key_schema_t::encode_actor_key (
-        actor_location_key_t{.mesh_name = "play", .actor_id = "alice"}));
-    std::vector<std::string> actor_hash_fields;
-    redis.hkeys (actor_hash_key, std::back_inserter (actor_hash_fields));
-    EXPECT_EQ (5u, actor_hash_fields.size ());
-    EXPECT_NE (actor_hash_fields.end (),
-               std::find (actor_hash_fields.begin (), actor_hash_fields.end (), "mesh"));
-
-    const auto after =
-      store.get_change_stamp ({.kind = location_kind_t::actor, .mesh_name = std::nullopt})
-        .result ()
-        .value ();
-    EXPECT_GT (after, before);
-
-    auto resolved = store.resolve_actor (
-      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
-    ASSERT_TRUE (resolved.result ().has_value ());
-    ASSERT_TRUE (resolved.result ().value ().has_value ());
-    EXPECT_EQ ("alice", resolved.result ().value ()->actor_id);
-    EXPECT_EQ ("play", resolved.result ().value ()->mesh_name);
-    EXPECT_EQ ("node-a", resolved.result ().value ()->owner_node_rid.to_string ());
-
-    auto page = store.list_actors (zlink::framework::actor_location_filter_t{.actor_type = "player"},
-                                   zlink::framework::location_page_request_t{.page_size = 10});
-    ASSERT_TRUE (page.result ().has_value ());
-    ASSERT_EQ (1u, page.result ().value ().items.size ());
-
-    const auto publisher_token =
-      claim_owner (
-        store, "publisher-owner",
-        std::chrono::seconds (5));
-    auto peer_claim = store.update_peer (
-      peer_location_t{.auto_connect_type = location_auto_connect_type_t::fanout,
-                      .mesh_name = "pubsub.events",
-                      .role = location_role_t::pub,
-                      .endpoint = "tcp://127.0.0.1:7007",
-                      .weight = 100,
-                      .owner_id = "publisher-owner"},
-      zlink::framework::location_write_intent_t::new_claim);
-    ASSERT_EQ (location_write_status_t::stored, peer_claim.result ().value ().status);
-    auto peers = store.list_peers (
-      zlink::framework::peer_location_filter_t{.auto_connect_type =
-                                                 location_auto_connect_type_t::fanout,
-                                               .mesh_name = "pubsub.events"});
-    ASSERT_TRUE (peers.result ().has_value ());
-    ASSERT_EQ (1u, peers.result ().value ().size ());
-    EXPECT_EQ (location_role_t::pub, peers.result ().value ()[0].role);
-    EXPECT_EQ ("tcp://127.0.0.1:7007", peers.result ().value ()[0].endpoint);
-
-    const auto owner_a =
-      std::get<zlink::framework::owner_lease_found_t> (
-        store.read_owner_lease ("owner-a")
-          .result ()
-          .value ());
-    EXPECT_EQ (owner_a_token.lease_generation,
-               owner_a.token.lease_generation);
-    EXPECT_GT (owner_a.lease_expires_at, owner_a.store_now);
-
-    auto removed = store.remove_all_by_owner (
-      live_owner_token (store, "owner-a"));
-    ASSERT_TRUE (removed.result ().has_value ());
-    EXPECT_EQ (1, removed.result ().value ());
-    auto missing = store.resolve_actor (
-      actor_location_key_t{.mesh_name = "play", .actor_id = "alice"});
-    ASSERT_TRUE (missing.result ().has_value ());
-    EXPECT_FALSE (missing.result ().value ().has_value ());
-    (void) store.remove_all_by_owner (
-      live_owner_token (
-        store, "publisher-owner"));
-    (void) store.release_owner_lease (publisher_token);
-    (void) store.release_owner_lease (owner_a_token);
-#endif
-}
 
 TEST (ZLinkFrameworkLocationsRedis,
       MeshNodeDescriptorUsesExactLeaseAndImmutableRevisionFence)
@@ -1743,361 +1476,85 @@ TEST (ZLinkFrameworkLocationsRedis,
 #endif
 }
 
-TEST (ZLinkFrameworkLocationsRedis, PagedActorListUsesOpaqueRedisScanCursor)
+
+
+TEST (ZLinkFrameworkLocationsRedis,
+      AuthorityRestorePreservesIdentityWithoutLiveOwnerLease)
 {
 #if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
     GTEST_SKIP () << "redis-plus-plus is not available in this build";
 #else
+    using namespace zlink::framework;
     const auto options = find_redis_options ();
-    if (!options) {
-        GTEST_SKIP () << "Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT to enable";
-    }
-
+    if (!options)
+        GTEST_SKIP () << "Redis server is not available";
     redis_location_store_t store (*options);
-    const auto scan_owner =
-      claim_owner (
-        store, "scan-owner",
-        std::chrono::seconds (10));
+    const auto owner = claim_owner (store, "restore-owner");
+    const mesh_node_descriptor_t descriptor{
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from ("restore-node"),
+      .lifecycle_generation = 1,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:5010",
+      .application_version = 1,
+      .object_capabilities =
+        {{.object_kind = placement_object_kind_t::actor,
+          .stable_type = "player",
+          .policy = maintenance_policy_kind_t::recreate}},
+      .object_role = object_role_t::server,
+      .capacity = {.actors = {.limit = 4}},
+      .activation_concurrency = {.limit = 4},
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "test",
+      .owner_id = owner.owner_id,
+      .lease_generation = owner.lease_generation};
+    ASSERT_EQ (location_write_status_t::stored,
+               store.update_mesh_node (
+                 descriptor, location_write_intent_t::new_claim)
+                 .result ().value ().status);
 
-    std::vector<std::string> expected;
-    for (int index = 0; index < 25; ++index) {
-        const auto actor_id = "scan-actor-" + std::to_string (index);
-        const auto is_player = index % 2 == 0;
-        const auto actor_type = is_player ? "player" : "npc";
-        auto actor_row = make_actor_location (
-          "play", actor_id, "scan-node", "scan-spot",
-          zlink::spot_kind::user, "scan-owner");
-        actor_row.actor_type = actor_type;
-        actor_row.actor_ref = actor_ref_t (
-          node_rid_t::from_string ("scan-node"), actor_type, actor_id, 1);
-        auto claim = store.update_actor (
-          std::move (actor_row),
-          zlink::framework::location_write_intent_t::new_claim);
-        ASSERT_EQ (location_write_status_t::stored, claim.result ().value ().status);
-        if (is_player) {
-            expected.push_back (actor_id);
-        }
-    }
+    const object_reserve_request_t request{
+      .key = {placement_object_kind_t::actor, "restore-actor"},
+      .intent = {.stable_type = "player"},
+      .target =
+        {.mesh_name = "play",
+         .node_rid = node_rid_t::from_string ("restore-node"),
+         .node_lifecycle_generation = 1,
+         .owner = owner},
+      .capacity_bundle = {.actor_slots = 1}};
+    const auto reserved = store.reserve (request).result ().value ();
+    const auto *reservation = std::get_if<object_reserved_t> (&reserved);
+    ASSERT_NE (nullptr, reservation);
+    const auto committed = store
+      .commit ({request.key, reservation->fence, {std::byte{0x11}}})
+      .result ().value ();
+    const auto *ready = std::get_if<object_committed_t> (&committed);
+    ASSERT_NE (nullptr, ready);
+    ASSERT_TRUE (std::holds_alternative<owner_lease_released_t> (
+      store.release_owner_lease (owner).result ().value ()));
 
-    std::vector<std::string> actual;
-    std::optional<std::string> continuation;
-    int page_count = 0;
-    do {
-        auto page = store.list_actors (
-          zlink::framework::actor_location_filter_t{.actor_type = "player"},
-          zlink::framework::location_page_request_t{.page_size = 3,
-                                                    .continuation_token = continuation});
-        ASSERT_TRUE (page.result ().has_value ());
-        EXPECT_LE (page.result ().value ().items.size (), 3u);
-        for (const auto &actor : page.result ().value ().items) {
-            actual.push_back (actor.actor_id);
-        }
-        continuation = page.result ().value ().continuation_token;
-        if (continuation) {
-            const auto token = nlohmann::json::parse (*continuation);
-            EXPECT_TRUE (token.at ("cursor").is_string ());
-            EXPECT_TRUE (token.at ("pending").is_array ());
-        }
-        ++page_count;
-        ASSERT_LT (page_count, 50);
-    } while (continuation);
+    const auto restored = store.compare_exchange_authority (
+      {"1:restore-actor"}, ready->ready.store_version,
+      authority_restore_t{{std::byte{0x22}}, owner})
+      .result ().value ();
+    const auto *stored = std::get_if<authority_stored_t> (&restored);
+    ASSERT_NE (nullptr, stored);
+    EXPECT_EQ ((std::vector<std::byte>{std::byte{0x22}}),
+               stored->snapshot.payload);
+    EXPECT_EQ (ready->ready.object_generation,
+               stored->snapshot.object_generation);
+    EXPECT_EQ (ready->ready.authority_owner_generation,
+               stored->snapshot.authority_owner_generation);
+    EXPECT_EQ (owner.owner_id, stored->snapshot.owner.owner_id);
+    EXPECT_EQ (owner.lease_generation,
+               stored->snapshot.owner.lease_generation);
 
-    std::sort (expected.begin (), expected.end ());
-    std::sort (actual.begin (), actual.end ());
-    EXPECT_EQ (expected, actual);
-    EXPECT_GT (page_count, 1);
-    (void) store.remove_all_by_owner (
-      live_owner_token (store, "scan-owner"));
-    (void) store.release_owner_lease (scan_owner);
+    const auto wrong = store.compare_exchange_authority (
+      {"1:restore-actor"}, stored->snapshot.store_version,
+      authority_restore_t{{std::byte{0x33}}, {"other-owner", 1}})
+      .result ().value ();
+    EXPECT_NE (nullptr, std::get_if<authority_conflict_t> (&wrong));
 #endif
-}
-
-TEST (ZLinkFrameworkLocationsRedis, CrossLanguageWritesRowsForDotnetToRead)
-{
-#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-    GTEST_SKIP () << "redis-plus-plus is not available in this build";
-#else
-    const auto options = cross_language_options ("cpp");
-    if (!options) {
-        GTEST_SKIP () << "Redis cross-language prefix or Redis endpoint is not available";
-    }
-
-    redis_location_store_t store (*options);
-    (void) claim_owner (
-      store, "cpp-owner",
-      std::chrono::seconds (30));
-    EXPECT_EQ (location_write_status_t::stored,
-               store.update_peer (
-                      peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                                      .mesh_name = "cross",
-                                      .node_rid = zlink::routing_id_t::from ("cpp-node"),
-                                      .role = location_role_t::router,
-                                      .endpoint = "tcp://127.0.0.1:5330",
-                                      .weight = 100,
-                                      .value = 7,
-                                      .metadata = {{"route-endpoint", "tcp://127.0.0.1:6330"}},
-                                      .capabilities = {"cpp", "route"},
-                                      .owner_id = "cpp-owner"},
-                      zlink::framework::location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    EXPECT_EQ (location_write_status_t::stored,
-               store.update_spot (
-                      spot_location_t{.mesh_name = "cross",
-                                      .spot_id = "cpp-spot",
-                                      .spot_type = "cpp-game",
-                                      .node_rid = zlink::routing_id_t::from ("cpp-node"),
-                                      .spot_kind = zlink::spot_kind::user,
-                                      .route_endpoint = "tcp://127.0.0.1:5330",
-                                      .owner_id = "cpp-owner"},
-                      zlink::framework::location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    EXPECT_EQ (location_write_status_t::stored,
-               store.update_actor (
-                      make_actor_location ("mesh", "cpp-actor", "cpp-node", "cpp-spot",
-                                           zlink::spot_kind::user, "cpp-owner"),
-                      zlink::framework::location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-    EXPECT_EQ (location_write_status_t::stored,
-               store.update_route (
-                      route_location_t{.route_kind = route_kind_t::actor_session,
-                                       .route_key = "cpp-route",
-                                       .owner_node_rid = zlink::routing_id_t::from ("cpp-node"),
-                                       .owner_id = "cpp-owner",
-                                       .value = {10, 11, 12, 13}},
-                      zlink::framework::location_write_intent_t::new_claim)
-                 .result ()
-                 .value ()
-                 .status);
-#endif
-}
-
-TEST (ZLinkFrameworkLocationsRedis, CrossLanguageReadsDotnetRows)
-{
-#if !defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
-    GTEST_SKIP () << "redis-plus-plus is not available in this build";
-#else
-    const auto options = cross_language_options ("dotnet");
-    if (!options) {
-        GTEST_SKIP () << "Redis cross-language prefix or Redis endpoint is not available";
-    }
-
-    redis_location_store_t store (*options);
-    auto actor = store.resolve_actor (
-                   actor_location_key_t{.mesh_name = "mesh", .actor_id = "dotnet-actor"})
-                   .result ();
-    ASSERT_TRUE (actor.has_value ());
-    ASSERT_TRUE (actor.value ().has_value ());
-    EXPECT_FALSE (actor.value ()->actor_ref.empty ());
-    EXPECT_EQ ("dotnet-actor", actor.value ()->actor_ref.actor_id ());
-    EXPECT_EQ ("dotnet-node", actor.value ()->actor_ref.node_rid ().value ());
-    EXPECT_EQ (1u, actor.value ()->actor_ref.generation ());
-    EXPECT_EQ ("dotnet-node", actor.value ()->owner_node_rid.to_string ());
-    EXPECT_EQ ("dotnet-owner", actor.value ()->owner_id);
-
-    auto spot = store.resolve_spot (
-                  spot_location_key_t{.spot_id = "dotnet-spot"})
-                  .result ();
-    ASSERT_TRUE (spot.has_value ());
-    ASSERT_TRUE (spot.value ().has_value ());
-    ASSERT_TRUE (spot.value ()->spot_type.has_value ());
-    EXPECT_EQ ("dotnet-game", *spot.value ()->spot_type);
-    EXPECT_EQ ("dotnet-node", spot.value ()->node_rid.to_string ());
-
-    auto route =
-      store
-        .resolve_route (
-          route_location_key_t{.route_kind = route_kind_t::actor_session, .route_key = "dotnet-route"})
-        .result ();
-    ASSERT_TRUE (route.has_value ());
-    ASSERT_TRUE (route.value ().has_value ());
-    EXPECT_EQ ((std::vector<std::uint8_t>{9, 8, 7, 6}), route.value ()->value);
-
-    auto peers = store
-                   .list_peers (peer_location_filter_t{
-                     .auto_connect_type = location_auto_connect_type_t::route_mesh,
-                     .mesh_name = "cross",
-                     .role = location_role_t::router,
-                     .node_rid = zlink::routing_id_t::from ("dotnet-node")})
-                   .result ();
-    ASSERT_TRUE (peers.has_value ());
-    const auto peer = std::find_if (peers.value ().begin (), peers.value ().end (),
-                                    [] (const auto &row) {
-                                        return row.endpoint == "tcp://127.0.0.1:5310";
-                                    });
-    ASSERT_NE (peers.value ().end (), peer);
-    EXPECT_EQ ("tcp://127.0.0.1:6310", peer->metadata.at ("route-endpoint"));
-    EXPECT_EQ ((std::vector<std::string>{"dotnet", "route"}), peer->capabilities);
-#endif
-}
-
-TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
-{
-    const auto write = std::string (redis_location_scripts_t::write);
-    EXPECT_NE (std::string::npos, write.find ("redis.call('TIME')"));
-    EXPECT_NE (std::string::npos, write.find ("redis.call('EXISTS', KEYS[4])"));
-    EXPECT_NE (std::string::npos, write.find ("return {'conflict', 0, nowMs}"));
-    EXPECT_NE (std::string::npos, write.find ("local gen = redis.call('INCR', KEYS[2])"));
-    EXPECT_NE (std::string::npos, write.find ("'owner', owner, 'gen', gen, 'json', ARGV[4]"));
-    EXPECT_NE (std::string::npos, write.find ("redis.call('SADD', KEYS[5], ARGV[5])"));
-    EXPECT_NE (std::string::npos, write.find ("tonumber(redis.call('HGET', KEYS[1], 'gen'))"));
-    EXPECT_NE (std::string::npos, write.find ("return {'stale', 0, nowMs}"));
-
-    const auto remove = std::string (redis_location_scripts_t::remove);
-    EXPECT_NE (std::string::npos, remove.find ("redis.call('DEL', KEYS[1])"));
-    EXPECT_NE (std::string::npos, remove.find ("redis.call('SREM', KEYS[2], ARGV[3])"));
-    EXPECT_NE (std::string::npos, remove.find ("redis.call('SREM', KEYS[3], ARGV[3])"));
-    EXPECT_EQ (std::string::npos, remove.find ("DEL', KEYS[2]"));
-
-    const auto claim_lease =
-      std::string (
-        redis_location_scripts_t::claim_owner_lease);
-    EXPECT_NE (
-      std::string::npos,
-      claim_lease.find (
-        "redis.call('HINCRBY', KEYS[2], 'leaseGeneration', 1)"));
-    EXPECT_NE (
-      std::string::npos,
-      claim_lease.find ("redis.call('PEXPIRE', KEYS[1], ARGV[2])"));
-
-    const auto renew_lease =
-      std::string (
-        redis_location_scripts_t::renew_owner_lease_exact);
-    EXPECT_NE (
-      std::string::npos,
-      renew_lease.find (
-        "tonumber(generation) ~= tonumber(ARGV[1])"));
-    EXPECT_NE (
-      std::string::npos,
-      renew_lease.find ("redis.call('PEXPIRE', KEYS[1], ARGV[2])"));
-
-    const auto release_lease =
-      std::string (
-        redis_location_scripts_t::release_owner_lease);
-    EXPECT_NE (
-      std::string::npos,
-      release_lease.find (
-        "tonumber(generation) ~= tonumber(ARGV[1])"));
-    EXPECT_NE (
-      std::string::npos,
-      release_lease.find ("redis.call('DEL', KEYS[1])"));
-
-    const auto reserve_relocation =
-      std::string (
-        redis_location_scripts_t::reserve_relocation_capacity);
-    EXPECT_NE (
-      std::string::npos,
-      reserve_relocation.find (
-        "if not liveLease(KEYS[3], ARGV[12])"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_relocation.find (
-        "redis.call('HGET', KEYS[9], 'lifecycleGeneration')"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_relocation.find (
-        "redis.call('HGET', KEYS[9], 'actorLimit')"));
-    EXPECT_EQ (
-      std::string::npos,
-      reserve_relocation.find (
-        "liveLease(KEYS[2], ARGV[9])"));
-
-    const auto reserve_object =
-      std::string (
-        redis_location_scripts_t::reserve_object);
-    EXPECT_NE (
-      std::string::npos,
-      reserve_object.find (
-        "'pendingCreationReservationId', ARGV[16]"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_object.find (
-        "'pendingCreationReference', ARGV[20]"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_object.find (
-        "'pendingCreationSha256', ARGV[21]"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_object.find (
-        "'pendingCreationEncodedSize', ARGV[22]"));
-    EXPECT_NE (
-      std::string::npos,
-      reserve_object.find (
-        "allocationState') == 'reserved'"));
-
-    const auto read_authority =
-      std::string (
-        redis_location_scripts_t::read_authority);
-    EXPECT_NE (
-      std::string::npos,
-      read_authority.find (
-        "'pendingCreationReservationId'"));
-    EXPECT_NE (
-      std::string::npos,
-      read_authority.find (
-        "'pendingCreationReference'"));
-
-    const auto commit_object =
-      std::string (
-        redis_location_scripts_t::commit_object);
-    EXPECT_NE (
-      std::string::npos,
-      commit_object.find (
-        "redis.call('HDEL', KEYS[1]"));
-    EXPECT_NE (
-      std::string::npos,
-      commit_object.find (
-        "'pendingCreationEncodedSize'"));
-
-    const auto prepare_aggregate =
-      std::string (
-        redis_location_scripts_t::prepare_aggregate_v3);
-    EXPECT_NE (
-      std::string::npos,
-      prepare_aggregate.find (
-        "'status', 'prepared',"));
-    EXPECT_NE (
-      std::string::npos,
-      prepare_aggregate.find (
-        "'aggregateGeneration', ARGV[3]"));
-    EXPECT_EQ (
-      std::string::npos,
-      prepare_aggregate.find (
-        "prefix .. 'targetDescriptorRedisKey'"));
-    EXPECT_NE (
-      std::string::npos,
-      prepare_aggregate.find (
-        "local authorityKey = KEYS[10 + i]"));
-    EXPECT_EQ (
-      std::string::npos,
-      prepare_aggregate.find (
-        "relocation_capacity"));
-
-    const auto commit_aggregate =
-      std::string (
-        redis_location_scripts_t::commit_aggregate_v3);
-    EXPECT_NE (
-      std::string::npos,
-      commit_aggregate.find (
-        "not liveLease(KEYS[4], targetGeneration)"));
-    EXPECT_NE (
-      std::string::npos,
-      commit_aggregate.find (
-        "return 'stale'"));
-
-    const auto abort_relocation =
-      std::string (
-        redis_location_scripts_t::abort_relocation_capacity);
-    EXPECT_NE (
-      std::string::npos,
-      abort_relocation.find (
-        "if status ~= 'reserved' then return 'stale' end"));
 }
 
 TEST (ZLinkFrameworkLocationsRedis, ScriptWriteResultMapsRedisStatuses)
@@ -2117,62 +1574,6 @@ TEST (ZLinkFrameworkLocationsRedis, ScriptWriteResultMapsRedisStatuses)
     EXPECT_EQ (0, stale.generation);
 }
 
-TEST (ZLinkFrameworkLocationsRedis, PhysicalKeysUseCommonRedisSchema)
-{
-    const auto peer_key = redis_location_key_schema_t::encode_peer_key (
-      peer_location_key_t{.auto_connect_type = location_auto_connect_type_t::client_server,
-                          .mesh_name = "api-mesh",
-                          .role = location_role_t::dealer,
-                          .node_rid = std::nullopt,
-                          .endpoint = "tcp://127.0.0.1"});
-    EXPECT_EQ ("13:client-server8:api-mesh6:dealer15:tcp://127.0.0.1", peer_key);
-    EXPECT_EQ ("zlink:test:{zlink-location-v3}:row:peer:" + peer_key,
-               redis_location_key_schema_t::row_key ("zlink:test", location_kind_t::peer,
-                                                     peer_key));
-    EXPECT_EQ ("zlink:test:{zlink-location-v3}:gen:peer:" + peer_key,
-               redis_location_key_schema_t::generation_key ("zlink:test", location_kind_t::peer,
-                                                            peer_key));
-    EXPECT_EQ ("zlink:test:{zlink-location-v3}:keys:peer",
-               redis_location_key_schema_t::keys_key ("zlink:test", location_kind_t::peer));
-    EXPECT_EQ ("zlink:test:{zlink-location-v3}:own:peer:owner-a",
-               redis_location_key_schema_t::owner_key ("zlink:test", location_kind_t::peer,
-                                                       "owner-a"));
-    EXPECT_EQ (
-      "zlink:test:{zlink-location-v3}:owner-lease:"
-      "95256875151043abdcafdd26fd390c650d6311e1d7185df477ce50736b6a5d0b",
-               redis_location_key_schema_t::lease_key ("zlink:test", "owner-a"));
-    EXPECT_EQ ("zlink:test:{zlink-location-v3}:stamp:spot:mesh-a",
-               redis_location_key_schema_t::stamp_key ("zlink:test", location_kind_t::spot,
-                                                       std::string_view ("mesh-a")));
-    const auto mesh_key =
-      redis_location_key_schema_t::encode_mesh_node_key (
-        {.mesh_name = "game",
-         .rid = zlink::routing_id_t::from ("game-a")});
-    EXPECT_EQ ("4:game12:67616d652d61", mesh_key);
-    EXPECT_EQ (
-      "zlink:test:{zlink-location-v3}:descriptor:mesh:"
-      "d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
-      redis_location_key_schema_t::mesh_node_key (
-        "zlink:test", "game", "game-a"));
-    EXPECT_EQ (
-      "zlink:test:{zlink-location-v3}:descriptor:mesh:index",
-      redis_location_key_schema_t::mesh_node_keys_key (
-        "zlink:test", "game"));
-}
-
-TEST (ZLinkFrameworkLocationsRedis, RowKeysUseDotnetCanonicalKeyBytes)
-{
-    EXPECT_EQ ("6:spot-a",
-               redis_location_key_schema_t::encode_spot_key (
-                 spot_location_key_t{.spot_id = "spot-a"}));
-    EXPECT_EQ ("4:game7:actor-1",
-               redis_location_key_schema_t::encode_actor_key (
-                 actor_location_key_t{.mesh_name = "game", .actor_id = "actor-1"}));
-    EXPECT_EQ ("1:113:session:alpha",
-               redis_location_key_schema_t::encode_route_key (
-                 route_location_key_t{.route_kind = route_kind_t::actor_session,
-                                      .route_key = "session:alpha"}));
-}
 
 TEST (ZLinkFrameworkLocationsRedis,
       AuthorityFixtureMatchesCommonRedisContract)
@@ -2291,40 +1692,6 @@ TEST (ZLinkFrameworkLocationsRedis,
       "24:zlink-capacity-bundle-v21:31:11:19:user_spot4:room1:1",
       fixture.at ("capacityBundle").at ("encoded")
         .get<std::string> ());
-}
-
-TEST (ZLinkFrameworkLocationsRedis, PeerRowJsonUsesDotnetFieldSchema)
-{
-    const auto encoded = redis_location_row_codec_t::encode_peer (
-      peer_location_t{.auto_connect_type = location_auto_connect_type_t::route_mesh,
-                      .mesh_name = "play",
-                      .node_rid = zlink::routing_id_t::from ("node-a"),
-                      .role = location_role_t::router,
-                      .endpoint = "tcp://127.0.0.1:7001",
-                      .weight = 3,
-                      .value = 17,
-                      .metadata = {{"zone", "a"}},
-                      .capabilities = {"spot-route"},
-                      .owner_id = "owner-a",
-                      .generation = 9});
-
-    const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ (static_cast<int> (location_auto_connect_type_t::route_mesh),
-               json.at ("AutoConnectType").get<int> ());
-    EXPECT_EQ ("play", json.at ("MeshName").get<std::string> ());
-    EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
-               json.at ("NodeRid").get<std::string> ());
-    EXPECT_EQ (static_cast<int> (location_role_t::router), json.at ("Role").get<int> ());
-    EXPECT_EQ ("tcp://127.0.0.1:7001", json.at ("Endpoint").get<std::string> ());
-    EXPECT_EQ ("a", json.at ("Metadata").at ("zone").get<std::string> ());
-    EXPECT_EQ ("spot-route", json.at ("Capabilities").at (0).get<std::string> ());
-
-    const auto decoded = redis_location_row_codec_t::decode_peer (encoded);
-    EXPECT_EQ (location_auto_connect_type_t::route_mesh, decoded.auto_connect_type);
-    ASSERT_TRUE (decoded.node_rid.has_value ());
-    EXPECT_EQ ("node-a", decoded.node_rid->to_string ());
-    EXPECT_EQ (location_role_t::router, decoded.role);
-    EXPECT_EQ (17, decoded.value);
 }
 
 TEST (ZLinkFrameworkLocationsRedis,
@@ -3056,99 +2423,5 @@ TEST (ZLinkFrameworkLocationsRedis,
 #endif
 }
 
-TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)
-{
-    const auto encoded = redis_location_row_codec_t::encode_spot (
-      spot_location_t{.mesh_name = "play",
-                      .spot_id = "spot-a",
-                      .spot_type = "room",
-                      .node_rid = zlink::routing_id_t::from ("node-a"),
-                      .spot_kind = zlink::spot_kind::user,
-                      .route_endpoint = "tcp://127.0.0.1:7001",
-                      .owner_id = "owner-a",
-                      .generation = 6});
-
-    const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ ("play", json.at ("MeshName").get<std::string> ());
-    EXPECT_EQ ("spot-a", json.at ("SpotId").get<std::string> ());
-    EXPECT_EQ ("room", json.at ("SpotType").get<std::string> ());
-    EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
-               json.at ("NodeRid").get<std::string> ());
-    EXPECT_EQ (static_cast<int> (zlink::spot_kind::user), json.at ("SpotKind").get<int> ());
-    EXPECT_EQ ("tcp://127.0.0.1:7001", json.at ("RouteEndpoint").get<std::string> ());
-
-    const auto decoded = redis_location_row_codec_t::decode_spot (encoded);
-    EXPECT_EQ ("play", decoded.mesh_name);
-    EXPECT_EQ ("spot-a", decoded.spot_id);
-    ASSERT_TRUE (decoded.spot_type.has_value ());
-    EXPECT_EQ ("room", *decoded.spot_type);
-    EXPECT_EQ (zlink::spot_kind::user, decoded.spot_kind);
-}
-
-TEST (ZLinkFrameworkLocationsRedis, ActorRowJsonUsesDotnetFieldSchema)
-{
-    const auto encoded = redis_location_row_codec_t::encode_actor (
-      make_actor_location ("play", "alice", "node-a", "play-spot",
-                           zlink::spot_kind::user, "owner-a", 11, 7, 3, 4));
-
-    const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ ("play", json.at ("MeshName").get<std::string> ());
-    EXPECT_EQ ("player", json.at ("ActorType").get<std::string> ());
-    EXPECT_EQ ("alice", json.at ("ActorId").get<std::string> ());
-    EXPECT_FALSE (json.at ("ActorRef").is_null ());
-    EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
-               json.at ("OwnerNodeRid").get<std::string> ());
-    EXPECT_EQ (7u, json.at ("OwnerNodeGeneration").get<std::uint64_t> ());
-    EXPECT_EQ ("play-spot", json.at ("SpotId").get<std::string> ());
-    EXPECT_EQ (3u, json.at ("SpotGeneration").get<std::uint64_t> ());
-    EXPECT_EQ (static_cast<int> (zlink::spot_kind::user), json.at ("SpotKind").get<int> ());
-    EXPECT_EQ (4u, json.at ("MembershipEpoch").get<std::uint64_t> ());
-    EXPECT_EQ ("owner-a", json.at ("OwnerId").get<std::string> ());
-
-    const auto decoded = redis_location_row_codec_t::decode_actor (encoded);
-    EXPECT_EQ ("player", decoded.actor_type);
-    EXPECT_EQ ("alice", decoded.actor_id);
-    EXPECT_EQ ("node-a", decoded.owner_node_rid.to_string ());
-    EXPECT_EQ ("play-spot", decoded.spot_id);
-    EXPECT_EQ (11u, decoded.actor_ref.generation ());
-}
-
-TEST (ZLinkFrameworkLocationsRedis, EntryActorRowKeepsTypedSpotIdentity)
-{
-    const auto encoded = redis_location_row_codec_t::encode_actor (
-      make_actor_location ("play", "bob", "node-a", "entry-spot",
-                           zlink::spot_kind::entry, "owner-a", 3));
-
-    const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ ("entry-spot", json.at ("SpotId").get<std::string> ());
-
-    const auto decoded = redis_location_row_codec_t::decode_actor (encoded);
-    EXPECT_EQ ("entry-spot", decoded.spot_id);
-    EXPECT_EQ (zlink::spot_kind::entry, decoded.spot_kind);
-}
-
-TEST (ZLinkFrameworkLocationsRedis, RouteRowJsonUsesBase64Value)
-{
-    const auto encoded = redis_location_row_codec_t::encode_route (
-      route_location_t{.route_kind = route_kind_t::spot_name,
-                       .route_key = "spot-a",
-                       .owner_node_rid = zlink::routing_id_t::from ("node-a"),
-                       .owner_id = "owner-a",
-                       .generation = 5,
-                       .value = {1, 2, 3, 4}});
-
-    const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ (static_cast<int> (route_kind_t::spot_name), json.at ("RouteKind").get<int> ());
-    EXPECT_EQ ("spot-a", json.at ("RouteKey").get<std::string> ());
-    EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
-               json.at ("OwnerNodeRid").get<std::string> ());
-    EXPECT_EQ ("AQIDBA==", json.at ("Value").get<std::string> ());
-
-    const auto decoded = redis_location_row_codec_t::decode_route (encoded);
-    EXPECT_EQ (route_kind_t::spot_name, decoded.route_kind);
-    EXPECT_EQ ("spot-a", decoded.route_key);
-    EXPECT_EQ ("node-a", decoded.owner_node_rid.to_string ());
-    EXPECT_EQ (std::vector<std::uint8_t> ({1, 2, 3, 4}), decoded.value);
-}
 
 } // namespace

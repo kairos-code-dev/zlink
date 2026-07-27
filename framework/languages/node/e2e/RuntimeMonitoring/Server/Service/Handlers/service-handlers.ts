@@ -42,7 +42,6 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
     this.evidence.add(
       `monitor-socket|source=${event.sourceName}|kind=${socketEventName(event.event)}`
       + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
-      + `|native=${event.diagnostic?.nativeEvent ?? '<none>'}|value=${event.diagnostic?.nativeValue ?? '<none>'}`
     );
   }
 }
@@ -126,13 +125,9 @@ export class ThrowingSocketEventRecorder implements ZLinkRuntimeEventHandler<ZLi
 
 function spotEventDetails(event: ZLinkSpotEvent): string {
   switch (event.event) {
-    case ZLinkSpotEventKind.StatusChanged:
-      return 'peers=0|subjects=0|timer=<none>';
-    case ZLinkSpotEventKind.PeersChanged:
-      return `peers=${event.peers.length}|subjects=0|timer=<none>`;
     case ZLinkSpotEventKind.TimerHandlerFailed:
     case ZLinkSpotEventKind.TimerStoppedAfterUnhandledException:
-      return `peers=0|subjects=0|timer=${event.timerDiagnostic.timerName}`;
+      return `timer=${event.timerDiagnostic.timerName}`;
   }
 }
 

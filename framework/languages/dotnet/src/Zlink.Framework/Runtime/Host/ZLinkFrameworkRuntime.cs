@@ -42,7 +42,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkRelocationPermitPool _relocationPermits;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
-    private readonly ZLinkSpotRelocationReplyRoutes _spotRelocationReplyRoutes;
     private readonly ZLinkSpotRuntimeManager _spots;
     private readonly ZLinkFrameworkComponentStateFactory _stateFactory;
     private readonly ZLinkStreamRuntimeManager _streams;
@@ -78,8 +77,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
         _relocationPermits = new ZLinkRelocationPermitPool(
             registration.Locations.Options);
-        _spotRelocationReplyRoutes = new ZLinkSpotRelocationReplyRoutes(
-            ZLinkSpotRelocationReplyRoutes.LateCompletionRetention);
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
@@ -168,9 +165,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal ZLinkRelocationPermitPool RelocationPermits =>
         _relocationPermits;
-
-    internal ZLinkSpotRelocationReplyRoutes SpotRelocationReplyRoutes =>
-        _spotRelocationReplyRoutes;
 
     internal async ValueTask<bool> DrainStreamSessionsAsync(CancellationToken cancellationToken)
     {
@@ -434,12 +428,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return state is not null && state.TaskRunner.TryRunDetached(name, callback);
     }
 
-    internal bool TryEnqueueMessageFlowObserver(ZLinkMessageFlowEvent flow)
-    {
-        var state = Volatile.Read(ref _state);
-        return state is not null && state.MessageFlowObservers.Enqueue(flow);
-    }
-
     internal ValueTask<ZLinkFrameworkComponentState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)
     {
@@ -556,7 +544,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 lock (_operationGate) _acceptingOperations = false;
                 stateToDispose?.CancelActiveSpotOperations();
                 stateToDispose?.ForceStopStreamSessions();
-                var failures = await CleanupRuntimeGenerationAsync(stateToDispose)
+                var failures = await CleanupRuntimeGenerationAsync(
+                        stateToDispose,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 ThrowCleanupFailures(failures);
             }
@@ -586,7 +576,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     }
 
     private async ValueTask<List<Exception>> CleanupRuntimeGenerationAsync(
-        ZLinkFrameworkComponentState? state)
+        ZLinkFrameworkComponentState? state,
+        CancellationToken forceStopToken = default)
     {
         var failures = new List<Exception>();
         ZLinkWorkerPool? workerPool;
@@ -601,10 +592,13 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
         await CaptureAsync(_actorSessionManager.ResetBoundSessionGenerationAsync).ConfigureAwait(false);
         if (state is not null)
-            await CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
+            await CaptureAsync(forceStopToken.CanBeCanceled
+                    ? () => state.ForceStopAsync(forceStopToken)
+                    : state.DisposeAsync)
+                .ConfigureAwait(false);
+        Capture(_standaloneActorRelocationRuntime.ReleaseRetainedPermits);
         if (state is not null) DetachErrorSink(state.ErrorSink);
         Capture(ResetActorRuntimeGeneration);
-        Capture(_spotRelocationReplyRoutes.Clear);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
 

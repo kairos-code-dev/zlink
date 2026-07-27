@@ -1,22 +1,15 @@
 import fs from 'node:fs';
-import { Injectable, Module } from '@nestjs/common';
+import { Inject, Injectable, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import type {
-  ZLinkRuntimeEventHandler,
-  ZLinkSpotEvent,
-  ZLinkSpotPublisherClient
+import type { ZLinkRouteMeshRuntime, ZLinkSpotPublisherClient } from '@zlink-systems/framework';
+import {
+  ZLinkMessageFlowLogMode
 } from '@zlink-systems/framework';
 import {
-  ZLinkMessageFlowLogMode,
-  ZLinkSpotEventKind,
-  ZLinkSpotPeerKind,
-  ZLinkSpotPeerState
-} from '@zlink-systems/framework';
-import {
+  ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_SPOT_PUBLISHER_CLIENT,
   ZLinkModule,
-  zlinkFramework,
-  zlinkRuntimeEventHandler
+  zlinkFramework
 } from '@zlink-systems/nestjs';
 import type { SpotPublishReq } from '../../Shared/messages';
 import { SpotMsg, SpotServiceNames, spotServicePacket } from '../../Shared/messages';
@@ -47,20 +40,11 @@ export async function startGatewayHost(): Promise<void> {
   let stopping = false;
 
   @Injectable()
-  @zlinkRuntimeEventHandler()
-  class GatewayPubSubReadiness implements ZLinkRuntimeEventHandler<ZLinkSpotEvent> {
-    private connected = false;
-
-    async handle(event: ZLinkSpotEvent): Promise<void> {
-      if (event.sourceName !== SpotServiceNames.spotChannel || event.event !== ZLinkSpotEventKind.PeersChanged) {
-        return;
-      }
-      this.connected = event.peers.some((peer) =>
-        peer.kind === ZLinkSpotPeerKind.RouteMesh && peer.state === ZLinkSpotPeerState.Connected);
-    }
+  class GatewayPubSubReadiness {
+    constructor(@Inject(ZLINK_ROUTE_MESH_RUNTIME) private readonly runtime: ZLinkRouteMeshRuntime) {}
 
     requireConnected(): void {
-      if (!this.connected) {
+      if (!this.runtime.isReady(SpotServiceNames.spotChannel)) {
         throw new Error('Gateway pub/sub peer is not connected yet.');
       }
     }
@@ -85,12 +69,7 @@ export async function startGatewayHost(): Promise<void> {
             .routingId(options.rid)
             .listen(options.spotRouterEndpoint)
             .channelName(SpotServiceNames.spotChannel);
-          return {
-            ...builder.build(),
-            monitoring: {
-              spot: [{ sourceName: SpotServiceNames.spotChannel, intervalMs: 50 }]
-            }
-          };
+          return builder.build();
         }
       })
     ],

@@ -22,7 +22,7 @@ public sealed class SpotRouteDispatcherTests
         var codecs = new ZLinkCodecRegistryBuilder();
         var invoker = new ZLinkSpotHandlerInvoker(handlerInstances, spot, codecs, null);
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
         var dispatcher = new ZLinkSpotRouteDispatcher(
             "route",
             "target-spot",

@@ -10,11 +10,11 @@ import type {
   ZLinkFanoutClient,
   ZLinkMessage,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpot,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import { ZLinkSpotCloseReason } from '../../contracts';
 import type {
   ZLinkEntrySpotActorRequestHandlerRegistration,
@@ -146,7 +146,7 @@ export class ZLinkEntrySpotActivation {
     this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(options.metrics);
     this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.context = createEntrySpotContext({
-      nativeSpotId: options.nativeSpot.routingId,
+      spotId: String(options.nativeSpot.routingId),
       objectGeneration: toContextGeneration(entrySpotGeneration(options.nativeSpot)),
       nodeRid: options.nodeRid,
       handlers: this.handlers,
@@ -244,9 +244,9 @@ export class ZLinkEntrySpotActivation {
       this.serial,
       { timerHandlers: this.options.timerHandlers },
       {
-        providerResolver: this.options.providerResolver,
-        spotNodeName: this.options.spotNodeName,
-        nodeRid: this.options.nodeRid,
+          providerResolver: this.options.providerResolver,
+          spotNodeName: this.options.spotNodeName,
+          spotId: this.context.spotId,
         runtimeEventPublisher: this.options.runtimeEventPublisher
       }
     );

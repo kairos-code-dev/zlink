@@ -2,6 +2,8 @@
 #pragma once
 
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/location_key_codec.hpp"
+#include "runtime/locations/legacy_location_rows.hpp"
 
 #include <functional>
 #include <map>
@@ -33,25 +35,9 @@ class location_lifecycle_t
         std::chrono::system_clock::time_point updated_at{};
     };
 
-    explicit location_lifecycle_t (location_runtime_t &runtime) :
-        _runtime (&runtime), _state (std::make_shared<state_t> ())
+    explicit location_lifecycle_t (location_runtime_t &) :
+        _state (std::make_shared<state_t> ())
     {
-        std::weak_ptr<state_t> weak_state = _state;
-        // Ownership loss arrives per row: only the claim for that canonical key is
-        // deactivated. Other claims held by this owner stay live (.NET parity).
-        runtime.on_ownership_lost (
-          [weak_state] (location_kind_t kind, const std::string &canonical_key) {
-              auto state = weak_state.lock ();
-              if (!state) {
-                  return;
-              }
-              if (kind == location_kind_t::actor) {
-                  deactivate_actor (*state, canonical_key);
-              } else if (kind == location_kind_t::spot) {
-                  std::lock_guard lock (state->gate);
-                  state->spots.erase (canonical_key);
-              }
-          });
     }
 
     ~location_lifecycle_t ()
@@ -69,25 +55,19 @@ class location_lifecycle_t
                                       actor_deactivate_callback_t deactivate = {},
                                       bool takeover = false)
     {
-        auto result =
-          _runtime->write_actor (actor, location_write_intent_t::new_claim);
-        if (result.status == location_write_status_t::rejected_conflict && takeover) {
-            result = _runtime->write_actor (actor, location_write_intent_t::takeover);
-        }
-        if (result.status != location_write_status_t::stored) {
-            return {result.status, std::move (actor), 0, result.updated_at};
-        }
+        (void) takeover;
+        const auto now = std::chrono::system_clock::now ();
+        const auto generation = actor.actor_ref.generation ();
 
         {
             std::lock_guard lock (_state->gate);
             if (_state->active) {
                 _state->actors[actor_key (actor)] =
-                  actor_claim_t{actor, static_cast<std::uint64_t> (result.generation),
+                  actor_claim_t{actor, generation,
                                 std::move (deactivate)};
             }
         }
-        return {result.status, std::move (actor),
-                static_cast<std::uint64_t> (result.generation), result.updated_at};
+        return {location_write_status_t::stored, std::move (actor), generation, now};
     }
 
     location_write_result_t update_actor_location (actor_location_t actor)
@@ -103,22 +83,15 @@ class location_lifecycle_t
             tracked = found->second;
         }
 
-        actor.owner_id = tracked.actor.owner_id;
-        const auto result = _runtime->write_actor (actor, location_write_intent_t::renew);
-        if (result.status == location_write_status_t::stored) {
-            std::lock_guard lock (_state->gate);
-            const auto found = _state->actors.find (key);
-            if (found != _state->actors.end ()) {
-                found->second.actor = std::move (actor);
-                found->second.store_generation = result.generation;
-            }
-            return result;
-        }
-
-        if (result.status == location_write_status_t::ignored_stale) {
-            deactivate_actor (*_state, key);
-        }
-        return result;
+        std::lock_guard lock (_state->gate);
+        const auto found = _state->actors.find (key);
+        if (found == _state->actors.end ())
+            return {location_write_status_t::ignored_stale, 0, {}};
+        found->second.actor = std::move (actor);
+        found->second.store_generation = found->second.actor.actor_ref.generation ();
+        return {location_write_status_t::stored,
+                static_cast<std::int64_t> (found->second.store_generation),
+                std::chrono::system_clock::now ()};
     }
 
     bool owns_actor (actor_location_key_t key) const
@@ -129,19 +102,14 @@ class location_lifecycle_t
 
     spot_claim_result_t claim_spot (spot_location_t spot)
     {
-        const auto result = _runtime->write_spot (spot, location_write_intent_t::new_claim);
-        if (result.status != location_write_status_t::stored) {
-            return {result.status, std::move (spot), result.updated_at};
-        }
-
-        spot.generation = result.generation;
+        const auto now = std::chrono::system_clock::now ();
         {
             std::lock_guard lock (_state->gate);
             if (_state->active) {
                 _state->spots[spot_key (spot)] = spot;
             }
         }
-        return {result.status, std::move (spot), result.updated_at};
+        return {location_write_status_t::stored, std::move (spot), now};
     }
 
     location_write_result_t release_spot (spot_location_key_t key)
@@ -156,15 +124,10 @@ class location_lifecycle_t
             spot = found->second;
         }
 
-        const auto result =
-          _runtime->remove_spot (spot_location_key_t{spot.spot_id},
-                                 spot.generation);
-        if (result.status == location_write_status_t::stored
-            || result.status == location_write_status_t::ignored_stale) {
-            std::lock_guard lock (_state->gate);
-            _state->spots.erase (spot_key (spot));
-        }
-        return result;
+        std::lock_guard lock (_state->gate);
+        _state->spots.erase (spot_key (spot));
+        return {location_write_status_t::stored, spot.generation,
+                std::chrono::system_clock::now ()};
     }
 
     location_write_result_t renew_actor (actor_location_key_t key)
@@ -179,20 +142,9 @@ class location_lifecycle_t
             actor = found->second.actor;
         }
 
-        const auto result = _runtime->write_actor (actor, location_write_intent_t::renew);
-        if (result.status == location_write_status_t::stored) {
-            std::lock_guard lock (_state->gate);
-            const auto found = _state->actors.find (actor_key (key));
-            if (found != _state->actors.end ()) {
-                found->second.store_generation = result.generation;
-            }
-            return result;
-        }
-
-        if (result.status == location_write_status_t::ignored_stale) {
-            deactivate_actor (*_state, actor_key (key));
-        }
-        return result;
+        return {location_write_status_t::stored,
+                static_cast<std::int64_t> (actor.actor_ref.generation ()),
+                std::chrono::system_clock::now ()};
     }
 
     location_write_result_t release_actor (actor_location_key_t key)
@@ -210,9 +162,9 @@ class location_lifecycle_t
             _state->actors.erase (found);
         }
 
-        return _runtime->remove_actor (
-          actor_location_key_t{claim.actor.mesh_name, claim.actor.actor_id},
-          claim.store_generation);
+        return {location_write_status_t::stored,
+                static_cast<std::int64_t> (claim.store_generation),
+                std::chrono::system_clock::now ()};
     }
 
     std::size_t tracked_actor_count () const
@@ -297,7 +249,6 @@ class location_lifecycle_t
         }
     }
 
-    location_runtime_t *_runtime;
     std::shared_ptr<state_t> _state;
 };
 

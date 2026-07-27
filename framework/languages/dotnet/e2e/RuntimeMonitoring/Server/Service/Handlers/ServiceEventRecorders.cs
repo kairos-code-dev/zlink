@@ -10,8 +10,7 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}"
-            + $"|native={@event.Diagnostic?.NativeEvent}|value={@event.Diagnostic?.NativeValue}");
+            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
         return ValueTask.CompletedTask;
     }
 }
@@ -223,11 +222,6 @@ internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeE
     public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var peerCount = @event is ZLinkSpotEvent.PeersChanged peers ? peers.Peers.Count : -1;
-        var subjectCount = @event is ZLinkSpotEvent.SubjectsChanged subjects ? subjects.Subjects.Count : -1;
-        var subjectNames = @event is ZLinkSpotEvent.SubjectsChanged subjectChange
-            ? subjectChange.Subjects.Select(subject => subject.Subject).Order(StringComparer.Ordinal).ToArray()
-            : [];
         var timerName = @event switch
         {
             ZLinkSpotEvent.TimerHandlerFailed failed => failed.Diagnostic.TimerName,
@@ -236,8 +230,6 @@ internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeE
         };
         evidence.Add(
             $"monitor-spot|source={@event.SourceName}|kind={@event.GetType().Name}"
-            + $"|peers={peerCount}|subjects={subjectCount}"
-            + $"|subject-names={string.Join(',', subjectNames)}"
             + $"|timer={timerName}");
         return ValueTask.CompletedTask;
     }

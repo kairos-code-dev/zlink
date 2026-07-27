@@ -3,7 +3,6 @@ import type {
   RoutingId,
   Type,
   ZLinkMessage,
-  ZLinkProviderResolver,
   ZLinkActor,
   ZLinkBoundSession,
   ZLinkSessionActor,
@@ -16,6 +15,7 @@ import type {
   ZLinkSessionSendCall,
   ZLinkStream
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { ZLinkFrameworkErrorKind } from '../../contracts';
 import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import { requireOneWayCompletion } from '../messaging/submission-result';

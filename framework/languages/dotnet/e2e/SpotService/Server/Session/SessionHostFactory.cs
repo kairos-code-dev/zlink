@@ -56,8 +56,8 @@ internal static class SessionHostFactory
             }
             framework.AddHandlersFromAssemblyOf(typeof(Program));
             framework.ConfigureDispatch()
-                .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             var controlMesh = framework.AddRouteMesh(SpotServiceNames.ControlChannel)

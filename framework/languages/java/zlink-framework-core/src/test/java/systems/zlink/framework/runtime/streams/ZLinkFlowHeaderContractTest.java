@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.configuration.ZLinkFlowOrigin;
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;

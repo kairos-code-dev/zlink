@@ -2,8 +2,8 @@ package systems.zlink.framework.runtime.binding;
 
 import java.time.Duration;
 import java.util.function.Consumer;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 
 interface ZLinkJavaAdmissionBacked {
     default ZLinkBackendObject admissionSource() {

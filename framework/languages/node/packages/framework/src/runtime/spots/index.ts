@@ -7,12 +7,12 @@ import type {
   ZLinkActor,
   ZLinkChannelClient,
   ZLinkFanoutClient,
-  ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotActorJoinResponse,
   ZLinkSpotInfo,
   ZLinkSpotPublisherClient,
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type {
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotActorSendHandlerRegistration,
@@ -30,9 +30,9 @@ import { awaitWithAbort, throwIfAborted } from '../abort';
 import {
   ZLinkMessage,
   ZLinkSpotCloseReason,
-  ZLinkSpotKind,
-  ZLinkRuntimeEventPublisher
+  ZLinkSpotKind
 } from '../../contracts';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import {
   Message as BindingMessage,
   SubmitResult
@@ -157,6 +157,7 @@ export interface ZLinkSpotManagerOptions {
   readonly nodeGenerationProvider?: (meshName: string) => bigint | undefined;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
+  readonly entrySpotIdProvider?: (meshName: string) => string | undefined;
   readonly entrySpotCallbacks?: {
     onLeaveActor(
       actor: ZLinkActor,
@@ -300,6 +301,10 @@ export class DefaultZLinkSpotManager {
       registerActivation: (activation) => this.activations.register(activation),
       metrics: options.metrics
     });
+  }
+
+  entrySpotIdForMesh(meshName: string): string | undefined {
+    return this.options.entrySpotIdProvider?.(meshName);
   }
 
   relocationActivations(meshName: string): readonly ZLinkSpotActivation[] {

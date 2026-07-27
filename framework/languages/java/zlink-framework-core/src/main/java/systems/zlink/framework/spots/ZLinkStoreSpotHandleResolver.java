@@ -2,11 +2,10 @@ package systems.zlink.framework.spots;
 
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 
 public final class ZLinkStoreSpotHandleResolver
     implements SpotHandleResolver, ActorSpotHandleResolver, SpotTransportAddressResolver {
@@ -18,7 +17,7 @@ public final class ZLinkStoreSpotHandleResolver
 
     public ZLinkStoreSpotHandleResolver(
         ZLinkStoreLocationResolvers.AddressResolvers addresses,
-        ZLinkAuthorityStore authorities) {
+        ZLinkLocationStore authorities) {
         this.addresses = java.util.Objects.requireNonNull(addresses, "addresses");
     }
 
@@ -26,8 +25,8 @@ public final class ZLinkStoreSpotHandleResolver
     public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(
         String meshName,
         String spotId) {
-        return flowAware(addresses.resolveSpotRow(meshName, spotId))
-            .thenApply(row -> row == null || !row.meshName().equals(meshName)
+        return flowAware(addresses.resolveSpot(meshName, spotId))
+            .thenApply(row -> row == null
                 ? Optional.empty()
                 : Optional.<SpotHandle>of(new FrameworkSpotHandle(
                     row.meshName(), row.spotId(), row.nodeRid(),
@@ -36,7 +35,7 @@ public final class ZLinkStoreSpotHandleResolver
 
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(String spotId) {
-        return flowAware(addresses.resolveAnySpotRow(spotId))
+        return flowAware(addresses.resolveSpot(spotId))
             .thenApply(row -> row == null
                 ? Optional.empty()
                 : Optional.<SpotHandle>of(new FrameworkSpotHandle(
@@ -46,12 +45,11 @@ public final class ZLinkStoreSpotHandleResolver
 
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveActorSpotHandle(String actorId) {
-        return flowAware(addresses.resolveActorSpotRow(actorId)).thenCompose(row -> {
+        return flowAware(addresses.resolveActor(actorId)).thenCompose(row -> {
             if (row == null) {
                 return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
             }
-            String spotId = targetSpot(row.locationKind(), row.nodeRid(), row.spotId());
-            return flowAware(addresses.resolveAnySpotRow(spotId)).thenApply(spot -> spot == null
+            return flowAware(addresses.resolveSpot(row.spotId())).thenApply(spot -> spot == null
                 ? Optional.empty()
                 : Optional.of(new FrameworkSpotHandle(
                     spot.meshName(), spot.spotId(), spot.nodeRid(), spot.spotGeneration())));
@@ -60,7 +58,7 @@ public final class ZLinkStoreSpotHandleResolver
 
     @Override
     public CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle) {
-        return flowAware(addresses.resolveSpotRow(handle.meshName(), handle.spotId()))
+        return flowAware(addresses.resolveSpot(handle.meshName(), handle.spotId()))
             .thenApply(row -> row == null
                 || row.spotGeneration()
                     != ((FrameworkSpotHandle) handle).spotGeneration()
@@ -70,7 +68,7 @@ public final class ZLinkStoreSpotHandleResolver
                         row.nodeRid(),
                         row.spotId(),
                         row.spotGeneration(),
-                        row.generation(),
+                        row.authorityOwnerGeneration(),
                         row.spotKind())));
     }
 
@@ -86,12 +84,4 @@ public final class ZLinkStoreSpotHandleResolver
         return systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(source);
     }
 
-    private static String targetSpot(
-        ZLinkSpotKind kind,
-        RoutingId nodeRid,
-        String spotId) {
-        return kind == ZLinkSpotKind.ENTRY || spotId == null
-            ? nodeRid.toString()
-            : spotId;
-    }
 }

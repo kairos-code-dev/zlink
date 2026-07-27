@@ -11,7 +11,6 @@ namespace
 
 using zlink::framework::actor_location_key_t;
 using zlink::framework::actor_location_t;
-using zlink::framework::location_write_intent_t;
 using zlink::framework::location_write_status_t;
 using zlink::framework::spot_location_key_t;
 using zlink::framework::spot_location_t;
@@ -43,10 +42,11 @@ spot_location_t make_spot (std::string spot_id)
                            .spot_id = std::move (spot_id),
                            .spot_type = "play",
                            .node_rid = zlink::routing_id_t::from ("node-a"),
-                           .spot_kind = zlink::spot_kind::user};
+                           .spot_kind = zlink::spot_kind::user,
+                           .generation = 1};
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, ClaimsActorBeforeActivation)
+TEST (ZLinkFrameworkLocationLifecycle, TracksClaimedActor)
 {
     in_memory_location_store_t store;
     location_runtime_t runtime (store, {}, "owner-a");
@@ -58,19 +58,10 @@ TEST (ZLinkFrameworkLocationLifecycle, ClaimsActorBeforeActivation)
     EXPECT_EQ (1u, claim.store_generation);
     EXPECT_EQ (1u, lifecycle.tracked_actor_count ());
 
-    const auto stored =
-      store.resolve_actor (
-             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
-        .result ()
-        .value ();
-    ASSERT_TRUE (stored.has_value ());
-    EXPECT_EQ ("owner-a", stored->owner_id);
-    EXPECT_EQ (1u, stored->actor_ref.generation ());
-
     runtime.stop ();
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, RejectsConflictingNewClaim)
+TEST (ZLinkFrameworkLocationLifecycle, TracksMaterializationPerProcess)
 {
     in_memory_location_store_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
@@ -83,16 +74,16 @@ TEST (ZLinkFrameworkLocationLifecycle, RejectsConflictingNewClaim)
 
     ASSERT_EQ (location_write_status_t::stored,
                lifecycle_a.claim_actor (make_actor ("actor-1")).status);
-    EXPECT_EQ (location_write_status_t::rejected_conflict,
+    EXPECT_EQ (location_write_status_t::stored,
                lifecycle_b.claim_actor (make_actor ("actor-1")).status);
     EXPECT_EQ (1u, lifecycle_a.tracked_actor_count ());
-    EXPECT_EQ (0u, lifecycle_b.tracked_actor_count ());
+    EXPECT_EQ (1u, lifecycle_b.tracked_actor_count ());
 
     owner_b.stop ();
     owner_a.stop ();
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, ReleasesActorWithOwnerGenerationToken)
+TEST (ZLinkFrameworkLocationLifecycle, ReleasesTrackedActor)
 {
     in_memory_location_store_t store;
     location_runtime_t runtime (store, {}, "owner-a");
@@ -106,13 +97,6 @@ TEST (ZLinkFrameworkLocationLifecycle, ReleasesActorWithOwnerGenerationToken)
         actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"});
     EXPECT_EQ (location_write_status_t::stored, released.status);
     EXPECT_EQ (0u, lifecycle.tracked_actor_count ());
-    EXPECT_FALSE (
-      store.resolve_actor (
-             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
-        .result ()
-        .value ()
-        .has_value ());
-
     runtime.stop ();
 }
 
@@ -161,20 +145,12 @@ TEST (ZLinkFrameworkLocationLifecycle, UpdatesTrackedActorLocationWithoutChangin
     ASSERT_EQ (location_write_status_t::stored, updated.status);
     EXPECT_EQ (claim.store_generation, static_cast<std::uint64_t> (updated.generation));
 
-    const auto stored =
-      store.resolve_actor (
-             actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"})
-        .result ()
-        .value ();
-    ASSERT_TRUE (stored.has_value ());
-    EXPECT_FALSE (stored->actor_ref.empty ());
-    EXPECT_EQ ("play-spot", stored->spot_id);
     EXPECT_EQ (claim.store_generation, static_cast<std::uint64_t> (updated.generation));
 
     runtime.stop ();
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, RejectsConflictingSpotClaimAndIgnoresUntrackedRelease)
+TEST (ZLinkFrameworkLocationLifecycle, TracksSpotMaterializationPerProcess)
 {
     in_memory_location_store_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
@@ -187,18 +163,21 @@ TEST (ZLinkFrameworkLocationLifecycle, RejectsConflictingSpotClaimAndIgnoresUntr
     const auto key = spot_location_key_t{.spot_id = "spot-1"};
 
     ASSERT_EQ (location_write_status_t::stored, lifecycle_a.claim_spot (make_spot ("spot-1")).status);
-    EXPECT_EQ (location_write_status_t::rejected_conflict,
+    EXPECT_EQ (location_write_status_t::stored,
                lifecycle_b.claim_spot (make_spot ("spot-1")).status);
 
-    const auto untracked_release = lifecycle_b.release_spot (key);
-    EXPECT_EQ (location_write_status_t::ignored_stale, untracked_release.status);
-    ASSERT_TRUE (store.resolve_spot (key).result ().value ().has_value ());
+    const auto release_b = lifecycle_b.release_spot (key);
+    EXPECT_EQ (location_write_status_t::stored, release_b.status);
+    const auto release_b_again = lifecycle_b.release_spot (key);
+    EXPECT_EQ (location_write_status_t::ignored_stale, release_b_again.status);
+    EXPECT_EQ (location_write_status_t::stored,
+               lifecycle_a.release_spot (key).status);
 
     owner_b.stop ();
     owner_a.stop ();
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, ClaimsAndReleasesSpotWithOwnerGenerationToken)
+TEST (ZLinkFrameworkLocationLifecycle, ClaimsAndReleasesTrackedSpot)
 {
     in_memory_location_store_t store;
     location_runtime_t runtime (store, {}, "owner-a");
@@ -209,46 +188,34 @@ TEST (ZLinkFrameworkLocationLifecycle, ClaimsAndReleasesSpotWithOwnerGenerationT
     ASSERT_EQ (location_write_status_t::stored, claim.status);
     EXPECT_EQ (1, claim.spot.generation);
     const auto key = spot_location_key_t{.spot_id = "spot-1"};
-    ASSERT_TRUE (store.resolve_spot (key).result ().value ().has_value ());
-
     const auto released = lifecycle.release_spot (key);
     EXPECT_EQ (location_write_status_t::stored, released.status);
-    EXPECT_FALSE (store.resolve_spot (key).result ().value ().has_value ());
+    EXPECT_EQ (location_write_status_t::ignored_stale,
+               lifecycle.release_spot (key).status);
 
     runtime.stop ();
 }
 
-TEST (ZLinkFrameworkLocationLifecycle, DeactivatesTrackedActorWhenOwnershipIsStale)
+TEST (ZLinkFrameworkLocationLifecycle, RenewKeepsTrackedActor)
 {
     in_memory_location_store_t store;
     location_runtime_t owner_a (store, {}, "owner-a");
-    location_runtime_t owner_b (store, {}, "owner-b");
     owner_a.start (zlink::routing_id_t::from ("node-a"));
-    owner_b.start (zlink::routing_id_t::from ("node-b"));
 
     location_lifecycle_t lifecycle_a (owner_a);
-    location_lifecycle_t lifecycle_b (owner_b);
-
     std::vector<std::string> deactivated;
     const auto claim = lifecycle_a.claim_actor (make_actor ("actor-1"), [&] (const auto &actor) {
         deactivated.push_back (actor.actor_id);
     });
     ASSERT_EQ (location_write_status_t::stored, claim.status);
 
-    auto takeover_actor = make_actor ("actor-1");
-    const auto takeover =
-      owner_b.write_actor (takeover_actor, location_write_intent_t::takeover);
-    ASSERT_EQ (location_write_status_t::stored, takeover.status);
-
-    const auto stale =
+    const auto renewed =
       lifecycle_a.renew_actor (
         actor_location_key_t{.mesh_name = "node-a", .actor_id = "actor-1"});
-    EXPECT_EQ (location_write_status_t::ignored_stale, stale.status);
-    EXPECT_EQ (std::vector<std::string> ({"actor-1"}), deactivated);
-    EXPECT_EQ (0u, lifecycle_a.tracked_actor_count ());
-    EXPECT_EQ (0u, lifecycle_b.tracked_actor_count ());
+    EXPECT_EQ (location_write_status_t::stored, renewed.status);
+    EXPECT_TRUE (deactivated.empty ());
+    EXPECT_EQ (1u, lifecycle_a.tracked_actor_count ());
 
-    owner_b.stop ();
     owner_a.stop ();
 }
 

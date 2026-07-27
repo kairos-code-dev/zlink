@@ -8,12 +8,12 @@ import {
 } from '@zlink-systems/zlink';
 import type {
   ActorRef,
-  ZLinkActorLocation,
   ZLinkActorClient,
   ZLinkActorRequestCall,
   ZLinkActorSendCall,
   ZLinkMessageSerializer
 } from '../../contracts';
+import type { ZLinkActorLocation } from '../../contracts/Locations/Rows';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException

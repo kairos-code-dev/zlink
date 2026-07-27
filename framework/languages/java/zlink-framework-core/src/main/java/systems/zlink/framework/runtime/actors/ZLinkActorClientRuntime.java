@@ -19,10 +19,9 @@ import systems.zlink.framework.actors.ZLinkActorSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers.ActorRoute;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
@@ -65,7 +64,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         ZLinkMessageSerializer serializer,
         Duration defaultTimeout,
         java.util.function.BiFunction<
-            systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
             ZLinkBackendAdmissionKey,
             java.util.function.BiFunction<
                 java.util.function.Supplier<Boolean>,
@@ -100,8 +99,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                 actor, packetName, request, metadata, timeout, replyType))
             .whenComplete((ignored, error) -> {
                 if (error != null && isStaleActorError(error)) {
-                    locations.invalidateActorRoute(
-                        new ZLinkActorLocationKey(actorId));
+                    locations.invalidateActorRoute(actorId);
                 }
             });
     }
@@ -123,7 +121,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private CompletionStage<ZLinkBackendActorRef> resolveActorAddress(String actorId) {
-        return locations.resolveActorRow(new ZLinkActorLocationKey(actorId))
+        return locations.resolveActor(actorId)
             .thenApply(row -> {
                 if (row == null || row.actorRef() == null) {
                     throw new ZLinkFrameworkException(
@@ -135,9 +133,10 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     }
 
     private ZLinkBackendActorRef rememberAuthority(
-        ZLinkActorLocation row) {
+        ActorRoute row) {
         ZLinkBackendActorRef actor = toBackendActorRef(row);
-        spotNode.get().rememberActorAuthority(actor, row.generation());
+        spotNode.get().rememberActorAuthority(
+            actor, row.authorityOwnerGeneration());
         return actor;
     }
 
@@ -164,8 +163,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     () -> closeAll(parts))
                 .whenComplete((ignored, error) -> {
                     if (error != null && isStaleActorError(error)) {
-                        locations.invalidateActorRoute(
-                            new ZLinkActorLocationKey(actorId));
+                        locations.invalidateActorRoute(actorId);
                     }
                 });
         });
@@ -332,7 +330,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             unwrapped);
     }
 
-    private static ZLinkBackendActorRef toBackendActorRef(ZLinkActorLocation row) {
+    private static ZLinkBackendActorRef toBackendActorRef(ActorRoute row) {
         return new ZLinkBackendActorRef(
             row.actorRef().nodeRid(),
             row.actorRef().actorId(),

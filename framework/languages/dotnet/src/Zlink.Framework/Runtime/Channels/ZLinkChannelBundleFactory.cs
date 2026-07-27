@@ -31,9 +31,9 @@ internal sealed class ZLinkChannelBundleFactory(
                         channel.Client.SocketConfig.SendHighWaterMark)),
                 socketRole: "client");
 
-            channel.Client.ManualConnections.Attach(
+            bundle.OwnManualConnectionAttachment(channel.Client.ManualConnections.Attach(
                 endpoint => bundle.ConnectManual(dealer, endpoint),
-                endpoint => bundle.DisconnectManual(dealer, endpoint));
+                endpoint => bundle.DisconnectManual(dealer, endpoint)));
             return bundle;
         }
         catch (Exception initializationFailure)
@@ -119,9 +119,9 @@ internal sealed class ZLinkChannelBundleFactory(
             bundle = new ZLinkChannelRuntimeBundle(subscriber, localRid: localRid, socketRole: "sub");
 
             if (channel.Subscriber.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual)
-                channel.Subscriber.ManualConnections.Attach(
+                bundle.OwnManualConnectionAttachment(channel.Subscriber.ManualConnections.Attach(
                     endpoint => bundle.ConnectManual(subscriber, endpoint),
-                    endpoint => bundle.DisconnectManual(subscriber, endpoint));
+                    endpoint => bundle.DisconnectManual(subscriber, endpoint)));
 
             return bundle;
         }

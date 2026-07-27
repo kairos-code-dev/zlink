@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 
 /** Shared bounded admission wait used by all one-way Java framework families. */
 final class ZLinkAdmissionRuntime {
@@ -36,8 +36,8 @@ final class ZLinkAdmissionRuntime {
     }
 
     static java.util.function.BiFunction<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
-        systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey,
         java.util.function.BiFunction<
             java.util.function.Supplier<Boolean>,
             Runnable,
@@ -54,8 +54,8 @@ final class ZLinkAdmissionRuntime {
     }
 
     static java.util.function.BiFunction<
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
-        systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey,
         java.util.function.BiFunction<
             java.util.function.Supplier<Boolean>,
             Runnable,

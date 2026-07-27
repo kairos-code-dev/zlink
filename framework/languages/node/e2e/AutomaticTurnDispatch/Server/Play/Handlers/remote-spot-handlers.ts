@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_SPOT_HANDLE_RESOLVER } from '@zlink-systems/nestjs';
-import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotHandleResolver, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
+import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotManager, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
   RemoteSpotAwaitMsg,
   RemoteSpotAwaitReq,
@@ -16,7 +16,7 @@ import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 export class RemoteSpotAwaitHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, RemoteSpotAwaitReq, AutomaticTurnDispatchRes> {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager
   ) {}
 
   async handle(
@@ -35,7 +35,7 @@ export class RemoteSpotAwaitHandler implements ZLinkSpotRequestHandler<AwaitProb
 export class RemoteSpotAwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, RemoteSpotAwaitMsg> {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager
   ) {}
 
   async handle(
@@ -50,7 +50,7 @@ export class RemoteSpotAwaitCommandHandler implements ZLinkSpotPacketHandler<Awa
 
 async function runRemoteSpotAwait(
   evidence: EvidenceStore,
-  spotHandles: ZLinkSpotHandleResolver,
+  spotHandles: ZLinkSpotManager,
   spot: AwaitProbeSpot,
   request: RemoteSpotAwaitReq | RemoteSpotAwaitMsg
 ): Promise<void> {
@@ -59,10 +59,7 @@ async function runRemoteSpotAwait(
     `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
-  const targetSpot = request.targetSpot ?? await spotHandles.resolveSpotHandle(
-    spot.context.meshName,
-    request.targetSpotRid
-  );
+  const targetSpot = request.targetSpot ?? await spotHandles.find(request.targetSpotRid);
   if (targetSpot === undefined) {
     throw new Error(`Remote spot target ref is required for '${request.targetSpotRid}'.`);
   }

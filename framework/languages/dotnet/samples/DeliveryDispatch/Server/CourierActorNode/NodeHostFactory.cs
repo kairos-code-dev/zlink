@@ -32,7 +32,7 @@ public static class NodeHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel(configuration.Role.Name);
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));

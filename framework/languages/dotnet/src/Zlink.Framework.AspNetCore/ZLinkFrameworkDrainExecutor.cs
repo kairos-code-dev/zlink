@@ -252,7 +252,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
 
         var failures = new List<Exception>();
         Capture(_stopMeshMonitoring, failures);
-        await CaptureAsync(() => _operations.ForceStopRuntime(CancellationToken.None), failures)
+        await CaptureAsync(() => _operations.ForceStopRuntime(cancellationToken), failures)
             .ConfigureAwait(false);
         if (_operations.HasAutoConnect)
             await CaptureAsync(() => _operations.StopAutoConnect(CancellationToken.None), failures).ConfigureAwait(false);

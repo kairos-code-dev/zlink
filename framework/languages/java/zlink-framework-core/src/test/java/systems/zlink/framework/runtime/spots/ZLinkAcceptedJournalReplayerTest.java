@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -24,7 +24,7 @@ final class ZLinkAcceptedJournalReplayerTest {
         List<String> order = new ArrayList<>();
         byte[] encoded;
         try (var received = new ZLinkBackendReceived(
-            systems.zlink.framework.runtime.backend
+            systems.zlink.framework.runtime.internal.backend
                 .ZLinkBackendRequestResult.OK,
             Optional.of(RoutingId.from("source")),
             Optional.of("room-a"),

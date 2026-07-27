@@ -4,7 +4,7 @@ internal static class ZLinkLocationStorePages
 {
     internal static async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>>
         ListAllMeshNodesAsync(
-            this IZLinkMeshNodeLocationStore store,
+            this IZLinkLocationStore store,
             string meshName,
             CancellationToken cancellationToken = default)
     {

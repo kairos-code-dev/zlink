@@ -3,7 +3,7 @@
 
 #include "runtime/stateful/maintenance_runtime.hpp"
 
-#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <memory>
 #include <stdexcept>
@@ -79,7 +79,7 @@ class public_authority_store_adapter_t final :
 {
   public:
     explicit public_authority_store_adapter_t (
-      zlink::framework::authority_store_t &store) noexcept :
+      zlink::framework::location_store_t &store) noexcept :
         _store (&store)
     {
     }
@@ -567,7 +567,7 @@ class public_authority_store_adapter_t final :
         return snapshot ? decode (*snapshot) : std::nullopt;
     }
 
-    zlink::framework::authority_store_t *_store;
+    zlink::framework::location_store_t *_store;
 };
 
 } // namespace zlink::framework::runtime::stateful

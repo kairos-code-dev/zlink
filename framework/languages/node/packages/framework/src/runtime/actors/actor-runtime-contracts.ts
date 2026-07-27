@@ -1,3 +1,4 @@
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type {
   RoutingId,
   ActorRef,
@@ -8,7 +9,6 @@ import type {
   ZLinkMessage,
   ZLinkActorCreateResponse,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendMeshNode, ZLinkMeshCompletionTable } from '../backend';

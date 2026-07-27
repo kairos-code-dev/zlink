@@ -1,3 +1,4 @@
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
@@ -10,10 +11,10 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer,
             "dispose",
@@ -28,7 +29,8 @@ public sealed class AutoConnectLoopTests
             new NullExecutor(),
             options,
             time);
-        var loop = new ZLinkAutoConnectLoop(reconciler, local, options, timeProvider: time);
+        var loop = new ZLinkAutoConnectLoop(
+            reconciler, local, options, store, timeProvider: time);
 
         var first = loop.DisposeAsync().AsTask();
         var second = loop.DisposeAsync().AsTask();
@@ -43,13 +45,13 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(10));
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var countingResolver = new CountingPeerResolver(resolvers);
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -57,7 +59,8 @@ public sealed class AutoConnectLoopTests
         var localRow = InMemoryLocationStoreTests.MeshNode("ignored", "tcp://l:1", "local");
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, countingResolver, new NullExecutor(), options, time);
-        var loop = new ZLinkAutoConnectLoop(reconciler, local, options, stampStore: store, timeProvider: time);
+        var loop = new ZLinkAutoConnectLoop(
+            reconciler, local, options, store, timeProvider: time);
 
         // First tick always reads the list (and publishes the local row,
         // which bumps the stamp), so the second tick still reads once more
@@ -90,12 +93,12 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
 
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RecordingExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -103,7 +106,8 @@ public sealed class AutoConnectLoopTests
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow: null, runtime, resolvers, executor, options, time);
         var loop = new ZLinkAutoConnectLoop(
-            reconciler, local, options, stampStore: store, timeProvider: time, leaseTracker: tracker);
+            reconciler, local, options, store, timeProvider: time,
+            leaseTracker: tracker);
 
         await store.ClaimLiveOwnerAsync(
             "late-owner",
@@ -136,7 +140,7 @@ public sealed class AutoConnectLoopTests
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
         var options = new ZLinkLocationOptions { PollingInterval = TimeSpan.Zero };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.ClaimLiveOwnerAsync("peer-owner", TimeSpan.FromMinutes(1));
         await store.UpdateMeshNodeAsync(
@@ -148,7 +152,7 @@ public sealed class AutoConnectLoopTests
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(
-            store, store, tracker, new ZLinkObservedLocationGenerations());
+            store, tracker, new ZLinkObservedLocationGenerations());
         var executor = new RetryExecutor();
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
@@ -156,7 +160,8 @@ public sealed class AutoConnectLoopTests
         var reconciler = new ZLinkAutoConnectReconciler(
             local, null, runtime, resolvers, executor, options, time);
         var loop = new ZLinkAutoConnectLoop(
-            reconciler, local, options, stampStore: store, timeProvider: time, leaseTracker: tracker);
+            reconciler, local, options, store, timeProvider: time,
+            leaseTracker: tracker);
 
         await loop.TickAsync();
         await loop.TickAsync();
@@ -175,7 +180,7 @@ public sealed class AutoConnectLoopTests
             PollingInterval = TimeSpan.Zero,
             OwnerLeaseRenewInterval = TimeSpan.FromSeconds(1)
         };
-        var runtime = new ZLinkLocationRuntime(options, store, store, store, time);
+        var runtime = new ZLinkLocationRuntime(options, store, time);
         await runtime.RenewOwnerLeaseOnceAsync();
         var peer = InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1");
         var resolver = new SwitchablePeerResolver([peer]);
@@ -187,7 +192,7 @@ public sealed class AutoConnectLoopTests
             local, null, runtime, resolver, executor, options, time);
         var stamps = new FailingStampStore();
         var loop = new ZLinkAutoConnectLoop(
-            reconciler, local, options, stampStore: stamps, timeProvider: time);
+            reconciler, local, options, stamps, timeProvider: time);
 
         await loop.TickAsync();
         Assert.Single(reconciler.ActiveTargets);
@@ -242,18 +247,18 @@ public sealed class AutoConnectLoopTests
             CancellationToken cancellationToken = default) => ValueTask.FromResult(Rows);
     }
 
-    private sealed class FailingStampStore : IZLinkLocationChangeStampStore
+    private sealed class FailingStampStore : ZLinkLocationStoreTestDouble
     {
         public bool FailNext { get; set; }
 
-        public ValueTask<ulong> GetChangeStampAsync(
-            ZLinkLocationChangeStampScope scope,
+        public override ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+            string meshName,
             CancellationToken cancellationToken = default)
         {
-            if (!FailNext) return ValueTask.FromResult<ulong>(1);
+            if (!FailNext) return ValueTask.FromResult<ulong?>(1);
 
             FailNext = false;
-            return ValueTask.FromException<ulong>(new InvalidOperationException("stamp unavailable"));
+            return ValueTask.FromException<ulong?>(new InvalidOperationException("stamp unavailable"));
         }
     }
 

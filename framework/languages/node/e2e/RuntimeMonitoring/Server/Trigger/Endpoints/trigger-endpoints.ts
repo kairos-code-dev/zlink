@@ -9,7 +9,7 @@ import type { EvidenceStore } from '../../Service/Infrastructure/evidence-store'
 import {
   verifyDuplicateSocketSource,
   verifyMissingSocketSource,
-  verifyMissingSpotSource,
+  verifyMissingLocationStore,
   verifyPollingInterval
 } from '../Support/trigger-validation';
 
@@ -58,7 +58,7 @@ export function createTriggerEndpoints(
     } },
     { method: 'POST', path: '/validation/registration/duplicate-source', handle: () => verifyDuplicateSocketSource() },
     { method: 'POST', path: '/validation/registration/interval', handle: () => verifyPollingInterval() },
-    { method: 'POST', path: '/validation/registration/missing-spot', handle: () => verifyMissingSpotSource() },
+    { method: 'POST', path: '/validation/registration/missing-location-store', handle: () => verifyMissingLocationStore() },
     { method: 'POST', path: '/validation/registration/missing-socket', handle: () => verifyMissingSocketSource() },
     { method: 'GET', path: '/logs/throw-stderr', handle: () => readLines(`${options.logDir}/svc-throw.stderr.log`) },
     {

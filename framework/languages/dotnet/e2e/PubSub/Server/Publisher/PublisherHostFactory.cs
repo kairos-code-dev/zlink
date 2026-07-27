@@ -34,8 +34,8 @@ internal static class PublisherHostFactory
 
     private static void ConfigureFlow(IZLinkDispatchOptions dispatch, string logDir, string rid)
     {
-        dispatch.SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
-            .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        dispatch.SetRuntimeMessageFlowObserver<EvidenceDispatchErrorObserver>()
+            .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
             .TraceLogFile(Path.Combine(logDir, $"{rid}-flow.log"))
             .TraceLabel(rid);
     }

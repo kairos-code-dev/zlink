@@ -99,7 +99,6 @@ subpath는 제공하지 않는다. 정확한 계약은
 | `ZLINK_ROUTE_CLIENT` | route client |
 | `ZLINK_FANOUT_CLIENT` | fanout client |
 | `ZLINK_BOUND_SESSION_FACTORY` | bound session factory |
-| `ZLINK_RUNTIME_EVENT_PUBLISHER` | runtime event publisher |
 | `ZLINK_CHANNEL_RUNTIME_OPTIONS` | channel runtime options |
 | `ZLinkDrainHealthIndicator` | [MeshNode](../../../01-glossary.ko.md#meshnode) readiness와 health indicator |
 | `ZLINK_MESSAGE_METADATA_POLICY` | metadata 정책 |

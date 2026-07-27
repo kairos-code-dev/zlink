@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
+import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
 
 final class ZLinkAutoConnectPlannerTest {
     @Test
@@ -25,12 +25,12 @@ final class ZLinkAutoConnectPlannerTest {
     @Test
     void routeMeshUsesUnidirectionalInitiatorOrderingAndKeepsSelfExclusion() {
         var lower = local(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-a-local",
             "inproc://route-a");
         var higher = peer(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-z-remote",
             "inproc://route-z");
@@ -38,24 +38,24 @@ final class ZLinkAutoConnectPlannerTest {
         assertTrue(hasTarget(lower, higher));
 
         var reverse = local(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-z-local",
             "inproc://route-z");
         var lowerPeer = peer(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-a-remote",
             "inproc://route-a");
 
         assertFalse(hasTarget(reverse, lowerPeer));
         assertFalse(ZLinkAutoConnectPlanner.computeDesired(lower, List.of(peer(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-a-local",
             "inproc://other"))).containsKey(targetKey(ZLinkLocationRole.ROUTER, "route-a-local")));
         assertFalse(ZLinkAutoConnectPlanner.computeDesired(lower, List.of(peer(
-            ZLinkLocationAutoConnectType.ROUTE_MESH,
+            ZLinkAutoConnectType.ROUTE_MESH,
             ZLinkLocationRole.ROUTER,
             "route-other",
             "inproc://route-a"))).containsKey(targetKey(ZLinkLocationRole.ROUTER, "route-other")));
@@ -64,22 +64,22 @@ final class ZLinkAutoConnectPlannerTest {
     @Test
     void spotMeshDialsAllSpotPeersSoPubSubSubscriptionsPropagate() {
         var lower = local(
-            ZLinkLocationAutoConnectType.SPOT_MESH,
+            ZLinkAutoConnectType.SPOT_MESH,
             ZLinkLocationRole.SPOT,
             "spot-a-local",
             "inproc://spot-a");
         var higher = peer(
-            ZLinkLocationAutoConnectType.SPOT_MESH,
+            ZLinkAutoConnectType.SPOT_MESH,
             ZLinkLocationRole.SPOT,
             "spot-z-remote",
             "inproc://spot-z");
         var reverse = local(
-            ZLinkLocationAutoConnectType.SPOT_MESH,
+            ZLinkAutoConnectType.SPOT_MESH,
             ZLinkLocationRole.SPOT,
             "spot-z-local",
             "inproc://spot-z");
         var lowerPeer = peer(
-            ZLinkLocationAutoConnectType.SPOT_MESH,
+            ZLinkAutoConnectType.SPOT_MESH,
             ZLinkLocationRole.SPOT,
             "spot-a-remote",
             "inproc://spot-a");
@@ -91,16 +91,16 @@ final class ZLinkAutoConnectPlannerTest {
     @Test
     void connectionIntentIdentityIncludesLifecycleGeneration() {
         var local = local(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkAutoConnectType.CLIENT_SERVER,
             ZLinkLocationRole.DEALER,
             "client-local",
             "");
         var first = peer(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkAutoConnectType.CLIENT_SERVER,
             ZLinkLocationRole.ROUTER,
             "server",
             "inproc://server");
-        var replacement = new ZLinkPeerLocation(
+        var replacement = new ZLinkAutoConnectPeer(
             first.autoConnectType(),
             first.meshName(),
             first.nodeRid(),
@@ -108,7 +108,7 @@ final class ZLinkAutoConnectPlannerTest {
             first.endpoint(),
             first.weight(),
             first.draining(),
-            first.value(),
+            2,
             first.metadata(),
             first.capabilities(),
             "replacement-owner",
@@ -133,12 +133,12 @@ final class ZLinkAutoConnectPlannerTest {
     @Test
     void connectionIntentUsesDescriptorLifecycleInsteadOfStoreGeneration() {
         var local = local(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkAutoConnectType.CLIENT_SERVER,
             ZLinkLocationRole.DEALER,
             "client-local",
             "");
-        var descriptor = new ZLinkPeerLocation(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+        var descriptor = new ZLinkAutoConnectPeer(
+            ZLinkAutoConnectType.CLIENT_SERVER,
             "mesh",
             RoutingId.from("server"),
             ZLinkLocationRole.ROUTER,
@@ -166,39 +166,39 @@ final class ZLinkAutoConnectPlannerTest {
     @Test
     void asymmetricTopologiesOnlyDialFromOutboundRole() {
         assertTrue(hasTarget(
-            local(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", ""),
-            peer(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server")));
+            local(ZLinkAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", ""),
+            peer(ZLinkAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server")));
         assertFalse(hasTarget(
-            local(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server"),
-            peer(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", "")));
+            local(ZLinkAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server"),
+            peer(ZLinkAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", "")));
         assertTrue(hasTarget(
-            local(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", ""),
-            peer(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher")));
+            local(ZLinkAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", ""),
+            peer(ZLinkAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher")));
         assertFalse(hasTarget(
-            local(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher"),
-            peer(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", "")));
+            local(ZLinkAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher"),
+            peer(ZLinkAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", "")));
     }
 
     @Test
     void asymmetricTopologiesOnlyAdvertiseInboundRole() {
         RoutingId rid = RoutingId.from("node");
         assertTrue(ZLinkLocationAutoConnectHost.shouldAdvertise(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkAutoConnectType.CLIENT_SERVER,
             ZLinkLocationRole.ROUTER,
             rid,
             "inproc://server"));
         assertFalse(ZLinkLocationAutoConnectHost.shouldAdvertise(
-            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkAutoConnectType.CLIENT_SERVER,
             ZLinkLocationRole.DEALER,
             rid,
             ""));
         assertTrue(ZLinkLocationAutoConnectHost.shouldAdvertise(
-            ZLinkLocationAutoConnectType.FANOUT,
+            ZLinkAutoConnectType.FANOUT,
             ZLinkLocationRole.PUB,
             rid,
             "inproc://publisher"));
         assertFalse(ZLinkLocationAutoConnectHost.shouldAdvertise(
-            ZLinkLocationAutoConnectType.FANOUT,
+            ZLinkAutoConnectType.FANOUT,
             ZLinkLocationRole.SUB,
             rid,
             ""));
@@ -206,7 +206,7 @@ final class ZLinkAutoConnectPlannerTest {
 
     private static boolean hasTarget(
         ZLinkAutoConnectPlanner.Local local,
-        ZLinkPeerLocation peer) {
+        ZLinkAutoConnectPeer peer) {
         return ZLinkAutoConnectPlanner.computeDesired(local, List.of(peer))
             .containsKey(targetKey(
                 peer.role(),
@@ -230,7 +230,7 @@ final class ZLinkAutoConnectPlannerTest {
     }
 
     private static ZLinkAutoConnectPlanner.Local local(
-        ZLinkLocationAutoConnectType type,
+        ZLinkAutoConnectType type,
         ZLinkLocationRole role,
         String rid,
         String endpoint) {
@@ -242,12 +242,12 @@ final class ZLinkAutoConnectPlannerTest {
             endpoint);
     }
 
-    private static ZLinkPeerLocation peer(
-        ZLinkLocationAutoConnectType type,
+    private static ZLinkAutoConnectPeer peer(
+        ZLinkAutoConnectType type,
         ZLinkLocationRole role,
         String rid,
         String endpoint) {
-        return new ZLinkPeerLocation(
+        return new ZLinkAutoConnectPeer(
             type,
             "mesh",
             RoutingId.from(rid),
@@ -255,7 +255,7 @@ final class ZLinkAutoConnectPlannerTest {
             endpoint,
             100,
             false,
-            0,
+            1,
             Map.of(),
             List.of(),
             "owner-" + rid,

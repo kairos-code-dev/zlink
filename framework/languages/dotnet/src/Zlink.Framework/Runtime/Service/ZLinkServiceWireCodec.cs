@@ -678,6 +678,42 @@ internal static partial class ZLinkServiceWireCodec
         return result;
     }
 
+    internal static long MeasureForwardedSpotEncodedBytes(
+        bool request,
+        MeshOperationId operationId,
+        string sourceSpotId,
+        string targetSpotId,
+        ulong targetSpotGeneration,
+        RoutingId targetNodeRid,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        ulong ownerLeaseGeneration,
+        byte forwardingHopCount,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        var head = EncodeSpot(
+            request
+                ? ServiceWireConstants.Command.SpotRequest
+                : ServiceWireConstants.Command.SpotSend,
+            request ? 1UL : 0,
+            operationId,
+            sourceSpotId,
+            targetSpotId,
+            targetSpotGeneration,
+            targetNodeRid,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration,
+            !metadata.IsEmpty,
+            forwardingHopCount);
+        var bytes = checked((long)head.LongLength + metadata.Length);
+        foreach (var part in parts)
+            bytes = checked(bytes + part.Size);
+        return bytes;
+    }
+
     internal static byte[] EncodeActor(
         ServiceWireConstants.Command command,
         ulong correlation,

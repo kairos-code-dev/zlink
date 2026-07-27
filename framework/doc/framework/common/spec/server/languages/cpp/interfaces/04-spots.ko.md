@@ -2,8 +2,8 @@
 
 Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
 callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+같은 `ObjectGeneration`의 route 전환이 양쪽 runtime에서 확인되고 steady route가 확정된 뒤에만
+target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
 아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
 변경하지 않는다.
 
@@ -664,12 +664,12 @@ key와 공백만 있는 key는 의미가 모호하므로 두 방향의 allowlist
 이 정책은 stream frame 구조나 ActorGateway 내부 frame을 public handler 표면에 드러내지 않기
 위한 경계다.
 
-timer는 native timer handle을 application에 넘기지 않는다. `timer_t`는 Framework timer registration의
-lifetime과 취소를 표현하는 public handle이며 callback은 owner Spot mailbox에 제출된다. Entry Spot timer도
+`timer_t`는 Framework timer registration의 lifetime과 취소를 표현하는 public handle이며 callback은 owner
+Spot의 직렬 실행 queue에 제출된다. Entry Spot timer도
 서로 다른 Entry Spot instance를 전역 직렬화하지 않는다.
 
 Timer backend 선택은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md#5-spot-timer)을 따른다.
-`timer_tick_t`는 native timer event를 노출하지 않고 공통 timer dispatch metadata만 제공한다.
+`timer_tick_t`는 공통 timer dispatch metadata만 제공한다.
 
 ActorGateway session relay의 public 표면은 `session_actor_manager_t`, `session_actor_t`,
 `actor_context_t`, `bound_session_t`다. MeshNode transport metadata는 이 표면에 노출하지 않는다.
@@ -774,8 +774,8 @@ timer 등록 검증은 [stage-wrapper §4.1](../../../../25-stage-wrapper-on-spo
 Framework timer는 owner Actor·Spot에 속한 logical registration이다. Cross-node relocation에서는 timer 이름,
 handler type, period, `timer_options_t`, scheduling cursor와 seal 시점의 pending tick을 relocation payload에
 자동으로 포함한다. Application의 relocation adapter는 timer를 capture·restore하거나 target에서 다시 등록하지
-않는다. Native timer handle과 backend state는 payload에 포함하지 않고 target runtime이 logical registration으로
-다시 만든다. Source는 queue를 seal한 뒤 새 tick을 dispatch하지 않으며 target은 restore와 authority commit을
+않는다. Target runtime은 payload의 logical registration으로 timer를 복원한다. Source는 queue를 seal한 뒤 새
+tick을 dispatch하지 않으며 target은 restore와 authority commit을
 마치고 dispatch admission이 열린 뒤에만 복원한 pending tick과 다음 tick을 owner mailbox에 제출한다.
 
 ## 4. SPOT 표면

@@ -35,8 +35,8 @@ jobs:
       - name: Check language tabs and snippets
         run: python3 doc/site/scripts/check_doc_tabs.py
 
-      - name: Check framework public contract inventory
-        run: python3 doc/site/scripts/check_framework_contract_inventory.py
+      - name: Check framework document contracts
+        run: bash scripts/verify-framework-doc-contracts.sh
 
       - name: Build documentation
         working-directory: doc/site

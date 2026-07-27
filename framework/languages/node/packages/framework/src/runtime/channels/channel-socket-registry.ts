@@ -1,9 +1,9 @@
 import {
   ZLinkFrameworkRuntimeState,
-  ZLinkSocketNativeEventType,
   type RoutingId,
   type ZLinkClientServerServerDescriptor
 } from '../../contracts';
+import { ZLinkSocketNativeEventType } from '../diagnostics/internal-event-contracts';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration
@@ -244,7 +244,8 @@ export class ZLinkChannelSocketRegistry {
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(channelName);
     const identity = this.clientServerIdentities.get(channelName) ?? {
-      serverRid: channel.server.routingId ?? `cs-${randomUUID()}`,
+      serverRid: channel.server.routingId
+        ?? `${channel.routingIdPrefix ?? 'cs'}-${randomUUID()}`,
       lifecycleGeneration: newLifecycleGeneration()
     };
     this.clientServerIdentities.set(channelName, identity);
@@ -1380,9 +1381,10 @@ export class ZLinkChannelSocketRegistry {
     ) {
       (routerOptions as { probe: boolean }).probe = true;
     }
-    if (routeChannel.routingId !== undefined && routeChannel.routingId.length > 0) {
-      router.setRoutingId(routeChannel.routingId);
-    }
+    router.setRoutingId(
+      routeChannel.routingId
+      ?? `${routeChannel.routingIdPrefix ?? routerChannelId}-${randomUUID()}`
+    );
     const publicWeight = routeChannel.weight ?? 100;
     this.routeMeshPublicWeights.set(routerChannelId, publicWeight);
     router.peerWeight = rawAvailabilityWeight(publicWeight);

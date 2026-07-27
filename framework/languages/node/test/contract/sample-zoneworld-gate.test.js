@@ -26,11 +26,8 @@ test('ZoneWorld roles use one physical MeshNode with automatic logical handlers'
   const ops = read('samples/ZoneWorld/Server/Ops/ops-module.ts');
   const nodeHandlers = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Handlers/node-channel-handlers.ts');
   const opsHandlers = read('samples/ZoneWorld/Server/Ops/ops-handlers.ts');
-  assert.match(zoneNode, /const ZONE_NODE_ALLOCATION_GROUP = 'zoneworld\.zone-node';/);
-  assert.match(
-    zoneNode,
-    /addRouteMesh\(ZoneWorldNames\.zoneMesh\)[\s\S]*?useAllocatedRoutingId\(2, 'zn'\)[\s\S]*?setRoutingIdAllocationGroup\(ZONE_NODE_ALLOCATION_GROUP\)/
-  );
+  assert.match(zoneNode, /addRouteMesh\(ZoneWorldNames\.zoneMesh\)[\s\S]*?setRoutingIdPrefix\('zn'\)/);
+  assert.doesNotMatch(zoneNode, /useAllocatedRoutingId|setRoutingIdAllocationGroup|\.setRoutingId\(/);
   for (const module of [zoneNode, gateway, ops]) {
     assert.equal((module.match(/\.addRouteMesh\(/g) ?? []).length, 1);
   }
@@ -46,7 +43,7 @@ test('ZoneWorld roles use one physical MeshNode with automatic logical handlers'
   assert.doesNotMatch(zoneNode, /addRouteMesh\(ZoneWorldNames\.(?:bridgeMesh|reportChannel|actorsChannel)\)/);
 });
 
-test('ZoneWorld runner proves the canonical scenario and routing-id gates', () => {
+test('ZoneWorld runner proves the canonical scenario with generated routing identities', () => {
   const runner = read('samples/ZoneWorld/Runner/sample-runner.mjs');
   const zoneSpot = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Spots/zone-spot.ts');
   const zoneNodeMain = read('samples/ZoneWorld/Server/ZoneNode/main.ts');
@@ -59,7 +56,7 @@ test('ZoneWorld runner proves the canonical scenario and routing-id gates', () =
     'zoneworld-ops-maintenance=completed',
     'zoneworld=completed'
   ]) assert.match(runner, new RegExp(marker));
-  for (const gate of ['ZW-G1', 'ZW-G2', 'ZW-G3', 'ZW-G4', 'ZW-G5']) {
+  for (const gate of ['ZW-G1', 'ZW-G3', 'ZW-G4', 'ZW-G5']) {
     assert.match(runner, new RegExp(gate));
   }
   for (const scenario of ['C4', 'B4-C2-C3', 'D2', 'E', 'E5-arm', 'E5', 'F']) {
@@ -74,9 +71,9 @@ test('ZoneWorld runner proves the canonical scenario and routing-id gates', () =
   );
   assert.ok(botTransferProof >= 0, 'ZW-F2 must wait for a specific cross-node bot admission.');
   assert.ok(botTransferProof < botClientStart, 'ZW-F2 must be proven before the F scenario client connects.');
-  assert.match(runner, /WaitingForSlot/);
-  assert.match(runner, /generation/);
-  assert.match(runner, /lease/);
+  assert.match(runner, /generated-routing-id=ready/);
+  assert.match(runner, /rolling-replacement=ready/);
+  assert.doesNotMatch(runner, /WaitingForSlot|listRoutingIdSlots|slot=|routing allocation/);
   assert.match(
     zoneSpot,
     /addTimer\(\s*['"]bot-tick['"][\s\S]*?stopOnUnhandledException:\s*false/
@@ -136,7 +133,7 @@ test('ZoneWorld human state pushes cross the ActorRef boundary before the bound 
   assert.match(actor, /push\(payload: unknown\): void/);
   assert.match(actor, /this\.context\.boundSession\.send\(payload\)\.submit\(\)/);
   assert.doesNotMatch(actor, /await[\s\S]*?boundSession\.send/);
-  assert.match(spot, /sendToActor\(ZoneWorldNames\.zoneMesh, actor, new DeliverZoneNotification\(payload\)\)/);
+  assert.match(spot, /sendToActor\(actor\.actorId, new DeliverZoneNotification\(payload\)\)/);
   assert.doesNotMatch(spot, /Map<string, PlayerActor>/);
   assert.doesNotMatch(spot, /actor\.push\(/);
 });
@@ -149,7 +146,7 @@ test('ZoneWorld Ops translates public diagnostics requests to the node channel c
   );
 });
 
-test('ZoneWorld node status combines location registration with transport connectivity', () => {
+test('ZoneWorld node status uses only the logical node identity', () => {
   const { NodeRegistry } = require(path.join(
     nodeRoot,
     'samples/ZoneWorld/dist/Server/Ops/node-registry.js'
@@ -157,22 +154,13 @@ test('ZoneWorld node status combines location registration with transport connec
   const registry = new NodeRegistry();
   registry.report({
     nodeId: 'zone-node-1',
-    nodeRid: 'zn1',
     maintenance: false,
     zones: ['zone-nw', 'zone-sw'],
     playerCount: 0
   });
 
   assert.deepEqual(registry.snapshot().map(({ registered, connected }) => ({ registered, connected })), [
-    { registered: false, connected: false }
-  ]);
-  registry.applyLiveRoutingIds(new Set(['zn1']));
-  assert.deepEqual(registry.snapshot().map(({ registered, connected }) => ({ registered, connected })), [
     { registered: true, connected: true }
-  ]);
-  registry.applyConnection('zn1', false);
-  assert.deepEqual(registry.snapshot().map(({ registered, connected }) => ({ registered, connected })), [
-    { registered: true, connected: false }
   ]);
 });
 

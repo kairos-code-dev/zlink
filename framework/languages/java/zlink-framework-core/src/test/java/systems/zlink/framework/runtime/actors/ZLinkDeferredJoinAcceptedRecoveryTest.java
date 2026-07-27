@@ -18,7 +18,7 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
 import systems.zlink.framework.locations.*;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 
 final class ZLinkDeferredJoinAcceptedRecoveryTest {

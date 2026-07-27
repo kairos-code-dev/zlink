@@ -10,6 +10,7 @@
 #include <chrono>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -35,13 +36,20 @@ class bingo_room_spot_t : public spot_t
 
     explicit bingo_room_spot_t (std::string room_id) : _game (std::move (room_id)) {}
 
-    void configure (spot_context_t &context)
+    explicit bingo_room_spot_t (spot_context_t context) :
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&bingo_room_spot_t::submit_card> ();
-        context.handlers ().add_actor_request<&bingo_room_spot_t::observe_events> ();
-        context.handlers ().add_actor_request<&bingo_room_spot_t::stop_observing_events> ();
-        context.handlers ().add_subscribe<&bingo_room_spot_t::on_reward_acquired> (
+    }
+
+    spot_context_t &context () noexcept { return *_context; }
+    const spot_context_t &context () const noexcept { return *_context; }
+
+    void configure ()
+    {
+        _context->handlers ().add_actor_request<&bingo_room_spot_t::submit_card> ();
+        _context->handlers ().add_actor_request<&bingo_room_spot_t::observe_events> ();
+        _context->handlers ().add_actor_request<&bingo_room_spot_t::stop_observing_events> ();
+        _context->handlers ().add_subscribe<&bingo_room_spot_t::on_reward_acquired> (
           sample_names_t::reward_topic);
     }
 
@@ -59,7 +67,7 @@ class bingo_room_spot_t : public spot_t
     {
         using namespace std::chrono_literals;
         _draw_timer =
-          _context.add_timer<bingo_room_draw_timer_handler_t> ("bingo-draw", 200ms);
+          _context->add_timer<bingo_room_draw_timer_handler_t> ("bingo-draw", 200ms);
     }
 
     void on_closing () { _draw_timer.cancel (); }
@@ -117,7 +125,7 @@ class bingo_room_spot_t : public spot_t
         } else {
             get_player_record_res_t record;
             try {
-                record = co_await _context.outbound ()
+                record = co_await _context->outbound ()
                            .request (sample_names_t::api_channel,
                                      get_player_record_req_t{actor.actor.actor_id})
                            .yield<get_player_record_res_t> ();
@@ -130,7 +138,7 @@ class bingo_room_spot_t : public spot_t
             if (resumed == _pending_joins.end () || resumed->second.room_id != request.room_id
                 || !_game.can_accept_player ()) {
                 _pending_joins.erase (actor.actor.actor_id);
-                (void) co_await _context.leave_actor (
+                (void) co_await _context->leave_actor (
                   actor_ref_for (actor), const_cast<player_actor_t &> (actor));
                 co_return;
             }
@@ -160,7 +168,7 @@ class bingo_room_spot_t : public spot_t
                                         actor.actor.actor_id)
                              != final_state.winners.end ();
             auto report_pending =
-              _context.outbound ()
+              _context->outbound ()
                 .request (sample_names_t::api_channel,
                           report_bingo_result_req_t{final_state.room_id,
                                                     actor.actor.actor_id,
@@ -176,7 +184,7 @@ class bingo_room_spot_t : public spot_t
         observers.erase (actor.actor.actor_id);
         _game.leave (actor.actor.actor_id);
         if (actors.empty () && observers.empty ()) {
-            (void) co_await _context.close ();
+            (void) co_await _context->close ();
         }
         co_return;
     }
@@ -212,7 +220,7 @@ class bingo_room_spot_t : public spot_t
             bingo_reward_items_t::golden_dauber_name,
             bingo_reward_items_t::legendary_rarity
         };
-        _context.publish (sample_names_t::reward_topic, reward_event).submit ();
+        _context->publish (sample_names_t::reward_topic, reward_event).submit ();
     }
 
     template <typename TNotify>
@@ -241,7 +249,7 @@ class bingo_room_spot_t : public spot_t
         for (auto *actor : leaving) {
             actor->mark_for_destroy_after_room_leave ();
             const auto before = actor_ref_for (*actor);
-            (void) co_await _context.leave_actor (before, *actor);
+            (void) co_await _context->leave_actor (before, *actor);
         }
         co_return;
     }
@@ -253,7 +261,7 @@ class bingo_room_spot_t : public spot_t
                             actor.actor.generation);
     }
 
-    spot_context_t _context;
+    std::optional<spot_context_t> _context;
     bingo_room_game_t _game;
     std::map<std::string, player_actor_t *> actors;
     std::map<std::string, player_actor_t *> observers;

@@ -262,17 +262,15 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
           result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
                                                "handler failed");
         try {
-            handler_invocation_t invocation{entry->descriptor, owned_inbound.message,
-                                            owned_message};
             using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
             auto chain = std::make_shared<chain_t> ();
-            *chain = [&services, &serializers, &invocation, &filters, entry, owned_message,
+            *chain = [&services, &serializers, &filters, entry, owned_message,
                       &owned_inbound, chain] (std::size_t index) -> task_t<zlink::message_t> {
                 if (index >= filters.size ()) {
                     return entry->invoker (services, serializers, *owned_message, owned_inbound);
                 }
                 return filters[index](
-                  services, serializers, invocation,
+                  services, serializers, owned_inbound.message,
                   [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
             };
             result = (*chain) (0).result ();
@@ -357,17 +355,15 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
         result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, "handler failed");
         try {
-            handler_invocation_t invocation{entry->descriptor, owned_inbound.message,
-                                            owned_message};
             using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
             auto chain = std::make_shared<chain_t> ();
-            *chain = [&services, &serializers, &invocation, &filters, entry, owned_message,
+            *chain = [&services, &serializers, &filters, entry, owned_message,
                       &owned_inbound, chain] (std::size_t index) -> task_t<zlink::message_t> {
                 if (index >= filters.size ()) {
                     return entry->invoker (services, serializers, *owned_message, owned_inbound);
                 }
                 return filters[index](
-                  services, serializers, invocation,
+                  services, serializers, owned_inbound.message,
                   [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
             };
             result = co_await runtime::await_task_result ((*chain) (0));

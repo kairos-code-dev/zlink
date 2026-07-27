@@ -1,9 +1,9 @@
 package systems.zlink.framework.runtime.mesh;
 
 import java.time.Duration;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
 public final class ZLinkMeshNodeRuntime implements AutoCloseable {

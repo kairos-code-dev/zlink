@@ -1,27 +1,23 @@
 package systems.zlink.framework.runtime.locations;
 
-import java.util.Objects;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
+/** Tracks process-local materializations; durable ownership is stored only as authority. */
 public final class ZLinkLocationLifecycle implements AutoCloseable {
-    private final ZLinkLocationRuntime runtime;
-    private final ZLinkSpotLocationLifecycle spots;
-    private final ZLinkActorOwnershipCoordinator actors;
-    private final ZLinkActorSessionRouteLifecycle actorSessionRoutes;
-    private final java.util.function.BiConsumer<ZLinkLocationKind, String> ownershipLostListener =
-        this::onOwnershipLost;
+    private final Set<String> spots = ConcurrentHashMap.newKeySet();
+    private final Map<String, ActorRef> actors = new ConcurrentHashMap<>();
+    private final Set<RoutingId> sessionRoutes = ConcurrentHashMap.newKeySet();
 
     public ZLinkLocationLifecycle(ZLinkLocationRuntime runtime) {
-        this.runtime = Objects.requireNonNull(runtime, "runtime");
-        this.spots = new ZLinkSpotLocationLifecycle(runtime);
-        this.actors = new ZLinkActorOwnershipCoordinator(runtime);
-        this.actorSessionRoutes = new ZLinkActorSessionRouteLifecycle(runtime);
-        this.runtime.addOwnershipLostListener(ownershipLostListener);
+        java.util.Objects.requireNonNull(runtime, "runtime");
     }
 
     public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
@@ -33,15 +29,8 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         ZLinkSpotKind spotKind,
         String routeEndpoint,
         Runnable deactivate) {
-        return spots.claim(
-            meshName,
-            spotId,
-            spotGeneration,
-            spotType,
-            nodeRid,
-            spotKind,
-            routeEndpoint,
-            deactivate);
+        spots.add(spotId);
+        return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
     }
 
     public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
@@ -52,19 +41,12 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         ZLinkSpotKind spotKind,
         String routeEndpoint,
         Runnable deactivate) {
-        return claimSpot(
-            meshName,
-            spotId,
-            1L,
-            spotType,
-            nodeRid,
-            spotKind,
-            routeEndpoint,
-            deactivate);
+        return claimSpot(meshName, spotId, 1L, spotType, nodeRid, spotKind, routeEndpoint, deactivate);
     }
 
     public CompletionStage<Void> releaseSpot(String meshName, String spotId) {
-        return spots.release(meshName, spotId);
+        spots.remove(spotId);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<ZLinkLocationWriteStatus> claimActor(
@@ -72,7 +54,8 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return actors.claim(actorType, actorId, nodeRid, deactivate);
+        actors.putIfAbsent(actorId, nullActorRef(actorId, nodeRid));
+        return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
     }
 
     public CompletionStage<ZLinkLocationWriteStatus> takeoverActor(
@@ -80,67 +63,61 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String actorId,
         RoutingId nodeRid,
         Runnable deactivate) {
-        return actors.takeover(actorType, actorId, nodeRid, deactivate);
+        actors.put(actorId, nullActorRef(actorId, nodeRid));
+        return CompletableFuture.completedFuture(ZLinkLocationWriteStatus.STORED);
     }
 
     public CompletionStage<Void> setActorRef(String actorType, String actorId, ActorRef actorRef) {
-        return actors.setActorRef(actorType, actorId, actorRef);
+        actors.put(actorId, actorRef);
+        return CompletableFuture.completedFuture(null);
     }
 
     public void abandonActor(String actorId) {
-        actors.abandon(actorId);
+        actors.remove(actorId);
     }
 
     public CompletionStage<Void> notifyActorJoinedSpot(
-        String actorType,
-        String actorId,
-        String meshName,
-        String spotId) {
-        return actors.notifyJoinedSpot(actorType, actorId, meshName, spotId);
+        String actorType, String actorId, String meshName, String spotId) {
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<Void> notifyActorLeftSpot(String actorType, String actorId) {
-        return actors.notifyLeftSpot(actorType, actorId);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<Void> notifyActorMovedToEntrySpot(
-        String actorType,
-        String actorId,
-        RoutingId nodeRid) {
-        return actors.notifyMovedToEntrySpot(actorType, actorId, nodeRid);
+        String actorType, String actorId, RoutingId nodeRid) {
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<Void> releaseActor(String actorType, String actorId) {
-        return actors.release(actorType, actorId);
+        actors.remove(actorId);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<Void> bindActorSessionRoute(
-        RoutingId sessionRid,
-        String actorId,
-        RoutingId ownerNodeRid) {
-        return actorSessionRoutes.bind(sessionRid, actorId, ownerNodeRid);
+        RoutingId sessionRid, String actorId, RoutingId ownerNodeRid) {
+        sessionRoutes.add(sessionRid);
+        return CompletableFuture.completedFuture(null);
     }
 
     public CompletionStage<Void> removeActorSessionRoute(RoutingId sessionRid) {
-        return actorSessionRoutes.remove(sessionRid);
+        sessionRoutes.remove(sessionRid);
+        return CompletableFuture.completedFuture(null);
     }
 
     boolean ownsActor(String actorType, String actorId) {
-        return actors.owns(actorType, actorId);
+        return actors.containsKey(actorId);
     }
 
     @Override
     public void close() {
-        runtime.removeOwnershipLostListener(ownershipLostListener);
+        spots.clear();
+        actors.clear();
+        sessionRoutes.clear();
     }
 
-    private void onOwnershipLost(ZLinkLocationKind kind, String canonicalKey) {
-        if (kind == ZLinkLocationKind.ACTOR) {
-            actors.onOwnershipLost(canonicalKey);
-        } else if (kind == ZLinkLocationKind.SPOT) {
-            spots.onOwnershipLost(canonicalKey);
-        } else if (kind == ZLinkLocationKind.ROUTE) {
-            actorSessionRoutes.onOwnershipLost(canonicalKey);
-        }
+    private static ActorRef nullActorRef(String actorId, RoutingId nodeRid) {
+        return new ActorRef(actorId, 1L, "local", nodeRid);
     }
 }

@@ -6,9 +6,9 @@ import {
 } from './service-relocation-wire-codec';
 import type {
   ZLinkAuthorityKey,
-  ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore
+  ZLinkAuthoritySnapshot
 } from '../../contracts/Locations';
+import type { ZLinkAuthorityStore } from '../locations/internal-store-contracts';
 import {
   replaceServiceAuthorityRelocationState
 } from './service-authority-payload-codec';

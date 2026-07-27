@@ -3,12 +3,20 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMeshNodeState,
-  type ZLinkDrainForceReason,
-  type ZLinkMeshDrainResult,
   type ZLinkMeshNodeSnapshot,
   type ZLinkMeshRuntimeEvent,
   type ZLinkRouteMeshRuntime
 } from '../../contracts';
+
+type ZLinkDrainForceReason =
+  | 'deadline_exceeded'
+  | 'drain_state_publish_failed'
+  | 'owner_cleanup_failed'
+  | 'teardown_failed';
+
+type ZLinkMeshDrainResult =
+  | { readonly kind: 'drained' }
+  | { readonly kind: 'forceStopped'; readonly reason: ZLinkDrainForceReason };
 import type { ZLinkBackendMeshNode } from '../backend';
 import type { ZLinkRuntimeAdmissionGate } from '../admission';
 import type { ZLinkSpotNodeOptions } from '../configuration';
@@ -133,15 +141,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
         infrastructureActive: status.pendingInfrastructureMessages > 0n,
         pendingInfrastructureWork: status.pendingInfrastructureMessages
       },
-      location: { state: 'unknown' },
-      drain: {
-        state: drain.state,
-        deadline: drain.deadline,
-        workSealed: drain.state >= ZLinkMeshNodeState.Draining,
-        pendingRequestCount: pendingApplicationWork,
-        pendingTransferCount: status.pendingInfrastructureMessages,
-        pendingStreamBarrierCount: 0n
-      }
+      location: { state: 'unknown' }
     };
   }
 

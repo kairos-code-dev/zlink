@@ -56,7 +56,7 @@ internal static class Program
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(configuration.LogDirectory, apiName))
                 .TraceLabel(apiName);
             options.AddHandlersFromAssemblyOf(typeof(Program));

@@ -11,15 +11,15 @@ import systems.zlink.e2e.storefailure.shared.Contracts;
 import systems.zlink.e2e.storefailure.shared.HttpSupport;
 import systems.zlink.e2e.storefailure.shared.Wait;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class ConsumerEndpoints implements SmartLifecycle {
     private final ConsumerOptions options;
     private final ZLinkClient client;
     private final ZLinkFrameworkLifecycle lifecycle;
+    private final ZLinkLocationStore locationStore;
     private final LocationStoreDelayState delayState;
     private final ObjectMapper json;
     private HttpServer server;
@@ -30,11 +30,13 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         ConsumerOptions options,
         ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle,
+        ZLinkLocationStore locationStore,
         LocationStoreDelayState delayState,
         ObjectMapper json) {
         this.options = options;
         this.client = client;
         this.lifecycle = lifecycle;
+        this.locationStore = locationStore;
         this.delayState = delayState;
         this.json = json;
     }
@@ -107,21 +109,18 @@ public final class ConsumerEndpoints implements SmartLifecycle {
     }
 
     private List<java.util.Map<String, Object>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocations(new ZLinkPeerLocationFilter(
-                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+        return locationStore.listClientServers(
                 Contracts.CHANNEL,
-                ZLinkLocationRole.ROUTER,
-                null,
-                null))
+                new ZLinkPageRequest(1_000, null))
             .toCompletableFuture()
             .join()
-            .stream()
-            .map(peer -> java.util.Map.<String, Object>of(
-                "nodeRid", peer.nodeRid().toString(),
-                "endpoint", peer.endpoint(),
-                "ownerId", peer.ownerId(),
-                "role", peer.role().name(),
-                "meshName", peer.meshName()))
+            .items().stream()
+            .map(server -> java.util.Map.<String, Object>of(
+                "nodeRid", server.serverRid().toString(),
+                "endpoint", server.endpoint(),
+                "ownerId", server.ownerId(),
+                "role", "ROUTER",
+                "meshName", server.channelName()))
             .toList();
     }
 

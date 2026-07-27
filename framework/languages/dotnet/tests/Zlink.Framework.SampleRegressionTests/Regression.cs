@@ -90,8 +90,8 @@ public sealed partial class RegressionTests
         var forbidden = new[]
         {
             "IZLinkLocationStore",
-            "IZLinkOwnerLeaseStore",
-            "IZLinkAuthorityStore",
+            "IZLinkLocationStore",
+            "IZLinkLocationStore",
             "IZLinkSpotHandleResolver",
             "IZLinkActorSpotHandleResolver"
         };

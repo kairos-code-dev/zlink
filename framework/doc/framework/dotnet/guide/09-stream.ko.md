@@ -78,7 +78,7 @@ public sealed class ClientHeaderSession(
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken ct)
     {
-        int? errno = error.Diagnostic?.NativeCode;
+        logger.LogWarning("stream error: {Kind} {Message}", error.Error, error.Message);
         return ValueTask.CompletedTask;
     }
 

@@ -17,7 +17,7 @@ import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -152,9 +152,9 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         return CompletableFuture.completedFuture(null);
     }
 
-    CompletionStage<systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec
+    CompletionStage<systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec
         .SessionRelocationRouted> applyRelocationRouteCommand(
-            systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec
+            systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec
                 .SessionRelocationRoute command) {
         if (!(actors instanceof ZLinkSessionActorsRuntime runtime)) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(

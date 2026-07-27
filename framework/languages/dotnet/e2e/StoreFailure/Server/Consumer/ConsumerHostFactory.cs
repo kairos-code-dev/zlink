@@ -51,7 +51,7 @@ internal static class ConsumerHostFactory
             IZLinkLocationStore store = options.StoreMode switch
             {
                 "polling" => new PollingOnlyLocationStore(redisStore),
-                "delay" => new DelayableLocationStore(redisStore, delayState, redisStore),
+                "delay" => new DelayableLocationStore(redisStore, delayState),
                 _ => redisStore
             };
             framework.AddLocationStore(store);
@@ -67,7 +67,7 @@ internal static class ConsumerHostFactory
             locations.PollingInterval = TimeSpan.FromMilliseconds(options.LocationPollingMs);
             locations.StoreFailureGrace = TimeSpan.FromMilliseconds(options.LocationGraceMs);
             framework.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
                 .TraceLabel(options.TraceLabel);
             // SF-A2 starts a second consumer against the same RouteMesh. Its
@@ -312,7 +312,7 @@ internal static class ConsumerHostFactory
                         .SetConnectionString(options.RedisEndpoint)
                         .SetKeyPrefix(options.RedisKeyPrefix)));
                     framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
                         .TraceLabel(traceLabel);
                     JoinConsumerMesh(framework, $"consumer-{traceLabel}");

@@ -12,7 +12,6 @@ export async function runMonA5(options: ClientOptions): Promise<void> {
     containsAnyGroups: [
       ['kind=handshakeFailed', 'kind=internal'],
       ['monitor-location|source=monitor.location-runtime|kind=StatusChanged'],
-      ['monitor-spot|source=monitor.spot|kind=statusChanged'],
       ['monitor-spot|source=monitor.spot|kind=timerStoppedAfterUnhandledException'],
       ['timer=stopping']
     ],
@@ -29,11 +28,6 @@ export async function runMonA5(options: ClientOptions): Promise<void> {
     serviceEvidence.some((line) =>
       line.includes('monitor-location|source=monitor.location-runtime|kind=StatusChanged')),
     'MON-A5 location runtime status evidence missing.'
-  );
-  ensure(
-    serviceEvidence.some((line) =>
-      line.includes('monitor-spot|source=monitor.spot|kind=statusChanged')),
-    'MON-A5 spot status evidence missing.'
   );
   ensure(
     serviceEvidence.some((line) =>

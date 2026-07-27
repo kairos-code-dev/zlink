@@ -8,7 +8,7 @@
 > 다룬다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
-합성한 보기의 변화, spot peer/subject 변화, timer handler 실패 같은 **runtime
+합성한 보기의 변화, timer handler 실패 같은 **runtime
 변화**도 framework 표면에서 받아야 한다. monitoring이 이를 source 별로 통일된
 방식으로 노출한다.
 
@@ -22,7 +22,6 @@ handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconne
 | socket | raw monitor 기반 event (connect/disconnect/handshake 등) — classic channel용 |
 | mesh | `AddRouteMesh`로 등록한 MeshNode의 runtime 이벤트 스트림(state/peer 전이)을 그대로 전달 |
 | location | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 (`location-runtime` source, [10-location](10-location.ko.md)) |
-| spot | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 + timer 실패는 즉시 |
 
 공통 규칙: event kind는 `enum`, payload는 `record struct`, 어플리케이션은
 `IZLinkRuntimeEventHandler<TEvent>`를 DI에 등록해 수신한다.
@@ -33,13 +32,13 @@ DI에 등록된 handler를 scope 안에서 꺼내 호출한다(HTTP 요청 handl
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  SRC["source: socket / location / spot"] -->|"변화 발생"| FW["framework runtime"]
+  SRC["source: socket / mesh / location"] -->|"변화 발생"| FW["framework runtime"]
   FW -->|"typed event로 전달"| H["IZLinkRuntimeEventHandler 등록<br/>(DI scope에서 호출)"]
 ```
 
 ## 2. 등록
 
-`AddZLinkMonitoring(...)`은 **source 등록만** 한다. 실제 source(socket/spot)는
+`AddZLinkMonitoring(...)`은 **source 등록만** 한다. 실제 socket이나 mesh source는
 framework runtime에 올라와 있어야 한다.
 
 ```csharp
@@ -52,8 +51,6 @@ builder.Services.AddZLinkMonitoring(monitor =>
 
     // RouteMesh 노드의 state/peer 전이 이벤트 — mesh 이름으로 등록
     monitor.AddMeshNodeEvents("game.room");
-
-    monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
 
     // location store를 등록한 배포에서 — 자기 노드의 위치/연결 상태 변화 이벤트를 받는다
     monitor.AddLocationRuntimeEvents("location-runtime", TimeSpan.FromSeconds(1));
@@ -77,13 +74,13 @@ builder.Services.AddScoped<
 
 - socket source 이름은 `channel + capability`(예: `profile.server`,
   `profile.client`) 형태다. capability는 `server`, `client`, `publisher`,
-  `subscriber` 중 하나다. spot은 `MeshNode` 등록 이름(예: `stage-node`)이다.
+  `subscriber` 중 하나다.
 - location source 이름(예: `location-runtime`)은 event의 `SourceName` 으로만
   쓰이는 자유 문자열이라 별도 infrastructure 등록 이름으로 검증하지 않는다.
-- location/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
+- location polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
-- socket source가 등록된 channel capability와 맞지 않거나, spot source가 등록된
-  `MeshNode` 이름과 맞지 않으면 시작 단계 예외다. location source는 자유 문자열이라
+- socket source가 등록된 channel capability와 맞지 않으면 시작 단계 예외다.
+  location source는 자유 문자열이라
   이 검증의 대상이 아니다.
 - `AddSocketEvents(...)`에 kind를 안 넘기면 그 source가 지원하는 모든 이벤트를
   받는다.
@@ -121,8 +118,8 @@ public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonito
                     @event.SourceName, @event.RemoteAddr);
                 break;
             case ZLinkSocketEventKind.Disconnected:
-                logger.LogWarning("socket disconnected: {Source} {Remote} value={Value}",
-                    @event.SourceName, @event.RemoteAddr, @event.Diagnostic?.NativeValue);
+                logger.LogWarning("socket disconnected: {Source} {Remote}",
+                    @event.SourceName, @event.RemoteAddr);
                 break;
         }
         return ValueTask.CompletedTask;
@@ -130,8 +127,8 @@ public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonito
 }
 ```
 
-socket event만 native monitor event/value를 진단 정보로 함께 노출한다
-(`Diagnostic.NativeEvent`, `Diagnostic.NativeValue`).
+socket event는 backend의 native event code를 노출하지 않고 framework가 정의한
+event kind와 endpoint·routing identity만 전달한다.
 
 ### mesh
 
@@ -196,24 +193,19 @@ store가 죽어도 이 source는 죽지 않는다 — 조회 실패는 `StoreFai
 
 ### spot
 
+spot의 timer handler 실패는 polling source를 별도로 등록하지 않아도 발생 시점에
+provider-neutral runtime event로 전달된다. SpotNode의 state·peer 상태는 중복된
+spot 전용 projection을 만들지 않고 `AddMeshNodeEvents(...)`와
+`IZLinkRouteMeshRuntime` snapshot을 사용한다.
+
 ```csharp
 public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
     : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
 {
     public ValueTask HandleAsync(ZLinkSpotEvent @event, CancellationToken ct)
     {
-        switch (@event)   // 5종 고정(StatusChanged 포함) — 여기선 4종만 처리
+        switch (@event)   // timer failure 두 종류만 provider-neutral event로 받는다.
         {
-            case ZLinkSpotEvent.PeersChanged peers:
-                // peers/subjects는 interval마다 상태를 비교해 합성된다(주기 의존).
-                logger.LogInformation("spot peers: {Source} {Count}",
-                    peers.SourceName, peers.Peers.Count);
-                break;
-            case ZLinkSpotEvent.SubjectsChanged subjects:
-                logger.LogInformation("spot subjects: {Source} {Count}",
-                    subjects.SourceName, subjects.Subjects.Count);
-                break;
-            // 이 둘만 발생 시점에 즉시 발행된다(polling 주기를 기다리지 않음).
             case ZLinkSpotEvent.TimerHandlerFailed failed:
                 logger.LogError("spot timer failed: {Source} {Timer} {Handler} {Exception}",
                     failed.SourceName,
@@ -231,12 +223,9 @@ public sealed class StageNodeMonitor(ILogger<StageNodeMonitor> logger)
 }
 ```
 
-spot event는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
-`TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` **5종 고정**이다.
-
-> **timer 실패는 polling 주기를 기다리지 않는다.** status/peer/subject 변화는
-> `AddSpotEvents(...)`의 `interval`로 직전 상태와 비교하지만, timer handler 실패는
-> 발생 시점에 즉시 발행된다. timer 정책은 [06-spot](06-spot.ko.md) §3 참고.
+spot event는 `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException` **2종 고정**이다.
+timer 실패는 polling 주기를 기다리지 않고 발생 시점에 즉시 발행된다.
+timer 정책은 [06-spot](06-spot.ko.md) §3을 참고한다.
 
 ## 4. 자주 막히는 곳
 
@@ -245,20 +234,21 @@ spot event는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
 - **자동 연결 상태를 받고 싶다** → `location-runtime` source의 이벤트
   (`AddLocationRuntimeEvents`)를 받거나, 시점 조회는 location runtime query를 쓴다
   ([10-location](10-location.ko.md) §3).
-- **health/metric endpoint를 기대한다** → `AddZLinkMonitoring(...)`은 socket/
-  location/spot runtime event source를 등록할 뿐 HTTP endpoint를 만들지 않는다.
+- **health/metric endpoint를 기대한다** → `AddZLinkMonitoring(...)`은 socket,
+  mesh, location runtime event source를 등록할 뿐 HTTP endpoint를 만들지 않는다.
   health check 나 metric은 이벤트와 runtime query를 읽어 앱이 직접 노출한다
   ([10-location](10-location.ko.md) §3).
 - **등록되지 않은 메시지를 알고 싶다** → `ConfigureDispatch()`에
-  `IZLinkMessageFlowObserver`를 등록한다. request 실패는 error reply로 돌아가고,
-  send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event로 남는다.
+  `IZLinkRuntimeMessageFlowObserver`를 등록한다. request 실패는 error reply로 돌아가고,
+  send/subscription/actor send 실패는 drop 되지만 로그, metric, observer event로 남는다.
+  Publish는 subscriber별 결과를 확인하지 않으므로 message-flow event를 만들지 않는다.
   observer는 관측용이므로 callback이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 - **handler payload의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
   [spec/aspnet-core-monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md) 참고.
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
-monitoring이 socket/location/spot의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
+monitoring이 socket/mesh/location의 **상태 변화**를 본다면, 메시지 흐름 추적은 메시지
 하나가 **도착했는지 / handler로 전달됐는지 / 응답이 나갔는지**를 dispatch 경로에서 기록한다.
 로그를 `corr=`로 grep 하면 한 요청의 생애주기를 노드 간에 이어서 추적할 수 있다. dispatch를
 제어하는 게 아니라 관측만 한다.
@@ -269,8 +259,8 @@ monitoring이 socket/location/spot의 **상태 변화**를 본다면, 메시지 
 builder.Services.AddZLinkFramework(options =>
 {
     options.ConfigureDispatch()
-        // off → ErrorsOnly(기본) → KeyTransitions → Verbose → Diagnostic
-        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+        // Off → ErrorsOnly(기본) → KeyTransitions → Verbose
+        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
         .TraceLogFile("logs/flow-api.log")   // 지정=전용 파일, 미지정=앱 ILogger 통합, 둘 다 없으면 stderr
         .TraceLabel("api");                 // 구조화 필드 label=
 });
@@ -278,9 +268,9 @@ builder.Services.AddZLinkFramework(options =>
 
 - 모드 게이팅: `Dropped`·에러는 `ErrorsOnly` 이상, 성공 전이(`Received`/`Dispatched`/`Replied`/
   `Sent`/`ReplyReceived`)는 `KeyTransitions` 이상. `Off` 면 이벤트 생성 자체가 없어 제로코스트다.
-- 운영 중 켜고 끄기: `IZLinkMessageFlowControl`을 DI에서 받아 `SetMessageFlowMode(...)`(재시작
+- 운영 중 켜고 끄기: `IZLinkMessageFlowRuntime`을 DI에서 받아 `Mode`를 바꾼다(재시작
   불필요, 모든 surface 즉시 반영).
-- 콜렉터/OTel 연동: `IZLinkMessageFlowObserver`를 등록해 구조화 이벤트를 받는다(앱 레이어).
+- 콜렉터/OTel 연동: `IZLinkRuntimeMessageFlowObserver`를 등록해 구조화 이벤트를 받는다(앱 레이어).
   framework는 OTel에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
   (작성법은 바로 아래 "observer로 흐름 이벤트 받기").
 - 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/server/languages/dotnet/01-system-structure.ko.md), 공통 의미는
@@ -300,28 +290,28 @@ builder.Services.AddZLinkFramework(options =>
 ### observer로 흐름 이벤트 받기
 
 로그 파일만으로는 부족하고 흐름 이벤트를 코드로 받고 싶을 때(metric 집계, OTel 전송,
-에러 알림) `IZLinkMessageFlowObserver`를 구현한다. 등록은 같은 `ConfigureDispatch()`
-체인의 `SetMessageFlowObserver<T>()`로 하고, observer는 **DI에서 resolve** 되므로
+에러 알림) `IZLinkRuntimeMessageFlowObserver`를 구현한다. 등록은 같은 `ConfigureDispatch()`
+체인의 `SetRuntimeMessageFlowObserver<T>()`로 하고, observer는 **DI에서 resolve** 되므로
 생성자에 필요한 서비스를 주입받을 수 있다.
 
 ```csharp
 options.ConfigureDispatch()
-    .SetMessageFlowObserver<MetricFlowObserver>()   // DI에서 생성 — 생성자 주입 가능
-    .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions);
+    .SetRuntimeMessageFlowObserver<MetricFlowObserver>() // DI에서 생성 — 생성자 주입 가능
+    .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions);
 ```
 
 ```csharp
-public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkMessageFlowObserver
+public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkRuntimeMessageFlowObserver
 {
-    public ValueTask OnMessageFlowAsync(ZLinkMessageFlowEvent flow, CancellationToken ct)
+    public ValueTask OnMessageFlowAsync(ZLinkRuntimeMessageFlowEvent flow, CancellationToken ct)
     {
-        // 에러만 추려서 집계 — Outcome으로 분기한다
-        if (flow.Outcome == ZLinkMessageFlowOutcome.Error)
+        // 실패만 추려서 집계한다. 값은 공통 spec의 lowercase 문자열이다.
+        if (flow.Outcome == "failed")
         {
             metrics.CountError(
                 surface: flow.Surface,            // 어느 dispatch 표면에서
                 kind: flow.MessageKind,           // request/send/publish 중 무엇이
-                reason: flow.ErrorReason,         // 왜 실패했는지
+                reason: flow.Reason,              // 왜 실패했는지
                 packet: flow.PacketName);
         }
         return ValueTask.CompletedTask;
@@ -329,24 +319,23 @@ public sealed class MetricFlowObserver(IMetricSink metrics) : IZLinkMessageFlowO
 }
 ```
 
-`OnMessageFlowAsync`가 매 전이마다 받는 `ZLinkMessageFlowEvent`의 주요 필드:
+`OnMessageFlowAsync`가 매 전이마다 받는 `ZLinkRuntimeMessageFlowEvent`의 주요 필드:
 
 | 필드 | 의미 |
 |------|------|
-| `Outcome` | 이 이벤트가 무슨 전이인지. `Received`·`Dispatched`·`Replied`·`Sent`·`ReplyReceived`·`Dropped`·`Error` |
+| `EventId` / `Phase` / `Outcome` | Event 종류, 처리 단계와 `succeeded`·`failed`·`backpressured`·`dropped`·`cancelled`·`shutdown` 결과 |
 | `Surface` | dispatch 표면(채널/spot/stream 등 어느 경로에서 일어났는지) |
-| `MessageKind` | request·send·publish 등 메시지 종류 |
+| `MessageKind` | request·send·response·error·control 중 메시지 종류. Publish는 이 event를 만들지 않는다. |
 | `PacketName` / `ChannelName` / `Topic` | 어떤 packet이, 어느 channel·topic에서 |
 | `CorrelationId` | 노드 간 한 요청을 잇는 추적 ID(로그의 `corr=`) |
 | `FlowId` | request/reply 경계를 넘어 이어지는 상위 흐름 ID(아래 flow_id 절 참고) |
-| `FlowOrigin` | 이 흐름이 시작된 지점. `Inbound`·`Timer`·`Application`·`Lifecycle` |
-| `SpotRid` / `ActorId` | 관련된 spot·actor(해당될 때만) |
-| `SourceRid` / `LocalRid` / `PeerRid` | 이벤트의 출발 노드·현재 노드·상대 노드 routing id |
-| `SocketRole` | 이벤트가 일어난 소켓 역할(server/client/publisher/subscriber 등) |
-| `ErrorReason` / `ErrorAction` / `ErrorType` / `ErrorMessage` | 실패 원인·후속 처리·예외 정보(`Outcome=Error` 일 때만 채워짐) |
-| `MessageSize` | payload 크기(`IncludeMessageSizes(true)` 일 때) |
+| `FlowOrigin` | 이 흐름이 시작된 지점. `inbound`·`timer`·`application`·`lifecycle` |
+| `SpotId` / `ActorId` | 관련된 spot·actor(해당될 때만) |
+| `SourceRid` / `TargetRid` / `ServerRid` | Routed hop과 ClientServer target의 routing id |
+| `Reason` / `Action` | 실패 원인과 reply·caller completion·drop 처리(해당될 때만) |
+| `MessageSizeBytes` | payload 크기(`IncludeMessageSizes(true)`와 `Verbose` mode일 때) |
 
-전체 필드는 spec 또는 record 정의(`ZLinkMessageFlowEvent`)를 확인한다.
+전체 필드는 spec 또는 record 정의(`ZLinkRuntimeMessageFlowEvent`)를 확인한다.
 
 - **`MessageFlow(...)` 모드는 로그와 observer 양쪽의 이벤트 생성 범위를 함께 정한다.**
   observer가 모든 전이를 받는 게 아니다 — `Off` 면 이벤트를 아예 만들지 않고, `ErrorsOnly`

@@ -12,9 +12,6 @@ namespace Zlink.Framework.Locations.Redis;
 /// </summary>
 public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
-    IZLinkClientServerLocationStore,
-    IZLinkFanoutLocationStore,
-    IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {
     private readonly ZLinkRedisLocationOptions _options;
@@ -440,12 +437,15 @@ public sealed partial class ZLinkRedisLocationStore :
 
     // ----- change stamp store ----------------------------------------------
 
-    public async ValueTask<ulong> GetChangeStampAsync(
-        ZLinkLocationChangeStampScope scope,
+    public async ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
         return await ExecuteAsync(
-                database => _commands.GetChangeStampAsync(database, scope),
+                database => _commands.GetMeshNodeChangeStampAsync(
+                    database,
+                    meshName),
                 cancellationToken)
             .ConfigureAwait(false);
     }

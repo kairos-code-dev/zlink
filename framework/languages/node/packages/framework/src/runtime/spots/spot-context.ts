@@ -1,5 +1,6 @@
 import type {
   RoutingId,
+  SpotId,
   Type,
   ZLinkActor,
   ZLinkEntrySpot,
@@ -7,8 +8,6 @@ import type {
   ZLinkInstanceSpot,
   ZLinkInstanceSpotContext,
   ZLinkInstanceSpotHandlerRegistry,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpot,
   ZLinkSpotContext,
   ZLinkSpotHandlerRegistry,
@@ -16,6 +15,8 @@ import type {
   ZLinkSpotTimerHandler,
   ZLinkTimerOptions
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type { ZLinkWorkerCall } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { DefaultZLinkWorkerCall, ZLinkWorkerRuntime } from '../workers';
@@ -26,7 +27,7 @@ import {
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
 interface ZLinkEntrySpotContextOptions {
-  readonly nativeSpotId: RoutingId;
+  readonly spotId: SpotId;
   readonly objectGeneration: number;
   readonly nodeRid: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
@@ -47,7 +48,7 @@ interface ZLinkEntrySpotContextOptions {
 
 interface ZLinkSpotContextOptions {
   readonly meshName: string;
-  readonly spotId: RoutingId;
+  readonly spotId: SpotId;
   readonly objectGeneration: number;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
@@ -66,7 +67,7 @@ interface ZLinkSpotContextOptions {
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
   return withImmutableSpotIdentity({
     meshName: options.spotNodeName,
-    spotId: options.nativeSpotId,
+    spotId: options.spotId,
     objectGeneration: options.objectGeneration,
     nodeRid: options.nodeRid,
     handlers: options.handlers,
@@ -95,7 +96,7 @@ export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): Z
         signal,
         createTimerDiagnostics(
           options.spotNodeName,
-          options.nodeRid,
+          options.spotId,
           true,
           name,
           handlerType,
@@ -215,7 +216,7 @@ function contextNodeRid(nodeRid: RoutingId | undefined): RoutingId {
 
 function withImmutableSpotIdentity<T extends {
   readonly meshName: string;
-  readonly spotId: RoutingId;
+  readonly spotId: SpotId;
   readonly objectGeneration: number;
   readonly nodeRid: RoutingId;
 }>(context: T): T {

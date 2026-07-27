@@ -4,6 +4,7 @@
 #include "runtime/stateful/public_store_adapters.hpp"
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -43,7 +44,7 @@ std::string authority_key (object_kind_t kind, const std::string &key)
 inventory_digest_t digest_with (std::uint8_t value);
 
 class public_memory_authority_store_t final :
-    public zlink::framework::authority_store_t
+    public zlink::framework::runtime::in_memory_location_store_t
 {
   public:
     zlink::framework::task_t<

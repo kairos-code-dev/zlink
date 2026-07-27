@@ -235,7 +235,7 @@ internal static class StormClientWorker
                         .SetConnectionString(redisEndpoint)
                         .SetKeyPrefix(redisKeyPrefix)));
                     framework.ConfigureDispatch()
-                        .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                        .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(logDir, $"storm-{index}-flow.log"))
                         .TraceLabel($"storm-{index}");
                     var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)

@@ -2,33 +2,32 @@
 
 [인터페이스 목차](README.ko.md) · [STREAM session](../../../../30-stream-session.ko.md)
 
-STREAM session, Actor binding과 relay는 JVM service runtime이 소유한다. Java binding의 public stream socket과
-raw frame API만 사용하며 Core session service나 private JNI SPI를 public 또는 internal dependency로 삼지 않는다.
+STREAM session, Actor binding과 relay는 JVM Framework runtime이 소유한다. Application에는 session lifecycle,
+typed packet·push와 Actor binding 결과만 공개하며 transport frame과 binding 구현은 노출하지 않는다.
 
 Session bind는 exact `ActorRef`를 한 번 제출한다. Active forwarding mapping이 없으면 `ACTOR_LOCATION_STALE`,
 generation이 다르면 `ACTOR_GENERATION_STALE`, pre-commit seal 중이면 `ACTOR_MOVING`이다. Framework는 Store에서
 새 ref를 찾아 hidden retry하지 않는다. `enableActorDispatch()`는 MeshName을 받지 않으며 startup에 Object
 Client 또는 Server role과 Location Store가 필요하다.
 
-Actor가 다른 MeshNode에 있으면 JVM runtime은 Java binding의 public raw ROUTER request·send·reply만 사용해
-command 38 bind, bound-session tail이 있는 command 24 ingress와 command 36 push를 처리한다. Public interface는
-변하지 않는다. Runtime은 Actor ObjectGeneration, source·target NodeGeneration, AuthorityOwnerGeneration,
+Actor가 다른 MeshNode에 있으면 runtime은 같은 public session interface로 bind, ingress와 push를 전달한다.
+Runtime은 Actor ObjectGeneration, source·target NodeGeneration, AuthorityOwnerGeneration,
 binding generation과 session sequence를 application callback 전에 검사한다. Rebind와 close는 exact binding
 identity transition이다. Identity는 session owner Node RID·lifecycle generation·owner-local [binding generation](../../../../01-glossary.ko.md#binding-generation)을
 함께 사용하므로 다른 [MeshNode](../../../../01-glossary.ko.md#meshnode)나 재시작한 [owner](../../../../01-glossary.ko.md#owner)의 작은 local counter도 새 binding으로 등록할 수 있다. 이전 owner
 lifecycle의 push·ingress·tombstone은 current session에 적용하지 않는다.
 
-JVM backend socket close는 remote unbind completion을 bounded lifecycle deadline 안에서 관찰한다. Timeout이나
-terminal failure를 무시하지 않고 close failure로 반환하며, 성공·실패와 관계없이 local binding과 raw STREAM
-socket을 정리한다. 이 동작을 위한 추가 public member는 제공하지 않는다.
+Session close는 remote unbind completion을 bounded lifecycle deadline 안에서 관찰한다. Timeout이나
+terminal failure를 무시하지 않고 close failure로 반환하며, 성공·실패와 관계없이 local binding과 session
+transport를 정리한다. 이 동작을 위한 추가 public member는 제공하지 않는다.
 
 Bind 뒤 relay·request relay와 `notifyDisconnected()`는 Actor별 저장 route를 사용하며 message마다 Location
 Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic all-settled
 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
 `notifyDisconnected()`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
 기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
-durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Command 44·45 routed ACK와 steady
-normalization 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
+durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Route 전환이 양쪽 runtime에서 확인되고
+steady route가 확정되기 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
 route와 physical STREAM connection은 유지한다.
 
 ## Exact public member inventory
@@ -85,21 +84,13 @@ public interface systems.zlink.framework.streams.ZLinkStreamCompressionCodec {
   public abstract byte[] compress(byte[]);
   public abstract byte[] decompress(byte[], int);
 }
-public final class systems.zlink.framework.streams.ZLinkStreamDiagnostic extends java.lang.Record {
-  public systems.zlink.framework.streams.ZLinkStreamDiagnostic(int, java.lang.String);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public int nativeCode();
-  public java.lang.String message();
-}
 public final class systems.zlink.framework.streams.ZLinkStreamError extends java.lang.Record {
-  public systems.zlink.framework.streams.ZLinkStreamError(systems.zlink.framework.streams.ZLinkStreamSessionError, java.util.Optional<systems.zlink.framework.streams.ZLinkStreamDiagnostic>);
+  public systems.zlink.framework.streams.ZLinkStreamError(systems.zlink.framework.streams.ZLinkStreamSessionError, java.lang.String);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public systems.zlink.framework.streams.ZLinkStreamSessionError error();
-  public java.util.Optional<systems.zlink.framework.streams.ZLinkStreamDiagnostic> diagnostic();
+  public java.lang.String message();
 }
 public final class systems.zlink.framework.streams.ZLinkStreamSessionError extends java.lang.Enum<systems.zlink.framework.streams.ZLinkStreamSessionError> {
   public static final systems.zlink.framework.streams.ZLinkStreamSessionError INTERNAL;

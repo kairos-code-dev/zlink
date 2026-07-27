@@ -174,8 +174,8 @@ public sealed class FlowCorrelationTests
         var frameworkHeader = ZLinkStreamProtocolDefaults.DecodeHeader(outbound.HeaderBytes);
         var observer = new ReceivedFlowObserver();
         var options = new ZLinkDispatchOptionsModel();
-        options.MessageFlow(ZLinkMessageFlowLogMode.Off);
-        options.SetMessageFlowObserver(observer);
+        options.MessageFlow(ZLinkRuntimeMessageFlowMode.Off);
+        options.SetRuntimeMessageFlowObserver(observer);
         await using var services = new ServiceCollection().BuildServiceProvider();
         var runner = new ZLinkRuntimeTaskRunner(new ZLinkRuntimeErrorSink(), CancellationToken.None);
         await using var pump = new ZLinkMessageFlowObserverPump(options, services, runner);
@@ -196,7 +196,7 @@ public sealed class FlowCorrelationTests
         Assert.Equal(connectorHeader.FlowId, frameworkHeader.FlowId);
         Assert.Equal(connectorHeader.FlowId, received.FlowId);
         Assert.Equal(ZlinkStreamFlowOrigin.Application, connectorHeader.FlowOrigin);
-        Assert.Equal(ZLinkFlowOrigin.Application, received.FlowOrigin);
+        Assert.Equal("application", received.FlowOrigin);
         Assert.Equal(connectorHeader.CorrelationId, received.CorrelationId);
         await runner.StopAsync();
     }
@@ -222,16 +222,16 @@ public sealed class FlowCorrelationTests
         }
     }
 
-    private sealed class ReceivedFlowObserver : IZLinkMessageFlowObserver
+    private sealed class ReceivedFlowObserver : IZLinkRuntimeMessageFlowObserver
     {
-        public TaskCompletionSource<ZLinkMessageFlowEvent> Received { get; } =
+        public TaskCompletionSource<ZLinkRuntimeMessageFlowEvent> Received { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ValueTask OnMessageFlowAsync(
-            ZLinkMessageFlowEvent flow,
+            ZLinkRuntimeMessageFlowEvent flow,
             CancellationToken cancellationToken)
         {
-            if (flow.Outcome == ZLinkMessageFlowOutcome.Received)
+            if (flow.Phase == "received")
                 Received.TrySetResult(flow);
             return ValueTask.CompletedTask;
         }

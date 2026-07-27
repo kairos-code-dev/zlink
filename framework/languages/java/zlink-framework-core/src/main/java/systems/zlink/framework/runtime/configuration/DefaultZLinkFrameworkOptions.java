@@ -10,13 +10,14 @@ import java.util.concurrent.Executor;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
-import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.runtime.internal.configuration.RouteMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
 import systems.zlink.framework.configuration.ZLinkDispatchOptions;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder;
+import systems.zlink.framework.configuration.ZLinkNetworkOptions;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
-import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
+import systems.zlink.framework.runtime.internal.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder;
 import systems.zlink.framework.configuration.ZLinkStreamNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkWorkerOptions;
@@ -36,8 +37,14 @@ import systems.zlink.framework.runtime.streams.StreamNodeRegistration;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodecs;
 
-public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions {
+public final class DefaultZLinkFrameworkOptions
+    implements ZLinkFrameworkOptions,
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendHandlerOptions,
+        systems.zlink.framework.runtime.internal.configuration
+            .ZLinkLegacyTopologyOptions {
     private final ZLinkFrameworkRegistration registration = new ZLinkFrameworkRegistration();
+    private final NetworkOptions network = new NetworkOptions();
     private final Map<String, ChannelKind> channelKinds = new HashMap<>();
     private final Map<String, ChannelRegistration> clientServerChannels =
         new HashMap<>();
@@ -56,16 +63,28 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public Duration actorTransferForwardWindow() {
-        return registration.actorTransferForwardWindow();
+    public void setApplicationVersion(long version) {
+        if (version < 0) {
+            throw new ZLinkConfigurationException(
+                "application version must not be negative");
+        }
+        registration.setApplicationVersion(version);
     }
 
     @Override
-    public void setActorTransferForwardWindow(Duration window) {
-        if (window == null || window.isNegative()) {
-            throw new ZLinkConfigurationException("window must be zero or positive");
+    public void setMaintenanceWave(String waveId) {
+        if (waveId == null) {
+            registration.setMaintenanceWave(null);
+            return;
         }
-        registration.setActorTransferForwardWindow(window);
+        int encodedSize = waveId.getBytes(
+            java.nio.charset.StandardCharsets.UTF_8).length;
+        if (encodedSize < 1 || encodedSize > 255
+            || waveId.indexOf('\0') >= 0) {
+            throw new ZLinkConfigurationException(
+                "maintenance wave must be 1..255 UTF-8 bytes without NUL");
+        }
+        registration.setMaintenanceWave(waveId);
     }
 
     @Override
@@ -87,7 +106,8 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     public ZLinkMeshNodeBuilder addRouteMesh(String meshName) {
         String name = requireName(meshName, "route mesh");
         addUnique(routeMeshNames, name, "route mesh");
-        MeshNodeRegistration meshNode = new MeshNodeRegistration(name);
+        MeshNodeRegistration meshNode = new MeshNodeRegistration(
+            name, network.bindHost(), network.advertiseHost().orElse(null));
         registration.meshNodes().add(meshNode);
         return meshNode;
     }
@@ -107,7 +127,8 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
             channelKinds.put(name, ChannelKind.CLIENT_SERVER);
             registration.channels().add(channel);
         }
-        return ChannelBuilders.clientServer(channel);
+        return ChannelBuilders.clientServer(
+            channel, network.bindHost(), network.advertiseHost().orElse(null));
     }
 
     @Override
@@ -116,11 +137,12 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         addChannel(channelName, ChannelKind.FANOUT);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.FANOUT);
         registration.channels().add(channel);
-        return ChannelBuilders.fanout(channel);
+        return ChannelBuilders.fanout(
+            channel, network.bindHost(), network.advertiseHost().orElse(null));
     }
 
     @Override
-    public RouteMeshChannelBuilder addRouteMeshChannel(String channelName)
+    public RouteMeshChannelBuilder addLegacyRouteMeshChannel(String channelName)
     {
         addChannel(channelName, ChannelKind.ROUTE_MESH);
         ChannelRegistration channel = new ChannelRegistration(channelName, ChannelKind.ROUTE_MESH);
@@ -129,7 +151,7 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     }
 
     @Override
-    public ZLinkSpotMeshBuilder addSpotMesh(String channelName)
+    public ZLinkSpotMeshBuilder addLegacySpotMesh(String channelName)
     {
         String meshName = requireName(channelName, "spot mesh");
         addUnique(spotMeshNames, meshName, "spot mesh");
@@ -145,7 +167,8 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
         addUnique(streamNodeNames, name, "stream node");
         StreamNodeRegistration streamNode = new StreamNodeRegistration(name);
         registration.streamNodes().add(streamNode);
-        return StreamBuilders.streamNode(streamNode);
+        return StreamBuilders.streamNode(
+            streamNode, network.bindHost(), network.advertiseHost().orElse(null));
     }
 
     @Override
@@ -162,6 +185,40 @@ public final class DefaultZLinkFrameworkOptions implements ZLinkFrameworkOptions
     @Override
     public ZLinkLocationOptions configureLocations() {
         return registration.locations().options();
+    }
+
+    @Override
+    public ZLinkNetworkOptions configureNetwork() {
+        return network;
+    }
+
+    private static final class NetworkOptions implements ZLinkNetworkOptions {
+        private String bindHost = "127.0.0.1";
+        private String advertiseHost;
+
+        @Override public String bindHost() { return bindHost; }
+
+        @Override
+        public void setBindHost(String host) {
+            bindHost = requireHost(host, "bind host");
+        }
+
+        @Override
+        public java.util.Optional<String> advertiseHost() {
+            return java.util.Optional.ofNullable(advertiseHost);
+        }
+
+        @Override
+        public void setAdvertiseHost(String host) {
+            advertiseHost = requireHost(host, "advertise host");
+        }
+
+        private static String requireHost(String host, String label) {
+            if (host == null || host.isBlank()) {
+                throw new ZLinkConfigurationException(label + " must not be empty");
+            }
+            return host;
+        }
     }
 
     @Override

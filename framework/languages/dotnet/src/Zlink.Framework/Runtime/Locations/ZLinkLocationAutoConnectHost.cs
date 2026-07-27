@@ -20,12 +20,9 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly ZLinkLocationOptions _options;
-    private readonly IZLinkClientServerLocationStore? _clientServerStore;
-    private readonly IZLinkFanoutLocationStore? _fanoutStore;
-    private readonly IZLinkLocationChangeStampStore? _stampStore;
+    private readonly IZLinkLocationStore _store;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
-    private readonly ZLinkLocationEventEmitter _events;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly List<ZLinkAutoConnectLoop> _loops = [];
@@ -45,23 +42,17 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         ZLinkLocationRuntime runtime,
         IZLinkMeshNodeLocationResolver peers,
         ZLinkLocationOptions options,
-        IZLinkLocationChangeStampStore? stampStore = null,
         IZLinkLocationWatchStore? watchStore = null,
         TimeProvider? timeProvider = null,
-        ZLinkLocationEventEmitter? events = null,
         ZLinkOwnerLeaseTracker? leaseTracker = null,
-        IZLinkClientServerLocationStore? clientServerStore = null,
-        IZLinkFanoutLocationStore? fanoutStore = null)
+        IZLinkLocationStore? store = null)
     {
         _runtime = runtime;
         _peers = peers;
         _options = options;
-        _clientServerStore = clientServerStore;
-        _fanoutStore = fanoutStore;
-        _stampStore = stampStore;
+        _store = store ?? runtime.Store;
         _watchStore = watchStore;
         _leaseTracker = leaseTracker;
-        _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
     }
 
@@ -78,27 +69,23 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             if (registration.Channels.Values.Any(static channel =>
                     channel.ClientServerRole is not null))
             {
-                if (_clientServerStore is not null)
-                {
-                    _clientServerDiscovery = new ZLinkClientServerDiscovery(
-                        _clientServerStore,
-                        _runtime,
-                        _options,
-                        _leaseTracker);
-                    await _clientServerDiscovery.StartAsync(state, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                _clientServerDiscovery = new ZLinkClientServerDiscovery(
+                    _store,
+                    _runtime,
+                    _options,
+                    _leaseTracker);
+                await _clientServerDiscovery.StartAsync(state, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            if (_fanoutStore is not null
-                && registration.Channels.Values.Any(static channel =>
+            if (registration.Channels.Values.Any(static channel =>
                     channel.AutoConnectType == ZLinkLocationAutoConnectType.Fanout
                     && (channel.Publisher is not null
                         || channel.Subscriber?.AcquisitionMode
                             == ZLinkPeerAcquisitionMode.AutoConnect)))
             {
                 _fanoutDiscovery = new ZLinkFanoutDiscovery(
-                    _fanoutStore,
+                    _store,
                     _runtime,
                     _options,
                     _leaseTracker);
@@ -490,7 +477,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             }
             : null);
         var reconciler = new ZLinkAutoConnectReconciler(
-            local, row, _runtime, _peers, executor, _options, _time, _events,
+            local, row, _runtime, _peers, executor, _options, _time,
             retainRemovedMembers,
             initiallyPublished: startupState is not null,
             initialStoreGeneration: startupState?.StoreGeneration ?? 0);
@@ -501,7 +488,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             or ZLinkLocationAutoConnectType.SpotMesh)
             _routeMeshReconcilers[meshName] = reconciler;
         _loops.Add(new ZLinkAutoConnectLoop(
-            reconciler, local, _options, _stampStore, _watchStore, _time, _leaseTracker));
+            reconciler, local, _options, _store, _watchStore, _time, _leaseTracker));
     }
 
     public bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid)
@@ -654,6 +641,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         public bool Connect(ZLinkAutoConnectTarget target)
         {
+            node.ObserveRequestSourceFence(target);
             if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
             return node.ConnectPeerAuto(target.NodeRid, target.Endpoint);
         }

@@ -10,7 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.ZLinkEncodedPayload;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkBoundActorRouteContractTest {

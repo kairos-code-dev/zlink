@@ -16,11 +16,11 @@ import systems.zlink.framework.locations.*;
 public final class ZLinkRelocationPublicationCoordinator {
     private static final Duration RETENTION = Duration.ofHours(24);
 
-    private final ZLinkAuthorityStore authority;
+    private final ZLinkLocationStore authority;
     private final ZLinkRelocationStore relocation;
 
     public ZLinkRelocationPublicationCoordinator(
-        ZLinkAuthorityStore authority,
+        ZLinkLocationStore authority,
         ZLinkRelocationStore relocation) {
         this.authority = Objects.requireNonNull(authority, "authority");
         this.relocation = Objects.requireNonNull(relocation, "relocation");

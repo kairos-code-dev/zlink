@@ -18,63 +18,63 @@ import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.MeshNodeStatus;
-import systems.zlink.contracts.service.spot.MeshNodeState;
-import systems.zlink.contracts.service.spot.MeshPeerEntry;
-import systems.zlink.contracts.service.spot.ActorTransferPrepare;
-import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
-import systems.zlink.contracts.service.spot.ActorTransferToken;
-import systems.zlink.contracts.service.spot.ActorTransferTokenFixture;
-import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
-import systems.zlink.contracts.service.spot.OwnerKind;
-import systems.zlink.contracts.service.spot.ReadyRecord;
-import systems.zlink.contracts.service.spot.ReceiveRecord;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepare;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepareResult;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferToken;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferTokenFixture;
+import systems.zlink.framework.runtime.internal.binding.spot.PrepareActorTransferResult;
+import systems.zlink.framework.runtime.internal.binding.spot.OwnerKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReceiveRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorBindOperation;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRoute;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorUnbindOperation;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorBindOperation;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRoute;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorUnbindOperation;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
-import systems.zlink.framework.runtime.backend.ZLinkBackendDealerSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkBackendPublisherSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitorEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotNodeMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendDealerSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendPublisherSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitorEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotNodeMode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRoute;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamErrorHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamPacketHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
-import systems.zlink.framework.runtime.backend.ZLinkChannelBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMonitoringBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkMeshBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
-import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRoute;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamErrorHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamPacketHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkMeshBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkSpotBackendAdapter;
+import systems.zlink.framework.runtime.internal.backend.ZLinkStreamBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
@@ -936,7 +936,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             Duration timeout) {
             record("joinActor." + actor.actorId() + "." + targetNodeRid + "." + targetSpotId);
             FakeSpot localSpot = owner.spots.stream()
-                .filter(spot -> spot.routingId().equals(targetSpotId))
+                .filter(spot -> spot.spotId().equals(targetSpotId))
                 .findFirst()
                 .orElse(null);
             if (localSpot != null && routingId.equals(targetNodeRid)) {
@@ -1249,7 +1249,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 new ZLinkBackendActorLifecycleInfo(
                     actor,
                     actor,
-                    Optional.of(routingId()),
+                    Optional.of(spotId()),
                     Optional.empty(),
                     1,
                     0)));
@@ -1388,7 +1388,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                         false))));
         }
 
-        @Override public String routingId() { return routingId; }
+        @Override public String spotId() { return routingId; }
         @Override public void setRoutingId(String spotId) {
             this.routingId = spotId;
             record("setRoutingId");

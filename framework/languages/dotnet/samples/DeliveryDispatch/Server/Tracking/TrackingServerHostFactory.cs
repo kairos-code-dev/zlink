@@ -32,7 +32,7 @@ public static class TrackingServerHostFactory
                 .SetConnectionString(topology.RedisEndpoint)
                 .SetKeyPrefix(topology.RedisKeyPrefix)));
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("tracking");
             options.AddHandlersFromAssemblyOf(typeof(DeliveryStatusChangedHandler));

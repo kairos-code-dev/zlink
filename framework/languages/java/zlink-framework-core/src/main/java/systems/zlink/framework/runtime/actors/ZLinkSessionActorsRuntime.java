@@ -2,7 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import java.time.Duration;
 import java.util.List;
@@ -28,7 +28,7 @@ import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private static final Logger LOGGER = Logger.getLogger(ZLinkSessionActorsRuntime.class.getName());

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <memory>
 #include <utility>
 
 #include <zlink/framework.hpp>
@@ -24,7 +25,31 @@ struct player_actor_t
     mutable bool destroy_after_entry_spot_join = false;
     mutable bool disconnected = false;
     mutable player_info_t player;
-    mutable actor_context_t context;
+    mutable std::unique_ptr<actor_context_t> context;
+
+    player_actor_t () = default;
+    explicit player_actor_t (std::string value) : actor_id (std::move (value)) {}
+    player_actor_t (const player_actor_t &other) :
+        actor_id (other.actor_id), node_rid (other.node_rid), generation (other.generation),
+        destroy_after_entry_spot_join (other.destroy_after_entry_spot_join),
+        disconnected (other.disconnected), player (other.player)
+    {
+    }
+    player_actor_t &operator= (const player_actor_t &other)
+    {
+        if (this != &other) {
+            actor_id = other.actor_id;
+            node_rid = other.node_rid;
+            generation = other.generation;
+            destroy_after_entry_spot_join = other.destroy_after_entry_spot_join;
+            disconnected = other.disconnected;
+            player = other.player;
+            context.reset ();
+        }
+        return *this;
+    }
+    player_actor_t (player_actor_t &&) noexcept = default;
+    player_actor_t &operator= (player_actor_t &&) noexcept = default;
 
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
@@ -34,7 +59,7 @@ struct player_actor_t
 
     void set_actor_context (actor_context_t actor_context) const
     {
-        context = std::move (actor_context);
+        context = std::make_unique<actor_context_t> (std::move (actor_context));
     }
 
     void mark_for_destroy_after_room_leave () const { destroy_after_entry_spot_join = true; }
@@ -45,7 +70,7 @@ struct player_actor_t
 
     template <typename TNotify> void push (const TNotify &notify) const
     {
-        context.bound_session ().send (notify).submit ();
+        context->bound_session ().send (notify).submit ();
     }
 
     player_info_t require_player () const
@@ -81,7 +106,10 @@ inline void from_json (const nlohmann::json &json, player_actor_t &value)
 
 struct player_actor_factory_t
 {
-    player_actor_t create (std::string actor_id) const { return {std::move (actor_id)}; }
+    player_actor_t create (std::string actor_id) const
+    {
+        return player_actor_t (std::move (actor_id));
+    }
 };
 
 struct move_packet_t

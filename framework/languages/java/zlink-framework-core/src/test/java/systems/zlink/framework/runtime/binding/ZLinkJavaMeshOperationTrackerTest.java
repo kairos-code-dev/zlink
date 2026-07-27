@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.OperationKind;
-import systems.zlink.contracts.service.spot.OwnerKind;
-import systems.zlink.contracts.service.spot.ReadyRecord;
-import systems.zlink.contracts.service.spot.ReceiveRecord;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationKind;
+import systems.zlink.framework.runtime.internal.binding.spot.OwnerKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ReadyRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ReceiveRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 

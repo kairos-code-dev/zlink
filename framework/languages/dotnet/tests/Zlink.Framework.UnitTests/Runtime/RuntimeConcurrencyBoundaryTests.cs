@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Eventing;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 

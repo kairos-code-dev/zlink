@@ -12,21 +12,19 @@ import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationRole;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
-import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
+import systems.zlink.framework.locations.ZLinkLocationStore;
+import systems.zlink.framework.locations.ZLinkPageRequest;
 
 @RestController
 public final class ConsumerEndpoints {
     private final ZLinkClient client;
-    private final ZLinkFrameworkLifecycle lifecycle;
+    private final ZLinkLocationStore locations;
 
     public ConsumerEndpoints(
         ZLinkClient client,
-        ZLinkFrameworkLifecycle lifecycle) {
+        ZLinkLocationStore locations) {
         this.client = client;
-        this.lifecycle = lifecycle;
+        this.locations = locations;
     }
 
     @GetMapping("/health")
@@ -36,19 +34,16 @@ public final class ConsumerEndpoints {
 
     @GetMapping("/locations/peers")
     public CompletionStage<List<java.util.Map<String, Object>>> peers() {
-        return lifecycle.monitoringLocationRuntimeQuery().listPeerLocations(new ZLinkPeerLocationFilter(
-                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+        return locations.listClientServers(
                 Contracts.API_CHANNEL,
-                ZLinkLocationRole.ROUTER,
-                null,
-                null))
-            .thenApply(peers -> peers.stream()
-            .map(peer -> java.util.Map.<String, Object>of(
-                "meshName", peer.meshName(),
-                "role", peer.role().name(),
-                "nodeRid", peer.nodeRid().toString(),
-                "endpoint", peer.endpoint(),
-                "ownerId", peer.ownerId()))
+                new ZLinkPageRequest(1_000, null))
+            .thenApply(page -> page.items().stream()
+            .map(server -> java.util.Map.<String, Object>of(
+                "meshName", server.channelName(),
+                "role", "ROUTER",
+                "nodeRid", server.serverRid().toString(),
+                "endpoint", server.endpoint(),
+                "ownerId", server.ownerId()))
             .toList());
     }
 

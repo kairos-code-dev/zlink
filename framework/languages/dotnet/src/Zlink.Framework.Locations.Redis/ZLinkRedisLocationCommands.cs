@@ -536,12 +536,13 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         return (long)removed;
     }
 
-    public async ValueTask<ulong> GetChangeStampAsync(
+    public async ValueTask<ulong> GetMeshNodeChangeStampAsync(
         IDatabase database,
-        ZLinkLocationChangeStampScope scope)
+        string meshName)
     {
         var value = await database.StringGetAsync(
-            keys.StampKey(ZLinkRedisLocationKeys.TagOf(scope.Kind), scope.MeshName)).ConfigureAwait(false);
+            keys.StampKey(ZLinkRedisLocationKinds.MeshNode.Tag, meshName))
+            .ConfigureAwait(false);
         return value.IsNull ? 0 : (ulong)(long)value;
     }
 

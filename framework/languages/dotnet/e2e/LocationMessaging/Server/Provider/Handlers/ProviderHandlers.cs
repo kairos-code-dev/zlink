@@ -78,22 +78,22 @@ internal sealed class RoutePingHandler(EvidenceStore evidence)
 }
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
-    : IZLinkMessageFlowObserver
+    : IZLinkRuntimeMessageFlowObserver
 {
     public ValueTask OnMessageFlowAsync(
-        ZLinkMessageFlowEvent flow,
+        ZLinkRuntimeMessageFlowEvent flow,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (flow.Outcome is not (ZLinkMessageFlowOutcome.Error or ZLinkMessageFlowOutcome.Dropped))
+        if (flow.Outcome != "failed" && flow.Phase != "dropped")
             return ValueTask.CompletedTask;
 
         evidence.Add(
             "dispatch-error"
             + $"|surface={flow.Surface}"
             + $"|kind={flow.MessageKind}"
-            + $"|reason={flow.ErrorReason}"
-            + $"|action={flow.ErrorAction}"
+            + $"|reason={flow.Reason}"
+            + $"|action={flow.Action}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
         return ValueTask.CompletedTask;

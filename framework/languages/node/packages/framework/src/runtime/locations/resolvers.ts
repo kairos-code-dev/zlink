@@ -1,21 +1,12 @@
 import type { ActorRef, RoutingId, SpotId } from '../../contracts/Common';
-import type {
-  ZLinkMeshNodeLocationStore,
-  ZLinkPeerLocationStore,
-  ZLinkRouteLocationStore
-} from '../../contracts/Locations/Stores';
-import type { ZLinkAuthorityStore } from '../../contracts/Locations/Authority';
 import {
-  ZLinkLocationKind,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
   ZLinkFrameworkRuntimeState,
   ZLinkObjectRole,
-  type ZLinkActorLocationStore,
   type ZLinkLocationReadiness,
   type ZLinkLocationRuntimeQuery,
   type ZLinkPeerLocationResolver,
-  type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationKey,
   type ZLinkPeerLocation,
@@ -24,7 +15,15 @@ import {
   type ZLinkRouteLocationKey,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationKey,
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
+import type {
+  ZLinkActorLocationStore,
+  ZLinkAuthorityStore,
+  ZLinkMeshNodeLocationStore,
+  ZLinkPeerLocationStore,
+  ZLinkRouteLocationStore,
+  ZLinkSpotLocationStore
+} from './internal-store-contracts';
 import { decodeServiceReadySpotAuthority } from '../foundation/service-authority-payload-codec';
 import { decodeActorAuthorityIdentity } from '../actors/actor-authority-publication';
 import { encodeAuthorityKey } from './authority-key-codec';
@@ -126,7 +125,7 @@ export class ZLinkStoreLocationResolvers implements
   ): Promise<{ readonly meshName: string; readonly nodeRid: RoutingId; readonly spotId: SpotId } | undefined> {
     for (const meshName of meshNames) {
       const descriptors = await this.liveRows.filter(
-        await this.options.stores.locationStore.listMeshNodes(meshName, signal),
+        (await this.options.stores.locationStore.listMeshNodes(meshName, undefined, signal)).items,
         (descriptor) => descriptor.ownerId,
         signal
       );
@@ -149,7 +148,7 @@ export class ZLinkStoreLocationResolvers implements
     signal?: AbortSignal,
     excludedCandidateRids: ReadonlySet<string> = new Set()
   ): Promise<RoutingId | undefined> {
-    const descriptors = await this.options.stores.locationStore.listMeshNodes(meshName, signal);
+    const descriptors = (await this.options.stores.locationStore.listMeshNodes(meshName, undefined, signal)).items;
     const liveDescriptors = await this.liveRows.filter(
       descriptors,
       (descriptor) => descriptor.ownerId,
@@ -521,11 +520,10 @@ export class DefaultZLinkLocationReadiness implements ZLinkLocationReadiness {
     signal?: AbortSignal
   ): Promise<boolean> {
     try {
+      void role;
       const page = await this.query.listTopology({
         meshName,
-        role,
         nodeRid,
-        kind: ZLinkLocationKind.Peer,
         state: ZLinkLocationTopologyState.Ready
       }, undefined, signal);
       return page.items.length > 0;

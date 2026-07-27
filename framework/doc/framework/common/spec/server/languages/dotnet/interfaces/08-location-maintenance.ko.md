@@ -1,7 +1,7 @@
-# .NET Location Store·Redis 공개 인터페이스
+# .NET Location public API와 provider SPI
 
 [.NET exact interface 목차](README.ko.md) · [Location Runtime](../../../../40-location-runtime.ko.md) ·
-[Redis Location Store](../../../../41-location-store-redis.ko.md) · [routing ID identity](09-routing-id-allocation.ko.md)
+[Redis Location Store](../../../../41-location-store-redis.ko.md) · [configuration과 topology](03-configuration-topology.ko.md)
 
 ## 1. 범위
 
@@ -150,16 +150,11 @@ public abstract record ZLinkOwnerLeaseReadResult
 `NewClaim`은 record가 없거나 이전 owner lease가 만료된 경우에만 새 generation을 발급한다. `Renew`와
 owner-guarded remove는 owner ID와 generation이 현재 record와 정확히 일치해야 한다. `Takeover`는 store가
 현재 owner lease 만료를 같은 원자 operation에서 확인할 수 있을 때만 성공한다. 예상되는 경합은
-`ZLinkLocationWriteStatus`로 반환하고 store 접속·명령 실패는 `ZLinkLocationStoreException`으로 보고한다.
+`ZLinkLocationWriteStatus`로 반환한다. Store 접속·명령 실패는 provider가 발생시킨 exception을 그대로 전달한다.
+Framework의 health·discovery·recovery 경계가 timeout과 재시도 정책을 적용하므로 provider가 구현해야 하는
+별도의 public exception type이나 `IsRetriable` 분류는 제공하지 않는다.
 
-```csharp
-public sealed class ZLinkLocationStoreException : Exception
-{
-    public bool IsRetriable { get; }
-}
-```
-
-## 4. Descriptor와 location record
+## 4. Provider descriptor와 capacity DTO
 
 ```csharp
 public sealed record ZLinkMeshNodeDescriptor(
@@ -168,7 +163,6 @@ public sealed record ZLinkMeshNodeDescriptor(
     ulong LifecycleGeneration,
     ulong DescriptorRevision,
     string Endpoint,
-    string? EntrySpotId,
     IReadOnlyDictionary<string, int> ChannelWeights,
     string SecurityIdentity,
     string OwnerId,
@@ -181,6 +175,7 @@ public sealed record ZLinkMeshNodeDescriptor(
     public string? MaintenanceWave { get; init; }
     public ZLinkFrameworkRuntimeState State { get; init; }
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
+    public string? EntrySpotId { get; init; }
     public int PlacementWeight { get; init; } = 100;
     public ZLinkPlacementCapacity Capacity { get; init; }
         = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
@@ -224,38 +219,6 @@ public sealed record ZLinkFanoutPublisherDescriptor(
 public readonly record struct ZLinkFanoutPublisherDescriptorKey(
     string ChannelName,
     RoutingId PublisherRid);
-
-public sealed record ZLinkSpotLocation(
-    string MeshName,
-    string SpotId,
-    ulong SpotGeneration,
-    RoutingId OwnerNodeRid,
-    ulong OwnerNodeGeneration,
-    ZLinkSpotKind SpotKind,
-    string SpotType,
-    string OwnerId,
-    long LeaseGeneration,
-    DateTimeOffset UpdatedAt);
-
-public readonly record struct ZLinkSpotLocationKey(
-    string SpotId);
-
-public sealed record ZLinkActorLocation(
-    string MeshName,
-    string ActorId,
-    string ActorType,
-    ActorRef ActorRef,
-    RoutingId OwnerNodeRid,
-    ulong OwnerNodeGeneration,
-    string SpotId,
-    ulong SpotGeneration,
-    ZLinkSpotKind SpotKind,
-    string OwnerId,
-    long LeaseGeneration,
-    DateTimeOffset UpdatedAt);
-
-public readonly record struct ZLinkActorLocationKey(
-    string ActorId);
 
 public enum ZLinkMeshNodeObjectRole
 {
@@ -313,13 +276,11 @@ Stable type은 UTF-8 byte 순서로 정렬한다.
 한 항목에 함께 둔다. User·Instance Spot capability의 `Limit`은 stable type별 limit이고 Actor는
 `0`이다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
 등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
-`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다.
+`ApplicationVersion`은 `0..long.MaxValue`다.
 `Capacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별 active·reserved·limit projection을
 구분한다. `ActivationConcurrency`는 population reservation과 분리된 process-local active·limit
 projection이다. Channel weight, placement [weight](../../../../01-glossary.ko.md#weight), capacity count,
-maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
-MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와 같은 generation의 descriptor가 모두
-유효할 때만 projection을 성공 결과로 사용한다.
+maintenance wave와 runtime state는 실행 중 바뀔 수 있다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
 [ChannelName](../../../../01-glossary.ko.md#channelname) key set, object role, population limit,
@@ -331,60 +292,18 @@ mutable하다. Mutable update는 current owner token과 같은 [lifecycle genera
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
 적용한다.
 
-`ZLinkClientServerServerDescriptor`는 MeshName과 RouteMesh [membership](../../../../01-glossary.ko.md#membership)을 갖지 않는다. Redis extension은
-[공통 Redis 계약](../../../../41-location-store-redis.ko.md)의 `channel-server` key kind, ChannelName과 ServerRid
-length-prefix key, `channel` HASH field와 canonical JSON을 사용한다.
+`ZLinkClientServerServerDescriptor`는 MeshName과 RouteMesh [membership](../../../../01-glossary.ko.md#membership)을 갖지 않는다.
+`ZLinkFanoutPublisherDescriptor`는 subscriber나 target weight를 갖지 않는다.
 
-`ZLinkFanoutPublisherDescriptor`는 subscriber나 target weight를 갖지 않는다. Redis extension은
-`fanout-publisher` key kind와 ChannelName+PublisherRid key를 사용한다. MeshNode, ClientServer 또는
-generic role descriptor로 바꾸어 저장하거나 조회하지 않는다.
+## 5. Provider SPI
 
-## 5. Store capability
+Application은 이 interface를 호출하지 않는다. Location provider 구현자는 discovery descriptor, owner lease,
+object authority와 placement transaction을 모두 제공하는 `IZLinkLocationStore` 하나를 구현한다. 일부 기능만
+구현한 provider를 조합하지 않으므로 startup 시 capability downcast나 별도 Store 등록이 없다. Relocation
+payload는 [별도의 `IZLinkRelocationStore`](08-authority-relocation.ko.md#3-relocation-store)가 맡는다.
 
 ```csharp
-public interface IZLinkLocationStore :
-    IZLinkMeshNodeLocationStore,
-    IZLinkOwnerLeaseStore,
-    IZLinkAuthorityStore
-{
-    ValueTask<long> RemoveAllByOwnerAsync(
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkFanoutLocationStore
-{
-    ValueTask<ZLinkLocationWriteResult> UpdateFanoutPublisherAsync(
-        ZLinkFanoutPublisherDescriptor descriptor,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteStatus> RemoveFanoutPublisherAsync(
-        ZLinkFanoutPublisherDescriptorKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> ListFanoutPublishersAsync(
-        string channelName,
-        ZLinkPageRequest page,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkClientServerLocationStore
-{
-    ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
-        ZLinkClientServerServerDescriptor descriptor,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
-        ZLinkClientServerServerDescriptorKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default);
-    ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
-        string channelName,
-        ZLinkPageRequest page,
-        CancellationToken cancellationToken = default);
-}
-
-public interface IZLinkMeshNodeLocationStore
+public interface IZLinkLocationStore
 {
     ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,
@@ -398,10 +317,33 @@ public interface IZLinkMeshNodeLocationStore
         string meshName,
         ZLinkPageRequest page,
         CancellationToken cancellationToken = default);
-}
 
-public interface IZLinkOwnerLeaseStore
-{
+    ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
+        ZLinkClientServerServerDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
+        ZLinkClientServerServerDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
+        string channelName,
+        ZLinkPageRequest page,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkLocationWriteResult> UpdateFanoutPublisherAsync(
+        ZLinkFanoutPublisherDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkLocationWriteStatus> RemoveFanoutPublisherAsync(
+        ZLinkFanoutPublisherDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> ListFanoutPublishersAsync(
+        string channelName,
+        ZLinkPageRequest page,
+        CancellationToken cancellationToken = default);
+
     ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
         string ownerId,
         TimeSpan leaseTtl,
@@ -416,6 +358,63 @@ public interface IZLinkOwnerLeaseStore
     ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
         ZLinkLocationOwnerToken token,
         CancellationToken cancellationToken = default);
+
+    // Authority DTO는 08-authority-relocation.ko.md에 정의한다.
+    ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        ZLinkAuthorityKey key,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkAuthorityCompareExchangeResult> CompareExchangeAuthorityAsync(
+        ZLinkAuthorityKey key,
+        string expectedStoreVersion,
+        ZLinkAuthorityMutation mutation,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+        string prefix,
+        ZLinkAuthorityScanCursor? cursor,
+        int limit,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+        ZLinkObjectReservationRequest request,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkObjectCommitResult> CommitAsync(
+        ZLinkObjectReservation reservation,
+        ReadOnlyMemory<byte> readyPayload,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        ZLinkObjectReservation reservation,
+        ZLinkObjectCreationCompletion completion,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        ZLinkCreationOperationId operation,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkObjectAbortResult> AbortAsync(
+        ZLinkObjectReservation reservation,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
+        ZLinkRelocationCapacityReservationRequest request,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
+        ZLinkRelocationCapacityFence fence,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
+        ZLinkAggregatePrepareRequest request,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
+        ZLinkAggregateFence fence,
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
+        ZLinkAggregateFence fence,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<long> RemoveAllByOwnerAsync(
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default);
+
+    // MeshNode change stamp를 지원하지 않으면 기본 구현의 null을 반환한다.
+    ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult<ulong?>(null);
 }
 ```
 
@@ -437,31 +436,26 @@ retriable conflict나 provider exception이 아니며 row·index·counter를 바
 않는다. 외부 상태가 바뀌지 않은 채 같은 expectation으로 다시 호출하면 같은 결과를 반환한다. Renew와
 release에는 새 generation이 필요하지 않으므로 이 결과를 추가하지 않는다.
 
-`IZLinkLocationStore`는 descriptor·owner lease capability와 `IZLinkAuthorityStore`를 함께 상속한다.
-Authority Store는 별도로 등록하지 않으며 root에 등록한 같은 provider가 owner와 relocation authority를 원자적으로
-compare-exchange한다. ClientServer와 fanout은 선택 capability이며, 해당 기능을 구성했는데 provider가 필요한
-capability를 구현하지 않으면 startup validation이 실패한다.
+`IZLinkLocationStore` 하나가 descriptor, owner lease, authority와 capacity operation을 모두 제공한다. Root에는
+이 Store를 정확히 한 번 등록하며 같은 provider transaction domain이 owner와 relocation authority를 원자적으로
+compare-exchange한다. ClientServer와 fanout을 포함한 일부 capability만 구현하는 public interface는 제공하지
+않는다. Change stamp는 선택적 최적화다. Provider가 `GetMeshNodeChangeStampAsync`에서 `null`을 반환하면 Framework는
+descriptor page를 매 polling tick마다 읽으며 correctness는 달라지지 않는다.
 
 Descriptor enumeration은 `ZLinkPageRequest`와 `ZLinkLocationPage<T>`를 사용한다. Effective `PageSize`는
 `1..1000`이고 continuation token은 provider만 해석하는 opaque value다. Provider는 encoded page가 4 MiB에
 먼저 도달하면 요청보다 적은 item과 다음 token을 반환하며 byte limit public option은 제공하지 않는다.
-Framework reconciler는 scope change stamp를 읽고 모든 page를 조립한 뒤 stamp를 다시 읽는다. 두 stamp가
-같을 때만 full snapshot을 적용하고 다르면 부분 결과를 버리고 first page부터 다시 읽는다. 이 조립과 retry는
-내부 동작이다. Spot과 Actor direct resolve는 Framework가 global canonical authority key를 읽고 opaque payload를
-decode한다. Operational Spot·Actor 목록은 authority enumeration을 decode한 projection이며 routing authority로
-사용하지 않는다. `ZLinkSpotLocation.SpotGeneration`, `SpotRef.ObjectGeneration`과
-`ActorRef.ObjectGeneration`은 provider의
-`ObjectGeneration`을 그대로 사용한다. Authority envelope의 `AuthorityOwnerGeneration`은 authority owner 이관
-fence이고 descriptor·projection의 `LeaseGeneration`은 host lease fence다. 두 generation을 합치거나
-Framework 계산값으로 만들지 않는다.
+Stamp를 지원하는 provider는 같은 MeshName의 descriptor가 바뀔 때 값을 증가시킨다. `null`을 반환하는
+provider는 stamp 최적화를 지원하지 않는다.
+`SpotRef.ObjectGeneration`과 `ActorRef.ObjectGeneration`은 provider의 `ObjectGeneration`을 그대로 사용한다.
+Authority envelope의 `AuthorityOwnerGeneration`은 authority owner 이관 fence이고 descriptor의
+`LeaseGeneration`은 host lease fence다. 두 generation을 합치거나 Framework 계산값으로 만들지 않는다.
 
 `LifecycleGeneration`은 0이 아닌 opaque equality token이다. Runtime은 수치 크기로 lifecycle의 선후를
-판정하지 않는다. Store-backed descriptor에는 exact owner lease·descriptor lifetime token을 사용한다. Manual
-descriptor에는 runtime이 CSPRNG로 만든 nonce를 사용하고 current connection handover fence와 함께 검증한다.
-Application이 값을 선택하는 option은 없다. 순서를 비교하는 값은 `DescriptorRevision`뿐이다. 이 revision이
+판정하지 않는다. Application이 값을 선택하는 option은 없으며 manual descriptor도 Framework가 발급한 opaque
+token과 current connection handover fence를 함께 사용한다. 순서를 비교하는 값은 `DescriptorRevision`뿐이다. 이 revision이
 `long.MaxValue`인 상태에서 다음 값이 필요하면 host를 `Error`로 seal하고 wrap하지 않는다. Actor authority key는
-`ActorId` 하나이고 Spot authority key는 `SpotId` 하나다. 두 key에 `MeshName`을 넣지 않으며 projection의
-`MeshName`은 current placement attribute다.
+`ActorId` 하나이고 Spot authority key는 `SpotId` 하나다. 두 key에 `MeshName`을 넣지 않는다.
 Maintenance owner 이관은 `NewOwner`로 owner generation만 바꾸고 object generation을 유지한다.
 기존 ref의 object generation은 유지된다. 이전 owner route를 사용하면 runtime이 current authority를 재조회하여
 forwarding 또는 retry한다. Explicit close 뒤 cold recreate는 이전 row의 fenced delete가 완료된 후 새
@@ -479,9 +473,8 @@ subscriber의 connection-intent 계산에 있다. Automatic subscriber는 선택
 
 Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) owner state는 global `SpotId`에서 파생한 하나의 authority key를 공유한다.
 User Spot create와 Instance cold claim은 같은 row에 generic placement reserve를 수행하므로 kind conflict,
-object generation과 capacity 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
-운영 projection이며 provider write·remove·resolve interface가 아니다. Actor relocation도 같은 generic authority
-capability의 별도 key를 사용한다. Provider는 Spot kind, owner state나 relocation phase를 해석하지 않는다.
+object generation과 capacity 증가가 원자적으로 결정된다. Actor relocation도 같은 generic authority capability의
+별도 key를 사용한다. Provider는 Spot kind, owner state나 relocation phase를 해석하지 않는다.
 
 Application service는 authority provider interface를 직접 호출하지 않는다. Authority key와 payload의 정확한
 구성은 [Authority와 relocation](08-authority-relocation.ko.md)가 소유한다.
@@ -532,14 +525,6 @@ public sealed record ZLinkLocationServiceSummary(
     uint StoppedCount,
     DateTimeOffset LastUpdatedAt);
 
-public abstract record ZLinkLocationKey
-{
-    private ZLinkLocationKey() { }
-    public sealed record MeshNode(ZLinkMeshNodeDescriptorKey Key) : ZLinkLocationKey;
-    public sealed record Spot(ZLinkSpotLocationKey Key) : ZLinkLocationKey;
-    public sealed record Actor(ZLinkActorLocationKey Key) : ZLinkLocationKey;
-}
-
 public readonly record struct ZLinkPageRequest(
     int PageSize = 100,
     string? ContinuationToken = null);
@@ -575,16 +560,6 @@ public interface IZLinkLocationRuntimeQuery
         CancellationToken cancellationToken = default);
 }
 
-public enum ZLinkLocationAutoConnectType
-{
-    Invalid = 0,
-    RouteMesh = 1,
-    ClientServer = 2,
-    DealerMesh = 3,
-    Fanout = 4,
-    SpotMesh = 5
-}
-
 public enum ZLinkLocationRole : ushort
 {
     Invalid = 0,
@@ -595,19 +570,4 @@ public enum ZLinkLocationRole : ushort
     Sub = 6
 }
 
-public enum ZLinkRouteKind
-{
-    Invalid = 0,
-    ActorSession = 1,
-    SpotName = 2,
-    FrameworkRoute = 3
-}
-
-public enum ZLinkLocationKind
-{
-    Invalid = 0,
-    MeshNode = 1,
-    Spot = 2,
-    Actor = 3
-}
 ```

@@ -203,6 +203,7 @@ public sealed class FanoutAutomaticDiscoveryTests
             });
         var monitoring = new ZLinkFanoutRuntimeService(registration);
         var factory = new RecordingBackendFactory();
+        using var failureSink = new ZLinkRuntimeErrorSink();
         await using var context = new TestBackendContext();
         await using var runtime = new ZLinkAutomaticFanoutSubscriberRuntime(
             "events",
@@ -211,6 +212,7 @@ public sealed class FanoutAutomaticDiscoveryTests
             new ZLinkSocketConfig(),
             new ZLinkChannelReceiveLoop(null!, null!),
             monitoring,
+            failureSink,
             CancellationToken.None);
         var first = Descriptor("publisher-a", 1, "tcp://127.0.0.1:7001");
         var second = Descriptor("publisher-b", 2, "tcp://127.0.0.1:7002");

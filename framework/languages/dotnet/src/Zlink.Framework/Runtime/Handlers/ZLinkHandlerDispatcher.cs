@@ -15,15 +15,11 @@ internal sealed class ZLinkHandlerDispatcher(
         CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var invocation = new ZLinkHandlerInvocation(
-            context.ChannelName is null ? "Node" : "Channel",
-            context);
         object? result = null;
         var pipeline = BuildPipeline(
             endpoint,
             message,
             context,
-            invocation,
             scope.ServiceProvider,
             value => result = value,
             cancellationToken);
@@ -35,7 +31,6 @@ internal sealed class ZLinkHandlerDispatcher(
         ZLinkHandlerEndpointDescriptor endpoint,
         object? message,
         IZLinkMessageContext context,
-        ZLinkHandlerInvocation invocation,
         IServiceProvider services,
         Action<object?> setResult,
         CancellationToken cancellationToken)
@@ -60,7 +55,7 @@ internal sealed class ZLinkHandlerDispatcher(
             pipeline = async () =>
             {
                 var filter = (IZLinkHandlerFilter)services.GetRequiredService(filterType);
-                await filter.InvokeAsync(invocation, next, cancellationToken).ConfigureAwait(false);
+                await filter.InvokeAsync(context, next, cancellationToken).ConfigureAwait(false);
             };
         }
 

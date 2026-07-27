@@ -1,10 +1,10 @@
 package systems.zlink.framework.runtime.host;
 
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdapterOptions;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterOptions;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
@@ -37,7 +37,7 @@ final class ZLinkFrameworkSpotSubsystem {
         ZLinkChannelRuntime channels,
         ZLinkBackendContext backendContext,
         ZLinkLocationLifecycle locationLifecycle,
-        systems.zlink.framework.locations.ZLinkAuthorityStore authorityStore,
+        systems.zlink.framework.locations.ZLinkLocationStore authorityStore,
         systems.zlink.framework.locations.ZLinkLocationStore locationStore,
         systems.zlink.framework.runtime.locations.ZLinkLocationRuntime
             locationRuntime,

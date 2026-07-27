@@ -1,15 +1,15 @@
 import type {
-  RoutingId,
+  SpotId,
   Type,
   ZLinkEntrySpot,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpot,
   ZLinkSpotTimerHandler,
   ZLinkTimer,
   ZLinkTimerOptions,
   ZLinkTimerTick
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type {
   ZLinkEntrySpotTimerHandlerRegistration,
   ZLinkSpotTimerHandlerRegistration
@@ -321,11 +321,14 @@ export class ZLinkManagedTimer implements ZLinkTimer {
     try {
       await this.onTick(tick);
     } catch (cause) {
-      await this.onFailure?.(tick, cause);
       shouldContinue = !this.options.stopOnUnhandledException;
-      if (!shouldContinue) {
-        await this.onFailure?.(tick, cause, ZLinkSpotEventKind.TimerStoppedAfterUnhandledException);
-      }
+      await this.onFailure?.(
+        tick,
+        cause,
+        shouldContinue
+          ? ZLinkSpotEventKind.TimerHandlerFailed
+          : ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
+      );
     }
 
     this.lastScheduledIndex = scheduledIndex;
@@ -362,7 +365,7 @@ export class ZLinkManagedTimer implements ZLinkTimer {
 
 export function createTimerDiagnostics(
   sourceName: string,
-  spotId: RoutingId,
+  spotId: SpotId,
   isEntrySpot: boolean,
   timerName: string,
   handlerType: Type,
@@ -410,7 +413,7 @@ export async function addEntrySpotTimerRegistrations(
   options: {
     readonly providerResolver?: ZLinkProviderResolver;
     readonly spotNodeName: string;
-    readonly nodeRid: RoutingId;
+    readonly spotId: SpotId;
     readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   }
 ): Promise<void> {
@@ -427,7 +430,7 @@ export async function addEntrySpotTimerRegistrations(
         undefined,
         createTimerDiagnostics(
           options.spotNodeName,
-          options.nodeRid,
+          options.spotId,
           true,
           handler.name,
           handler.handlerType,
@@ -441,7 +444,7 @@ export async function addEntrySpotTimerRegistrations(
 export async function addSpotTimerRegistrations(
   timers: ZLinkSpotTimerRegistry,
   spotType: Type<ZLinkSpot>,
-  spotId: RoutingId,
+  spotId: SpotId,
   spot: ZLinkSpot,
   serial: ZLinkSpotSerialExecutor,
   registrations: ZLinkUserSpotTimerRegistrationSet,

@@ -10,9 +10,7 @@ using ZoneWorld.Shared.Contracts;
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Monitoring;
 
 /// <summary>
-/// This node's own spot runtime events, forwarded to Ops (§8.1). Ops cannot subscribe to
-/// them directly: a spot event source only covers the SpotNode in the same process. So
-/// the node that owns the spots observes them and reports them explicitly.
+/// Reports provider-neutral spot timer failures to Ops when they occur.
 /// </summary>
 internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
     : IZLinkRuntimeEventHandler<ZLinkSpotEvent>
@@ -29,13 +27,6 @@ internal sealed class LocalSpotEventHandler(IOpsReportPort ops)
                     cancellationToken);
                 break;
 
-            case ZLinkSpotEvent.PeersChanged peers:
-                await ops.ReportSpotEventAsync(
-                    NodeAlertKinds.PeersChanged,
-                    $"peers={peers.Peers.Count}",
-                    peers.Timestamp,
-                    cancellationToken);
-                break;
         }
 
     }

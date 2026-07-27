@@ -6,7 +6,6 @@
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 
-#include "runtime/locations/location_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <atomic>
@@ -17,8 +16,6 @@
 
 namespace zlink::framework::runtime
 {
-
-class live_location_reader_t;
 
 class spot_node_host_service_t final : public hosted_service_t
 {
@@ -45,8 +42,6 @@ class spot_node_host_service_t final : public hosted_service_t
 
   private:
     std::vector<node_runtime_t> _spot_nodes;
-    location_runtime_t *_location_runtime = nullptr;
-    live_location_reader_t *_location_store = nullptr;
     std::vector<std::unique_ptr<native_node_t>> _nodes;
     std::atomic_bool _running{false};
     std::thread _receive_thread;

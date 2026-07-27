@@ -9,27 +9,27 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ActorJoinDecision;
-import systems.zlink.contracts.service.spot.Dispatch;
-import systems.zlink.contracts.service.spot.RecordKind;
-import systems.zlink.contracts.service.spot.ReplyToken;
-import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SubscriptionKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorJoinDecision;
+import systems.zlink.framework.runtime.internal.binding.spot.Dispatch;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ReplyToken;
+import systems.zlink.framework.runtime.internal.binding.spot.Spot;
+import systems.zlink.framework.runtime.internal.binding.spot.SubscriptionKind;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
-import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchHandler;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinRequest;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchHandler;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
@@ -55,16 +55,16 @@ final class ZLinkJavaMeshSpot
         this.channelName = channelName;
     }
 
-    @Override public String name() { return "meshSpot." + routingId(); }
+    @Override public String name() { return "meshSpot." + spotId(); }
     @Override public ZLinkBackendObject admissionSource() { return owner.spotNode(); }
-    @Override public String routingId() { return spot.routingId().toString(); }
+    @Override public String spotId() { return spot.spotId(); }
     @Override public long lifecycleGeneration() { return spot.status().lifecycleGeneration(); }
 
     @Override
     public void setRoutingId(String spotId) {
-        if (!spot.routingId().toString().equals(spotId)) {
+        if (!spot.spotId().equals(spotId)) {
             throw new IllegalStateException(
-                "MeshNode Spot routing id is assigned when the Spot is created");
+                "MeshNode Spot id is assigned when the Spot is created");
         }
     }
 
@@ -113,7 +113,7 @@ final class ZLinkJavaMeshSpot
         SendFlags flags) {
         spot.sendToSpot(
             targetNodeRid,
-            RoutingId.from(spotId),
+            spotId,
             requireGeneration(targetNodeRid, spotId, spotGeneration),
             parts,
             flags);
@@ -130,7 +130,7 @@ final class ZLinkJavaMeshSpot
         SendFlags flags) {
         spot.sendToSpot(
             targetNodeRid,
-            RoutingId.from(spotId),
+            spotId,
             requireGeneration(targetNodeRid, spotId, spotGeneration),
             metadata,
             parts,
@@ -148,11 +148,11 @@ final class ZLinkJavaMeshSpot
         SendFlags flags,
         Duration timeout) {
         var generation = requireGeneration(targetNodeRid, spotId, spotGeneration);
-        systems.zlink.contracts.service.spot.OperationId operation;
+        systems.zlink.framework.runtime.internal.binding.spot.OperationId operation;
         try {
             operation = spot.requestToSpot(
                 targetNodeRid,
-                RoutingId.from(spotId),
+                spotId,
                 generation,
                 parts,
                 flags,
@@ -176,11 +176,11 @@ final class ZLinkJavaMeshSpot
         SendFlags flags,
         Duration timeout) {
         var generation = requireGeneration(targetNodeRid, spotId, spotGeneration);
-        systems.zlink.contracts.service.spot.OperationId operation;
+        systems.zlink.framework.runtime.internal.binding.spot.OperationId operation;
         try {
             operation = spot.requestToSpot(
                 targetNodeRid,
-                RoutingId.from(spotId),
+                spotId,
                 generation,
                 metadata,
                 parts,
@@ -195,7 +195,7 @@ final class ZLinkJavaMeshSpot
     }
 
     private void completeRequest(
-        systems.zlink.contracts.service.spot.OperationId operation,
+        systems.zlink.framework.runtime.internal.binding.spot.OperationId operation,
         ZLinkBackendRequestCallback callback) {
         owner.trackCompletion(operation).whenComplete((completion, error) -> {
             if (error != null) {
@@ -304,7 +304,7 @@ final class ZLinkJavaMeshSpot
         }
         if (kind == RecordKind.SPOT_CONTROL
             && record.receive().operationKind()
-                == systems.zlink.contracts.service.spot.OperationKind.ACTOR_JOIN) {
+                == systems.zlink.framework.runtime.internal.binding.spot.OperationKind.ACTOR_JOIN) {
             var nativeActor = record.receive().sourceActor();
             if (nativeActor.actorId().isEmpty()
                 && record.receive().actorControl() != null) {
@@ -333,7 +333,7 @@ final class ZLinkJavaMeshSpot
                 var current = ZLinkJavaMeshSpotNode.backendRef(control.currentActor());
                 lifecycles.add(new ZLinkBackendActorLifecycleEvent(
                     lifecycleKind,
-                    new systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo(
+                    new systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleInfo(
                         previous == null || previous.actorId().isEmpty() ? null : previous,
                         current == null || current.actorId().isEmpty() ? null : current,
                         Optional.ofNullable(control.previousSpotId())
@@ -357,7 +357,7 @@ final class ZLinkJavaMeshSpot
 
     static Optional<Long> requestSequence(
         RecordKind kind,
-        systems.zlink.contracts.service.spot.OperationId operationId) {
+        systems.zlink.framework.runtime.internal.binding.spot.OperationId operationId) {
         if (kind != RecordKind.SPOT_REQUEST || operationId == null) {
             return Optional.empty();
         }

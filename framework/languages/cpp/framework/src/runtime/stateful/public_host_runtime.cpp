@@ -1217,9 +1217,9 @@ std::size_t public_host_runtime_t::recover_instance_spot_activations ()
                 const auto terminal = store
                   ->compare_exchange_authority (
                     entry.key, entry.snapshot.store_version,
-                    authority_put_t{
+                    authority_restore_t{
                       encode_instance_ready_state (updated),
-                      authority_generation_transition_t::preserve})
+                      entry.snapshot.owner})
                   .result ().value ();
                 const auto *stored =
                   std::get_if<authority_stored_t> (&terminal);
@@ -1230,9 +1230,9 @@ std::size_t public_host_runtime_t::recover_instance_spot_activations ()
                 const auto cleared = store
                   ->compare_exchange_authority (
                     entry.key, stored->snapshot.store_version,
-                    authority_put_t{
+                    authority_restore_t{
                       encode_instance_ready_state (updated),
-                      authority_generation_transition_t::preserve})
+                      stored->snapshot.owner})
                   .result ().value ();
                 if (!std::holds_alternative<authority_stored_t> (
                       cleared))
@@ -1244,9 +1244,9 @@ std::size_t public_host_runtime_t::recover_instance_spot_activations ()
                 const auto cleared = store
                   ->compare_exchange_authority (
                     entry.key, entry.snapshot.store_version,
-                    authority_put_t{
+                    authority_restore_t{
                       encode_instance_ready_state (updated),
-                      authority_generation_transition_t::preserve})
+                      entry.snapshot.owner})
                   .result ().value ();
                 if (!std::holds_alternative<authority_stored_t> (
                       cleared))

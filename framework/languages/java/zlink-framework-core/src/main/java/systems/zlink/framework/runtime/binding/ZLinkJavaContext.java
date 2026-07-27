@@ -1,7 +1,7 @@
 package systems.zlink.framework.runtime.binding;
 
 import systems.zlink.contracts.core.Context;
-import systems.zlink.framework.runtime.backend.ZLinkBackendContext;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendContext;
 
 record ZLinkJavaContext(Context nativeContext) implements ZLinkBackendContext {
     @Override public String name() { return "context"; }

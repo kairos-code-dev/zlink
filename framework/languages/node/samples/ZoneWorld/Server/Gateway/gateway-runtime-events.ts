@@ -1,15 +1,26 @@
-import { Injectable } from '@nestjs/common';
-import { ZLinkSpotEventKind } from '@zlink-systems/framework';
-import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
-import type { ZLinkRuntimeEventHandler, ZLinkSpotEvent } from '@zlink-systems/framework';
+import { Inject, Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
+import { ZoneWorldNames } from '../../Shared/spec';
 
 @Injectable()
-@zlinkRuntimeEventHandler()
-class GatewaySpotEventHandler implements ZLinkRuntimeEventHandler<ZLinkSpotEvent> {
-  async handle(event: ZLinkSpotEvent): Promise<void> {
-    if (event.event !== ZLinkSpotEventKind.PeersChanged) return;
-    for (const peer of event.peers.filter((candidate) => candidate.ready)) {
-      console.log(`gateway mesh peer ready mesh=${event.sourceName} remote=${peer.endpoint}`);
+class GatewaySpotEventHandler implements OnApplicationBootstrap, OnApplicationShutdown {
+  private readonly stop = new AbortController();
+
+  constructor(@Inject(ZLINK_ROUTE_MESH_RUNTIME) private readonly runtime: ZLinkRouteMeshRuntime) {}
+
+  onApplicationBootstrap(): void {
+    void this.observeReadiness();
+  }
+
+  onApplicationShutdown(): void {
+    this.stop.abort();
+  }
+
+  private async observeReadiness(): Promise<void> {
+    for await (const event of this.runtime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
+      if (event.identifier !== 'zlink.runtime.mesh_node.peer_changed') continue;
+      console.log(`gateway mesh peer changed mesh=${event.meshName} peer=${event.peerRid ?? '-'} reason=${event.reason ?? '-'}`);
     }
   }
 }

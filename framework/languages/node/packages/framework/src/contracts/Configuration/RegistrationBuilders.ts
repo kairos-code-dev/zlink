@@ -4,7 +4,6 @@ import type {
   ZLinkActor,
   ZLinkActorFactory,
   ZLinkEntrySpot,
-  ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,
@@ -41,7 +40,7 @@ import type {
 } from './ObjectRoles';
 import { ZLinkUserSpotExecutionMode } from './ObjectRoles';
 import type { ZLinkSpotNodeBuilder } from '../Spots/Builders';
-import { readZLinkDecoratorMetadata } from '../../contracts';
+import { readZLinkDecoratorMetadata } from '../Handlers/Attributes';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
 import type {
   ZLinkDispatchOptions,
@@ -79,10 +78,7 @@ import type {
 } from './RegistrationTypes';
 import {
   registerActorTransferAdapter,
-  createRoutingIdAllocation,
-  setRoutingIdAllocationGroup,
-  rejectFixedRoutingId,
-  rejectAllocatedRoutingId,
+  validateRoutingIdPrefix,
   registerActorFactory,
   registerEntrySpot,
   registerSpotFactory,
@@ -391,27 +387,14 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
   }
 
   routingId(routingId: string): this {
-    rejectAllocatedRoutingId(this.channel.routingIdAllocation, this.name);
+    rejectGeneratedRoutingId(this.channel.routingIdPrefix, this.name);
     this.channel.routingId = routingId;
     return this;
   }
 
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+  setRoutingIdPrefix(prefix: string): this {
     rejectFixedRoutingId(this.channel.routingId, this.name);
-    this.channel.routingIdAllocation = createRoutingIdAllocation(
-      slotCount,
-      routingIdPrefix,
-      this.channel.routingIdAllocation?.groupName
-    );
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.channel.routingIdAllocation = setRoutingIdAllocationGroup(
-      groupName,
-      this.channel.routingIdAllocation,
-      this.name
-    );
+    this.channel.routingIdPrefix = validateRoutingIdPrefix(prefix);
     return this;
   }
 
@@ -630,7 +613,7 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
   ) {}
 
   routingId(routingId: RoutingId): this {
-    rejectAllocatedRoutingId(this.spotNode.routingIdAllocation, this.name);
+    rejectGeneratedRoutingId(this.spotNode.routingIdPrefix, this.name);
     this.spotNode.routingId = routingId;
     if (this.spotNode.router !== undefined) {
       this.spotNode.router.routingId = routingId;
@@ -641,22 +624,9 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     return this;
   }
 
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+  setRoutingIdPrefix(prefix: string): this {
     rejectFixedRoutingId(this.spotNode.routingId, this.name);
-    this.spotNode.routingIdAllocation = createRoutingIdAllocation(
-      slotCount,
-      routingIdPrefix,
-      this.spotNode.routingIdAllocation?.groupName
-    );
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.spotNode.routingIdAllocation = setRoutingIdAllocationGroup(
-      groupName,
-      this.spotNode.routingIdAllocation,
-      this.name
-    );
+    this.spotNode.routingIdPrefix = validateRoutingIdPrefix(prefix);
     return this;
   }
 
@@ -701,11 +671,6 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     this.spotNode.pubSub ??= { manualConnections: [] };
     this.spotNode.pubSub.manualConnections ??= [];
     this.spotNode.pubSub.manualConnections.push(endpoint);
-    return this;
-  }
-
-  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
-    this.spotNode.entrySpot = { ...options };
     return this;
   }
 
@@ -783,13 +748,8 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
-  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
-    this.spot.useAllocatedRoutingId(slotCount, routingIdPrefix);
-    return this;
-  }
-
-  setRoutingIdAllocationGroup(groupName: string): this {
-    this.spot.setRoutingIdAllocationGroup(groupName);
+  setRoutingIdPrefix(prefix: string): this {
+    this.spot.setRoutingIdPrefix(prefix);
     return this;
   }
 
@@ -854,11 +814,6 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
   ): this {
     this.node.routeRequestHandlers ??= [];
     this.node.routeRequestHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
-    return this;
-  }
-
-  configureEntrySpot(options: ZLinkEntrySpotOptions): this {
-    this.spot.configureEntrySpot(options);
     return this;
   }
 
@@ -1186,7 +1141,7 @@ type MutableLocationOptionValues = {
 
 interface MutableChannelOptions {
   routingId?: string;
-  routingIdAllocation?: MutableRoutingIdAllocationOptions;
+  routingIdPrefix?: string;
   publisher?: MutablePublisherCapabilityOptions;
   publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
   subscriber?: MutableClientCapabilityOptions;
@@ -1241,10 +1196,9 @@ interface MutableSpotNodeOptions {
   spotLimit?: number;
   activationConcurrencyLimit?: number;
   routingId?: string;
-  routingIdAllocation?: MutableRoutingIdAllocationOptions;
+  routingIdPrefix?: string;
   router?: MutableSpotRouterCapabilityOptions;
   pubSub?: MutableSpotPubSubCapabilityOptions;
-  entrySpot?: ZLinkEntrySpotOptions;
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
   spotFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<
@@ -1312,12 +1266,6 @@ interface MutableSpotPubSubCapabilityOptions {
   routingId?: string;
 }
 
-interface MutableRoutingIdAllocationOptions {
-  slotCount: number;
-  routingIdPrefix: string;
-  groupName?: string;
-}
-
 function handlerPacketName(handlerType: Type): string {
   return readZLinkDecoratorMetadata(handlerType)
     .find((metadata) => metadata.kind === 'packet' && metadata.packetName !== undefined)
@@ -1327,5 +1275,21 @@ function handlerPacketName(handlerType: Type): string {
 function requireRegistrationName(value: string, label: string): void {
   if (value.trim().length === 0 || value.trim() !== value) {
     throw new ZLinkConfigurationException(`${label} must not be empty or padded.`);
+  }
+}
+
+function rejectFixedRoutingId(routingId: string | undefined, memberName: string): void {
+  if (routingId !== undefined) {
+    throw new ZLinkConfigurationException(
+      `Mesh member '${memberName}' cannot combine a fixed routing id with a generated prefix.`
+    );
+  }
+}
+
+function rejectGeneratedRoutingId(prefix: string | undefined, memberName: string): void {
+  if (prefix !== undefined) {
+    throw new ZLinkConfigurationException(
+      `Mesh member '${memberName}' cannot combine a generated routing-id prefix with a fixed id.`
+    );
   }
 }

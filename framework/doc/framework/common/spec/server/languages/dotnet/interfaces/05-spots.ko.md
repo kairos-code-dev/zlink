@@ -1,11 +1,7 @@
 # .NET Spot 공개 인터페이스
 
-Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
-callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
-같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
-normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
-아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
-변경하지 않는다.
+Session에 bind된 Actor를 포함한 Spot relocation은 같은 `ObjectGeneration`을 유지한다. Relocation 자체는
+physical·logical disconnect가 아니므로 Actor disconnect callback을 실행하지 않는다.
 
 [.NET exact interface 목차](README.ko.md)
 
@@ -134,7 +130,7 @@ public interface IZLinkSpotOutbound
     IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
-    IZLinkChannelRequestCall RequestToChannel<TRequest>(
+    IZLinkRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -448,7 +444,7 @@ public readonly record struct ZLinkTimerTick(
 Framework timer는 owner Actor·Spot에 속한 logical registration이다. Cross-node relocation에서는 timer 이름,
 handler type, period, `ZLinkTimerOptions`, scheduling cursor와 seal 시점의 pending tick을 relocation payload에
 자동으로 포함한다. Application의 relocation adapter는 timer를 capture·restore하거나 target에서 다시 등록하지
-않는다. Native timer handle과 backend state는 payload에 포함하지 않고 target runtime이 logical registration으로
+않는다. Framework가 관리하는 timer resource는 payload에 포함하지 않고 target에서 logical registration으로
 다시 만든다. Source는 queue를 seal한 뒤 새 tick을 dispatch하지 않으며 target은 Restore와 authority commit을
 마치고 dispatch admission이 열린 뒤에만 복원한 pending tick과 다음 tick을 [owner](../../../../01-glossary.ko.md#owner) mailbox에 제출한다.
 
@@ -573,49 +569,11 @@ operation을 제출하거나 turn을 반납하지 않고 `InvalidConfiguration`�
 handler만 등록할 수 있다. Actor handler나 Logical Multicast subscription을 등록하면 Framework는 `Ready`
 commit 전에 activation을 거부한다.
 
-Store-backed User Spot은 manager create operation이 reservation을 시작하지만 Instance Spot은 최초 message가
-생성 요청을 시작한다. Source와 target은 다음 순서로 역할을 나눈다.
-
-1. Source는 `Ready` authority가 있으면 current owner에게 일반 message를 보낸다.
-2. Authority가 `Missing`이고 `InstanceSpot(...)` intent가 있으면 Source가 eligible target을 선택한다.
-   Source는 placement reservation을 만들지 않는다.
-3. Source는 최초 message와 creation intent를 하나의 activation envelope에 넣어 target으로 보낸다. 이
-   envelope는 `Ready` 전 application dispatch가 아니라 target activation을 요청하는 Framework 내부 message다.
-4. Target은 metadata presence와 frame을 포함한 complete
-   [activation envelope](../../../../01-glossary.ko.md#activation-envelope)를 Relocation Store에 immutable
-   recovery root로 먼저 저장한다.
-5. 같은 Spot의 local instance가 없을 때만 Target이 자신을 owner로 하는 `Creating` row와 reserved capacity를
-   Reserve한다. Reserved snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다.
-6. Reservation을 먼저 확보한 target만 factory로 target scope와 Spot을 만든 뒤 `Configure`,
-   `OnInitializeAsync`를 실행하고 최초 message를 durable activation inbox의 첫 record로 확정한다.
-   `OnCreateAsync`나 empty `ZLinkMessage`는 사용하지 않는다.
-7. Target은 handler barrier를 유지한 채 recovery root·cursor, `Ready`와 active capacity를 commit한다.
-   Runtime은 첫 record를 local queue head로 복원한 뒤 barrier를 연다.
-
-```mermaid
-sequenceDiagram
-    participant Source
-    participant Target
-    participant Store as Location·Relocation Store
-    participant Spot
-
-    Source->>Target: 생성 정보와 최초 message를 한 envelope로 전달
-    Target->>Store: envelope를 immutable recovery root로 저장
-    Target->>Store: Creating row와 reserved capacity 예약
-    Store-->>Target: reservation fence와 recovery receipt 반환
-    Target->>Spot: factory, Configure와 초기화 실행
-    Target->>Store: 최초 record와 Ready authority를 함께 확정
-    Target->>Spot: 첫 record를 queue head로 복원하고 barrier 개방
-```
-
-이 다이어그램은 선택된 target이 reservation을 먼저 확보한 정상 경로다. 경쟁 target이나 중복 envelope가
-먼저 reservation을 확보하면 현재 target은 factory를 시작하지 않는다. 대신 current authority를 읽어 owner로
-reroute하거나 진행 중인 attempt에 합류한다. Source는 `Ready` 뒤 같은 message를 다시 보내지 않으므로 최초
-message는 한 번만 queue에 들어간다. Authority와 일치하지 않는 local-only instance는 message를 처리할 수
-없다. Activation envelope transport는 CAS 전에 허용하지만 일반 Spot transport와 application dispatch는
-current `Ready` authority만 사용한다. 이 barrier를 제어하는 별도 application API는 없다.
-Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
-갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
+Store-backed User Spot은 manager의 create operation으로 생성한다. Instance Spot은 명시적인
+`InstanceSpot(...)` intent가 있는 최초 message로 cold activation을 시작한다. Existing `Ready` Spot이 있으면
+같은 call이 current owner로 전달된다. Cold activation이 필요하면 Framework가 eligible target을 선택하고
+초기화가 완료된 뒤 최초 message를 해당 Spot의 첫 job으로 정확히 한 번 처리한다. Caller가 target node,
+activation driver나 내부 reservation을 직접 지정하거나 제어하는 API는 제공하지 않는다.
 
 `CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면
 `SpotGenerationStale`, pre-commit seal 중이면 `SpotMoving`이다. User Spot에 Actor membership이 남아 있으면
@@ -642,11 +600,8 @@ reactivation은 authority에 저장한 intent를 사용하며 marker가 없는 M
 않는다. Public activation driver, address, handle, resolver와 unbounded list는 제공하지 않는다. 운영 조회는
 Location runtime의 page size 1..1000, encoded page 4 MiB 이하인 paged query가 소유한다.
 
-Cold Instance factory·initialize가 실패하면 durable public `Failed` state를 게시하지 않는다. Runtime은 local
-failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 reconcile한다. Delete 확인 전 같은 address
-호출은 같은 typed failure를 반환하며 hidden retry는 0이다. `Missing` 확인 뒤 Instance marker를
-명시한 다음 caller만 새
-`ColdActivating` claim을 시작한다. 이 recovery 상태를 조작하는 public API는 없다.
+Cold Instance factory 또는 initialize가 실패하면 해당 call은 typed failure로 완료된다. 같은 call을 내부에서
+숨겨 재시도하지 않으며, 실패 상태나 recovery 절차를 조작하는 public API는 제공하지 않는다.
 
 `IZLinkSpotPublisherClient.Publish(...)`와 `IZLinkSpotOutbound.Publish(...)`는 [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)다.
 외부 publisher와 Spot callback의 outbound는 모두 ChannelName과 topic만 받는다. Process-local [ChannelName](../../../../01-glossary.ko.md#channelname)

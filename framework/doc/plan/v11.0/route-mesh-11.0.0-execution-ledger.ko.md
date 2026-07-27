@@ -175,6 +175,179 @@ reply route, 같은 operation의 자동 재제출 금지, relocation 뒤 bounded
   0, private JSON journal symbol 0과 scoped `git diff --check`가 통과했다. Hosted process crash/restart,
   mixed-language process 검증과 final post-review가 남아 있으므로 `V11-M6C-DN`과 `BLK-044`는 진행 상태를
   유지한다.
+- Clean HEAD `efcba6f0a1e9dbded360893ff163e6158a4a24f4`에서 `.NET` reference runtime regression을
+  다시 실행했다. 기존 reference와 같은 base `01b13d41cb54f367ba8f46e42b5946f037c6ee47`, owned path
+  6개와 direct input 5개를 사용한 candidate는 90 files이며 aggregate SHA-256은
+  `d8f354ae4811d41c2c5d4b86bf0560f4cc34535459e54bc47fe1b151737c441a`다. Candidate manifest는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/candidate-efcba6f0a1.json`이고 manifest SHA-256은
+  `ac2b518955dc995b583cffa00baf36f16d89b5a39d4eb38082c798ef8e98ff04`다. `M6-RUNTIME`은 compile
+  warning·error 0, public declaration 65/65, internal runtime 984/984, resource 85/85, protocol
+  86/86으로 5/5를 통과했다. Sample·E2E project와 task 실행은 모두 0이다. 결과는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/result-efcba6f0a1.json`이며 SHA-256은
+  `0cd15a2a87edc750467c92292ea1e1e7d3262986aa1b802d9ec4fbbe0ac63106`이다. Contract snapshot
+  `Zlink.Framework.api.txt`의 SHA-256은
+  `30b3c471a1e1f3566c518fc2502dc428a66645a2a3e918c5ea852c34f22a51b9`로 고정 snapshot과
+  일치한다. 같은 candidate에서 `REMOVE --scope framework:dotnet`을 다시 실행해 inventory record 1개,
+  제거 대상 symbol·file·artifact 0으로 통과했다. 결과는
+  `.artifacts/v11/evidence/V11-M6-DN-REFERENCE/removal-efcba6f0a1.json`이고 SHA-256은
+  `d00dc090769551115db00535200d0c1e96fed6ca50215cc7993233e1353e2a60`이다. Candidate와 owned-path
+  manifest, 위 `M6-RUNTIME` evidence를 입력한 `ROW-GATE`도 files 90·commands 5로 통과했다. Owned-path
+  manifest SHA-256은 `43b3907a023c3bd5212ac0347eb9f4558df39489e76c425a0b0df083d1e189ae`다.
+  이 결과는 sample·E2E 제외 runtime regression과 candidate provenance gate 통과 증거다. Hosted
+  crash/restart, mixed-language process 검증과 final post-review가 별도 완료 조건으로 남아 있으므로 이
+  checkpoint만으로 `V11-M6-DN-REFERENCE`를 완료로 전환하지 않는다.
+- `.NET` final post-review 수정 checkpoint(2026-07-26)는 세 경계를 함께 닫았다. Location Store
+  lane은 `Preparing`부터 `NewOwner`까지 phase별 허용 field를 검증하고, 이미 예약한 relocation capacity
+  fence를 `Preserve` CAS의 새 `StoreVersion`에 같은 transaction으로 다시 연결한다. InMemory·Redis provider와
+  precommit focused test는 현재 19/19가 통과했다. Startup recovery는 remote target lease와 descriptor가
+  현재 generation인지 확인한 뒤에만 takeover하며, CAS 응답을 잃은 경우 durable authority를 다시 읽어
+  성공 여부를 판정한다. Final handoff lane은 initial root를 `Captured`로 공개한 뒤
+  target capacity·Restore를 준비하고, commit 직전 high-water까지 포함한 final immutable root를 다시
+  `Captured`로 publish한 다음 delta stage·`Prepared`·`NewOwner` 순서로 진행하도록 수정 중이다. Abort는
+  captured queue와 hold queue를 arrival 순서로 source에 복원하며, target payload permit은 성공·실패·crash
+  모든 terminal에서 한 번만 반환한다. Reply lane은 receiver가 새 ID를 만들던 User·Instance Spot
+  request 경로를 제거하고, caller의 `OperationId`와 source fence를 Actor request와 같은 bounded
+  terminal-once registry에서 보존한다. 공유 UnitTests project는 warning·error 0으로 compile됐고 조기 전체 Unit은 1,068개 중
+  1,065개가 통과했다. 단독 재실행에서 Spot terminal replay와 precommit phase test는 통과했다. 남은
+  source-owned `Captured` startup recovery 실패는 immutable root의 `AggregateGeneration`에
+  `TargetAttemptGeneration`을 잘못 기록한 production projection 오류로 확인했으며, root 계약의
+  aggregate generation을 기록하도록 수정했다. 수정 뒤 startup recovery 10/10과 precommit 2/2가
+  통과했다. Spot reply lane은 caller·old owner·new target을 분리한 User·Instance Spot request에서 original
+  correlation, source capacity 선거부, terminal ACK 유실·duplicate를 검증했고 focused 6/6,
+  Stateful 26/26, Relocation 116/116과 당시 전체 Unit 1,069/1,069가 통과했다. 최종 합류 뒤 Unit은
+  1,074/1,074, Contract는 65/65가 통과했다. Redis 최초 전체 실행은 C# `null` fence가 Lua의 truthy
+  `cjson.null`로 decode되어 일반 `Preserve`·`Delete`까지 relocation reservation 검증에 들어가는 7개
+  회귀를 찾았다. `nil`·`cjson.null`·빈 문자열을 명시적으로 제외한 뒤 Redis는 68/68이 통과했고
+  cross-language fixture 2개만 환경 조건으로 skip됐다. `git diff --check`가 통과했고
+  `framework/doc/plan/log/` 변경은 0이다. 독립 Codex `gpt-5.6-sol high` review와 새
+  candidate·removal·row gate를 다시 실행하기 전에는
+  `V11-M6-DN-REFERENCE`를 완료로 전환하지 않는다.
+- 위 candidate에 대한 독립 Codex `gpt-5.6-sol high` 3-lane review는 clean 판정을 거부했다. Recovery
+  review는 expired-source `Preparing` abort가 live lease 검증에 막히는 문제, post-commit target crash를
+  live source coordinator가 계속 defer하는 문제, phase 3 takeover의 이전 capacity fence 누수,
+  materialize된 target rollback 누락, target permit 조기 반환과 abort queue partial restore를 찾았다. Spec
+  review는 durable `Aborted`·session ACK보다 source admission을 먼저 여는 순서, canonical phase 4~8을
+  앞당겨 해석하는 문제, same-node direct Actor request의 reply route 누락과 Spot accepted journal의
+  ingress-time source owner fence 누락을 찾았다. POSD·test-gap review는 24시간 reply tombstone이 live
+  request capacity를 모두 차지하는 문제, no-RID STREAM monitor metadata의 FIFO 오연결·무제한 보존과
+  captured framework terminal reply의 backpressure 유실을 찾았다. 따라서 137-file
+  `candidate-final-review.json`과 이에 연결된 5/5 runtime·removal·row-gate 결과는 pre-fix 진단 증거일
+  뿐이며 완료 증거로 사용하지 않는다. 세 수정 lane과 post-fix review가 clean으로 끝난 뒤 새 candidate를
+  생성한다.
+- `.NET` public contract surface audit는 Location 관련 exact interface를 application·operations API와 외부
+  provider SPI로 구분한다. `ZLinkLocationOptions`, runtime query·readiness·status·topology·summary와 공식 Redis
+  options·store는 application·operations surface다. Provider SPI는 앞서 확정한 두 Store 책임에 맞춰
+  `IZLinkLocationStore`와 `IZLinkRelocationStore`를 기준으로 통합한다. MeshNode·ClientServer·fanout descriptor,
+  owner lease와 authority operation은 `IZLinkLocationStore`가 직접 소유하며, public
+  `IZLinkAuthorityStore`·`IZLinkMeshNodeLocationStore`·`IZLinkOwnerLeaseStore`·
+  `IZLinkClientServerLocationStore`·`IZLinkFanoutLocationStore` 분할은 제거한다. Change stamp는 correctness와
+  무관한 optional provider optimization이므로 별도 public interface를 두지 않고 `IZLinkLocationStore`의
+  optional/default operation으로 흡수한다. Provider가 지원하지 않으면 Framework가 polling한다. 사용되지 않는
+  `ZLinkRouteKind`와 Framework 내부 watch용 `ZLinkLocationKind`·`ZLinkLocationKey`는 public contract에서
+  제거한다. Framework 내부 recovery를 위해 추가한 optional provider capability도 public exact interface에
+  올리지 않는다. Spec·source·contract test·public declaration snapshot을 함께 정렬하고 불필요한 노출 0을
+  확인하기 전에는 `.NET` post-review를 clean으로 판정하지 않는다.
+- `.NET` public boundary 정리를 구현과 exact interface에 반영했다. POSD 대안으로 capability별 Store를
+  유지하는 방식과 하나의 typed Store SPI로 통합하는 방식을 비교했고, 전자는 provider 조합·transaction
+  domain·phase 지식을 호출자에게 노출하므로 제외했다. 범용 command envelope 하나로 축소하는 방식도
+  provider가 command union과 phase를 해석해야 하는 얕은 interface가 되므로 제외했다. 따라서
+  `IZLinkLocationStore`와 `IZLinkRelocationStore`만 provider SPI로 유지하고, phase 전용 recovery와 범용
+  change-scope, row-level event, routing-slot, legacy message-flow observer를 제거했다. Application이 사용하는
+  `IZLinkLocationReadiness`와 `IZLinkLocationRuntimeQuery`는 유지했다. Runtime에서만 사용하는 Spot·Actor
+  location projection과 key, auto-connect type은 `internal`로 전환하고 `Contracts/` 밖으로 이동했다.
+  고유 public declaration이 없는 `09-routing-id-allocation.ko.md`와 `12-dispatch-ownership.ko.md`는 삭제하고
+  public identity 규칙은 configuration·공통 spec, 실행 순서는 internals가 소유하도록 분리했다. 공식 Redis
+  extension은 options와 두 Store 구현만 공개한다. 검증은 ContractTests 65/65, UnitTests 1076/1076,
+  Redis tests 69/69이며 cross-language 환경 test 2개만 skip됐다. 같은 기준의 Java/Kotlin·Node.js·C++
+  source와 exact interface 수렴은 병렬 진행 중이므로 다섯 언어 parity gate는 아직 완료하지 않는다.
+- C++ public boundary도 같은 두 Store 기준으로 수렴했다. `location_store_t`가 descriptor, owner lease,
+  opaque authority, creation reservation, relocation capacity와 aggregate operation을 소유하며 외부 provider가
+  구현할 필요가 없는 peer·Spot·Actor·route raw DTO·CRUD, watch, dynamic registration과 routing allocation
+  surface를 제거했다. Actor·Spot resolver는 authority payload를 사용하고 Automatic RouteMesh discovery는
+  MeshNode descriptor와 smaller-RID initiator 규칙을 사용한다. Redis와 in-memory 구현에 남아 있던 raw row
+  storage·codec과 비활성 fixture도 삭제했다. 검증은 framework source/library와 contract header build,
+  lifecycle 8/8, runtime 1/1, resolver 37/37, in-memory Store 9/9, Redis Store 15/15 및 M6C runtime이다.
+  제거 대상 public symbol과 Redis test의 `#if 0` fixture는 0건이며 diff-check도 통과했다. Java/Kotlin과
+  Node.js의 post-review 수정이 남아 있으므로 전체 parity gate는 계속 열린 상태다.
+- C++ 독립 post-review에서 mandatory `authority_restore_t`, Entry Spot RID 설정 제거, owner lease 내부 row
+  격리와 legacy generation alias·미사용 renewal DTO 제거를 추가로 요구했다. Restore는 exact StoreVersion과
+  ExpectedOwner를 검증하지만 live lease를 요구하지 않고 payload와 StoreVersion만 변경하여 owner,
+  allocation과 두 generation을 보존한다. In-memory와 Redis 구현 및 Instance Spot startup recovery가 같은
+  mutation을 사용한다. Focused final gate는 M6B startup recovery, in-memory Store, Redis Store와 contract
+  headers가 모두 통과했고 제거 대상 symbol은 0이다. `target_contract`의 기존 9개 실패는
+  IMP-CP-05/06/37과 E2E-CP-38/39/43 계열의 선행 구현 gap이므로 이 boundary 수정의 회귀로 분류하지 않는다.
+  다섯 언어 교차 감사에서는 socket `internal`·native event/value, SpotNode polling·status·peer·subject,
+  STREAM native code와 runtime lifecycle scope가 C++ public header에 남은 점을 추가로 확인했다. 해당
+  monitoring 표면을 제거하고 timer failure event만 유지했으며, `service_scope_t`와 scope kind·생성은
+  `src/runtime/configuration`으로 옮겼다. Runtime submit queue에서만 사용하는 `pending_operation_t`도
+  public include tree에서 runtime messaging으로 옮기고 umbrella `framework.hpp`의 detail helper 직접 include를
+  제거했다. Framework library와 contract header, DI scope, STREAM, monitoring test가 통과했고 public
+  install·exact scan의 제거 대상 symbol은 0이다. RuntimeMonitoring server와 전체 sample build의 기존 API
+  migration gap은 별도로 유지하며 internal header로 우회하지 않는다.
+- Node.js는 framework root의 `ZLinkProviderResolver`, decorator scanner metadata와 Nest root의 Spot handle
+  resolver·Actor Spot resolver·runtime event publisher token을 제거했다. Companion composition은 private
+  structural type과 internal token module이 소유하고, sample과 E2E의 Spot lookup은 public
+  `ZLINK_SPOT_MANAGER.find`로 수렴했다. Provider가 구현하는 모든 transitive DTO·value·union은
+  `08-location-maintenance.ko.md`가 단일 exact owner이며 stale raw Location barrel은 runtime internal로 옮겼다.
+  `restore(expectedOwner)`는 in-memory·Redis와 root 없는 Preparing startup recovery에 연결했고 optional
+  `getMeshNodeChangeStamp?`도 source·exact·test에 고정했다. 검증은 typecheck, full build와 browser build,
+  M6C runtime 64/64, Redis contract 11/11, contract·documentation·sample 50/50 및 변경 관련 Nest 3/3이다.
+  Nest 전체 단일 test file의 기존 `ZLinkHttpClientModule` runtime DI 실패는 public-boundary assertion과
+  분리해 기록하며 디버그 변경은 남기지 않았다. 독립 post-fix review에서 stale Location Store test와
+  Location Store를 Relocation Store로 중복 등록한 SpotActorTransfer E2E를 찾아 각각 internal enum과 별도
+  `ZLinkRedisRelocationStore`로 수정했다. Framework-issued Entry SpotId 계약과 충돌하던
+  `configureEntrySpot`·`ZLinkEntrySpotOptions`·caller fixed RID도 public source, runtime, sample·E2E와 fresh
+  declaration에서 제거했다. Runtime은 `<prefix>-entry-<uuid>`를 발급해 Actor join에 전달한다. 최종 독립
+  증거는 public contract·decorator 33/33, Location·Redis 16/16, M6B startup recovery 39/39이며 제거 API와
+  내부 root export 잔존은 0이다. 다섯 언어 교차 감사에서는 `.NET`에서 제거한 native SpotNode polling과
+  STREAM native diagnostic이 Node.js에 남은 점을 추가로 확인했다. Spot polling registration과
+  status·peer model, `StatusChanged`·`PeersChanged` event를 제거하고 timer failure event 두 종류만
+  유지했다. Readiness sample·E2E는 public `ZLinkRouteMeshRuntime` snapshot·observe를 사용하며 STREAM
+  error는 provider-neutral error kind와 optional message만 공개한다. 최종 typecheck·build와 focused
+  monitoring·contract-surface·stream-session 73/73이 통과했고 제거 대상 root export 5종과 negative
+  assertion 외 symbol 잔존은 0이다. Sample·E2E 독립 tsconfig의 기존 rootDir·다른 public API WIP 오류는
+  이번 monitoring 경계 변경과 분리한다. 독립 post-fix review에서 Entry Spot timer diagnostic이 `NodeRid`를
+  기록하던 오류와 중단되는 timer가 실패 event 두 개를 발행하던 오류를 찾았다. Diagnostic은 canonical
+  `SpotId`를 기록하고, 계속 실행할 때 `TimerHandlerFailed`, 중단할 때
+  `TimerStoppedAfterUnhandledException` 하나만 발행하도록 수정했다. Source에는 있으나 exact 문서에 빠졌던
+  `ZLinkRouteMeshRuntime`의 snapshot·observe·isReady와 필요한 DTO·event도 단일 owner에 추가하고 inventory가
+  누락을 검출하도록 고정했다. 이어 host-only termination 계약과 충돌한 RouteMesh별 drain·await와 drain
+  DTO·snapshot field를 제거하고 RuntimeMonitoring·DiscoveryRegistryHa·RegistryMessaging·ObservabilityOps·
+  Bingo를 public host `retire`로 이관했다. Decorator로 등록한 Entry Spot timer도 context의 canonical
+  `SpotId`를 diagnostic에 전달한다. TicTacToe sample의 internal `spotNodeRuntime.primaryMeshNode.status()`
+  cast는 public RouteMesh snapshot·observe로 바꾸고 재유입 방지 gate를 추가했다. 최종 build·typecheck,
+  focused contract 60건·monitoring 8건, host-only 전환 56/56과 TicTacToe gate 1/1이 통과했으며 public
+  source·exact·generated declaration과 sample·E2E의 topology drain 직접 호출은 0이다.
+- Java/Kotlin은 `ZLinkLocationStore`에 optional change stamp와 mandatory Restore mutation을 추가하고
+  in-memory·Redis·startup recovery를 exact StoreVersion과 ExpectedOwner fence로 정렬했다. Obsolete
+  `addRouteMeshChannel`·`addSpotMesh`, transfer-forward option, `ZLinkDrainControl`과 mesh별 drain/result 계층은
+  public source에서 제거하고 runtime internal bridge 또는 canonical host `retire/shutdown`으로 이관했다.
+  Legacy Spot binding 67개와 backend SPI/DTO 44개는 각각 `runtime.internal.binding.spot`과
+  `runtime.internal.backend`로 옮겼으며 SpotId는 String, NodeRid만 RoutingId로 유지한다. Monitoring event의
+  internal DTO 누출도 public MeshNode state·peer snapshot projection으로 교체했다. Functional
+  `ZLinkNetworkOptions`는 root bind/advertise 기본값과 listener override를 RouteMesh, ClientServer, fanout과
+  STREAM listener에 적용하며 actual bound port를 discovery endpoint에 반영한다. Java provider exact 문서는
+  Store signature가 요구하는 transitive public type을 소유하고 Kotlin은 같은 Java SPI/type hierarchy를
+  복제하지 않는다. 검증은 Java core 576/576, targeted contract 16/16, testkit·Spring·Kotlin compile과
+  diff-check다. 전체 contract의 documentation scenario inventory 불일치 1건은 기존 fixture inventory gap으로
+  분리한다. 후속 독립 review에서 exact interface에 없는 `ZLinkMeshDrainSnapshot`과 MeshNode snapshot의
+  drain projection, public Store signature가 사용하지 않는 owner-lease 보조 DTO 3개를 추가로 확인했다.
+  종료 상태 조회는 host `ZLinkRuntimeQuery`로 통일하고 보조 DTO는 `runtime.internal.locations`로 옮겼다.
+  Claim·Read·Renew·Release 결과 union은 외부 provider가 구현하는 Store SPI에 필요하므로 유지했다. 최종
+  재검증은 Java core 576/576, Redis 실행 15건 통과·환경 조건 11건 skip, Kotlin 46/46, Spring·testkit
+  compile과 제거 class·Kotlin 중복 SPI 잔존 0이다. RuntimeMonitoring E2E compile의 기존
+  `ZLinkRequestContext`·`setHeartbeatInterval` 참조 3건은 별도 구현 gap으로 분리한다.
+- `.NET` post-review는 native backend 정보를 application public contract에서 추가로 제거했다. SpotNode
+  status·peer·subject polling projection과 `AddSpotEvents`를 삭제하고 상태·peer 관측은 canonical RouteMesh
+  monitoring으로 통일했다. Spot event는 provider-neutral timer failure 두 종류만 유지한다.
+  `IncludeNativeDiagnostics`, socket `Internal`, STREAM native code와 diagnostic record도 제거하고 stable
+  Framework error kind와 optional message만 공개한다. Public declaration이 없는 exact
+  `13-examples.ko.md`는 삭제했으며 사용 설명은 guide가 소유한다. 중복 SpotNode projection을 유지하는
+  대안은 얕은 monitoring 표면과 backend 정보 누출을 만들기 때문에 제외했다. 검증은 packaged API
+  snapshot 생성·비교, ContractTests 65/65와 UnitTests 1073/1073이다. ZoneWorld·RuntimeMonitoring service와
+  doc fixture의 전체 build에는 이 변경과 무관한 병행 API 수렴 gap이 남아 있어 해당 gate의 증거로
+  사용하지 않는다. 독립 post-fix review도 추가 finding 없이 끝났고 exported assembly signature snapshot
+  test 1/1로 제거 대상 내부 계약이 public API에 남지 않았음을 다시 확인했다.
 - Host maintenance audit에서 `Retiring` publication의 부분 실패를 보강했다. 시도한 descriptor 전체의
   `MarkServing` 결과를 확인한 경우에만 `Blocked/StoreUnavailable`로 복원하며, 하나라도 복원을 확인하지
   못하면 placement·membership·inbound relocation·session binding admission을 닫고 bounded teardown 뒤
@@ -3861,6 +4034,50 @@ fresh compile하기 전까지 `V11-M7-SAMPLES`는 `대기`다.
 구 transport identity를 설정으로 받는 나머지 C++·JVM sample과 C++ TicTacToe Actor state의 current ref
 중복 보관은 object placement 입력은 아니지만 공통 sample의 fixed RID 금지와 Context ownership에 맞추는 최종
 parity 항목으로 남긴다. 따라서 `V11-M7-SAMPLES`는 계속 `대기`다.
+
+2026-07-27 C++ public boundary 감사에서는 `pending_operation_t`와 lifecycle scope 생성 API가
+application·provider 계약이 아니라 runtime queue와 dispatch 수명 관리에만 사용됨을 확인했다.
+`pending_operation_t`는 public install header와 `framework.hpp`에서 제거해
+`src/runtime/messaging`으로 옮겼고, `service_scope_kind_t`·`service_scope_t`·`create_scope`도
+`src/runtime/configuration`에서만 유지한다. Bingo의 사용하지 않던 scope와 GameQuest의 notification
+경로는 public Actor messaging으로 정리했다. 후속 수정에서 DeliveryDispatch의 Entry Spot 조회·전달은
+global `actor_manager_t`·`actor_client_t`를 사용하고, STREAM에 종속된 Actor binding은 exact contract의
+`stream_t::actors()`에서만 수행하도록 분리했다. Dispatch sweeper도 hosted service가 전달받은 root provider에서
+singleton dependency를 시작 시점에 한 번 resolve하므로 application code의 `service_scope_t`·`create_scope`·
+`session_actor_manager_t` 직접 의존이 남지 않는다. Dispatch·CourierActorNode·CustomerGateway 세 sample target과
+C++ contract header test가 compile됐다. 설치 package는 Redis extension target이 export한 redis++·libuv를
+조건부 `find_dependency`로 복원하고, clean install consumer가 `zlink::framework_locations_redis`를 실제 link해
+header와 transitive dependency를 검증한다. 해당 install consumer도 통과했다. C++ 전체 sample parity 조건이
+별도로 남아 있으므로 `V11-M7-SAMPLES`는 계속 `대기`다.
+
+같은 public boundary 기준을 다섯 언어 exact interface에 적용했다. Exact 문서는 application이 호출하는
+public API와 외부 provider가 구현해야 하는 최소 Store SPI만 소유한다. Location·Relocation Store의 closed
+request·result·fence DTO는 provider method signature에 필요하므로 유지하고, authority mutation을 별도 public
+interface로 다시 분리하지 않는다. 반면 routing allocation, native diagnostic, SpotNode polling, lifecycle scope,
+pending operation과 provider 내부 row·watch helper는 exact 문서와 public export에서 제거하거나 runtime internals로
+옮겼다. Public 선언이 없어진 .NET routing allocation·dispatch ownership·example 문서는 삭제했다.
+
+Java·Kotlin·Node·C++ exact 문서에 남아 있던 service command 번호, backend·native socket, native timer handle,
+raw C API·poller와 installed detail 설명도 제거했다. Exact 문서는 route switch, session close, logical timer 자동
+복원처럼 application에서 관측 가능한 의미만 설명한다. 내부 command·ACK와 timer 복원 순서는 기존
+`common/internals` 문서가 계속 소유한다. Public contract trace는 exact 문서 52개, code block 179개,
+declaration owner 1,385개, member 4,965개이며 unclassified·ambiguous·unknown owner가 모두 0이다. Framework
+문서 gate와 service wire 233개 negative self-test가 통과했다. Java의 runtime service implementation main
+17개와 unit test 15개는 exact contract에 추가하지 않고 `runtime.internal.service` package로 함께 옮겼다.
+동일 package에서만 사용하는 3개 type은 package-private로 축소했고, 여러 internal runtime package가 공유하는
+12개 type만 internal namespace 안에서 public visibility를 유지한다. 이전 package 참조, Spring·Kotlin과 다른
+Java module의 직접 참조는 0이다. Java core compile, core unit 576/576, target contract 16/16, Kotlin compile과
+Spring starter compile이 통과했다. `m5FoundationTest`의 20개 compile error는 이동 전부터 존재한 source-set
+include drift이며 `ActorRef`, `ZLinkBackendActorRef`, `ZLinkInternalMeshNode` 누락을 별도 gap으로 유지한다.
+
+2026-07-27 C++ Context ownership checkpoint에서는 Spot·Actor factory가 exact Framework Context를 값으로
+받아 application instance가 move ownership하도록 정렬했다. Close, activation failure와 host teardown은 한
+internal detach 지점에서 application instance, timer와 node edge를 끊으므로 Context graph가 남지 않는다.
+`zlink_framework`, contract header, sample parity와 Store·Location resolver target build가 통과했고, exact
+identity·mismatch test 2/2와 host teardown 뒤 Spot destructor count 1을 확인했다. M7 caller migration에는
+`test_cpp_framework_m6b_runtime`, SpotActorTransfer, RuntimeMonitoring, SpotService, ObservabilityOps,
+GameQuest와 DeliveryDispatch에 남은 no-context 등록을 포함한다. 이는 이번 runtime·public header compile을
+깨뜨리지 않지만 exact factory만 사용하는 최종 E2E·sample gate 전에는 제거해야 한다.
 
 2026-07-26 placement audit 후속에서는 남아 있던 transport identity 설정과 caller-selected owner channel을
 다섯 언어 sample source에서 제거했다. .NET·Java·Kotlin·C++ TicTacToe는 두 Play instance가 하나의 shared

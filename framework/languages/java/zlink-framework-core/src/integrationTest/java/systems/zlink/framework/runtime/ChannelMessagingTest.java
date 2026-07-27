@@ -6,7 +6,7 @@ import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -40,8 +40,8 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkHandlerFilter;
-import systems.zlink.framework.ZLinkHandlerInvocation;
-import systems.zlink.framework.ZLinkNext;
+import systems.zlink.framework.ZLinkHandlerFilterNext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorAction;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorReason;
 import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
@@ -99,7 +99,6 @@ final class ChannelMessagingTest {
     private static final AtomicReference<String> ROUTE_SEND_CHANNEL = new AtomicReference<>();
     private static final AtomicReference<RoutingId> ROUTE_SEND_SOURCE = new AtomicReference<>();
     private static final AtomicReference<String> ROUTE_REQUEST_CHANNEL = new AtomicReference<>();
-    private static final AtomicReference<String> FILTER_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_PACKET = new AtomicReference<>();
     private static final AtomicReference<String> FILTER_CHANNEL = new AtomicReference<>();
     private static final RoutingId SPOT_EGRESS_TARGET_NODE_RID =
@@ -177,7 +176,6 @@ final class ChannelMessagingTest {
     @Test
     void handlerFiltersWrapChannelRequestDispatch() {
         String endpoint = "inproc://zlink-java-filtered-profile-" + UUID.randomUUID();
-        FILTER_REQUEST.set(null);
         FILTER_PACKET.set(null);
         FILTER_CHANNEL.set(null);
 
@@ -196,11 +194,9 @@ final class ChannelMessagingTest {
                 .join();
 
             assertEquals("filtered:hello", reply);
-            assertEquals("hello", FILTER_REQUEST.get());
             assertEquals("Echo", FILTER_PACKET.get());
             assertEquals("profile", FILTER_CHANNEL.get());
         } finally {
-            FILTER_REQUEST.set(null);
             FILTER_PACKET.set(null);
             FILTER_CHANNEL.set(null);
         }
@@ -975,11 +971,11 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         sourceOptions.addLocationStore(locations);
         { var channel = sourceOptions.addClientServerChannel("egress");
             channel.enableClient(ingressEndpoint);};
-        { var channel = sourceOptions.addRouteMeshChannel("route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route");
             channel.enableServer(routeSourceEndpoint);
             channel.enableClient(routeTargetEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-source-route")); };
-        { var mesh = sourceOptions.addSpotMesh("game");
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(sourceOptions, "game");
             { var node = mesh;
                 node.enableRouter(sourceSpotEndpoint)
                     .setRoutingId(RoutingId.from("spot-egress-source-node"));node.addSpotFactory(OutboundChannelSpot.class); }; };
@@ -989,11 +985,11 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         { var channel = targetOptions.addClientServerChannel("ingress").enableServer(ingressEndpoint);
             channel.setRoutingId(RoutingId.from("spot-egress-target-node"));
             channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "Noop"); };
-        { var channel = targetOptions.addRouteMeshChannel("route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route");
             channel.enableServer(routeTargetEndpoint);
             channel.enableClient(routeSourceEndpoint);
             channel.setRoutingId(SPOT_EGRESS_TARGET_ROUTE_RID); };
-        { var mesh = targetOptions.addSpotMesh("game");
+        { var mesh = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(targetOptions, "game");
             { var node = mesh;
                 node.enableRouter(targetSpotEndpoint)
                     .setRoutingId(SPOT_EGRESS_TARGET_NODE_RID);
@@ -1119,12 +1115,12 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         ROUTE_REQUEST_CHANNEL.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
@@ -1148,12 +1144,12 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         RoutingId targetRid = RoutingId.from("route-missing-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint); };
 
@@ -1179,7 +1175,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         DefaultZLinkFrameworkOptions initiatorOptions = new DefaultZLinkFrameworkOptions();
         initiatorOptions.addLocationStore(store);
         initiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
-        { var channel = initiatorOptions.addRouteMeshChannel("route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(nonInitiatorOptions, "route");
             channel.enableServer(initiatorEndpoint);
             channel.setRoutingId(initiatorRid);
             channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
@@ -1187,7 +1183,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         DefaultZLinkFrameworkOptions nonInitiatorOptions = new DefaultZLinkFrameworkOptions();
         nonInitiatorOptions.addLocationStore(store);
         nonInitiatorOptions.configureLocations().setPollingInterval(Duration.ofMillis(50));
-        { var channel = nonInitiatorOptions.addRouteMeshChannel("route");
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(initiatorOptions, "route");
             channel.enableServer(nonInitiatorEndpoint);
             channel.setRoutingId(nonInitiatorRid); };
 
@@ -1210,13 +1206,13 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         RoutingId targetRid = RoutingId.from("route-scanned-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.addHandlersFromPackageOf(ChannelMessagingTest.class);
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addHandlerGroup("route-shared"); };
@@ -1235,17 +1231,16 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         String targetEndpoint = tcpEndpoint();
         RoutingId sourceRid = RoutingId.from("route-filter-source");
         RoutingId targetRid = RoutingId.from("route-filter-target");
-        FILTER_REQUEST.set(null);
         FILTER_PACKET.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
         targetOptions.useFilter(ReplyDecoratingFilter.class);
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(RouteEchoHandler.class, EchoRequest.class, String.class, "Echo"); };
@@ -1255,10 +1250,8 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             ZLinkFrameworkRuntime ignoredTarget =
                  RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals("route:hello", awaitRouteReply(source, targetRid));
-            assertNull(FILTER_REQUEST.get());
             assertNull(FILTER_PACKET.get());
         } finally {
-            FILTER_REQUEST.set(null);
             FILTER_PACKET.set(null);
         }
     }
@@ -1271,12 +1264,12 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         RoutingId targetRid = RoutingId.from("route-seq-target");
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addRequestHandler(DelayedRouteEchoHandler.class, SharedPacket.class, String.class, "SharedPacket"); };
@@ -1315,12 +1308,12 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         ROUTE_SEND_SOURCE.set(null);
 
         DefaultZLinkFrameworkOptions sourceOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = sourceOptions.addRouteMeshChannel("route"); channel.enableServer(sourceEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(sourceOptions, "route"); channel.enableServer(sourceEndpoint);
             channel.setRoutingId(sourceRid);
             channel.enableClient(targetEndpoint); };
 
         DefaultZLinkFrameworkOptions targetOptions = new DefaultZLinkFrameworkOptions();
-        { var channel = targetOptions.addRouteMeshChannel("route"); channel.enableServer(targetEndpoint);
+        { var channel = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addRouteMeshChannel(targetOptions, "route"); channel.enableServer(targetEndpoint);
             channel.setRoutingId(targetRid);
             channel.enableClient(sourceEndpoint);
             channel.addSendHandler(RouteNoticeHandler.class, RouteNotice.class, "Notice"); };
@@ -1895,11 +1888,9 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     public static final class ReplyDecoratingFilter implements ZLinkHandlerFilter {
         @Override
         public <T> CompletionStage<T> invoke(
-            ZLinkHandlerInvocation context,
-            ZLinkNext<T> next) {
-            Object request = context.request().orElse("");
-            FILTER_REQUEST.set(request instanceof EchoRequest echo ? echo.value() : request.toString());
-            FILTER_PACKET.set(context.packetName().orElse(""));
+            ZLinkMessageContext context,
+            ZLinkHandlerFilterNext<T> next) {
+            FILTER_PACKET.set(context.packetName());
             FILTER_CHANNEL.set(context.channelName().orElse(""));
             return next.invoke().thenApply(reply -> {
                 @SuppressWarnings("unchecked")

@@ -111,11 +111,6 @@ struct mesh_node_socket_config_t
     std::optional<std::chrono::milliseconds> send_timeout;
 };
 
-struct entry_spot_options_t
-{
-    std::optional<zlink::routing_id_t> routing_id;
-};
-
 class mesh_node_builder_t
 {
   public:
@@ -127,11 +122,7 @@ class mesh_node_builder_t
     mesh_node_builder_t &set_spot_limit (std::int32_t limit);
     mesh_node_builder_t &
     set_activation_concurrency (std::int32_t limit);
-    mesh_node_builder_t &use_allocated_routing_id (std::size_t slot_count,
-                                                   std::string routing_id_prefix = {});
-    mesh_node_builder_t &set_routing_id_allocation_group (std::string group_name);
     mesh_node_socket_config_t &configure_router_socket ();
-    entry_spot_options_t &configure_entry_spot ();
     mesh_peer_connections_t &peer_connections ();
     mesh_node_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout);
 
@@ -151,46 +142,11 @@ class mesh_node_builder_t
         return add_handler<THandler, TRequest, TReply> (true, std::move (packet));
     }
 
-    template <typename TEntrySpot> mesh_node_builder_t &add_entry_spot ()
-    {
-        spot_builder ().template add_entry_spot<TEntrySpot> ();
-        return *this;
-    }
-
-    template <typename TEntrySpot>
-    mesh_node_builder_t &
-    add_entry_spot (std::function<std::shared_ptr<TEntrySpot> ()> factory)
-    {
-        spot_builder ().template add_entry_spot<TEntrySpot> (std::move (factory));
-        return *this;
-    }
-
     template <typename TEntrySpot>
     mesh_node_builder_t &add_entry_spot (
       std::function<std::shared_ptr<TEntrySpot> (entry_spot_context_t)> factory)
     {
         spot_builder ().template add_entry_spot<TEntrySpot> (std::move (factory));
-        return *this;
-    }
-
-    template <typename TSpot>
-    mesh_node_builder_t &
-    add_spot (std::string spot_name,
-              user_spot_execution_mode_t execution_mode =
-                user_spot_execution_mode_t::spot_wide)
-    {
-        spot_builder ().template add_spot<TSpot> (std::move (spot_name), execution_mode);
-        return *this;
-    }
-
-    template <typename TSpot>
-    mesh_node_builder_t &add_spot (std::string spot_name,
-                                   std::function<std::shared_ptr<TSpot> ()> factory,
-                                   user_spot_execution_mode_t execution_mode =
-                                     user_spot_execution_mode_t::spot_wide)
-    {
-        spot_builder ().template add_spot<TSpot> (
-          std::move (spot_name), std::move (factory), execution_mode);
         return *this;
     }
 
@@ -205,18 +161,6 @@ class mesh_node_builder_t
           std::move (spot_name), std::move (factory), execution_mode);
         return *this;
     }
-
-    template <typename TSpot>
-    requires std::derived_from<TSpot, instance_spot_t>
-    mesh_node_builder_t &
-    add_instance_spot_factory (std::string stable_type,
-                               std::function<std::shared_ptr<TSpot> ()> factory)
-    {
-        spot_builder ().template add_instance_spot_factory<TSpot> (
-          std::move (stable_type), std::move (factory));
-        return *this;
-    }
-
 
     template <typename TSpot>
     requires std::derived_from<TSpot, instance_spot_t>

@@ -1685,38 +1685,9 @@ mesh_node_builder_t::set_activation_concurrency (
     return *this;
 }
 
-mesh_node_builder_t &
-mesh_node_builder_t::use_allocated_routing_id (std::size_t slot_count,
-                                               std::string routing_id_prefix)
-{
-    if (slot_count == 0) {
-        throw detail::configuration_error ("routing id allocation slot count must be positive");
-    }
-    std::lock_guard lock (_state->mutex);
-    _state->allocation_slot_count = slot_count;
-    _state->allocation_routing_id_prefix = std::move (routing_id_prefix);
-    return *this;
-}
-
-mesh_node_builder_t &
-mesh_node_builder_t::set_routing_id_allocation_group (std::string group_name)
-{
-    if (group_name.empty ()) {
-        throw detail::configuration_error ("routing id allocation group is required");
-    }
-    std::lock_guard lock (_state->mutex);
-    _state->allocation_group = std::move (group_name);
-    return *this;
-}
-
 mesh_node_socket_config_t &mesh_node_builder_t::configure_router_socket ()
 {
     return _state->socket;
-}
-
-entry_spot_options_t &mesh_node_builder_t::configure_entry_spot ()
-{
-    return _state->entry_spot;
 }
 
 mesh_peer_connections_t &mesh_node_builder_t::peer_connections ()

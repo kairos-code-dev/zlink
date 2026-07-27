@@ -10,6 +10,7 @@ import {
   waitForPortState
 } from '../Support/managed-service';
 import { ensure } from '../Support/scenario-assert';
+import { ZLinkTerminationOutcome, ZLinkTerminationReason, type ZLinkTerminationResult } from '@zlink-systems/framework';
 
 interface TopologyObservation {
   readonly eventCount: number;
@@ -23,10 +24,13 @@ interface PeerObservation {
 
 export async function runMonA4(options: ClientOptions): Promise<ManagedProcess> {
   const beforeFailover = await waitForTopologyEndpoint(options.serviceUrl, undefined, options.serviceBChannelEndpoint);
-  const drain = await postJsonWithin<{ readonly kind: string; readonly reason?: string }>(
+  const drain = await postJsonWithin<ZLinkTerminationResult>(
     options.serviceBUrl, '/admin/drain', {}, 35_000
   );
-  ensure(drain.kind === 'drained' && drain.reason === undefined, 'MON-A4 replacement did not reach terminal Drained.');
+  ensure(
+    drain.outcome === ZLinkTerminationOutcome.Stopped && drain.reason === ZLinkTerminationReason.None,
+    'MON-A4 replacement did not complete host retire.'
+  );
   await waitForPeer(options.serviceUrl, 'svc-b', false);
   await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForPortState(options.serviceBUrl, false, 'MON-A4 expected the original svc-b endpoint to stop.');

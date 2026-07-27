@@ -1,11 +1,13 @@
 import {
-  readZLinkDecoratorMetadata,
   type Type,
-  type ZLinkDecoratorMetadata,
   type ZLinkHandlerDelegate,
   type ZLinkHandlerFilter,
-  type ZLinkHandlerInvocation
+  type ZLinkMessageContext
 } from '../../contracts';
+import {
+  readZLinkDecoratorMetadata,
+  type ZLinkDecoratorMetadata
+} from '../../contracts/Handlers/Attributes';
 
 export interface ZLinkHandlerDescriptor {
   readonly handlerType: Type;
@@ -47,15 +49,16 @@ export function exposeZLinkHandlers(
 
 export async function invokeZLinkHandlerFilters(
   filters: readonly ZLinkHandlerFilter[],
-  invocation: ZLinkHandlerInvocation,
-  terminal: ZLinkHandlerDelegate
+  context: ZLinkMessageContext,
+  terminal: ZLinkHandlerDelegate,
+  signal?: AbortSignal
 ): Promise<unknown> {
   let next: ZLinkHandlerDelegate = terminal;
 
   for (let index = filters.length - 1; index >= 0; index -= 1) {
     const filter = filters[index];
     const previous = next;
-    next = () => filter.invoke(invocation, previous);
+    next = () => filter.invoke(context, previous, signal);
   }
 
   return next();

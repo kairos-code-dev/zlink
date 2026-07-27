@@ -13,12 +13,12 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
     @Test
@@ -236,14 +236,14 @@ final class ZLinkJavaRawMeshNodeM6ATest {
             System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (node.peers().stream().noneMatch(peer ->
                 peer.state()
-                    == systems.zlink.contracts.service.spot
+                    == systems.zlink.framework.runtime.internal.binding.spot
                         .MeshPeerState.ADMITTED)
             && System.nanoTime() < deadline) {
             Thread.sleep(1);
         }
         assertTrue(node.peers().stream().anyMatch(peer ->
             peer.state()
-                == systems.zlink.contracts.service.spot
+                == systems.zlink.framework.runtime.internal.binding.spot
                     .MeshPeerState.ADMITTED));
     }
 }

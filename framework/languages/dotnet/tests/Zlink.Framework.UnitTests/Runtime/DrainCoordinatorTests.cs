@@ -5,6 +5,7 @@ using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Eventing;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Spots;
 

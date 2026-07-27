@@ -1,5 +1,7 @@
 package systems.zlink.framework.configuration;
 
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
+
 public record ZLinkMessageFlowEvent(
     ZLinkMessageFlowOutcome outcome,
     ZLinkDispatchErrorSurface surface,

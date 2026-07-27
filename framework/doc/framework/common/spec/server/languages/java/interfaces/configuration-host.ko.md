@@ -31,10 +31,6 @@ public interface ZLinkFrameworkOptions {
     void useHandlerExecutor(Executor executor);
 }
 
-public enum ZLinkFlowOrigin {
-    INBOUND, TIMER, APPLICATION, LIFECYCLE
-}
-
 public interface ZLinkNetworkOptions {
     String bindHost();
     void setBindHost(String host);
@@ -152,6 +148,13 @@ public interface FanoutChannelBuilder {
 }
 ```
 
+`configureNetwork()`은 process의 RouteMesh, ClientServer, classic fanout과 stream listener가 사용하는
+기본 host를 반환한다. 기본 BindHost는 `127.0.0.1`이다. Listener별 `setBindHost(...)`와
+`setAdvertiseHost(...)`를 호출하면 해당 listener에서만 root 기본값을 덮어쓴다. Port `0`을 사용한 경우
+Framework는 bind 뒤 확정된 port와 AdvertiseHost를 결합해 discovery descriptor에 기록한다. Stream
+listener는 discovery 대상이 아니므로 같은 규칙으로 계산한 advertised endpoint를 운영 정보에 사용하며,
+remote connector endpoint를 자동 게시하지 않는다.
+
 다음 예제는 서로 다른 host 구성에서 같은 RouteMesh에 호출만 시작하는 node와 요청을 처리하는 node를
 각각 등록하는 최소 형태다. `clientOptions`와 `serverOptions`는 각각 별도 host의
 `ZLinkFrameworkOptions`다. 예제의 이름과 weight는 설명을 위한 값이며 계약 기본값을 뜻하지 않는다.
@@ -256,14 +259,6 @@ startup을 실패시키며 collection을 truncate·split하거나 descriptor 일
 아래 선언은 `javap`가 출력하는 binary signature 형식으로 이 category의 Java public type과 member를 고정한다.
 
 ```java
-public final class systems.zlink.framework.configuration.ZLinkFlowOrigin extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkFlowOrigin> {
-  public static final systems.zlink.framework.configuration.ZLinkFlowOrigin INBOUND;
-  public static final systems.zlink.framework.configuration.ZLinkFlowOrigin TIMER;
-  public static final systems.zlink.framework.configuration.ZLinkFlowOrigin APPLICATION;
-  public static final systems.zlink.framework.configuration.ZLinkFlowOrigin LIFECYCLE;
-  public static systems.zlink.framework.configuration.ZLinkFlowOrigin[] values();
-  public static systems.zlink.framework.configuration.ZLinkFlowOrigin valueOf(java.lang.String);
-}
 public interface systems.zlink.framework.spring.ZLinkFrameworkConfigurer {
   public abstract void configure(systems.zlink.framework.configuration.ZLinkFrameworkOptions);
 }
@@ -361,10 +356,10 @@ public interface systems.zlink.framework.configuration.ZLinkMessageFlowControl {
   public abstract systems.zlink.framework.configuration.ZLinkMessageFlowLogMode messageFlowMode();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowEvent extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkMessageFlowEvent(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome, systems.zlink.framework.configuration.ZLinkDispatchErrorSurface, systems.zlink.framework.configuration.ZLinkDispatchMessageKind, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Long, systems.zlink.framework.configuration.ZLinkDispatchErrorReason, systems.zlink.framework.configuration.ZLinkDispatchErrorAction, java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.configuration.ZLinkFlowOrigin);
+  public systems.zlink.framework.configuration.ZLinkMessageFlowEvent(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome, systems.zlink.framework.configuration.ZLinkDispatchErrorSurface, systems.zlink.framework.configuration.ZLinkDispatchMessageKind, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Long, systems.zlink.framework.configuration.ZLinkDispatchErrorReason, systems.zlink.framework.configuration.ZLinkDispatchErrorAction, java.lang.String, java.lang.String, java.lang.String, systems.zlink.framework.monitoring.ZLinkFlowOrigin);
   public systems.zlink.framework.configuration.ZLinkMessageFlowEvent(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome, systems.zlink.framework.configuration.ZLinkDispatchErrorSurface, systems.zlink.framework.configuration.ZLinkDispatchMessageKind, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Long, systems.zlink.framework.configuration.ZLinkDispatchErrorReason, systems.zlink.framework.configuration.ZLinkDispatchErrorAction, java.lang.String, java.lang.String);
   public systems.zlink.framework.configuration.ZLinkMessageFlowEvent(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome, systems.zlink.framework.configuration.ZLinkDispatchErrorSurface, systems.zlink.framework.configuration.ZLinkDispatchMessageKind, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.Long);
-  public systems.zlink.framework.configuration.ZLinkMessageFlowEvent withFlow(java.lang.String, systems.zlink.framework.configuration.ZLinkFlowOrigin);
+  public systems.zlink.framework.configuration.ZLinkMessageFlowEvent withFlow(java.lang.String, systems.zlink.framework.monitoring.ZLinkFlowOrigin);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -384,7 +379,7 @@ public final class systems.zlink.framework.configuration.ZLinkMessageFlowEvent e
   public java.lang.String errorType();
   public java.lang.String errorMessage();
   public java.lang.String flowId();
-  public systems.zlink.framework.configuration.ZLinkFlowOrigin flowOrigin();
+  public systems.zlink.framework.monitoring.ZLinkFlowOrigin flowOrigin();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowLogMode extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowLogMode> {
   public static final systems.zlink.framework.configuration.ZLinkMessageFlowLogMode OFF;
@@ -419,6 +414,10 @@ public interface systems.zlink.framework.configuration.ZLinkStreamCompressionBui
 }
 public interface systems.zlink.framework.configuration.ZLinkStreamNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder bind(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder bind();
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder bind(int);
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setBindHost(java.lang.String);
+  public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setAdvertiseHost(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder setTlsServer(java.lang.String, java.lang.String, boolean);
   public abstract systems.zlink.framework.configuration.ZLinkStreamNodeBuilder registerSession(java.lang.Class<? extends systems.zlink.framework.streams.ZLinkSession>);

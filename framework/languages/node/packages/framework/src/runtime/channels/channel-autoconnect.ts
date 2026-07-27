@@ -1,8 +1,5 @@
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
-import {
-  type ZLinkLocationChangeStampStore,
-  type ZLinkLocationWatchStore
-} from '../../contracts';
+import type { ZLinkLocationStore } from '../../contracts';
 import type {
   ZLinkLocationEventSink,
   ZLinkLocationRuntimeStores
@@ -22,8 +19,7 @@ export interface ZLinkChannelLocationAutoConnectContext {
   readonly leaseTracker: ZLinkOwnerLeaseTracker;
   readonly resolver: ZLinkStoreLocationResolvers;
   readonly events?: ZLinkLocationEventSink;
-  readonly changeStampStore?: ZLinkLocationChangeStampStore;
-  readonly watchStore?: ZLinkLocationWatchStore;
+  readonly changeStampStore?: Pick<ZLinkLocationStore, 'getMeshNodeChangeStamp'>;
 }
 
 export function createChannelLocationAutoConnectContext(
@@ -47,8 +43,7 @@ export function createChannelLocationAutoConnectContext(
       events
     }),
     events,
-    changeStampStore: isLocationChangeStampStore(stores.peerStore) ? stores.peerStore : undefined,
-    watchStore: isLocationWatchStore(stores.peerStore) ? stores.peerStore : undefined
+    changeStampStore: stores.locationStore
   };
 }
 
@@ -57,16 +52,4 @@ export function buildChannelAutoConnectCapabilities(
   _sockets: ZLinkChannelSocketRegistry
 ): readonly [] {
   return [];
-}
-
-function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {
-  return value !== null
-    && typeof value === 'object'
-    && typeof (value as { getChangeStamp?: unknown }).getChangeStamp === 'function';
-}
-
-function isLocationWatchStore(value: unknown): value is ZLinkLocationWatchStore {
-  return value !== null
-    && typeof value === 'object'
-    && typeof (value as { watch?: unknown }).watch === 'function';
 }

@@ -46,7 +46,7 @@ function createCourierActorNodeModule(options: CourierOptions) {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(spotEndpoint).useAllocatedRoutingId(16, 'delivery-courier')
+              .listen(spotEndpoint).setRoutingIdPrefix('delivery-courier')
               .addEntrySpot(CourierEntrySpot)
               .actorFactory(SampleNames.courierActorType, CourierActorFactory);
           mesh.channelName(SampleNames.dispatchChannel).setWeight(0);

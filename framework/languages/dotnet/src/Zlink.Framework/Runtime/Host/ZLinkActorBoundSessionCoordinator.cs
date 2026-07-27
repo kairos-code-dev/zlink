@@ -4,8 +4,8 @@ internal sealed class ZLinkActorBoundSessionCoordinator
 {
     private readonly ZLinkActorBoundSessionRegistry _boundSessions;
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
-    private readonly object _remoteForwardGate = new();
-    private readonly Dictionary<string, List<byte[]>> _remoteForwardBuffers = new(StringComparer.Ordinal);
+    private readonly ZLinkRemoteRelayFrameAssembler _remoteFrames;
+    private readonly ZLinkBoundedRemoteRequestAdmission _remoteRequestAdmission = new();
     private readonly Dictionary<(string ActorId, ulong RequestId), PendingRemoteRequest>
         _pendingRemoteRequests = new();
     private readonly Func<string, ZLinkActorRuntimeState> _getState;
@@ -28,6 +28,9 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         _registration = registration;
         _getShutdownToken = getShutdownToken;
         _boundSessions = new ZLinkActorBoundSessionRegistry(UnbindActorSession);
+        _remoteFrames = new ZLinkRemoteRelayFrameAssembler(
+            registration.DefaultRequestTimeout,
+            getShutdownToken);
     }
 
     /// <summary>Set by the runtime after construction: relays an encoded push
@@ -42,6 +45,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     /// sessionNodeRid, sessionRid, headerBytes, bodyBytes).</summary>
     public Func<string?, ZLinkBackendActorRef, ulong, ulong, ulong,
         RoutingId, RoutingId, ZLinkBackendActorRouteContext,
+        ulong, ZLinkServiceWireCodec.RequestSourceFence?,
         byte[], byte[], bool>? RemoteFrameRelay { get; set; }
 
     public enum RemotePushDelivery
@@ -224,15 +228,28 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 true);
         var pending = new PendingRemoteRequest(
             binding,
-            Guid.NewGuid().ToString("N"));
+            Guid.NewGuid().ToString("N"),
+            new CancellationTokenSource());
         lock (_pendingRemoteRequests)
         {
+            if (!_remoteRequestAdmission.TryAcquire(actorId, bindingToken))
+            {
+                pending.Dispose();
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    $"Actor '{actorId}' remote session request capacity is exhausted.",
+                    true);
+            }
             if (!_pendingRemoteRequests.TryAdd(
                     (actorId, requestId),
                     pending))
+            {
+                _remoteRequestAdmission.Release(actorId, bindingToken);
+                pending.Dispose();
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestProtocolError,
                     $"Actor '{actorId}' remote session request '{requestId}' is already pending.");
+            }
         }
         _ = ExpireRemoteSessionRequestAsync(actorId, requestId, pending);
         return pending.ReplyCapability;
@@ -262,11 +279,17 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 || (!allowClaimed && pending.Claimed))
                 return;
             _pendingRemoteRequests.Remove(key);
+            _remoteRequestAdmission.Release(
+                actorId,
+                pending.Binding.BindingToken);
         }
         if (pending is not null)
+        {
+            pending.Dispose();
             _sessionBindings.CompleteAccepted(
                 actorId,
                 pending.Binding.BindingToken);
+        }
     }
 
     private async Task ExpireRemoteSessionRequestAsync(
@@ -276,7 +299,9 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     {
         try
         {
-            await Task.Delay(_registration.DefaultRequestTimeout)
+            await Task.Delay(
+                    _registration.DefaultRequestTimeout,
+                    pending.Cancellation.Token)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
@@ -389,23 +414,36 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         {
             pending = _pendingRemoteRequests.Values.ToArray();
             _pendingRemoteRequests.Clear();
+            _remoteRequestAdmission.Clear();
         }
         foreach (var request in pending)
+        {
+            request.Dispose();
             _sessionBindings.CompleteAccepted(
                 request.Binding.ActorRef.ActorId,
                 request.Binding.BindingToken);
+        }
         _sessionBindings.ResetGeneration();
         _boundSessions.Clear();
+        _remoteFrames.Clear();
         Interlocked.Exchange(ref _bindingGeneration, 0);
     }
 
     private sealed class PendingRemoteRequest(
         ZLinkSessionBindingEntry binding,
-        string replyCapability)
+        string replyCapability,
+        CancellationTokenSource cancellation) : IDisposable
     {
         internal ZLinkSessionBindingEntry Binding { get; } = binding;
         internal string ReplyCapability { get; } = replyCapability;
+        internal CancellationTokenSource Cancellation { get; } = cancellation;
         internal bool Claimed { get; set; }
+
+        public void Dispose()
+        {
+            Cancellation.Cancel();
+            Cancellation.Dispose();
+        }
     }
 
     internal sealed class RemoteReplyClaim(
@@ -488,7 +526,9 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         ulong targetNodeGeneration = 0,
         ulong authorityOwnerGeneration = 0,
         ulong ownerLeaseGeneration = 0,
-        ZLinkBackendActorRouteContext routeContext = default)
+        ZLinkBackendActorRouteContext routeContext = default,
+        ulong sourceNodeGeneration = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null)
     {
         var routeNode = selectedNode ?? _getNode();
 
@@ -521,49 +561,52 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 }
             }
 
-            lock (_remoteForwardGate)
-            {
-                var key = "frame:" + actorRef.ActorId;
-                if (!_remoteForwardBuffers.TryGetValue(key, out var framePending))
-                {
-                    framePending = [];
-                    _remoteForwardBuffers[key] = framePending;
-                }
-
-                framePending.Add(message.ToArray());
-                if (hasMore) return true;
-                var header = framePending[0];
-                var bodyLength = 0;
-                for (var i = 1; i < framePending.Count; i++) bodyLength += framePending[i].Length;
-                var frameBody = new byte[bodyLength];
-                var bodyOffset = 0;
-                for (var i = 1; i < framePending.Count; i++)
-                {
-                    framePending[i].CopyTo(frameBody, bodyOffset);
-                    bodyOffset += framePending[i].Length;
-                }
-
-                if (!frameRelay(
-                        meshName,
-                        actorRef,
-                        targetNodeGeneration,
-                        authorityOwnerGeneration,
-                        ownerLeaseGeneration,
-                        sourceNodeRid,
-                        sourceSessionRid,
-                        routeContext,
-                        header,
-                        frameBody))
-                {
-                    // Retries resubmit only the terminal part; keep the
-                    // buffered prefix so the frame stays whole.
-                    framePending.RemoveAt(framePending.Count - 1);
-                    return false;
-                }
-
-                _remoteForwardBuffers.Remove(key);
+            var frameKey = RelayFrameKey(
+                routeKind: 1,
+                actorRef,
+                bindingIdentity: string.Empty,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                sourceSessionRid,
+                requestSource,
+                routeContext);
+            if (!_remoteFrames.TryAppend(
+                    frameKey,
+                    message.ToArray(),
+                    hasMore,
+                    out var completed))
+                return false;
+            if (completed is null)
                 return true;
+
+            if (completed.Parts.Count < 2)
+            {
+                _remoteFrames.Reject(completed);
+                return false;
             }
+            var header = completed.Parts[0];
+            var frameBody = ConcatParts(completed.Parts, 1);
+            if (!frameRelay(
+                    meshName,
+                    actorRef,
+                    targetNodeGeneration,
+                    authorityOwnerGeneration,
+                    ownerLeaseGeneration,
+                    sourceNodeRid,
+                    sourceSessionRid,
+                    routeContext,
+                    sourceNodeGeneration,
+                    requestSource,
+                    header,
+                    frameBody))
+            {
+                // The assembler accepts both runtime retry forms: a terminal-
+                // only retry reuses the prefix, while a new prefix replaces it.
+                _remoteFrames.Reject(completed);
+                return false;
+            }
+            _remoteFrames.Commit(completed);
+            return true;
         }
 
         // A session on another node cannot be reached through the local
@@ -574,31 +617,34 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             && routeNode is { } localNode
             && !sourceNodeRid.Equals(localNode.RoutingId))
         {
-            lock (_remoteForwardGate)
+            if (!_getState(actorRef.ActorId)
+                    .TryGetBoundSession(out var session))
+                return false;
+            var frameKey = RelayFrameKey(
+                routeKind: 2,
+                actorRef,
+                session.BindingToken,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                sourceSessionRid,
+                requestSource,
+                routeContext);
+            if (!_remoteFrames.TryAppend(
+                    frameKey,
+                    message.ToArray(),
+                    hasMore,
+                    out var completed))
+                return false;
+            if (completed is null)
+                return true;
+            var frame = ConcatParts(completed.Parts, 0);
+            if (!relay(actorRef.ActorId, session, frame))
             {
-                if (!_remoteForwardBuffers.TryGetValue(actorRef.ActorId, out var pending))
-                {
-                    pending = [];
-                    _remoteForwardBuffers[actorRef.ActorId] = pending;
-                }
-
-                pending.Add(message.ToArray());
-                if (hasMore) return true;
-                _remoteForwardBuffers.Remove(actorRef.ActorId);
-                var total = 0;
-                foreach (var part in pending) total += part.Length;
-                var frame = new byte[total];
-                var offset = 0;
-                foreach (var part in pending)
-                {
-                    part.CopyTo(frame, offset);
-                    offset += part.Length;
-                }
-
-                return _getState(actorRef.ActorId)
-                           .TryGetBoundSession(out var session)
-                       && relay(actorRef.ActorId, session, frame);
+                _remoteFrames.Reject(completed);
+                return false;
             }
+            _remoteFrames.Commit(completed);
+            return true;
         }
 
         return (routeNode
@@ -646,6 +692,52 @@ internal sealed class ZLinkActorBoundSessionCoordinator
 
         return frame;
     }
+
+    private static byte[] ConcatParts(
+        IReadOnlyList<byte[]> parts,
+        int start)
+    {
+        var total = 0;
+        for (var i = start; i < parts.Count; i++)
+            total = checked(total + parts[i].Length);
+        var frame = new byte[total];
+        var offset = 0;
+        for (var i = start; i < parts.Count; i++)
+        {
+            parts[i].CopyTo(frame, offset);
+            offset += parts[i].Length;
+        }
+        return frame;
+    }
+
+    private static ZLinkRemoteRelayFrameKey RelayFrameKey(
+        byte routeKind,
+        ZLinkBackendActorRef actor,
+        string bindingIdentity,
+        RoutingId sourceNodeRid,
+        ulong sourceNodeGeneration,
+        RoutingId sourceSessionRid,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource,
+        ZLinkBackendActorRouteContext route) => new(
+            routeKind,
+            actor.ActorId,
+            actor.Generation,
+            bindingIdentity,
+            sourceNodeRid.IsEmpty ? string.Empty : sourceNodeRid.ToHex(),
+            sourceNodeGeneration,
+            sourceSessionRid.IsEmpty ? string.Empty : sourceSessionRid.ToHex(),
+            requestSource?.OwnerId ?? string.Empty,
+            requestSource?.LeaseGeneration ?? 0,
+            requestSource is { } source
+                ? source.NodeRid.ToHex()
+                : string.Empty,
+            requestSource?.NodeGeneration ?? 0,
+            route.OperationId.High,
+            route.OperationId.Low,
+            route.ReplyRequestId,
+            route.TargetNodeGeneration,
+            route.AuthorityOwnerGeneration,
+            route.OwnerLeaseGeneration);
 
     public ValueTask NotifyRemoteDisconnectedAsync(
         ZLinkSessionBindingEntry binding,

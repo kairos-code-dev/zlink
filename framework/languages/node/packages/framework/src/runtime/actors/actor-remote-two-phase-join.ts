@@ -43,6 +43,7 @@ export interface ZLinkRemoteTwoPhaseActorJoinOptions {
   readonly sourceTransfer?: ZLinkActorSourceTransfer;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly postCommitBinder?: ZLinkPostCommitActorBinder;
+  readonly entrySpotIdProvider?: (meshName: string | undefined) => string | undefined;
 }
 
 /** Owns the admission/commit protocol and the resulting remote actor state. */
@@ -63,7 +64,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
   }
 
   async joinSpot(
-    node: ZLinkBackendSpotNode,
+    _node: ZLinkBackendSpotNode,
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     actorRef: ZLinkBackendActorRef,
@@ -87,7 +88,13 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       );
     }
 
-    const entrySpotId = node.entrySpot().routingId;
+    const entrySpotId = this.options.entrySpotIdProvider?.(state.meshName);
+    if (entrySpotId === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+        'Actor source Entry Spot identity is not available.'
+      );
+    }
     const currentBoundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
     const boundSessionTarget = currentBoundSessionTarget === undefined
       ? undefined
@@ -154,7 +161,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       transferId,
       transferAdapterKey: transfer.adapterKey,
       transferState: Buffer.from(
-        transfer.state.toEncodedPayload(this.options.messageSerializers).data()
+        transfer.state.toEncodedPayload().data()
       ),
       handoffBacklog: transfer.handoffBacklog
     });

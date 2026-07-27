@@ -485,14 +485,14 @@ class evidence_handler_t
         }
         auto peer_rows = nlohmann::json::array ();
         try {
-            const auto peers = _store.list_peers (fw::peer_location_filter_t{}).result ().value ();
-            for (const auto &peer : peers) {
+            const auto peers = _store.list_mesh_nodes ({}, {}).result ().value ();
+            for (const auto &peer : peers.items) {
                 peer_rows.push_back (nlohmann::json{
-                  {"nodeRid", peer.node_rid ? peer.node_rid->to_hex () : ""},
+                  {"nodeRid", peer.rid.to_hex ()},
                   {"meshName", peer.mesh_name},
                   {"ownerId", peer.owner_id},
-                  {"draining", peer.draining},
-                  {"generation", peer.generation}});
+                  {"draining", peer.state == fw::framework_runtime_state_t::draining},
+                  {"generation", peer.lifecycle_generation}});
             }
         }
         catch (const std::exception &error) {

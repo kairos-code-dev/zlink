@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
@@ -157,8 +158,10 @@ final class JavaTargetContractGapTest {
         assertNoPublicMethodNamed(clientServer, "enableClient");
         assertNotNull(Class.forName("systems.zlink.framework.configuration.FanoutChannelBuilder")
             .getMethod("subscriberConnections"));
-        assertNotNull(Class.forName("systems.zlink.framework.configuration.RouteMeshChannelBuilder")
-            .getMethod("clientConnections"));
+        assertClassAbsent(
+            "systems.zlink.framework.configuration.RouteMeshChannelBuilder");
+        assertClassAbsent(
+            "systems.zlink.framework.configuration.ZLinkSpotNodeBuilder");
     }
 
     @Test
@@ -166,20 +169,54 @@ final class JavaTargetContractGapTest {
         Class<?> typed = Class.forName("systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler");
         assertClassAbsent("systems.zlink.framework.streams.ZLinkSessionPacketHandler");
         assertNamedMethodsReturnStage(typed.getName(), "handle");
+
+        Class<?> streamError = Class.forName("systems.zlink.framework.streams.ZLinkStreamError");
+        assertEquals(
+            List.of("error", "message"),
+            Arrays.stream(streamError.getRecordComponents())
+                .map(component -> component.getName())
+                .toList());
+        assertClassAbsent("systems.zlink.framework.streams.ZLinkStreamDiagnostic");
     }
 
     @Test
     void observabilityOperationsContractIsExported() throws Exception {
         assertNotNull(Class.forName("systems.zlink.framework.monitoring.ZLinkFlowOrigin"));
-        assertNotNull(Class.forName("systems.zlink.framework.monitoring.ZLinkDrainControl"));
-        Class<?> result = Class.forName("systems.zlink.framework.monitoring.ZLinkDrainResult");
-        assertTrue(result.isSealed(), "drain result must be sealed");
-        Class<?> peer = Class.forName("systems.zlink.framework.locations.ZLinkPeerLocation");
-        assertNotNull(peer.getMethod("draining"));
+        assertClassAbsent("systems.zlink.framework.configuration.ZLinkFlowOrigin");
+        assertNotNull(Class.forName(
+            "systems.zlink.framework.locations.ZLinkActivationConcurrency"));
+        assertClassAbsent(
+            "systems.zlink.framework.monitoring.ZLinkActivationConcurrency");
+        assertClassAbsent(
+            "systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher");
+        assertClassAbsent("systems.zlink.framework.monitoring.ZLinkDrainControl");
+        assertClassAbsent("systems.zlink.framework.monitoring.ZLinkDrainResult");
+        assertClassAbsent("systems.zlink.framework.monitoring.ZLinkMeshDrainResult");
+        assertClassAbsent("systems.zlink.framework.monitoring.ZLinkMeshDrainSnapshot");
+        assertNoPublicMethodNamed(
+            "systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot", "drain");
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkPeerLocation");
+        assertNotNull(Class.forName(
+            "systems.zlink.framework.locations.ZLinkMeshNodeDescriptor"));
     }
 
     @Test
     void backendAndHandlerRuntimeTypesAreNotApplicationPublicSurface() throws Exception {
+        assertFalse(
+            Thread.currentThread().getContextClassLoader()
+                .getResources("systems/zlink/contracts/service/spot")
+                .hasMoreElements(),
+            "legacy service Spot package must not be exported");
+        assertFalse(
+            Thread.currentThread().getContextClassLoader()
+                .getResources("systems/zlink/framework/runtime/backend")
+                .hasMoreElements(),
+            "backend SPI package must not be exported");
+        assertFalse(
+            Thread.currentThread().getContextClassLoader()
+                .getResources("systems/zlink/framework/runtime/service")
+                .hasMoreElements(),
+            "service runtime implementation package must not be exported");
         assertClassAbsent("systems.zlink.framework.runtime.backend.ZLinkBackendAdapterFactory");
         assertClassAbsent("systems.zlink.framework.runtime.backend.ZLinkBackendSpotNode");
         assertClassAbsent("systems.zlink.framework.runtime.handlers.ZLinkHandlerFactory");
@@ -193,6 +230,30 @@ final class JavaTargetContractGapTest {
             "systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator");
         assertInternalRuntimeSpi(
             "systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter");
+
+        assertNotPublic(
+            "systems.zlink.framework.runtime.internal.service.ZLinkCanonicalRelocationControlCodec");
+        assertNotPublic(
+            "systems.zlink.framework.runtime.internal.service.ZLinkInMemoryLocationAuthority");
+        assertNotPublic(
+            "systems.zlink.framework.runtime.internal.service.ZLinkRelocationScheduler");
+        for (String type : new String[] {
+            "ZLinkClassicFanoutLiveness",
+            "ZLinkServiceFrozenRecordCodec",
+            "ZLinkServiceLivenessRegistry",
+            "ZLinkServiceM6AWireCodec",
+            "ZLinkServiceM6BWireCodec",
+            "ZLinkServiceMailbox",
+            "ZLinkServiceNodeDescriptor",
+            "ZLinkServiceOperationRegistry",
+            "ZLinkServiceRelocationWireCodec",
+            "ZLinkServiceTopologyRegistry",
+            "ZLinkServiceWireCodec",
+            "ZLinkServiceWireFrame"
+        }) {
+            assertInternalRuntimeSpi(
+                "systems.zlink.framework.runtime.internal.service." + type);
+        }
     }
 
     @Test
@@ -206,12 +267,16 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
-    void locationContractIncludesSealedKeyAndRuntimeFacets() throws Exception {
-        Class<?> key = Class.forName("systems.zlink.framework.locations.ZLinkLocationKey");
-        assertTrue(key.isSealed(), "location key must be sealed");
-        assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationReadiness"));
+    void locationContractKeepsOnlyProviderAndOperationalFacets() throws Exception {
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkLocationKey");
+        assertNotNull(Class.forName(
+            "systems.zlink.framework.locations.ZLinkLocationReadiness"));
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkLocationWatchStore");
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkOwnerLease");
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot");
+        assertClassAbsent("systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal");
         assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationRuntimeQuery"));
-        assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationWatchStore"));
+        assertNotNull(Class.forName("systems.zlink.framework.locations.ZLinkLocationStore"));
     }
 
     @Test

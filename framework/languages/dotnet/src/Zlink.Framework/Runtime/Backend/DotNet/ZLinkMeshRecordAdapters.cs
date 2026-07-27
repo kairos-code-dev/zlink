@@ -57,7 +57,9 @@ internal static class ZLinkMeshRecordAdapters
 
     public static IReadOnlyList<ZLinkBackendActorPart> ToActorParts(
         MeshReceiveBatch batch, int index, MeshReceiveRecord record,
-        ActorRef ownerActor = default, ulong requestId = 0)
+        ActorRef ownerActor = default, ulong requestId = 0,
+        ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
         IReadOnlyList<Message> messages = batch.RetainMessage(index);
         if (messages.Count == 0) return Array.Empty<ZLinkBackendActorPart>();
@@ -75,9 +77,8 @@ internal static class ZLinkMeshRecordAdapters
         }
 
         var actor = actorRef.ToBackend();
-        // Inbound request records carry no operation id; the pump mints the
-        // request id that keys the record's reply token so no-bind replies can
-        // redeem it.
+        // RequestId is the source-allocated reply route (wire correlation).
+        // OperationId remains the independent durable dedupe identity.
         var flags = record.Kind == MeshRecordKind.ActorRequest ? 1u : 0u;
         var parts = new ZLinkBackendActorPart[messages.Count];
         var sourceSpotId = string.IsNullOrEmpty(record.SourceSpotId)
@@ -99,7 +100,10 @@ internal static class ZLinkMeshRecordAdapters
                     record.AuthorityOwnerGeneration,
                     record.OwnerLeaseGeneration,
                     requestId,
-                    flags));
+                    flags),
+                SourceNodeGeneration: record.SourceBindingGeneration,
+                RequestSource: requestSource,
+                DirectReply: i == 0 ? directReply : null);
         return parts;
     }
 }

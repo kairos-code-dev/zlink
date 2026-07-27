@@ -16,10 +16,9 @@ import type {
 } from '@zlink-systems/framework';
 import { ZONEWORLD_CONFIG } from '../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
-import { reportRoutingAllocation } from '../Configuration/routing-id-report';
 import { closeRuntime, waitForShutdown } from '../runtime-support';
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
-import { createZoneNodeModule, ZONE_NODE_ALLOCATION_GROUP } from './zone-node-module';
+import { createZoneNodeModule } from './zone-node-module';
 import { ZoneSpot } from './Infrastructure/ZLink/Spots/zone-spot';
 import { EnterWorldReq, ReportNodeStatusMsg } from '../../Shared/contracts';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
@@ -43,9 +42,6 @@ async function bootstrap(): Promise<void> {
     const maintenance = app.get(MaintenanceStore);
     state.restore(await maintenance.readAll());
     console.log(`maintenance restored node=${node.nodeId} enabled=${state.ownMaintenance()}`);
-    const allocation = await reportRoutingAllocation(app, node.nodeId, ZONE_NODE_ALLOCATION_GROUP, [
-      ZoneWorldNames.zoneMesh
-    ]);
     const spots = app.get<ZLinkSpotManager>(ZLINK_SPOT_MANAGER, { strict: false });
     for (const zoneId of zones) {
       await spots.getOrCreate(ZoneWorldNames.zoneMesh, ZoneSpot, zoneId);
@@ -64,7 +60,6 @@ async function bootstrap(): Promise<void> {
           ZoneWorldNames.reportChannel,
           new ReportNodeStatusMsg(
             node.nodeId,
-            String(allocation.memberRoutingIds.get(ZoneWorldNames.zoneMesh)),
             [...zones],
             state.playerCount(),
             state.ownMaintenance()

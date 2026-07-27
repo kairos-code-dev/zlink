@@ -41,17 +41,7 @@ struct location_write_result_t
 struct location_owner_token_t
 {
     std::string owner_id;
-    union
-    {
-        std::int64_t lease_generation = 0;
-        std::int64_t generation;
-    };
-};
-
-struct owner_lease_renewal_t
-{
-    std::chrono::system_clock::time_point lease_expires_at{};
-    std::chrono::system_clock::time_point store_now{};
+    std::int64_t lease_generation = 0;
 };
 
 struct owner_lease_claimed_t

@@ -19,12 +19,12 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRecvMode;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRecvMode;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotDispatchEvent;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
 final class ZLinkJavaRawSpotNodeM6BTest {
@@ -247,14 +247,14 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             System.nanoTime() + Duration.ofSeconds(2).toNanos();
         while (node.peers().stream().noneMatch(
                 peer -> peer.state()
-                    == systems.zlink.contracts.service.spot
+                    == systems.zlink.framework.runtime.internal.binding.spot
                         .MeshPeerState.ADMITTED)
             && System.nanoTime() < deadline) {
             Thread.sleep(1);
         }
         assertTrue(node.peers().stream().anyMatch(
             peer -> peer.state()
-                == systems.zlink.contracts.service.spot
+                == systems.zlink.framework.runtime.internal.binding.spot
                     .MeshPeerState.ADMITTED));
     }
 
@@ -289,7 +289,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 List.of(),
                 ignored -> { }));
 
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor;
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
             try (Message create = Message.from("create")) {
                 actor = spots.createActor("owner-actor", create);
             }
@@ -377,7 +377,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 target.replyActorJoin(request, 0, List.of());
             });
 
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor;
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
             try (Message create = Message.from("create")) {
                 actor = node.spotNode().createActor("actor-1", create);
             }
@@ -597,11 +597,11 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                         List.of(reply));
                 } finally {
                     info.actorMessages().forEach(
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendActorReceived::close);
                 }
             });
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor;
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
             try (Message create = Message.from("create")) {
                 actor = node.spotNode().createActor("actor-local", create);
             }
@@ -623,7 +623,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 reply.forEach(Message::close);
             }
             assertFalse(node.spotNode().sendToActor(
-                new systems.zlink.framework.runtime.backend
+                new systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef(
                         nodeRid,
                         actor.actorId(),
@@ -669,11 +669,11 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                         List.of(reply));
                 } finally {
                     info.actorMessages().forEach(
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendActorReceived::close);
                 }
             });
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor;
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
             try (Message create = Message.from("create")) {
                 actor = left.spotNode().createActor("actor-remote", create);
             }
@@ -685,14 +685,14 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 System.nanoTime() + Duration.ofSeconds(2).toNanos();
             while (right.peers().stream().noneMatch(
                 peer -> peer.state()
-                    == systems.zlink.contracts.service.spot
+                    == systems.zlink.framework.runtime.internal.binding.spot
                         .MeshPeerState.ADMITTED)
                 && System.nanoTime() < deadline) {
                 Thread.sleep(1);
             }
             assertTrue(right.peers().stream().anyMatch(
                 peer -> peer.state()
-                    == systems.zlink.contracts.service.spot
+                    == systems.zlink.framework.runtime.internal.binding.spot
                         .MeshPeerState.ADMITTED));
 
             List<Message> reply;
@@ -743,7 +743,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             while (right.peers().stream().noneMatch(
                     peer -> peer.routingId().equals(leftRid)
                         && peer.state()
-                            == systems.zlink.contracts.service.spot
+                            == systems.zlink.framework.runtime.internal.binding.spot
                                 .MeshPeerState.ADMITTED)
                 && System.nanoTime() < deadline) {
                 Thread.sleep(1);
@@ -751,7 +751,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             assertTrue(right.peers().stream().anyMatch(
                 peer -> peer.routingId().equals(leftRid)
                     && peer.state()
-                        == systems.zlink.contracts.service.spot
+                        == systems.zlink.framework.runtime.internal.binding.spot
                             .MeshPeerState.ADMITTED));
             assertEquals(
                 leftRid,
@@ -769,7 +769,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     List.of(packet, payload));
             }
 
-            systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage
                 received = null;
             while (received == null && System.nanoTime() < deadline) {
                 received = remote.subscribe(
@@ -829,7 +829,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             while (right.peers().stream().noneMatch(
                     peer -> peer.routingId().equals(leftRid)
                         && peer.state()
-                            == systems.zlink.contracts.service.spot
+                            == systems.zlink.framework.runtime.internal.binding.spot
                                 .MeshPeerState.ADMITTED)
                 && System.nanoTime() < deadline) {
                 Thread.sleep(1);
@@ -837,7 +837,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             assertTrue(right.peers().stream().anyMatch(
                 peer -> peer.routingId().equals(leftRid)
                     && peer.state()
-                        == systems.zlink.contracts.service.spot
+                        == systems.zlink.framework.runtime.internal.binding.spot
                             .MeshPeerState.ADMITTED));
 
             ZLinkJavaRawSpotNode target =
@@ -924,10 +924,10 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 var received = info.actorMessages().getFirst();
                 delivered.complete(received.sourceSessionRid());
                 info.actorMessages().forEach(
-                    systems.zlink.framework.runtime.backend
+                    systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendActorReceived::close);
             });
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor;
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef actor;
             try (Message create = Message.from("create")) {
                 actor = node.spotNode().createActor("actor-stream", create);
             }
@@ -996,7 +996,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             actorNode.start();
             ZLinkJavaRawSpotNode target =
                 (ZLinkJavaRawSpotNode) actorNode.spotNode();
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef
                 actor;
             try (Message create = Message.from("create")) {
                 actor = target.createActor("actor-owner-epoch", create);
@@ -1063,7 +1063,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             stream.startSessionService();
             RoutingId sessionRid = RoutingId.from("slow-unbind-session");
             var actor =
-                new systems.zlink.framework.runtime.backend
+                new systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef(
                         RoutingId.from("slow-unbind-actor-node"),
                         "slow-unbind-actor",
@@ -1096,7 +1096,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId sessionRid =
                 RoutingId.from("failed-unbind-session");
             var actor =
-                new systems.zlink.framework.runtime.backend
+                new systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef(
                         RoutingId.from("failed-unbind-actor-node"),
                         "failed-unbind-actor",
@@ -1135,7 +1135,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             stream.startSessionService();
             RoutingId sessionRid = RoutingId.from("dual-close-session");
             var actor =
-                new systems.zlink.framework.runtime.backend
+                new systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef(
                         RoutingId.from("dual-close-actor-node"),
                         "dual-close-actor",
@@ -1174,7 +1174,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     @Override
                     public CompletionStage<Void> bind(
                         RoutingId sessionRid,
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendActorRef actor,
                         long bindingGeneration,
                         Duration timeout) {
@@ -1184,7 +1184,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     @Override
                     public CompletionStage<Void> unbind(
                         RoutingId sessionRid,
-                        systems.zlink.framework.runtime.backend
+                        systems.zlink.framework.runtime.internal.backend
                             .ZLinkBackendActorRef actor,
                         long bindingGeneration,
                         Duration timeout) {
@@ -1210,7 +1210,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId sessionRid = RoutingId.from("error-close-session");
             for (int index = 1; index <= 2; index++) {
                 var actor =
-                    new systems.zlink.framework.runtime.backend
+                    new systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendActorRef(
                             RoutingId.from("error-close-actor-node"),
                             "error-close-actor-" + index,
@@ -1242,7 +1242,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             @Override
             public CompletionStage<Void> bind(
                 RoutingId sessionRid,
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef actor,
                 long bindingGeneration,
                 Duration timeout) {
@@ -1252,7 +1252,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             @Override
             public CompletionStage<Void> unbind(
                 RoutingId sessionRid,
-                systems.zlink.framework.runtime.backend
+                systems.zlink.framework.runtime.internal.backend
                     .ZLinkBackendActorRef actor,
                 long bindingGeneration,
                 Duration timeout) {
@@ -1390,10 +1390,10 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 var received = info.actorMessages().getFirst();
                 ingress.complete(received.sourceSessionRid());
                 info.actorMessages().forEach(
-                    systems.zlink.framework.runtime.backend
+                    systems.zlink.framework.runtime.internal.backend
                         .ZLinkBackendActorReceived::close);
             });
-            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef
                 actor;
             try (Message create = Message.from("create")) {
                 actor = actorNode.spotNode().createActor(
@@ -1407,7 +1407,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             while (sessionNode.peers().stream().noneMatch(
                     peer -> peer.routingId().equals(actorNodeRid)
                         && peer.state()
-                            == systems.zlink.contracts.service.spot
+                            == systems.zlink.framework.runtime.internal.binding.spot
                                 .MeshPeerState.ADMITTED)
                 && System.nanoTime() < deadline) {
                 Thread.sleep(1);
@@ -1415,7 +1415,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             assertTrue(sessionNode.peers().stream().anyMatch(
                 peer -> peer.routingId().equals(actorNodeRid)
                     && peer.state()
-                        == systems.zlink.contracts.service.spot
+                        == systems.zlink.framework.runtime.internal.binding.spot
                             .MeshPeerState.ADMITTED));
 
             stream.startSessionService();
@@ -1476,7 +1476,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     actorNode.lifecycleGeneration(),
                     new ZLinkServiceM6BWireCodec.BoundSessionSend(
                         new ZLinkServiceM6BWireCodec.ActorRouteFence(
-                            new systems.zlink.framework.runtime.backend
+                            new systems.zlink.framework.runtime.internal.backend
                                 .ZLinkBackendActorRef(
                                     actorNodeRid,
                                     actor.actorId(),

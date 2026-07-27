@@ -20,7 +20,7 @@ import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkBoundSession
-import systems.zlink.framework.configuration.ZLinkFlowOrigin
+import systems.zlink.framework.monitoring.ZLinkFlowOrigin
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationContext

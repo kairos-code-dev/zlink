@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Systems.Zlink.Framework.Runtime.Protocol;
 using Zlink.Framework.Runtime.Actors;
@@ -98,8 +99,7 @@ public sealed class CanonicalRelocationReservationOwnerTests
         var blocking = new BlockingAuthorityStore(fixture.Store);
         var owner = new ZLinkCanonicalRelocationReservationOwner(
             blocking, fixture.Permits, "mesh", RoutingId.From("reservation-target"),
-            1, TimeSpan.FromSeconds(5), fixture.Time,
-            topologyStore: fixture.Store);
+            1, TimeSpan.FromSeconds(5), fixture.Time);
         await using var ownerLifetime = owner;
         var offer = await owner.OfferAsync(fixture.Prepare, fixture.SourceRid,
             CancellationToken.None);
@@ -123,8 +123,7 @@ public sealed class CanonicalRelocationReservationOwnerTests
         var blocking = new BlockingAuthorityStore(fixture.Store);
         await using var owner = new ZLinkCanonicalRelocationReservationOwner(
             blocking, fixture.Permits, "mesh", RoutingId.From("reservation-target"),
-            1, TimeSpan.FromMilliseconds(50), fixture.Time,
-            topologyStore: fixture.Store);
+            1, TimeSpan.FromMilliseconds(50), fixture.Time);
         var offer = await owner.OfferAsync(fixture.Prepare, fixture.SourceRid,
             CancellationToken.None);
 
@@ -140,13 +139,44 @@ public sealed class CanonicalRelocationReservationOwnerTests
     }
 
     [Fact]
+    public async Task Successful_standalone_reservations_reuse_one_permit_64_times()
+    {
+        var permits = new ZLinkRelocationPermitPool(new ZLinkLocationOptions
+        {
+            MaxActiveInboundRelocations = 1
+        });
+
+        for (var index = 0; index < 64; index++)
+        {
+            await using var fixture = await Fixture.CreateAsync(permits: permits);
+            var offer = await fixture.Owner.OfferAsync(
+                fixture.Prepare, fixture.SourceRid, CancellationToken.None);
+            _ = await fixture.Owner.AcceptAsync(
+                fixture.Acceptance(offer),
+                fixture.SourceRid,
+                CancellationToken.None);
+            fixture.Owner.BeginStaging(
+                fixture.Prepare.RelocationId,
+                fixture.Prepare.TargetAttemptGeneration);
+
+            Assert.True(fixture.Owner.CompleteSuccessfulStaging(
+                fixture.Prepare.RelocationId,
+                fixture.Prepare.TargetAttemptGeneration));
+            Assert.False(fixture.Owner.CompleteSuccessfulStaging(
+                fixture.Prepare.RelocationId,
+                fixture.Prepare.TargetAttemptGeneration));
+            Assert.Equal(0, permits.Snapshot().InboundUnits);
+        }
+    }
+
+    [Fact]
     public async Task Reservation_slot_limit_rejects_a_distinct_command40()
     {
         await using var fixture = await Fixture.CreateAsync();
         await using var owner = new ZLinkCanonicalRelocationReservationOwner(
             fixture.Store, fixture.Permits, "mesh",
             RoutingId.From("reservation-target"), 1, TimeSpan.FromSeconds(5),
-            fixture.Time, maximumSlots: 1, topologyStore: fixture.Store);
+            fixture.Time, maximumSlots: 1);
         _ = await owner.OfferAsync(fixture.Prepare, fixture.SourceRid,
             CancellationToken.None);
 
@@ -204,11 +234,13 @@ public sealed class CanonicalRelocationReservationOwnerTests
         var targetLease = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
             await store.ClaimOwnerLeaseAsync("raw-target-owner",
                 TimeSpan.FromMinutes(1)));
-        await store.UpdateMeshNodeAsync(Fixture.Descriptor(source.RoutingId,
-            sourceLease.Token, source.Status().LifecycleGeneration),
+        var sourceDescriptor = Fixture.Descriptor(source.RoutingId,
+            sourceLease.Token, source.Status().LifecycleGeneration);
+        var targetDescriptor = Fixture.Descriptor(target.RoutingId,
+            targetLease.Token, target.Status().LifecycleGeneration);
+        await store.UpdateMeshNodeAsync(sourceDescriptor,
             ZLinkLocationWriteIntent.NewClaim);
-        await store.UpdateMeshNodeAsync(Fixture.Descriptor(target.RoutingId,
-            targetLease.Token, target.Status().LifecycleGeneration),
+        await store.UpdateMeshNodeAsync(targetDescriptor,
             ZLinkLocationWriteIntent.NewClaim);
         var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey("raw-actor");
         var creation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
@@ -218,8 +250,68 @@ public sealed class CanonicalRelocationReservationOwnerTests
                 new ZLinkMeshNodeDescriptorKey("mesh", source.RoutingId),
                 source.Status().LifecycleGeneration, sourceLease.Token,
                 new byte[] { 1 }, new ZLinkCapacityVector(1, 0, null))));
+        var sourceAuthority = new ZLinkActorAuthorityPayload(
+            ZLinkActorAuthorityState.Ready,
+            "Game.Actor",
+            "raw-actor",
+            sourceDescriptor.EntrySpotId!,
+            source.Status().LifecycleGeneration,
+            ZLinkSpotKind.Entry,
+            sourceLease.Token.OwnerId,
+            checked((ulong)sourceLease.Token.LeaseGeneration),
+            "mesh",
+            source.RoutingId,
+            source.Status().LifecycleGeneration);
         var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
-            await store.CommitAsync(creation.Reservation, new byte[] { 2 }));
+            await store.CommitAsync(
+                creation.Reservation,
+                ZLinkActorAuthorityPayloadCodec.Encode(sourceAuthority)));
+        var relocationId = Guid.NewGuid();
+        var envelope = ZLinkCanonicalActorRelocationWriter.CreateInitial(
+            ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+                ready.Snapshot,
+                sourceAuthority,
+                targetDescriptor,
+                relocationId,
+                ReadOnlyMemory<byte>.Empty,
+                [],
+                default),
+            applicationVersion: 1);
+        var capturedPayload = ZLinkCanonicalRelocationAuthorityStateCodec
+            .ReplaceRelocationState(
+                ready.Snapshot.Payload.Span,
+                new ZLinkCanonicalRelocationAuthorityState(
+                    envelope.CanonicalRelocationHigh,
+                    envelope.CanonicalRelocationLow,
+                    0,
+                    source.RoutingId.ToHex(),
+                    source.Status().LifecycleGeneration,
+                    sourceLease.Token.OwnerId,
+                    checked((ulong)sourceLease.Token.LeaseGeneration),
+                    string.Empty,
+                    0,
+                    string.Empty,
+                    0,
+                    0,
+                    sourceLease.Token.OwnerId,
+                    checked((ulong)sourceLease.Token.LeaseGeneration),
+                    source.RoutingId.ToHex(),
+                    source.Status().LifecycleGeneration,
+                    2,
+                    "root",
+                    3,
+                    1,
+                    0),
+                envelope);
+        var captured = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await store.CompareExchangeAuthorityAsync(
+                key,
+                ready.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    capturedPayload,
+                    ZLinkAuthorityGenerationTransition.Preserve,
+                    null,
+                    null)));
         var permits = new ZLinkRelocationPermitPool(new ZLinkLocationOptions());
         await using var reservationOwner =
             new ZLinkCanonicalRelocationReservationOwner(
@@ -230,18 +322,21 @@ public sealed class CanonicalRelocationReservationOwnerTests
         var participant = new ZLinkServiceWireCodec.RelocationParticipantRecord(
             1, 1, default, 0, null, 0, default, 0, 1, 64);
         var prepare = new ZLinkServiceWireCodec.RelocationPrepareRecord(
-            new ZLinkServiceWireCodec.RelocationWireId(10, 11), 1, 1,
+            new ZLinkServiceWireCodec.RelocationWireId(
+                envelope.CanonicalRelocationHigh,
+                envelope.CanonicalRelocationLow), 1, 1,
             new ZLinkServiceWireCodec.RelocationCoordinatorFence(
                 sourceLease.Token.OwnerId,
                 checked((ulong)sourceLease.Token.LeaseGeneration), source.RoutingId,
-                source.Status().LifecycleGeneration, ready.Snapshot.StoreVersion),
+                source.Status().LifecycleGeneration,
+                captured.Snapshot.StoreVersion),
             new ZLinkServiceWireCodec.RelocationCandidateRecord(
                 target.RoutingId, target.Status().LifecycleGeneration,
                 targetLease.Token.OwnerId,
                 checked((ulong)targetLease.Token.LeaseGeneration)),
             1, new ZLinkServiceWireCodec.RelocationObjectRecord(
-                1, string.Empty, "raw-actor", ready.Snapshot.ObjectGeneration,
-                ready.Snapshot.AuthorityOwnerGeneration),
+                1, string.Empty, "raw-actor", captured.Snapshot.ObjectGeneration,
+                captured.Snapshot.AuthorityOwnerGeneration),
             source.RoutingId, source.Status().LifecycleGeneration,
             1, 64, [participant],
             new ZLinkServiceWireCodec.RelocationRootRecord("root", 3), 1);
@@ -321,6 +416,65 @@ public sealed class CanonicalRelocationReservationOwnerTests
         Assert.True(terminalSealResponses >= 2);
         Assert.Equal(terminalSealResponses, attempt.SealResponses);
         Assert.Equal(1, attempt.Completions);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Raw_node_teardown_is_bounded_and_rejects_late_inbound_reply(
+        bool forceStop)
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "raw-supervisor-source");
+        var target = NewNode(
+            context,
+            "raw-supervisor-target",
+            TimeSpan.FromMilliseconds(50));
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://raw-supervisor-source-{suffix}";
+        var targetEndpoint = $"inproc://raw-supervisor-target-{suffix}";
+        source.SetBind(sourceEndpoint);
+        target.SetBind(targetEndpoint);
+        source.ConnectPeer(targetEndpoint, target.RoutingId);
+        target.ConnectPeer(sourceEndpoint, source.RoutingId);
+        var blocking = new BlockingOfferTarget(
+            source.RoutingId,
+            source.Status().LifecycleGeneration,
+            target.RoutingId,
+            target.Status().LifecycleGeneration);
+        target.SetCanonicalRelocationReservationTarget(blocking);
+        source.Start();
+        target.Start();
+        await WaitUntilAsync(() => source.Status().AdmittedPeerCount == 1
+            && target.Status().AdmittedPeerCount == 1);
+        using var requestCancellation = new CancellationTokenSource();
+        var request = source.ReserveCanonicalRelocationAsync(
+            target.RoutingId,
+            blocking.Prepare,
+            TimeSpan.FromSeconds(30),
+            requestCancellation.Token).AsTask();
+        await blocking.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using var forceStopBound = new CancellationTokenSource(
+            TimeSpan.FromMilliseconds(50));
+        var stopwatch = Stopwatch.StartNew();
+        var dispose = forceStop
+            ? target.ForceStopAsync(forceStopBound.Token).AsTask()
+            : target.DisposeAsync().AsTask();
+        await blocking.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await dispose.WaitAsync(TimeSpan.FromSeconds(5));
+        stopwatch.Stop();
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1));
+        Assert.False(blocking.Exited.Task.IsCompleted);
+
+        blocking.AllowExit.TrySetResult();
+        await blocking.Exited.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        Assert.Equal(1, blocking.OfferCount);
+        Assert.False(request.IsCompleted);
+
+        requestCancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
     }
 
     [Fact]
@@ -415,7 +569,8 @@ public sealed class CanonicalRelocationReservationOwnerTests
     {
         internal static async Task<Fixture> CreateAsync(
             ulong requiredMessages = 1,
-            ulong requiredBytes = 64)
+            ulong requiredBytes = 64,
+            ZLinkRelocationPermitPool? permits = null)
         {
             var time = new ManualTimeProvider();
             var store = new ZLinkInMemoryLocationStore(time);
@@ -432,9 +587,11 @@ public sealed class CanonicalRelocationReservationOwnerTests
                     await store.ClaimOwnerLeaseAsync("coordinator-owner",
                         TimeSpan.FromMinutes(1)));
             var coordinatorRid = RoutingId.From("reservation-coordinator");
-            await store.UpdateMeshNodeAsync(Descriptor(sourceRid, sourceLease.Token),
+            var sourceDescriptor = Descriptor(sourceRid, sourceLease.Token);
+            var targetDescriptor = Descriptor(targetRid, targetLease.Token);
+            await store.UpdateMeshNodeAsync(sourceDescriptor,
                 ZLinkLocationWriteIntent.NewClaim);
-            await store.UpdateMeshNodeAsync(Descriptor(targetRid, targetLease.Token),
+            await store.UpdateMeshNodeAsync(targetDescriptor,
                 ZLinkLocationWriteIntent.NewClaim);
             await store.UpdateMeshNodeAsync(
                 Descriptor(coordinatorRid, coordinatorLease.Token),
@@ -449,7 +606,79 @@ public sealed class CanonicalRelocationReservationOwnerTests
                     new ZLinkCapacityVector(1, 0, null))));
             var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
                 await store.CommitAsync(creation.Reservation,
-                    new byte[] { 2 }));
+                    ZLinkActorAuthorityPayloadCodec.Encode(
+                        new ZLinkActorAuthorityPayload(
+                            ZLinkActorAuthorityState.Ready,
+                            "Game.Actor",
+                            "actor-1",
+                            sourceDescriptor.EntrySpotId!,
+                            1,
+                            ZLinkSpotKind.Entry,
+                            sourceLease.Token.OwnerId,
+                            checked((ulong)sourceLease.Token.LeaseGeneration),
+                            "mesh",
+                            sourceRid,
+                            1))));
+            var sourceAuthority = new ZLinkActorAuthorityPayload(
+                ZLinkActorAuthorityState.Ready,
+                "Game.Actor",
+                "actor-1",
+                sourceDescriptor.EntrySpotId!,
+                1,
+                ZLinkSpotKind.Entry,
+                sourceLease.Token.OwnerId,
+                checked((ulong)sourceLease.Token.LeaseGeneration),
+                "mesh",
+                sourceRid,
+                1);
+            var relocationId = Guid.NewGuid();
+            var envelope = ZLinkCanonicalActorRelocationWriter.CreateInitial(
+                ZLinkStandaloneActorRelocationRuntime.CreateImmutableRoot(
+                    ready.Snapshot,
+                    sourceAuthority,
+                    targetDescriptor,
+                    relocationId,
+                    ReadOnlyMemory<byte>.Empty,
+                    [],
+                    default),
+                applicationVersion: 1);
+            var capturedPayload =
+                ZLinkCanonicalRelocationAuthorityStateCodec
+                    .ReplaceRelocationState(
+                        ready.Snapshot.Payload.Span,
+                        new ZLinkCanonicalRelocationAuthorityState(
+                            envelope.CanonicalRelocationHigh,
+                            envelope.CanonicalRelocationLow,
+                            0,
+                            sourceRid.ToHex(),
+                            1,
+                            sourceLease.Token.OwnerId,
+                            checked((ulong)sourceLease.Token.LeaseGeneration),
+                            string.Empty,
+                            0,
+                            string.Empty,
+                            0,
+                            0,
+                            coordinatorLease.Token.OwnerId,
+                            checked((ulong)coordinatorLease.Token.LeaseGeneration),
+                            coordinatorRid.ToHex(),
+                            1,
+                            2,
+                            "root",
+                            3,
+                            1,
+                            0),
+                        envelope);
+            var captured = Assert.IsType<
+                ZLinkAuthorityCompareExchangeResult.Stored>(
+                await store.CompareExchangeAuthorityAsync(
+                    key,
+                    ready.Snapshot.StoreVersion,
+                    new ZLinkAuthorityMutation.Put(
+                        capturedPayload,
+                        ZLinkAuthorityGenerationTransition.Preserve,
+                        null,
+                        null)));
             var participant = new ZLinkServiceWireCodec.RelocationParticipantRecord(
                 1, 1, default, 0, null, 0, default, 0,
                 requiredMessages, requiredBytes);
@@ -457,19 +686,21 @@ public sealed class CanonicalRelocationReservationOwnerTests
                 coordinatorLease.Token.OwnerId,
                 checked((ulong)coordinatorLease.Token.LeaseGeneration),
                 coordinatorRid, 1,
-                ready.Snapshot.StoreVersion);
+                captured.Snapshot.StoreVersion);
             var candidate = new ZLinkServiceWireCodec.RelocationCandidateRecord(
                 targetRid, 1, targetLease.Token.OwnerId,
                 checked((ulong)targetLease.Token.LeaseGeneration));
             var prepare = new ZLinkServiceWireCodec.RelocationPrepareRecord(
-                new ZLinkServiceWireCodec.RelocationWireId(1, 2), 1, 1,
+                new ZLinkServiceWireCodec.RelocationWireId(
+                    envelope.CanonicalRelocationHigh,
+                    envelope.CanonicalRelocationLow), 1, 1,
                 coordinator, candidate, 1,
                 new ZLinkServiceWireCodec.RelocationObjectRecord(
-                    1, string.Empty, "actor-1", ready.Snapshot.ObjectGeneration,
-                    ready.Snapshot.AuthorityOwnerGeneration),
+                    1, string.Empty, "actor-1", captured.Snapshot.ObjectGeneration,
+                    captured.Snapshot.AuthorityOwnerGeneration),
                 sourceRid, 1, requiredMessages, requiredBytes, [participant],
                 new ZLinkServiceWireCodec.RelocationRootRecord("root", 3), 1);
-            var permits = new ZLinkRelocationPermitPool(new ZLinkLocationOptions());
+            permits ??= new ZLinkRelocationPermitPool(new ZLinkLocationOptions());
             var owner = new ZLinkCanonicalRelocationReservationOwner(
                 store, permits, "mesh", targetRid, 1,
                 TimeSpan.FromSeconds(5), time);
@@ -513,9 +744,14 @@ public sealed class CanonicalRelocationReservationOwnerTests
     }
 
     private static ZLinkManagedMeshNode NewNode(
-        IContext context, string name)
+        IContext context,
+        string name,
+        TimeSpan? inboundOperationShutdownTimeout = null)
     {
-        var node = new ZLinkManagedMeshNode(context, "mesh");
+        var node = new ZLinkManagedMeshNode(
+            context,
+            "mesh",
+            inboundOperationShutdownTimeout: inboundOperationShutdownTimeout);
         node.SetRoutingId(RoutingId.From(name));
         node.AddChannel("mesh");
         return node;
@@ -531,8 +767,8 @@ public sealed class CanonicalRelocationReservationOwnerTests
         }
     }
 
-    private sealed class BlockingAuthorityStore(IZLinkAuthorityStore inner)
-        : IZLinkAuthorityStore
+    private sealed class BlockingAuthorityStore(IZLinkLocationStore inner)
+        : ZLinkLocationStoreTestDouble
     {
         internal TaskCompletionSource Entered { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -540,49 +776,61 @@ public sealed class CanonicalRelocationReservationOwnerTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         internal int ReserveCalls { get; private set; }
 
-        public ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
+        public override ValueTask<ZLinkAuthorityReadResult> ReadAuthorityAsync(
             ZLinkAuthorityKey key, CancellationToken cancellationToken = default) =>
             inner.ReadAuthorityAsync(key, cancellationToken);
 
-        public ValueTask<ZLinkAuthorityCompareExchangeResult>
+        public override ValueTask<ZLinkAuthorityCompareExchangeResult>
             CompareExchangeAuthorityAsync(ZLinkAuthorityKey key,
                 string expectedStoreVersion, ZLinkAuthorityMutation mutation,
                 CancellationToken cancellationToken = default) =>
             inner.CompareExchangeAuthorityAsync(key, expectedStoreVersion,
                 mutation, cancellationToken);
 
-        public ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
+        public override ValueTask<ZLinkAuthorityScanResult> ListAuthoritiesAsync(
             string prefix, ZLinkAuthorityScanCursor? cursor, int limit,
             CancellationToken cancellationToken = default) =>
             inner.ListAuthoritiesAsync(prefix, cursor, limit, cancellationToken);
 
-        public ValueTask<ZLinkObjectReserveResult> ReserveAsync(
+        public override ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOwnerLeaseAsync(ownerId, cancellationToken);
+
+        public override ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+            ListMeshNodesAsync(
+                string meshName,
+                ZLinkPageRequest page,
+                CancellationToken cancellationToken = default) =>
+            inner.ListMeshNodesAsync(meshName, page, cancellationToken);
+
+        public override ValueTask<ZLinkObjectReserveResult> ReserveAsync(
             ZLinkObjectReservationRequest request,
             CancellationToken cancellationToken = default) =>
             inner.ReserveAsync(request, cancellationToken);
 
-        public ValueTask<ZLinkObjectCommitResult> CommitAsync(
+        public override ValueTask<ZLinkObjectCommitResult> CommitAsync(
             ZLinkObjectReservation reservation, ReadOnlyMemory<byte> readyPayload,
             CancellationToken cancellationToken = default) =>
             inner.CommitAsync(reservation, readyPayload, cancellationToken);
 
-        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        public override ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
             ZLinkObjectReservation reservation,
             ZLinkObjectCreationCompletion completion,
             CancellationToken cancellationToken = default) =>
             inner.CompleteCreationAsync(reservation, completion, cancellationToken);
 
-        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        public override ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
             ZLinkCreationOperationId operation,
             CancellationToken cancellationToken = default) =>
             inner.ReadCreationTerminalAsync(operation, cancellationToken);
 
-        public ValueTask<ZLinkObjectAbortResult> AbortAsync(
+        public override ValueTask<ZLinkObjectAbortResult> AbortAsync(
             ZLinkObjectReservation reservation,
             CancellationToken cancellationToken = default) =>
             inner.AbortAsync(reservation, cancellationToken);
 
-        public async ValueTask<ZLinkRelocationCapacityReserveResult>
+        public override async ValueTask<ZLinkRelocationCapacityReserveResult>
             ReserveRelocationCapacityAsync(
                 ZLinkRelocationCapacityReservationRequest request,
                 CancellationToken cancellationToken = default)
@@ -594,22 +842,22 @@ public sealed class CanonicalRelocationReservationOwnerTests
                 cancellationToken);
         }
 
-        public ValueTask<ZLinkRelocationCapacityAbortResult>
+        public override ValueTask<ZLinkRelocationCapacityAbortResult>
             AbortRelocationCapacityAsync(ZLinkRelocationCapacityFence fence,
                 CancellationToken cancellationToken = default) =>
             inner.AbortRelocationCapacityAsync(fence, cancellationToken);
 
-        public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
+        public override ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
             ZLinkAggregatePrepareRequest request,
             CancellationToken cancellationToken = default) =>
             inner.PrepareAggregateAsync(request, cancellationToken);
 
-        public ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
+        public override ValueTask<ZLinkAggregateCommitResult> CommitAggregateAsync(
             ZLinkAggregateFence fence,
             CancellationToken cancellationToken = default) =>
             inner.CommitAggregateAsync(fence, cancellationToken);
 
-        public ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
+        public override ValueTask<ZLinkAggregateAbortResult> AbortAggregateAsync(
             ZLinkAggregateFence fence,
             CancellationToken cancellationToken = default) =>
             inner.AbortAggregateAsync(fence, cancellationToken);
@@ -720,5 +968,90 @@ public sealed class CanonicalRelocationReservationOwnerTests
             Completions++;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class BlockingOfferTarget : ICanonicalRelocationReservationTarget
+    {
+        private readonly RawAttemptTarget _inner;
+        private int _offerCount;
+
+        internal BlockingOfferTarget(
+            RoutingId sourceRid,
+            ulong sourceGeneration,
+            RoutingId targetRid,
+            ulong targetGeneration) =>
+            _inner = new RawAttemptTarget(
+                sourceRid, sourceGeneration, targetRid, targetGeneration);
+
+        internal ZLinkServiceWireCodec.RelocationPrepareRecord Prepare =>
+            _inner.Prepare;
+
+        internal TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource CancellationObserved { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource AllowExit { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal TaskCompletionSource Exited { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal int OfferCount => Volatile.Read(ref _offerCount);
+
+        public async ValueTask<ZLinkServiceWireCodec.RelocationReadyRecord> OfferAsync(
+            ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+            RoutingId authenticatedSourceNodeRid,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _offerCount);
+            Entered.TrySetResult();
+            using var registration = cancellationToken.Register(
+                () => CancellationObserved.TrySetResult());
+            try
+            {
+                await AllowExit.Task.ConfigureAwait(false);
+                return await _inner.OfferAsync(
+                        prepare,
+                        authenticatedSourceNodeRid,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                Exited.TrySetResult();
+            }
+        }
+
+        public ValueTask<ZLinkServiceWireCodec.RelocationReservedRecord> AcceptAsync(
+            ZLinkServiceWireCodec.RelocationReadyRecord acceptance,
+            RoutingId authenticatedSourceNodeRid,
+            CancellationToken cancellationToken) =>
+            _inner.AcceptAsync(acceptance, authenticatedSourceNodeRid, cancellationToken);
+
+        public ValueTask<ZLinkServiceWireCodec.RelocationAckRecord> StageDataAsync(
+            ZLinkServiceWireCodec.RelocationDataRecord data,
+            RoutingId authenticatedSourceNodeRid,
+            CancellationToken cancellationToken) =>
+            _inner.StageDataAsync(data, authenticatedSourceNodeRid, cancellationToken);
+
+        public bool TryCreateSealRequest(
+            ZLinkServiceWireCodec.RelocationWireId relocationId,
+            ulong targetAttemptGeneration,
+            out ZLinkServiceWireCodec.RelocationSealRecord seal) =>
+            _inner.TryCreateSealRequest(relocationId, targetAttemptGeneration, out seal);
+
+        public ValueTask AcceptSealResponseAsync(
+            ZLinkServiceWireCodec.RelocationSealRecord response,
+            RoutingId authenticatedSourceNodeRid,
+            CancellationToken cancellationToken) =>
+            _inner.AcceptSealResponseAsync(response, authenticatedSourceNodeRid, cancellationToken);
+
+        public ValueTask CompleteAsync(
+            ZLinkServiceWireCodec.RelocationCompleteRecord complete,
+            RoutingId authenticatedSourceNodeRid,
+            CancellationToken cancellationToken) =>
+            _inner.CompleteAsync(complete, authenticatedSourceNodeRid, cancellationToken);
     }
 }

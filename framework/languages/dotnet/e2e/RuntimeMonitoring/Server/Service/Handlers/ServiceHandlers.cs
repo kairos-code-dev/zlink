@@ -1,5 +1,6 @@
 using RuntimeMonitoring.Server.Service.Support;
 using RuntimeMonitoring.Shared;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -13,7 +14,7 @@ internal sealed class ProfileRequestHandler(
 {
     public async ValueTask<ProfileRes> HandleAsync(
         ProfileReq request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -88,8 +89,10 @@ internal sealed class MonitoringSubjectHandler(EvidenceStore evidence)
     public ValueTask HandleAsync(
         MonitoringSubjectSpot spot,
         ProfileReq message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken)
     {
+        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             $"logical-publish|topic=monitor.dynamic|marker={message.Marker}");

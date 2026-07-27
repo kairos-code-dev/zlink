@@ -17,7 +17,7 @@ sourceSets {
         ))
         java.include(
             "systems/zlink/framework/runtime/binding/ZLinkJavaRawServicePort.java",
-            "systems/zlink/framework/runtime/service/**",
+            "systems/zlink/framework/runtime/internal/service/**",
             "ServiceWireConstants.java"
         )
         compileClasspath += configurations.compileClasspath.get()
@@ -28,7 +28,7 @@ sourceSets {
         java.setSrcDirs(listOf("src/test/java"))
         java.include(
             "systems/zlink/framework/runtime/binding/ZLinkJavaRawServicePortContractTest.java",
-            "systems/zlink/framework/runtime/service/**"
+            "systems/zlink/framework/runtime/internal/service/**"
         )
         compileClasspath += m5Foundation.output + configurations.testCompileClasspath.get()
         runtimeClasspath += output + compileClasspath + configurations.testRuntimeClasspath.get()

@@ -60,6 +60,7 @@
         <Compile Include="Spots/SpotContracts.cs"/>
         <Compile Include="Streams/StreamContracts.cs"/>
         <Compile Include="Support/ContractExampleAttribute.cs"/>
+        <Compile Include="Support/LocationStoreContractExample.cs"/>
         <Compile Include="Timers/TimerContracts.cs"/>
         <Compile Include="GlobalUsings.cs"/>
         <Compile Include="../../scripts/PublicContractSnapshot.cs" Link="Support/PublicContractSnapshot.cs"/>

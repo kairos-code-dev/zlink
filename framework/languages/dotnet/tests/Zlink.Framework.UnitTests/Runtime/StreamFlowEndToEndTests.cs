@@ -22,7 +22,7 @@ public sealed class StreamFlowEndToEndTests
         builder.Services.AddZLinkFramework(options =>
         {
             options.ConfigureDispatch()
-                .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+                .MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(logPath);
             options.AddStreamNode("flow.stream")
                 .Bind($"tcp://127.0.0.1:{port}")

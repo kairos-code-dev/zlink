@@ -23,8 +23,8 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6AWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 /**
@@ -145,7 +145,7 @@ public final class ZLinkActorCreationCoordinator
         boolean getOrCreate,
         long deadline,
         ZLinkMeshNodeDescriptor target,
-        ZLinkSpotLocation entry,
+        EntrySpot entry,
         Set<ZLinkMeshNodeDescriptorKey> excludedTargets) {
         String key = ZLinkAuthorityKeyCodec.actor(actorId);
         byte[] creating = authorities.encode(
@@ -751,21 +751,17 @@ public final class ZLinkActorCreationCoordinator
         return Set.copyOf(result);
     }
 
-    private CompletionStage<ZLinkSpotLocation> resolveEntrySpot(
+    private CompletionStage<EntrySpot> resolveEntrySpot(
         ZLinkMeshNodeDescriptor target) {
         return target.entrySpotId()
-            .<CompletionStage<ZLinkSpotLocation>>map(spotId ->
-                locations.resolveSpot(new ZLinkSpotLocationKey(spotId))
-                    .thenCompose(entry ->
-                        entry != null
-                            && entry.spotKind() == ZLinkSpotKind.ENTRY
-                            && entry.meshName().equals(target.meshName())
-                            && entry.nodeRid().equals(target.rid())
-                        ? CompletableFuture.completedFuture(entry)
-                        : failed(
-                            "Target descriptor Entry Spot is not Ready")))
+            .<CompletionStage<EntrySpot>>map(spotId ->
+                CompletableFuture.completedFuture(
+                    new EntrySpot(spotId, target.lifecycleGeneration())))
             .orElseGet(() -> failed(
                 "Target descriptor has no Entry Spot identity"));
+    }
+
+    private record EntrySpot(String spotId, long spotGeneration) {
     }
 
     private static ZLinkServiceM6BWireCodec.ReservationFence

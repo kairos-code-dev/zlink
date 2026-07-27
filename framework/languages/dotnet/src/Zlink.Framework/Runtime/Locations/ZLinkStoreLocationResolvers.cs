@@ -12,9 +12,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkStoreLocationResolvers :
     IZLinkMeshNodeLocationResolver
 {
-    private readonly IZLinkMeshNodeLocationStore _meshNodeStore;
-    private readonly IZLinkAuthorityStore _authorityStore;
-    private readonly ZLinkLocationEventEmitter _events;
+    private readonly IZLinkLocationStore _store;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
     private readonly ZLinkLocationStoreHealth? _health;
@@ -28,18 +26,14 @@ internal sealed class ZLinkStoreLocationResolvers :
         _actorRoutes = [];
 
     internal ZLinkStoreLocationResolvers(
-        IZLinkMeshNodeLocationStore meshNodeStore,
-        IZLinkAuthorityStore authorityStore,
+        IZLinkLocationStore store,
         ZLinkOwnerLeaseTracker leaseTracker,
         ZLinkObservedLocationGenerations observed,
-        ZLinkLocationEventEmitter? events = null,
         ZLinkLocationStoreHealth? health = null,
         ZLinkLocationOptions? options = null,
         TimeProvider? timeProvider = null)
     {
-        _meshNodeStore = meshNodeStore;
-        _authorityStore = authorityStore;
-        _events = events ?? ZLinkLocationEventEmitter.Disabled;
+        _store = store;
         _observed = observed;
         _health = health;
         _leaseTracker = leaseTracker;
@@ -56,7 +50,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             _health,
             "mesh-node-resolver-read",
             cancellationToken,
-            storeToken => _meshNodeStore.ListAllMeshNodesAsync(meshName, storeToken))
+            storeToken => _store.ListAllMeshNodesAsync(meshName, storeToken))
             .ConfigureAwait(false);
         _observed.ReconcileDescriptors(meshName, rows);
 
@@ -82,7 +76,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             _health,
             "ZLinkSpotLocation-resolver-read",
             cancellationToken,
-            storeToken => _authorityStore.ReadAuthorityAsync(
+            storeToken => _store.ReadAuthorityAsync(
                 ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(key.SpotId),
                 storeToken)).ConfigureAwait(false);
         var raw = ProjectSpot(authority);
@@ -99,7 +93,6 @@ internal sealed class ZLinkStoreLocationResolvers :
         if (!liveRowPresent) _observed.ForgetSpot(key);
         if (row is null)
         {
-            await _events.SpotResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
             InvalidateSpotRoute(key);
             return null;
         }
@@ -114,7 +107,6 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             _observed.ForgetSpot(key);
             InvalidateSpotRoute(key);
-            await _events.SpotResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
             return null;
         }
         return row;
@@ -145,7 +137,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             _health,
             "ZLinkActorLocation-resolver-read",
             cancellationToken,
-            storeToken => _authorityStore.ReadAuthorityAsync(
+            storeToken => _store.ReadAuthorityAsync(
                 ZLinkActorAuthorityPayloadCodec.AuthorityKey(key.ActorId),
                 storeToken)).ConfigureAwait(false);
         var raw = ProjectActor(authority);
@@ -164,7 +156,6 @@ internal sealed class ZLinkStoreLocationResolvers :
         if (!liveRowPresent) _observed.ForgetActor(key);
         if (row is null)
         {
-            await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
             InvalidateActorRoute(key);
             return (null, liveRowPresent);
         }
@@ -179,7 +170,6 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             _observed.ForgetActor(key);
             InvalidateActorRoute(key);
-            await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
             return (null, false);
         }
         return (row, liveRowPresent);

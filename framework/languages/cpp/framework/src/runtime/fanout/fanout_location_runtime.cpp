@@ -67,8 +67,8 @@ fanout_location_runtime_t::fanout_location_runtime_t (
   message_bus_t bus,
   std::vector<channel_snapshot_t> channels,
   location_runtime_t &locations,
-  fanout_location_store_t &store,
-  owner_lease_store_t &leases,
+  location_store_t &store,
+  location_store_t &leases,
   service_provider_t &services,
   serializer_registry_t &serializers,
   const handler_registry_t &handlers) :

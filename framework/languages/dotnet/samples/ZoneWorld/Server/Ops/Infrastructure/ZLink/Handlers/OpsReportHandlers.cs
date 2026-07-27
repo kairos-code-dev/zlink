@@ -7,8 +7,7 @@ using ZoneWorld.Shared.Contracts;
 namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Handlers;
 
 /// <summary>
-/// A spot event a zone node observed locally (§8.1). Ops cannot subscribe to it directly:
-/// a spot event source only covers the SpotNode in the same process.
+/// A provider-neutral spot timer failure event reported by a zone node (§8.1).
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.Ops)]
 internal sealed class ReportSpotEventHandler(

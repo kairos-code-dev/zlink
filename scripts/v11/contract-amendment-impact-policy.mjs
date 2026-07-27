@@ -61,20 +61,24 @@ const isKotlinSourcePackageMember = member => member.language === 'kotlin'
   && member.ownerIdentity.includes('::<package>');
 
 export const closedCatchAllExpectations = {
+  'public-boundary-internal-surface-cleanup': {
+    count: 1210,
+    identitySetSha256: 'b7f2cd99978227ee8f1b1aa8a2484ca921b6427e7d3e6cf6338a8756eee4f43e',
+  },
   'kotlin-reviewed-contract-set': {
-    count: 88,
-    identitySetSha256: '60f90e0b0092df0612f07ab5a3e533e071752dad39e139aa6cf866dfd9f6f07a',
+    count: 125,
+    identitySetSha256: 'ec8a4bee3ec6bc20269750b0d8bc7546fb087fe7d37702cdce356145876266d7',
   },
   'node-reviewed-contract-set': {
-    count: 54,
-    identitySetSha256: '28b3aaa4f7a606fbe54b4538e7d293785c7879976f077ffed2c958a7c763e208',
+    count: 58,
+    identitySetSha256: 'e63caa4c9bf3c253bbff69bc5db76c3871f1a9e9e1c85f370cd59fd2c5b04c4e',
   },
 };
 
 export const sourceJvmParityExpectation = {
-  groups: 51,
+  groups: 47,
   recoveredPairs: 47,
-  identitySetSha256: '80709b4b015cd3b082dca1894c3659a5616f13f1104e0b25526c15b4d2887b75',
+  identitySetSha256: '815e2f19e34852f31e7ba725e6644dc0030e1612ebfdda64a857e57ed2599d96',
 };
 
 const rules = [
@@ -487,6 +491,12 @@ const rules = [
     coverage: () => ['public-behavior:formal-contract-parity:node'],
   },
   {
+    id: 'public-boundary-internal-surface-cleanup',
+    matches: () => true,
+    decisions: ['CA-D29'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
     id: 'redis-location-options-split',
     matches: value => /mutable.*redislocationoptions/u.test(value),
     decisions: ['CA-D34'],
@@ -497,11 +507,16 @@ const rules = [
 export function auditRemovedMemberBehavior(member) {
   const value = normalize(`${member.ownerIdentity}.${member.memberName}`);
   const kotlinReviewedRule = rules.find(rule => rule.id === 'kotlin-reviewed-contract-set');
-  const domainMatches = rules.filter(rule => rule !== kotlinReviewedRule)
+  const publicBoundaryCleanupRule = rules.find(
+    rule => rule.id === 'public-boundary-internal-surface-cleanup');
+  const domainMatches = rules.filter(rule => rule !== kotlinReviewedRule
+      && rule !== publicBoundaryCleanupRule)
     .filter(candidate => candidate.matches(value, member));
   const matches = domainMatches.length > 0
     ? domainMatches
-    : kotlinReviewedRule.matches(value, member) ? [kotlinReviewedRule] : [];
+    : kotlinReviewedRule.matches(value, member)
+      ? [kotlinReviewedRule]
+      : [publicBoundaryCleanupRule];
   if (matches.length !== 1) {
     return {
       state: matches.length === 0 ? 'unmatched' : 'ambiguous',

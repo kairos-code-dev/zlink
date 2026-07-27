@@ -8,7 +8,7 @@ import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 

@@ -6,10 +6,10 @@ import type {
   ZLinkMessageContext,
   ZLinkPublishMessageContext,
   ZLinkRouteMessageContext,
-  ZLinkRuntimeEventPublisher,
   ZLinkSpot,
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
+import type { ZLinkRuntimeEventPublisher } from './framework-integration-contracts';
 import { ZLINK_NEST_HANDLER_GROUP } from './tokens';
 
 export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';

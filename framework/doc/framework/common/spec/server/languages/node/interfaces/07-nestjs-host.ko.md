@@ -46,8 +46,6 @@ export declare const ZLINK_NEST_HANDLER_GROUP: unique symbol;
 
 export declare const ZLINK_ROUTE_CLIENT: unique symbol;
 
-export declare const ZLINK_RUNTIME_EVENT_PUBLISHER: unique symbol;
-
 export declare const ZLINK_SPOT_MANAGER: unique symbol;
 
 export declare const ZLINK_SPOT_OUTBOUND: unique symbol;
@@ -97,10 +95,6 @@ export interface ZLinkModuleFactoryOptions {
 
 export interface ZLinkModuleOptions {
     readonly [ZLINK_MODULE_OPTIONS_BRAND]: true;
-}
-
-export declare class ZLinkMonitoringModule {
-    static forRoot(): DynamicModule;
 }
 
 export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
@@ -155,6 +149,22 @@ export interface ZLinkNestFrameworkAdditionalOptions {
     readonly dispatch?: ZLinkDispatchOptions;
     readonly monitoring?: ZLinkMonitoringOptions;
     readonly metrics?: ZLinkMetricsOptions;
+}
+
+export interface ZLinkLocationOptions {
+    ownerLeaseRenewIntervalMs(value: number): this;
+    ownerLeaseTtlMs(value: number): this;
+    pollingIntervalMs(value: number): this;
+    storeFailureGraceMs(value: number): this;
+    ownerLeaseFencingMarginMs(value: number): this;
+    ownerLeaseRenewTimeoutMs(value: number): this;
+    routeCacheMaxAgeMs(value: number): this;
+    relocationForwardingWindowMs(value: number): this;
+    maxActiveOutboundRelocations(value: number): this;
+    maxActiveInboundRelocations(value: number): this;
+    maxConcurrentRelocationCaptures(value: number): this;
+    maxConcurrentRelocationRestores(value: number): this;
+    maxRelocationPayloadInFlightBytes(value: number): this;
 }
 
 export interface ZLinkNestFrameworkOptionsBuilder {
@@ -391,6 +401,9 @@ export declare class ZLinkHttpClientModule {
     static forRoot(options: ZLinkHttpClientModuleOptions): DynamicModule;
 }
 ```
+
+NestJS builder도 Entry Spot 구현 type만 등록한다. Entry Spot의 `SpotId`는 Framework가
+`<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식으로 발급하며 caller 지정 identity option은 없다.
 
 `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot [factory](../../../../01-glossary.ko.md#factory)가 하나라도 등록된 Object Server는
 `addRelocationStore(...)`를 정확히 한 번 호출해야 한다. [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고 모든 factory가

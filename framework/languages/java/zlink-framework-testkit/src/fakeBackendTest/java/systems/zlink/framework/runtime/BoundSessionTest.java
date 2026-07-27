@@ -3,7 +3,7 @@ package systems.zlink.framework.runtime;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
-import systems.zlink.framework.runtime.backend.*;
+import systems.zlink.framework.runtime.internal.backend.*;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -168,7 +168,7 @@ final class BoundSessionTest {
     private static DefaultZLinkFrameworkOptions entrySpotOptions() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addHandlersFromPackageOf(BoundSessionTest.class);
-        var node = options.addSpotMesh("game");
+        var node = systems.zlink.framework.runtime.internal.configuration.ZLinkLegacyTopology.addSpotMesh(options, "game");
         node.enableRouter("inproc://bound-session-entry-node");
         node.addEntrySpot(BoundSessionEntrySpot.class);
         node.addActorFactory("player", RemoteSessionRelayTest.PlayerActorFactory.class);

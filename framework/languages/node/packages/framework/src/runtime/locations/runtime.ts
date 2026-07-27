@@ -4,26 +4,17 @@ import {
 } from '../../contracts/Locations/Options';
 import { randomUUID } from 'node:crypto';
 import type { RoutingId } from '../../contracts/Common';
-import type {
-  ZLinkClientServerLocationStore,
-  ZLinkFanoutLocationStore,
-  ZLinkPeerLocationStore,
-  ZLinkRouteLocationStore
-} from '../../contracts/Locations/Stores';
 import {
   ZLinkLocationAutoConnectType,
+  ZLinkFrameworkRuntimeState,
   ZLinkLocationKind,
   ZLinkLocationTopologyState,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  type ZLinkActorLocationStore,
-  type ZLinkAuthorityStore,
   type ZLinkLocationRuntimeQuery,
   type ZLinkLocationStore,
   type ZLinkLocationOwnerToken,
-  type ZLinkOwnerLeaseStore,
   type ZLinkOwnerLeaseRenewed,
-  type ZLinkSpotLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
@@ -46,11 +37,19 @@ import {
   type ZLinkSpotLocation,
   type ZLinkSpotLocationFilter,
   type ZLinkSpotLocationKey
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 import type {
+  ZLinkActorLocationStore,
   ZLinkActorLocationQueryStore,
+  ZLinkAuthorityStore,
+  ZLinkClientServerLocationStore,
+  ZLinkFanoutLocationStore,
+  ZLinkOwnerLeaseStore,
+  ZLinkPeerLocationStore,
+  ZLinkRouteLocationStore,
+  ZLinkSpotLocationStore,
   ZLinkSpotLocationQueryStore
-} from '../../contracts/Locations/Stores';
+} from './internal-store-contracts';
 import {
   zlinkLocationAutoConnectTypeName,
   zlinkLocationRoleName
@@ -85,6 +84,7 @@ export interface ZLinkLocationRuntimeOptions {
   readonly setTimer?: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer?: (handle: unknown) => void;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly meshNames?: readonly string[];
 }
 
 export interface ZLinkLocationEventSink {
@@ -132,6 +132,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   private started = false;
   private ownerCleanupComplete = true;
   private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
+  private readonly meshNames: readonly string[];
   private peerMetricCount = 0;
   private nextLeaseRenewAtMs?: number;
   private ownerToken?: ZLinkLocationOwnerToken;
@@ -146,6 +147,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     this.ownerId = runtimeOptions.ownerId ?? randomUUID().replaceAll('-', '');
     this.events = runtimeOptions.events;
     this.metrics = runtimeOptions.metrics;
+    this.meshNames = [...new Set(runtimeOptions.meshNames ?? [])];
     this.monotonicNowMs = runtimeOptions.monotonicNowMs ?? (() => performance.now());
     this.setTimer = runtimeOptions.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
     this.clearTimer = runtimeOptions.clearTimer ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
@@ -489,8 +491,20 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     meshName: string,
     signal?: AbortSignal
   ): Promise<readonly ZLinkMeshNodeDescriptor[]> {
-    const rows = await this.stores.locationStore.listMeshNodes(meshName, signal);
+    const rows = (await this.stores.locationStore.listMeshNodes(meshName, undefined, signal)).items;
     return this.filterLive(rows, (row) => row.ownerId, signal);
+  }
+
+  async listMeshNodeDescriptors(
+    meshName: string,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> {
+    const rows = await this.stores.locationStore.listMeshNodes(meshName, this.pageRequest(page), signal);
+    return {
+      items: await this.filterLive(rows.items, (row) => row.ownerId, signal),
+      continuationToken: rows.continuationToken
+    };
   }
 
   async listSpotLocations(
@@ -544,80 +558,25 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkLocationTopologyEntry>> {
-    const [peers, spots, actors, routes] = await Promise.all([
-      this.listPeerLocations({
-        meshName: filter.meshName,
-        role: filter.role,
-        nodeRid: filter.nodeRid
-      }, signal),
-      this.listSpotLocations({
-        meshName: filter.meshName,
-        nodeRid: filter.nodeRid
-      }, page, signal),
-      this.listActorLocations({
-        nodeRid: filter.nodeRid
-      }, page, signal),
-      this.listRouteLocations({
-        ownerNodeRid: filter.nodeRid
-      }, page, signal)
-    ]);
     const entries: ZLinkLocationTopologyEntry[] = [];
-    if (filter.kind === undefined || filter.kind === ZLinkLocationKind.Peer) {
-      entries.push(...peers.map((peer) => ({
-        kind: ZLinkLocationKind.Peer,
-        meshName: peer.meshName,
-        role: peer.role,
-        nodeRid: peer.nodeRid,
-        endpoint: peer.endpoint,
-        state: ZLinkLocationTopologyState.Discovered,
-        desiredCount: 1,
-        readyCount: 0,
-        errorCode: 0,
-        updatedAt: peer.updatedAt
-      })));
+    for (const meshName of this.meshNamesOf(filter.meshName)) {
+      for (const descriptor of await this.listAllMeshNodeDescriptors(meshName, signal)) {
+        const live = (await this.filterLive([descriptor], row => row.ownerId, signal)).length > 0;
+        const entry: ZLinkLocationTopologyEntry = {
+          meshName: descriptor.meshName,
+          nodeRid: descriptor.rid,
+          endpoint: descriptor.endpoint,
+          draining: descriptor.state === ZLinkFrameworkRuntimeState.Draining,
+          state: live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
+          updatedAt: descriptor.updatedAt
+        };
+        if ((filter.nodeRid === undefined || entry.nodeRid === filter.nodeRid)
+          && (filter.state === undefined || entry.state === filter.state)) {
+          entries.push(entry);
+        }
+      }
     }
-    if (filter.kind === undefined || filter.kind === ZLinkLocationKind.Spot) {
-      entries.push(...spots.items.map((spot) => ({
-        kind: ZLinkLocationKind.Spot,
-        meshName: spot.meshName,
-        nodeRid: spot.ownerNodeRid,
-        spotId: spot.spotId,
-        state: ZLinkLocationTopologyState.Discovered,
-        desiredCount: 1,
-        readyCount: 0,
-        errorCode: 0,
-        updatedAt: spot.updatedAt
-      })));
-    }
-    if (filter.kind === undefined || filter.kind === ZLinkLocationKind.Actor) {
-      entries.push(...actors.items.map((actor) => ({
-        kind: ZLinkLocationKind.Actor,
-        meshName: actor.meshName,
-        nodeRid: actor.ownerNodeRid,
-        spotId: actor.spotId,
-        actorId: actor.actorId,
-        state: ZLinkLocationTopologyState.Discovered,
-        desiredCount: 1,
-        readyCount: 0,
-        errorCode: 0,
-        updatedAt: actor.updatedAt
-      })));
-    }
-    if (filter.kind === undefined || filter.kind === ZLinkLocationKind.Route) {
-      entries.push(...routes.items.map((route) => ({
-        kind: ZLinkLocationKind.Route,
-        nodeRid: route.ownerNodeRid,
-        state: ZLinkLocationTopologyState.Discovered,
-        desiredCount: 1,
-        readyCount: 0,
-        errorCode: 0,
-        updatedAt: route.updatedAt
-      })));
-    }
-    const filtered = filter.state === undefined
-      ? entries
-      : entries.filter((entry) => entry.state === filter.state);
-    return { items: filtered, continuationToken: spots.continuationToken ?? actors.continuationToken ?? routes.continuationToken };
+    return this.pageInMemory(entries, page);
   }
 
   private pageRequest(page: ZLinkPageRequest | undefined): ZLinkPageRequest {
@@ -628,29 +587,63 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   async listServiceSummaries(
     filter: ZLinkLocationServiceSummaryFilter,
+    page?: ZLinkPageRequest,
     signal?: AbortSignal
-  ): Promise<readonly ZLinkLocationServiceSummary[]> {
-    const peers = await this.listPeerLocations({
-      autoConnectType: filter.autoConnectType,
-      meshName: filter.meshName,
-      role: filter.role
-    }, signal);
-    const summaries = new Map<string, ZLinkLocationServiceSummary>();
-    for (const peer of peers) {
-      const key = `${peer.meshName}\n${peer.autoConnectType}\n${peer.role}`;
-      const current = summaries.get(key);
-      summaries.set(key, {
-        meshName: peer.meshName,
-        autoConnectType: peer.autoConnectType,
-        role: peer.role,
-        totalCount: (current?.totalCount ?? 0) + 1,
-        readyCount: current?.readyCount ?? 0,
-        errorCount: current?.errorCount ?? 0,
-        stoppedCount: current?.stoppedCount ?? 0,
-        updatedAt: current === undefined || peer.updatedAt > current.updatedAt ? peer.updatedAt : current.updatedAt
+  ): Promise<ZLinkLocationPage<ZLinkLocationServiceSummary>> {
+    const summaries: ZLinkLocationServiceSummary[] = [];
+    for (const meshName of this.meshNamesOf(filter.meshName)) {
+      const descriptors = await this.listAllMeshNodeDescriptors(meshName, signal);
+      if (descriptors.length === 0) continue;
+      const live = await this.filterLive(descriptors, row => row.ownerId, signal);
+      const liveOwners = new Set(live.map(row => row.ownerId));
+      summaries.push({
+        meshName,
+        totalCount: descriptors.length,
+        readyCount: descriptors.filter(row => liveOwners.has(row.ownerId)).length,
+        errorCount: 0,
+        stoppedCount: descriptors.filter(row => !liveOwners.has(row.ownerId)).length,
+        lastUpdatedAt: descriptors.reduce(
+          (latest, row) => row.updatedAt > latest ? row.updatedAt : latest,
+          descriptors[0].updatedAt
+        )
       });
     }
-    return [...summaries.values()];
+    return this.pageInMemory(summaries, page);
+  }
+
+  private meshNamesOf(meshName: string | undefined): readonly string[] {
+    return meshName === undefined ? this.meshNames : [meshName];
+  }
+
+  private async listAllMeshNodeDescriptors(
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<readonly ZLinkMeshNodeDescriptor[]> {
+    const rows: ZLinkMeshNodeDescriptor[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const result = await this.stores.locationStore.listMeshNodes(
+        meshName,
+        { pageSize: this.options.listPageSize, continuationToken },
+        signal
+      );
+      rows.push(...result.items);
+      continuationToken = result.continuationToken;
+    } while (continuationToken !== undefined);
+    return rows;
+  }
+
+  private pageInMemory<T>(entries: readonly T[], page: ZLinkPageRequest | undefined): ZLinkLocationPage<T> {
+    const normalized = this.pageRequest(page);
+    const parsedOffset = Number.parseInt(normalized.continuationToken ?? '0', 10);
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+    const pageSize = normalized.pageSize ?? this.options.listPageSize;
+    const items = entries.slice(offset, offset + pageSize);
+    const nextOffset = offset + items.length;
+    return {
+      items,
+      continuationToken: nextOffset < entries.length ? String(nextOffset) : undefined
+    };
   }
 
   private async filterLive<TRow>(

@@ -6,7 +6,7 @@ import {
   type ZLinkLocationWriteResult,
   type ZLinkPeerLocation,
   type ZLinkPeerLocationKey
-} from '../../contracts/Locations';
+} from './internal-location-contracts';
 
 export interface ZLinkAutoConnectLocal {
   readonly autoConnectType: ZLinkLocationAutoConnectType;

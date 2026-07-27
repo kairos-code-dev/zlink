@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 
 final class ZLinkSpotAcceptedJournal {
     private ZLinkSpotAcceptedJournal() {
@@ -27,9 +27,9 @@ final class ZLinkSpotAcceptedJournal {
     }
 
     static Record decode(byte[] encoded) {
-        if (systems.zlink.framework.runtime.service
+        if (systems.zlink.framework.runtime.internal.service
             .ZLinkServiceFrozenRecordCodec.isCanonical(encoded)) {
-            var decoded = systems.zlink.framework.runtime.service
+            var decoded = systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceFrozenRecordCodec.decodeSpot(encoded);
             return new Record(
                 ZLinkBackendRequestResult.OK,

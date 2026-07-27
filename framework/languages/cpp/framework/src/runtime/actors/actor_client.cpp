@@ -8,6 +8,7 @@
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
+#include "runtime/locations/actor_authority_payload.hpp"
 
 #include <zlink/framework/contracts/locations/stores.hpp>
 
@@ -559,15 +560,20 @@ class actor_client_impl_t final : public actor_client_t
                 _route_cache.erase (cached);
             }
         }
-        auto row =
-          _store->resolve_actor (actor_location_key_t{runtime->mesh_name (), actor_id}).result ();
-        if (!row) {
+        auto read = _store->read_authority (authority_key_t{"1:" + actor_id}).result ();
+        if (!read) {
             return result_t<resolved_actor_t>::failure (
               framework_error_kind_t::request_failed,
-              row.error () ? row.error ()->what () : "actor location lookup failed",
-              row.error () && row.error ()->is_retriable ());
+              read.error () ? read.error ()->what () : "actor authority lookup failed",
+              read.error () && read.error ()->is_retriable ());
         }
-        if (!row.value () || !_actor_locations->accepts (*row.value ())) {
+        const auto *snapshot = std::get_if<authority_snapshot_t> (&read.value ());
+        const auto projection = snapshot
+          ? zlink::framework::runtime::decode_actor_authority_payload (snapshot->payload)
+          : std::nullopt;
+        if (!snapshot || snapshot->allocation.state != placement_allocation_state_t::active
+            || snapshot->allocation.object_kind != placement_object_kind_t::actor
+            || !projection || projection->actor.actor_id () != actor_id) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::actor_route_not_found
@@ -576,7 +582,7 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor location became stale",
               policy == stale_policy_t::location_stale);
         }
-        if (row.value ()->spot_id.empty ()) {
+        if (projection->spot_id.empty ()) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::actor_route_not_found
@@ -586,10 +592,10 @@ class actor_client_impl_t final : public actor_client_t
               policy == stale_policy_t::location_stale);
         }
         auto resolved = resolved_actor_t{
-          row.value ()->actor_ref, row.value ()->actor_ref,
-          node_rid_t::from_string (row.value ()->owner_node_rid.to_string ()),
-          spot_id_t (row.value ()->spot_id)};
-        const auto lease_lifetime = _store->owner_admission_lifetime (row.value ()->owner_id);
+          projection->actor, projection->actor,
+          snapshot->allocation.target.node_rid,
+          projection->spot_id};
+        const auto lease_lifetime = _store->owner_admission_lifetime (snapshot->owner);
         if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()
             && lease_lifetime) {
             const auto lifetime = std::min (

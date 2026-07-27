@@ -20,6 +20,9 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
     private readonly object _disposeGate = new();
     private readonly object _terminalGate = new();
     private readonly object _transportCloseGate = new();
+    private readonly bool _requireConnectionReady;
+    private readonly TaskCompletionSource<(string LocalAddr, string RemoteAddr)>
+        _connectionReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _connected;
     private readonly TaskCompletionSource<bool> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -46,7 +49,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         string transport,
         TimeProvider timeProvider,
         bool actorDispatchEnabled = true,
-        ZLinkAsyncSubmitter? sendSubmitter = null)
+        ZLinkAsyncSubmitter? sendSubmitter = null,
+        bool requireConnectionReady = false)
     {
         AsyncServiceScope scope = default;
         var scopeCreated = false;
@@ -63,7 +67,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
                 transport,
                 timeProvider,
                 actorDispatchEnabled,
-                sendSubmitter);
+                sendSubmitter,
+                requireConnectionReady);
             session.Initialize(headerSessionType);
             return session;
         }
@@ -87,12 +92,14 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         string transport,
         TimeProvider timeProvider,
         bool actorDispatchEnabled,
-        ZLinkAsyncSubmitter? sendSubmitter)
+        ZLinkAsyncSubmitter? sendSubmitter,
+        bool requireConnectionReady)
     {
         _scope = scope;
         _socket = socket;
         _removeSession = removeSession;
         _runtime = scope.ServiceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        _requireConnectionReady = requireConnectionReady;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         Stream = new ZLinkManagedStream(socket, routingId, _runtime.Registration.Codecs, transport);
         _flow = new ZLinkMessageFlowTracer(
@@ -217,6 +224,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
 
     public void EnqueueConnected(string localAddr, string remoteAddr)
     {
+        _connectionReady.TrySetResult((localAddr, remoteAddr));
         Enqueue(cancellationToken => MarkConnectedAsync(localAddr, remoteAddr, cancellationToken));
     }
 
@@ -379,7 +387,8 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         using (payload)
         {
             if (IsClosing) return;
-            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+            if (!await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false))
+                return;
             ZlinkStreamHeader decoded;
             try
             {
@@ -485,7 +494,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         await CompleteSessionAsync(
                 new ZLinkStreamError(
                     ZLinkStreamSessionError.Internal,
-                    new ZLinkStreamDiagnostic(0, error.Message)),
+                    error.Message),
                 notifyDisconnected: true)
             .ConfigureAwait(false);
     }
@@ -514,7 +523,7 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         await CompleteSessionAsync(
                 new ZLinkStreamError(
                     ZLinkStreamSessionError.TransportError,
-                    new ZLinkStreamDiagnostic(0, error.Message)),
+                    error.Message),
                 notifyDisconnected: true)
             .ConfigureAwait(false);
     }
@@ -659,16 +668,42 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         if (!_serial.Enqueue(work)) onRejected?.Invoke();
     }
 
-    private async ValueTask EnsureConnectedAsync(CancellationToken cancellationToken)
+    private async ValueTask<bool> EnsureConnectedAsync(CancellationToken cancellationToken)
     {
+        if (_requireConnectionReady
+            && (string.IsNullOrWhiteSpace(Stream.LocalAddr)
+                || string.IsNullOrWhiteSpace(Stream.RemoteAddr)))
+        {
+            try
+            {
+                var metadata = await _connectionReady.Task.WaitAsync(
+                        _runtime.Registration.DefaultRequestTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                await MarkConnectedAsync(
+                        metadata.LocalAddr,
+                        metadata.RemoteAddr,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException timeout)
+            {
+                TryScheduleTerminal(
+                    "connection_metadata_timeout",
+                    () => CloseForTransportErrorAsync(timeout));
+                return false;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(Stream.LocalAddr)
             || string.IsNullOrWhiteSpace(Stream.RemoteAddr))
-            return;
+            return !_requireConnectionReady;
 
-        if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0) return;
+        if (Interlocked.CompareExchange(ref _connected, 1, 0) != 0) return true;
 
         RecordStreamOpenedMetric();
         await InvokeConnectedLifecycleAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     private async ValueTask InvokeConnectedLifecycleAsync(CancellationToken cancellationToken)

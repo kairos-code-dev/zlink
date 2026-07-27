@@ -1,5 +1,13 @@
 namespace Zlink.Framework.Runtime.Spots;
 
+internal enum ZLinkCommittedSpotForwardingResult
+{
+    NotApplicable,
+    Forwarded,
+    StaleRejected,
+    Full
+}
+
 internal sealed class ZLinkCommittedSpotForwarding(
     RoutingId targetNodeRid,
     ulong objectGeneration,
@@ -9,13 +17,11 @@ internal sealed class ZLinkCommittedSpotForwarding(
     ulong targetAuthorityOwnerGeneration,
     ZLinkLocationOwnerToken sourceOwner,
     ZLinkLocationOwnerToken targetOwner,
-    DateTimeOffset expiresAt)
+    DateTimeOffset expiresAt,
+    ZLinkBoundedIngressAdmission? admission = null)
 {
-    private const int MessageCapacity = 1_024;
-    private const long ByteCapacity = 16L * 1024 * 1024;
-    private readonly object _gate = new();
-    private int _messages;
-    private long _bytes;
+    private readonly ZLinkBoundedIngressAdmission _admission =
+        admission ?? new ZLinkBoundedIngressAdmission();
 
     internal RoutingId TargetNodeRid { get; } = targetNodeRid;
     internal ulong ObjectGeneration { get; } = objectGeneration;
@@ -29,30 +35,54 @@ internal sealed class ZLinkCommittedSpotForwarding(
     internal ZLinkLocationOwnerToken TargetOwner { get; } = targetOwner;
     internal DateTimeOffset ExpiresAt { get; } = expiresAt;
 
-    internal bool TryAcquire(long bytes)
+    internal bool MatchesSourceRoute(
+        ZLinkBackendRouteReceived received,
+        ulong currentObjectGeneration,
+        ZLinkLocationOwnerToken? currentSourceOwner,
+        DateTimeOffset now) =>
+        ExpiresAt > now
+        && received.ForwardingHopCount < 8
+        && received.OperationId.High != 0
+        && received.OperationId.Low != 0
+        && ObjectGeneration != 0
+        && ObjectGeneration == currentObjectGeneration
+        && received.TargetNodeGeneration == SourceNodeGeneration
+        && received.AuthorityOwnerGeneration == SourceAuthorityOwnerGeneration
+        && SourceOwner.LeaseGeneration > 0
+        && TargetOwner.LeaseGeneration > 0
+        && received.OwnerLeaseGeneration
+           == checked((ulong)SourceOwner.LeaseGeneration)
+        && SourceAuthorityOwnerGeneration != ulong.MaxValue
+        && TargetAuthorityOwnerGeneration
+           == SourceAuthorityOwnerGeneration + 1
+        && currentSourceOwner is { } owner
+        && owner == SourceOwner;
+
+    internal bool TryAcquire(long bytes, out AdmissionLease? lease)
     {
-        if (bytes < 0)
-            return false;
-        lock (_gate)
+        if (!_admission.TryAcquire(bytes))
         {
-            if (_messages >= MessageCapacity
-                || bytes > ByteCapacity - _bytes)
-                return false;
-            _messages++;
-            _bytes += bytes;
-            return true;
+            lease = null;
+            return false;
         }
+
+        lease = new AdmissionLease(_admission, bytes);
+        return true;
     }
 
-    internal void Release(long bytes)
+    internal (int Records, long Bytes) AdmissionSnapshot() =>
+        _admission.Snapshot();
+
+    internal sealed class AdmissionLease(
+        ZLinkBoundedIngressAdmission admission,
+        long bytes) : IDisposable
     {
-        lock (_gate)
+        private int _disposed;
+
+        public void Dispose()
         {
-            _messages--;
-            _bytes -= bytes;
-            if (_messages < 0 || _bytes < 0)
-                throw new InvalidOperationException(
-                    "SPOT forwarding admission became negative.");
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                admission.Release(bytes);
         }
     }
 }

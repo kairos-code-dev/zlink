@@ -11,25 +11,19 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.SubmissionPublisher;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkAuthorityEntry;
 import systems.zlink.framework.locations.ZLinkAuthorityPage;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
-import systems.zlink.framework.locations.ZLinkLocationChangeType;
-import systems.zlink.framework.locations.ZLinkLocationChanged;
-import systems.zlink.framework.locations.ZLinkLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationWatchStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkPlacementAllocation;
 import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
 import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
-import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
-import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
 final class ZLinkStatefulAuthorityRouteRuntimeTest {
     private static final String MESH_NAME = "game";
@@ -62,15 +56,12 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                     MESH_NAME,
                     NODE_RID,
                     NODE_GENERATION))));
-        ZLinkAuthorityStore store = authorityStore(entries);
-        var publisher = new SubmissionPublisher<ZLinkLocationChanged>();
-        ZLinkLocationWatchStore watchStore = ignored -> publisher;
+        ZLinkLocationStore store = authorityStore(entries);
         var recorded = new RecordedNode();
         var failures = new CopyOnWriteArrayList<Throwable>();
 
         try (var runtime = new ZLinkStatefulAuthorityRouteRuntime(
                  store,
-                 watchStore,
                  Map.of(MESH_NAME, recorded.proxy()),
                  Duration.ofHours(1),
                  failures::add)) {
@@ -92,24 +83,18 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                     MESH_NAME,
                     NODE_RID,
                     NODE_GENERATION))));
-            publisher.submit(change(
-                ZLinkLocationChangeType.UPSERTED,
-                AUTHORITY_GENERATION));
+            runtime.reconcile().toCompletableFuture().join();
 
             await(() -> recorded.remembered.size() == 1
                 && recorded.registered.size() == 2
                 && recorded.forgottenIntents.size() == 1);
 
             entries.set(List.of());
-            publisher.submit(change(
-                ZLinkLocationChangeType.REMOVED,
-                AUTHORITY_GENERATION + 1));
+            runtime.reconcile().toCompletableFuture().join();
 
             await(() -> recorded.forgottenRoutes.size() == 1
                 && recorded.forgottenIntents.size() == 2);
             assertTrue(failures.isEmpty(), failures.toString());
-        } finally {
-            publisher.close();
         }
     }
 
@@ -141,12 +126,12 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                 Instant.EPOCH));
     }
 
-    private static ZLinkAuthorityStore authorityStore(
+    private static ZLinkLocationStore authorityStore(
         java.util.concurrent.atomic.AtomicReference<
             List<ZLinkAuthorityEntry>> entries) {
-        return (ZLinkAuthorityStore) Proxy.newProxyInstance(
-            ZLinkAuthorityStore.class.getClassLoader(),
-            new Class<?>[] {ZLinkAuthorityStore.class},
+        return (ZLinkLocationStore) Proxy.newProxyInstance(
+            ZLinkLocationStore.class.getClassLoader(),
+            new Class<?>[] {ZLinkLocationStore.class},
             (proxy, method, arguments) -> {
                 if (method.getName().equals("list")) {
                     return CompletableFuture.completedFuture(
@@ -159,18 +144,6 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                 }
                 throw new UnsupportedOperationException(method.getName());
             });
-    }
-
-    private static ZLinkLocationChanged change(
-        ZLinkLocationChangeType type,
-        long generation) {
-        return new ZLinkLocationChanged(
-            systems.zlink.framework.locations.ZLinkLocationKind.SPOT,
-            new ZLinkLocationKey.Spot(
-                new ZLinkSpotLocationKey(SPOT_RID.toString())),
-            type,
-            generation,
-            Instant.now());
     }
 
     private static void assertFence(

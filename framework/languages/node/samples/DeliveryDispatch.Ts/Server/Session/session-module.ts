@@ -40,7 +40,7 @@ function createSessionModule() {
           builder.addLocationStore(createDeliveryDispatchLocationStore(config));
           deliveryDispatchLocationOptions(builder.configureLocations());
           const mesh = builder.addRouteMesh(SampleNames.routeMesh)
-              .listen(config.sessionSpotRouterEndpoint).useAllocatedRoutingId(16, 'delivery-customer')
+              .listen(config.sessionSpotRouterEndpoint).setRoutingIdPrefix('delivery-customer')
               .addEntrySpot(CustomerEntrySpot)
               .actorFactory(SampleNames.customerActorType, CustomerActorFactory);
           mesh.channelName(SampleNames.routeMesh);

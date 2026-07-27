@@ -1084,7 +1084,7 @@ internal static class ZLinkRelocationEnvelopeCodec
             ? replyRoute.ReadUInt64()
             : 0;
         replyRoute.RequireEnd("relocation reply route");
-        if (recordKind is not (5 or 6))
+        if (recordKind is not (5 or 6 or 9 or 10))
         {
             ReadCanonicalFrozenRecordBody(ref reader, recordKind, operationKind,
                 operationHigh != 0 || operationLow != 0);

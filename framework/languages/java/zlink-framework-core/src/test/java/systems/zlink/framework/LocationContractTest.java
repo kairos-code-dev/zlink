@@ -2,7 +2,6 @@ package systems.zlink.framework;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,18 +37,7 @@ import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.spots.SpotRef;
 import systems.zlink.framework.spots.ZLinkSpotRequestCall;
 import systems.zlink.framework.spots.ZLinkSpotSendCall;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationFilter;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkActorLocationStore;
-import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
-import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
-import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
-import systems.zlink.framework.locations.ZLinkLocationChangeType;
-import systems.zlink.framework.locations.ZLinkLocationChanged;
-import systems.zlink.framework.locations.ZLinkLocationKind;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
-import systems.zlink.framework.locations.ZLinkLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationReadiness;
@@ -57,27 +45,9 @@ import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationTopologyState;
-import systems.zlink.framework.locations.ZLinkLocationWatchFilter;
-import systems.zlink.framework.locations.ZLinkLocationWatchStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
-import systems.zlink.framework.locations.ZLinkOwnerLease;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
-import systems.zlink.framework.locations.ZLinkPeerLocationKey;
-import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
-import systems.zlink.framework.locations.ZLinkPeerLocationStore;
-import systems.zlink.framework.locations.ZLinkRouteKind;
-import systems.zlink.framework.locations.ZLinkRouteLocation;
-import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
-import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkRouteLocationStore;
-import systems.zlink.framework.locations.ZLinkSpotLocation;
-import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
-import systems.zlink.framework.locations.ZLinkSpotLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
@@ -113,146 +83,55 @@ final class LocationContractTest {
         assertMissing("systems.zlink.framework.registry.ZLinkRegistryQuery");
         assertMissing("systems.zlink.framework.registry.ZLinkRegistryQueryClient");
         assertMissing("systems.zlink.framework.runtime.registry.ZLinkRegistryRuntime");
-        assertMissing("systems.zlink.framework.runtime.backend.ZLinkBackendDiscovery");
+        assertMissing("systems.zlink.framework.runtime.internal.backend.ZLinkBackendDiscovery");
         assertMissing("systems.zlink.framework.runtime.spots.SpotDiscoveryReconciler");
+        assertMissing("systems.zlink.framework.locations.ZLinkPeerLocation");
+        assertMissing("systems.zlink.framework.locations.ZLinkSpotLocation");
+        assertMissing("systems.zlink.framework.locations.ZLinkActorLocation");
+        assertMissing("systems.zlink.framework.locations.ZLinkRouteLocation");
+        assertMissing("systems.zlink.framework.locations.ZLinkLocationWatchFilter");
+        assertMissing("systems.zlink.framework.locations.ZLinkLocationChangeStampScope");
+        assertMissing("systems.zlink.framework.locations.ZLinkLocationKind");
+        assertMissing("systems.zlink.framework.monitoring.ZLinkDrainEvent");
+        assertMissing("systems.zlink.framework.monitoring.ZLinkDrainState");
     }
 
     @Test
-    void locationRecordsCarryDotnetPortedFields() {
-        assertRecordComponents(
-            ZLinkPeerLocation.class,
-            "autoConnectType",
-            "meshName",
-            "nodeRid",
-            "role",
-            "endpoint",
-            "weight",
-            "draining",
-            "value",
-            "metadata",
-            "capabilities",
-            "ownerId",
-            "generation",
-            "updatedAt");
-        assertEquals(ZLinkLocationAutoConnectType.class, componentType(ZLinkPeerLocation.class, "autoConnectType"));
-        assertEquals(ZLinkLocationRole.class, componentType(ZLinkPeerLocation.class, "role"));
-
-        assertRecordComponents(
-            ZLinkSpotLocation.class,
-            "meshName",
-            "spotId",
-            "spotGeneration",
-            "spotType",
-            "nodeRid",
-            "spotKind",
-            "routeEndpoint",
-            "ownerId",
-            "generation",
-            "updatedAt");
-        assertEquals(String.class, componentType(ZLinkSpotLocation.class, "spotId"));
-
-        assertRecordComponents(
-            ZLinkActorLocation.class,
-            "actorId",
-            "actorType",
-            "actorRef",
-            "nodeRid",
-            "locationKind",
-            "spotMeshName",
-            "spotId",
-            "ownerId",
-            "generation",
-            "updatedAt");
-        assertEquals(ActorRef.class, componentType(ZLinkActorLocation.class, "actorRef"));
-        // dotnet 정본(Rows.cs)과 동일: actor row의 locationKind는 actor가 사는 spot 종류(ZLinkSpotKind)다.
-        // ZLinkLocationKind(row 종류)와 혼동 금지.
-        assertEquals(ZLinkSpotKind.class, componentType(ZLinkActorLocation.class, "locationKind"));
-
-        assertRecordComponents(
-            ZLinkRouteLocation.class,
-            "routeKind",
-            "routeKey",
-            "ownerNodeRid",
-            "ownerId",
-            "generation",
-            "value",
-            "updatedAt");
-        assertRecordComponents(
-            systems.zlink.framework.locations
-                .ZLinkMeshNodeDescriptor.class,
-            "meshName",
-            "rid",
-            "lifecycleGeneration",
-            "descriptorRevision",
-            "endpoint",
-            "channelWeights",
-            "applicationVersion",
-            "objectCapabilities",
-            "objectRole",
-            "entrySpotId",
-            "placementWeight",
-            "capacity",
-            "activationConcurrency",
-            "maintenanceWave",
-            "state",
-            "securityIdentity",
-            "ownerId",
-            "leaseGeneration",
-            "updatedAt");
-    }
-
-    @Test
-    void locationStoreAndResolversUseAsyncTypedContracts() throws Exception {
-        Method updatePeer = ZLinkPeerLocationStore.class.getMethod(
-            "updatePeer",
-            ZLinkPeerLocation.class,
-            systems.zlink.framework.locations.ZLinkLocationWriteIntent.class);
-        Method listPeerLocations = ZLinkPeerLocationStore.class.getMethod(
-            "listPeerLocations",
-            ZLinkPeerLocationFilter.class);
-        Method listLivePeers = ZLinkPeerLocationResolver.class.getMethod(
-            "listLivePeers",
-            ZLinkPeerLocationFilter.class);
-        Method claimOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+    void locationStoreOwnsProviderOperationsDirectly() throws Exception {
+        Method claimOwnerLease = ZLinkLocationStore.class.getMethod(
             "claimOwnerLease",
             String.class,
             java.time.Duration.class);
-        Method readOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+        Method readOwnerLease = ZLinkLocationStore.class.getMethod(
             "readOwnerLease",
             String.class);
-        Method renewOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+        Method renewOwnerLease = ZLinkLocationStore.class.getMethod(
             "renewOwnerLease",
             ZLinkLocationOwnerToken.class,
             java.time.Duration.class);
-        Method releaseOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+        Method releaseOwnerLease = ZLinkLocationStore.class.getMethod(
             "releaseOwnerLease",
             ZLinkLocationOwnerToken.class);
         Method removeAllByOwner = ZLinkLocationStore.class.getMethod(
             "removeAllByOwner",
             ZLinkLocationOwnerToken.class);
         Method updateMeshNode =
-            systems.zlink.framework.locations
-                .ZLinkMeshNodeLocationStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                     "updateMeshNode",
                     systems.zlink.framework.locations
                         .ZLinkMeshNodeDescriptor.class,
                     ZLinkLocationWriteIntent.class);
         Method removeMeshNode =
-            systems.zlink.framework.locations
-                .ZLinkMeshNodeLocationStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                     "removeMeshNode",
                     systems.zlink.framework.locations
                         .ZLinkMeshNodeDescriptorKey.class,
                     ZLinkLocationOwnerToken.class);
         Method listMeshNodes =
-            systems.zlink.framework.locations
-                .ZLinkMeshNodeLocationStore.class.getMethod(
+            ZLinkLocationStore.class.getMethod(
                     "listMeshNodes",
                     String.class,
                     ZLinkPageRequest.class);
-        assertEquals(CompletionStage.class, updatePeer.getReturnType());
-        assertEquals(CompletionStage.class, listPeerLocations.getReturnType());
-        assertEquals(CompletionStage.class, listLivePeers.getReturnType());
         assertEquals(CompletionStage.class, claimOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, readOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, renewOwnerLease.getReturnType());
@@ -280,11 +159,6 @@ final class LocationContractTest {
         assertNoPublicMethod(ZLinkLocationOptions.class, "setSpotRouterChannel");
         assertNoPublicMethod(ZLinkLocationOptions.class, "spotRouterChannels");
 
-        assertEquals(ZLinkPeerLocationStore.class, ZLinkPeerLocationStore.class);
-        assertEquals(ZLinkSpotLocationStore.class, ZLinkSpotLocationStore.class);
-        assertEquals(ZLinkActorLocationStore.class, ZLinkActorLocationStore.class);
-        assertEquals(ZLinkRouteLocationStore.class, ZLinkRouteLocationStore.class);
-        assertEquals(ZLinkOwnerLeaseStore.class, ZLinkOwnerLeaseStore.class);
         assertEquals(ZLinkLocationStore.class, ZLinkLocationStore.class);
     }
 
@@ -294,16 +168,7 @@ final class LocationContractTest {
             .getMethod("getStatus")
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
-            .getMethod("listPeerLocations", ZLinkPeerLocationFilter.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
-            .getMethod("listSpotLocations", ZLinkSpotLocationFilter.class, ZLinkPageRequest.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
-            .getMethod("listActorLocations", ZLinkActorLocationFilter.class, ZLinkPageRequest.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
-            .getMethod("listRouteLocations", ZLinkRouteLocationFilter.class, ZLinkPageRequest.class)
+            .getMethod("listMeshNodes", String.class, ZLinkPageRequest.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
             .getMethod(
@@ -314,10 +179,16 @@ final class LocationContractTest {
         assertEquals(CompletionStage.class, ZLinkLocationRuntimeQuery.class
             .getMethod(
                 "listServiceSummaries",
-                systems.zlink.framework.locations.ZLinkLocationServiceSummaryFilter.class)
+                systems.zlink.framework.locations.ZLinkLocationServiceSummaryFilter.class,
+                ZLinkPageRequest.class)
             .getReturnType());
         assertEquals(ZLinkLocationPage.class, ZLinkLocationPage.class);
-        assertEquals(ZLinkOwnerLease.class, ZLinkOwnerLease.class);
+        assertThrows(ClassNotFoundException.class, () ->
+            Class.forName("systems.zlink.framework.locations.ZLinkOwnerLease"));
+        assertThrows(ClassNotFoundException.class, () ->
+            Class.forName("systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot"));
+        assertThrows(ClassNotFoundException.class, () ->
+            Class.forName("systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal"));
     }
 
     @Test
@@ -432,13 +303,6 @@ final class LocationContractTest {
             ZLinkFrameworkErrorKind.RELOCATION_TARGET_UNAVAILABLE,
             ZLinkFrameworkErrorKind.RELOCATION_FAILED);
 
-        assertEnumValues(ZLinkLocationAutoConnectType.class, Map.of(
-            "INVALID", 0,
-            "ROUTE_MESH", 1,
-            "CLIENT_SERVER", 2,
-            "DEALER_MESH", 3,
-            "FANOUT", 4,
-            "SPOT_MESH", 5));
         assertEnumValues(ZLinkLocationRole.class, Map.of(
             "INVALID", 0,
             "SPOT", 2,
@@ -446,17 +310,6 @@ final class LocationContractTest {
             "DEALER", 4,
             "PUB", 5,
             "SUB", 6));
-        assertEnumValues(ZLinkRouteKind.class, Map.of(
-            "INVALID", 0,
-            "ACTOR_SESSION", 1,
-            "SPOT_NAME", 2,
-            "FRAMEWORK_ROUTE", 3));
-        assertEnumValues(ZLinkLocationKind.class, Map.of(
-            "INVALID", 0,
-            "PEER", 1,
-            "SPOT", 2,
-            "ACTOR", 3,
-            "ROUTE", 4));
         assertEnumValues(ZLinkLocationWriteIntent.class, Map.of(
             "NEW_CLAIM", 1,
             "RENEW", 2,
@@ -465,10 +318,6 @@ final class LocationContractTest {
             "STORED", 1,
             "IGNORED_STALE", 2,
             "REJECTED_CONFLICT", 3));
-        assertEnumValues(ZLinkLocationChangeType.class, Map.of(
-            "UPSERTED", 1,
-            "REMOVED", 2,
-            "EXPIRED", 3));
         assertEnumValues(ZLinkLocationTopologyState.class, Map.of(
             "DISCOVERED", 1,
             "CONNECTING", 2,
@@ -487,44 +336,6 @@ final class LocationContractTest {
             "SERVICE_SUMMARY_CHANGED", 2,
             "STORE_FAILURE", 3,
             "STORE_RECOVERED", 4));
-    }
-
-    @Test
-    void typedLocationWatchKeysUseClosedRecordSet() throws Exception {
-        assertIterableEquals(
-            List.of(
-                ZLinkLocationKey.Peer.class,
-                ZLinkLocationKey.Spot.class,
-                ZLinkLocationKey.Actor.class,
-                ZLinkLocationKey.Route.class),
-            List.of(ZLinkLocationKey.class.getPermittedSubclasses()));
-        assertRecordComponents(ZLinkLocationKey.Peer.class, "key");
-        assertRecordComponents(ZLinkLocationKey.Spot.class, "key");
-        assertRecordComponents(ZLinkLocationKey.Actor.class, "key");
-        assertRecordComponents(ZLinkLocationKey.Route.class, "key");
-        assertEquals(ZLinkPeerLocationKey.class, componentType(ZLinkLocationKey.Peer.class, "key"));
-        assertEquals(ZLinkSpotLocationKey.class, componentType(ZLinkLocationKey.Spot.class, "key"));
-        assertEquals(ZLinkActorLocationKey.class, componentType(ZLinkLocationKey.Actor.class, "key"));
-        assertEquals(ZLinkRouteLocationKey.class, componentType(ZLinkLocationKey.Route.class, "key"));
-
-        assertRecordComponents(
-            ZLinkPeerLocationKey.class,
-            "autoConnectType",
-            "meshName",
-            "role",
-            "nodeRid",
-            "endpoint");
-        assertRecordComponents(ZLinkSpotLocationKey.class, "spotId");
-        assertRecordComponents(ZLinkActorLocationKey.class, "actorId");
-        assertRecordComponents(ZLinkRouteLocationKey.class, "routeKind", "routeKey");
-        assertRecordComponents(ZLinkLocationChanged.class, "kind", "key", "changeType", "generation", "updatedAt");
-        assertEquals(ZLinkLocationKey.class, componentType(ZLinkLocationChanged.class, "key"));
-        assertEquals(java.util.concurrent.Flow.Publisher.class, ZLinkLocationWatchStore.class
-            .getMethod("watch", ZLinkLocationWatchFilter.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkLocationChangeStampStore.class
-            .getMethod("getChangeStamp", ZLinkLocationChangeStampScope.class)
-            .getReturnType());
     }
 
     @Test

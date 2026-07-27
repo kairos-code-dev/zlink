@@ -75,7 +75,6 @@ internal sealed class ZLinkMonitoringHostedService(
                     startedFramework = true;
                 }
 
-                await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);
                 // A backend monitor may invoke its callback synchronously from OnEvent.
                 // Install the dispatch runner before attaching monitors so the first
                 // connection event cannot be dropped during host startup.
@@ -113,13 +112,11 @@ internal sealed class ZLinkMonitoringHostedService(
 
             var pollingRunner = new ZLinkMonitoringPollingRunner(
                 registration,
-                spotEvent => QueueDispatch(spotEvent),
                 locationEvent => QueueDispatch(locationEvent));
             var stopToken = (_stopTokenSource
                              ?? throw new InvalidOperationException("Monitoring dispatch was not initialized."))
                 .Token;
             _pollingTask = pollingRunner.RunAsync(
-                frameworkRuntime,
                 locationQuery,
                 stopToken);
         }

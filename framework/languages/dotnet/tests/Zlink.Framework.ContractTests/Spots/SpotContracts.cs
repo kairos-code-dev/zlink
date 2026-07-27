@@ -268,10 +268,6 @@ public sealed class SpotContracts
             typeof(IZLinkMessageContext),
             typeof(JoinRoom),
             typeof(CancellationToken));
-
-        var reply = new ZLinkSpotActorReplyOptions();
-        Assert.Same(reply, reply.Metadata("reply-key", "reply-value"));
-        Assert.Same(reply, reply.Compress());
     }
 
     [Fact]

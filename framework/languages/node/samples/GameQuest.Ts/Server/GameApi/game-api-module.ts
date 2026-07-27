@@ -71,7 +71,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
             .registerSession(GameQuestSessionFactory);
           const mesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[actorSpotEndpointKey])
-            .useAllocatedRoutingId(16, 'gamequest-api')
+            .setRoutingIdPrefix('gamequest-api')
             .addEntrySpot(GameQuestEntrySpot)
             .actorFactory(SampleNames.playerActorType, GameQuestPlayerActorFactory);
           mesh.channelName(questMissionInstanceChannel('mission-a')).setWeight(0);

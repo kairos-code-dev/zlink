@@ -27,9 +27,9 @@ final class ZLinkActorAcceptedJournal {
     }
 
     static Record decode(byte[] encoded) {
-        if (systems.zlink.framework.runtime.service
+        if (systems.zlink.framework.runtime.internal.service
             .ZLinkServiceFrozenRecordCodec.isCanonical(encoded)) {
-            var decoded = systems.zlink.framework.runtime.service
+            var decoded = systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceFrozenRecordCodec.decodeActor(encoded);
             return new Record(
                 decoded.actorId(),

@@ -4,6 +4,7 @@ import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../../../http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
 import type { ProfileRes } from '../../Shared/messages';
+import { ZLinkTerminationOutcome, ZLinkTerminationReason } from '@zlink-systems/framework';
 
 export async function runRmB2(options: ClientOptions): Promise<void> {
   const cluster = await DynamicClusterLauncher.start(options, 'rm-b2');
@@ -41,8 +42,9 @@ export async function runRmB2(options: ClientOptions): Promise<void> {
     }
     const drainResult = await draining;
     ensure(
-      drainResult.kind === 'drained' && drainResult.reason === undefined,
-      `RM-B2 provider did not reach terminal Drained: ${drainResult.kind}/${drainResult.reason ?? ''}.`
+      drainResult.outcome === ZLinkTerminationOutcome.Stopped
+        && drainResult.reason === ZLinkTerminationReason.None,
+      `RM-B2 provider retire failed: ${drainResult.outcome}/${drainResult.reason}.`
     );
     ensure(
       during.every((reply) => reply.providerRid === 'api-a' || reply.providerRid === 'api-b'),

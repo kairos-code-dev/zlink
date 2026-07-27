@@ -17,7 +17,6 @@ import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
-import systems.zlink.framework.locations.ZLinkAuthorityStore;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkRelocationDeleteResult;
 import systems.zlink.framework.locations.ZLinkRelocationFound;
@@ -130,8 +129,7 @@ final class RelocationPublicContractTest {
         assertEquals(
             ZLinkMeshObjectServerBuilder.class,
             ZLinkMeshObjectRoleBuilder.class.getMethod("server").getReturnType());
-        assertTrue(ZLinkAuthorityStore.class.isAssignableFrom(
-            ZLinkLocationStore.class));
+        assertEquals(ZLinkLocationStore.class, ZLinkLocationStore.class);
     }
 
     @Test

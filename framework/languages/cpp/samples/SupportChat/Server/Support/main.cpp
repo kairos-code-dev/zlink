@@ -917,12 +917,10 @@ int main (int argc, char **argv)
           .map_post<supportchat_assert_handler_t> ("/self-check/assert");
         auto actor_route = options.add_route_mesh ("supportchat.session.actor.route");
         actor_route.listen (topology.support_actor_route_endpoint)
-          .use_allocated_routing_id (16, "support-owner-route")
           .channel_name ("supportchat.session.actor.route");
         auto support_spot = options.add_route_mesh ("supportchat.support.spot");
         support_spot.channel_name ("supportchat.session.actor.route");
-        support_spot.use_allocated_routing_id (16, "support-owner")
-          .listen (topology.support_spot_router_endpoint)
+        support_spot.listen (topology.support_spot_router_endpoint)
           .add_entry_spot<support_entry_spot_t> (
             [runtime_ptr] { return std::make_shared<support_entry_spot_t> (*runtime_ptr); })
           .add_spot<conversation_spot_t> (

@@ -1862,7 +1862,6 @@ test('formal remote join rejection rolls back prepared source movement and prese
   }
   const node = createMockSpotNode({
     routingId: rid('node-source'),
-    entrySpot() { return { routingId: rid('entry-source') }; },
     createActor(actorId) { return { nodeRid: rid('node-source'), actorId, generation: 1n }; },
     joinActor(actorRef, _targetNodeRid, targetSpotId, _request, callback) {
       callback({
@@ -1881,6 +1880,7 @@ test('formal remote join rejection rolls back prepared source movement and prese
     actorFactories: new Map([['player', PlayerFactory]]),
     joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
       node,
+      entrySpotIdProvider: () => 'play-entry-123e4567-e89b-42d3-a456-426614174000',
       completionTableProvider: () => node.completionTable,
       spotRouteResolver: {
         async resolve(spotId) {

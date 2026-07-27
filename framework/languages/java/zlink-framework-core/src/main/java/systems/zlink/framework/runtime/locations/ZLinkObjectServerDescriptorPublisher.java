@@ -1,4 +1,4 @@
-package systems.zlink.framework.runtime.locations;
+package systems.zlink.framework.runtime.internal.locations;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -12,6 +12,7 @@ import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkMeshNodeMonitoringProjection;
+import systems.zlink.framework.runtime.locations.ZLinkLocationRuntime;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 
 /**
@@ -101,9 +102,9 @@ public final class ZLinkObjectServerDescriptorPublisher {
             node.status().routingId(),
             node.status().lifecycleGeneration(),
             descriptorRevision,
-            configured.bindEndpoint(),
+            configured.advertisedEndpoint(node.status().localEndpoint()),
             node.channelWeights(),
-            0,
+            registration.applicationVersion(),
             placement.objectCapabilities(),
             ZLinkMeshNodeObjectRole.SERVER,
             Optional.of(configured.entrySpotId()),
@@ -112,7 +113,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
             new ZLinkActivationConcurrency(
                 placement.activationConcurrency().active(),
                 placement.activationConcurrency().limit()),
-            Optional.empty(),
+            registration.maintenanceWave(),
             state,
             node.status().routingId().toString(),
             owner.ownerId(),

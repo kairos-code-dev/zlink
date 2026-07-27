@@ -2,10 +2,10 @@ import type {
   RoutingId,
   Type,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
   ZLinkSpot,
   ZLinkSpotSubscriptionHandler
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import { zlinkMessageMetadata } from '../../contracts';
 import {
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,

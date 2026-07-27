@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityKey,
-  ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore,
-  ZLinkObjectCreationStore
+  ZLinkAuthoritySnapshot
 } from '../../contracts/Locations/Authority';
+import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import type {
   ZLinkRelocationReference,
   ZLinkRelocationStore
@@ -27,6 +26,7 @@ import {
   decodeInstanceActivationRecoveryEnvelope,
   type ServiceInstanceActivationRecoveryEnvelope
 } from '../foundation/service-instance-activation-recovery-codec';
+import { decodePreparingAuthorityEnvelope } from '../foundation/service-relocation-runtime';
 
 interface StatefulAuthorityRouteSink {
   status(): ReturnType<ZLinkBackendMeshNode['status']>;
@@ -385,8 +385,33 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     const result = new Map<string, AppliedAuthorityRoute>();
     const pending: PendingInstanceActivationRecovery[] = [];
     for (const key of candidates.values()) {
-      const current = await this.options.store.readAuthority(key, signal);
+      let current = await this.options.store.readAuthority(key, signal);
       if (current.kind !== 'snapshot') continue;
+      const steadyPayload = decodePreparingAuthorityEnvelope(current.payload);
+      if (steadyPayload !== undefined) {
+        const restored = await this.options.store.compareExchangeAuthority(
+          key,
+          current.storeVersion,
+          {
+            kind: 'restore',
+            payload: steadyPayload,
+            expectedOwner: {
+              ownerId: current.ownerId,
+              leaseGeneration: current.ownerLeaseGeneration
+            }
+          },
+          signal
+        );
+        if (restored.kind === 'stored') {
+          const { kind: _kind, ...snapshot } = restored;
+          current = { kind: 'snapshot', ...snapshot };
+        } else if (restored.kind === 'conflict') {
+          current = restored.current;
+          if (current.kind !== 'snapshot') continue;
+        } else {
+          throw new Error('Preparing authority recovery exhausted its StoreVersion.');
+        }
+      }
       const route = authorityRoute(current);
       if (route !== undefined) result.set(authorityRouteKey(route), route);
       const pendingRecovery = pendingInstanceActivation(current);

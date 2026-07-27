@@ -19,8 +19,8 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.framework.runtime.service.ZLinkServiceWireCodec;
-import systems.zlink.framework.runtime.service.ZLinkServiceWireFrame;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceWireFrame;
 
 /**
  * Private binding-facing port for the JVM service runtime.

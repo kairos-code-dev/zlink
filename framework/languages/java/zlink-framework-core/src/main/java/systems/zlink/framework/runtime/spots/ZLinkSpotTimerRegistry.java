@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.monitoring.ZLinkSpotEvent;
 import systems.zlink.framework.monitoring.ZLinkSpotEventKind;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;

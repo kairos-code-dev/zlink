@@ -38,11 +38,18 @@ class tictactoe_game_spot_t : public spot_t
     game_notification_publisher_t publisher{actors};
 
   public:
-    void configure (spot_context_t &context)
+    explicit tictactoe_game_spot_t (spot_context_t context) :
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&tictactoe_game_spot_t::place_mark> ();
-        context.handlers ().add_actor_send<&tictactoe_game_spot_t::leave_game> ();
+    }
+
+    spot_context_t &context () noexcept { return _context; }
+    const spot_context_t &context () const noexcept { return _context; }
+
+    void configure ()
+    {
+        _context.handlers ().add_actor_request<&tictactoe_game_spot_t::place_mark> ();
+        _context.handlers ().add_actor_send<&tictactoe_game_spot_t::leave_game> ();
     }
 
     spot_create_response_t on_create (const message_t &)

@@ -18,10 +18,10 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSocket;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
-import systems.zlink.framework.monitoring.ZLinkRuntimeEventDispatcher;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -32,7 +32,7 @@ public final class ZLinkFrameworkLifecycle
     implements SmartLifecycle, ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient,
         ZLinkChannelRuntimeOptions,
         systems.zlink.framework.configuration.ZLinkMessageFlowControl,
-        systems.zlink.framework.monitoring.ZLinkDrainControl {
+        systems.zlink.framework.monitoring.ZLinkRuntimeQuery {
     public static final int PHASE = 0;
     private static final Duration SPRING_SHUTDOWN_DRAIN_DEADLINE = Duration.ofSeconds(30);
 
@@ -260,33 +260,45 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().monitoringMeshNodeProjection(meshName, rid);
     }
 
-    public systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider allocatedRoutingIds() {
-        return requireRuntime().allocatedRoutingIds();
-    }
-
     public boolean stopSpotRuntime() {
         return requireRuntime().stopSpotRuntime();
     }
 
-    @Override
-    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain() {
-        return requireRuntime().drain();
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult> retire() {
+        return requireRuntime().retire();
     }
 
-    @Override
-    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> drain(
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult> retire(
         java.time.Duration deadline) {
-        return requireRuntime().drain(deadline);
+        return requireRuntime().retire(deadline);
     }
 
-    @Override
-    public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> awaitDrained() {
-        return requireRuntime().awaitDrained();
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult> shutdown() {
+        return requireRuntime().shutdown();
     }
 
-    @Override
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult> shutdown(
+        java.time.Duration deadline) {
+        return requireRuntime().shutdown(deadline);
+    }
+
     public boolean isReady() {
         return runtime != null && runtime.isReady();
+    }
+
+    public ZLinkFrameworkRuntimeState state() {
+        return requireRuntime().state();
+    }
+
+    @Override
+    public systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeSnapshot snapshot() {
+        return requireRuntime().snapshot();
+    }
+
+    @Override
+    public java.util.concurrent.Flow.Publisher<
+        systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent> observe(int capacity) {
+        return requireRuntime().observe(capacity);
     }
 
     private ZLinkFrameworkRuntime requireRuntime() {

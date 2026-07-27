@@ -48,7 +48,7 @@ internal sealed class ZLinkRelocationPublicationConflictException(
 }
 
 internal sealed class ZLinkRelocationPublicationCoordinator(
-    IZLinkAuthorityStore authorityStore,
+    IZLinkLocationStore authorityStore,
     IZLinkRelocationStore relocationStore)
 {
     private static readonly TimeSpan Retention = TimeSpan.FromHours(24);
@@ -538,7 +538,10 @@ internal static class ZLinkRelocationAuthorityPayloadCodec
                 canonical.RelocationReference,
                 canonical.RelocationChecksumCrc32c,
                 new Guid(id, bigEndian: true),
-                canonical.TargetAttemptGeneration,
+                // Standalone Actor relocation roots use one aggregate
+                // generation. The target attempt is an independent recovery
+                // fence and can still be zero while the root is Captured.
+                1,
                 new byte[32],
                 canonical.TargetOwnerId,
                 checked((long)canonical.TargetOwnerLeaseGeneration),

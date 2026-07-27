@@ -85,7 +85,6 @@ internal sealed class CleanupGatedLocationStore(
     ActorCleanupGateStore cleanupGates,
     EvidenceStore evidence) :
     IZLinkLocationStore,
-    IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {
     public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
@@ -223,9 +222,9 @@ internal sealed class CleanupGatedLocationStore(
         CancellationToken cancellationToken = default) =>
         inner.AbortAggregateAsync(fence, cancellationToken);
 
-    public ValueTask<ulong> GetChangeStampAsync(
-        ZLinkLocationChangeStampScope scope, CancellationToken cancellationToken = default) =>
-        ((IZLinkLocationChangeStampStore)inner).GetChangeStampAsync(scope, cancellationToken);
+    public ValueTask<ulong?> GetMeshNodeChangeStampAsync(
+        string meshName, CancellationToken cancellationToken = default) =>
+        inner.GetMeshNodeChangeStampAsync(meshName, cancellationToken);
 
     public ValueTask DisposeAsync() =>
         inner is IAsyncDisposable disposable ? disposable.DisposeAsync() : ValueTask.CompletedTask;

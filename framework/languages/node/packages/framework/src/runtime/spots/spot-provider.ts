@@ -1,4 +1,5 @@
-import type { Type, ZLinkProviderResolver } from '../../contracts';
+import type { Type } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 
 export async function createProviderInstance<T>(
   type: Type<T>,

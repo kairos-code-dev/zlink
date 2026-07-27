@@ -110,7 +110,6 @@ class ReportSpotEventMsg {
 class ReportNodeStatusMsg {
   constructor(
     readonly nodeId: string,
-    readonly nodeRid: string,
     readonly zones: string[],
     readonly playerCount: number,
     readonly maintenance: boolean

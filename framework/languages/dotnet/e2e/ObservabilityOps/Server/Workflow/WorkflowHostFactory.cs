@@ -49,7 +49,7 @@ internal static class WorkflowHostFactory
             var locations = framework.ConfigureLocations();
             locations.OwnerLeaseRenewInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
             locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
-            framework.ConfigureDispatch().MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            framework.ConfigureDispatch().MessageFlow(ZLinkRuntimeMessageFlowMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));

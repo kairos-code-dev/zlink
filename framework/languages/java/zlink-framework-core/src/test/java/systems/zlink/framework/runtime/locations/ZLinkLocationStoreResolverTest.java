@@ -16,28 +16,15 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locations.ZLinkActorLocation;
-import systems.zlink.framework.locations.ZLinkActorLocationFilter;
-import systems.zlink.framework.locations.ZLinkActorLocationKey;
-import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
-import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewal;
+import systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.locations.ZLinkPeerLocation;
-import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
-import systems.zlink.framework.locations.ZLinkPeerLocationKey;
-import systems.zlink.framework.locations.ZLinkRouteLocation;
-import systems.zlink.framework.locations.ZLinkRouteLocationFilter;
-import systems.zlink.framework.locations.ZLinkRouteLocationKey;
-import systems.zlink.framework.locations.ZLinkSpotLocation;
-import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
-import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.testing.ZLinkLocationStoreTestAdapter;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 
 class ZLinkLocationStoreResolverTest {
@@ -63,7 +50,6 @@ class ZLinkLocationStoreResolverTest {
         assertSame(stores.peerStore(), stores.routeStore());
         assertSame(stores.peerStore(), stores.ownerLeaseStore());
         assertSame(stores.peerStore(), stores.unifiedStore());
-        assertTrue(stores.changeStampStore() instanceof ZLinkLocationChangeStampStore);
     }
 
     @Test
@@ -123,7 +109,7 @@ class ZLinkLocationStoreResolverTest {
         }
     }
 
-    public static class CountingLocationStore implements ZLinkLocationStore {
+    public static class CountingLocationStore extends ZLinkLocationStoreTestAdapter {
         static final AtomicInteger created = new AtomicInteger();
         private final ZLinkInMemoryAuthorityStore authority =
             new ZLinkInMemoryAuthorityStore(
@@ -286,103 +272,6 @@ class ZLinkLocationStoreResolverTest {
                     ZLinkPageRequest page) {
             return CompletableFuture.completedFuture(
                 new ZLinkLocationPage<>(List.of(), null));
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> updatePeer(
-            ZLinkPeerLocation peer,
-            ZLinkLocationWriteIntent intent) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> removePeer(
-            ZLinkPeerLocationKey key,
-            ZLinkLocationOwnerToken owner) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<List<ZLinkPeerLocation>> listPeerLocations(ZLinkPeerLocationFilter filter) {
-            return CompletableFuture.completedFuture(List.of());
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateSpot(
-            ZLinkSpotLocation spot,
-            ZLinkLocationWriteIntent intent) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeSpot(
-            ZLinkSpotLocationKey key,
-            ZLinkLocationOwnerToken owner) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkSpotLocation> resolveSpot(ZLinkSpotLocationKey key) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkSpotLocation>> listSpotLocations(
-            ZLinkSpotLocationFilter filter,
-            ZLinkPageRequest page) {
-            return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateActor(
-            ZLinkActorLocation actor,
-            ZLinkLocationWriteIntent intent) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeActor(
-            ZLinkActorLocationKey key,
-            ZLinkLocationOwnerToken owner) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkActorLocation> resolveActor(ZLinkActorLocationKey key) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkActorLocation>> listActorLocations(
-            ZLinkActorLocationFilter filter,
-            ZLinkPageRequest page) {
-            return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> updateRoute(
-            ZLinkRouteLocation route,
-            ZLinkLocationWriteIntent intent) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationWriteResult> removeRoute(
-            ZLinkRouteLocationKey key,
-            ZLinkLocationOwnerToken owner) {
-            return unsupportedWrite();
-        }
-
-        @Override
-        public CompletionStage<ZLinkRouteLocation> resolveRoute(ZLinkRouteLocationKey key) {
-            return CompletableFuture.completedFuture(null);
-        }
-
-        @Override
-        public CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> listRouteLocations(
-            ZLinkRouteLocationFilter filter,
-            ZLinkPageRequest page) {
-            return CompletableFuture.completedFuture(new ZLinkLocationPage<>(List.of(), null));
         }
 
         @Override

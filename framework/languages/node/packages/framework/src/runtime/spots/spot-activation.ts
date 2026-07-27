@@ -6,13 +6,13 @@ import type {
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkMessageSerializer,
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher,
   ZLinkInstanceSpot,
   ZLinkSpot,
   ZLinkSpotCreateResponse,
   ZLinkSpotPublisherClient,
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type {
   ZLinkSpotActorRequestHandlerRegistration,
   ZLinkSpotActorSendHandlerRegistration,

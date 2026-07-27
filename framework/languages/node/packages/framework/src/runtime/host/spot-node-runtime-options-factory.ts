@@ -1,7 +1,7 @@
 import type {
-  ZLinkProviderResolver,
-  ZLinkRuntimeEventPublisher
 } from '../../contracts';
+import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import {
   DefaultZLinkChannelClient,
   DefaultZLinkFanoutClient,

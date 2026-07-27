@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/streams/stream_host_service.hpp"
+#include "runtime/configuration/service_scope.hpp"
 #include "runtime/messaging/async_submit_runtime.hpp"
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
@@ -59,6 +60,26 @@ using detail::stream_message_kind_t;
 
 namespace
 {
+
+class session_actor_disconnect_guard_t
+{
+  public:
+    explicit session_actor_disconnect_guard_t (session_actor_manager_t &actors) :
+        _actors (&actors)
+    {
+    }
+
+    ~session_actor_disconnect_guard_t ()
+    {
+        detail::session_actor_manager_access_t::disconnect (*_actors);
+    }
+
+    session_actor_disconnect_guard_t (const session_actor_disconnect_guard_t &) = delete;
+    session_actor_disconnect_guard_t &operator= (const session_actor_disconnect_guard_t &) = delete;
+
+  private:
+    session_actor_manager_t *_actors;
+};
 
 struct parsed_tcp_endpoint_t
 {
@@ -711,7 +732,7 @@ class stream_host_service_t::listener_t
   private:
     struct core_session_t
     {
-        service_scope_t scope;
+        detail::service_scope_t scope;
         packet_stream_session_t *session;
         session_actor_manager_t *actors;
         stream_t stream;
@@ -719,7 +740,7 @@ class stream_host_service_t::listener_t
         std::mutex gate;
         bool connected = false;
 
-        core_session_t (service_scope_t scope_,
+        core_session_t (detail::service_scope_t scope_,
                         packet_stream_session_t &session_,
                         session_actor_manager_t &actors_,
                         stream_t stream_,
@@ -794,7 +815,8 @@ class stream_host_service_t::listener_t
               "STREAM node is draining and rejects a new session");
         }
 
-        auto scope = _services->create_scope (service_scope_kind_t::stream_session);
+        auto scope = detail::service_scope_t::create (
+          *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto &actors = scope.provider ().get_required<session_actor_manager_t> ();
         auto stream = _runtime.open_session (_stream.name);
@@ -1615,11 +1637,13 @@ class stream_host_service_t::listener_t
             }
             return;
         }
-        auto scope = _services->create_scope (service_scope_kind_t::stream_session);
+        auto scope = detail::service_scope_t::create (
+          *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
         detail::session_actor_manager_access_t::attach (session_actors, stream);
+        session_actor_disconnect_guard_t actor_disconnect (session_actors);
         auto write_mutex = std::make_shared<std::mutex> ();
         if (attach_immediate_writer) {
             _runtime.attach_transport_writer (
@@ -1689,7 +1713,7 @@ class stream_host_service_t::listener_t
             if (connected_session && !_stop->load (std::memory_order_acquire)
                 && !liveness->forced () && !is_expected_session_disconnect (error.code ())) {
                 session_transport_error.emplace (stream_session_error_t::transport_error,
-                                                 error.code ().value (), error.what ());
+                                                 error.what ());
             }
             if (stream_trace_enabled ()) {
                 std::cerr << "zlink-cpp-stream-trace side=server stage=connection-error stream="
@@ -1742,7 +1766,6 @@ class stream_host_service_t::listener_t
                 }
             }
         }
-        detail::session_actor_manager_access_t::disconnect (session_actors);
         close_connection (*connection);
     }
 
@@ -1776,11 +1799,13 @@ class stream_host_service_t::listener_t
             }
             return;
         }
-        auto scope = _services->create_scope (service_scope_kind_t::stream_session);
+        auto scope = detail::service_scope_t::create (
+          *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
         detail::session_actor_manager_access_t::attach (session_actors, stream);
+        session_actor_disconnect_guard_t actor_disconnect (session_actors);
         auto write_mutex = std::make_shared<std::mutex> ();
         _runtime.attach_transport_writer (
           stream,
@@ -1847,7 +1872,7 @@ class stream_host_service_t::listener_t
             if (connected_session && !_stop->load (std::memory_order_acquire)
                 && !liveness->forced ()) {
                 session_transport_error.emplace (stream_session_error_t::transport_error,
-                                                 error.native_code (), error.what ());
+                                                 error.what ());
             }
         }
         catch (const framework_exception_t &) {
@@ -1878,7 +1903,6 @@ class stream_host_service_t::listener_t
                 }
             }
         }
-        detail::session_actor_manager_access_t::disconnect (session_actors);
         close_connection (*connection);
     }
 

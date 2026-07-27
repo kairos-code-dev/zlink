@@ -21,23 +21,10 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ConcurrentDictionary<string, SpotDispatchState> _spots = new();
-
-    // Core reply tokens of inbound ActorRequest records, keyed by request id
-    // (operation id low). No-bind replies (ReplyActorNoBind) redeem the token
-    // to answer a mesh actor request without a session binding; bound requests
-    // reply through the session plane and leave their token to be evicted by
-    // the bound cap.
-    private const int MaxPendingActorReplies = 8192;
-    private long _nextActorRequestId;
     private readonly ConcurrentDictionary<
-        ulong, Func<IReadOnlyList<Message>, SendFlags, SubmitResult>> _actorReplies = new();
+        (RoutingId NodeRid, ulong NodeGeneration),
+        ZLinkServiceWireCodec.RequestSourceFence> _requestSources = new();
 
-    public bool TryTakeActorReply(
-        ulong requestId,
-        out Func<IReadOnlyList<Message>, SendFlags, SubmitResult> reply)
-    {
-        return _actorReplies.TryRemove(requestId, out reply!);
-    }
     private Action<ZLinkBackendRouteReceived>? _nodeRouteHandler;
     private Action? _nodeSendReadyHandler;
     private readonly object _lifecycleGate = new();
@@ -51,6 +38,20 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     {
         _node = node;
         _completions = completions;
+    }
+
+    internal void ObserveRequestSourceFence(
+        ZLinkServiceWireCodec.RequestSourceFence source)
+    {
+        if (source.NodeRid.IsEmpty || source.NodeGeneration == 0
+            || string.IsNullOrWhiteSpace(source.OwnerId)
+            || source.LeaseGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(source));
+        foreach (var key in _requestSources.Keys)
+            if (key.NodeRid == source.NodeRid
+                && key.NodeGeneration != source.NodeGeneration)
+                _requestSources.TryRemove(key, out _);
+        _requestSources[(source.NodeRid, source.NodeGeneration)] = source;
     }
 
     public void EnsureStarted()
@@ -275,6 +276,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             ? new Func<IReadOnlyList<Message>, SendFlags, SubmitResult>(
                 (parts, flags) => replyRecord.Reply(parts, flags))
             : null;
+        _requestSources.TryGetValue(
+            (record.SourceNodeRid, record.SourceBindingGeneration),
+            out var requestSource);
         var route = new ZLinkBackendRouteReceived(
             RetainParts(batch, index),
             record.SourceNodeRid,
@@ -287,7 +291,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             authorityOwnerGeneration: record.AuthorityOwnerGeneration,
             ownerLeaseGeneration: record.OwnerLeaseGeneration,
             forwardingHopCount: record.ForwardingHopCount,
-            sourceNodeGeneration: record.SourceBindingGeneration);
+            sourceNodeGeneration: record.SourceBindingGeneration,
+            requestSource: requestSource == default ? null : requestSource);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }
@@ -401,23 +406,26 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         MeshReceiveBatch batch, int index, MeshReceiveRecord record,
         string ownerSpotId, ActorRef ownerActor)
     {
-        ulong requestId = 0;
-        if (record.Kind == MeshRecordKind.ActorRequest)
-        {
-            requestId = (ulong)Interlocked.Increment(ref _nextActorRequestId);
-            if (_actorReplies.Count < MaxPendingActorReplies)
-            {
-                var replyRecord = record;
-                _actorReplies[requestId] =
-                    (parts, flags) => replyRecord.Reply(parts, flags);
-            }
-        }
-
-
+        var requestId = record.Kind == MeshRecordKind.ActorRequest
+            ? record.ReplyRouteId
+            : 0;
         var state = ResolveSpotState(
             string.IsNullOrEmpty(ownerSpotId) ? record.SourceSpotId : ownerSpotId,
             targetOwner: true, record);
-        var parts = ZLinkMeshRecordAdapters.ToActorParts(batch, index, record, ownerActor, requestId);
+        _requestSources.TryGetValue(
+            (record.SourceNodeRid, record.SourceBindingGeneration),
+            out var requestSource);
+        var directReply = requestId == 0
+            ? null
+            : record.CaptureReplyRoute();
+        var parts = ZLinkMeshRecordAdapters.ToActorParts(
+            batch,
+            index,
+            record,
+            ownerActor,
+            requestId,
+            requestSource == default ? null : requestSource,
+            directReply);
         if (parts.Count == 0) return;
         state.RaiseActor(parts);
     }

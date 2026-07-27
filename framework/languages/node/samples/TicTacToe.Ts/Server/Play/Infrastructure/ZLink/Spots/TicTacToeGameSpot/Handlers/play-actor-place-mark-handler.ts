@@ -1,13 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_MANAGER,
   ZLINK_SPOT_OUTBOUND
 } from '@zlink-systems/nestjs';
 import { ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import { SampleNames } from '../../../../../../Configuration/sample-settings';
 import type {
   ZLinkSpotActorRequestContext,
-  ZLinkSpotHandleResolver,
+  ZLinkSpotManager,
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { PlayActor } from '../../../Actors/play-actor';
@@ -17,7 +17,7 @@ import { PlaceMarkAtGameSpotReq } from './tictactoe-game-operation-handlers';
 @Injectable()
 class PlayActorPlaceMarkHandler {
   constructor(
-    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_MANAGER) private readonly spotHandles: ZLinkSpotManager,
     @Inject(ZLINK_SPOT_OUTBOUND) private readonly spotOutbound: ZLinkSpotOutbound
   ) {}
 
@@ -31,7 +31,7 @@ class PlayActorPlaceMarkHandler {
     if (spotRid === undefined) {
       throw new Error(`Actor '${actor.actorId}' is not joined to a game.`);
     }
-    const spot = await this.spotHandles.resolveSpotHandle(SampleNames.playSpotNode, spotRid);
+    const spot = await this.spotHandles.find(spotRid);
     if (spot === undefined) {
       throw new Error(`Game spot '${String(spotRid)}' could not be resolved.`);
     }

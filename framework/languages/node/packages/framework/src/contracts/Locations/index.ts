@@ -1,27 +1,35 @@
-export * from './Models';
 export type { ZLinkLocationOptions } from './Options';
 export { zlinkDefaultLocationOptions } from './Options';
-export * from './Resolvers';
 export type {
-  ZLinkActorLocationStore,
-  ZLinkClientServerLocationStore,
-  ZLinkFanoutLocationStore,
-  ZLinkLocationChangeStampStore,
-  ZLinkLocationStore,
-  ZLinkLocationWatchStore,
-  ZLinkMeshNodeLocationStore,
-  ZLinkOwnerLeaseStore,
-  ZLinkSpotLocationStore
+  ZLinkLocationStore
 } from './Stores';
-export * from './Values';
-export * from './Rows';
-export * from './Keys';
+export {
+  ZLinkLocationKind,
+  ZLinkLocationRole
+} from './Values';
+export {
+  ZLinkFrameworkRuntimeState,
+  ZLinkObjectRole
+} from './Rows';
+export type {
+  ZLinkClientServerServerDescriptor,
+  ZLinkFanoutPublisherDescriptor,
+  ZLinkMeshNodeDescriptor,
+  ZLinkObjectCapability,
+  ZLinkObjectMaintenancePolicyKind,
+  ZLinkPopulationCapacity,
+  ZLinkSpotTypeCapacity
+} from './Rows';
+export type {
+  ZLinkClientServerServerDescriptorKey,
+  ZLinkFanoutPublisherDescriptorKey,
+  ZLinkLocationPage,
+  ZLinkMeshNodeDescriptorKey,
+  ZLinkPageRequest
+} from './Keys';
 export * from './Writes';
-export * from './Watch';
 export * from './Diagnostics';
 export * from './RuntimeQuery';
 export * from './Readiness';
 export * from './RelocationStore';
-export * from './RoutingIdAllocation';
-export * from './ActorTransfer';
 export * from './Authority';

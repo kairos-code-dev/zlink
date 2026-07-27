@@ -10,32 +10,32 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.Actor;
-import systems.zlink.contracts.service.spot.ActorControlRecord;
-import systems.zlink.contracts.service.spot.ActorLifecycleKind;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ActorTransferPrepare;
-import systems.zlink.contracts.service.spot.ActorTransferToken;
-import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
-import systems.zlink.contracts.service.spot.MeshNode;
-import systems.zlink.contracts.service.spot.MeshDestinationKind;
-import systems.zlink.contracts.service.spot.MeshSendReadyData;
-import systems.zlink.contracts.service.spot.OperationId;
-import systems.zlink.contracts.service.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.Actor;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorControlRecord;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorLifecycleKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorRef;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepare;
+import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferToken;
+import systems.zlink.framework.runtime.internal.binding.spot.PrepareActorTransferResult;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNode;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshDestinationKind;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshSendReadyData;
+import systems.zlink.framework.runtime.internal.binding.spot.OperationId;
+import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEventKind;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo;
-import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
-import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
-import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinEntrySpotResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorJoinResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEventKind;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleInfo;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallback;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
@@ -195,12 +195,12 @@ final class ZLinkJavaMeshSpotNode
     @Override
     public ZLinkBackendSpot createSpot() {
         return register(node.getOrCreateSpot(
-            RoutingId.from(java.util.UUID.randomUUID())).spot());
+            java.util.UUID.randomUUID().toString()).spot());
     }
 
     @Override
     public ZLinkBackendSpot createSpot(String spotId) {
-        return register(node.getOrCreateSpot(RoutingId.from(spotId)).spot());
+        return register(node.getOrCreateSpot(spotId).spot());
     }
 
     @Override
@@ -362,8 +362,8 @@ final class ZLinkJavaMeshSpotNode
         Actor actor = node.createActor(actorId, List.of(createRequest));
         actors.put(actorId, actor);
         ZLinkBackendActorRef ref = backendRef(actor.ref());
-        actorSpots.put(actorId, entrySpot().routingId());
-        localActorDispatchSpots.put(actorId, entrySpot().routingId());
+        actorSpots.put(actorId, entrySpot().spotId());
+        localActorDispatchSpots.put(actorId, entrySpot().spotId());
         actorMembershipEpochs.put(actorId, 1L);
         return concreteRef(ref);
     }
@@ -419,7 +419,7 @@ final class ZLinkJavaMeshSpotNode
                 : join.location().membershipEpoch();
             if (result == ZLinkBackendRequestResult.OK && join != null
                 && join.joinResult()
-                    == systems.zlink.contracts.service.spot.ActorJoinDecision.ACCEPTED) {
+                    == systems.zlink.framework.runtime.internal.binding.spot.ActorJoinDecision.ACCEPTED) {
                 actorSpots.put(actor.actorId(), completedSpot);
                 if (join.actor().nodeRid().equals(node.getRoutingId())) {
                     localActorDispatchSpots.put(actor.actorId(), completedSpot);
@@ -430,7 +430,7 @@ final class ZLinkJavaMeshSpotNode
                 result,
                 join != null
                     && join.joinResult()
-                        == systems.zlink.contracts.service.spot.ActorJoinDecision.ACCEPTED
+                        == systems.zlink.framework.runtime.internal.binding.spot.ActorJoinDecision.ACCEPTED
                     ? 0 : 1,
                 join == null ? actor : backendRef(join.actor()),
                 completedSpot,
@@ -453,14 +453,14 @@ final class ZLinkJavaMeshSpotNode
                 mapResult(completion.receive().terminalResult());
             var join = completion.receive().joinCompletion();
             String targetSpotId = join == null
-                ? entrySpot().routingId()
+                ? entrySpot().spotId()
                 : join.location().spotId().toString();
             long epoch = join == null
                 ? actorMembershipEpochs.getOrDefault(actor.actorId(), 0L)
                 : join.location().membershipEpoch();
             if (result == ZLinkBackendRequestResult.OK && join != null
                 && join.joinResult()
-                    == systems.zlink.contracts.service.spot.ActorJoinDecision.ACCEPTED) {
+                    == systems.zlink.framework.runtime.internal.binding.spot.ActorJoinDecision.ACCEPTED) {
                 actorSpots.put(actor.actorId(), targetSpotId);
                 if (join.actor().nodeRid().equals(node.getRoutingId())) {
                     localActorDispatchSpots.put(actor.actorId(), targetSpotId);
@@ -471,7 +471,7 @@ final class ZLinkJavaMeshSpotNode
                 result,
                 join != null
                     && join.joinResult()
-                        == systems.zlink.contracts.service.spot.ActorJoinDecision.ACCEPTED
+                        == systems.zlink.framework.runtime.internal.binding.spot.ActorJoinDecision.ACCEPTED
                     ? 0 : 1,
                 join == null ? actor : backendRef(join.actor()),
                 targetNodeRid,
@@ -630,9 +630,9 @@ final class ZLinkJavaMeshSpotNode
         admissionShutdownHandler.run();
     }
 
-    private ZLinkJavaMeshSpot register(systems.zlink.contracts.service.spot.Spot spot) {
+    private ZLinkJavaMeshSpot register(systems.zlink.framework.runtime.internal.binding.spot.Spot spot) {
         return spots.computeIfAbsent(
-            spot.routingId().toString(),
+            spot.spotId(),
             ignored -> new ZLinkJavaMeshSpot(
                 owner,
                 spot,

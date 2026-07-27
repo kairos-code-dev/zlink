@@ -10,12 +10,6 @@
 ## 1. Spot handler와 STREAM
 
 ```ts
-export declare enum ZLinkSpotPeerState {
-    Configured = 1,
-    Connecting = 2,
-    Connected = 3
-}
-
 export interface ZLinkSpotPublisherClient {
     publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
 }
@@ -30,17 +24,6 @@ export declare function ZLinkSpotSubscription(channelName: string, topic: string
 
 export interface ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
     handle(spot: TSpot, event: TEvent, context: ZLinkPublishMessageContext): Promise<void>;
-}
-
-export interface ZLinkSpotTimerDiagnostic {
-    readonly spotId: SpotId;
-    readonly isEntrySpot: boolean;
-    readonly timerName: string;
-    readonly handlerType: string;
-    readonly deliveryIndex: bigint;
-    readonly scheduledIndex: bigint;
-    readonly exceptionType: string;
-    readonly exceptionMessage: string;
 }
 
 export interface ZLinkSpotTimerHandler<TSpot> {
@@ -77,14 +60,9 @@ export interface ZLinkStreamCompressionOptions {
     readonly codec?: ZLinkStreamCompressionCodec;
 }
 
-export interface ZLinkStreamDiagnostic {
-    readonly nativeCode?: number;
-    readonly message?: string | undefined;
-}
-
 export interface ZLinkStreamError {
     readonly error: ZLinkStreamSessionError;
-    readonly diagnostic?: ZLinkStreamDiagnostic;
+    readonly message?: string;
 }
 
 export interface ZLinkStreamNodeBuilder {

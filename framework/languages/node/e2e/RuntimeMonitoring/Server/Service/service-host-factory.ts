@@ -5,12 +5,12 @@ import {
   ZLinkMessageFlowLogMode,
   ZLinkSocketEventKind,
   type ZLinkChannelRuntimeOptions,
-  type ZLinkRouteMeshRuntime,
+  type ZLinkFrameworkRuntime,
   type ZLinkLocationRuntimeQuery
 } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
-  ZLINK_ROUTE_MESH_RUNTIME,
+  ZLINK_FRAMEWORK_RUNTIME,
   ZLINK_LOCATION_RUNTIME_QUERY,
   ZLinkModule,
   zlinkFramework
@@ -41,11 +41,11 @@ export async function startServiceHost(role: ServiceRoleOptions = {}): Promise<v
   const options = app.get(MONITORING_OPTIONS, { strict: false }) as ServiceOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
-  const routeMeshRuntime = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
+  const frameworkRuntime = app.get(ZLINK_FRAMEWORK_RUNTIME, { strict: false }) as ZLinkFrameworkRuntime;
   const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(
     options.httpUrl,
-    createServiceEndpoints(evidence, runtimeOptions, routeMeshRuntime, locations, () => { stopping = true; })
+    createServiceEndpoints(evidence, runtimeOptions, frameworkRuntime, locations, () => { stopping = true; })
   );
 
   while (!stopping) {
@@ -97,7 +97,6 @@ function createServiceModule(role: ServiceRoleOptions): Function {
                 sourceName: RuntimeMonitoringNames.channelServerSource,
                 ...(options.socketFilter ? { events: [ZLinkSocketEventKind.ConnectionReady] } : {})
               }],
-              spot: [{ sourceName: RuntimeMonitoringNames.spotNode, intervalMs: 100 }],
               locationRuntime: [{ sourceName: RuntimeMonitoringNames.locationRuntimeSource, intervalMs: 100 }]
             }
           };

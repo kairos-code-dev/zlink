@@ -24,8 +24,7 @@ public sealed class RedisLocationStoreLifecycleTests
                 return connection;
             });
 
-        var read = store.GetChangeStampAsync(
-                new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null))
+        var read = store.GetMeshNodeChangeStampAsync("play")
             .AsTask();
         await connectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -38,8 +37,7 @@ public sealed class RedisLocationStoreLifecycleTests
 
         Assert.Equal(1, connection.DisposeCount);
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => store.GetChangeStampAsync(
-                    new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null))
+            () => store.GetMeshNodeChangeStampAsync("play")
                 .AsTask());
 
         await store.DisposeAsync();
@@ -61,8 +59,7 @@ public sealed class RedisLocationStoreLifecycleTests
 
         Assert.Equal(
             0UL,
-            await store.GetChangeStampAsync(
-                new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null)));
+            await store.GetMeshNodeChangeStampAsync("play"));
 
         var first = store.DisposeAsync().AsTask();
         await connection.DisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -93,8 +90,7 @@ public sealed class RedisLocationStoreLifecycleTests
             },
             _ => ValueTask.FromResult<IZLinkRedisConnection>(connection));
 
-        var admitted = store.GetChangeStampAsync(
-                new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null))
+        var admitted = store.GetMeshNodeChangeStampAsync("play")
             .AsTask();
         await command.CommandStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -102,8 +98,7 @@ public sealed class RedisLocationStoreLifecycleTests
         Assert.False(dispose.IsCompleted);
         Assert.False(connection.DisposeStarted.Task.IsCompleted);
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => store.GetChangeStampAsync(
-                    new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, null))
+            () => store.GetMeshNodeChangeStampAsync("play")
                 .AsTask());
 
         command.ReleaseCommand.TrySetResult(RedisValue.Null);

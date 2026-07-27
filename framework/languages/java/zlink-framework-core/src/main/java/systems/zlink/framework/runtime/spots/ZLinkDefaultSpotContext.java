@@ -12,7 +12,7 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
-import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
@@ -53,7 +53,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
     }
 
-    @Override public String spotId() { return backendSpot.routingId(); }
+    @Override public String spotId() { return backendSpot.spotId(); }
     @Override public long objectGeneration() {
         return backendSpot.lifecycleGeneration();
     }
@@ -246,7 +246,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         this.instanceSpot = instanceSpot;
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.timers = host.createTimerRegistry(
-            backendSpot.routingId(),
+            backendSpot.spotId(),
             (timerName, operation) -> enqueueTimerDispatch(
                 timerName,
                 () -> host.runWithOutbound(outbound, operation)));
@@ -257,7 +257,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         timers.setSpot(spot);
     }
 
-    @Override public String spotId() { return backendSpot.routingId(); }
+    @Override public String spotId() { return backendSpot.spotId(); }
     @Override public long objectGeneration() {
         return backendSpot.lifecycleGeneration();
     }

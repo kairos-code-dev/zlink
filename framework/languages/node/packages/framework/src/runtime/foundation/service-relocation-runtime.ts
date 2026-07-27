@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityCompareExchangeResult,
   ZLinkAuthorityKey,
+  ZLinkAuthorityMutation,
   ZLinkAuthorityReadResult,
   ZLinkAuthoritySnapshot,
   ZLinkAuthorityStoreVersion,
@@ -24,13 +25,7 @@ export interface ServiceAuthorityProvider {
   compareExchangeAuthority(
     key: ZLinkAuthorityKey,
     expectedStoreVersion: ZLinkAuthorityStoreVersion,
-    mutation: {
-      readonly kind: 'put';
-      readonly payload: Uint8Array;
-      readonly generationTransition: 'preserve' | 'newOwner';
-      readonly targetOwner?: ZLinkLocationOwnerToken;
-      readonly relocationCapacityFence?: ZLinkRelocationCapacityFence;
-    },
+    mutation: ZLinkAuthorityMutation,
     signal?: AbortSignal
   ): Awaitable<ZLinkAuthorityCompareExchangeResult>;
 }
@@ -126,6 +121,8 @@ export interface ServiceRelocationPublication {
 }
 
 export interface ServiceRelocationAuthorityCodec {
+  prepare(currentPayload: Uint8Array): Uint8Array;
+  readPreparing(payload: Uint8Array): Uint8Array | undefined;
   publish(
     currentPayload: Uint8Array,
     publication: ServiceRelocationPublication
@@ -147,6 +144,17 @@ interface ServiceRelocationAuthorityEnvelope {
 /** Deterministic Location authority wrapper for one immutable relocation root. */
 export class ServiceRelocationAuthorityPayloadCodec
 implements ServiceRelocationAuthorityCodec {
+  prepare(currentPayload: Uint8Array): Uint8Array {
+    if (this.read(currentPayload) !== undefined || this.readPreparing(currentPayload) !== undefined) {
+      throw new TypeError('Location authority already contains relocation state.');
+    }
+    return encodePreparingAuthorityEnvelope(currentPayload);
+  }
+
+  readPreparing(payload: Uint8Array): Uint8Array | undefined {
+    return decodePreparingAuthorityEnvelope(payload);
+  }
+
   publish(
     currentPayload: Uint8Array,
     publication: ServiceRelocationPublication
@@ -223,15 +231,56 @@ export class ServiceDurableRelocationRuntime {
     if (envelope.sourceCleanup !== 'pending') {
       throw new TypeError('Initial relocation source cleanup must be pending.');
     }
+    const preparingPayload = this.codec.prepare(expected.payload);
+    let preparing: ZLinkAuthorityCompareExchangeResult;
+    try {
+      preparing = await this.authority.compareExchangeAuthority(
+        key,
+        expected.storeVersion,
+        {
+          kind: 'put',
+          generationTransition: 'preserve',
+          payload: preparingPayload
+        },
+        signal
+      );
+    } catch (error) {
+      const current = await this.authority.readAuthority(key, signal);
+      if (
+        current.kind !== 'snapshot'
+        || !Buffer.from(current.payload).equals(preparingPayload)
+        || current.objectGeneration !== expected.objectGeneration
+        || current.authorityOwnerGeneration !== expected.authorityOwnerGeneration
+      ) {
+        throw error;
+      }
+      const { kind: _kind, ...stored } = current;
+      preparing = { kind: 'stored', ...stored };
+    }
+    if (
+      preparing.kind !== 'stored'
+      || preparing.objectGeneration !== expected.objectGeneration
+      || preparing.authorityOwnerGeneration !== expected.authorityOwnerGeneration
+    ) {
+      throw new Error('Location authority rejected relocation Preparing publication.');
+    }
+    const prepared = storedSnapshot(preparing);
     const encoded = encodeServiceRelocationEnvelope(envelope);
     const checksumCrc32c = crc32c(encoded);
-    const stored = await this.store.put(encoded, RELOCATION_RETENTION_MS, signal);
+    let stored: Awaited<ReturnType<ServiceRelocationStorePort['put']>>;
+    try {
+      stored = await this.store.put(encoded, RELOCATION_RETENTION_MS, signal);
+    } catch (error) {
+      await this.restorePreparing(key, prepared, expected.payload, signal);
+      throw error;
+    }
     if (
       stored.reference.length === 0
       || stored.checksumCrc32c !== checksumCrc32c
       || stored.expiresAtMs <= stored.storeNowMs
     ) {
       await this.store.delete(stored.reference, signal);
+      await this.restorePreparing(key, prepared, expected.payload, signal);
       throw new Error('Relocation Store returned an invalid immutable payload receipt.');
     }
     const publication: ServiceRelocationPublication = {
@@ -255,7 +304,7 @@ export class ServiceDurableRelocationRuntime {
       await beforePublish?.(publication);
       result = await this.authority.compareExchangeAuthority(
         key,
-        expected.storeVersion,
+        prepared.storeVersion,
         {
           kind: 'put',
           generationTransition: 'preserve',
@@ -266,7 +315,7 @@ export class ServiceDurableRelocationRuntime {
     } catch (error) {
       const reconciled = await this.reconcilePublication(
         key,
-        expected,
+        prepared,
         publication,
         signal
       );
@@ -275,6 +324,7 @@ export class ServiceDurableRelocationRuntime {
       }
       if (reconciled.kind === 'notCommitted') {
         await this.store.delete(stored.reference, signal);
+        await this.restorePreparing(key, prepared, expected.payload, signal);
       }
       throw error;
     }
@@ -284,9 +334,31 @@ export class ServiceDurableRelocationRuntime {
       || result.authorityOwnerGeneration !== expected.authorityOwnerGeneration
     ) {
       await this.store.delete(stored.reference, signal);
+      await this.restorePreparing(key, prepared, expected.payload, signal);
       throw new Error('Location authority rejected relocation publication.');
     }
     return { authority: storedSnapshot(result), publication };
+  }
+
+  private async restorePreparing(
+    key: ZLinkAuthorityKey,
+    prepared: ZLinkAuthoritySnapshot,
+    steadyPayload: Uint8Array,
+    signal?: AbortSignal
+  ): Promise<void> {
+    await this.authority.compareExchangeAuthority(
+      key,
+      prepared.storeVersion,
+      {
+        kind: 'restore',
+        payload: steadyPayload,
+        expectedOwner: {
+          ownerId: prepared.ownerId,
+          leaseGeneration: prepared.ownerLeaseGeneration
+        }
+      },
+      signal
+    );
   }
 
   readPublication(authority: ZLinkAuthoritySnapshot): ServiceRelocationPublication {
@@ -858,6 +930,32 @@ function encodeAuthorityEnvelope(
     throw new TypeError('Location authority relocation payload exceeds 1 MiB.');
   }
   return payload;
+}
+
+function encodePreparingAuthorityEnvelope(base: Uint8Array): Buffer {
+  const payload = Buffer.from(JSON.stringify({
+    magic: 'ZLAP',
+    version: 1,
+    base: Buffer.from(base).toString('base64')
+  }), 'utf8');
+  if (payload.byteLength > 1024 * 1024) {
+    throw new TypeError('Location authority Preparing payload exceeds 1 MiB.');
+  }
+  return payload;
+}
+
+export function decodePreparingAuthorityEnvelope(payload: Uint8Array): Buffer | undefined {
+  try {
+    const decoded = record(
+      JSON.parse(Buffer.from(payload).toString('utf8')),
+      'Preparing authority payload'
+    );
+    requireExactKeys(decoded, ['base', 'magic', 'version'], 'Preparing authority payload');
+    if (decoded.magic !== 'ZLAP' || decoded.version !== 1) return undefined;
+    return base64(decoded.base, 'Preparing authority application payload');
+  } catch {
+    return undefined;
+  }
 }
 
 function decodeAuthorityEnvelope(

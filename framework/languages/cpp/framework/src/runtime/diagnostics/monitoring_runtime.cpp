@@ -61,25 +61,11 @@ void validate_polling_interval (std::chrono::milliseconds interval, const char *
 
 } // namespace
 
-namespace zlink::framework
+namespace zlink::framework::detail
 {
-
-runtime_event_publisher_t::runtime_event_publisher_t () = default;
-runtime_event_publisher_t::runtime_event_publisher_t (
-  std::shared_ptr<detail::monitoring_runtime_state_t> state) :
-    _state (std::move (state))
-{
-}
-
-runtime_event_publisher_t::~runtime_event_publisher_t () = default;
-runtime_event_publisher_t::runtime_event_publisher_t (runtime_event_publisher_t &&) noexcept =
-  default;
-runtime_event_publisher_t &
-runtime_event_publisher_t::operator= (runtime_event_publisher_t &&) noexcept = default;
-
-void runtime_event_publisher_t::publish_erased (std::type_index event_type,
-                                                const runtime_event_base_t &base,
-                                                const void *event) const
+void monitoring_runtime_t::publish_erased (std::type_index event_type,
+                                           const runtime_event_base_t &base,
+                                           const void *event) const
 {
     if (!_state) {
         return;
@@ -103,6 +89,11 @@ void runtime_event_publisher_t::publish_erased (std::type_index event_type,
         }
     }
 }
+
+} // namespace zlink::framework::detail
+
+namespace zlink::framework
+{
 
 monitoring_builder_t::monitoring_builder_t () :
     _state (std::make_shared<detail::monitoring_runtime_state_t> ())
@@ -146,17 +137,6 @@ monitoring_builder_t &monitoring_builder_t::add_location_events (std::string sou
     return *this;
 }
 
-monitoring_builder_t &monitoring_builder_t::add_spot_events (std::string source_name,
-                                                             std::chrono::milliseconds interval)
-{
-    validate_source_name (source_name, "spot");
-    validate_polling_interval (interval, "spot");
-    ensure_unique_source (_state->spot_sources, source_name, "spot");
-    _state->spot_sources.push_back (
-      detail::monitoring_source_registration_t{std::move (source_name), interval});
-    return *this;
-}
-
 monitoring_builder_t &monitoring_builder_t::add_stream_events (std::string source_name)
 {
     validate_source_name (source_name, "stream");
@@ -178,11 +158,6 @@ monitoring_builder_t::on_trace (std::function<void (const runtime_event_base_t &
 {
     _state->tracing_hook = std::move (hook);
     return *this;
-}
-
-runtime_event_publisher_t monitoring_builder_t::publisher () const
-{
-    return runtime_event_publisher_t (_state);
 }
 
 monitoring_builder_t &monitoring_builder_t::on_erased (std::type_index event_type,
@@ -223,7 +198,7 @@ metrics_builder_t &metrics_builder_t::record_runtime_metric (
   std::string name, double value, std::map<std::string, std::string> tags)
 {
     if (runtime_metrics_enabled ()) {
-        runtime_event_publisher_t (_state).publish (metric_event_payload_t{
+        detail::monitoring_runtime_t (_state).publish_metric (metric_event_payload_t{
           runtime_event_base_t{"runtime.metrics"}, std::move (name), value, std::string{},
           metric_instrument_kind_t::counter, metric_temporality_t::delta, std::move (tags)});
     }
@@ -246,6 +221,11 @@ monitoring_runtime_t monitoring_runtime_t::from (const monitoring_builder_t &bui
 }
 
 void monitoring_runtime_t::publish_metric (metric_event_payload_t event) const
+{
+    publish (std::move (event));
+}
+
+void monitoring_runtime_t::publish_drain (drain_event_t event) const
 {
     publish (std::move (event));
 }
@@ -316,50 +296,6 @@ void monitoring_runtime_t::publish_location_changes (
     }
 }
 
-void monitoring_runtime_t::publish_spot_snapshot (spot_event_payload_t event) const
-{
-    const auto source_name = event.source_name;
-    if (!contains_source (_state->spot_sources, source_name)) {
-        return;
-    }
-    {
-        std::lock_guard lock (_state->spot_snapshot_mutex);
-        _state->spot_snapshot_gates[source_name].pending[event.event] = std::move (event);
-    }
-    flush_spot_snapshots (source_name);
-}
-
-void monitoring_runtime_t::flush_spot_snapshots (const std::string &source_name) const
-{
-    const auto source = std::find_if (
-      _state->spot_sources.begin (), _state->spot_sources.end (), [&] (const auto &candidate) {
-          return candidate.source_name == source_name;
-      });
-    if (source == _state->spot_sources.end ()) {
-        return;
-    }
-
-    std::vector<spot_event_payload_t> events;
-    {
-        std::lock_guard lock (_state->spot_snapshot_mutex);
-        auto &gate = _state->spot_snapshot_gates[source_name];
-        const auto now = std::chrono::steady_clock::now ();
-        if (gate.next_publish_at != std::chrono::steady_clock::time_point{}
-            && now < gate.next_publish_at) {
-            return;
-        }
-        gate.next_publish_at = now + source->interval;
-        events.reserve (gate.pending.size ());
-        for (auto &[_, event] : gate.pending) {
-            events.push_back (std::move (event));
-        }
-        gate.pending.clear ();
-    }
-    for (auto &event : events) {
-        publish (std::move (event));
-    }
-}
-
 void monitoring_runtime_t::publish_stream (stream_event_payload_t event) const
 {
     if (!contains_source (_state->stream_sources, event.source_name)) {
@@ -380,9 +316,6 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
                                                   spot_id_t spot_id,
                                                   timer_failure_event_t failure) const
 {
-    if (!contains_source (_state->spot_sources, source_name)) {
-        return;
-    }
     auto event_kind = failure.stopped ? spot_event_kind_t::timer_stopped_after_unhandled_exception
                                       : spot_event_kind_t::timer_handler_failed;
     publish (spot_event_payload_t{
@@ -393,9 +326,6 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
                            {},
                            health_status_t::degraded},
       event_kind,
-      std::move (source_name),
-      {},
-      {},
       spot_timer_diagnostic_t{std::move (spot_id), false, std::move (failure.timer_name),
                               failure.handler_type.name (), failure.delivery_index,
                               failure.delivery_index, "std::exception",

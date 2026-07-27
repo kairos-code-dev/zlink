@@ -6,14 +6,14 @@ import type { ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
-  type ZLinkRouteMeshRuntime,
+  type ZLinkFrameworkRuntime,
   type ZLinkLocationRuntimeQuery
 } from '@zlink-systems/framework';
 
 export function createServiceEndpoints(
   evidence: EvidenceStore,
   runtimeOptions: ZLinkChannelRuntimeOptions,
-  routeMeshRuntime: ZLinkRouteMeshRuntime,
+  frameworkRuntime: ZLinkFrameworkRuntime,
   locations: ZLinkLocationRuntimeQuery,
   stop: () => void
 ): HttpRoute[] {
@@ -24,9 +24,8 @@ export function createServiceEndpoints(
       method: 'POST',
       path: '/admin/drain',
       handle: async () => {
-        const result = await routeMeshRuntime.drain(RuntimeMonitoringNames.channel);
-        const reason = 'reason' in result ? result.reason : '';
-        evidence.add(`admin|rid=${evidence.rid}|action=drain|kind=${result.kind}|reason=${reason}`);
+        const result = await frameworkRuntime.retire();
+        evidence.add(`admin|rid=${evidence.rid}|action=retire|outcome=${result.outcome}|reason=${result.reason}`);
         return result;
       }
     },

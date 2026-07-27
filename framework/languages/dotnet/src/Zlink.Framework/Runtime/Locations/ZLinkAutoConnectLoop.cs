@@ -13,8 +13,8 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 {
     private readonly ZLinkAutoConnectReconciler _reconciler;
     private readonly ZLinkLocationOptions _options;
-    private readonly ZLinkLocationChangeStampScope _stampScope;
-    private readonly IZLinkLocationChangeStampStore? _stampStore;
+    private readonly string _meshName;
+    private readonly IZLinkLocationStore _store;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
     private readonly TimeProvider _time;
@@ -32,15 +32,15 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
         ZLinkAutoConnectReconciler reconciler,
         ZLinkAutoConnectLocal local,
         ZLinkLocationOptions options,
-        IZLinkLocationChangeStampStore? stampStore = null,
+        IZLinkLocationStore store,
         IZLinkLocationWatchStore? watchStore = null,
         TimeProvider? timeProvider = null,
         ZLinkOwnerLeaseTracker? leaseTracker = null)
     {
         _reconciler = reconciler;
         _options = options;
-        _stampScope = new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.MeshNode, local.MeshName);
-        _stampStore = stampStore;
+        _meshName = local.MeshName;
+        _store = store;
         _watchStore = watchStore;
         _leaseTracker = leaseTracker;
         _time = timeProvider ?? TimeProvider.System;
@@ -140,31 +140,36 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     /// the last successful tick.</summary>
     internal async ValueTask TickAsync(CancellationToken cancellationToken = default)
     {
-        if (_stampStore is not null && !_lastTickFailed)
+        if (!_lastTickFailed)
         {
             try
             {
-                var stamp = await _stampStore.GetChangeStampAsync(_stampScope, cancellationToken)
+                var stamp = await _store.GetMeshNodeChangeStampAsync(
+                        _meshName,
+                        cancellationToken)
                     .ConfigureAwait(false);
-                var liveOwners = _leaseTracker is null
-                    ? 0
-                    : await _leaseTracker.GetLiveOwnerSetVersionAsync(cancellationToken)
-                        .ConfigureAwait(false);
-                if (_lastStamp == stamp
-                    && _lastLiveOwnerSetVersion == liveOwners
-                    && !_reconciler.HasPendingTargets)
+                if (stamp is not null)
                 {
+                    var liveOwners = _leaseTracker is null
+                        ? 0
+                        : await _leaseTracker.GetLiveOwnerSetVersionAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                    if (_lastStamp == stamp
+                        && _lastLiveOwnerSetVersion == liveOwners
+                        && !_reconciler.HasPendingTargets)
+                    {
+                        return;
+                    }
+
+                    await RunReconcileAsync(cancellationToken).ConfigureAwait(false);
+                    if (!_lastTickFailed)
+                    {
+                        _lastStamp = stamp;
+                        _lastLiveOwnerSetVersion = liveOwners;
+                    }
+
                     return;
                 }
-
-                await RunReconcileAsync(cancellationToken).ConfigureAwait(false);
-                if (!_lastTickFailed)
-                {
-                    _lastStamp = stamp;
-                    _lastLiveOwnerSetVersion = liveOwners;
-                }
-
-                return;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -228,7 +233,9 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
             try
             {
                 await foreach (var _ in _watchStore!.WatchAsync(
-                    new ZLinkLocationWatchFilter(ZLinkLocationKind.MeshNode, _stampScope.MeshName),
+                    new ZLinkLocationWatchFilter(
+                        ZLinkLocationKind.MeshNode,
+                        _meshName),
                     cancellationToken).ConfigureAwait(false))
                 {
                     // Wake the loop; the tick re-reads the store, so a lost

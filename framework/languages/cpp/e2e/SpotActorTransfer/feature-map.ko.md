@@ -5,7 +5,8 @@
 이 문서는 C++ Config 10 E2E의 현재 구현 상태를 공통 시나리오별로 기록한다. runner는 actor node
 두 개와 session gateway 두 개, consumer를 서로 다른 process로 시작한다. actor는 처음 소유하는
 actor node가 만들고 join을 시작한다. 이동은 별도 원격 생성 API가 아니라 기존 actor handoff 경로로
-수행한다. `run_e2e.sh all`은 공통 문서의 스무 시나리오를 모두 실행한다.
+수행한다. `run_e2e.sh all`은 현재 A~F track만 실행하며, 현행 공통 문서의 모든 시나리오를
+실행하지 않는다.
 각 client 흐름은 `Client/Scenarios/st_*_scenario.hpp`에 ID별로 분리되어 있으며, 공통 client
 context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한다.
 
@@ -32,18 +33,27 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-F4 | `implemented` | 같은 explicit old ref one-way send로 G1/G2를 보내고, G1의 구조화된 `straggler_forward`와 target 처리 뒤 `mapping_evicted`, G2의 구조화된 `stale_fail_fast`와 target 미처리를 검사한다. |
 | ST-F5 | `implemented` | actor-a→actor-b→actor-a의 다른 Spot으로 연속 이동하고, source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인한다. `mapping_evicted` 뒤 두 old ref가 즉시 실패하는지도 검사한다. |
 | ST-F6 | `implemented` | source와 target의 구조화 evidence에서 같은 request id와 request flag가 보존되는지 비교한다. 같은 request id의 재시도는 backlog와 target handler에 한 번만 남고, 긴 timeout은 원래 caller reply로, 짧은 timeout은 일반 timeout과 late reply로 끝나는지 검사한다. |
-| ST-H1 | `process-local implemented` | `test_cpp_framework_execution`이 handler terminal 뒤 deferred activation과 handler failure 시 폐기를 검증한다. |
+| ST-G1 | `미구현` | yielded continuation과 모든 실행 lane을 포함한 relocation barrier process E2E가 없다. |
+| ST-G2 | `미구현` | 큰 participant inventory와 typed capacity aggregate all-or-none E2E가 없다. |
+| ST-G3 | `미구현` | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
+| ST-G4 | `미구현` | relocation 중 stale `ToActor` relay와 target queue 순서를 검증하는 E2E가 없다. |
+| ST-G5 | `미구현` | Entry·PerActor Actor relocation interruption 목표와 초과 시 계속 진행을 검증하지 않는다. |
+| ST-G6 | `미구현` | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하지 않는다. |
+| ST-H1 | `component only` | `test_cpp_framework_execution`은 handler terminal 뒤 deferred activation과 handler failure 시 폐기를 검증한다. 실제 process의 immutable request와 Actor queue barrier E2E는 없다. |
 | ST-H2 | `runtime integrated; process E2E blocked` | Admission reply와 prepare·finalize commit envelope가 immutable root reference와 checksum을 전달한다. Target은 materialization 전에 root를 검증하고 process-local admission이 없으면 root 또는 exact Actor authority가 가리키는 최신 cursor로 복구한다. Location commit 뒤 authority에 `Committed` root를 publish하고 callback 성공 뒤 `Delivered` root로 CAS한 다음 backlog를 제출하며, authority reference를 해제한 뒤 root를 정리한다. Wire codec·authority CAS·replacement recovery·callback retry·generation fence focused test와 SpotActorTransfer 세 binary build가 통과했다. `ST-A1` process 실행은 create/join HTTP 500 뒤 cleanup 과정에서 peer가 `errno=113`으로 종료되어 실패했으며, callback outcome을 기다리는 process assertion 전환과 route failure 진단이 남았다. |
 | ST-H3 | `blocked` | Exact Context factory overload는 compile contract로 고정했다. ObjectGeneration을 유지하는 target Context와 source fencing을 process 간 E2E로 검증해야 한다. |
 | ST-H4 | `partial` | `defer()`의 detached·duplicate·64개 제한과 absolute timeout 경로는 source와 focused test에 있다. 모든 허용·거부 문맥과 오류 37..39 parity E2E가 남았다. |
+| ST-H4A | `미구현` | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race process E2E가 없다. |
+| ST-H4B | `미구현` | Join 뒤 Yield, awaited cycle과 reply terminal process E2E가 없다. |
 | ST-H5 | `blocked` | MessageContext와 containing Spot handler signature를 사용하는 E2E host 전환이 남았다. |
 
 ## 실행 범위
 
-`run_e2e.sh all`은 ST-A1부터 ST-F6까지 스무 시나리오를 모두 선택한다. source process 중단이 필요한
+`run_e2e.sh all`은 ST-A1부터 ST-F6까지 기존 A~F 시나리오를 선택한다. source process 중단이 필요한
 ST-B2, ST-C1, ST-C2는 다른 시나리오와 분리해 실행하며, 그 사이에 actor-a를 다시 시작한다. 모든
 시나리오는 client가 역할별 evidence와 응답을 직접 판정하고, runner는 process 수명과 실행 순서만
-관리한다.
+관리한다. `ST-F3A`, `ST-G1~G6`, `ST-H1~H5`가 모두 process E2E로 등록되기 전에는 Config 10 전체
+완료로 판정하지 않는다.
 
 ## 설계 재검토
 

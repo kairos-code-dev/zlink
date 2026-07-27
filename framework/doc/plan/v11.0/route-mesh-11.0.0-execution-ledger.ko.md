@@ -132,6 +132,10 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   assertion을 약화하지 않고 현재 spec에 맞게 구현한다.
 - Java SpotActorTransfer도 component test를 process E2E 완료 증거와 분리했다.
   `ST-F3A`·`ST-G1~G6`·`ST-H1~H5`는 현재 runner가 실행하지 않으므로 `미구현`으로 기록했다.
+- C++ SpotActorTransfer의 `all` selector도 A~F만 실행하면서 공통 시나리오 전체를 실행한다고
+  설명하던 오류를 바로잡았다. `ST-F3A`·G track·H track의 process gap을 명시했다.
+  C++·Java Observability의 이전 drain 기반 C1~C5 결과는 현행 Config 11 PASS가 아니며,
+  C1~C5는 `전환 대상`, C6~C11은 `미구현`으로 기록했다.
 
 이 checkpoint는 현재 E2E spec의 완료 승인이 아니다. 실제 process scenario와 언어별 feature map이
 일치하고 Codex `gpt-5.6-sol high` 독립 review를 통과한 뒤 `V11-E2E-SPEC-FINAL`을 완료로 바꾼다.

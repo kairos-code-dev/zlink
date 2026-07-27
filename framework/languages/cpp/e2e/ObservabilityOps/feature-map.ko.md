@@ -3,7 +3,7 @@
 정본 시나리오: [config-11-observability-ops.ko.md](../../../../doc/framework/common/e2e/config-11-observability-ops.ko.md)
 
 현재 runner는 `Session`, `Play`, `OrderWorkflow`를 별도 실행 진입점과 역할별 설정 파일로 시작하고,
-standalone `Client`도 별도 실행 대상으로 사용한다. 열세 시나리오의 결과 단언은
+standalone `Client`도 별도 실행 대상으로 사용한다. 현재 구현된 시나리오의 결과 단언은
 `Client/Scenarios/obs_*_scenario.hpp`에 ID별로 분리했고, runner에는 process 수명주기와 drain 중간
 상태 확인만 남겼다. 시나리오 결과의 관계 단언은 client가 담당하고, runner는 외부 장애와 역할 수명주기를
 결정적으로 만든다.
@@ -18,13 +18,20 @@ standalone `Client`도 별도 실행 대상으로 사용한다. 열세 시나리
 | OBS-B2 | `implemented` | 다수 room action 뒤 큐 depth·wait를 확인하고 actor 이동 1회와 transfer duration·pending sample 1회를 대조한다. |
 | OBS-B3 | `implemented` | fanout 차분 1:2, drop 부재, 금지 label 부재를 확인하고 Redis 외부 지연으로 lease lateness를 만든다. |
 | OBS-B4 | `implemented` | metrics-off 노드의 메시징 성공을 확인하고 단위 테스트가 reader 없는 10,000회 계측 뒤 내부 저장 구조 불변을 검증한다. |
-| OBS-C1 | `deferred` | typed draining row 유지, 기존 route 요청 8/8, owner lease 갱신과 명시적 create 거절은 확인한다. 그러나 신규 ChannelName 선택 제외와 `zlink.drain.state`의 serving→draining 전이를 같은 실행에서 대조하지 않는다. |
-| OBS-C2 | `deferred` | actor 이동 뒤 ping은 확인하지만 bound-session push 연속성, moving 직전 pending request 결과와 `zlink.drain.actors.handed_off` 계기를 함께 확인하지 않는다. |
-| OBS-C3 | `deferred` | 정상 request 뒤 Spot 유지, drain 뒤 신규 turn 거부, accepted turn 완료와 actor·STREAM barrier 이후 local Spot close·row 제거, stale handle의 숨은 원격 생성 금지와 명시적 local `GetOrCreate` 뒤 새 generation을 확인해야 한다. 현재 runner는 제거 대상인 기존 분기 시나리오를 실행하므로 이 고정 drain 회귀를 검증하지 않는다. |
-| OBS-C4 | `deferred` | 별도 `Session`과 `Play` 역할에서 강제 종료와 public `closeReason`은 확인한다. versioned `session-closing` 제어 프레임의 `reason=server_drain`, terminal `ForceStopped` 결과와 `zlink.drain.forced{kind=session}`을 한 실행에서 대조하지 않는다. |
-| OBS-C5 | `deferred` | rolling drain의 정상 종료는 확인하지만, 두 번째 drain에서 이미 draining인 peer가 handoff 대상에서 제외되어 eligible target이 0이 되는 증거와 `ForceStopped(deadline_exceeded)` terminal 결과를 함께 확인하지 않는다. |
+| OBS-C1 | `전환 대상` | 이전 drain 상태 검증을 `Relocating → Relocated`와 신규 배치 제외, 기존 연결 유지 계약으로 전환해야 한다. |
+| OBS-C2 | `전환 대상` | Actor relocation 뒤 bound-session push 연속성, 이동 직전 accepted request와 handoff 계기를 함께 검증해야 한다. |
+| OBS-C3 | `전환 대상` | User Spot aggregate의 accepted queue·timer·Actor state 복원과 authority commit을 검증해야 한다. 현재 runner는 이전 drain 분기를 실행한다. |
+| OBS-C4 | `전환 대상` | `ShutdownAsync`의 closing callback, session 종료 통지와 deadline 결과를 한 실행에서 검증해야 한다. |
+| OBS-C5 | `전환 대상` | `RelocateAsync`가 eligible target 부재 시 admission을 seal하지 않고 typed blocker로 끝나는지 검증해야 한다. |
+| OBS-C6 | `미구현` | 새 application version node로만 relocation한 뒤 old node를 Shutdown하는 무중단 patch E2E가 없다. |
+| OBS-C7 | `미구현` | 같은 version의 planned maintenance target 선택과 relocation 완료 뒤 별도 Shutdown E2E가 없다. |
+| OBS-C8 | `미구현` | Shutdown deadline과 bounded teardown, `OnClosingAsync` 완료·취소 경계를 검증하지 않는다. |
+| OBS-C9 | `미구현` | Automatic topology의 peer Ready 선행 조건과 Manual topology relocation blocker E2E가 없다. |
+| OBS-C10 | `미구현` | relocation mode별 exact application version target 선택을 검증하지 않는다. |
+| OBS-C11 | `미구현` | concurrent `RelocateAsync`의 동일 option 합류와 다른 option 충돌을 검증하지 않는다. |
 
-실행: `./run_e2e.sh [all|flow|metrics|fanout|drain|handoff|force|policy|offnode]`
+현재 실행: `./run_e2e.sh [all|flow|metrics|fanout|drain|handoff|force|policy|offnode]`
 
-`deferred` 행의 누락은 내부 계기나 테스트 전용 API로 대신하지 않는다. 표에 적은 public metric,
-terminal result와 역할별 evidence가 같은 실행에서 확인된 뒤에만 완료로 바꾼다.
+`drain` selector와 C1~C5 구현은 이전 계약의 흔적이며 현행 Config 11 완료 증거가 아니다.
+`전환 대상`·`미구현` 행은 내부 계기나 테스트 전용 API로 대신하지 않는다. 표에 적은 public 결과와
+역할별 evidence가 같은 실행에서 확인된 뒤에만 완료로 바꾼다.

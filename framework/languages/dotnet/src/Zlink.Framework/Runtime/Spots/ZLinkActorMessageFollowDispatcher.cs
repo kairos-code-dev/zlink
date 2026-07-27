@@ -42,16 +42,15 @@ internal static class ZLinkActorMessageFollowDispatcher
         {
             runtime.LogActorHandoff(
                 route == ZLinkActorFrameRoute.MessageFollowExpired
-                    ? $"message_follow_expired actor={frameActor.ActorId} generation={frameActor.Generation}"
-                    : $"message_follow_rejected actor={frameActor.ActorId} generation={frameActor.Generation}");
+                    ? "message_follow_expired"
+                    : "message_follow_rejected");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
                 $"Actor ref '{frameActor.ActorId}' generation '{frameActor.Generation}' is stale.");
         }
 
         if (route == ZLinkActorFrameRoute.MessageFollow)
-            runtime.LogActorHandoff(
-                $"message_follow_relay actor={frameActor.ActorId} generation={frameActor.Generation}");
+            runtime.LogActorHandoff("message_follow_relay");
 
         return route == ZLinkActorFrameRoute.MessageFollow;
     }

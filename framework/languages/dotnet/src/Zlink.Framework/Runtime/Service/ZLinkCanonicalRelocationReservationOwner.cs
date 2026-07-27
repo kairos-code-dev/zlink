@@ -255,13 +255,16 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                     .ConfigureAwait(false);
             else
             {
-                capacityFence = await ReserveCapacityAsync(
+                var capacity = await ReserveCapacityAsync(
                         slot.Prepare, key, acceptanceToken)
                     .ConfigureAwait(false);
+                capacityFence = capacity.Fence;
                 if (slot.Prepare.Root is not null
                     && _relocationStore is not null)
                     expectedRecords = await ReadExpectedRecordsAsync(
-                            slot.Prepare, acceptanceToken)
+                            slot.Prepare,
+                            capacity.StableType,
+                            acceptanceToken)
                         .ConfigureAwait(false);
                 if (ObjectKind(slot.Prepare.Object.Kind)
                         == ZLinkPlacementObjectKind.Actor
@@ -941,6 +944,7 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
     private async ValueTask<IReadOnlyDictionary<ulong, IReadOnlyList<byte[]>>>
         ReadExpectedRecordsAsync(
             ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+            string authoritativeStableType,
             CancellationToken cancellationToken)
     {
         var root = prepare.Root
@@ -954,7 +958,12 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
         var objectKind = ObjectKind(prepare.Object.Kind);
         if (objectKind is ZLinkPlacementObjectKind.Actor
             or ZLinkPlacementObjectKind.InstanceSpot)
+        {
             ValidateStandaloneRoot(prepare, tree.Envelope, objectKind);
+            ValidateStandaloneRootStableType(
+                tree.Envelope,
+                authoritativeStableType);
+        }
         return BuildExpectedRecords(tree.Envelope);
     }
 
@@ -1096,11 +1105,26 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                != prepare.Object.ExpectedAuthorityOwnerGeneration
             || participant.AuthorityOwnerGeneration
                != recovery.AuthorityOwnerGeneration
-            || !StringComparer.Ordinal.Equals(
-                recovery.StableType, prepare.Object.StableType)
             || string.IsNullOrWhiteSpace(recovery.ExpectedStoreVersion))
             throw Conflict(
                 "Command 40 standalone identity does not match its root.");
+    }
+
+    internal static void ValidateStandaloneRootStableType(
+        ZLinkRelocationEnvelope envelope,
+        string authoritativeStableType)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(authoritativeStableType);
+        var participant = envelope.Participants.SingleOrDefault()
+                          ?? throw Conflict(
+                              "Standalone relocation root requires one participant.");
+        var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        if (!StringComparer.Ordinal.Equals(
+                recovery.StableType,
+                authoritativeStableType))
+            throw Conflict(
+                "Standalone relocation root stable type does not match current authority.");
     }
 
     internal bool TryTakeStagingPermit(
@@ -1280,7 +1304,7 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                 cleanupFailures);
     }
 
-    private async ValueTask<ZLinkRelocationCapacityFence> ReserveCapacityAsync(
+    private async ValueTask<StandaloneCapacityReservation> ReserveCapacityAsync(
         ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
         ReservationKey key,
         CancellationToken cancellationToken)
@@ -1307,7 +1331,7 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
             new ZLinkLocationOwnerToken(prepare.Candidate.OwnerId,
                 prepare.Candidate.OwnerLeaseGeneration),
             authority.Allocation.Capacity);
-        return await _store.ReserveRelocationCapacityAsync(
+        var fence = await _store.ReserveRelocationCapacityAsync(
                 request, cancellationToken).ConfigureAwait(false) switch
         {
             ZLinkRelocationCapacityReserveResult.Reserved value => value.Fence,
@@ -1324,6 +1348,9 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
             _ => throw Conflict(
                 "The relocation authority changed while reserving capacity.")
         };
+        return new StandaloneCapacityReservation(
+            fence,
+            authority.Allocation.StableType);
     }
 
 
@@ -1653,6 +1680,10 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
     private readonly record struct ReservationKey(
         ZLinkServiceWireCodec.RelocationWireId RelocationId,
         ulong TargetAttemptGeneration);
+
+    private readonly record struct StandaloneCapacityReservation(
+        ZLinkRelocationCapacityFence Fence,
+        string StableType);
 
     private sealed class ReservationSlot(
         byte[] fingerprint,

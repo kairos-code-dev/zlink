@@ -70,6 +70,7 @@ export function encodeMessageFollowRemoteActorPacketRelayPayload(input: {
   readonly handoffTargetSpotId: string;
   readonly operationId: string;
   readonly messageFollowHopCount: number;
+  readonly deadlineUnixMs?: number;
   readonly authorityOwnerGeneration?: string;
   readonly ownerLeaseGeneration?: string;
 }): Record<string, unknown> {
@@ -147,6 +148,7 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly handoffTargetSpotId?: string;
   readonly operationId?: string;
   readonly messageFollowHopCount?: number;
+  readonly deadlineUnixMs?: number;
   readonly authorityOwnerGeneration?: string;
   readonly ownerLeaseGeneration?: string;
   readonly bindingActorNodeRid?: string;
@@ -176,12 +178,22 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     handoffTargetSpotId: optionalString(payload, 'handoffTargetSpotId'),
     operationId: optionalString(payload, 'operationId'),
     messageFollowHopCount: optionalBoundedInteger(payload, 'messageFollowHopCount', 0, 8),
+    deadlineUnixMs: optionalPositiveSafeInteger(payload, 'deadlineUnixMs'),
     authorityOwnerGeneration: optionalString(payload, 'authorityOwnerGeneration'),
     ownerLeaseGeneration: optionalString(payload, 'ownerLeaseGeneration'),
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
     bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
     bindingActorGeneration: optionalString(payload, 'bindingActorGeneration')
   };
+}
+
+function optionalPositiveSafeInteger(value: object, key: string): number | undefined {
+  const field = (value as Record<string, unknown>)[key];
+  if (field === undefined) return undefined;
+  if (!Number.isSafeInteger(field) || (field as number) <= 0) {
+    throw new Error(`Remote actor packet relay ${key} is invalid.`);
+  }
+  return field as number;
 }
 
 function optionalBoundedInteger(

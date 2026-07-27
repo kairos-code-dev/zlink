@@ -50,7 +50,7 @@
     "participantMaximum": 1024,
     "encodedMaximum": 1048576
   },
-  "forwarding": {
+  "messageFollow": {
     "objectKinds": ["actor", "spot"],
     "hopMaximum": 8,
     "queuedMessageMaximum": 1024,

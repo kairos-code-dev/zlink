@@ -203,14 +203,15 @@ export class ZLinkActorRuntimeOptionsFactory {
       staleActorRefPredicate: (meshName, actor) =>
         this.actorBelongsToMesh(meshName, actor.actorId)
         && this.options.actorHandoff.isKnownStale(actor),
-      handoffCapture: (meshName, actorId, parts, returnResponse, actor) =>
+      handoffCapture: (meshName, actorId, parts, returnResponse, actor, deadlineUnixMs) =>
         this.actorBelongsToMesh(meshName, actorId)
           ? this.options.actorHandoff.capture(
-          actorId,
-          parts,
-          returnResponse,
-          undefined,
-          actor
+            actorId,
+            parts,
+            returnResponse,
+            undefined,
+            actor,
+            deadlineUnixMs
           )
           : undefined,
       sendErrorReporter: this.options.reportPostCommitError,

@@ -35,6 +35,7 @@ import { awaitWithAbort, throwIfAborted } from '../abort';
 import { encodeFrameworkPayloadMessage, decodeFrameworkPayloadMessage } from '../messaging/payload-codec';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import {
+  actorRequestDeadlineMetadata,
   decodeStreamHeader,
   encodeStreamHeader,
   tryDecodeStreamFrame,
@@ -67,7 +68,8 @@ export interface ZLinkActorClientOptions {
     actorId: string,
     parts: readonly Message[],
     returnResponse: boolean,
-    actor: ActorRef
+    actor: ActorRef,
+    deadlineUnixMs?: number
   ) => Promise<unknown> | undefined;
   readonly sendErrorReporter?: (error: unknown) => void;
   readonly meshSubmitters?: ZLinkMeshSubmitterRegistry;
@@ -146,19 +148,39 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     signal?: AbortSignal
   ): Promise<TReply> {
     throwIfAborted(signal);
+    const effectiveTimeoutMs = timeoutMs ?? this.options.defaultRequestTimeoutMs;
+    const deadlineUnixMs = effectiveTimeoutMs === undefined
+      ? undefined
+      : Date.now() + effectiveTimeoutMs;
     const { meshName, actorRef: actor } = await this.resolveActorRoute(actorId, signal);
     this.throwIfKnownStale(meshName, actor);
-    const parts = this.createPacketParts(ZLinkStreamMessageKind.Request, 1n, explicitPacketName, request, new Map());
+    const parts = this.createPacketParts(
+      ZLinkStreamMessageKind.Request,
+      1n,
+      explicitPacketName,
+      request,
+      actorRequestDeadlineMetadata(deadlineUnixMs)
+    );
     try {
-      const handoff = this.options.handoffCapture?.(meshName, actor.actorId, parts, true, actor);
+      const handoff = this.options.handoffCapture?.(
+        meshName,
+        actor.actorId,
+        parts,
+        true,
+        actor,
+        deadlineUnixMs
+      );
       if (handoff !== undefined) {
-        return await waitHandoffReply<TReply>(handoff, timeoutMs);
+        return await waitHandoffReply<TReply>(
+          handoff,
+          remainingActorRequestTimeout(actorId, deadlineUnixMs)
+        );
       }
       return await this.submitActorRequest<TReply>(
         meshName,
         toBackendActorRef(actor),
         parts,
-        timeoutMs,
+        remainingActorRequestTimeout(actorId, deadlineUnixMs),
         signal
       );
     } catch (error) {
@@ -213,10 +235,13 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     metadata: ReadonlyMap<string, string>
   ): readonly Message[] {
     const packetName = resolveFrameworkPacketName(message, explicitPacketName, 'Actor');
+    const flags =
+      (requestSeq === undefined ? ZLinkStreamHeaderFlags.None : ZLinkStreamHeaderFlags.HasRequestSeq)
+      | (metadata.size === 0 ? ZLinkStreamHeaderFlags.None : ZLinkStreamHeaderFlags.HasMetadata);
     const header = encodeStreamHeader({
       kind,
       codec: ZLinkStreamCodec.Json,
-      flags: requestSeq === undefined ? ZLinkStreamHeaderFlags.None : ZLinkStreamHeaderFlags.HasRequestSeq,
+      flags,
       requestSeq,
       name: packetName,
       metadata
@@ -283,6 +308,18 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     }
     return node;
   }
+}
+
+function remainingActorRequestTimeout(actorId: string, deadlineUnixMs: number | undefined): number | undefined {
+  if (deadlineUnixMs === undefined) return undefined;
+  const remaining = deadlineUnixMs - Date.now();
+  if (remaining <= 0) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.DeadlineExceeded,
+      `Actor request '${actorId}' exceeded its deadline before submission.`
+    );
+  }
+  return Math.max(1, Math.ceil(remaining));
 }
 
 function requireActorId(actorId: string): void {

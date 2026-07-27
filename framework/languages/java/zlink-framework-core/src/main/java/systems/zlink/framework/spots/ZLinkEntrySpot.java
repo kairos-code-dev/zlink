@@ -25,10 +25,6 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor>
         return onClosing();
     }
 
-    default CompletionStage<Void> onActorRelocated(TActor actor) {
-        return CompletableFuture.completedFuture(null);
-    }
-
     default CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         TActor actor,
         ZLinkMessage createRequest) {

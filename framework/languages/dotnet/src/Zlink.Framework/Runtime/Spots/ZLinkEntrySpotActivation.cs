@@ -417,13 +417,6 @@ internal sealed partial class ZLinkEntrySpotActivation :
         return _actorHandlers.TryResolveDisconnected(actorType, out descriptor);
     }
 
-    public bool TryResolveActorRelocated(
-        Type actorType,
-        out ZLinkSpotActorLifecycleDescriptor? descriptor)
-    {
-        return _actorHandlers.TryResolveRelocated(actorType, out descriptor);
-    }
-
     public async ValueTask InvokeActorPacketAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,

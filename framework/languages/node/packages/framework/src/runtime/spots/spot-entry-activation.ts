@@ -306,12 +306,6 @@ export class ZLinkEntrySpotActivation {
     return this.serial.execute(() => this.entrySpot.onJoinedActor(createActorMembership(actor)));
   }
 
-  notifyRelocatedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
-    throwIfAborted(signal);
-    return this.serial.execute(() =>
-      this.entrySpot.onActorRelocated?.(createActorMembership(actor)));
-  }
-
   /**
    * Entry Spot membership does not have an application admission callback.
    * The shared core round-trip therefore accepts a valid returning Actor and

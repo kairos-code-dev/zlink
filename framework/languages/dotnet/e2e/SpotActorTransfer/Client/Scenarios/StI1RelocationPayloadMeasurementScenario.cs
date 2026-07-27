@@ -20,9 +20,9 @@ internal static class StI1RelocationPayloadMeasurementScenario
     private static readonly (string Name, int InstanceBytes, int SpotWideBytes)[]
         SpotProfiles =
     [
-        ("small", 4 * 1024, 64 * 1024),
-        ("normal", 64 * 1024, 1024 * 1024),
-        ("large", 8 * 1024 * 1024, 32 * 1024 * 1024),
+        ("small", 64 * 1024, 64 * 1024),
+        ("normal", 1024 * 1024, 1024 * 1024),
+        ("large", 32 * 1024 * 1024, 32 * 1024 * 1024),
         ("boundary-single", 64 * 1024 * 1024, 64 * 1024 * 1024)
     ];
 
@@ -33,12 +33,18 @@ internal static class StI1RelocationPayloadMeasurementScenario
                 context,
                 profile.Name,
                 profile.ApplicationBytes);
-        await RunSpotProfilesAsync(context, includeInstance: true);
+        await RunSpotProfilesAsync(
+            context,
+            includeInstance: true,
+            includeSpotWide: true);
     }
 
     internal static Task RunSpotWideRelocationOnlyAsync(
         SpotActorTransferScenarioContext context) =>
-        RunSpotProfilesAsync(context, includeInstance: false);
+        RunSpotProfilesAsync(
+            context,
+            includeInstance: false,
+            includeSpotWide: true);
 
     internal static Task RunActorBoundaryRelocationOnlyAsync(
         SpotActorTransferScenarioContext context) =>
@@ -52,6 +58,7 @@ internal static class StI1RelocationPayloadMeasurementScenario
         RunSpotProfilesAsync(
             context,
             includeInstance: false,
+            includeSpotWide: true,
             profiles: SpotProfiles.Where(static profile =>
                 profile.Name == "small").ToArray());
 
@@ -60,52 +67,16 @@ internal static class StI1RelocationPayloadMeasurementScenario
         RunSpotProfilesAsync(
             context,
             includeInstance: false,
+            includeSpotWide: true,
             profiles: SpotProfiles.Where(static profile =>
                 profile.Name == "boundary-single").ToArray());
 
-    internal static async Task RunInstanceActivationOnlyAsync(
-        SpotActorTransferScenarioContext context)
-    {
-        foreach (var profile in SpotProfiles)
-        {
-            RelocationPayloadSpotRes? activated = null;
-            for (var attempt = 0; attempt < 24; attempt++)
-            {
-                var spotId =
-                    $"payload-instance-{profile.Name}-{Guid.NewGuid():N}";
-                var request = new RelocationPayloadSpotReq(
-                    $"ST-I1-instance-{profile.Name}",
-                    profile.InstanceBytes);
-                var candidate = await context.ActivatePayloadInstanceSpotAsync(
-                    context.NodeC,
-                    spotId,
-                    request);
-                if (!SpotActorTransferScenarioContext.IsNode(
-                        candidate.NodeRid,
-                        "actor-c"))
-                {
-                    activated = candidate;
-                    break;
-                }
-            }
-            ZlinkStreamAssert.Ensure(
-                activated is not null,
-                $"ST-I1 Instance {profile.Name} did not exercise remote "
-                + "automatic activation.");
-            var expected = CreateExpectedState(
-                activated!.SpotId,
-                profile.InstanceBytes);
-            ZlinkStreamAssert.Ensure(
-                activated.ApplicationStateBytes == profile.InstanceBytes
-                && activated.ApplicationStateSha256 == Sha256(expected),
-                $"ST-I1 Instance {profile.Name} state did not match the "
-                + "deterministic payload.");
-            Console.WriteLine(
-                $"ST-I1 instance_activation profile={profile.Name}"
-                + $" bytes={profile.InstanceBytes}"
-                + $" owner={activated.NodeRid}");
-        }
-    }
+    internal static Task RunInstanceRelocationOnlyAsync(
+        SpotActorTransferScenarioContext context) =>
+        RunSpotProfilesAsync(
+            context,
+            includeInstance: true,
+            includeSpotWide: false);
 
     private static async Task RunActorProfileAsync(
         SpotActorTransferScenarioContext context,
@@ -257,6 +228,7 @@ internal static class StI1RelocationPayloadMeasurementScenario
     private static async Task RunSpotProfilesAsync(
         SpotActorTransferScenarioContext context,
         bool includeInstance,
+        bool includeSpotWide,
         IReadOnlyList<(string Name, int InstanceBytes, int SpotWideBytes)>?
             profiles = null)
     {
@@ -279,12 +251,15 @@ internal static class StI1RelocationPayloadMeasurementScenario
                     profile.InstanceBytes,
                     desiredSource));
             }
-            fixtures.Add(await CreateOnSourceAsync(
-                context,
-                "spotwide",
-                profile.Name,
-                profile.SpotWideBytes,
-                desiredSource));
+            if (includeSpotWide)
+            {
+                fixtures.Add(await CreateOnSourceAsync(
+                    context,
+                    "spotwide",
+                    profile.Name,
+                    profile.SpotWideBytes,
+                    desiredSource));
+            }
         }
 
         await context.ResetRelocationBlobMeasurementsAsync(
@@ -376,7 +351,7 @@ internal static class StI1RelocationPayloadMeasurementScenario
             + $" peak_rss_before_bytes={memoryBefore}"
             + $" peak_rss_after_bytes={memoryAfter}");
         Console.WriteLine(
-            "ST-I1 remaining_gap"
+            "ST-I1 blocker"
             + " queue_journal_timer_profile=not_exercised"
             + " permit_before_seal_contention=not_exercised"
             + " aggregate_320_mib_five_participants=not_exercised");

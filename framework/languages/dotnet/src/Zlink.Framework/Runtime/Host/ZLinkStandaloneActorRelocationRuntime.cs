@@ -272,7 +272,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         registration.DefaultRequestTimeout,
                         cancellationToken)
                     .ConfigureAwait(false);
-                await WaitForCommittedTargetAuthorityAsync(
+                var committedTarget = await WaitForCommittedTargetAuthorityAsync(
                         authorityStore,
                         ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                             actorState.ActorId),
@@ -303,7 +303,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         acceptedCount,
                         envelope,
                         canonical,
-                        prepare)
+                        prepare,
+                        committedTarget.AuthorityOwnerGeneration)
                     .ConfigureAwait(false);
                 return true;
             }
@@ -360,7 +361,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                         // the exact committed attempt instead of reopening or
                         // selecting another target.
                         committed = true;
-                        await WaitForCommittedTargetAuthorityAsync(
+                        var committedTarget =
+                            await WaitForCommittedTargetAuthorityAsync(
                                 authorityStore,
                                 ZLinkActorAuthorityPayloadCodec.AuthorityKey(
                                     actorState.ActorId),
@@ -383,7 +385,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                                 acceptedCount,
                                 envelope ?? prepared.Envelope,
                                 canonical,
-                                prepare)
+                                prepare,
+                                committedTarget.AuthorityOwnerGeneration)
                             .ConfigureAwait(false);
                         return true;
                     }
@@ -439,53 +442,67 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                && payload == expectedPayload;
     }
 
-    private static bool IsExactCommittedTargetAuthority(
+    internal static bool IsExactCommittedTargetAuthority(
         ZLinkAuthorityReadResult current,
         ZLinkAuthoritySnapshot source,
         ZLinkRelocationStored root,
         Guid relocationId,
         ZLinkMeshNodeDescriptor target,
         ulong targetAttemptGeneration,
-        bool requireActivated) =>
-        current is ZLinkAuthorityReadResult.Found found
-        && found.Snapshot.ObjectGeneration == source.ObjectGeneration
-        && found.Snapshot.AuthorityOwnerGeneration
-        == checked(source.AuthorityOwnerGeneration + 1)
-        && found.Snapshot.OwnerId == target.OwnerId
-        && found.Snapshot.OwnerLeaseGeneration == target.LeaseGeneration
-        && ((ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
-                 found.Snapshot.Payload.Span,
-                 out var canonical)
-             && canonical.Phase >= (byte)(requireActivated
-                 ? ZLinkStandaloneActorCanonicalPhase.Activated
-                 : ZLinkStandaloneActorCanonicalPhase.Committed)
-             && canonical.RelocationHigh == ToWireId(relocationId).High
-             && canonical.RelocationLow == ToWireId(relocationId).Low
-             && canonical.TargetAttemptGeneration == targetAttemptGeneration
-             && StringComparer.Ordinal.Equals(
-                 canonical.RelocationReference,
-                 root.Reference)
-             && canonical.RelocationChecksumCrc32c == root.ChecksumCrc32c
-             && StringComparer.Ordinal.Equals(
-                 canonical.TargetOwnerId,
-                 target.OwnerId)
-             && canonical.TargetOwnerLeaseGeneration
-                == checked((ulong)target.LeaseGeneration))
-            || (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
-                    found.Snapshot.Payload.Span,
-                    out var publication)
-                && publication.AggregateId == relocationId
-                && StringComparer.Ordinal.Equals(
-                    publication.Reference,
-                    root.Reference)
-                && publication.ChecksumCrc32c == root.ChecksumCrc32c
-                && StringComparer.Ordinal.Equals(
-                    publication.TargetOwnerId,
-                    target.OwnerId)
-                && publication.TargetOwnerLeaseGeneration
-                   == target.LeaseGeneration));
+        bool requireActivated)
+    {
+        if (current is not ZLinkAuthorityReadResult.Found found
+            || found.Snapshot.ObjectGeneration != source.ObjectGeneration
+            || source.AuthorityOwnerGeneration
+               is 0 or > long.MaxValue
+            || found.Snapshot.AuthorityOwnerGeneration
+               is 0 or > long.MaxValue
+            || found.Snapshot.AuthorityOwnerGeneration
+               <= source.AuthorityOwnerGeneration
+            || found.Snapshot.OwnerId != target.OwnerId
+            || found.Snapshot.OwnerLeaseGeneration != target.LeaseGeneration)
+            return false;
 
-    private static async ValueTask WaitForCommittedTargetAuthorityAsync(
+        if (ZLinkCanonicalRelocationAuthorityStateCodec.TryRead(
+                found.Snapshot.Payload.Span,
+                out var canonical))
+        {
+            return canonical.Phase >= (byte)(requireActivated
+                       ? ZLinkStandaloneActorCanonicalPhase.Activated
+                       : ZLinkStandaloneActorCanonicalPhase.Committed)
+                   && canonical.RelocationHigh == ToWireId(relocationId).High
+                   && canonical.RelocationLow == ToWireId(relocationId).Low
+                   && canonical.TargetAttemptGeneration
+                      == targetAttemptGeneration
+                   && StringComparer.Ordinal.Equals(
+                       canonical.RelocationReference,
+                       root.Reference)
+                   && canonical.RelocationChecksumCrc32c
+                      == root.ChecksumCrc32c
+                   && StringComparer.Ordinal.Equals(
+                       canonical.TargetOwnerId,
+                       target.OwnerId)
+                   && canonical.TargetOwnerLeaseGeneration
+                      == checked((ulong)target.LeaseGeneration);
+        }
+
+        return ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                   found.Snapshot.Payload.Span,
+                   out var publication)
+               && publication.AggregateId == relocationId
+               && StringComparer.Ordinal.Equals(
+                   publication.Reference,
+                   root.Reference)
+               && publication.ChecksumCrc32c == root.ChecksumCrc32c
+               && StringComparer.Ordinal.Equals(
+                   publication.TargetOwnerId,
+                   target.OwnerId)
+               && publication.TargetOwnerLeaseGeneration
+                  == target.LeaseGeneration;
+    }
+
+    private static async ValueTask<ZLinkAuthoritySnapshot>
+        WaitForCommittedTargetAuthorityAsync(
         IZLinkLocationRepository authorityStore,
         ZLinkAuthorityKey authorityKey,
         ZLinkAuthoritySnapshot source,
@@ -515,7 +532,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                     target,
                     targetAttemptGeneration,
                     requireActivated: true))
-                return;
+                return ((ZLinkAuthorityReadResult.Found)read).Snapshot;
             await Task.Delay(5, deadline.Token).ConfigureAwait(false);
         }
     }
@@ -531,7 +548,8 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         int acceptedCount,
         ZLinkRelocationEnvelope envelope,
         IZLinkBackendCanonicalRelocationReservation canonical,
-        ZLinkServiceWireCodec.RelocationPrepareRecord prepare)
+        ZLinkServiceWireCodec.RelocationPrepareRecord prepare,
+        ulong targetAuthorityOwnerGeneration)
     {
         var targetRef = new ZLinkBackendActorRef(
             target.Rid, actorState.ActorId, sourceRef.Generation);
@@ -566,7 +584,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             sourceAuthority.NodeGeneration,
             target.LifecycleGeneration,
             sourceSnapshot.AuthorityOwnerGeneration,
-            checked(sourceSnapshot.AuthorityOwnerGeneration + 1),
+            targetAuthorityOwnerGeneration,
             sourceAuthority.OwnerLeaseGeneration,
             checked((ulong)target.LeaseGeneration));
         runtime.RelayStandaloneActorRelocationTrailing(
@@ -911,7 +929,7 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
             1,
             new ZLinkServiceWireCodec.RelocationObjectRecord(
                 1,
-                sourceAuthority.StableType,
+                string.Empty,
                 sourceAuthority.ActorId,
                 sourceSnapshot.ObjectGeneration,
                 sourceSnapshot.AuthorityOwnerGeneration),
@@ -1156,8 +1174,12 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
                 throw DataLost(
                     "Standalone Actor source-owned recovery lost its exact source fence.");
         }
-        else if (authority.Snapshot.AuthorityOwnerGeneration
-                 < checked(participant.AuthorityOwnerGeneration + 1))
+        else if (participant.AuthorityOwnerGeneration
+                 is 0 or > long.MaxValue
+                 || authority.Snapshot.AuthorityOwnerGeneration
+                 is 0 or > long.MaxValue
+                 || authority.Snapshot.AuthorityOwnerGeneration
+                 <= participant.AuthorityOwnerGeneration)
             throw DataLost(
                 "Standalone Actor target-owned recovery did not advance owner generation.");
 
@@ -2219,16 +2241,10 @@ internal sealed partial class ZLinkFrameworkRuntime
     {
         if (actorState.Handoff.IsCanonicalMaintenanceReplayComplete(handoffId))
             return;
-        var targetNode = GetSpotNodeRuntime(targetAuthority.NodeRid);
-        var actor = actorState.Actor
-                    ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Actor '{actorState.ActorId}' is not materialized on the relocation target.");
-        await NotifyEntrySpotActorRelocatedAsync(
-                actor,
-                targetNode.Node.RoutingId,
-                cancellationToken)
-            .ConfigureAwait(false);
+        _ = actorState.Actor
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorState.ActorId}' is not materialized on the relocation target.");
         _ = actorState.Handoff.PrepareCanonicalMaintenanceReplay(handoffId);
         await ReplayCanonicalStandaloneActorFramesAsync(
                 actorState,
@@ -2240,7 +2256,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         while (true)
         {
             var frames = actorState.Handoff.SnapshotFinalReplay();
-            if (frames.Count == 0) break;
+            if (frames.Count == 0)
+            {
+                if (actorState.Handoff.TryCompleteCanonicalMaintenanceReplay(
+                        handoffId))
+                    break;
+                continue;
+            }
             await ReplayEntrySpotActorFramesAsync(
                     actorState,
                     frames,

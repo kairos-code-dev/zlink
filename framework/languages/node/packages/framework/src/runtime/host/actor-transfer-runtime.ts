@@ -307,7 +307,7 @@ export class ZLinkActorTransferRuntime {
           try {
             this.options.actorHandoff.complete(actor.context.actorId, target, targetActorRef, results);
           } catch (error) {
-            // The target has already committed. Local forwarding setup is now
+            // The target has already committed. Local Message Follow setup is now
             // post-commit work and must not turn the accepted transfer into a
             // source rollback that can no longer undo the target.
             this.options.reportPostCommitError?.(error);

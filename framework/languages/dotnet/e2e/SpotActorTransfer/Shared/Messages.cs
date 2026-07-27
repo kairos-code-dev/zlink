@@ -237,13 +237,6 @@ public sealed record RelocationLocationSnapshot(
     long ObjectGeneration,
     string NodeRid);
 
-public sealed record RelocationUnitTerminalEvidence(
-    string ObjectKind,
-    string ObjectId,
-    long ObjectGeneration,
-    string NodeRid,
-    long ObservedUnixTimeMilliseconds);
-
 public sealed record RelocationMessageFlowEvidence(
     long ObservedUnixTimeMilliseconds,
     string? Phase,

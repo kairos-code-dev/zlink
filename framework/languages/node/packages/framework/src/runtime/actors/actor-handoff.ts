@@ -7,7 +7,10 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
-import { decodeStreamHeader } from '../streams/protocol';
+import {
+  decodeActorRequestDeadlineUnixMs,
+  decodeStreamHeader
+} from '../streams/protocol';
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
 import { requestRoutedJsonReply } from './actor-routed-json-request';
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
@@ -36,6 +39,7 @@ export interface ZLinkActorHandoffPacket {
   readonly returnResponse: boolean;
   readonly operationId: string;
   readonly messageFollowHopCount: number;
+  readonly deadlineUnixMs?: number;
   readonly source?: ZLinkActorHandoffRequestSource;
   readonly remoteBoundSessionTarget?: {
     readonly routerChannelId: string;
@@ -80,6 +84,7 @@ export interface ZLinkActorHandoffResult {
   readonly ok: boolean;
   readonly response?: unknown;
   readonly error?: string;
+  readonly errorKind?: ZLinkFrameworkErrorKind;
 }
 
 interface PendingPacket {
@@ -185,8 +190,12 @@ export class ZLinkActorHandoffCoordinator {
     parts: readonly Message[],
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    deadlineUnixMs?: number
   ): Promise<unknown> | undefined {
+    const originalDeadlineUnixMs = deadlineUnixMs
+      ?? messageFollowDeadlineUnixMs(fallbackActorRef)
+      ?? packetDeadlineUnixMs(parts);
     const handoff = this.active.get(actorId);
     if (handoff !== undefined) {
       if (parts.length < 2) return Promise.resolve(undefined);
@@ -197,7 +206,8 @@ export class ZLinkActorHandoffCoordinator {
         remoteBoundSessionTarget,
         fallbackActorRef,
         this.allocateOperationId(),
-        messageFollowHopCount(fallbackActorRef)
+        messageFollowHopCount(fallbackActorRef),
+        originalDeadlineUnixMs
       );
       this.admitBounded(handoff.pending.length, handoff.pendingBytes, packet);
       handoff.pendingBytes += packetBytes(packet);
@@ -273,7 +283,8 @@ export class ZLinkActorHandoffCoordinator {
       remoteBoundSessionTarget,
       fallbackActorRef,
       messageFollowOperationId(fallbackActorRef) ?? this.allocateOperationId(),
-      messageFollowHopCount(fallbackActorRef)
+      messageFollowHopCount(fallbackActorRef),
+      originalDeadlineUnixMs
     );
     this.options.onMarker?.('message_follow_relay', actorId);
     return this.enqueueMessageFollow(followRoute, actorId, packet);
@@ -407,8 +418,13 @@ export class ZLinkActorHandoffCoordinator {
     }
     if (route.delivered) return { status: 'alreadyTerminal', source: route.source };
     route.delivered = true;
-    if (result.ok) route.resolve(result.response);
-    else route.reject(new Error(result.error ?? 'Actor handoff replay failed.'));
+    if (result.ok) {
+      route.resolve(result.response);
+    } else if (result.errorKind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+      route.reject(actorDeadlineExceeded(route.actorId));
+    } else {
+      route.reject(new Error(result.error ?? 'Actor handoff replay failed.'));
+    }
     return { status: 'terminalReceived', source: route.source };
   }
 
@@ -556,6 +572,7 @@ export class ZLinkActorHandoffCoordinator {
       handoffTargetSpotId: String(target.spotId),
       operationId: packet.operationId,
       messageFollowHopCount: packet.messageFollowHopCount + 1,
+      deadlineUnixMs: packet.deadlineUnixMs,
       authorityOwnerGeneration: target.authorityOwnerGeneration?.toString(),
       ownerLeaseGeneration: target.ownerLeaseGeneration?.toString()
     });
@@ -565,36 +582,52 @@ export class ZLinkActorHandoffCoordinator {
       });
       return undefined;
     }
+    const remainingMs = remainingRequestTime(actorId, packet.deadlineUnixMs);
     if (this.options.routedTransport.requestRawToSpot === undefined) {
-      const reply = await this.options.routedTransport.requestToSpot<Record<string, unknown>>(target, payload, {
-        packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
-        timeoutMs: this.options.requestTimeoutMs
-      });
+      const reply = await awaitBeforeDeadline(
+        this.options.routedTransport.requestToSpot<Record<string, unknown>>(target, payload, {
+          packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
+          timeoutMs: remainingMs ?? this.options.requestTimeoutMs
+        }),
+        actorId,
+        remainingMs
+      );
       if (reply.ok === false) {
+        if (reply.errorKind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+          throw actorDeadlineExceeded(actorId);
+        }
         throw new Error(String(reply.error ?? 'Actor Message Follow relay failed.'));
       }
       return reply.response;
     }
-    return await requestRoutedJsonReply(
-      this.options.routedTransport,
-      target,
-      payload,
-      { timeoutMs: this.options.requestTimeoutMs },
-      `Actor Message Follow raw request is not available for '${actorId}'.`,
-      (parts) => {
-        if (parts.length === 0) {
-          throw new Error(`Actor Message Follow reply was empty for '${actorId}'.`);
+    return await awaitBeforeDeadline(
+      requestRoutedJsonReply(
+        this.options.routedTransport,
+        target,
+        payload,
+        { timeoutMs: remainingMs ?? this.options.requestTimeoutMs },
+        `Actor Message Follow raw request is not available for '${actorId}'.`,
+        (parts) => {
+          if (parts.length === 0) {
+            throw new Error(`Actor Message Follow reply was empty for '${actorId}'.`);
+          }
+          const reply = JSON.parse(parts[0].getString('utf8')) as {
+            readonly ok?: boolean;
+            readonly response?: unknown;
+            readonly error?: unknown;
+            readonly errorKind?: unknown;
+          };
+          if (reply.ok === false) {
+            if (reply.errorKind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+              throw actorDeadlineExceeded(actorId);
+            }
+            throw new Error(String(reply.error ?? 'Actor Message Follow relay failed.'));
+          }
+          return reply.response;
         }
-        const reply = JSON.parse(parts[0].getString('utf8')) as {
-          readonly ok?: boolean;
-          readonly response?: unknown;
-          readonly error?: unknown;
-        };
-        if (reply.ok === false) {
-          throw new Error(String(reply.error ?? 'Actor Message Follow relay failed.'));
-        }
-        return reply.response;
-      }
+      ),
+      actorId,
+      remainingMs
     );
   }
 }
@@ -650,6 +683,13 @@ export async function replayActorHandoffBacklog(
   for (const packet of backlog) {
     const decoded = decodeHandoffPacket(packet);
     try {
+      if (
+        packet.returnResponse
+        && packet.deadlineUnixMs !== undefined
+        && Date.now() >= packet.deadlineUnixMs
+      ) {
+        throw actorDeadlineExceeded(packet.fallbackActorRef?.actorId ?? 'accepted-handoff');
+      }
       await onEnqueued?.(packet.index);
       const response = await dispatch(
         decoded.parts,
@@ -662,7 +702,8 @@ export async function replayActorHandoffBacklog(
       results.push({
         index: packet.index,
         ok: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        errorKind: error instanceof ZLinkFrameworkException ? error.kind : undefined
       });
     } finally {
       decoded.parts.forEach((part) => part.close());
@@ -678,7 +719,8 @@ function encodePacket(
   remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
   fallbackActorRef?: ActorRef,
   operationId = '',
-  messageFollowHopCount = 0
+  messageFollowHopCount = 0,
+  deadlineUnixMs?: number
 ): ZLinkActorHandoffPacket {
   return {
     index,
@@ -687,6 +729,7 @@ function encodePacket(
     returnResponse,
     operationId,
     messageFollowHopCount,
+    deadlineUnixMs,
     remoteBoundSessionTarget: remoteBoundSessionTarget === undefined
       ? undefined
       : {
@@ -722,6 +765,15 @@ function packetBytes(packet: ZLinkActorHandoffPacket): number {
   return Buffer.byteLength(packet.header, 'base64') + Buffer.byteLength(packet.payload, 'base64');
 }
 
+function packetDeadlineUnixMs(parts: readonly Message[]): number | undefined {
+  if (parts.length === 0) return undefined;
+  try {
+    return decodeActorRequestDeadlineUnixMs(parts[0].data());
+  } catch {
+    return undefined;
+  }
+}
+
 function messageFollowOperationId(actorRef: ActorRef | undefined): string | undefined {
   return (actorRef as ActorRef & { handoffOperationId?: string } | undefined)?.handoffOperationId;
 }
@@ -729,6 +781,37 @@ function messageFollowOperationId(actorRef: ActorRef | undefined): string | unde
 function messageFollowHopCount(actorRef: ActorRef | undefined): number {
   return (actorRef as ActorRef & { handoffMessageFollowHopCount?: number } | undefined)
     ?.handoffMessageFollowHopCount ?? 0;
+}
+
+function messageFollowDeadlineUnixMs(actorRef: ActorRef | undefined): number | undefined {
+  return (actorRef as ActorRef & { handoffDeadlineUnixMs?: number } | undefined)
+    ?.handoffDeadlineUnixMs;
+}
+
+function remainingRequestTime(actorId: string, deadlineUnixMs: number | undefined): number | undefined {
+  if (deadlineUnixMs === undefined) return undefined;
+  const remaining = deadlineUnixMs - Date.now();
+  if (remaining <= 0) throw actorDeadlineExceeded(actorId);
+  return Math.max(1, Math.ceil(remaining));
+}
+
+async function awaitBeforeDeadline<T>(
+  operation: Promise<T>,
+  actorId: string,
+  remainingMs: number | undefined
+): Promise<T> {
+  if (remainingMs === undefined) return await operation;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(actorDeadlineExceeded(actorId)), remainingMs);
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 function matchesGeneration(entry: MessageFollowRoute, actorRef: ActorRef | undefined): boolean {
@@ -739,5 +822,12 @@ function actorLocationStale(actorId: string): ZLinkFrameworkException {
   return new ZLinkFrameworkException(
     ZLinkFrameworkErrorKind.ActorLocationStale,
     `Actor route '${actorId}' is stale after the Message Follow duration.`
+  );
+}
+
+function actorDeadlineExceeded(actorId: string): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.DeadlineExceeded,
+    `Actor request '${actorId}' exceeded its original deadline during Message Follow.`
   );
 }

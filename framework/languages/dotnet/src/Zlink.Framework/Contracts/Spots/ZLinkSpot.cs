@@ -285,13 +285,6 @@ public interface IZLinkEntrySpot<TActor>
     {
         return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
     }
-
-    ValueTask OnActorRelocatedAsync(
-        TActor actor,
-        CancellationToken cancellationToken)
-    {
-        return ValueTask.CompletedTask;
-    }
 }
 
 public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext

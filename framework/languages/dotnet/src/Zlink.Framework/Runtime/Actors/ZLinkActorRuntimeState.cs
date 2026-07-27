@@ -842,14 +842,15 @@ internal sealed class ZLinkActorRuntimeState(
         ZlinkStreamHeader header,
         Func<CancellationToken, ValueTask<T>> operation,
         bool countAsPendingRequest,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowRelocationReplay = false)
     {
         using var turn = await _dispatchMailbox.EnterAsync(
                 cancellationToken,
                 countAsPendingMessage: true,
                 countAsPendingRequest)
             .ConfigureAwait(false);
-        EnsureDispatchAvailable();
+        EnsureDispatchAvailable(allowRelocationReplay);
         using var dispatch = EnterDispatch(header);
         return await operation(cancellationToken).ConfigureAwait(false);
     }
@@ -880,9 +881,11 @@ internal sealed class ZLinkActorRuntimeState(
         await operation(cancellationToken).ConfigureAwait(false);
     }
 
-    private void EnsureDispatchAvailable()
+    private void EnsureDispatchAvailable(bool allowRelocationReplay = false)
     {
-        if (!IsDispatchBlocked && !Handoff.BlocksLocalDispatch) return;
+        if (!IsDispatchBlocked
+            && (allowRelocationReplay || !Handoff.BlocksLocalDispatch))
+            return;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,

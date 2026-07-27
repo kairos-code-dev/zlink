@@ -625,7 +625,7 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
   membership은 바뀌지 않는다.
 - 세부 동작: cross-session explicit rebind, exact binding identity와 stale lifecycle event 격리.
 
-#### SM-D4B 저장 route relay와 stale mapping
+#### SM-D4B 저장 route의 Message Follow와 stale mapping
 
 우선순위: `P0`
 

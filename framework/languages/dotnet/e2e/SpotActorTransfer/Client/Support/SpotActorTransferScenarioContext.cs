@@ -482,14 +482,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ?? throw new InvalidOperationException(
             "Relocation location response was null.");
 
-    public async Task<IReadOnlyList<RelocationUnitTerminalEvidence>>
-        GetRelocationTerminalsAsync(ZLinkHttpClient node) =>
-        (await node.Get("/workload/relocation-terminals")
-                .Async<IReadOnlyList<RelocationUnitTerminalEvidence>>())
-            .Body
-        ?? throw new InvalidOperationException(
-            "Relocation terminal evidence response was null.");
-
     public async Task<IReadOnlyList<RelocationMessageFlowEvidence>>
         GetRelocationMessageFlowsAsync(ZLinkHttpClient node) =>
         (await node.Get("/workload/message-flow")

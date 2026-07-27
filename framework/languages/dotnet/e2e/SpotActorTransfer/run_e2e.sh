@@ -5,8 +5,9 @@ umask 077
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 
-# The ST-F markers (handoff_backlog, message_follow_relay, ...) are runtime
-# diagnostics behind this gate; the runner asserts them, so it owns the gate.
+# Some ST-F handoff markers are runtime diagnostics behind this gate. Message
+# Follow completion uses public terminal and application-handler evidence
+# instead of runtime log markers.
 # Builds and process fixtures share output directories. Serialize complete
 # runner invocations so concurrent scenarios cannot corrupt or invalidate
 # each other's evidence.
@@ -124,6 +125,7 @@ start_node() {
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
+    9>&- \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
@@ -140,6 +142,7 @@ start_session_gateway() {
     --stream-endpoint "$stream" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log"
   setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- --config "$config" \
+    9>&- \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
@@ -157,6 +160,7 @@ run_client() {
     --node-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$scenario"
   dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$config" \
+    9>&- \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 
@@ -195,9 +199,9 @@ SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
 SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
-dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
-dotnet build "$SESSION_GATEWAY_PROJECT" --maxcpucount:1 >/dev/null
-dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$SERVER_PROJECT" --maxcpucount:1 9>&- >/dev/null
+dotnet build "$SESSION_GATEWAY_PROJECT" --maxcpucount:1 9>&- >/dev/null
+dotnet build "$CLIENT_PROJECT" --maxcpucount:1 9>&- >/dev/null
 
 start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
 NODE_A_PID="${pids[${#pids[@]}-1]}"
@@ -283,16 +287,6 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F2"* ]]; then
   require_marker_order actor-inflight-overtake- backlog_enqueued location_committed
-fi
-if [[ "$SCENARIO" == *"ST-F4"* ]]; then
-  require_runtime_marker message_follow_relay
-  require_runtime_marker message_follow_expired
-fi
-if [[ "$SCENARIO" == *"ST-F5"* ]]; then
-  require_runtime_marker message_follow_registered
-  require_runtime_marker message_follow_relay
-  require_runtime_marker message_follow_route_removed
-  require_runtime_marker message_follow_expired
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
   grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.*.log

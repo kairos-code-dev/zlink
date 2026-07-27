@@ -15,8 +15,8 @@
 공통·package별 spec은 목표 동작을 소유하고, 언어별 exact spec은 정확한 public interface와 해당
 언어에서 관찰한 차이를 기록한다. 언어별 exact spec의 구현 차이 표는 이 문서를 참조한다.
 
-구현 stage의 상태, 담당자와 실행 증거는 이 문서에 기록하지 않는다. 이 문서는 목표 계약과 현재
-public surface 사이의 차이만 설명한다.
+구현 stage의 상태, 담당자와 실행 이력 원본은 이 문서에 기록하지 않는다. 차이가 실제로 남아 있음을
+설명하는 데 필요한 최소 test 결과만 적고, 전체 실행 증거와 진행 상태는 execution ledger가 소유한다.
 
 ## 1. 판정 기준
 
@@ -551,10 +551,6 @@ bounded cleanup한다.
   replay, source cleanup과 completion ACK가 하나의 production scheduler 경로로 끝까지 연결되지 않았다.
 - Java/Kotlin에는 별도 `ZLinkDrainControl` 공개 표면이 남아 있어 host runtime이 termination intent와 terminal
   result를 소유하는 목표 계약과 다르다.
-- 기존 구현의 Entry Spot standalone Actor maintenance에는 target relocation
-  callback과 source leave callback이 남아 있다. 두 callback과 대응 public method를
-  제거하고 Actor adapter, queue·timer, source relay와 session route만 Framework가
-  이전해야 한다.
 - `SpotWide` User Spot과 member Actor는 하나의 aggregate permit·root·commit
   generation으로 이전해야 한다.
 - `PerActor` User Spot은 `Recreate` shell과 Actor별 owner를 사용해야 한다. 현재
@@ -820,25 +816,76 @@ runtime 전이, metric label과 contract test를 exact interface에 맞춘 뒤 �
 운영 workload에서 검증한다.
 
 `.NET` runner에는 `ST-I1`, `ST-I4`, `ST-I5`, `ST-I6`의 실제 scenario와 selector를
-연결했다. I1은 deterministic Actor state의 Capture byte와 opaque Relocation Store
-blob의 size·read-back checksum을 비교하고 expected application·encoded Capture·restore
-byte SHA도 대조한다. 각 profile은 Store 측정을 reset한 격리 실행이다.
+연결했다. I1은 Actor 4 KiB·64 KiB·8 MiB·64 MiB와 Instance Spot·`SpotWide`
+64 KiB·1 MiB·32 MiB·64 MiB를 실제 cross-node relocation한다. deterministic state의
+Capture·Restore byte와 opaque Relocation Store blob의 size·read-back checksum을
+대조한다. 각 profile은 Store 측정을 reset한 격리 실행이다.
+
+`ST-I2/I3`가 이전에 사용한 `RelocationUnitTerminalStore`는 실제 terminal을 관찰하지
+않았다. Actor는 당시 lifecycle callback에서 기록했고, Spot은 authority commit 전의
+adapter `RestoreAsync`에서 기록했다. 이 값을 기준으로 target
+admission 순서를 판정하면 commit 전 상태를 완료로 오인할 수 있다. Process E2E는
+public `RelocateAsync` terminal, 최종 location과 `ObjectGeneration`, terminal 뒤
+source·target handler 결과를 사용해야 한다. Exact authority commit과 target
+admission 순서는 provider·runtime contract test가 검증한다.
+
+추가 대조에서 다음 E2E 차이도 확인했다.
+
+- `ST-I1-INSTANCE`는 네 profile을 source node에 만든 뒤 host relocation, target
+  `Restore`, public location과 Relocation Store read-back을 확인하도록 수정했다.
+  이전 activation-only 실행 결과는 relocation 통과 증거로 사용하지 않는다.
+  Queue·journal·timer, permit contention, 320 MiB aggregate와 participant 5개
+  반복은 아직 없다. 따라서 전체 `ST-I1` selector는 `passed`가 아니라
+  `diagnostic_only`로 종료하고 blocker를 출력한다. 수정 뒤 process 실행
+  `20260728-022204-146992`는 네 Instance Spot을 source에 만들었지만 5분
+  relocation deadline에 도달했다. Source `Capture`는 네 개 중 세 개만
+  기록했고 target `Restore`는 0건이었다. HTTP 499와 client
+  `HTTP request exceeded timeout`으로 끝났으므로 완료 증거가 아니다.
+- `ST-I2`는 `ST-I2-RECREATE`와 `ST-I2-SNAPSHOT`으로 분리했다. 각 selector는 fresh
+  host process에서 독립 elapsed time과 units/s를 계산한다. 정본 실행은 moving target
+  request·one-way를 필수로 하며 0건은 실패한다. Actor request는 original operation과
+  connection-scoped correlation의 일대일 연결과 duplicate 0건을 확인한다. Queue·journal
+  evidence도 집합 비교가 아니라 handler 도착 순서를 검증한다. 다만 1초 interruption,
+  encoded bytes/s, payload latency, CPU, peak RSS와 Store byte 측정은 남아 있다.
+  Creation-reservation production blocker를 우회하지 않고 정본 규모를 다시 실행해야 한다.
+- `ST-I3`의 Spot flow correlation은 relocation traffic 시작 전 flow ID watermark로
+  baseline을 제외한다. `SpotWide` 최종 owner equality는 유지 상태 확인에만 사용하며
+  atomic publication 통과 증거로 사용하지 않는다. Commit 전 participant 0개 공개와 commit 뒤
+  전체 공개를 함께 관찰할 수 없어 `spotwide_pre_post_visibility` blocker로 남긴다.
+- 측정하지 않은 interruption·resource·Store 수치는 추정하거나 0으로 채우지 않는다.
+  `ST-I2/I3` selector는 이 blocker가 남아 있는 동안 `diagnostic_only`다.
 
 I4~I6에는 public global Actor ID와 operation ID별 transport delivery gate를 연결했다.
 Gate는 resolver가 commit 전에 선택한 delivery를 실제 submit 직전에 멈춘다. Relocation
 뒤 fresh owner를 다시 찾는 호출로 대체되지 않는다. Caller와 HTTP DTO에는 owner RID,
 ObjectGeneration과 Message Follow hop을 노출하지 않는다.
 
+I4~I6와 ST-F4/F5의 process 판정에서 `Zlink.Framework.ActorHandoff`
+Information log의 `message_follow_*` 문자열 의존을 제거했다. 현재 판정은 relocation 전에
+resolve된 delivery를 지연한 뒤, public terminal reply와 application handler evidence를 사용한다.
+Final owner handler는 정확히 한 번, 이전 owner handler는 0회여야 한다. Request는 reply marker와
+original timeout을 보존해야 한다. Duration 뒤 delivery는 `ActorLocationStale`이고 target handler는
+0회여야 한다.
+
+Route entry 수, next-hop 내부값과 실제 memory 제거는 public application 계약으로 관찰할 수 없다.
+이를 process E2E 성공으로 가장하지 않는다. Provider/runtime contract test에서 bounded lifecycle을
+검증해야 하며, 해당 검증이 없으면 route cleanup case는 blocked 상태다.
+
 I4는 source 처리 baseline과 commit 뒤 one-way·request를 연결했다. Source dispatch와
-request reply relay를 고친 뒤 `logs/20260728-001043-1662047`에서 held one-way·request,
-Message Follow route 등록·relay·제거가 통과했다. Baseline은 source handler가
+request reply relay를 고친 뒤 `logs/20260728-001043-1662047`에서 held one-way·request의
+내부 marker를 관찰했다. 이 과거 실행은 현행 public black-box 완료 증거로 사용하지 않는다.
+수정한 scenario는 final owner의 exactly-once 처리, source handler 0회와 reply marker를 확인한다.
+Baseline은 source handler가
 끝난 뒤 relocation을 시작하므로 seal 직전 `MF-AO-QUEUE` 증거가 아니다. `MF-AO-QUEUE`,
 host relocation의 commit 전 hold, Spot 네 조합과 PerActor split는 남아 있다. I5는 Actor request correlation
 역순 release, expiry와 Message Follow 중 original absolute deadline을 연결했고
 `logs/20260728-002118-1750005`에서 correlation A/B exact reply, late reply 폐기와
-expiry stale rejection이 통과했다.
+expiry stale rejection을 관찰했다. 현행 scenario는 runtime marker 대신 같은 결과를 public
+terminal과 application handler 0회로 판정하며 process 재검증이 필요하다.
 Duplicate, 이전 generation, loop, 8-hop과 record·byte bound 및 Spot 조합은 남아 있다. I6은 Actor의 두 번 relocation과
-delayed request, source·중간 route cleanup을 연결했다. 첫 hop의 benign lease-renewal
+delayed request를 연결했다. 현행 assertion은 public `Find`의 final owner가 정확히 한 번
+처리하고 source·중간 owner handler가 처리하지 않는지 확인한다. Route cleanup 내부값은 public
+black-box로 관찰할 수 없어 별도 runtime contract test가 필요하다. 첫 hop의 benign lease-renewal
 StoreVersion conflict는 latest snapshot으로 재시도하도록 고쳤다. 단독 실행
 `logs/20260728-003822-1911426`은 두 번째 target restore·location commit 뒤 source
 cleanup completion이 끝나지 않았다. 세 번째 relocation, one-way,
@@ -924,15 +971,22 @@ relocation에 동일하게 적용한다. `PlannedMaintenance`는 source와 같�
 - Scale 실행은 `diagnostic_only` terminal로 분리했다.
 - Request와 one-way는 각각 독립 open-loop pacer로 바꾸고 offered·submitted·accepted·
   failed 수를 기록한다.
-- 생성 count와 고정 `completed`·`safe_aborted`·`blocked` 출력은 제거했다. 실제
-  per-unit terminal 집계는 아직 없다.
+- 생성 count를 완료 수로 사용하던 출력은 제거했다. Public `RelocateAsync` terminal과
+  final location을 확인한 뒤 실제 확인된 unit 수를 `completed`로 기록한다.
+  `SpotWide`는 Spot aggregate 수를 completed unit으로 세고 Spot과 member Actor의
+  확인 수는 `verified_participants`로 따로 기록한다.
+  정상 `Relocated` 반복의 `safe_aborted`와 `blocked`는 0이며, terminal 확인 전에
+  workload report를 성공으로 남기지 않는다.
 - Operation ID, absolute deadline, request correlation과 handler admission 시각을
-  workload evidence에 추가했다. Public `Find` 결과와 adapter·lifecycle terminal도
-  relocation 전후에 대조한다. Public Actor·Spot ref에는 authority owner generation이
-  없어 `authority_owner_generation_unobservable` gap으로 실패한다.
-- SpotWide는 모든 member Actor의 최종 owner를 확인한다. 다만 per-object `Find`만으로
-  같은 aggregate CAS의 원자적 공개를 증명할 수 없어
-  `spotwide_atomic_publication_unobservable` gap으로 실패한다. Spot request correlation은
+  workload evidence에 추가했다. Public `Find` 결과와 host terminal을 relocation
+  전후에 대조한다. Public Actor·Spot ref에는 내부
+  `AuthorityOwnerGeneration` 숫자를 추가하지 않는다. Exact fence는 provider contract
+  test가 검증하고 process E2E는 이전 generation의 stale 결과와 Message Follow의
+  terminal-once 동작으로 검증한다.
+- SpotWide는 모든 member Actor의 final owner와 host terminal 뒤 target handler를
+  확인한다. Aggregate 단일 CAS 호출 자체는 provider contract test가
+  검증하고 process E2E는 participant 전체의 observable admission barrier를 검증한다.
+  Spot request correlation은
   public `IZLinkRuntimeMessageFlowObserver`의 `received`·`replied` event를 대조하도록
   고쳐 별도 handler context나 private transport metadata 없이 관찰한다.
 - 현재 Actor delivery gate는 E2E assembly의 `InternalsVisibleTo`, internal metadata와
@@ -950,13 +1004,18 @@ Java/Kotlin·Node.js·C++의 공식 `all` selector는 이전 route를 caller가 
 각 언어가 public global Actor ID의 resolve 뒤 delivery를 transport에서 지연하는 fixture로
 전환할 때까지 해당 실행 결과는 현행 `ST-F4/F5` 완료 증거가 아니다.
 
+Java의 evidence store는 현재 route 등록 marker만 보존하고 relay·거부·route 제거
+marker를 버리지만 client는 이 marker를 요구한다. Kotlin runner는 별도 observer를
+연결하지 않고 Java runner에 위임한다. 따라서 Java/Kotlin `ST-F4/F5`는 fixture를
+현행 Message Follow marker 계약에 맞추기 전에는 통과할 수 없다.
+
 Production code 대조 결과도 다음 차이가 남아 있다.
 
 | Runtime | Actor Message Follow | Spot Message Follow | Track I에서 남은 핵심 차이 |
 |---|---|---|---|
-| Java/Kotlin | generation과 1,024-record·16 MiB 제한을 검사하지만 relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop, durable multi-hop recovery와 payload·bulk process 증거가 없다 |
-| Node.js | operation ID·correlation·hop·bound 일부를 보존하지만 relay request에 기본 timeout을 다시 적용한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | late reply 폐기, loop, recovery와 payload·bulk process 증거가 없다 |
-| C++ | coordinator에 expiry·generation·hop·bound 코드가 있지만 production caller가 없고 Actor client는 Location Store에서 fresh owner를 다시 찾아 재시도한다 | 없음 | committed route만 사용하는 전달, original operation·deadline·correlation 보존과 payload·bulk process 증거가 없다 |
+| Java/Kotlin | generation과 1,024-message·16 MiB 제한을 검사하지만 accepted handoff packet에 original operation ID와 Message Follow hop이 없고, relay request에 original absolute deadline 대신 기본 timeout을 다시 적용한다 | 없음 | duplicate·loop, durable multi-hop recovery와 payload·bulk process 증거가 없다 |
+| Node.js | operation ID·correlation·hop·bound와 original absolute deadline을 accepted handoff·relay에 보존한다. 만료 request는 handler queue 전에 끝내고 late reply를 폐기한다 | codec field만 있고 route 수명과 relay를 소유하는 runtime이 없다 | duplicate·loop, recovery와 payload·bulk process 증거가 없다 |
+| C++ | production relay는 target route를 사용하지만 1,024-message·16 MiB·hop 제한을 적용하는 admission API가 unit test에서만 호출된다. Relay request는 새 30초 envelope를 만들어 original operation·deadline·correlation을 보존하지 않고, Actor client는 Location Store에서 fresh owner를 다시 찾아 재시도한다 | 없음 | bounded committed route만 사용하는 전달, original operation·deadline·correlation 보존과 payload·bulk process 증거가 없다 |
 
 따라서 세 runtime의 component code나 F6 결과를 Actor·Spot 전체 Message Follow 또는
 Track I 완료 증거로 사용하지 않는다.
@@ -965,6 +1024,12 @@ Track I 완료 증거로 사용하지 않는다.
 Message Follow hop마다 남은 시간만 전달하도록 수정했다. 만료된 ingress는 handler queue
 전에 `TimedOut`으로 끝내며 late reply를 폐기한다. Focused runtime·relocation·Message Follow
 test는 통과했지만, 실제 process에서 relay 중 deadline을 넘기는 `MF-DEADLINE` 반복은 아직 없다.
+
+Node.js Actor request도 absolute deadline을 internal stream metadata, accepted handoff와
+relay envelope에 보존한다. 각 hop은 남은 시간만 사용하고 만료 request를 target
+handler queue 전에 `DeadlineExceeded`로 끝내며 late reply를 폐기한다. Build·lint와
+Actor handoff/client focused 25/25가 통과했다. Spot route runtime과 process
+`MF-DEADLINE` 증거는 남아 있다.
 
 Spot public call은 Spot ID만 받고 terminal 실행 안에서 route를 찾는다. Relocation 전에
 선택한 opaque route를 보존해 commit 뒤 제출하는 public operation은 없다. Message Follow가
@@ -976,7 +1041,7 @@ transport harness가 runtime이 만든 frame을 resolve 뒤 지연·복제하는
 - Actor와 Spot의 one-way·request를 authority commit 전후에 각각 보낸다.
 - operation identity, generation, deadline, correlation과 reply route를 유지한다.
 - 기간 만료, duplicate, loop와 8-hop 제한을 검증한다.
-- Message Follow route 하나가 대기하는 message 1,024개와 encoded metadata 16 MiB 제한을 검증한다.
+- Message Follow route 하나가 대기하는 message 1,024개와 encoded byte 16 MiB 제한을 검증한다.
 - 같은 object가 연속으로 이동하는 multi-hop route를 검증하고 사용이 끝난 route를 제거한다.
 - 실제 encoded Actor·Spot payload와 relocation 중 control traffic의 성공률·latency를 측정한다.
 
@@ -995,6 +1060,22 @@ Java/Kotlin·Node.js·C++에는 Spot Message Follow 자체가 없다.
 
 언어별 `SpotActorTransfer` feature map에는 실제 구현 범위와 runtime blocker를
 구분해 기록한다. Runtime marker나 단위 test만으로 process E2E 완료로 판정하지 않는다.
+
+`.NET`은 relocation source가 commit 뒤 Store에서 읽은 실제 authority owner generation으로
+Message Follow를 시작한다. 비교 규칙도 정확히 `source + 1`이 아니라 유효 범위와
+`target > source`만 검사한다. 하지만 target object를 commit 전에 만드는 여섯 경로는 아직
+`source + 1`을 임시 generation으로 사용한다. 현재 prepare 결과에는 participant별 예약
+generation이 없고 commit 결과에도 실제 generation이 없기 때문이다. Store prepare 결과가
+participant별 target generation을 반환하고, target admission·factory·context와 authority
+publication까지 같은 값을 전달해야 이 차이를 제거할 수 있다.
+
+Message Follow request reply도 backpressure gap이 남아 있다. Source의 reply queue가 잠시
+가득 차면 현재 구현은 direct reply entry를 먼저 제거하거나 remote reply를 `DontWait`으로
+한 번만 제출한다. Handler가 정확히 한 번 실행된 뒤에도 caller가 정상 reply 대신 timeout을
+받을 수 있다. Reply terminal은 original deadline까지 bounded retry하거나 reply queue가
+수락할 때까지 pending entry를 유지해야 하며, E2E는 reply backpressure를 실제로 주입해야 한다.
+
+2026-07-28 최종 회귀 기준으로 `.NET` Unit 1,090/1,090와 public Contract 67/67이 통과했다.
 
 ### 12.53 E2E fixture의 SpotRid 잔여
 

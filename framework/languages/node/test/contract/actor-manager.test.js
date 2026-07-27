@@ -2913,34 +2913,6 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
   ]);
 });
 
-test('Entry Spot maintenance restoration uses relocated notification without admission or joined callbacks', async () => {
-  const events = [];
-  class EntrySpot {
-    async onActorJoin() {
-      events.push('admission');
-      return { accepted: false };
-    }
-    async onJoinedActor() {
-      events.push('joined');
-    }
-    async onActorRelocated(actor) {
-      events.push(`relocated:${actor.actor.actorId}`);
-    }
-  }
-  const activation = new framework.ZLinkEntrySpotActivation({
-    entrySpotType: EntrySpot,
-    nativeSpot: { routingId: 'entry-stage', async dispose() {} },
-    nativeNode: { routingId: 'node-a' },
-    nodeRid: 'node-a',
-    spotNodeName: 'node-a'
-  });
-  await activation.create();
-
-  await activation.notifyRelocatedActor(lifecycleActor('alice'));
-
-  assert.deepEqual(events, ['relocated:alice']);
-});
-
 test('ZLinkEntrySpotActivation disposes native resources when onClosing fails', async () => {
   const events = [];
   class EntrySpot {

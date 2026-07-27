@@ -52,9 +52,12 @@ internal sealed class ZLinkSpotMessageFollow(
         && TargetOwner.LeaseGeneration > 0
         && received.OwnerLeaseGeneration
            == checked((ulong)SourceOwner.LeaseGeneration)
-        && SourceAuthorityOwnerGeneration != ulong.MaxValue
+        && SourceAuthorityOwnerGeneration
+           is > 0 and <= long.MaxValue
         && TargetAuthorityOwnerGeneration
-           == SourceAuthorityOwnerGeneration + 1
+           is > 0 and <= long.MaxValue
+        && TargetAuthorityOwnerGeneration
+           > SourceAuthorityOwnerGeneration
         && currentSourceOwner is { } owner
         && owner == SourceOwner;
 

@@ -164,8 +164,7 @@ namespace SpotActorTransfer.ActorNode
     internal sealed class TransferEntrySpot(
         IZLinkEntrySpotContext context,
         EvidenceStore evidence,
-        DomainStateStore domainState,
-        RelocationUnitTerminalStore relocationTerminals)
+        DomainStateStore domainState)
         : IZLinkEntrySpot<TransferActor>
     {
         public IZLinkEntrySpotContext Context { get; } = context;
@@ -208,26 +207,6 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             evidence.Add("local", actor.ActorId, "entry_joined", actor.StateVersion.ToString());
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask OnActorRelocatedAsync(
-            TransferActor actor,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            evidence.Add(
-                "relocation-workload",
-                actor.ActorId,
-                "relocation_admitted",
-                DateTimeOffset.UtcNow
-                    .ToUnixTimeMilliseconds()
-                    .ToString());
-            relocationTerminals.Add(
-                "actor",
-                actor.ActorId,
-                actor.Context.ObjectGeneration,
-                Context.NodeRid.ToString());
             return ValueTask.CompletedTask;
         }
 
@@ -731,8 +710,7 @@ namespace SpotActorTransfer.ActorNode
     }
 
     internal sealed class RelocationPayloadUserSpotAdapter(
-        EvidenceStore evidence,
-        RelocationUnitTerminalStore relocationTerminals)
+        EvidenceStore evidence)
         : IZLinkSpotRelocationAdapter<RelocationPayloadUserSpot>
     {
         public ValueTask<byte[]> CaptureAsync(
@@ -756,11 +734,6 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             spot.ApplicationState = payload.ToArray();
-            relocationTerminals.Add(
-                "spot",
-                spot.Context.SpotId,
-                spot.Context.ObjectGeneration,
-                spot.Context.NodeRid.ToString());
             evidence.Add(
                 "ST-I1",
                 spot.Context.SpotId,
@@ -772,8 +745,7 @@ namespace SpotActorTransfer.ActorNode
     }
 
     internal sealed class RelocationPayloadInstanceSpotAdapter(
-        EvidenceStore evidence,
-        RelocationUnitTerminalStore relocationTerminals)
+        EvidenceStore evidence)
         : IZLinkSpotRelocationAdapter<RelocationPayloadInstanceSpot>
     {
         public ValueTask<byte[]> CaptureAsync(
@@ -797,11 +769,6 @@ namespace SpotActorTransfer.ActorNode
         {
             cancellationToken.ThrowIfCancellationRequested();
             spot.ApplicationState = payload.ToArray();
-            relocationTerminals.Add(
-                "spot",
-                spot.Context.SpotId,
-                spot.Context.ObjectGeneration,
-                spot.Context.NodeRid.ToString());
             evidence.Add(
                 "ST-I1",
                 spot.Context.SpotId,

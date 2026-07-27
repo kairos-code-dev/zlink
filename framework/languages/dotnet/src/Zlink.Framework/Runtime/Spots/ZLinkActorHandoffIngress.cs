@@ -49,8 +49,11 @@ internal static class ZLinkActorHandoffIngress
                 // detached and concurrently, so capturing inside the pipeline
                 // would race sibling frames and break the backlog's arrival
                 // sequence (spec 23 §10.2).
-                ZLinkActorInboundPipeline.EnsureRelocationReplyRoute(frame);
-                if (state.Handoff.TryCapture(frame)
+                if (state.Handoff.TryCapture(
+                        frame,
+                        () => ZLinkActorInboundPipeline.EnsureRelocationReplyRoute(
+                            runtime,
+                            frame))
                     == ZLinkActorHandoffCaptureResult.Captured)
                 {
                     continue;

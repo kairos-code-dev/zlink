@@ -19,7 +19,7 @@ internal static class StF4MessageFollowThenRejectScenario
             104);
         var source = context.NodeForRid(created.NodeRid);
         var (target, _) = context.OtherActorNode(created.NodeRid);
-        await context.CreateSpotAsync(target, spotId);
+        var targetSpot = await context.CreateSpotAsync(target, spotId);
 
         var g1 = Guid.NewGuid().ToString("N");
         var g2 = Guid.NewGuid().ToString("N");
@@ -47,22 +47,57 @@ internal static class StF4MessageFollowThenRejectScenario
                 actorId,
                 new JoinTargetReq(scenario, spotId))).Accepted,
             "ST-F4 relocation was rejected.");
+        await context.WaitEvidenceAsync(
+            target,
+            [$"{scenario}|{actorId}|success_reply|{spotId}"]);
+        _ = await context.WaitActorOwnerAsync(
+            target,
+            actorId,
+            targetSpot.NodeRid);
 
         await context.ReleaseTransportDeliveryAsync(source, g1);
         await g1Delivery;
         await context.WaitEvidenceAsync(
             target,
             [$"{scenario}|{actorId}|handoff_packet|G1"]);
-        await context.WaitRuntimeEvidenceAsync(
-            source,
-            $"message_follow_relay actor={actorId}");
+        var deliveredEvidence = await context.GetEvidenceAsync(target);
+        ZlinkStreamAssert.Ensure(
+            deliveredEvidence.Count(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "handoff_packet"
+                && item.Value == "G1") == 1,
+            "ST-F4 duration-bounded delivery was not handled exactly once.");
+        ZlinkStreamAssert.Ensure(
+            !(await context.GetEvidenceAsync(source)).Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "handoff_packet"
+                && item.Value == "G1"),
+            "ST-F4 source application handler processed followed work.");
 
-        await context.WaitRuntimeEvidenceAsync(source,
-            $"message_follow_route_removed actor={actorId} entries=0");
+        // This topology configures a seven-second Message Follow duration.
+        // The application-level assertion below proves expiry without reading
+        // runtime markers or private route state.
+        await Task.Delay(TimeSpan.FromSeconds(8));
         await context.ReleaseTransportDeliveryAsync(source, g2);
         var stale = await g2Delivery;
         ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
             $"ST-F4 expected ActorLocationStale, got '{stale.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(
+            !(await context.GetEvidenceAsync(target)).Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == "G2"),
+            "ST-F4 expired request reached the target application handler.");
+        ZlinkStreamAssert.Ensure(
+            !(await context.GetEvidenceAsync(source)).Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == "G2"),
+            "ST-F4 expired request reached the source application handler.");
         ZlinkStreamAssert.Ensure(
             (await context.GetTransportDeliveryAsync(source, g1)).ReleasedCount == 1
             && (await context.GetTransportDeliveryAsync(source, g2)).ReleasedCount == 1,

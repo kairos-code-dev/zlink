@@ -16,6 +16,7 @@ import { throwAlreadySubmitted } from '../messaging/submission-result';
 export { utf8Decode, utf8Encode } from '@zlink-systems/stream-wire';
 
 const defaultMaxDecompressedPayloadSize = 64 * 1024;
+const actorRequestDeadlineMetadataKey = '$zlink.actor-request-deadline-unix-ms';
 
 export enum ZLinkStreamCodec {
   Raw = 0,
@@ -153,17 +154,40 @@ export function decodeStreamHeader(header: Uint8Array): ZLinkStreamFrameHeader {
   if (kind === ZLinkStreamMessageKind.Control && (hasCorrelation || hasRequestSeq || hasMetadata || hasFlow)) {
     throw new Error('Control packet must not contain a request sequence, metadata, correlation id, or flow id.');
   }
+  const metadata = publicStreamMetadata(decoded.metadata);
   return {
     kind,
     codec: decoded.codec as ZLinkStreamCodec,
-    flags,
+    flags: metadata.size === 0
+      ? flags & ~ZLinkStreamHeaderFlags.HasMetadata
+      : flags,
     requestSeq: decoded.requestSeq,
     name: decoded.name,
-    metadata: decoded.metadata,
+    metadata,
     correlationId: decoded.correlationId,
     flowId: decoded.flowId,
     flowOrigin: decodeFlowOrigin(decoded.flowOrigin)
   };
+}
+
+export function actorRequestDeadlineMetadata(deadlineUnixMs: number | undefined): ReadonlyMap<string, string> {
+  return deadlineUnixMs === undefined
+    ? new Map()
+    : new Map([[actorRequestDeadlineMetadataKey, String(deadlineUnixMs)]]);
+}
+
+export function decodeActorRequestDeadlineUnixMs(header: Uint8Array): number | undefined {
+  const value = decodeStreamWireHeader(header).metadata.get(actorRequestDeadlineMetadataKey);
+  if (value === undefined) return undefined;
+  const deadline = Number(value);
+  return Number.isSafeInteger(deadline) && deadline > 0 ? deadline : undefined;
+}
+
+function publicStreamMetadata(metadata: ReadonlyMap<string, string>): ReadonlyMap<string, string> {
+  if (!metadata.has(actorRequestDeadlineMetadataKey)) return metadata;
+  const visible = new Map(metadata);
+  visible.delete(actorRequestDeadlineMetadataKey);
+  return visible;
 }
 
 export function tryGetStreamFrameHeader(header: unknown): ZLinkStreamFrameHeader | undefined {

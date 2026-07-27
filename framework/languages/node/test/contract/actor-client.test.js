@@ -10,7 +10,7 @@ class ActorNotify { constructor(value) { this.value = value; } }
 class ActorAsk { constructor(value) { this.value = value; } }
 
 function actorRef(actorId = 'actor-1', generation = 1n) {
-  return { nodeRid: 'node-a', actorId, generation };
+  return { nodeRid: 'node-a', actorId, objectGeneration: generation, meshName: 'play-mesh' };
 }
 
 function createReplyParts(value) {
@@ -194,7 +194,7 @@ test('actor client request decodes the handler reply and never auto-creates a mi
     requestToActor(actor, parts, options) {
       assert.equal(actor.actorId, 'actor-1');
       assert.equal(parts.length, 2);
-      assert.equal(options.timeoutMs, 100);
+      assert.ok(options.timeoutMs > 0 && options.timeoutMs <= 100);
       return operationId;
     }
   };

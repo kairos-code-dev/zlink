@@ -139,7 +139,9 @@ internal sealed class ZLinkActorHandoffState(
         return completion.WaitAsync(cancellationToken);
     }
 
-    public ZLinkActorHandoffCaptureResult TryCapture(ZLinkSpotActorFrame frame)
+    public ZLinkActorHandoffCaptureResult TryCapture(
+        ZLinkSpotActorFrame frame,
+        Action? prepareCapture = null)
     {
         lock (_gate)
         {
@@ -150,6 +152,8 @@ internal sealed class ZLinkActorHandoffState(
             var capturesTargetIngress =
                 _targetPhase is ZLinkActorTargetHandoffPhase.Importing
                     or ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                    or ZLinkActorTargetHandoffPhase.NotifyingJoined
+                    or ZLinkActorTargetHandoffPhase.Prepared
                     or ZLinkActorTargetHandoffPhase.Replaying;
             if (!capturesSourceIngress
                 && !capturesTargetIngress)
@@ -177,6 +181,7 @@ internal sealed class ZLinkActorHandoffState(
                     $"Actor '{actorId}' cannot accept a direct request without "
                     + "an exact ingress request-source fence.");
 
+            prepareCapture?.Invoke();
             var captured = ZLinkActorHandoffFrames.Capture(frame, _arrivalIndex);
             var encodedBytes = capturesSourceIngress || capturesTargetIngress
                 ? ZLinkActorHandoffFrames.CanonicalEncodedLength(
@@ -547,6 +552,8 @@ internal sealed class ZLinkActorHandoffState(
             if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot complete an inactive handoff.");
+            if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
+                return;
             if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying
                 || _frames.Count != 0)
                 throw new InvalidOperationException(
@@ -618,8 +625,10 @@ internal sealed class ZLinkActorHandoffState(
         if (sourceNodeGeneration == 0
             || targetNodeGeneration == 0
             || sourceAuthorityOwnerGeneration == 0
+            || sourceAuthorityOwnerGeneration > long.MaxValue
             || targetAuthorityOwnerGeneration
-               != checked(sourceAuthorityOwnerGeneration + 1)
+               is 0 or > long.MaxValue
+            || targetAuthorityOwnerGeneration <= sourceAuthorityOwnerGeneration
             || sourceOwnerLeaseGeneration == 0
             || targetOwnerLeaseGeneration == 0)
             throw new ArgumentOutOfRangeException(
@@ -660,7 +669,7 @@ internal sealed class ZLinkActorHandoffState(
                 _sourceIngressAdmission.ReleaseAll();
                 _sourceHoldAdmission.ReleaseAll();
                 diagnostic?.Invoke(
-                    $"message_follow_registered actor={actorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
+                    $"message_follow_registered source_rid={sourceActor.NodeRid} target_rid={targetActor.NodeRid} entries=1");
                 return _frames
                     .Skip(Math.Min(committedFrameCount, _frames.Count))
                     .Concat(_sourceHoldFrames.Skip(_sourceCommittedHoldCount))
@@ -758,8 +767,22 @@ internal sealed class ZLinkActorHandoffState(
         lock (_gate)
             return string.Equals(_handoffId, handoffId,
                        StringComparison.Ordinal)
-                   && _targetPhase == ZLinkActorTargetHandoffPhase.Replaying
-                   && _frames.Count == 0;
+                   && _targetPhase == ZLinkActorTargetHandoffPhase.Completed;
+    }
+
+    internal bool TryCompleteCanonicalMaintenanceReplay(string handoffId)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId,
+                    StringComparison.Ordinal)
+                || _targetPhase != ZLinkActorTargetHandoffPhase.Replaying
+                || _frames.Count != 0)
+                return false;
+            _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
+            _sourceTrailingImported = false;
+            return true;
+        }
     }
 
     public IReadOnlyList<ZLinkActorHandoffFrame> SnapshotFinalReplay()
@@ -1064,7 +1087,7 @@ internal sealed class ZLinkActorHandoffState(
                     if (!ReferenceEquals(_messageFollowExpiry, expiry)) return;
 
                     ClearMessageFollowRouteLocked();
-                    diagnostic?.Invoke($"message_follow_route_removed actor={actorId} entries=0");
+                    diagnostic?.Invoke("message_follow_route_removed entries=0");
                 }
             }
         }

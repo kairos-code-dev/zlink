@@ -110,17 +110,29 @@ internal static class StI5MessageFollowSafetyScenario
                 replies.Select(result =>
                     $"success={result.Succeeded},error={result.ErrorKind},"
                     + $"marker={result.Reply?.Marker},node={result.Reply?.NodeRid}")));
+        var correlationEvidence = await context.WaitEvidenceAsync(
+            target,
+            [
+                $"{scenario}|{actorId}|packet_handler|correlation-a",
+                $"{scenario}|{actorId}|packet_handler|correlation-b"
+            ]);
+        foreach (var marker in new[] { "correlation-a", "correlation-b" })
+        {
+            ZlinkStreamAssert.Ensure(
+                correlationEvidence.Count(item =>
+                    item.Scenario == scenario
+                    && item.ActorId == actorId
+                    && item.Kind == "packet_handler"
+                    && item.Value == marker) == 1,
+                $"{scenario} request '{marker}' was not handled exactly once.");
+        }
 
         var deadlineResult = await deadline;
         ZlinkStreamAssert.Ensure(
             !deadlineResult.Succeeded
-            && deadlineResult.ErrorKind is
-                "Timeout" or "TimeoutException" or "RequestFailed",
+            && deadlineResult.ErrorKind == nameof(TimeoutException),
             $"{scenario} followed request extended its original deadline: "
             + deadlineResult.ErrorKind);
-        await context.WaitRuntimeEvidenceAsync(
-            source,
-            $"message_follow_relay actor={actorId}");
         var deadlineEvidence = await context.WaitEvidenceAsync(
             target,
             [$"{scenario}|{actorId}|packet_handler|deadline"]);
@@ -131,18 +143,21 @@ internal static class StI5MessageFollowSafetyScenario
                 && item.Kind == "packet_handler"
                 && item.Value == "deadline") == 1,
             $"{scenario} deadline request did not enter Message Follow exactly once.");
-        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        // The test topology uses a seven-second Message Follow duration.
+        // Releasing a delivery after this bounded wait proves the public stale
+        // terminal without consulting private route cleanup markers.
+        await Task.Delay(TimeSpan.FromSeconds(8));
         ZlinkStreamAssert.Ensure(
-            !(await context.GetEvidenceAsync(target)).Any(item =>
+            (await context.GetEvidenceAsync(target)).Count(item =>
                 item.Scenario == scenario
                 && item.ActorId == actorId
                 && item.Kind == "late_reply_created"
-                && item.Value == "deadline"),
-            $"{scenario} delivered a reply after the original deadline.");
-
-        await context.WaitRuntimeEvidenceAsync(
-            source,
-            $"message_follow_route_removed actor={actorId} entries=0");
+                && item.Value == "deadline") == 1,
+            $"{scenario} did not exercise exactly one reply created after the original deadline.");
+        ZlinkStreamAssert.Ensure(
+            !deadlineResult.Succeeded
+            && deadlineResult.ErrorKind == nameof(TimeoutException),
+            $"{scenario} changed the completed timeout after the late reply.");
         await context.ReleaseTransportDeliveryAsync(
             source, expiredOperation);
         var expiredResult = await expired;
@@ -151,6 +166,44 @@ internal static class StI5MessageFollowSafetyScenario
             && expiredResult.ErrorKind == "ActorLocationStale",
             $"{scenario} expired delivery was not rejected as stale: "
             + expiredResult.ErrorKind);
+        ZlinkStreamAssert.Ensure(
+            !(await context.GetEvidenceAsync(target)).Any(item =>
+                item.Scenario == scenario
+                && item.ActorId == actorId
+                && item.Kind == "packet_handler"
+                && item.Value == "expired"),
+            $"{scenario} expired request reached the target application handler.");
+        var sourceEvidence = await context.GetEvidenceAsync(source);
+        foreach (var marker in new[]
+                 {
+                     "correlation-a",
+                     "correlation-b",
+                     "deadline",
+                     "expired"
+                 })
+        {
+            ZlinkStreamAssert.Ensure(
+                !sourceEvidence.Any(item =>
+                    item.Scenario == scenario
+                    && item.ActorId == actorId
+                    && item.Kind == "packet_handler"
+                    && item.Value == marker),
+                $"{scenario} source handler processed followed request '{marker}'.");
+        }
+        foreach (var operationId in new[]
+                 {
+                     correlationA,
+                     correlationB,
+                     expiredOperation,
+                     deadlineOperation
+                 })
+        {
+            ZlinkStreamAssert.Ensure(
+                (await context.GetTransportDeliveryAsync(
+                    source,
+                    operationId)).ReleasedCount == 1,
+                $"{scenario} operation '{operationId}' was not released exactly once.");
+        }
 
         // MF-DUP, MF-GEN, MF-LOOP, MF-HOP and MF-BOUND remain partial. They
         // require controlled duplicate delivery or additional committed

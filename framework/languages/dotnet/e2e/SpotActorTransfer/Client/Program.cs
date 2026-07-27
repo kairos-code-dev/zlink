@@ -34,7 +34,7 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
             .RunActorBoundaryRelocationOnlyAsync(context),
     ["ST-I1-INSTANCE"] = () =>
         StI1RelocationPayloadMeasurementScenario
-            .RunInstanceActivationOnlyAsync(context),
+            .RunInstanceRelocationOnlyAsync(context),
     ["ST-I1-SPOTWIDE"] = () =>
         StI1RelocationPayloadMeasurementScenario
             .RunSpotWideRelocationOnlyAsync(context),
@@ -44,7 +44,10 @@ var scenarios = new Dictionary<string, Func<Task>>(StringComparer.OrdinalIgnoreC
     ["ST-I1-SPOTWIDE-BOUNDARY"] = () =>
         StI1RelocationPayloadMeasurementScenario
             .RunSpotWideBoundaryRelocationOnlyAsync(context),
-    ["ST-I2"] = () => StI2BulkActorRelocationScenario.RunAsync(context),
+    ["ST-I2-RECREATE"] = () =>
+        StI2BulkActorRelocationScenario.RunRecreateAsync(context),
+    ["ST-I2-SNAPSHOT"] = () =>
+        StI2BulkActorRelocationScenario.RunSnapshotAsync(context),
     ["ST-I3-INSTANCE"] = () =>
         StI3BulkSpotRelocationScenario.RunInstanceAsync(context),
     ["ST-I3-SPOTWIDE"] = () =>
@@ -64,7 +67,8 @@ var excludedFromAll = new HashSet<string>(
         "ST-I1-SPOTWIDE",
         "ST-I1-SPOTWIDE-SMALL",
         "ST-I1-SPOTWIDE-BOUNDARY",
-        "ST-I2",
+        "ST-I2-RECREATE",
+        "ST-I2-SNAPSHOT",
         "ST-I3-INSTANCE",
         "ST-I3-SPOTWIDE",
         "ST-I4",
@@ -72,9 +76,23 @@ var excludedFromAll = new HashSet<string>(
         "ST-I6"
     ],
     StringComparer.OrdinalIgnoreCase);
-IEnumerable<string> selected = string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase)
+var selected = (string.Equals(options.Scenario, "all", StringComparison.OrdinalIgnoreCase)
     ? scenarios.Keys.Where(name => !excludedFromAll.Contains(name))
-    : options.Scenario.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    : options.Scenario.Split(
+        ',',
+        StringSplitOptions.RemoveEmptyEntries
+        | StringSplitOptions.TrimEntries))
+    .ToArray();
+if (selected.Any(static name =>
+        name.Equals("ST-I2-RECREATE", StringComparison.OrdinalIgnoreCase)
+        || name.Equals(
+            "ST-I2-SNAPSHOT",
+            StringComparison.OrdinalIgnoreCase))
+    && selected.Length != 1)
+{
+    throw new ArgumentException(
+        "Each ST-I2 profile requires its own fresh host-process run.");
+}
 var diagnosticOnlyRun = false;
 foreach (var name in selected)
 {
@@ -96,33 +114,21 @@ Console.WriteLine(
 
 static bool IsDiagnosticOnly(string name)
 {
-    static int Value(string variable, int fallback) =>
-        int.TryParse(
-            Environment.GetEnvironmentVariable(variable),
-            out var value)
-            ? value
-            : fallback;
-
-    var baseline = Value(
-        "ZLINK_E2E_RELOCATION_BASELINE_SECONDS",
-        60);
-    var rate = Value("ZLINK_E2E_RELOCATION_RATE", 200);
     return name.ToUpperInvariant() switch
     {
-        "ST-I2" =>
-            Value("ZLINK_E2E_ST_I2_RECREATE_COUNT", 10_000) != 10_000
-            || Value("ZLINK_E2E_ST_I2_SNAPSHOT_COUNT", 1_000) != 1_000
-            || baseline != 60
-            || rate != 200,
-        "ST-I3-INSTANCE" =>
-            Value("ZLINK_E2E_ST_I3_INSTANCE_COUNT", 1_000) != 1_000
-            || baseline != 60
-            || rate != 200,
-        "ST-I3-SPOTWIDE" =>
-            Value("ZLINK_E2E_ST_I3_SPOTWIDE_COUNT", 100) != 100
-            || Value("ZLINK_E2E_ST_I3_ACTORS_PER_SPOT", 100) != 100
-            || baseline != 60
-            || rate != 200,
+        // ST-I1 currently covers payload profiles and Store read-back only.
+        // The selector must not report full completion until queue, journal,
+        // timer, permit-contention, and aggregate-bound cases are implemented.
+        "ST-I1" => true,
+        // These selectors remain diagnostic until interruption and resource
+        // measurements are recorded without private runtime hooks.
+        "ST-I2-RECREATE" or "ST-I2-SNAPSHOT"
+            or "ST-I3-INSTANCE" => true,
+        // Final owner equality is not a SpotWide pre/post visibility proof.
+        "ST-I3-SPOTWIDE" => true,
+        // These selectors cover only the currently connected Actor cases.
+        // Spot, duplicate, bound, recovery, and route-cleanup cases remain.
+        "ST-I4" or "ST-I5" or "ST-I6" => true,
         _ => false
     };
 }

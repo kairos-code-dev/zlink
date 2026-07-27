@@ -178,7 +178,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (messageFollowRemaining <= TimeSpan.Zero)
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
+                "message_follow_route_removed");
             await activation.DisposeAsync().ConfigureAwait(false);
         }
         else if (!runtime.TryRunDetached(
@@ -196,13 +196,13 @@ internal sealed class ZLinkSpotNodeCatalog(
                          {
                          }
                          ZLinkFrameworkDebugLog.SpotDiscovery(
-                             $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
+                             "message_follow_route_removed");
                          await activation.DisposeAsync()
                              .ConfigureAwait(false);
                      }))
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"message_follow_route_removed spot={activation.SpotId} generation={activation.ObjectGeneration}");
+                "message_follow_route_removed");
             await activation.DisposeAsync().ConfigureAwait(false);
         }
         ZLinkRuntimeMetrics.RecordSpotClosed(

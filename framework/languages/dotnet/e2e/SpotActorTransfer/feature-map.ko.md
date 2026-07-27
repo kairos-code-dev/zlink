@@ -23,13 +23,13 @@
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |
 | ST-F3 | 구현 | 같은 session의 `S1,S2,S3,S4` 순서와 다른 session 진행 격리를 묶음 반복 `logs/20260720-042454-2074240`, `logs/20260720-042515-2075011`, `logs/20260720-042523-2076425`에서 검증했다. |
 | ST-F3A | 미구현 | Session owner pause와 owner lease fence를 실제 process에서 검증하는 시나리오가 없다. |
-| ST-F4 | fixture 구현·process 재검증 대기 | Internal transport delivery gate가 public resolver가 commit 전에 선택한 delivery 두 건을 operation ID별로 지연한다. Caller는 global Actor ID만 사용한다. Duration 안 release는 relay하고 route 제거 뒤 release는 `ActorLocationStale`로 끝나는지 검증한다. |
-| ST-F5 | fixture 구현·process 재검증 대기 | 첫 owner에서 선택한 delivery를 지연한 뒤 세 node로 두 번 relocation하고 release한다. 두 source의 next-hop Message Follow와 route 제거 뒤 stale 결과를 검증한다. Application은 owner RID나 ObjectGeneration을 제출하지 않는다. |
+| ST-F4 | fixture 구현·process 재검증 대기 | Transport delivery gate가 public resolver가 commit 전에 선택한 delivery 두 건을 operation ID별로 지연한다. Caller는 global Actor ID만 사용한다. Duration 안 release는 target application handler가 정확히 한 번 처리하고 source handler는 처리하지 않는지 확인한다. Duration 뒤 release는 `ActorLocationStale`이고 target handler는 0회인지 확인한다. Runtime log marker는 완료 증거로 사용하지 않는다. |
+| ST-F5 | 부분 구현·process 재검증 대기 | 첫 owner에서 선택한 delivery를 지연한 뒤 세 node로 두 번 relocation하고 release한다. Public `Find`가 반환한 final owner handler가 정확히 한 번 처리하고 이전 두 owner handler는 처리하지 않는지 확인한다. Duration 뒤 stale terminal도 확인한다. Route entry의 실제 제거와 next-hop 내부값은 public black-box로 관찰할 수 없으므로 process 완료 증거가 아니며 provider/runtime contract test가 별도로 필요하다. |
 | ST-F6 | 구현 | handoff 중 request의 원래 caller completion 상관관계와 늦은 reply timeout 격리를 같은 세 실행에서 검증했다. |
 | ST-G1 | 미구현 | SpotWide·PerActor의 yielded continuation과 모든 실행 lane을 포함한 relocation barrier E2E가 없다. |
 | ST-G2 | 미구현 | Actor 10,000개 inventory chunk와 typed capacity aggregate all-or-none E2E가 없다. |
 | ST-G3 | 미구현 | PerActor Spot authority 선전환과 Actor별 source·target route 분할 E2E가 없다. |
-| ST-G4 | 미구현 | 이동 중 stale `ToActor` relay와 target queue 순서를 검증하는 E2E가 없다. |
+| ST-G4 | 미구현 | 이동 중 stale `ToActor` Message Follow와 target queue 순서를 검증하는 E2E가 없다. |
 | ST-G5 | 미구현 | Entry·PerActor Actor relocation interruption 1초 목표와 초과 시 계속 진행을 검증하는 E2E가 없다. |
 | ST-G6 | 미구현 | `ApplicationSignaled` readiness와 completion callback의 source·target owner를 검증하는 E2E가 없다. |
 | ST-H1 | 미구현 | Deferred Join 등록, immutable request와 Actor queue barrier E2E가 없다. |
@@ -39,12 +39,32 @@
 | ST-H4A | 미구현 | Deferred Join 등록량·payload·timeout 경계와 Relocate·Shutdown race E2E가 없다. |
 | ST-H4B | 미구현 | Join 뒤 Yield, awaited cycle과 reply terminal E2E가 없다. |
 | ST-H5 | 미구현 | MessageContext와 Actor handler signature parity를 실제 transport로 검증하는 E2E가 없다. |
-| ST-I1 | 부분 구현·profile 확대 대기 | Actor와 Instance Spot의 4 KiB·64 KiB·8 MiB·64 MiB, SpotWide의 64 KiB·1 MiB·32 MiB·64 MiB profile, deterministic SHA, opaque Store 총 byte·checksum과 peak RSS 측정을 연결했다. Instance Spot 네 profile은 `20260727-232318-914304`, SpotWide 64 KiB는 `20260728-000859-1518859`에서 통과했다. Actor adapter가 정확히 64 MiB를 반환하는 독립 selector도 추가했다. 첫 실행 `20260728-004839-2032371`에서 fixture header 74 bytes를 잘못 더한 문제를 고쳤지만 수정 뒤 process 증거는 아직 없다. SpotWide 64 MiB 실행 `20260728-003937-1922103`은 typed failure 없이 외부 5분 제한에 도달했다. Queue·journal·timer, permit contention, 320 MiB·5-participant aggregate도 미검증이다. |
-| ST-I2 | 부분 구현·process blocker | 10,000 Recreate Actor와 1,000 Snapshot Actor, control Actor·Spot traffic과 throughput·p99 측정 scenario를 연결했다. Request와 one-way를 독립 open-loop로 제출하고 operation ID·absolute deadline·correlation, relocation 전후 public 위치와 terminal callback을 대조한다. 최소 1+1 반복 `20260728-005525-2344250`, 30초 진단 `20260728-010329-2556033`도 target preflight 뒤 source relocation 안에서 nonterminal이었다. Target Restore·admission은 0이고 remote workload reply는 reply capability 누락으로 retry했다. 정본 규모와 relocation 중·후 결과는 아직 검증하지 못했다. Public ref에 authority owner generation이 없어 해당 검증도 명시적인 gap으로 실패한다. |
-| ST-I3 | 부분 구현·process blocker | Instance Spot 1,000개와 SpotWide 100개×Actor 100개, control traffic 측정 scenario를 연결했다. Public 위치와 terminal callback, 모든 SpotWide member의 최종 owner를 대조한다. Spot request correlation은 public message-flow observer의 received·replied event로 확인한다. 축소 Instance smoke `20260728-000501-1448286`은 baseline을 통과했지만 Capture만 반복하고 target restore와 relocation terminal에 도달하지 못했다. Aggregate 단일 CAS publication은 현재 public 관측 표면으로 증명할 수 없어 명시적인 gap으로 실패한다. |
-| ST-I4 | Actor matrix 부분 통과 | Operation ID별 transport gate로 commit 뒤 `MF-AO-FOLLOW`와 `MF-AR-FOLLOW`를 실행한다. Source dispatch와 reply relay를 고친 뒤 `20260728-001043-1662047`에서 held one-way·request, Message Follow route 등록·relay·제거가 통과했다. `MF-AO-QUEUE`, host relocation의 `MF-AR-HOLD`, Spot 네 case와 `MF-PA-SPLIT`은 남아 있다. |
-| ST-I5 | Actor safety 부분 통과 | `20260728-002118-1750005`에서 pre-resolved Actor request의 역순 release correlation A/B, original absolute deadline, late reply 폐기와 route expiry stale rejection이 통과했다. Duplicate, 이전 generation, loop, 8-hop과 1,024 record·16 MiB bound 및 Spot 조합은 남아 있다. |
-| ST-I6 | Actor multi-hop production blocker | 첫 source에서 선택한 request delivery를 두 번 relocation 뒤 release하고 source·중간 node relay와 route cleanup을 검증한다. 첫 hop의 benign lease-renewal StoreVersion conflict는 재시도하도록 고쳤지만 `20260728-003822-1911426`에서 두 번째 target restore·location commit 뒤 source cleanup completion이 끝나지 않았다. Handler operation ID, one-way, 세 번째 relocation, recovery와 Instance·SpotWide 조합도 남아 있다. |
+| ST-I1 | 부분 구현·diagnostic only | Actor는 4 KiB·64 KiB·8 MiB·64 MiB, Instance Spot과 SpotWide는 64 KiB·1 MiB·32 MiB·64 MiB profile을 사용한다. 모두 실제 cross-node relocation 뒤 `Restore`, public location, deterministic SHA와 opaque Store read-back을 확인한다. 이전 Instance activation-only 결과는 relocation 증거에서 제외했다. Actor adapter가 정확히 64 MiB를 반환하는 독립 selector도 있다. SpotWide 64 MiB 실행 `20260728-003937-1922103`은 typed failure 없이 외부 5분 제한에 도달했다. 수정한 Instance 실행 `20260728-022204-146992`도 네 fixture 생성 뒤 source `Capture` 3건, target `Restore` 0건에서 5분 relocation deadline과 HTTP 499로 끝났다. 완료 증거가 아니다. Queue·journal·timer, permit contention, 320 MiB·5-participant aggregate가 미구현이므로 전체 `ST-I1`은 `diagnostic_only`로 표시한다. |
+| ST-I2 | 부분 구현·diagnostic only | `ST-I2-RECREATE`와 `ST-I2-SNAPSHOT`을 분리했다. 각 selector는 fresh host process에서 10,000/180초·64 units/s와 1,000/90초·16 units/s를 독립 계산한다. Moving target request·one-way가 0건이면 실패한다. Actor request는 original operation과 connection-scoped correlation을 일대일로 대조하고 duplicate 0건을 확인한다. Handler evidence는 sequence 집합이 아니라 도착 순서로 검증한다. Public terminal·최종 location·`ObjectGeneration`·final owner admission도 확인한다. 1초 interruption, encoded bytes/s, payload latency, CPU, peak RSS와 Store byte는 아직 측정하지 않으므로 두 selector는 `diagnostic_only`다. 현재 정본 규모는 creation-reservation production blocker를 우회하지 않고 재검증해야 한다. |
+| ST-I3 | 부분 구현·diagnostic only | Instance Spot 1,000개와 SpotWide 100개×Actor 100개, control traffic 측정 scenario를 연결했다. Spot message flow는 relocation traffic 시작 전 flow ID watermark 이후의 received·replied pair만 사용한다. Public terminal·최종 location·generation과 final owner admission은 확인하지만, SpotWide final owner equality를 atomic publication 증거로 사용하지 않는다. Commit 전 participant 0개 공개와 commit 뒤 전체 공개를 관찰하는 수단이 없어 `spotwide_pre_post_visibility` blocker를 출력한다. 1초 interruption과 resource·Store 측정도 남아 있어 두 selector는 `diagnostic_only`다. |
+| ST-I4 | Actor matrix 부분 구현·process 재검증 대기 | Operation ID별 transport gate로 commit 뒤 `MF-AO-FOLLOW`와 `MF-AR-FOLLOW`를 실행한다. Final owner의 one-way·request handler가 각각 정확히 한 번 실행되고 source handler는 0회인지 확인한다. Request marker와 reply marker가 같고 original timeout 안에 끝나는지 확인한다. Runtime log marker는 제거했다. `MF-AO-QUEUE`, host relocation의 `MF-AR-HOLD`, Spot 네 case와 `MF-PA-SPLIT`은 남아 있다. |
+| ST-I5 | Actor safety 부분 구현·process 재검증 대기 | Pre-resolved Actor request를 역순 release하여 correlation A/B와 reply marker를 대조한다. Original absolute deadline의 timeout, late reply 미전달, duration 뒤 `ActorLocationStale`와 target handler 0회를 public 결과로 확인한다. Runtime route marker는 사용하지 않는다. Duplicate, 이전 generation, loop, 8-hop과 1,024-message·16 MiB bound 및 Spot 조합은 남아 있다. |
+| ST-I6 | Actor multi-hop production blocker | 첫 source에서 선택한 request delivery를 두 번 relocation 뒤 release한다. Public `Find`로 확인한 final owner handler가 정확히 한 번 처리하고 source·중간 owner handler는 0회인지 확인한다. 내부 relay·route cleanup marker assertion은 제거했다. 첫 hop의 benign lease-renewal StoreVersion conflict는 재시도하도록 고쳤지만 `20260728-003822-1911426`에서 두 번째 target restore·location commit 뒤 source cleanup completion이 끝나지 않았다. Route cleanup 내부값, handler operation ID, one-way, 세 번째 relocation, recovery와 Instance·SpotWide 조합도 남아 있다. |
+
+## Message Follow case별 구현 상태
+
+Config 10의 Message Follow 전용 section은 case별 evidence를 요구한다. 현재 `.NET` process E2E의
+구현 상태는 다음과 같다. Runtime route 구현이나 unit test 통과를 process E2E 통과로 계산하지 않는다.
+
+| 대상·경계 | One-way | Request |
+|---|---|---|
+| Actor, seal 전 queue | `MF-AO-QUEUE` 미구현 | Track F accepted journal과 분리 검증 필요 |
+| Actor, commit 전 host ingress hold | 미구현 | `MF-AR-HOLD` 미구현 |
+| Actor, commit 직후 Message Follow | assertion 연결·process 재검증 대기 | assertion 연결·process 재검증 대기 |
+| Actor, duration 0·route 없음·만료 | drop evidence 미구현 | 만료 assertion 연결·process 재검증 대기. Duration 0과 route 없음은 미구현 |
+| Actor, duplicate·generation·loop·hop·bound | 미구현 | Correlation·deadline assertion 연결·process 재검증 대기. 나머지는 미구현 |
+| Actor, multi-hop·route cleanup | 미구현 | Final owner exactly-once black-box assertion은 연결했다. 두 번 relocation은 production blocker이며 route entry cleanup은 public observation이 없어 별도 contract test가 필요하다. Recovery도 미구현이다. |
+| Instance·`SpotWide` Spot, 모든 authority 경계 | 미구현 | 미구현 |
+| `PerActor` Spot·Actor split | `MF-PA-SPLIT` 미구현 | `MF-PA-SPLIT` 미구현 |
+
+Spot public call은 global Spot ID만 받으므로, commit 전에 Framework가 선택한 delivery를 process 밖
+transport에서 지연하는 harness가 필요하다. 새 owner를 commit 뒤 다시 resolve해 보내는 call은 정상
+direct delivery이며 Message Follow 증거가 아니다.
 
 이전 전체 실행 `logs/20260720-044205-2109114`는 당시 기본 17개 시나리오와
 별도 process generation을 사용하는 `ST-B2`, `ST-C2`, `ST-C1`이 모두 통과했다.
@@ -58,18 +78,23 @@ selector 모두 현행 Config 10 전체 완료 증거가 아니다. Runtime M6 g
 전환 대상 시나리오를 현재 공개 API로 고치고, 미구현 행을 추가한 다음 전체 selector와
 scenario registration을 다시 고정한다.
 
-## Transport delivery fixture 경계
+`ST-I1~I6`의 개별 selector도 현재 연결된 일부 case만 실행하므로 결과를
+`diagnostic_only`로 출력한다. 각 case를 독립 selector와 evidence로 분리해 Config 10
+matrix를 모두 채우기 전에는 selector exit 0을 Track I 완료로 해석하지 않는다.
+
+## 현재 diagnostic transport fixture와 남은 교체
 
 기존 transport에는 resolver가 선택한 delivery 하나만 멈추는 fault injection 표면이
 없었다. Backend node 전체를 decorator로 감싸면 multipart frame, request completion과
 socket 오류 변환을 fixture가 다시 구현해야 한다. 이 방식은 transport 내부 지식을 E2E에
 중복시킨다.
 
-선택한 방식은 Actor resolver가 route를 확정한 뒤 실제 submit 직전에 호출하는 internal
+현재 diagnostic fixture는 Actor resolver가 route를 확정한 뒤 실제 submit 직전에 호출하는 internal
 gate다. E2E host만 friend assembly로 gate를 등록한다. Application call은 global Actor
 ID와 일반 metadata만 사용한다. Gate와 HTTP 응답에는 owner RID, `ActorRef`,
 ObjectGeneration과 Message Follow hop이 없다. 등록하지 않은 production host에서는
-delivery를 변경하지 않는다.
+delivery를 변경하지 않는다. 이 fixture는 public-only 완료 증거가 아니다. 정본 E2E는
+process 밖 transport harness가 같은 delivery를 지연·복제하는 방식으로 교체해야 한다.
 
 ## 현재 실행 blocker
 
@@ -95,20 +120,24 @@ Track I의 Relocate 기반 host workload에는 public lifecycle 구현 차이도
 정의하며 production singleton과 DI 연결도 완료됐다. Actor·Spot scheduler도
 `PlannedMaintenance`의 same-version과 `RollingUpdate`의 caller 지정 exact-version을
 preflight와 실제 relocation에 동일하게 적용한다. Track I host workload도 연결했지만
-축소 process 실행에서 relocation terminal이 끝나지 않아 service continuity 완료 증거는 남아 있다.
+이전 축소 process 실행의 relocation nonterminal 원인 가운데 target replay가 일반
+dispatch guard에 막히던 문제를 수정했다. 최신 runtime으로 service continuity와 정본
+규모를 다시 검증해야 한다.
 
 추가 E2E 리뷰 뒤 scale 실행은 `diagnostic_only`로 분리하고 request와 one-way를 각각
 독립 open-loop pacer로 바꿨다. 생성 count를 완료 수로 출력하던 부분도 제거했다.
-실제 per-unit terminal·admission 순서와 SpotWide member 최종 owner·aggregate 검증은
-아직 없다. 이 항목을 고치기 전에는 scenario가 terminal을 반환하더라도 정본 완료
-증거로 사용하지 않는다. Actor transport gate도 internal metadata와
+Process E2E는 public host terminal, 최종 location과 terminal 이후 handler owner를
+검증한다. Exact authority commit·target admission 순서와 SpotWide aggregate CAS는
+provider·runtime contract test가 검증한다. 이 두 검증 계층이 모두 통과하기 전에는
+정본 완료 증거로 사용하지 않는다. Actor transport gate도 internal metadata와
 E2E friend assembly에 의존하므로 외부 transport harness로 교체해야 한다.
 
 Relocation payload 측정용 wrapper는 구현했다. Wrapper는 private envelope나 Store key를
 해석하지 않고 public `IZLinkRelocationStore`의 opaque blob 크기와 SHA-256만 기록한다.
 ActorNode와 Client project build는 warning 0, error 0이다. Instance Spot 네 profile은
-process에서 통과했다. `ST-I1`은 SpotWide commit 직후 public lookup과 남은 workload
-profile을 해결하기 전에는 완료로 표시하지 않는다.
+과거 activation-only process에서만 통과했다. 현재 relocation selector는 Capture 3/4,
+Restore 0에서 timeout되어 완료 증거가 아니다. `ST-I1`은 SpotWide commit 직후 public
+lookup과 남은 workload profile을 해결하기 전에는 완료로 표시하지 않는다.
 
 현재 fixture는 Object role에 허용되지 않는 fixed RID·manual peer를 제거했다. Framework가
 `actor-a`·`actor-b`·`actor-c`와 Session prefix에 UUID suffix를 붙여 full RID를 발급하며,

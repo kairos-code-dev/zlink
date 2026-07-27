@@ -35,7 +35,7 @@ internal sealed class ZLinkSpotActorFrame(
     public ZLinkServiceWireCodec.RequestSourceFence? RequestSource { get; } =
         requestSource;
 
-    public Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? DirectReply { get; } =
+    public Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? DirectReply { get; private set; } =
         directReply;
 
     public ulong RelocationReplyRouteId { get; private set; }
@@ -47,6 +47,18 @@ internal sealed class ZLinkSpotActorFrame(
                 "The Actor frame relocation reply route is invalid.");
         RelocationReplyRouteId = replyRouteId;
         RouteContext = RouteContext with { ReplyRequestId = replyRouteId };
+    }
+
+    internal void BindRelocationReplyCapability(
+        string replyCapability,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult> directReply)
+    {
+        if (string.IsNullOrWhiteSpace(replyCapability)
+            || RouteContext.ReplyCapability is not null)
+            throw new InvalidOperationException(
+                "The Actor frame relocation reply capability is invalid.");
+        RouteContext = RouteContext with { ReplyCapability = replyCapability };
+        DirectReply = directReply;
     }
 
     public ZlinkStreamHeader Header { get; } = header;

@@ -225,6 +225,9 @@ final class HandlerContractTest {
             "onCreateActor",
             ZLinkActor.class,
             ZLinkMessage.class);
+        assertThrows(NoSuchMethodException.class, () -> ZLinkEntrySpot.class.getMethod(
+            "onActorRelocated",
+            ZLinkActor.class));
         assertEquals(CompletionStage.class,
             ZLinkSpot.class.getMethod("onJoinedActor", ZLinkActor.class).getReturnType());
         assertEquals(CompletionStage.class,

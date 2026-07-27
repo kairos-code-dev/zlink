@@ -13,6 +13,7 @@ internal interface IZLinkActorInboundEndpoint
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken);
 
     ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
@@ -20,6 +21,7 @@ internal interface IZLinkActorInboundEndpoint
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken);
 }
 
@@ -160,10 +162,10 @@ internal sealed class ZLinkActorInboundPipeline(
             runtime.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
-        if (allowCapture)
-            EnsureRelocationReplyRoute(frame);
         var capture = allowCapture
-            ? state.Handoff.TryCapture(frame)
+            ? state.Handoff.TryCapture(
+                frame,
+                () => EnsureRelocationReplyRoute(runtime, frame))
             : ZLinkActorHandoffCaptureResult.NotSealed;
         if (capture == ZLinkActorHandoffCaptureResult.Captured)
             return;
@@ -249,7 +251,9 @@ internal sealed class ZLinkActorInboundPipeline(
                   && exception.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound
                   && state.Handoff.BlocksLocalDispatch)
         {
-            var retryCapture = state.Handoff.TryCapture(frame);
+            var retryCapture = state.Handoff.TryCapture(
+                frame,
+                () => EnsureRelocationReplyRoute(runtime, frame));
             if (retryCapture == ZLinkActorHandoffCaptureResult.Captured)
                 return;
 
@@ -279,6 +283,29 @@ internal sealed class ZLinkActorInboundPipeline(
                 ZLinkFrameworkErrorKind.RequestRejected,
                 "A direct Actor request has no source-owned relocation reply route.");
         frame.BindRelocationReplyRoute(routeId);
+    }
+
+    internal static void EnsureRelocationReplyRoute(
+        ZLinkFrameworkRuntime runtime,
+        ZLinkSpotActorFrame frame)
+    {
+        EnsureRelocationReplyRoute(frame);
+        if (frame.Header.Kind != ZlinkStreamMessageKind.Request
+            || frame.RouteContext.ReplyCapability is not null)
+            return;
+        var directReply = frame.DirectReply
+                          ?? throw new ZLinkFrameworkException(
+                              ZLinkFrameworkErrorKind.RequestRejected,
+                              "A direct Actor request has no reply route to preserve for relocation.");
+        var preserved = runtime.ActorMessageFollower.PreserveDirectReply(
+            frame.Actor.NodeRid,
+            frame.Actor.ActorId,
+            frame.RequestId,
+            frame.RouteContext.DeadlineUnixMs,
+            directReply);
+        frame.BindRelocationReplyCapability(
+            preserved.Capability,
+            preserved.Reply);
     }
 
     private async ValueTask CompleteMovingBoundaryAsync(
@@ -418,6 +445,8 @@ internal sealed class ZLinkActorInboundPipeline(
                         state,
                         frame.Header,
                         frame.Body,
+                        relocationReplay: acknowledgeHandledFrame is not null
+                            || completeCanonicalReplay is not null,
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (completeCanonicalReplay is not null)
@@ -481,8 +510,10 @@ internal sealed class ZLinkActorInboundPipeline(
                     actor,
                     state,
                     frame.Header,
-                frame.Body,
-                cancellationToken)
+                    frame.Body,
+                    relocationReplay: acknowledgeHandledFrame is not null
+                        || completeCanonicalReplay is not null,
+                    cancellationToken)
                 .ConfigureAwait(false);
             if (completeCanonicalReplay is not null)
             {
@@ -549,9 +580,15 @@ internal sealed class ZLinkEntrySpotActorInboundEndpoint(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
-        return runtime.SubmitActorAsync(actor, header, body, cancellationToken);
+        return runtime.SubmitActorAsync(
+            actor,
+            header,
+            body,
+            relocationReplay,
+            cancellationToken);
     }
 
     public async ValueTask<ZLinkActorReply?> DispatchForReplyAsync(
@@ -559,6 +596,7 @@ internal sealed class ZLinkEntrySpotActorInboundEndpoint(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         if (state.LiveActivation is not null)
@@ -566,6 +604,7 @@ internal sealed class ZLinkEntrySpotActorInboundEndpoint(
                     actor.Context.ActorId,
                     header,
                     body,
+                    relocationReplay,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -612,6 +651,7 @@ internal sealed class ZLinkUserSpotActorInboundEndpoint(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         return dispatcher.DispatchAsync(actor, state, header, body, cancellationToken);
@@ -622,6 +662,7 @@ internal sealed class ZLinkUserSpotActorInboundEndpoint(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message body,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         return dispatcher.DispatchForReplyAsync(actor, state, header, body, cancellationToken);

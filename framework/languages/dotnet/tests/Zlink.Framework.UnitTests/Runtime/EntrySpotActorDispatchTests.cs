@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Systems.Zlink.Stream.Connector.Runtime.Protocol;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet;
 using Zlink.Framework.Runtime.Locations;
@@ -829,7 +830,8 @@ public sealed partial class EntrySpotActorDispatchTests
                 targetNodeGeneration: 21,
                 authorityOwnerGeneration: 22,
                 ownerLeaseGeneration: 23,
-                messageFollowHopCount: 7),
+                messageFollowHopCount: 7,
+                deadlineUnixMs: ulong.MaxValue),
             [
                 Message.From(Encoding.UTF8.GetBytes("header")),
                 Message.From(Encoding.UTF8.GetBytes("body"))
@@ -850,6 +852,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 Assert.Equal(21ul, part.RouteContext.TargetNodeGeneration);
                 Assert.Equal(22ul, part.RouteContext.AuthorityOwnerGeneration);
                 Assert.Equal(23ul, part.RouteContext.OwnerLeaseGeneration);
+                Assert.Equal(0ul, part.RouteContext.DeadlineUnixMs);
                 Assert.Equal(91ul, part.RouteContext.ReplyRequestId);
                 Assert.Equal(1u, part.RouteContext.ReplyFlags);
                 Assert.Equal(91ul, part.RequestId);
@@ -860,6 +863,21 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             foreach (var part in parts) part.Message.Dispose();
         }
+    }
+
+    [Fact]
+    public void MeshRecordAdapter_RejectsDeadlineAboveSignedRangeUnlessItIsCoreSentinel()
+    {
+        var error = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkMeshRecordAdapters.NormalizeDeadline(
+                checked((ulong)long.MaxValue + 1)));
+
+        Assert.Equal(
+            ZLinkFrameworkErrorKind.RequestProtocolError,
+            error.Kind);
+        Assert.Equal(
+            0ul,
+            ZLinkMeshRecordAdapters.NormalizeDeadline(ulong.MaxValue));
     }
 
     [Fact]
@@ -1024,6 +1042,43 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public void ActorMessageFollowerToRelay_RejectsHopLimitWithoutOverflow()
+    {
+        var lease = new ZLinkActorMessageFollowLease(TimeProvider.System);
+        lease.Commit(TimeSpan.FromSeconds(5));
+        var route = new ZLinkActorMessageFollowRoute(
+            new ZLinkBackendActorRef(
+                RoutingId.From("old-owner"), "actor-relay", 8),
+            new ZLinkBackendActorRef(
+                RoutingId.From("new-owner"), "actor-relay", 8),
+            "mesh-a",
+            SourceNodeGeneration: 73,
+            TargetNodeGeneration: 83,
+            SourceAuthorityOwnerGeneration: 74,
+            TargetAuthorityOwnerGeneration: 84,
+            SourceOwnerLeaseGeneration: 75,
+            TargetOwnerLeaseGeneration: 85,
+            Lease: lease);
+        var incoming = new ZLinkBackendActorRouteContext(
+            new MeshOperationId(81, 82),
+            MessageFollowHopCount: 8,
+            TargetNodeGeneration: 73,
+            AuthorityOwnerGeneration: 74,
+            OwnerLeaseGeneration: 75);
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkActorMessageFollower.AdvanceRoute(
+                route,
+                incoming,
+                requestId: 86,
+                flags: 87));
+
+        Assert.Equal(
+            ZLinkFrameworkErrorKind.ActorLocationStale,
+            exception.Kind);
+    }
+
+    [Fact]
     public void RemoteActorFrameSource_RequiresExactFence_AndNeverUsesOperationIdAsGeneration()
     {
         var sourceNode = RoutingId.From("caller-node");
@@ -1130,7 +1185,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 replyRequestId: 83,
                 replyFlags: 1,
                 replyCapability: "reply-capability",
-                deadlineUnixMs: 0,
+                deadlineUnixMs: ulong.MaxValue,
                 ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray(),
                 Encoding.UTF8.GetBytes("payload"),
                 CancellationToken.None);
@@ -1139,6 +1194,7 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Equal(new MeshOperationId(81, 82), captured.RouteContext.OperationId);
             Assert.Equal(originalSource.NodeGeneration, captured.SourceNodeGeneration);
             Assert.Equal(originalSource, captured.RequestSource);
+            Assert.Equal(0ul, captured.RouteContext.DeadlineUnixMs);
             Assert.Equal<ulong>(83, captured.RelocationReplyRouteId);
         }
         finally
@@ -3757,6 +3813,193 @@ public sealed partial class EntrySpotActorDispatchTests
         }
         Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(reserved.Reservation, payload));
+    }
+
+    [Fact]
+    public async Task RelocationReplyCapability_CapturedRequestCompletesExactlyOnceAfterLocalReplay()
+    {
+        var (runtime, actor) = await CreateStartedRuntimeAsync(new CapturingSpotNode());
+        try
+        {
+            var sourceNodeRid = RoutingId.From("request-source");
+            var replies = 0;
+            using var frame = CreateRelocationRequestFrame(
+                actor,
+                sourceNodeRid,
+                requestId: 701,
+                (_, _) =>
+                {
+                    Interlocked.Increment(ref replies);
+                    return SubmitResult.Ok;
+                });
+            var handoff = new ZLinkActorHandoffState(
+                actor.ActorId,
+                TimeProvider.System);
+            handoff.BeginCapture();
+
+            Assert.Equal(
+                ZLinkActorHandoffCaptureResult.Captured,
+                handoff.TryCapture(
+                    frame,
+                    () => ZLinkActorInboundPipeline.EnsureRelocationReplyRoute(
+                        runtime,
+                        frame)));
+            var captured = Assert.Single(handoff.SnapshotFrames());
+            Assert.False(string.IsNullOrWhiteSpace(
+                captured.RouteContext.ReplyCapability));
+            Assert.True(runtime.ActorMessageFollower.TryResolveReplyNode(
+                captured.RouteContext.ReplyCapability!,
+                out var replyNodeRid));
+            Assert.Equal(actor.NodeRid, replyNodeRid);
+
+            using (var reply = Message.From("first"))
+                runtime.ReplyActorNoBind(
+                    actor,
+                    sourceNodeRid,
+                    default,
+                    701,
+                    ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                    captured.RouteContext.ReplyCapability,
+                    [reply]);
+            using (var duplicate = Message.From("duplicate"))
+                runtime.ReplyActorNoBind(
+                    actor,
+                    sourceNodeRid,
+                    default,
+                    701,
+                    ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                    captured.RouteContext.ReplyCapability,
+                    [duplicate]);
+
+            Assert.Equal(1, Volatile.Read(ref replies));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RelocationReplyCapability_FullCaptureUsesLocalTerminalAndReleasesRoute()
+    {
+        var (runtime, actor) = await CreateStartedRuntimeAsync(new CapturingSpotNode());
+        try
+        {
+            var sourceNodeRid = RoutingId.From("request-source");
+            var replies = 0;
+            using var frame = CreateRelocationRequestFrame(
+                actor,
+                sourceNodeRid,
+                requestId: 702,
+                (_, _) =>
+                {
+                    Interlocked.Increment(ref replies);
+                    return SubmitResult.Ok;
+                });
+            var handoff = new ZLinkActorHandoffState(
+                actor.ActorId,
+                TimeProvider.System,
+                sourceIngressAdmission: new ZLinkBoundedIngressAdmission(
+                    recordCapacity: 1,
+                    byteCapacity: 1));
+            handoff.BeginCapture();
+
+            Assert.Equal(
+                ZLinkActorHandoffCaptureResult.Full,
+                handoff.TryCapture(
+                    frame,
+                    () => ZLinkActorInboundPipeline.EnsureRelocationReplyRoute(
+                        runtime,
+                        frame)));
+            Assert.NotNull(frame.DirectReply);
+            using var first = Message.From("first");
+            Assert.Equal(
+                SubmitResult.Ok,
+                frame.DirectReply!([first], SendFlags.DontWait));
+            using var duplicate = Message.From("duplicate");
+            Assert.Equal(
+                SubmitResult.Terminated,
+                frame.DirectReply!([duplicate], SendFlags.DontWait));
+            Assert.Equal(1, Volatile.Read(ref replies));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RelocationReplyCapability_ExpiresAtOriginalRequestDeadline()
+    {
+        var (runtime, actor) = await CreateStartedRuntimeAsync(new CapturingSpotNode());
+        try
+        {
+            var replies = 0;
+            var preserved = runtime.ActorMessageFollower.PreserveDirectReply(
+                actor.NodeRid,
+                actor.ActorId,
+                requestId: 703,
+                deadlineUnixMs: checked((ulong)DateTimeOffset.UtcNow
+                    .AddMilliseconds(20)
+                    .ToUnixTimeMilliseconds()),
+                (_, _) =>
+                {
+                    Interlocked.Increment(ref replies);
+                    return SubmitResult.Ok;
+                });
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            using var late = Message.From("late");
+            Assert.Equal(
+                SubmitResult.Terminated,
+                preserved.Reply([late], SendFlags.DontWait));
+            Assert.Equal(0, Volatile.Read(ref replies));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static ZLinkSpotActorFrame CreateRelocationRequestFrame(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        ulong requestId,
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult> directReply)
+    {
+        return new ZLinkSpotActorFrame(
+            actor,
+            actor,
+            sourceNodeRid,
+            default,
+            requestId,
+            ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+            new ZLinkBackendActorRouteContext(
+                new MeshOperationId(11, requestId),
+                MessageFollowHopCount: 0,
+                TargetNodeGeneration: 13,
+                AuthorityOwnerGeneration: 17,
+                OwnerLeaseGeneration: 19,
+                ReplyRequestId: requestId,
+                ReplyFlags: ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                DeadlineUnixMs: checked((ulong)DateTimeOffset.UtcNow
+                    .AddSeconds(5)
+                    .ToUnixTimeMilliseconds())),
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Request,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                new ZlinkStreamRequestSeq(requestId),
+                $"relocation-reply-{requestId}",
+                ZlinkStreamMetadata.Empty),
+            Message.From("request"),
+            sourceNodeGeneration: 23,
+            new ZLinkServiceWireCodec.RequestSourceFence(
+                "request-owner",
+                29,
+                sourceNodeRid,
+                NodeGeneration: 23),
+            directReply);
     }
 
     private static async Task DispatchAsync(

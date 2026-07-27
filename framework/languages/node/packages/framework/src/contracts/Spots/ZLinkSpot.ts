@@ -66,5 +66,4 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
     actor: ZLinkActorMembership,
     createRequest: ZLinkMessage
   ): Promise<ZLinkActorCreateResponse>;
-  onActorRelocated?(actor: ZLinkActorMembership): Promise<void>;
 }

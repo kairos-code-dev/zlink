@@ -129,6 +129,11 @@ internal static class StI3BulkSpotRelocationScenario
         var baseline = await Task.WhenAll(
             baselineActor.RunAsync(baselineDuration),
             baselineSpot.RunAsync(baselineDuration));
+        await Task.WhenAll(
+            baselineActor.WaitForInitialEvidenceAsync(
+                TimeSpan.FromSeconds(5)),
+            baselineSpot.WaitForInitialEvidenceAsync(
+                TimeSpan.FromSeconds(5)));
         foreach (var result in baseline)
         {
             await RelocationBulkWorkloadVerification.VerifyAsync(
@@ -138,65 +143,128 @@ internal static class StI3BulkSpotRelocationScenario
         }
 
         using var relocationTraffic = new CancellationTokenSource();
+        var spotFlowWatermark = await RelocationBulkWorkloadVerification
+            .CaptureSpotFlowWatermarkAsync(context);
+        var relocationActor = new RelocationBulkWorkload(
+            context,
+            $"ST-I3-{label}-control-actor-relocation",
+            "actor",
+            [controlActorId],
+            rate);
+        var relocationSpot = new RelocationBulkWorkload(
+            context,
+            $"ST-I3-{label}-control-spot-relocation",
+            "spot",
+            [controlSpotId],
+            rate);
+        var movingSpot = new RelocationBulkWorkload(
+            context,
+            $"ST-I3-{label}-moving-spot-relocation",
+            "spot",
+            moving.SpotIds,
+            rate);
+        RelocationBulkWorkload? movingActor = null;
         var traffic = new List<Task<RelocationBulkWorkloadResult>>
         {
-            new RelocationBulkWorkload(
-                    context,
-                    $"ST-I3-{label}-control-actor-relocation",
-                    "actor",
-                    [controlActorId],
-                    rate)
-                .RunAsync(
-                    TimeSpan.FromMinutes(6),
-                    relocationTraffic.Token),
-            new RelocationBulkWorkload(
-                    context,
-                    $"ST-I3-{label}-control-spot-relocation",
-                    "spot",
-                    [controlSpotId],
-                    rate)
-                .RunAsync(
-                    TimeSpan.FromMinutes(6),
-                    relocationTraffic.Token),
-            new RelocationBulkWorkload(
-                    context,
-                    $"ST-I3-{label}-moving-spot-relocation",
-                    "spot",
-                    moving.SpotIds,
-                    rate)
-                .RunAsync(
-                    TimeSpan.FromMinutes(6),
-                    relocationTraffic.Token)
+            relocationActor.RunAsync(
+                TimeSpan.FromMinutes(6),
+                relocationTraffic.Token),
+            relocationSpot.RunAsync(
+                TimeSpan.FromMinutes(6),
+                relocationTraffic.Token),
+            movingSpot.RunAsync(
+                TimeSpan.FromMinutes(6),
+                relocationTraffic.Token)
         };
         if (moving.ActorIds.Length > 0)
         {
+            movingActor = new RelocationBulkWorkload(
+                context,
+                $"ST-I3-{label}-moving-actor-relocation",
+                "actor",
+                moving.ActorIds,
+                rate);
             traffic.Add(
-                new RelocationBulkWorkload(
-                        context,
-                        $"ST-I3-{label}-moving-actor-relocation",
-                        "actor",
-                        moving.ActorIds,
-                        rate)
-                    .RunAsync(
-                        TimeSpan.FromMinutes(6),
-                        relocationTraffic.Token));
+                movingActor.RunAsync(
+                    TimeSpan.FromMinutes(6),
+                    relocationTraffic.Token));
         }
 
-        var relocationWatch = Stopwatch.StartNew();
-        var relocation = await context.RelocateAsync(
-            context.NodeA,
-            relocationDeadline);
-        relocationWatch.Stop();
-        relocationTraffic.Cancel();
-        var during = await Task.WhenAll(traffic);
+        var relocationWatch = new Stopwatch();
+        RelocateHostRes? relocation = null;
+        RelocationBulkWorkloadResult[]? during = null;
+        try
+        {
+            try
+            {
+                var initialEvidence = new List<Task>
+                {
+                    relocationActor.WaitForInitialEvidenceAsync(
+                        TimeSpan.FromSeconds(5)),
+                    relocationSpot.WaitForInitialEvidenceAsync(
+                        TimeSpan.FromSeconds(5)),
+                    movingSpot.WaitForInitialEvidenceAsync(
+                        TimeSpan.FromSeconds(5))
+                };
+                if (movingActor is not null)
+                    initialEvidence.Add(
+                        movingActor.WaitForInitialEvidenceAsync(
+                            TimeSpan.FromSeconds(5)));
+                await Task.WhenAll(initialEvidence);
+            }
+            catch (OperationCanceledException error)
+            {
+                throw new InvalidOperationException(
+                    $"ST-I3 {label} relocation traffic did not produce "
+                    + "bounded initial request and one-way handler "
+                    + "evidence.",
+                    error);
+            }
+
+            relocationWatch.Start();
+            relocation = await context.RelocateAsync(
+                context.NodeA,
+                relocationDeadline);
+            relocationWatch.Stop();
+            var postRelocationEvidence = new List<Task>
+            {
+                relocationActor.WaitForAdditionalEvidenceAsync(
+                    TimeSpan.FromSeconds(5)),
+                relocationSpot.WaitForAdditionalEvidenceAsync(
+                    TimeSpan.FromSeconds(5)),
+                movingSpot.WaitForAdditionalEvidenceAsync(
+                    TimeSpan.FromSeconds(5))
+            };
+            if (movingActor is not null)
+                postRelocationEvidence.Add(
+                    movingActor.WaitForAdditionalEvidenceAsync(
+                        TimeSpan.FromSeconds(5)));
+            await Task.WhenAll(postRelocationEvidence);
+        }
+        finally
+        {
+            relocationWatch.Stop();
+            relocationTraffic.Cancel();
+            during = await Task.WhenAll(traffic);
+        }
+
+        var completedRelocation = relocation
+            ?? throw new InvalidOperationException(
+                $"ST-I3 {label} relocation did not produce a terminal "
+                + "result.");
+        var completedTraffic = during
+            ?? throw new InvalidOperationException(
+                $"ST-I3 {label} workload tasks did not produce terminal "
+                + "results.");
 
         ZlinkStreamAssert.Ensure(
-            relocation.Outcome == "Relocated"
-            && relocation.State == "Relocated",
+            completedRelocation.Outcome == "Relocated"
+            && completedRelocation.State == "Relocated",
             $"ST-I3 {label} host relocation did not reach "
-            + $"Relocated: {relocation.Outcome}/"
-            + $"{relocation.Reason}/{relocation.State}");
-        foreach (var result in during)
+            + $"Relocated: {completedRelocation.Outcome}/"
+            + $"{completedRelocation.Reason}/"
+            + completedRelocation.State);
+        foreach (var result in completedTraffic)
         {
             await RelocationBulkWorkloadVerification.VerifyAsync(
                 context,
@@ -205,10 +273,10 @@ internal static class StI3BulkSpotRelocationScenario
         }
         RelocationBulkWorkloadVerification.VerifyContinuity(
             baseline[0],
-            during[0]);
+            completedTraffic[0]);
         RelocationBulkWorkloadVerification.VerifyContinuity(
             baseline[1],
-            during[1]);
+            completedTraffic[1]);
 
         var elapsed = relocationWatch.Elapsed.TotalSeconds;
         var unitsPerSecond = spotCount / elapsed;
@@ -217,16 +285,36 @@ internal static class StI3BulkSpotRelocationScenario
             && (instanceSpot || actorsPerSpot == 100)
             && baselineDuration == TimeSpan.FromSeconds(60)
             && rate == 200;
+        var terminalSummary = await RelocationBulkWorkloadVerification
+            .VerifyRelocationTerminalsAsync(
+                context,
+                initialLocations,
+                moving.ActorIds,
+                moving.SpotIds,
+                completedTraffic,
+                requireSpotWideAggregatePublication:
+                    !instanceSpot,
+                spotFlowWatermark);
         Console.WriteLine(
             $"ST-I3 profile={label}"
             + $" unit_count={spotCount}"
             + $" participant_count="
             + (spotCount + moving.ActorIds.Length)
-            + $" completed={spotCount}"
-            + " safe_aborted=0 blocked=0"
+            + $" completed={terminalSummary.CompletedUnits}"
+            + $" verified_participants="
+            + terminalSummary.VerifiedParticipants
+            + $" safe_aborted={terminalSummary.SafeAborted}"
+            + $" blocked={terminalSummary.Blocked}"
             + $" elapsed_seconds={elapsed:F3}"
             + $" units_per_second={unitsPerSecond:F2}"
-            + $" canonical_profile={canonical}");
+            + $" canonical_profile={canonical}"
+            + " diagnostic_blockers="
+            + (instanceSpot
+                ? "interruption,encoded_bytes_per_second,"
+                  + "payload_latency,cpu,rss,store_bytes"
+                : "spotwide_pre_post_visibility,interruption,"
+                  + "encoded_bytes_per_second,payload_latency,"
+                  + "cpu,rss,store_bytes"));
         if (canonical)
         {
             var elapsedLimit = instanceSpot ? 150 : 180;
@@ -236,14 +324,5 @@ internal static class StI3BulkSpotRelocationScenario
                 && unitsPerSecond >= rateLimit,
                 $"ST-I3 {label} workload_slo_missed.");
         }
-        await RelocationBulkWorkloadVerification
-            .VerifyRelocationTerminalsAsync(
-                context,
-                initialLocations,
-                moving.ActorIds,
-                moving.SpotIds,
-                during,
-                requireSpotWideAggregatePublication:
-                    !instanceSpot);
     }
 }

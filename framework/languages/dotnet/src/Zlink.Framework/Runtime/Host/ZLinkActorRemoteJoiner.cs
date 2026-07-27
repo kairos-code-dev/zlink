@@ -443,8 +443,12 @@ internal sealed class ZLinkActorRemoteJoiner(
             || admissionReply.TargetNodeGeneration == 0
             || admissionReply.TargetSpotGeneration
                != (ulong)admission.Snapshot.Generation
+            || actorAuthorityOwnerGeneration
+               is 0 or > long.MaxValue
             || admissionReply.TargetAuthorityOwnerGeneration
-               != checked(actorAuthorityOwnerGeneration + 1)
+               is 0 or > long.MaxValue
+            || admissionReply.TargetAuthorityOwnerGeneration
+               <= actorAuthorityOwnerGeneration
             || admissionReply.TargetSpotAuthorityOwnerGeneration
                != admission.Snapshot.AuthorityOwnerGeneration)
             throw new ZLinkFrameworkException(
@@ -690,7 +694,7 @@ internal sealed class ZLinkActorRemoteJoiner(
             sourceAuthority.NodeGeneration,
             admission.Snapshot.NodeGeneration,
             actorAuthorityOwnerGeneration,
-            checked(actorAuthorityOwnerGeneration + 1),
+            published.Snapshot.AuthorityOwnerGeneration,
             checked((ulong)runtime.LocationLifecycle!.OwnerToken.LeaseGeneration),
             admission.Snapshot.OwnerLeaseGeneration);
         relocationMetric.RecordJournalMessages(

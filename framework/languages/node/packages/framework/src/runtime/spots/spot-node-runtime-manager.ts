@@ -606,14 +606,6 @@ export class ZLinkSpotNodeRuntimeManager {
     return activation?.notifyJoinActor(actor, signal) ?? Promise.resolve();
   }
 
-  notifyPrimaryEntrySpotActorRelocated(
-    actor: ZLinkActor,
-    signal?: AbortSignal
-  ): Promise<void> {
-    const activation = this.primaryEntryActivation();
-    return activation?.notifyRelocatedActor(actor, signal) ?? Promise.resolve();
-  }
-
   notifyPrimaryEntrySpotActorLeft(
     actor: ZLinkActor,
     signal?: AbortSignal,

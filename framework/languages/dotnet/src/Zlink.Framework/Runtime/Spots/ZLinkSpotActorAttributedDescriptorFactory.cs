@@ -8,7 +8,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
     private const string PostActorJoinedMethodName = "OnJoinedActorAsync";
     private const string ActorLeftMethodName = "OnLeaveActorAsync";
     private const string ActorDisconnectedMethodName = "OnDisconnectActorAsync";
-    private const string ActorRelocatedMethodName = "OnActorRelocatedAsync";
 
     public static IEnumerable<ZLinkSpotActorPacketDescriptor> CreatePacketDescriptors(
         ZLinkSpotActorHandlerSurface surface,
@@ -97,24 +96,6 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
                 yield return new ZLinkSpotActorInferredHandlerDescriptor
                 {
                     Disconnected = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
-                };
-            }
-            else if (method.Name == ActorRelocatedMethodName)
-            {
-                if (contract is null
-                    || surface != ZLinkSpotActorHandlerSurface.EntrySpot)
-                {
-                    throw new InvalidOperationException(
-                        $"SPOT actor relocation hook '{spotType}' must implement IZLinkEntrySpot<TActor>.");
-                }
-
-                yield return new ZLinkSpotActorInferredHandlerDescriptor
-                {
-                    Relocated = CreateSpotLifecycle(
-                        surface,
-                        spotType,
-                        method,
-                        contract.ActorType)
                 };
             }
     }

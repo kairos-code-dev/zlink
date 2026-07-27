@@ -4,13 +4,19 @@ const test = require('node:test');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const actorHandoff = require('../../packages/framework/dist/runtime/actors/actor-handoff');
 
 function frame(value) {
   return [zlink.Message.from(`header:${value}`), zlink.Message.from(value)];
 }
 
 function actorRef(generation = 1n) {
-  return { nodeRid: zlink.RoutingId.from('source'), actorId: 'actor-1', generation };
+  return {
+    nodeRid: zlink.RoutingId.from('source'),
+    actorId: 'actor-1',
+    objectGeneration: generation,
+    meshName: 'mesh'
+  };
 }
 
 function target(name = 'target') {
@@ -24,7 +30,12 @@ function target(name = 'target') {
 }
 
 function targetActorRef(name = 'target', generation = 2n) {
-  return { nodeRid: zlink.RoutingId.from(`${name}-node`), actorId: 'actor-1', generation };
+  return {
+    nodeRid: zlink.RoutingId.from(`${name}-node`),
+    actorId: 'actor-1',
+    objectGeneration: generation,
+    meshName: 'mesh'
+  };
 }
 
 function harness(messageFollowDurationMs = 30) {
@@ -44,7 +55,7 @@ function harness(messageFollowDurationMs = 30) {
   const coordinator = new framework.ZLinkActorHandoffCoordinator({
     routedTransport: transport,
     messageFollowDurationMs,
-    isStaleActorRef: (_actorId, ref) => ref.generation !== currentGeneration,
+    isStaleActorRef: (_actorId, ref) => ref.objectGeneration !== currentGeneration,
     isCurrentHandoffTarget: (_actorId, spotId) => spotId === 'target-spot',
     requestSource: () => ({
       ownerId: 'source-owner',
@@ -107,6 +118,120 @@ test('Message Follow preserves operation identity and increments a bounded hop c
     (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorLocationStale
   );
   loop.forEach((part) => part.close());
+});
+
+test('Message Follow request preserves its absolute deadline and drops a late relay reply', async () => {
+  const requests = [];
+  let completeRelay;
+  const coordinator = new framework.ZLinkActorHandoffCoordinator({
+    routedTransport: {
+      async sendToSpot() {},
+      async requestToSpot(_target, payload, options) {
+        requests.push({ payload, options });
+        return await new Promise((resolve) => { completeRelay = resolve; });
+      }
+    },
+    messageFollowDurationMs: 1_000,
+    requestTimeoutMs: 30_000
+  });
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+
+  const deadlineUnixMs = Date.now() + 80;
+  const requestHeader = streamProtocol.encodeStreamHeader({
+    kind: streamProtocol.ZLinkStreamMessageKind.Request,
+    codec: streamProtocol.ZLinkStreamCodec.Json,
+    flags: streamProtocol.ZLinkStreamHeaderFlags.HasRequestSeq
+      | streamProtocol.ZLinkStreamHeaderFlags.HasMetadata
+      | streamProtocol.ZLinkStreamHeaderFlags.HasCorrelationId,
+    requestSeq: 19n,
+    name: 'DeadlineRequest',
+    metadata: streamProtocol.actorRequestDeadlineMetadata(deadlineUnixMs),
+    correlationId: 'deadline-correlation'
+  });
+  const parts = [
+    zlink.Message.from(Buffer.from(requestHeader)),
+    zlink.Message.from(Buffer.from(JSON.stringify({ marker: 'deadline' })))
+  ];
+  const reply = coordinator.capture(
+    'actor-1',
+    parts,
+    true,
+    undefined,
+    actorRef(1n)
+  );
+  parts.forEach((part) => part.close());
+
+  await assert.rejects(
+    reply,
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
+  );
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].payload.deadlineUnixMs, deadlineUnixMs);
+  const relayedHeader = streamProtocol.decodeStreamHeader(
+    Buffer.from(requests[0].payload.header, 'base64')
+  );
+  assert.equal(relayedHeader.correlationId, 'deadline-correlation');
+  assert.ok(requests[0].options.timeoutMs > 0);
+  assert.ok(requests[0].options.timeoutMs <= 80);
+
+  completeRelay({ ok: true, response: 'late' });
+  await new Promise((resolve) => setImmediate(resolve));
+});
+
+test('Message Follow rejects an expired request before target transport admission', async () => {
+  let requests = 0;
+  const coordinator = new framework.ZLinkActorHandoffCoordinator({
+    routedTransport: {
+      async sendToSpot() {},
+      async requestToSpot() {
+        requests += 1;
+        return { ok: true };
+      }
+    },
+    messageFollowDurationMs: 1_000
+  });
+  coordinator.begin('actor-1', 1n);
+  coordinator.snapshot('actor-1');
+  coordinator.complete('actor-1', target(), targetActorRef());
+
+  const parts = frame('expired');
+  await assert.rejects(
+    coordinator.capture('actor-1', parts, true, undefined, actorRef(1n), Date.now() - 1),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
+  );
+  parts.forEach((part) => part.close());
+  assert.equal(requests, 0);
+});
+
+test('accepted handoff rejects an expired request before replay queue admission', async () => {
+  const { coordinator } = harness();
+  coordinator.begin('actor-1', 1n);
+  const parts = frame('expired-accepted');
+  const pending = coordinator.capture(
+    'actor-1',
+    parts,
+    true,
+    undefined,
+    actorRef(1n),
+    Date.now() - 1
+  );
+  parts.forEach((part) => part.close());
+  const backlog = coordinator.snapshot('actor-1');
+  let admitted = 0;
+  let dispatched = 0;
+  const results = await actorHandoff.replayActorHandoffBacklog(
+    backlog,
+    async () => { dispatched += 1; },
+    () => { admitted += 1; }
+  );
+
+  assert.equal(admitted, 0);
+  assert.equal(dispatched, 0);
+  assert.equal(results[0].errorKind, framework.ZLinkFrameworkErrorKind.DeadlineExceeded);
+  coordinator.cancel('actor-1');
+  await assert.rejects(pending);
 });
 
 test('Message Follow route rejects a queue above 1024 messages without a Store lookup or retry', async () => {

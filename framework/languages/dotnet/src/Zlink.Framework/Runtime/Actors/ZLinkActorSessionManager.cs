@@ -249,9 +249,15 @@ internal sealed partial class ZLinkActorSessionManager(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
-        return await DispatchRouter.SubmitForReplyAsync(actorId, header, payload, cancellationToken)
+        return await DispatchRouter.SubmitForReplyAsync(
+                actorId,
+                header,
+                payload,
+                relocationReplay,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -259,9 +265,15 @@ internal sealed partial class ZLinkActorSessionManager(
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
-        await DispatchRouter.Async(actor, header, payload, cancellationToken)
+        await DispatchRouter.Async(
+                actor,
+                header,
+                payload,
+                relocationReplay,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 

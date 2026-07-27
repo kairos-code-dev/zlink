@@ -257,9 +257,6 @@ internal static class ActorNodeEndpoints
                 nodeRids,
                 actorIds.Order(StringComparer.Ordinal).ToArray()));
         });
-        app.MapGet("/workload/relocation-terminals", (
-            RelocationUnitTerminalStore terminals) =>
-            Results.Ok(terminals.Snapshot()));
         app.MapGet("/workload/message-flow", (
             RelocationMessageFlowEvidenceStore flows) =>
             Results.Ok(flows.Snapshot()));

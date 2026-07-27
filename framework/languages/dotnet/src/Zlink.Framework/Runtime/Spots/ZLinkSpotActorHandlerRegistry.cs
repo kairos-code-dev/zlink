@@ -55,8 +55,6 @@ internal sealed class ZLinkSpotActorInferredHandlerDescriptor
     public ZLinkSpotActorLifecycleDescriptor? Left { get; init; }
 
     public ZLinkSpotActorLifecycleDescriptor? Disconnected { get; init; }
-
-    public ZLinkSpotActorLifecycleDescriptor? Relocated { get; init; }
 }
 
 internal sealed class ZLinkSpotActorHandlerRegistry
@@ -66,7 +64,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     private readonly Type? _expectedSpotType;
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _joined = [];
     private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _left = [];
-    private readonly Dictionary<Type, ZLinkSpotActorLifecycleDescriptor> _relocated = [];
 
     private readonly Dictionary<(ZLinkMessageKind Kind, Type ActorType, string Name), ZLinkSpotActorPacketDescriptor>
         _packets = [];
@@ -139,7 +136,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
                 if (descriptor.Left is { } left) AddLifecycleDescriptor(_left, left);
 
                 if (descriptor.Disconnected is { } disconnected) AddLifecycleDescriptor(_disconnected, disconnected);
-                if (descriptor.Relocated is { } relocated) AddLifecycleDescriptor(_relocated, relocated);
             }
 
         _bound = true;
@@ -189,13 +185,6 @@ internal sealed class ZLinkSpotActorHandlerRegistry
     public bool TryResolveDisconnected(Type actorType, out ZLinkSpotActorLifecycleDescriptor? descriptor)
     {
         return TryResolveLifecycle(_disconnected, actorType, out descriptor);
-    }
-
-    public bool TryResolveRelocated(
-        Type actorType,
-        out ZLinkSpotActorLifecycleDescriptor? descriptor)
-    {
-        return TryResolveLifecycle(_relocated, actorType, out descriptor);
     }
 
     private static void AddLifecycleDescriptor(

@@ -313,22 +313,6 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask NotifyEntrySpotActorRelocatedAsync(
-        IZLinkActor actor,
-        RoutingId? targetNodeRid = null,
-        CancellationToken cancellationToken = default)
-    {
-        using var operation = EnterOperation();
-        if (_state is null) return;
-
-        await _spots.EntrySpotActors.NotifyRelocatedAsync(
-                _state,
-                actor,
-                targetNodeRid,
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
     internal async ValueTask<ZLinkActorCreateResponse> NotifyEntrySpotActorCreatedAsync(
         IZLinkActor actor,
         RoutingId? targetNodeRid = null,

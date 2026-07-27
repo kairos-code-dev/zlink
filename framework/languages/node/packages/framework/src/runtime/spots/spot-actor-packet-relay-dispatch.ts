@@ -1,4 +1,9 @@
-import type { ActorRef, RoutingId } from '../../contracts';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  type ActorRef,
+  type RoutingId
+} from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import type {
@@ -105,6 +110,15 @@ export class ZLinkSpotActorPacketRelayDispatch {
         }
         return true;
       }
+      if (
+        actorPacketRelay.deadlineUnixMs !== undefined
+        && Date.now() >= actorPacketRelay.deadlineUnixMs
+      ) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.DeadlineExceeded,
+          `Actor request '${actorPacketRelay.actorId}' expired before target handler admission.`
+        );
+      }
       const response = await this.options.actorPacketHandler(
         actorPacketRelay.actorId,
         [header, payload],
@@ -121,7 +135,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
       if (isReplyableRequestSeq(received.requestSeq)) {
         submitSpotRouteBridgeReply(received, actorPacketRelay.envelope, {
           ok: false,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
+          errorKind: error instanceof ZLinkFrameworkException ? error.kind : undefined
         });
         return true;
       }

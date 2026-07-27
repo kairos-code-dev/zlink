@@ -1702,8 +1702,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             || request.TargetNodeGeneration != nodeGeneration
             || request.TargetSpotGeneration != spotGeneration
             || !targetFenceValid
+            || request.ActorAuthorityOwnerGeneration
+               is 0 or > long.MaxValue
             || request.TargetAuthorityOwnerGeneration
-               != checked(request.ActorAuthorityOwnerGeneration + 1))
+               is 0 or > long.MaxValue
+            || request.TargetAuthorityOwnerGeneration
+               <= request.ActorAuthorityOwnerGeneration)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{request.ActorId}' relocation target fence changed.");
@@ -1755,15 +1759,10 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        var actor = actorState.Actor
-                    ?? throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                        $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
-        await NotifyEntrySpotActorRelocatedAsync(
-                actor,
-                target.NodeRid,
-                cancellationToken)
-            .ConfigureAwait(false);
+        _ = actorState.Actor
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
     }
 
     private async ValueTask ReplayTransferredActorHandoffAsync(
@@ -2000,9 +1999,27 @@ internal sealed partial class ZLinkFrameworkRuntime
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default) =>
+        SubmitActorAsync(
+            actor,
+            header,
+            payload,
+            relocationReplay: false,
+            cancellationToken);
+
+    internal ValueTask SubmitActorAsync(
+        IZLinkActor actor,
+        ZlinkStreamHeader header,
+        Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
-        return _actorSessionManager.SubmitActorAsync(actor, header, payload, cancellationToken);
+        return _actorSessionManager.SubmitActorAsync(
+            actor,
+            header,
+            payload,
+            relocationReplay,
+            cancellationToken);
     }
 
     internal ValueTask<CreateActorResult> CreateLocalActorAsync(
@@ -2207,9 +2224,27 @@ internal sealed partial class ZLinkFrameworkRuntime
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
+        CancellationToken cancellationToken = default) =>
+        SubmitActorForReplyAsync(
+            actorId,
+            header,
+            payload,
+            relocationReplay: false,
+            cancellationToken);
+
+    internal ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
+        string actorId,
+        ZlinkStreamHeader header,
+        Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
-        return _actorSessionManager.SubmitActorForReplyAsync(actorId, header, payload, cancellationToken);
+        return _actorSessionManager.SubmitActorForReplyAsync(
+            actorId,
+            header,
+            payload,
+            relocationReplay,
+            cancellationToken);
     }
 
     internal ValueTask SubmitActorByIdAsync(
@@ -2390,6 +2425,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         byte[] body,
         CancellationToken cancellationToken)
     {
+        // Core represents an unbounded operation as ulong.MaxValue. The
+        // Framework relay contract represents the same state as zero.
+        deadlineUnixMs =
+            ZLinkMeshRecordAdapters.NormalizeDeadline(deadlineUnixMs);
         // The relay target is this node. Preserve the generation carried by
         // the incoming stale route instead of reading NativeActorRef: during
         // a chained transfer that state already points at the next owner, and
@@ -2897,9 +2936,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         var nodeRuntime = actor.NodeRid.IsEmpty
             ? GetActorClientSpotNodeRuntime()
             : GetSpotNodeRuntime(actor.NodeRid);
+        var replyNodeRid = !string.IsNullOrWhiteSpace(replyCapability)
+                           && _actorMessageFollower.TryResolveReplyNode(
+                               replyCapability,
+                               out var preservedReplyNodeRid)
+            ? preservedReplyNodeRid
+            : sourceNodeRid;
 
-        if (!sourceNodeRid.IsEmpty
-            && !sourceNodeRid.Equals(nodeRuntime.Node.RoutingId))
+        if (!replyNodeRid.IsEmpty
+            && !replyNodeRid.Equals(nodeRuntime.Node.RoutingId))
         {
             if (string.IsNullOrWhiteSpace(replyCapability))
             {
@@ -2936,7 +2981,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 typeof(ZLinkRemoteActorReplyRelay),
                 Registration.Codecs);
             var submit = nodeRuntime.Node.SendToNode(
-                sourceNodeRid,
+                replyNodeRid,
                 relayParts,
                 SendFlags.DontWait);
             ZLinkMessageParts.DisposeAll(relayParts);
@@ -2944,10 +2989,19 @@ internal sealed partial class ZLinkFrameworkRuntime
             if (submit != SubmitResult.Ok)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RouteNotConnected,
-                    $"Actor reply relay to node '{sourceNodeRid}' was not admitted.",
+                    $"Actor reply relay to node '{replyNodeRid}' was not admitted.",
                     true);
             return;
         }
+
+        if (!string.IsNullOrWhiteSpace(replyCapability)
+            && _actorMessageFollower.TryCompleteLocalDirectReply(
+                actor.ActorId,
+                requestId,
+                flags,
+                replyCapability,
+                parts))
+            return;
 
         if (_actorBoundSessionCoordinator.ReplyNoBind(
                 actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts))

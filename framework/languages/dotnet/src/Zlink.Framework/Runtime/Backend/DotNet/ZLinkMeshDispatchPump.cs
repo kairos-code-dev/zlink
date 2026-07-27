@@ -293,7 +293,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             messageFollowHopCount: record.MessageFollowHopCount,
             sourceNodeGeneration: record.SourceBindingGeneration,
             requestSource: requestSource == default ? null : requestSource,
-            deadlineUnixMs: record.DeadlineUnixMs);
+            deadlineUnixMs:
+                ZLinkMeshRecordAdapters.NormalizeDeadline(record.DeadlineUnixMs));
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }

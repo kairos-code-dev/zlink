@@ -23,7 +23,7 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 - `golden/authority-key-v1.json`: MeshName과 독립적인 global ActorId·SpotId를 canonical Store key로 만드는
   정상 encoding fixture
 - `golden/contract-amendment-v1.json`: object role·capacity descriptor, durable creation intent, generic
-  Reserve·Commit·Abort fence, User Spot aggregate, bounded forwarding, exact-ref route와 command 47·48 terminal
+  Reserve·Commit·Abort fence, User Spot aggregate, bounded Message Follow, exact-ref route와 command 47·48 terminal
   service operation의 공통 golden fixture
 - `golden/`: service frame의 정상·경계·오류 fixture를 추가하는 위치
 - `generate-service-wire-assets.mjs`: 검증한 schema에서 네 언어 command·flag·Framework wire error 상수와

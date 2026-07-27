@@ -40,9 +40,9 @@
     { "name": "maintenanceAggregateParticipants", "value": 1024 },
     { "name": "relocationResourceParticipants", "value": 2048 },
     { "name": "maintenanceAggregateBytes", "value": 1048576 },
-    { "name": "routeForwardHopCount", "value": 8 },
-    { "name": "routeForwardMessages", "value": 1024 },
-    { "name": "routeForwardBytes", "value": 16777216 },
+    { "name": "messageFollowHopCount", "value": 8 },
+    { "name": "messageFollowMessages", "value": 1024 },
+    { "name": "messageFollowBytes", "value": 16777216 },
     { "name": "routingIdCollisionAttempts", "value": 8 },
     { "name": "nodeActiveCapacityDefault", "value": 10000 },
     { "name": "nodePendingCapacityDefault", "value": 128 },
@@ -333,7 +333,7 @@
         "boundSessionBind"
       ],
       "frozenRecordKinds": ["actorSend", "actorRequest"],
-      "forwardingKey": [
+      "messageFollowKey": [
         "actorId",
         "objectGeneration",
         "sourceAuthorityOwnerGeneration",
@@ -809,11 +809,11 @@
         "nodeRequest": { "operationKind": "nodeRequest", "operationId": "nonzero" },
         "channelSend": { "operationKind": "none", "operationId": "zero" },
         "channelRequest": { "operationKind": "channelRequest", "operationId": "nonzero" },
-        "spotSend": { "operationKind": "none", "operationId": "nonzero-for-route-forward-dedupe" },
+        "spotSend": { "operationKind": "none", "operationId": "nonzero-for-message-follow-dedupe" },
         "spotRequest": { "operationKind": "spotRequest", "operationId": "nonzero" },
         "spotMulticast": { "operationKind": "none", "operationId": "zero" },
         "spotControl": { "operationKinds": ["none", "actorJoin", "actorLeave", "actorDestroy"], "operationId": "nonzero-iff-operation-kind-non-none" },
-        "actorSend": { "operationKind": "none", "operationId": "nonzero-for-route-forward-dedupe" },
+        "actorSend": { "operationKind": "none", "operationId": "nonzero-for-message-follow-dedupe" },
         "actorRequest": { "operationKind": "actorRequest", "operationId": "nonzero" },
         "completion": { "operationKind": "non-none", "operationId": "nonzero" },
         "sendReady": { "operationKind": "none", "operationId": "zero" },
@@ -881,9 +881,9 @@
       "aggregateParticipantsMaximum": { "$bound": "maintenanceAggregateParticipants" },
       "aggregateEncodedBytesMaximum": { "$bound": "maintenanceAggregateBytes" },
       "aggregateId": "nonzero-128-bit",
-      "forwardingHopCountMaximum": { "$bound": "routeForwardHopCount" },
-      "forwardingQueuedMessagesMaximum": { "$bound": "routeForwardMessages" },
-      "forwardingQueuedBytesMaximum": { "$bound": "routeForwardBytes" },
+      "messageFollowHopCountMaximum": { "$bound": "messageFollowHopCount" },
+      "messageFollowQueuedMessagesMaximum": { "$bound": "messageFollowMessages" },
+      "messageFollowQueuedBytesMaximum": { "$bound": "messageFollowBytes" },
       "routingIdEntropyBits": 128,
       "routingIdCollisionAttemptsMaximum": { "$bound": "routingIdCollisionAttempts" },
       "nodeActiveCapacityDefault": { "$bound": "nodeActiveCapacityDefault" },
@@ -2417,7 +2417,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "forward-route",
+      "name": "message-follow-route",
       "kind": "conditional-union",
       "discriminators": [
         { "name": "objectKind", "source": "wire", "$ref": "authority-object-kind" }
@@ -2434,20 +2434,20 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "route-forward-mapping-v1",
+      "name": "message-follow-route-v1",
       "kind": "versioned-length-delimited",
       "version": { "$ref": "u8", "constant": 1 },
       "length": { "$ref": "u32", "covers": "body" },
-      "maximumEncodedBytes": { "$bound": "routeForwardBytes" },
+      "maximumEncodedBytes": { "$bound": "messageFollowBytes" },
       "body": [
-        { "name": "source", "$ref": "forward-route" },
-        { "name": "target", "$ref": "forward-route" },
+        { "name": "source", "$ref": "message-follow-route" },
+        { "name": "target", "$ref": "message-follow-route" },
         { "name": "hopCount", "$ref": "u8", "minimum": 1,
-          "maximum": { "$bound": "routeForwardHopCount" } },
+          "maximum": { "$bound": "messageFollowHopCount" } },
         { "name": "queuedMessages", "$ref": "u32", "minimum": 0,
-          "maximum": { "$bound": "routeForwardMessages" } },
+          "maximum": { "$bound": "messageFollowMessages" } },
         { "name": "queuedBytes", "$ref": "u32", "minimum": 0,
-          "maximum": { "$bound": "routeForwardBytes" } },
+          "maximum": { "$bound": "messageFollowBytes" } },
         { "name": "originalOperation", "$ref": "operation-id" },
         { "name": "originalReplyRouteId", "$ref": "nonzero-u64" }
       ],
@@ -4167,8 +4167,8 @@
       "requiredFlags": [],
       "body": [
         { "name": "operation", "$ref": "operation-id" },
-        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
-          "maximum": { "$bound": "routeForwardHopCount" } },
+        { "name": "messageFollowHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "messageFollowHopCount" } },
         { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
@@ -4184,8 +4184,8 @@
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
         { "name": "operation", "$ref": "operation-id" },
-        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
-          "maximum": { "$bound": "routeForwardHopCount" } },
+        { "name": "messageFollowHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "messageFollowHopCount" } },
         { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
@@ -4220,8 +4220,8 @@
       ],
       "body": [
         { "name": "operation", "$ref": "operation-id" },
-        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
-          "maximum": { "$bound": "routeForwardHopCount" } },
+        { "name": "messageFollowHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "messageFollowHopCount" } },
         { "name": "sourceActor", "$ref": "optional-actor-ref" },
         { "name": "targetActor", "$ref": "actor-route-fence" },
         {
@@ -4251,8 +4251,8 @@
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
         { "name": "operation", "$ref": "operation-id" },
-        { "name": "forwardingHopCount", "$ref": "u8", "minimum": 0,
-          "maximum": { "$bound": "routeForwardHopCount" } },
+        { "name": "messageFollowHopCount", "$ref": "u8", "minimum": 0,
+          "maximum": { "$bound": "messageFollowHopCount" } },
         { "name": "sourceActor", "$ref": "optional-actor-ref" },
         { "name": "targetActor", "$ref": "actor-route-fence" },
         {

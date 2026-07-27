@@ -97,8 +97,6 @@ internal static class StI4ActorMessageFollowMatrixScenario
             reply.StateVersion == 404,
             $"{scenario} request lost restored Actor state.");
 
-        await context.WaitRuntimeEvidenceAsync(source,
-            $"message_follow_relay actor={actorId}");
         var targetEvidence = await context.WaitEvidenceAsync(
             target,
             [

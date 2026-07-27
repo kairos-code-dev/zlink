@@ -348,6 +348,40 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void TargetArrivalBacklog_RemainsSealedThroughJoinedNotification()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        Assert.True(handoff.Import(CommitRequest("handoff-1", []), out _));
+        handoff.MarkAuthorityCommitted("handoff-1", 1, 1);
+        Assert.True(handoff.TryBeginJoinedNotification("handoff-1"));
+        using var body = Message.From("target-arrival");
+        using var notifying = Frame(
+            body,
+            ActorRef("node-b", 1),
+            "session-notifying");
+        using var prepared = Frame(
+            body,
+            ActorRef("node-b", 1),
+            "session-prepared");
+
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(notifying));
+        handoff.AcceptPreparation(
+            "handoff-1",
+            ZLinkRemoteActorJoinPackets.CreateJoinReply(
+                true,
+                ActorRef("node-b", 1)));
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(prepared));
+
+        Assert.Equal(2, handoff.PrepareImportedReplay([]).Count);
+    }
+
+    [Fact]
     public void SourceIngressHold_EncodedByteBoundaryIncludesJournalHeader()
     {
         using var body = Message.From("encoded-byte-boundary");
@@ -406,6 +440,53 @@ public sealed class ActorHandoffTests
         Assert.Equal((0, 0L), admission.Snapshot());
         _ = handoff.AbortCapture();
         Assert.Equal((0, 0L), admission.Snapshot());
+    }
+
+    [Fact]
+    public void MessageFollowFence_AcceptsNonContiguousIncreasingGenerations()
+    {
+        var handoff = new ZLinkActorHandoffState("actor-1", TimeProvider.System);
+        handoff.BeginCapture();
+
+        var trailing = handoff.CutoverCaptureToMessageFollow(
+            committedFrameCount: 0,
+            ActorRef("node-a", 1),
+            ActorRef("node-b", 1),
+            "mesh-a",
+            sourceNodeGeneration: 1,
+            targetNodeGeneration: 2,
+            sourceAuthorityOwnerGeneration: 1UL << 62,
+            targetAuthorityOwnerGeneration: (1UL << 62) + 17,
+            sourceOwnerLeaseGeneration: 3,
+            targetOwnerLeaseGeneration: 4);
+
+        Assert.Empty(trailing);
+    }
+
+    [Theory]
+    [InlineData(12UL, 11UL)]
+    [InlineData(12UL, 12UL)]
+    [InlineData(12UL, 9223372036854775808UL)]
+    [InlineData(9223372036854775808UL, 1UL)]
+    public void MessageFollowFence_RejectsNonIncreasingOrOutOfRangeGenerations(
+        ulong sourceGeneration,
+        ulong targetGeneration)
+    {
+        var handoff = new ZLinkActorHandoffState("actor-1", TimeProvider.System);
+        handoff.BeginCapture();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            handoff.CutoverCaptureToMessageFollow(
+                committedFrameCount: 0,
+                ActorRef("node-a", 1),
+                ActorRef("node-b", 1),
+                "mesh-a",
+                sourceNodeGeneration: 1,
+                targetNodeGeneration: 2,
+                sourceAuthorityOwnerGeneration: sourceGeneration,
+                targetAuthorityOwnerGeneration: targetGeneration,
+                sourceOwnerLeaseGeneration: 3,
+                targetOwnerLeaseGeneration: 4));
     }
 
     [Fact]
@@ -820,6 +901,41 @@ public sealed class ActorHandoffTests
             ZLinkActorFrameRoute.MessageFollow,
             state.Handoff.ResolveFrameRoute(state.NativeActorRef, source, out var followed));
         Assert.Equal(target, followed);
+    }
+
+    [Fact]
+    public async Task MessageFollowOperationalMarkers_DoNotExposeObjectIdentityOrGeneration()
+    {
+        var markers = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var state = new ZLinkActorRuntimeState(
+            "actor-private-42",
+            handoffDiagnostic: markers.Enqueue);
+        var source = ActorRef("node-a", 41);
+        var target = ActorRef("node-b", 42);
+        state.BindNativeActorRef(source);
+        state.Handoff.BeginCapture();
+
+        _ = Cutover(state, 0, source, target);
+        state.Handoff.CommitMessageFollow(TimeSpan.FromMilliseconds(10));
+
+        var registered = Assert.Single(markers);
+        Assert.Contains("message_follow_registered", registered);
+        Assert.Contains("source_rid=node-a", registered);
+        Assert.Contains("target_rid=node-b", registered);
+        Assert.DoesNotContain("actor=", registered);
+        Assert.DoesNotContain("generation=", registered);
+        Assert.DoesNotContain("actor-private-42", registered);
+
+        for (var attempt = 0; attempt < 20 && markers.Count == 1; attempt++)
+            await Task.Delay(5);
+
+        Assert.Contains("message_follow_route_removed entries=0", markers);
+        Assert.All(markers, marker =>
+        {
+            Assert.DoesNotContain("actor=", marker);
+            Assert.DoesNotContain("generation=", marker);
+            Assert.DoesNotContain("actor-private-42", marker);
+        });
     }
 
     [Fact]

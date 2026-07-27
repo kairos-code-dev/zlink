@@ -386,7 +386,7 @@ test('entry spot public surface separates creation and membership from user spot
   assert.equal(membershipLifecycle.includes('onActorJoin'), false);
   assert.equal(userLifecycle.includes('onActorJoin'), true);
   assert.equal(entrySpot.includes('onCreateActor'), true);
-  assert.equal(entrySpot.includes('onActorRelocated'), true);
+  assert.equal(entrySpot.includes('onActorRelocated'), false);
   assert.equal(membershipLifecycle.includes('onJoinedActor'), true);
   assert.equal(membershipLifecycle.includes('onLeaveActor'), true);
   assert.equal(entryContext.includes('leaveActor'), false);

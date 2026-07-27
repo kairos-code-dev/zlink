@@ -927,7 +927,7 @@ internal sealed partial class ZLinkSpotActivation
                 targetOwner,
                 DateTimeOffset.UtcNow + duration));
         ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"message_follow_registered spot={SpotId} generation={ObjectGeneration}");
+            $"message_follow_registered target_rid={targetNodeRid}");
     }
 
     internal TimeSpan MessageFollowRemaining
@@ -962,8 +962,8 @@ internal sealed partial class ZLinkSpotActivation
                 messageFollow);
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 messageFollow.ExpiresAt <= now
-                    ? $"message_follow_expired spot={SpotId} generation={ObjectGeneration}"
-                    : $"message_follow_rejected spot={SpotId} generation={ObjectGeneration}");
+                    ? "message_follow_expired"
+                    : "message_follow_rejected");
             return ZLinkSpotMessageFollowResult.StaleRejected;
         }
         ReadOnlyMemory<byte> metadata;
@@ -1015,8 +1015,7 @@ internal sealed partial class ZLinkSpotActivation
                     SendFlags.DontWait,
                     metadata);
                 received.Dispose();
-                ZLinkFrameworkDebugLog.SpotDiscovery(
-                    $"message_follow_relay spot={SpotId} generation={ObjectGeneration}");
+                ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
             }
             finally
             {
@@ -1058,8 +1057,7 @@ internal sealed partial class ZLinkSpotActivation
             ? ZLinkSpotMessageFollowResult.Followed
             : ZLinkSpotMessageFollowResult.Full;
         if (followed == ZLinkSpotMessageFollowResult.Followed)
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"message_follow_relay spot={SpotId} generation={ObjectGeneration}");
+            ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
         return followed;
     }
 

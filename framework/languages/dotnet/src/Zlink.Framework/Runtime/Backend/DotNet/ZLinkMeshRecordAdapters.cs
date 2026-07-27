@@ -101,11 +101,24 @@ internal static class ZLinkMeshRecordAdapters
                     record.OwnerLeaseGeneration,
                     requestId,
                     flags,
-                    DeadlineUnixMs: record.DeadlineUnixMs),
+                    // Core uses ulong.MaxValue for an unbounded operation.
+                    // Framework wire contracts use 0 for the same meaning.
+                    DeadlineUnixMs: NormalizeDeadline(record.DeadlineUnixMs)),
                 SourceNodeGeneration: record.SourceBindingGeneration,
                 RequestSource: requestSource,
                 DirectReply: i == 0 ? directReply : null);
         return parts;
+    }
+
+    internal static ulong NormalizeDeadline(ulong deadlineUnixMs)
+    {
+        if (deadlineUnixMs <= long.MaxValue)
+            return deadlineUnixMs;
+        if (deadlineUnixMs == ulong.MaxValue)
+            return 0;
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.RequestProtocolError,
+            $"Actor message deadline '{deadlineUnixMs}' is outside the supported range.");
     }
 }
 

@@ -29,6 +29,7 @@ internal static class RelocationWorkloadHandlers
             "workload_request",
             $"sequence={request.Sequence};operation={operationId};"
             + $"correlation={correlationId ?? "unavailable"};"
+            + $"owner={nodeRid};"
             + $"generation={objectGeneration};"
             + $"withinDeadline={withinDeadline}");
         return new RelocationWorkloadReply(
@@ -45,6 +46,7 @@ internal static class RelocationWorkloadHandlers
 
     internal static void Accept(
         string targetId,
+        string nodeRid,
         ulong objectGeneration,
         RelocationWorkloadPacket packet,
         EvidenceStore evidence,
@@ -57,6 +59,7 @@ internal static class RelocationWorkloadHandlers
             targetId,
             "workload_one_way",
             $"sequence={packet.Sequence};operation={operationId};"
+            + $"owner={nodeRid};"
             + $"generation={objectGeneration};withinDeadline="
             + (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
                <= packet.AbsoluteDeadlineUnixTimeMilliseconds));
@@ -109,6 +112,7 @@ internal sealed class EntryWorkloadSendHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         RelocationWorkloadHandlers.Accept(
             actor.ActorId,
+            spot.Context.NodeRid.ToString(),
             actor.Context.ObjectGeneration,
             message,
             evidence,
@@ -166,6 +170,7 @@ internal sealed class UserSpotActorWorkloadSendHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         RelocationWorkloadHandlers.Accept(
             actor.ActorId,
+            spot.Context.NodeRid.ToString(),
             actor.Context.ObjectGeneration,
             message,
             evidence,
@@ -220,6 +225,7 @@ internal sealed class PayloadUserSpotWorkloadSendHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         RelocationWorkloadHandlers.Accept(
             spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
             spot.Context.ObjectGeneration,
             message,
             Evidence,
@@ -266,6 +272,7 @@ internal sealed class PayloadInstanceSpotWorkloadSendHandler(EvidenceStore evide
         cancellationToken.ThrowIfCancellationRequested();
         RelocationWorkloadHandlers.Accept(
             spot.Context.SpotId,
+            spot.Context.NodeRid.ToString(),
             spot.Context.ObjectGeneration,
             message,
             Evidence,

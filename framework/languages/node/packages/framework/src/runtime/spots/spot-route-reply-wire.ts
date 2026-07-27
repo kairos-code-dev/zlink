@@ -4,6 +4,7 @@ export interface ZLinkSpotRouteBridgeReplyPayload {
   readonly ok: boolean;
   readonly response?: unknown;
   readonly error?: unknown;
+  readonly errorKind?: unknown;
   readonly deferredResponse?: boolean;
   readonly actorPacketTarget?: ZLinkRemoteActorPacketTargetWire;
 }

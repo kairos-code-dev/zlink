@@ -27,7 +27,7 @@ internal interface IZLinkSpotRetireTarget
         ZLinkPreparedSpotRetireStaging relocation,
         CancellationToken cancellationToken);
 
-    ValueTask PublishAsync(
+    ValueTask<ulong> PublishAsync(
         ZLinkSpotRetireReservation reservation,
         ZLinkAggregateRelocationPublished relocation,
         CancellationToken cancellationToken);
@@ -285,6 +285,7 @@ internal sealed class ZLinkSpotRetireScheduler(
             IReadOnlyList<ZLinkAcceptedWorkRecord> committedHeld = [];
             var committed = false;
             var targetPublished = false;
+            ulong targetAuthorityOwnerGeneration = 0;
             var messageFollowStarted = false;
             var sourceCommitted = false;
             var committedHeldValidated = false;
@@ -488,7 +489,8 @@ internal sealed class ZLinkSpotRetireScheduler(
                         "Committed SPOT relocation lost its publication state.");
                 if (!targetPublished)
                 {
-                    await target.PublishAsync(
+                    targetAuthorityOwnerGeneration =
+                        await target.PublishAsync(
                             reservation,
                             published,
                             completionToken)
@@ -506,8 +508,7 @@ internal sealed class ZLinkSpotRetireScheduler(
                         reservation.TargetDescriptor.Rid,
                         reservation.TargetDescriptorLifecycleGeneration,
                         spotParticipant.AuthorityOwnerGeneration,
-                        checked(
-                            spotParticipant.AuthorityOwnerGeneration + 1),
+                        targetAuthorityOwnerGeneration,
                         reservation.TargetOwner);
                     messageFollowStarted = true;
                 }

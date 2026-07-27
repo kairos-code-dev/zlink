@@ -96,20 +96,6 @@ internal static class StI6ActorMultiHopMessageFollowScenario
             reply.StateVersion == 606,
             $"{scenario} multi-hop relocation lost Actor state.");
 
-        await context.WaitRuntimeEvidenceAsync(
-            source,
-            $"message_follow_relay actor={actorId}");
-        await context.WaitRuntimeEvidenceAsync(
-            firstTarget,
-            $"message_follow_relay actor={actorId}");
-        await context.WaitRuntimeEvidenceAsync(
-            source,
-            10000,
-            $"message_follow_route_removed actor={actorId} entries=0");
-        await context.WaitRuntimeEvidenceAsync(
-            firstTarget,
-            10000,
-            $"message_follow_route_removed actor={actorId} entries=0");
         var targetEvidence = await context.WaitEvidenceAsync(
             secondTarget,
             [$"{scenario}|{actorId}|packet_handler|multi-hop-request"]);
@@ -120,5 +106,20 @@ internal static class StI6ActorMultiHopMessageFollowScenario
                 && item.Kind == "packet_handler"
                 && item.Value == "multi-hop-request") == 1,
             $"{scenario} multi-hop request was not handled exactly once.");
+        foreach (var previousOwner in new[] { source, firstTarget })
+        {
+            ZlinkStreamAssert.Ensure(
+                !(await context.GetEvidenceAsync(previousOwner)).Any(item =>
+                    item.Scenario == scenario
+                    && item.ActorId == actorId
+                    && item.Kind == "packet_handler"
+                    && item.Value == "multi-hop-request"),
+                $"{scenario} previous-owner application handler processed followed work.");
+        }
+        ZlinkStreamAssert.Ensure(
+            (await context.GetTransportDeliveryAsync(
+                source,
+                operationId)).ReleasedCount == 1,
+            $"{scenario} pre-resolved operation was not released exactly once.");
     }
 }

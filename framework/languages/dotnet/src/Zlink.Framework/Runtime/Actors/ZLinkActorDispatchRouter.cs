@@ -30,13 +30,20 @@ internal sealed class ZLinkActorDispatchRouter(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor '{actorId}' is not active.");
 
-        await Async(actor, header, payload, cancellationToken).ConfigureAwait(false);
+        await Async(
+                actor,
+                header,
+                payload,
+                relocationReplay: false,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<ZLinkActorReply> SubmitForReplyAsync(
         string actorId,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
         var state = actorSessions.GetOrCreate(actorId);
@@ -45,7 +52,13 @@ internal sealed class ZLinkActorDispatchRouter(
                         ZLinkFrameworkErrorKind.ActorRouteNotFound,
                         $"Actor '{actorId}' is not active.");
 
-        return await SubmitForReplyAsync(actor, state, header, payload, cancellationToken)
+        return await SubmitForReplyAsync(
+                actor,
+                state,
+                header,
+                payload,
+                relocationReplay,
+                cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -53,6 +66,7 @@ internal sealed class ZLinkActorDispatchRouter(
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken = default)
     {
         using var flow = ZLinkFlowContext.Enter(
@@ -71,6 +85,7 @@ internal sealed class ZLinkActorDispatchRouter(
                     header,
                     ct => SubmitByCurrentLocationAsync(actor, state, header, payload, ct),
                     countAsPendingRequest: false,
+                    allowRelocationReplay: relocationReplay,
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -106,6 +121,7 @@ internal sealed class ZLinkActorDispatchRouter(
         ZLinkActorRuntimeState state,
         ZlinkStreamHeader header,
         Message payload,
+        bool relocationReplay,
         CancellationToken cancellationToken)
     {
         using var flow = ZLinkFlowContext.Enter(
@@ -117,7 +133,8 @@ internal sealed class ZLinkActorDispatchRouter(
                 header,
                 ct => SubmitByCurrentLocationForReplyAsync(actor, state, header, payload, ct),
                 countAsPendingRequest: true,
-                cancellationToken)
+                allowRelocationReplay: relocationReplay,
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 

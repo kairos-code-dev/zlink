@@ -321,12 +321,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             "The MeshNode backend does not support canonical relocation wire commands.");
     }
 
-    public async ValueTask PublishAsync(
+    public async ValueTask<ulong> PublishAsync(
         ZLinkSpotRetireReservation reservation,
         ZLinkAggregateRelocationPublished relocation,
         CancellationToken cancellationToken)
     {
-        await ReconcilePublishedAuthorityAsync(
+        return await ReconcilePublishedAuthorityAsync(
                 reservation, relocation, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -351,7 +351,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
         await ValueTask.CompletedTask;
     }
 
-    private async ValueTask ReconcilePublishedAuthorityAsync(
+    private async ValueTask<ulong> ReconcilePublishedAuthorityAsync(
         ZLinkSpotRetireReservation reservation,
         ZLinkAggregateRelocationPublished relocation,
         CancellationToken cancellationToken)
@@ -384,7 +384,7 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                 && publication.Reference == relocation.Relocation.Reference
                 && publication.ChecksumCrc32c
                    == relocation.Relocation.ChecksumCrc32c)
-                return;
+                return found.Snapshot.AuthorityOwnerGeneration;
             if (DateTimeOffset.UtcNow >= deadline)
             {
                 var relocationStore = registration.Locations
@@ -396,7 +396,10 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                     .TryReadExactPublishedAsync(
                         relocation.Envelope, CancellationToken.None)
                     .ConfigureAwait(false);
-                if (exact is not null) return;
+                if (exact is not null)
+                    return exact.Authorities.Single(authority =>
+                            authority.Key == spot.AuthorityKey)
+                        .Snapshot.AuthorityOwnerGeneration;
                 var kind = spot.ObjectKind;
                 if (kind == ZLinkPlacementObjectKind.UserSpot)
                 {
@@ -412,7 +415,10 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
                         .TryReadExactPublishedAsync(
                             relocation.Envelope, CancellationToken.None)
                         .ConfigureAwait(false);
-                    if (exact is not null) return;
+                    if (exact is not null)
+                        return exact.Authorities.Single(authority =>
+                                authority.Key == spot.AuthorityKey)
+                            .Snapshot.AuthorityOwnerGeneration;
                 }
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.DeadlineExceeded,
@@ -968,8 +974,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             || targetOwner.LeaseGeneration <= 0
             || checked((ulong)targetOwner.LeaseGeneration)
                != message.TargetOwnerLeaseGeneration
+            || message.SourceAuthorityOwnerGeneration
+               is 0 or > long.MaxValue
             || message.TargetAuthorityOwnerGeneration
-               != checked(message.SourceAuthorityOwnerGeneration + 1)
+               is 0 or > long.MaxValue
+            || message.TargetAuthorityOwnerGeneration
+               <= message.SourceAuthorityOwnerGeneration
             || message.HopCount is < 1 or > 8)
             return false;
 
@@ -1899,8 +1909,12 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             if (read is not ZLinkAuthorityReadResult.Found found
                 || found.Snapshot.ObjectGeneration
                    != participant.ObjectGeneration
+                || participant.AuthorityOwnerGeneration
+                   is 0 or > long.MaxValue
                 || found.Snapshot.AuthorityOwnerGeneration
-                   != checked(participant.AuthorityOwnerGeneration + 1)
+                   is 0 or > long.MaxValue
+                || found.Snapshot.AuthorityOwnerGeneration
+                   <= participant.AuthorityOwnerGeneration
                 || found.Snapshot.OwnerId != exactLocalOwner.OwnerId
                 || found.Snapshot.OwnerLeaseGeneration
                    != exactLocalOwner.LeaseGeneration

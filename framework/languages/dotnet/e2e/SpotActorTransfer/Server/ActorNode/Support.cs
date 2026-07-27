@@ -86,27 +86,6 @@ internal sealed class RuntimeEvidenceStore
     }
 }
 
-internal sealed class RelocationUnitTerminalStore
-{
-    private readonly ConcurrentQueue<RelocationUnitTerminalEvidence>
-        _items = new();
-
-    public void Add(
-        string objectKind,
-        string objectId,
-        ulong objectGeneration,
-        string nodeRid) =>
-        _items.Enqueue(new RelocationUnitTerminalEvidence(
-            objectKind,
-            objectId,
-            checked((long)objectGeneration),
-            nodeRid,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
-
-    public RelocationUnitTerminalEvidence[] Snapshot() =>
-        _items.ToArray();
-}
-
 internal sealed class RelocationMessageFlowEvidenceStore
     : IZLinkRuntimeMessageFlowObserver
 {

@@ -22,8 +22,9 @@ internal sealed class RelocationBulkWorkload(
         _requestOperationIds = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string>
         _oneWayOperationIds = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, byte>
-        _requestCorrelationIds = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string>
+        _actorRequestCorrelationByOperation =
+            new(StringComparer.Ordinal);
     private long _requestOffered;
     private long _requestSubmitted;
     private long _requestSucceeded;
@@ -32,6 +33,194 @@ internal sealed class RelocationBulkWorkload(
     private long _oneWaySubmitted;
     private long _oneWaySucceeded;
     private long _oneWayFailed;
+
+    internal async Task WaitForInitialEvidenceAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+        => await WaitForEvidenceAsync(
+            requestWatermark:
+                new HashSet<string>(StringComparer.Ordinal),
+            oneWayWatermark:
+                new HashSet<string>(StringComparer.Ordinal),
+            expectedOwners: null,
+            timeout,
+            cancellationToken);
+
+    internal async Task WaitForAdditionalEvidenceAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        var requestWatermark = _requestOperationIds.Values.ToHashSet(
+            StringComparer.Ordinal);
+        var oneWayWatermark = _oneWayOperationIds.Values.ToHashSet(
+            StringComparer.Ordinal);
+        var locations = await context.GetRelocationLocationsAsync(
+            context.NodeB,
+            targetKind == "actor" ? targetIds : [],
+            targetKind == "spot" ? targetIds : []);
+        var expectedOwners = locations.ToDictionary(
+            static item => item.ObjectId,
+            static item => item.NodeRid,
+            StringComparer.Ordinal);
+        ZlinkStreamAssert.Ensure(
+            expectedOwners.Count == targetIds.Count,
+            $"{scenario} final owner snapshot was incomplete.");
+
+        await WaitForEvidenceAsync(
+            requestWatermark,
+            oneWayWatermark,
+            expectedOwners,
+            timeout,
+            cancellationToken);
+    }
+
+    private async Task WaitForEvidenceAsync(
+        IReadOnlySet<string> requestWatermark,
+        IReadOnlySet<string> oneWayWatermark,
+        IReadOnlyDictionary<string, string>? expectedOwners,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var sampleTargets = RepresentativeTargets();
+        var coverageSeconds =
+            (double)targetIds.Count / Math.Max(1, operationsPerSecond);
+        var boundedTimeout = TimeSpan.FromSeconds(Math.Max(
+            timeout.TotalSeconds,
+            coverageSeconds + 5));
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        deadline.CancelAfter(boundedTimeout);
+        while (true)
+        {
+            deadline.Token.ThrowIfCancellationRequested();
+            var requestOperations = _requestOperationIds.Values
+                .Where(operationId =>
+                    !requestWatermark.Contains(operationId))
+                .ToHashSet(StringComparer.Ordinal);
+            var oneWayOperations = _oneWayOperationIds.Values
+                .Where(operationId =>
+                    !oneWayWatermark.Contains(operationId))
+                .ToHashSet(StringComparer.Ordinal);
+            if (requestOperations.Count > 0
+                && oneWayOperations.Count > 0)
+            {
+                var evidence = (await Task.WhenAll(
+                        context.GetEvidenceAsync(context.NodeA),
+                        context.GetEvidenceAsync(context.NodeB),
+                        context.GetEvidenceAsync(context.NodeC)))
+                    .SelectMany(static items => items)
+                    .ToArray();
+                if (expectedOwners is not null)
+                {
+                    EnsureNoWrongOwnerEvidence(
+                        evidence,
+                        "workload_request",
+                        requestOperations,
+                        expectedOwners);
+                    EnsureNoWrongOwnerEvidence(
+                        evidence,
+                        "workload_one_way",
+                        oneWayOperations,
+                        expectedOwners);
+                }
+                if (HasRepresentativeEvidence(
+                        evidence,
+                        sampleTargets,
+                        "workload_request",
+                        requestOperations,
+                        expectedOwners)
+                    && HasRepresentativeEvidence(
+                        evidence,
+                        sampleTargets,
+                        "workload_one_way",
+                        oneWayOperations,
+                        expectedOwners))
+                    return;
+            }
+            await Task.Delay(25, deadline.Token);
+        }
+    }
+
+    private void EnsureNoWrongOwnerEvidence(
+        IEnumerable<ActorEvidence> evidence,
+        string kind,
+        IReadOnlySet<string> operationIds,
+        IReadOnlyDictionary<string, string> expectedOwners)
+    {
+        var wrongOwner = evidence.FirstOrDefault(item =>
+            item.Scenario == scenario
+            && item.Kind == kind
+            && operationIds.Contains(ParseHandlerOperationId(item.Value))
+            && expectedOwners.TryGetValue(item.ActorId, out var expectedOwner)
+            && ParseHandlerOwner(item.Value) != expectedOwner);
+        ZlinkStreamAssert.Ensure(
+            wrongOwner is null,
+            $"{scenario} post-terminal {kind} reached stale owner "
+            + $"'{ParseHandlerOwner(wrongOwner?.Value ?? string.Empty)}' "
+            + $"for '{wrongOwner?.ActorId}'.");
+    }
+
+    private IReadOnlySet<string> RepresentativeTargets()
+    {
+        const int maximumSamples = 16;
+        var count = Math.Min(maximumSamples, targetIds.Count);
+        var sample = new HashSet<string>(StringComparer.Ordinal);
+        if (count == 1)
+        {
+            sample.Add(targetIds[0]);
+            return sample;
+        }
+
+        for (var index = 0; index < count; index++)
+        {
+            var targetIndex = checked((int)Math.Round(
+                (double)index * (targetIds.Count - 1) / (count - 1)));
+            sample.Add(targetIds[targetIndex]);
+        }
+        return sample;
+    }
+
+    private bool HasRepresentativeEvidence(
+        IEnumerable<ActorEvidence> evidence,
+        IReadOnlySet<string> sampleTargets,
+        string kind,
+        IReadOnlySet<string> operationIds,
+        IReadOnlyDictionary<string, string>? expectedOwners)
+    {
+        var observed = evidence
+            .Where(item =>
+                item.Scenario == scenario
+                && item.Kind == kind
+                && sampleTargets.Contains(item.ActorId)
+                && operationIds.Contains(
+                    ParseHandlerOperationId(item.Value))
+                && (expectedOwners is null
+                    || expectedOwners.TryGetValue(
+                        item.ActorId,
+                        out var expectedOwner)
+                    && expectedOwner == ParseHandlerOwner(item.Value)))
+            .Select(static item => item.ActorId)
+            .ToHashSet(StringComparer.Ordinal);
+        return observed.Count > 0
+            && sampleTargets.All(observed.Contains);
+    }
+
+    private static string ParseHandlerOperationId(string value)
+        => ParseHandlerField(value, "operation");
+
+    internal static string ParseHandlerOwner(string value)
+        => ParseHandlerField(value, "owner");
+
+    private static string ParseHandlerField(string value, string name)
+    {
+        foreach (var field in value.Split(';'))
+        {
+            var pair = field.Split('=', 2);
+            if (pair.Length == 2 && pair[0] == name)
+                return pair[1];
+        }
+        return string.Empty;
+    }
 
     public async Task<RelocationBulkWorkloadResult> RunAsync(
         TimeSpan duration,
@@ -91,7 +280,9 @@ internal sealed class RelocationBulkWorkload(
             new Dictionary<string, string>(
                 _oneWayOperationIds,
                 StringComparer.Ordinal),
-            _requestCorrelationIds.Keys.ToArray());
+            new Dictionary<string, string>(
+                _actorRequestCorrelationByOperation,
+                StringComparer.Ordinal));
     }
 
     private async Task RunRequestPacerAsync(
@@ -173,13 +364,17 @@ internal sealed class RelocationBulkWorkload(
                 Interlocked.Increment(ref _requestFailed);
                 return;
             }
-            if (reply.CorrelationId is { Length: > 0 }
-                && !_requestCorrelationIds.TryAdd(
-                    reply.CorrelationId,
-                    0))
+            if (targetKind == "actor"
+                && reply.CorrelationId is { Length: > 0 } correlationId)
             {
-                Interlocked.Increment(ref _requestFailed);
-                return;
+                const string connectionScope = "node-b";
+                if (!_actorRequestCorrelationByOperation.TryAdd(
+                        request.OperationId,
+                        connectionScope + "\n" + correlationId))
+                {
+                    Interlocked.Increment(ref _requestFailed);
+                    return;
+                }
             }
 
             _requestLatencyMs.Enqueue(
@@ -234,9 +429,10 @@ internal sealed class RelocationBulkWorkload(
     {
         var targetId = targetIds[
             checked((int)((sequence - 1) % targetIds.Count))];
-        var submittingNode = sequence % 2 == 0
-            ? context.NodeB
-            : context.NodeC;
+        // A single submitting connection gives the sequence an observable
+        // transport arrival order. Alternating connections would only define
+        // two independent orders and make a total-order assertion invalid.
+        var submittingNode = context.NodeB;
         var sent =
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return (
@@ -291,13 +487,20 @@ internal sealed record RelocationBulkWorkloadResult(
         AcceptedOneWay,
     IReadOnlyDictionary<string, string> RequestOperationIds,
     IReadOnlyDictionary<string, string> OneWayOperationIds,
-    IReadOnlyList<string> RequestCorrelationIds)
+    IReadOnlyDictionary<string, string>
+        ActorRequestCorrelationByOperation)
 {
     public double RequestsPerSecond =>
         RequestSucceeded / Math.Max(
             Elapsed.TotalSeconds,
             double.Epsilon);
 }
+
+internal sealed record RelocationTerminalSummary(
+    int CompletedUnits,
+    int VerifiedParticipants,
+    int SafeAborted,
+    int Blocked);
 
 internal static class RelocationBulkWorkloadVerification
 {
@@ -321,6 +524,31 @@ internal static class RelocationBulkWorkloadVerification
             + $"oneWayOffered={result.OneWayOffered};"
             + $"oneWaySubmitted={result.OneWaySubmitted};"
             + $"oneWay={result.OneWayFailed}.");
+        ZlinkStreamAssert.Ensure(
+            result.RequestSucceeded > 0
+            && result.OneWaySucceeded > 0,
+            $"{result.Scenario} produced no accepted request or one-way "
+            + "operation; zero-traffic evidence cannot pass.");
+
+        if (result.TargetKind == "actor")
+        {
+            var requestOperations = result.RequestOperationIds.Values
+                .ToArray();
+            ZlinkStreamAssert.Ensure(
+                result.ActorRequestCorrelationByOperation.Count
+                    == result.RequestSucceeded
+                && requestOperations.Length == result.RequestSucceeded
+                && requestOperations.Distinct(StringComparer.Ordinal)
+                       .Count() == requestOperations.Length
+                && requestOperations.All(
+                    result.ActorRequestCorrelationByOperation.ContainsKey)
+                && result.ActorRequestCorrelationByOperation.Values
+                       .Distinct(StringComparer.Ordinal).Count()
+                   == result.ActorRequestCorrelationByOperation.Count,
+                $"{result.Scenario} Actor request correlation was not "
+                + "preserved one-to-one with the original operation, or "
+                + "a duplicate reply was observed.");
+        }
 
         IReadOnlyList<ActorEvidence> evidence = [];
         var deadline =
@@ -382,7 +610,7 @@ internal static class RelocationBulkWorkloadVerification
             && handled.Select(static item => item.Sequence)
                    .Distinct().Count() == handled.Length
             && handled.Select(static item => item.Sequence)
-                .Order().SequenceEqual(accepted.Order())
+                .SequenceEqual(accepted.Order())
             && handled.All(item =>
                 item.WithinDeadline
                 && operationIds.TryGetValue(
@@ -472,16 +700,18 @@ internal static class RelocationBulkWorkloadVerification
             + $" p99_ms={result.RequestP99Milliseconds:F2}"
             + $" max_ms={result.RequestMaxMilliseconds:F2}"
             + $" correlation_count="
-            + result.RequestCorrelationIds.Count);
+            + result.ActorRequestCorrelationByOperation.Count);
     }
 
-    internal static async Task VerifyRelocationTerminalsAsync(
+    internal static async Task<RelocationTerminalSummary>
+        VerifyRelocationTerminalsAsync(
         SpotActorTransferScenarioContext context,
         IReadOnlyList<RelocationLocationSnapshot> initial,
         IReadOnlyCollection<string> actorIds,
         IReadOnlyCollection<string> spotIds,
         IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
-        bool requireSpotWideAggregatePublication)
+        bool requireSpotWideAggregatePublication,
+        IReadOnlySet<string>? spotFlowWatermark = null)
     {
         var final = await context.GetRelocationLocationsAsync(
             context.NodeB,
@@ -503,25 +733,6 @@ internal static class RelocationBulkWorkloadVerification
                 + $"{before.ObjectKind} '{before.ObjectId}'.");
         }
 
-        var terminals = (await Task.WhenAll(
-                context.GetRelocationTerminalsAsync(context.NodeA),
-                context.GetRelocationTerminalsAsync(context.NodeB),
-                context.GetRelocationTerminalsAsync(context.NodeC)))
-            .SelectMany(static items => items)
-            .ToArray();
-        foreach (var after in final)
-        {
-            ZlinkStreamAssert.Ensure(
-                terminals.Any(terminal =>
-                    terminal.ObjectKind == after.ObjectKind
-                    && terminal.ObjectId == after.ObjectId
-                    && terminal.ObjectGeneration
-                       == after.ObjectGeneration
-                    && terminal.NodeRid == after.NodeRid),
-                $"Relocation terminal callback evidence is missing for "
-                + $"{after.ObjectKind} '{after.ObjectId}'.");
-        }
-
         var handlerEvidence = (await Task.WhenAll(
                 context.GetEvidenceAsync(context.NodeA),
                 context.GetEvidenceAsync(context.NodeB),
@@ -539,59 +750,44 @@ internal static class RelocationBulkWorkloadVerification
                         kind + "\n" + targetId,
                         out var location))
                     continue;
-                var terminal = terminals
-                    .Where(item =>
-                        item.ObjectKind == kind
-                        && item.ObjectId == targetId
-                        && item.NodeRid == location.NodeRid)
-                    .OrderBy(static item =>
-                        item.ObservedUnixTimeMilliseconds)
-                    .First();
                 var targetAdmissions = handlerEvidence.Where(item =>
                     item.Scenario == result.Scenario
                     && item.ActorId == targetId
-                    && item.NodeRid == location.NodeRid
                     && item.Kind is "workload_request"
-                        or "workload_one_way");
+                        or "workload_one_way"
+                    && RelocationBulkWorkload.ParseHandlerOwner(item.Value)
+                       == location.NodeRid);
                 ZlinkStreamAssert.Ensure(
-                    targetAdmissions.All(item =>
-                        item.ObservedUnixTimeMilliseconds
-                        >= terminal.ObservedUnixTimeMilliseconds),
-                    $"Target application admission preceded relocation "
-                    + $"terminal for {kind} '{targetId}'.");
+                    targetAdmissions.Any(),
+                    $"No post-terminal handler evidence reached final owner "
+                    + $"'{location.NodeRid}' for {kind} '{targetId}'.");
             }
         }
 
-        var messageFlows = (await Task.WhenAll(
-                context.GetRelocationMessageFlowsAsync(context.NodeA),
-                context.GetRelocationMessageFlowsAsync(context.NodeB),
-                context.GetRelocationMessageFlowsAsync(context.NodeC)))
-            .SelectMany(static items => items)
-            .ToArray();
+        var messageFlows = await WaitForMessageFlowsAsync(
+            context,
+            traffic,
+            spotFlowWatermark
+                ?? new HashSet<string>(StringComparer.Ordinal),
+            TimeSpan.FromSeconds(5));
         VerifySpotRequestCorrelation(messageFlows, traffic);
 
-        var gaps = new List<string>
-        {
-            "authority_owner_generation_unobservable"
-        };
-        if (requireSpotWideAggregatePublication)
-        {
-            var finalOwners = final
-                .Select(static item => item.NodeRid)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            ZlinkStreamAssert.Ensure(
-                finalOwners.Length == 1,
-                "SpotWide member final owners diverged from the "
-                + "aggregate Spot owner.");
-            gaps.Add("spotwide_atomic_publication_unobservable");
-        }
+        // A final-owner snapshot cannot prove that a SpotWide aggregate was
+        // never partially visible. Until the process E2E records both sides
+        // of the publication boundary, this contract remains blocked.
+        var aggregatePublicationBlocked =
+            requireSpotWideAggregatePublication ? 1 : 0;
+        if (aggregatePublicationBlocked != 0)
+            Console.WriteLine(
+                "diagnostic_blocker=spotwide_pre_post_visibility_missing");
 
-        throw new InvalidOperationException(
-            "evidence_gap=" + string.Join(',', gaps)
-            + "; public ActorRef/SpotRef omit authority owner generation, "
-            + "and per-object FindAsync cannot prove aggregate CAS "
-            + "visibility.");
+        return new RelocationTerminalSummary(
+            CompletedUnits: requireSpotWideAggregatePublication
+                ? spotIds.Count
+                : actorIds.Count + spotIds.Count,
+            VerifiedParticipants: final.Count,
+            SafeAborted: 0,
+            Blocked: aggregatePublicationBlocked);
     }
 
     private static void VerifySpotRequestCorrelation(
@@ -602,34 +798,105 @@ internal static class RelocationBulkWorkloadVerification
                      item.TargetKind == "spot"
                      && item.RequestSucceeded > 0))
         {
-            var targetIds = result.AcceptedRequests.Keys.ToHashSet(
-                StringComparer.Ordinal);
-            var flows = messageFlows.Where(item =>
-                    item.Surface == "spot"
-                    && item.MessageKind == "request"
-                    && item.PacketName
-                       == nameof(RelocationWorkloadRequest)
-                    && item.SpotId is not null
-                    && targetIds.Contains(item.SpotId)
-                    && item.CorrelationId is { Length: > 0 })
-                .ToArray();
-            var received = flows
-                .Where(static item => item.Phase == "received")
-                .Select(static item => item.CorrelationId!)
-                .ToHashSet(StringComparer.Ordinal);
-            var replied = flows
-                .Where(static item => item.Phase == "replied")
-                .Select(static item => item.CorrelationId!)
-                .ToHashSet(StringComparer.Ordinal);
+            var completedFlows = CountCompletedSpotRequestFlows(
+                messageFlows,
+                result.AcceptedRequests.Keys);
             ZlinkStreamAssert.Ensure(
-                received.Count >= result.RequestSucceeded
-                && received.SetEquals(replied),
+                completedFlows >= result.RequestSucceeded,
                 $"Spot request public message-flow correlation evidence "
                 + $"is incomplete for '{result.Scenario}': "
                 + $"succeeded={result.RequestSucceeded}, "
-                + $"received={received.Count}, replied={replied.Count}.");
+                + $"completed_flows={completedFlows}.");
         }
     }
+
+    private static async Task<RelocationMessageFlowEvidence[]>
+        WaitForMessageFlowsAsync(
+            SpotActorTransferScenarioContext context,
+            IReadOnlyCollection<RelocationBulkWorkloadResult> traffic,
+            IReadOnlySet<string> flowWatermark,
+            TimeSpan timeout)
+    {
+        using var deadline = new CancellationTokenSource(timeout);
+        RelocationMessageFlowEvidence[] snapshot = [];
+        do
+        {
+            snapshot = (await Task.WhenAll(
+                    context.GetRelocationMessageFlowsAsync(context.NodeA),
+                    context.GetRelocationMessageFlowsAsync(context.NodeB),
+                    context.GetRelocationMessageFlowsAsync(context.NodeC)))
+                .SelectMany(static items => items)
+                .Where(item =>
+                    item.FlowId is null
+                    || !flowWatermark.Contains(item.FlowId))
+                .ToArray();
+            if (traffic.Where(static result =>
+                    result.TargetKind == "spot"
+                    && result.RequestSucceeded > 0)
+                .All(result => CountCompletedSpotRequestFlows(
+                        snapshot,
+                        result.AcceptedRequests.Keys)
+                    >= result.RequestSucceeded))
+                return snapshot;
+            try
+            {
+                await Task.Delay(25, deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return snapshot;
+            }
+        } while (!deadline.IsCancellationRequested);
+
+        return snapshot;
+    }
+
+    internal static async Task<IReadOnlySet<string>>
+        CaptureSpotFlowWatermarkAsync(
+            SpotActorTransferScenarioContext context)
+    {
+        var flows = (await Task.WhenAll(
+                context.GetRelocationMessageFlowsAsync(context.NodeA),
+                context.GetRelocationMessageFlowsAsync(context.NodeB),
+                context.GetRelocationMessageFlowsAsync(context.NodeC)))
+            .SelectMany(static items => items)
+            .Select(static item => item.FlowId)
+            .Where(static flowId => !string.IsNullOrWhiteSpace(flowId))
+            .Select(static flowId => flowId!)
+            .ToHashSet(StringComparer.Ordinal);
+        return flows;
+    }
+
+    private static int CountCompletedSpotRequestFlows(
+        IReadOnlyCollection<RelocationMessageFlowEvidence> messageFlows,
+        IEnumerable<string> targetIds) =>
+        messageFlows
+            .Where(item =>
+                item.Surface == "spot"
+                && item.MessageKind == "request"
+                && item.PacketName == nameof(RelocationWorkloadRequest)
+                && item.SpotId is not null
+                && targetIds.Contains(item.SpotId)
+                && item.CorrelationId is { Length: > 0 }
+                && item.FlowId is { Length: > 0 })
+            .GroupBy(static item => item.FlowId!, StringComparer.Ordinal)
+            .Count(group =>
+            {
+                var received = group
+                    .Where(static item => item.Phase == "received")
+                    .Select(static item => item.CorrelationId)
+                    .ToArray();
+                var replied = group
+                    .Where(static item => item.Phase == "replied")
+                    .Select(static item => item.CorrelationId)
+                    .ToArray();
+                return received.Length > 0
+                       && replied.Length > 0
+                       && received.All(correlation =>
+                           replied.Contains(
+                               correlation,
+                               StringComparer.Ordinal));
+            });
 
     private static string LocationKey(
         RelocationLocationSnapshot item) =>

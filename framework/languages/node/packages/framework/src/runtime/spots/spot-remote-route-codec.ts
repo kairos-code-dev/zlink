@@ -127,6 +127,7 @@ export interface ZLinkRemoteActorPacketRelay {
   readonly payload: string;
   readonly actorRef?: ActorRef;
   readonly bindingActorRef?: ActorRef;
+  readonly deadlineUnixMs?: number;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
 }
 
@@ -244,7 +245,7 @@ export function decodeRemoteActorPacketRelay(
         actorNodeRid: relay.actorNodeRid,
         actorNodeRidHex: relay.actorNodeRidHex,
       actorGeneration: relay.actorGeneration
-      }, relay.handoffTargetSpotId, relay.operationId, relay.messageFollowHopCount),
+      }, relay.handoffTargetSpotId, relay.operationId, relay.messageFollowHopCount, relay.deadlineUnixMs),
       bindingActorRef: decodeActorRef({
         actorId: relay.actorId,
         actorNodeRid: relay.bindingActorNodeRid,
@@ -263,13 +264,15 @@ function decodeForwardedActorRef(payload: {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
-}, targetSpotId: unknown, operationId?: string, messageFollowHopCount?: number): ActorRef | undefined {
+}, targetSpotId: unknown, operationId?: string, messageFollowHopCount?: number, deadlineUnixMs?: number): ActorRef | undefined {
   const actorRef = decodeActorRef(payload);
   if (actorRef !== undefined) {
     (actorRef as ActorRef & { handoffMessageFollowed?: boolean }).handoffMessageFollowed = true;
     (actorRef as ActorRef & { handoffOperationId?: string }).handoffOperationId = operationId;
     (actorRef as ActorRef & { handoffMessageFollowHopCount?: number })
       .handoffMessageFollowHopCount = messageFollowHopCount;
+    (actorRef as ActorRef & { handoffDeadlineUnixMs?: number })
+      .handoffDeadlineUnixMs = deadlineUnixMs;
     if (typeof targetSpotId === 'string') {
       (actorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId = targetSpotId;
     }

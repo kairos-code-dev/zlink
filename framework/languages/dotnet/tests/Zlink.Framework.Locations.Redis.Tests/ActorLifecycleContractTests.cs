@@ -17,7 +17,7 @@ public sealed class ActorLifecycleContractTests
 
         Assert.DoesNotContain("OnActorJoinAsync", entryMethods);
         Assert.Contains("OnCreateActorAsync", entryMethods);
-        Assert.Contains("OnActorRelocatedAsync", entryMethods);
+        Assert.DoesNotContain("OnActorRelocatedAsync", entryMethods);
         Assert.Contains("OnActorJoinAsync", userMethods);
     }
 

@@ -54,6 +54,44 @@ public sealed class StandaloneActorRelocationRuntimeTests
     }
 
     [Fact]
+    public void Canonical_replay_opens_live_admission_at_the_empty_boundary()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        handoff.BeginCanonicalMaintenanceImport(
+            "handoff",
+            [AcceptedFrame(1)]);
+        handoff.MarkAuthorityCommitted("handoff", 42, 42);
+        _ = handoff.PrepareCanonicalMaintenanceReplay("handoff");
+
+        handoff.AcknowledgeReplayedFrame();
+
+        Assert.True(
+            handoff.TryCompleteCanonicalMaintenanceReplay("handoff"));
+        var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+            "source-owner",
+            3,
+            RoutingId.From("source"),
+            7);
+        using var restored = ZLinkActorHandoffFrames.Restore(
+            new ZLinkBackendActorRef(
+                RoutingId.From("target"),
+                "actor-1",
+                42),
+            [AcceptedFrame(2, requestSource)]);
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.NotSealed,
+            handoff.TryCapture(restored[0]));
+        Assert.True(
+            handoff.IsCanonicalMaintenanceReplayComplete("handoff"));
+
+        // The completion command performs idempotent cleanup after live
+        // admission is already open.
+        handoff.Complete("handoff");
+    }
+
+    [Fact]
     public void Canonical_target_import_applies_the_bounded_backlog_gate()
     {
         var admission = new ZLinkBoundedIngressAdmission(
@@ -250,10 +288,38 @@ public sealed class StandaloneActorRelocationRuntimeTests
             boundSession: null,
             applicationVersion: 7);
 
+        Assert.Empty(prepare.Object.StableType);
         ZLinkCanonicalRelocationReservationOwner.ValidateStandaloneRoot(
             prepare,
             envelope,
             ZLinkPlacementObjectKind.Actor);
+        ZLinkCanonicalRelocationReservationOwner
+            .ValidateStandaloneRootStableType(
+                envelope,
+                authority.StableType);
+        var participant = Assert.Single(envelope.Participants);
+        var recovery = ZLinkCanonicalParticipantRecoveryCodec.Decode(
+            participant.RecoveryPayload.Span);
+        var corruptStableType = envelope with
+        {
+            Participants =
+            [
+                participant with
+                {
+                    RecoveryPayload =
+                        ZLinkCanonicalParticipantRecoveryCodec.Encode(
+                            recovery with
+                            {
+                                StableType = "different-actor-type"
+                            })
+                }
+            ]
+        };
+        Assert.Throws<InvalidDataException>(() =>
+            ZLinkCanonicalRelocationReservationOwner
+                .ValidateStandaloneRootStableType(
+                    corruptStableType,
+                    authority.StableType));
         ZLinkCanonicalRelocationReservationOwner.ValidateStandaloneRoot(
             prepare with
             {
@@ -992,7 +1058,29 @@ public sealed class StandaloneActorRelocationRuntimeTests
                 identity);
         var authorityStore = new ProgressAuthorityStore(
             participant.AuthorityKey,
-            PublishedSnapshot(canonicalPayload, targetAuthority, 12));
+            PublishedSnapshot(canonicalPayload, targetAuthority, 29));
+        var committed = await authorityStore.ReadAuthorityAsync(
+            participant.AuthorityKey);
+        Assert.True(
+            ZLinkStandaloneActorRelocationRuntime
+                .IsExactCommittedTargetAuthority(
+                    committed,
+                    SourceAuthority(),
+                    stored.Root,
+                    relocationId,
+                    target,
+                    1,
+                    requireActivated: false));
+        Assert.False(
+            ZLinkStandaloneActorRelocationRuntime
+                .IsExactCommittedTargetAuthority(
+                    committed,
+                    SourceAuthority(),
+                    stored.Root,
+                    relocationId,
+                    target,
+                    1,
+                    requireActivated: true));
         var owner = new ZLinkLocationOwnerToken(target.OwnerId, target.LeaseGeneration);
         var coordinator = new ZLinkStandaloneActorRelocationProgressCoordinator(
             authorityStore,
@@ -1052,6 +1140,22 @@ public sealed class StandaloneActorRelocationRuntimeTests
             CancellationToken.None);
         Assert.Equal((byte)ZLinkStandaloneActorCanonicalPhase.Activated,
             activated.Canonical!.Phase);
+        var activatedRoot = new ZLinkRelocationStored(
+            activated.Canonical.State.RelocationReference,
+            activated.Canonical.State.RelocationChecksumCrc32c,
+            stored.Root.ExpiresAt,
+            stored.Root.StoreNow);
+        Assert.True(
+            ZLinkStandaloneActorRelocationRuntime
+                .IsExactCommittedTargetAuthority(
+                    await authorityStore.ReadAuthorityAsync(
+                        participant.AuthorityKey),
+                    SourceAuthority(),
+                    activatedRoot,
+                    relocationId,
+                    target,
+                    1,
+                    requireActivated: true));
         var staleFences = new[]
         {
             new ZLinkStandaloneActorRelocationTargetFence(

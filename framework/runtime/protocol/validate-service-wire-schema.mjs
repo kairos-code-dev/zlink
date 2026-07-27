@@ -103,9 +103,9 @@ function validateSchema(schema) {
     ["maintenanceAggregateParticipants", 1024n],
     ["relocationResourceParticipants", 2048n],
     ["maintenanceAggregateBytes", 1048576n],
-    ["routeForwardHopCount", 8n],
-    ["routeForwardMessages", 1024n],
-    ["routeForwardBytes", 16777216n],
+    ["messageFollowHopCount", 8n],
+    ["messageFollowMessages", 1024n],
+    ["messageFollowBytes", 16777216n],
     ["routingIdCollisionAttempts", 8n],
     ["nodeActiveCapacityDefault", 10000n],
     ["nodePendingCapacityDefault", 128n],
@@ -1264,7 +1264,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         "boundSessionBind",
       ],
       frozenRecordKinds: ["actorSend", "actorRequest"],
-      forwardingKey: [
+      messageFollowKey: [
         "actorId",
         "objectGeneration",
         "sourceAuthorityOwnerGeneration",
@@ -1728,7 +1728,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         channelRequest: { operationKind: "channelRequest", operationId: "nonzero" },
         spotSend: {
           operationKind: "none",
-          operationId: "nonzero-for-route-forward-dedupe",
+          operationId: "nonzero-for-message-follow-dedupe",
         },
         spotRequest: { operationKind: "spotRequest", operationId: "nonzero" },
         spotMulticast: { operationKind: "none", operationId: "zero" },
@@ -1738,7 +1738,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         },
         actorSend: {
           operationKind: "none",
-          operationId: "nonzero-for-route-forward-dedupe",
+          operationId: "nonzero-for-message-follow-dedupe",
         },
         actorRequest: { operationKind: "actorRequest", operationId: "nonzero" },
         completion: { operationKind: "non-none", operationId: "nonzero" },
@@ -1809,9 +1809,9 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       aggregateParticipantsMaximum: { $bound: "maintenanceAggregateParticipants" },
       aggregateEncodedBytesMaximum: { $bound: "maintenanceAggregateBytes" },
       aggregateId: "nonzero-128-bit",
-      forwardingHopCountMaximum: { $bound: "routeForwardHopCount" },
-      forwardingQueuedMessagesMaximum: { $bound: "routeForwardMessages" },
-      forwardingQueuedBytesMaximum: { $bound: "routeForwardBytes" },
+      messageFollowHopCountMaximum: { $bound: "messageFollowHopCount" },
+      messageFollowQueuedMessagesMaximum: { $bound: "messageFollowMessages" },
+      messageFollowQueuedBytesMaximum: { $bound: "messageFollowBytes" },
       routingIdEntropyBits: 128,
       routingIdCollisionAttemptsMaximum: { $bound: "routingIdCollisionAttempts" },
       nodeActiveCapacityDefault: { $bound: "nodeActiveCapacityDefault" },
@@ -4594,18 +4594,18 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
     { name: "expectedOwnerLeaseGeneration", $ref: "nonzero-u64" },
   ], "$.types", "Spot route fence must carry exact ref, node and authority generations");
-  const forwardMapping = types.get("route-forward-mapping-v1");
-  requireFields(forwardMapping?.body, [
-    { name: "source", $ref: "forward-route" },
-    { name: "target", $ref: "forward-route" },
+  const messageFollowRoute = types.get("message-follow-route-v1");
+  requireFields(messageFollowRoute?.body, [
+    { name: "source", $ref: "message-follow-route" },
+    { name: "target", $ref: "message-follow-route" },
     { name: "hopCount", $ref: "u8" },
     { name: "queuedMessages", $ref: "u32" },
     { name: "queuedBytes", $ref: "u32" },
     { name: "originalOperation", $ref: "operation-id" },
     { name: "originalReplyRouteId", $ref: "nonzero-u64" },
-  ], "$.types", "forward mapping must preserve exact route, queue accounting and reply identity");
-  if (forwardMapping?.maximumEncodedBytes?.$bound !== "routeForwardBytes") {
-    fail("$.types", "forward mapping must use the bounded queue byte limit");
+  ], "$.types", "Message Follow route must preserve exact route, queue accounting and reply identity");
+  if (messageFollowRoute?.maximumEncodedBytes?.$bound !== "messageFollowBytes") {
+    fail("$.types", "Message Follow route must use the bounded queue byte limit");
   }
 
   requireFields(types.get("actor-route-fence")?.fields, [
@@ -6497,8 +6497,8 @@ function runSelfTests(schema) {
       const bound = candidate.bounds.find((entry) => entry.name === "maintenanceAggregateBytes");
       bound.value += 1;
     }],
-    ["forwarding hop bound widened", (candidate) => {
-      const bound = candidate.bounds.find((entry) => entry.name === "routeForwardHopCount");
+    ["Message Follow hop bound widened", (candidate) => {
+      const bound = candidate.bounds.find((entry) => entry.name === "messageFollowHopCount");
       bound.value += 1;
     }],
     ["node pending capacity default changed", (candidate) => {
@@ -7113,7 +7113,7 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
       participantMaximum: 1024,
       encodedMaximum: 1048576,
     },
-    forwarding: {
+    messageFollow: {
       objectKinds: ["actor", "spot"], hopMaximum: 8, queuedMessageMaximum: 1024,
       queuedByteMaximum: 16777216,
       preserves: ["operationId", "objectGeneration", "payload", "replyRoute"],

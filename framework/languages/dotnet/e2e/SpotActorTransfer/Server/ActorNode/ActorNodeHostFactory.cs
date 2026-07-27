@@ -38,7 +38,6 @@ internal static class ActorNodeHostFactory
         builder.Services.AddSingleton(runtimeEvidence);
         builder.Services.AddSingleton(relocationBlobs);
         builder.Services.AddSingleton(relocationMessageFlows);
-        builder.Services.AddSingleton<RelocationUnitTerminalStore>();
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
         builder.Services.AddSingleton<TransferGateStore>();

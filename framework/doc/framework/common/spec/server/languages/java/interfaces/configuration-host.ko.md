@@ -211,13 +211,14 @@ Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Intege
 
 Object Server의 Entry Spot ID는 MeshNode diagnostic prefix를 사용한
 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식이며 MeshNode와 별도로 생성한 UUID v4를 사용한다.
-`ZLinkMeshNodeDescriptor.entrySpotId()`가 같은 lifecycle의 exact mapping을 제공한다. Global Spot ID가
+Framework 내부 descriptor의 `entrySpotId`가 같은 lifecycle의 exact mapping을 제공한다. Global Spot ID가
 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SPOT_ID_CONFLICT`로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 이 예약 형식과 일치하면 Store와 factory를 시작하기
 전에 `INVALID_CONFIGURATION`으로 거부한다.
 
-Location provider는 `ZLinkLocationStore`를 통해 [descriptor](../../../../01-glossary.ko.md#descriptor)·location 기능과 authority CAS capability를 함께
-제공한다. 별도 `ZLinkAuthorityStore` instance를 host에 등록하지 않는다. `Recreate` 또는 `Snapshot` policy를
+Location provider는 `ZLinkLocationStore`를 통해 Framework의 opaque record read, version 조건부 atomic
+batch와 bounded snapshot scan을 제공한다. 별도 domain별 Store instance를 host에 등록하지 않는다.
+`Recreate` 또는 `Snapshot` policy를
 하나라도 등록했거나 Instance Spot factory를 하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다.
 Instance Spot factory가 없고 `Disabled` factory와 same-node join만 사용하는 host는 Relocation Store가 없어도 된다.
 Missing 또는 duplicate Store registration은 socket bind 전에 startup

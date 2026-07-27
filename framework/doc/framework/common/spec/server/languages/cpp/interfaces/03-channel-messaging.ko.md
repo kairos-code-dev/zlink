@@ -503,7 +503,7 @@ public member는 제공하지 않는다. Entry Spot factory 등록과 초기화�
 resolver에 RID를 게시한다.
 
 RID 형식은 `<prefix>-entry-<lowercase-canonical-uuid-v4>`이며 MeshNode와 별도로 생성한 UUID v4를
-사용한다. `mesh_node_descriptor_t::entry_spot_id`가 lifecycle의 exact mapping을 제공한다. Global Spot
+사용한다. Framework 내부 MeshNode descriptor의 `entry_spot_id`가 lifecycle의 exact mapping을 제공한다. Global Spot
 ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `spot_id_conflict`로 startup을
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 이 예약 형식과 일치하면
 Store와 factory를 시작하기 전에 `invalid_configuration`으로 거부한다.

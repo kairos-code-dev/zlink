@@ -21,8 +21,9 @@ Kotlin 계약은 Java type을 재사용하는지 또는 Kotlin 전용 extension�
 
 Java application은 `ZLinkFrameworkOptions`에서 host와 topology를 구성하고, Channel·Spot·Actor·STREAM client와
 handler 계약으로 메시지를 처리한다. `ZLinkFrameworkRuntime`의 `Retire`·`Shutdown`이 host 종료를 소유하고,
-MeshName을 받는 partial termination operation은 제공하지 않는다. Location provider는 descriptor·location
-기능과 opaque authority CAS capability를 함께 제공한다.
+MeshName을 받는 partial termination operation은 제공하지 않는다. Location provider는 Framework가
+만드는 opaque record에 대한 read, version 조건부 atomic batch와 bounded snapshot scan을 제공한다.
+Relocation provider는 Framework가 미리 발급한 reference에 immutable blob을 저장한다.
 
 `ZLinkMeshNodeState`는 MeshNode 상태를, `ZLinkFrameworkRuntimeState`는 host 전체 상태를 나타낸다. Channel
 호출은 process-local ChannelName만 받는다. Node를 직접 지정하는

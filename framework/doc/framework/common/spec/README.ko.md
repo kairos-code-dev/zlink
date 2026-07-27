@@ -50,8 +50,8 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 ## Location Store와 relocation
 
 - [40 Location runtime](40-location-runtime.ko.md)
-- [41 Redis Location Store](41-location-store-redis.ko.md)
-- [42 Redis Relocation Store](42-relocation-store-redis.ko.md)
+- [41 Location Store provider와 공식 Redis 구현](41-location-store-redis.ko.md)
+- [42 Relocation Store provider와 공식 Redis 구현](42-relocation-store-redis.ko.md)
 
 ## 관측과 종료
 

@@ -1,216 +1,258 @@
-# Java Location과 relocation 공개 인터페이스
+# Java Location·Relocation 공개 인터페이스
 
 [Java exact interface 목록](README.ko.md) · [공통 Location runtime](../../../../40-location-runtime.ko.md) ·
 [공통 Redis provider](../../../../41-location-store-redis.ko.md)
 
-이 문서는 application이 등록하거나 운영 상태를 조회할 때 필요한 Java public contract만 고정한다.
-Location provider 구현자는 `ZLinkLocationStore`, relocation payload provider 구현자는
-`ZLinkRelocationStore`만 구현한다. Framework 내부 실행 단계를 capability interface로 나누어 공개하지 않는다.
+이 문서는 application과 provider plugin 작성자가 알아야 하는 Java public contract만 정의한다.
+Authority, owner lease, reservation, capacity, aggregate와 relocation state machine은 Framework가 private
+record로 구성한다. Provider는 record의 의미를 해석하지 않고 opaque key·value와 immutable blob만 저장한다.
 
-## Provider 등록
+Store primitive와 interface는 opt-in artifact
+`systems.zlink:zlink-framework-provider-abstractions`의
+`systems.zlink.framework.locationprovider` package가 소유한다. Provider 구현은 이 artifact만으로 Store
+계약을 구현할 수 있으며 Actor·Spot application package에 의존하지 않는다.
 
-`ZLinkFrameworkOptions`의 exact 선언은
-[host configuration contract](configuration-host.ko.md)가 단독으로 소유한다. 이 interface의
-`addLocationStore(...)`와 `addRelocationStore(...)`로 두 provider를 각각 등록한다.
+## Provider 등록과 수명
 
-두 Store를 묶어 등록하는 API와 Redis 전용 등록 API는 없다. 같은 Redis deployment를 사용할 수 있지만
-각 Store는 별도 instance와 key prefix를 사용한다.
+Application은 기존 `ZLinkFrameworkOptions.addLocationStore(...)`와
+`addRelocationStore(...)`로 두 Store를 각각 등록한다. 두 Store를 묶거나 Redis를 직접 등록하는 별도
+helper는 제공하지 않는다.
+
+등록이 성공하면 Store instance의 수명은 Framework로 이전된다. Store가 `AutoCloseable`을 구현하면
+Framework는 dependent runtime을 먼저 종료한 뒤 정확히 한 번 닫는다. 두 Store가 connection을 공유할
+때 각 Store가 해제할 connection lease는 provider가 관리한다.
 
 ## Location Store
 
-`ZLinkLocationStore`는 descriptor, owner lease, object authority, placement reservation과 aggregate relocation
-commit을 하나의 provider transaction domain에서 처리한다. Provider는 opaque authority payload를 해석하지 않는다.
-
 ```java
+public record ZLinkStoreKey(String value) {}
+public record ZLinkStoreVersion(String value) {}
+public record ZLinkStoreScanCursor(String value) {}
+
+public record ZLinkStoreValue(
+    byte[] bytes,
+    ZLinkStoreVersion version,
+    Instant expiresAt,
+    Instant storeNow) {}
+
+public sealed interface ZLinkStoreReadResult
+    permits ZLinkStoreReadMissing, ZLinkStoreReadFound {}
+
+public record ZLinkStoreReadMissing(Instant storeNow)
+    implements ZLinkStoreReadResult {}
+
+public record ZLinkStoreReadFound(ZLinkStoreValue value)
+    implements ZLinkStoreReadResult {}
+
+public sealed interface ZLinkStoreCondition
+    permits ZLinkStoreMissingCondition, ZLinkStoreVersionCondition {}
+
+public record ZLinkStoreMissingCondition(ZLinkStoreKey key)
+    implements ZLinkStoreCondition {}
+
+public record ZLinkStoreVersionCondition(
+    ZLinkStoreKey key,
+    ZLinkStoreVersion expected)
+    implements ZLinkStoreCondition {}
+
+public sealed interface ZLinkStoreMutation
+    permits ZLinkStorePut, ZLinkStoreDelete {}
+
+public record ZLinkStorePut(
+    ZLinkStoreKey key,
+    byte[] bytes,
+    Duration retention)
+    implements ZLinkStoreMutation {}
+
+public record ZLinkStoreDelete(ZLinkStoreKey key)
+    implements ZLinkStoreMutation {}
+
+public record ZLinkStoreWriteRequest(
+    List<ZLinkStoreCondition> conditions,
+    List<ZLinkStoreMutation> mutations) {}
+
+public sealed interface ZLinkStoreWriteResult
+    permits ZLinkStoreWriteApplied, ZLinkStoreWriteConflict {}
+
+public record ZLinkStoreWriteApplied(
+    Map<ZLinkStoreKey, ZLinkStoreVersion> putVersions,
+    Instant storeNow)
+    implements ZLinkStoreWriteResult {}
+
+public record ZLinkStoreWriteConflict(Instant storeNow)
+    implements ZLinkStoreWriteResult {}
+
+public record ZLinkStoreScanRequest(
+    String prefix,
+    ZLinkStoreScanCursor cursor,
+    int limit) {}
+
+public record ZLinkStoreScanItem(
+    ZLinkStoreKey key,
+    ZLinkStoreValue value) {}
+
+public record ZLinkStoreScanPage(
+    List<ZLinkStoreScanItem> items,
+    ZLinkStoreScanCursor nextCursor,
+    Instant storeNow) {}
+
+public sealed interface ZLinkStoreScanResult
+    permits ZLinkStoreScanPageResult, ZLinkStoreScanExpired {}
+
+public record ZLinkStoreScanPageResult(ZLinkStoreScanPage value)
+    implements ZLinkStoreScanResult {}
+
+public record ZLinkStoreScanExpired()
+    implements ZLinkStoreScanResult {}
+
 public interface ZLinkLocationStore {
-    CompletionStage<ZLinkLocationWriteResult> updateMeshNode(
-        ZLinkMeshNodeDescriptor descriptor,
-        ZLinkLocationWriteIntent intent);
-    CompletionStage<ZLinkLocationWriteStatus> removeMeshNode(
-        ZLinkMeshNodeDescriptorKey key,
-        ZLinkLocationOwnerToken owner);
-    CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> listMeshNodes(
-        String meshName,
-        ZLinkPageRequest page);
-
-    CompletionStage<ZLinkLocationWriteResult> updateClientServer(
-        ZLinkClientServerServerDescriptor descriptor,
-        ZLinkLocationWriteIntent intent);
-    CompletionStage<ZLinkLocationWriteStatus> removeClientServer(
-        ZLinkClientServerServerDescriptorKey key,
-        ZLinkLocationOwnerToken owner);
-    CompletionStage<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> listClientServers(
-        String channelName,
-        ZLinkPageRequest page);
-
-    CompletionStage<ZLinkLocationWriteResult> updateFanoutPublisher(
-        ZLinkFanoutPublisherDescriptor descriptor,
-        ZLinkLocationWriteIntent intent);
-    CompletionStage<ZLinkLocationWriteStatus> removeFanoutPublisher(
-        ZLinkFanoutPublisherDescriptorKey key,
-        ZLinkLocationOwnerToken owner);
-    CompletionStage<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> listFanoutPublishers(
-        String channelName,
-        ZLinkPageRequest page);
-
-    CompletionStage<ZLinkOwnerLeaseClaimResult> claimOwnerLease(
-        String ownerId,
-        Duration leaseTtl);
-    CompletionStage<ZLinkOwnerLeaseReadResult> readOwnerLease(String ownerId);
-    CompletionStage<ZLinkOwnerLeaseRenewResult> renewOwnerLease(
-        ZLinkLocationOwnerToken token,
-        Duration leaseTtl);
-    CompletionStage<ZLinkOwnerLeaseReleaseResult> releaseOwnerLease(
-        ZLinkLocationOwnerToken token);
-
-    CompletionStage<ZLinkAuthorityReadResult> read(
-        String key,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
-        String key,
-        ZLinkAuthorityExpectation expectation,
-        ZLinkAuthorityMutation mutation,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkAuthorityScanResult> list(
-        String prefix,
-        Optional<ZLinkAuthorityScanCursor> cursor,
-        int limit,
+    CompletionStage<ZLinkStoreReadResult> read(
+        ZLinkStoreKey key,
         ZLinkStoreCancellation cancellation);
 
-    CompletionStage<ZLinkObjectReserveResult> reserve(
-        ZLinkObjectReservationRequest request,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkObjectCommitResult> commit(
-        ZLinkObjectReservation reservation,
-        byte[] readyPayload,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkObjectCommitResult> commit(
-        ZLinkObjectReservation reservation,
-        byte[] readyPayload,
-        ZLinkCreationOperationTerminal terminal,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkObjectRejectResult> reject(
-        ZLinkObjectReservation reservation,
-        ZLinkCreationOperationTerminal terminal,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkObjectAbortResult> abort(
-        ZLinkObjectReservation reservation,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkObjectAbortResult> abort(
-        ZLinkObjectReservation reservation,
-        ZLinkCreationOperationTerminal terminal,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkCreationTerminalReadResult> readCreationTerminal(
-        ZLinkCreationOperationIdentity operation,
+    CompletionStage<ZLinkStoreWriteResult> write(
+        ZLinkStoreWriteRequest request,
         ZLinkStoreCancellation cancellation);
 
-    CompletionStage<ZLinkRelocationCapacityReserveResult> reserveRelocationCapacity(
-        ZLinkRelocationCapacityReservationRequest request,
+    CompletionStage<ZLinkStoreScanResult> scan(
+        ZLinkStoreScanRequest request,
         ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkRelocationCapacityAbortResult> abortRelocationCapacity(
-        ZLinkRelocationCapacityFence fence,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
-        ZLinkAggregatePrepareRequest request,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
-        ZLinkAggregateFence fence,
-        ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
-        ZLinkAggregateFence fence,
-        ZLinkStoreCancellation cancellation);
-
-    CompletionStage<Long> removeAllByOwner(ZLinkLocationOwnerToken owner);
-
-    default CompletionStage<OptionalLong> getMeshNodeChangeStamp(
-        String meshName) {
-        return CompletableFuture.completedFuture(OptionalLong.empty());
-    }
 }
 ```
 
-`ZLinkStoreCancellation`은 provider I/O 한 operation의 cancellation만 표현한다. Application callback이나
-host lifecycle token으로 사용하지 않는다. `byte[]` ownership, generation, CAS, scan cursor와 aggregate
-원자성은 공통 spec을 따른다.
-`getMeshNodeChangeStamp`는 correctness에 영향을 주지 않는 선택적 polling 최적화다. 기본 구현은
-`OptionalLong.empty()`를 반환하며, stamp를 유지하는 provider만 non-negative counter를 반환한다.
+`ZLinkStorePut.retention == null`이면 만료되지 않는 durable value다.
+`ZLinkStoreScanRequest.cursor == null`은 첫 page이고
+`ZLinkStoreScanPage.nextCursor == null`은 마지막 page다. 반환한 `byte[]`는 caller가 결과를 사용하는
+동안 provider가 변경하거나 다른 결과 buffer로 재사용하지 않는다.
 
-Provider package의 public contract에는 Store method가 인자나 반환값으로 직접 사용하고, 그 결과 union을
-해석하는 데 필요한 타입만 포함한다. 다음 목록은 이 transitive public boundary의 전체 범위다. Runtime의
-publisher, resolver, cache, retry coordinator와 Redis serialization type은 이 목록에 포함하지 않는다.
+### 값과 시간
 
-- descriptor write: `ZLinkMeshNodeDescriptor`, `ZLinkMeshNodeDescriptorKey`,
-  `ZLinkClientServerServerDescriptor`, `ZLinkClientServerServerDescriptorKey`,
-  `ZLinkFanoutPublisherDescriptor`, `ZLinkFanoutPublisherDescriptorKey`, `ZLinkLocationWriteIntent`,
-  `ZLinkLocationWriteResult`, `ZLinkLocationWriteStatus`, `ZLinkLocationOwnerToken`, `ZLinkLocationPage`,
-  `ZLinkPageRequest`
-- owner lease: `ZLinkOwnerLeaseClaimResult`, `ZLinkOwnerLeaseReadResult`, `ZLinkOwnerLeaseRenewResult`,
-  `ZLinkOwnerLeaseReleaseResult`와 각 sealed result의 permitted record
-- authority CAS: `ZLinkAuthorityExpectation`, `ZLinkAuthorityMutation`, `ZLinkAuthorityReadResult`,
-  `ZLinkAuthorityWriteResult`, `ZLinkAuthorityScanCursor`, `ZLinkAuthorityScanResult`와 각 sealed union의
-  permitted record
-- object creation: `ZLinkObjectReservationRequest`, `ZLinkObjectReservation`, `ZLinkObjectReserveResult`,
-  `ZLinkObjectCommitResult`, `ZLinkObjectRejectResult`, `ZLinkObjectAbortResult`,
-  `ZLinkCreationOperationIdentity`, `ZLinkCreationOperationTerminal`, `ZLinkCreationTerminalReadResult`와 각
-  sealed result의 permitted record
-- relocation commit: `ZLinkRelocationCapacityReservationRequest`, `ZLinkRelocationCapacityFence`,
-  `ZLinkRelocationCapacityReserveResult`, `ZLinkRelocationCapacityAbortResult`, `ZLinkAggregatePrepareRequest`,
-  `ZLinkAggregateFence`, `ZLinkAggregatePrepareResult`, `ZLinkAggregateCommitResult`,
-  `ZLinkAggregateAbortResult`와 각 sealed result의 permitted record
-- provider I/O: `ZLinkStoreCancellation`
+- Key는 Framework가 발급하는 opaque UTF-8 `1..1024` bytes이며 case-sensitive exact match다.
+- Version은 provider가 발급하는 opaque UTF-8 `1..4096` bytes다. Framework와 provider는 내부 구조나
+  수치 크기를 해석하지 않는다.
+- Value는 최대 1 MiB다. 만료 시각은 provider clock을 기준으로 판단한다.
+- `storeNow`는 같은 read, commit 또는 scan page에서 얻은 provider clock 값이다. Framework local clock은
+  TTL correctness에 사용하지 않는다.
 
-Authority mutation은 일반 write, startup recovery와 delete를 닫힌 union으로 구분한다. `Restore`는 exact
-StoreVersion과 owner token을 함께 확인하지만 owner lease의 live 상태는 요구하지 않는다. 따라서 owner lease가
-만료된 뒤에도 root 없는 `Preparing` payload만 steady payload로 안전하게 되돌릴 수 있다.
+### Atomic write
 
-```java
-public sealed interface ZLinkAuthorityMutation
-    permits ZLinkAuthorityPut,
-            ZLinkAuthorityRestore,
-            ZLinkAuthorityDelete {}
+`write(...)`는 모든 condition을 먼저 검사하고 모두 참일 때만 모든 mutation을 하나의 commit으로
+적용한다. 하나라도 거짓이면 `ZLinkStoreWriteConflict`이며 mutation과 version 증가는 0이다. 다른
+caller는 commit의 중간 상태를 관찰할 수 없다.
 
-public record ZLinkAuthorityRestore(
-    byte[] payload,
-    ZLinkLocationOwnerToken expectedOwner)
-    implements ZLinkAuthorityMutation {}
-```
+- Missing condition은 key가 없거나 만료되었을 때만 참이다.
+- Version condition은 현재 version이 exact match일 때만 참이다.
+- Condition과 mutation의 unique key 합계는 최대 2,048개다.
+- Request의 encoded 크기는 최대 4 MiB다.
+- 같은 key의 중복 condition 또는 중복 mutation은 허용하지 않는다.
+- Applied result는 각 put에 provider가 발급한 새 version을 반환한다.
+- Conflict result는 실패한 condition이나 current value를 공개하지 않는다. Framework가 exact read로
+  필요한 key를 다시 확인한다.
+
+### Snapshot scan
+
+`scan(...)`은 recovery와 maintenance가 bounded key set을 찾는 필수 operation이다.
+
+- Prefix는 UTF-8 `0..1024` bytes이며 key와 같은 exact comparison을 사용한다.
+- 첫 page가 고정한 snapshot을 다음 cursor page도 사용한다.
+- Limit은 `1..1000`이다. Encoded page가 4 MiB에 먼저 도달하면 item을 더 적게 반환할 수 있다.
+- Cursor는 opaque UTF-8 `1..4096` bytes다.
+- Provider가 snapshot을 더 유지할 수 없으면 `ZLinkStoreScanExpired`를 반환한다. Framework는 부분
+  결과를 버리고 첫 page부터 다시 읽는다.
 
 ## Relocation Store
 
 ```java
+public record ZLinkBlobReference(String value) {}
+
+public sealed interface ZLinkBlobPutResult
+    permits ZLinkBlobStored, ZLinkBlobAlreadyStored, ZLinkBlobConflict {}
+
+public record ZLinkBlobStored(
+    Instant expiresAt,
+    Instant storeNow)
+    implements ZLinkBlobPutResult {}
+
+public record ZLinkBlobAlreadyStored(
+    Instant expiresAt,
+    Instant storeNow)
+    implements ZLinkBlobPutResult {}
+
+public record ZLinkBlobConflict(Instant storeNow)
+    implements ZLinkBlobPutResult {}
+
+public sealed interface ZLinkBlobReadResult
+    permits ZLinkBlobMissing, ZLinkBlobFound {}
+
+public record ZLinkBlobMissing(Instant storeNow)
+    implements ZLinkBlobReadResult {}
+
+public record ZLinkBlobFound(
+    byte[] bytes,
+    Instant expiresAt,
+    Instant storeNow)
+    implements ZLinkBlobReadResult {}
+
+public sealed interface ZLinkBlobRenewResult
+    permits ZLinkBlobRenewMissing, ZLinkBlobRenewed {}
+
+public record ZLinkBlobRenewMissing(Instant storeNow)
+    implements ZLinkBlobRenewResult {}
+
+public record ZLinkBlobRenewed(
+    Instant expiresAt,
+    Instant storeNow)
+    implements ZLinkBlobRenewResult {}
+
 public interface ZLinkRelocationStore {
-    CompletionStage<ZLinkRelocationStored> put(
+    CompletionStage<ZLinkBlobPutResult> put(
+        ZLinkBlobReference reference,
         byte[] payload,
         Duration retention,
         ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkRelocationReadResult> get(
-        String reference,
+
+    CompletionStage<ZLinkBlobReadResult> read(
+        ZLinkBlobReference reference,
         ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkRelocationRenewResult> renew(
-        String reference,
+
+    CompletionStage<ZLinkBlobRenewResult> renew(
+        ZLinkBlobReference reference,
         Duration retention,
         ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkRelocationDeleteResult> delete(
-        String reference,
+
+    CompletionStage<Void> delete(
+        ZLinkBlobReference reference,
         ZLinkStoreCancellation cancellation);
 }
 ```
 
-Relocation payload provider가 추가로 알아야 하는 transitive public type은 `ZLinkRelocationStored`,
-`ZLinkRelocationReadResult`, `ZLinkRelocationRenewResult`, `ZLinkRelocationDeleteResult`와 각 sealed result의
-permitted record뿐이다. Payload key codec, manifest parser, retention scheduler와 orphan collector는 internal이다.
+Reference는 Framework가 put 전에 발급하는 opaque UTF-8 `1..4096` bytes이며 case-sensitive exact
+match다. 같은 reference와 같은 bytes를 다시 put하면 `ZLinkBlobAlreadyStored`, 다른 bytes면
+`ZLinkBlobConflict`다. 삭제되거나 만료된 reference도 다른 content에 재사용하지 않는다.
 
-Relocation Store는 immutable payload를 먼저 저장한다. Location Store의 CAS가 reference를 publish한 뒤에만
-runtime이 해당 payload를 복원 근거로 사용한다. 두 Store 사이의 distributed transaction은 요구하지 않는다.
+Blob 하나는 최대 64 MiB다. Framework는 최대 256 GiB logical relocation stream을 최대 4,096개의
+64 MiB chunk와 immutable root manifest로 나눈다. Checksum과 root·chunk 관계는 Framework가 계산하고
+검증하며 provider는 manifest를 해석하지 않는다.
+
+Read는 원래 bytes와 provider clock 기준 expiry를 반환한다. Renew와 delete retry는 idempotent하며,
+delete는 reference가 없어도 성공한 no-op이다. Framework가 reference를 미리 발급하므로 timeout이나
+결과 유실 뒤 같은 reference를 exact read하여 저장 여부를 재조정할 수 있다.
+
+## 취소와 오류
+
+`ZLinkStoreCancellation`은 provider I/O operation의 cancellation만 표현한다. 호출 전에 cancellation이
+요청되면 provider는 I/O나 commit을 시작하지 않는다. 호출이 시작된 뒤 cancellation, timeout 또는
+transport 오류가 발생하면 commit 여부가 불확실할 수 있으며 Framework가 exact read와 version 또는
+caller-issued blob reference로 결과를 재조정한다.
+
+입력 범위 위반과 동일 key 중복은 `IllegalArgumentException`이다. Conflict, Missing, Expired와
+AlreadyStored는 닫힌 정상 결과다. 그 밖의 Store 호출 예외는 Framework가 provider failure로 분류한다.
 
 ## 운영 조회
 
 ```java
 public interface ZLinkLocationRuntimeQuery {
     CompletionStage<ZLinkLocationRuntimeStatus> getStatus();
-    CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> listMeshNodes(
-        String meshName,
-        ZLinkPageRequest page);
     CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listTopology(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page);
@@ -227,27 +269,8 @@ public interface ZLinkLocationReadiness {
 }
 ```
 
-Topology는 MeshNode descriptor와 owner lease liveness만 투영한다. Spot·Actor authority는 resolve 대상이며
-운영 topology 목록에 포함하지 않는다.
-
-```java
-public record ZLinkLocationTopologyFilter(
-    String meshName,
-    RoutingId nodeRid,
-    ZLinkLocationTopologyState state) {}
-
-public record ZLinkLocationTopologyEntry(
-    String meshName,
-    RoutingId nodeRid,
-    String endpoint,
-    boolean draining,
-    ZLinkLocationTopologyState state,
-    Instant updatedAt) {}
-```
-
-`ZLinkLocationReadiness`는 application이 실제 operation 전에 필요한 readiness를 확인하는 공개 query다.
-운영 조회는 bounded page만 반환한다. Watch publisher, 별도 change-stamp Store나 event, raw Spot·Actor location row와 key,
-`ZLinkLocationAutoConnectType`, routing-ID slot/group는 public contract가 아니다.
+운영 조회는 bounded page만 반환한다. Raw Spot·Actor authority row, Store key, scan cursor와 provider
+version은 application 조회 계약에 포함하지 않는다.
 
 ## Redis extension
 
@@ -267,8 +290,8 @@ public final class ZLinkRedisLocationOptions {
     public ZLinkRedisLocationOptions setConnectionString(String value);
     public String keyPrefix();
     public ZLinkRedisLocationOptions setKeyPrefix(String value);
-    public Duration commandTimeout();
-    public ZLinkRedisLocationOptions setCommandTimeout(Duration value);
+    public Duration operationTimeout();
+    public ZLinkRedisLocationOptions setOperationTimeout(Duration value);
 }
 
 public final class ZLinkRedisRelocationOptions {
@@ -276,24 +299,24 @@ public final class ZLinkRedisRelocationOptions {
     public ZLinkRedisRelocationOptions setConnectionString(String value);
     public String keyPrefix();
     public ZLinkRedisRelocationOptions setKeyPrefix(String value);
-    public Duration commandTimeout();
-    public ZLinkRedisRelocationOptions setCommandTimeout(Duration value);
+    public Duration operationTimeout();
+    public ZLinkRedisRelocationOptions setOperationTimeout(Duration value);
 }
 ```
 
-두 options class는 `connectionString`, `keyPrefix`, 선택적인 positive `commandTimeout`만 제공한다.
-Redis script client, key codec와 row serializer는 extension 내부 구현이며 public contract가 아니다.
+Redis public surface는 두 Store class의 최소 constructor와 connection, key namespace, operation timeout
+options로 제한한다. Key layout, Lua script, private record encoding, retry와 shared connection reference
+count는 implementation detail이다.
 
 ## 공개하지 않는 계약
 
-다음 타입은 provider가 별도로 구현하거나 application이 호출하는 interface가 아니다.
+다음 항목은 provider나 application이 구현하거나 호출하는 interface가 아니다.
 
-- descriptor·owner lease·authority를 쪼갠 capability Store
-- location watch, change stamp와 runtime invalidation hook
-- peer·Spot·Actor·route별 raw Store와 resolver
-- authority publisher, handler invocation wrapper와 serializer 선택 helper
-- routing-ID slot, allocation group와 allocated-RID provider
+- Authority, owner lease, reservation, capacity와 aggregate별 Store capability
+- Runtime publisher, resolver, cache, retry coordinator와 recovery state machine
+- Redis script client, key codec, row serializer와 connection lease
+- Watch publisher, change-stamp event와 raw peer·Spot·Actor·route Store
+- Routing-ID slot, allocation group과 allocated-RID provider
 
-이 기능을 별도 interface로 공개하는 대안은 작은 구현을 쉽게 만들지만, provider가 Framework state machine의
-분해 방식과 호출 순서를 알아야 한다. 하나의 깊은 `ZLinkLocationStore`로 묶는 계약은 구현해야 할 interface와
-registration을 줄이고 transaction 경계를 Store 내부에 숨기므로 이 계약을 사용한다.
+Provider public declaration에는 Authority, Reservation, Aggregate, Capacity, Fence와 relocation phase
+타입이 나타나지 않아야 한다.

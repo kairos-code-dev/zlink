@@ -10,7 +10,7 @@ Node.js server package의 정확한 public TypeScript declaration은 범주별 �
 - Actor와 session binding: [Actor와 session binding](interfaces/05-actors.ko.md)
 - STREAM·timer·worker: [STREAM, timer와 worker](interfaces/06-stream-worker.ko.md)
 - NestJS adapter: [NestJS host adapter](interfaces/07-nestjs-host.ko.md)
-- Location Store와 maintenance: [Location Store와 maintenance](interfaces/08-location-maintenance.ko.md)
+- Location·Relocation provider: [Location·Relocation provider](interfaces/08-location-maintenance.ko.md)
 
 이 파일은 이 문서 주소를 사용하는 링크를 새 목차로 연결하기 위한 안내 문서다. 정확한 declaration은
 위 범주별 문서만 소유한다.

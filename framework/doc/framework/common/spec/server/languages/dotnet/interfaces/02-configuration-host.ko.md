@@ -85,16 +85,16 @@ provider를 사용하는 예다. Application은 같은 public interface를 구�
 services.AddZLinkFramework(options =>
 {
     options.AddLocationStore(
-        new ZLinkRedisLocationStore(redisOptions)); // Location record, lease와 owner authority를 함께 맡는다.
+        new ZLinkRedisLocationStore(redisOptions)); // Opaque location record의 atomic batch를 제공한다.
     options.AddRelocationStore(
         new ZLinkRedisRelocationStore(relocationOptions)); // immutable relocation payload를 별도 capability로 보관한다.
 });
 ```
 
 Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`와 `AddRelocationStore(...)`는
-각 interface instance를 하나씩 받는다. Location instance는 authority CAS와 generic placement
-Reserve·Commit·Abort를 반드시 제공하며 Relocation instance는 immutable payload operation만 제공한다. 한 instance가
-두 capability를 함께 구현하는 것을 공식 Redis 계약으로 제공하지 않는다.
+각 interface instance를 하나씩 받는다. Location instance는 exact read, conditional atomic batch와 bounded
+snapshot scan을 제공한다. Relocation instance는 Framework가 발급한 reference에 immutable payload를 저장한다.
+한 instance가 두 capability를 함께 구현하는 것을 공식 Redis 계약으로 제공하지 않는다.
 
 Manual peer만 사용하고 분산 location 기능을 사용하지 않는 [MeshNode](../../../../01-glossary.ko.md#meshnode)는 [location store](../../../../01-glossary.ko.md#location-store) 없이 시작할 수 있다.
 Manual peer도 [MeshName](../../../../01-glossary.ko.md#meshname), RID, lifecycle generation, ChannelName set과 security identity admission을 통과한다.

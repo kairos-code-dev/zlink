@@ -14,8 +14,9 @@ ChannelName 단일 호출, RouteMesh·ClientServer role builder, listener networ
 전용 descriptor·runtime은 Java 정본 타입을 재사용하고 Kotlin DSL만 관용적으로 투영한다.
 
 Global ActorId·SpotId, exact ActorRef·SpotRef, [User Spot](../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) manager의 명시적인 create/get-or-create,
-actor-free Instance Spot lifecycle과 Location provider의 opaque authority capability도 Java 정본 타입을
-재사용한다. Kotlin은
+actor-free Instance Spot lifecycle도 Java 정본 타입을 재사용한다. Location provider는 Java의 opaque
+key·value atomic batch를, Relocation provider는 Framework-issued reference 기반 immutable blob 계약을
+그대로 구현한다. Kotlin은
 ID-only direct call에 `send`와 `request` extension만 추가하며 Java member와 충돌하는 suspend
 `requestToSpot`을 선언하지 않는다. 정확한 extension과 Store type 재사용은
 [기능별 interfaces](interfaces/README.ko.md)가 고정한다.

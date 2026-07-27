@@ -9,8 +9,8 @@
 | [Exact interface 목차](interfaces/README.ko.md) | 기능별 C# public type, member, nullable annotation, generic constraint와 기본값을 정의한다. |
 | [Configuration과 host](interfaces/02-configuration-host.ko.md) | ASP.NET Core 등록 방법, package 경계, DI와 startup 계약을 정의한다. |
 | [Topology configuration](interfaces/03-configuration-topology.ko.md) | RouteMesh, ClientServer와 fanout builder 및 runtime option을 정의한다. |
-| [Location과 maintenance](interfaces/08-location-maintenance.ko.md) | MeshNode descriptor, owner authority와 Instance location의 저장·갱신 계약을 정의한다. |
-| [Authority와 relocation](interfaces/08-authority-relocation.ko.md) | Provider가 payload를 해석하지 않는 [authority](../../../01-glossary.ko.md#authority) CAS와 Relocation Store의 24시간 보존 계약을 정의한다. |
+| [Location 설정과 운영](interfaces/08-location-maintenance.ko.md) | Application용 Location option, readiness와 운영 query를 정의한다. |
+| [Location·Relocation provider](interfaces/08-authority-relocation.ko.md) | Generic atomic Location Store와 immutable Relocation Store SPI를 정의한다. |
 | [Host monitoring](interfaces/10-topology-monitoring.ko.md) | Host state, Retire·Shutdown result, snapshot과 event를 정의한다. |
 
 Stream connector client는 별도 package이며

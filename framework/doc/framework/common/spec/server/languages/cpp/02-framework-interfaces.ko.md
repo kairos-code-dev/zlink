@@ -11,8 +11,7 @@ C++ server public interface는 기능별 exact 문서로 나누어 관리한다.
 - [Spot](interfaces/04-spots.ko.md)
 - [Actor](interfaces/05-actors.ko.md)
 - [STREAM session](interfaces/06-stream-session.ko.md)
-- [Location Store·Redis](interfaces/07-location-store.ko.md)
-- [Maintenance record와 의미](interfaces/07-location-maintenance.ko.md)
+- [Location·Relocation Store·Redis](interfaces/07-location-store.ko.md)
 - [Monitoring](interfaces/08-monitoring.ko.md)
 
 Location Store 이동 안내는 [전용 안내 문서](03-location-store.ko.md)에서 확인한다.

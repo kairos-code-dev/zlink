@@ -20,19 +20,16 @@ relocation envelope과 relocation phase를 해석하지 않는다.
 
 Location Store와 Relocation Store는 서로 별도로 등록한다.
 
-각 언어에서 provider가 구현하는 public SPI도 Location Store와 Relocation Store 두 개뿐이다. Location Store는
-MeshNode·ClientServer·fanout descriptor, owner lease, object authority, placement reservation과 aggregate commit
-operation을 모두 직접 제공한다. 이 책임을 descriptor·lease·authority별 public interface로 나누거나 일부
-capability만 구현한 Store를 조합하지 않는다. Relocation Store는 immutable relocation payload만 제공한다.
-Application이 사용하는 operational query와 readiness API는 provider SPI가 아니며 그대로 분리한다.
+각 언어에서 provider가 구현하는 public SPI는 Location Store와 Relocation Store 두 개뿐이다. Location Store는
+opaque key read, expected-version atomic batch, provider clock TTL과 bounded snapshot scan을 제공한다.
+Relocation Store는 Framework가 발급한 reference에 immutable blob을 저장한다. Descriptor, owner lease,
+authority, placement, capacity, aggregate와 recovery operation은 Framework가 private record와 state machine으로
+구성하며 provider public method로 노출하지 않는다.
 
-Change stamp는 `IZLinkLocationStore`의 선택적 최적화다. Provider가 stamp를 유지하면 현재 값을 반환하고,
-지원하지 않으면 `null`을 반환한다. Framework는 `null`일 때 목록을 매 polling tick마다 읽는다. 따라서 stamp
-지원 여부는 startup capability 검사가 아니며 correctness나 공개된 discovery 결과를 바꾸지 않는다.
-
-반면 root 없는 `Preparing` authority를 정리하는 exact recovery primitive는 모든 Location Store provider의
-필수 member다. Startup recovery는 stored owner token과 StoreVersion을 함께 검증해 steady payload로 되돌린다.
-이를 선택 capability나 application API로 분리하지 않으며 runtime은 provider type을 downcast하지 않는다.
+Provider-specific change stamp, watch, Redis key layout과 script는 구현 최적화다. Framework는 이러한 선택
+capability를 downcast하거나 startup correctness의 전제로 사용하지 않는다. Recovery도 generic snapshot scan,
+exact read와 expected-version batch만 사용한다. Application이 사용하는 operational query와 readiness API는
+provider SPI가 아니다.
 
 [Location Store](01-glossary.ko.md#location-store)는 “현재 누가 처리 권한을 가지는가”와 “이동이 어느 단계까지
 확정되었는가”를 저장한다. Owner와 위치, generation, membership, placement
@@ -82,17 +79,18 @@ create, find, message와 factory를 제공하지 않는다.
 ### 2.1 Host lifecycle token
 
 한 Framework host process lifecycle은 `(OwnerId, LeaseGeneration)` token 하나를 사용한다. OwnerId는 Framework가
-만드는 재사용 불가능한 값이고 LeaseGeneration은 Store provider가 global durable counter에서 발급하는 non-zero
-값이다. 같은 host의 모든 MeshNode·ClientServer·fanout descriptor, automatic RID claim, Actor·Spot authority와
+만드는 재사용 불가능한 값이고 LeaseGeneration은 Framework가 Location Store의 private durable counter record를
+expected-version batch로 증가시켜 얻는 non-zero 값이다. 같은 host의 모든 MeshNode·ClientServer·fanout descriptor,
+automatic RID claim, Actor·Spot authority와
 maintenance role이 이 token을 공유한다.
 
-LeaseGeneration은 host lifecycle fence다. Object owner가 바뀌는 횟수를 나타내지 않는다. Provider는 필요한
-OwnerId를 exact read하며 provider-wide
+LeaseGeneration은 host lifecycle fence다. Object owner가 바뀌는 횟수를 나타내지 않는다. Framework는 필요한
+OwnerId record를 exact read하며 provider-wide
 [owner lease](01-glossary.ko.md#owner-lease) list를 권한 판단에 사용하지 않는다.
 
-Owner lease Claim과 expired-row Takeover가 새 LeaseGeneration을 발급해야 하는데 global counter가 `2^63-1`이면
-provider는 closed `GenerationExhausted`를 반환한다. 이 결과는 non-retriable이며 lease row, index와 counter를
-변경하거나 소비하지 않는다. Renew와 Release는 새 generation을 발급하지 않으므로 이 결과를 반환하지 않는다.
+Owner lease Claim과 expired-row Takeover가 새 LeaseGeneration을 발급해야 하는데 private counter가 `2^63-1`이면
+Framework는 closed `GenerationExhausted`로 처리한다. 이 결과는 non-retriable이며 lease record와 counter를
+변경하거나 소비하지 않는다. Renew와 Release는 새 generation을 발급하지 않는다.
 
 ### 2.2 Object authority generation
 
@@ -105,12 +103,13 @@ Durable [authority](01-glossary.ko.md#authority) metadata는 다음 값을 분�
 | StoreVersion | Exact CAS expectation에 사용하는 opaque row revision이다. |
 | OwnerLeaseGeneration | Current host process lifecycle token의 generation이다. |
 
-이 값은 모두 provider가 발급한다. ActorRef와 SpotRef의 generation은 [ObjectGeneration](01-glossary.ko.md#objectgeneration)이다.
+Domain generation은 Framework가 private counter record에서 발급한다. `StoreVersion`만 provider가 발급하는
+opaque value다. ActorRef와 SpotRef의 generation은 [ObjectGeneration](01-glossary.ko.md#objectgeneration)이다.
 
-ObjectGeneration, [AuthorityOwnerGeneration](01-glossary.ko.md#authorityownergeneration)과 새 StoreVersion을 위한 StoreRevision은 provider transaction domain의
-global monotonic counter를 사용하고 maximum은 `2^63-1`이다. 필요한 increment 시 counter가 maximum이면 provider는
-closed write result `GenerationExhausted`를 반환한다. 이 결과는 non-retriable이며 row, index와 모든 counter의 mutation·
-consumption은 0이다. 같은 상태의 반복 호출도 같은 결과다. Transport exception과 혼합하지 않는다. Runtime은 해당
+ObjectGeneration, [AuthorityOwnerGeneration](01-glossary.ko.md#authorityownergeneration)과 Framework record revision은 Location Store transaction
+domain의 private monotonic counter를 사용하고 maximum은 `2^63-1`이다. 필요한 increment 시 counter가 maximum이면
+Framework는 closed `GenerationExhausted`로 처리한다. 해당 atomic batch의 mutation은 0이다. 같은 상태의 반복
+호출도 같은 결과다. Provider failure와 혼합하지 않는다. Runtime은 해당
 authority를 error로 seal하고 wire command를 보내지 않으며 host snapshot과 error event에 원인을 기록한다. Counter를
 reset하거나 wrap해 복구하지 않는다.
 
@@ -119,17 +118,17 @@ reset하거나 wrap해 복구하지 않는다.
 Authority canonical key는 Actor의 global ActorId 또는 Spot의 global SpotId다. 두 ID는 UTF-8 1..255 bytes,
 case-sensitive exact value이며 normalization과 case folding을 하지 않는다. Spot row는 Entry, User와 Instance
 kind를 closed union으로 구분한다. MeshName은 identity key가 아니라 current placement attribute다. [Snapshot](01-glossary.ko.md#relocation-policy)은
-opaque payload와 다음 provider metadata를 포함한다.
+opaque private record와 다음 Framework metadata를 포함한다.
 
 - StoreVersion, ObjectGeneration과 AuthorityOwnerGeneration
 - current OwnerId와 [OwnerLeaseGeneration](01-glossary.ko.md#ownerleasegeneration)
-- provider capacity state `Reserved` 또는 `Active`, object kind·stable type, current descriptor key·lifecycle
+- capacity state `Reserved` 또는 `Active`, object kind·stable type, current descriptor key·lifecycle
   generation과 typed capacity bundle로 구성한 current placement allocation
 - StoreNow
 
 Initial placement intent, creation intent와 relocation phase·fence는 Framework가 encode한 opaque payload에 둔다.
 Current placement allocation의 kind·[stable type](01-glossary.ko.md#stable-type)·descriptor key·lifecycle generation·typed capacity bundle은 payload에
-중복 encode하지 않는다. Provider도 application state와 relocation payload를 해석하지 않는다. Canonical authority
+중복 encode하지 않는다. Provider는 전체 value를 opaque bytes로 취급한다. Canonical authority
 key가 immutable object identity를 제공하므로 payload에 key를 다시 넣지 않는다.
 Typed capacity bundle은 Actor slot 수, Spot slot 수와 optional `(Spot kind, stable type, slot 수)` 하나를
 포함한다. 각 slot 수는 `0..2^31-1`이고 bundle 전체에는 하나 이상의 양수 slot이 있어야 한다. Actor 하나는
@@ -209,11 +208,15 @@ owner 권한으로 새 mutation을 만들지 않는다.
 
 ## 5. Authority operation
 
+이 절의 `Reserve`, `Preserve`, `NewOwner`, `Commit`과 `Abort`는 Framework 내부 state transition 이름이다.
+Provider SPI method가 아니다. Framework는 private record와 Location Store의 generic condition·mutation을
+조합해 각 transition을 하나의 atomic batch로 적용한다.
+
 ### 5.1 Read와 CAS
 
-Authority Read는 `Missing(StoreNow)` 또는 `Found(snapshot, StoreNow)` closed result다. Public authority
-mutation은 Active `Found`의 exact expected StoreVersion만 받는다. Missing→Reserved 생성은 generic Reserve가
-전담하므로 public compare-exchange에 Missing expectation을 제공하지 않는다.
+Framework의 authority read projection은 `Missing(StoreNow)` 또는 `Found(snapshot, StoreNow)`다. Active
+authority mutation은 exact expected StoreVersion을 사용한다. Missing→Reserved 생성은 internal Reserve
+transition이 담당한다.
 
 - Preserve는 Active allocation에서 target owner token 없이 object, authority owner generation과 placement
   allocation을 유지하고 StoreRevision만 바꾼다. Standalone relocation의 `Captured` root 갱신과 `Prepared`
@@ -223,35 +226,34 @@ mutation은 Active `Found`의 exact expected StoreVersion만 받는다. Missing�
 - Delete는 Active allocation에서만 row와 current index entry를 제거하고 current active capacity delta를 같은
   transaction에서 감소시킨다.
 
-Provider는 expectation 검증, global counter 소비, row와 index 변경을 atomic하게 수행한다. Opaque payload 안에
-provider metadata를 중복 encode하지 않는다. Put mutation의 target owner token은 Preserve에서 없어야 하고
-NewOwner에서 반드시 있어야 한다. Provider는 이 token으로 owner ID와 owner lease generation을 metadata에
-기록하며 payload를 해석해서 owner를 복원하지 않는다. Preserve와 Delete는 row에 저장된 current owner token의
-lease를, NewOwner는 mutation의 target owner token lease를 같은 transaction에서 검증한다. Lease가
-missing·stale이면 current authority read를 담은 Conflict로 끝내고 row·index·counter를 변경하지 않는다. Token
-존재 규칙을 위반한 mutation은 provider I/O 전에 argument validation error로 거부한다. Relocation capacity
+Framework는 expectation 검증, counter 변경, record와 index mutation을 하나의 generic batch에 넣는다. Private
+record 안에 같은 metadata를 중복 encode하지 않는다. Internal Put의 target owner token은 Preserve에서 없어야
+하고 NewOwner에서 반드시 있어야 한다. Framework는 이 token으로 owner ID와 owner lease generation을 기록한다.
+Preserve와 Delete는 current owner token lease를, NewOwner는 target owner token lease를 같은 batch의 condition으로
+검증한다. Lease가 missing·stale이면 `Conflict`로 끝내고 mutation은 0이다. Token 존재 규칙을 위반한 internal
+request는 provider I/O 전에 Framework invariant error로 거부한다. Relocation capacity
 fence는 `NewOwner`에서 반드시 있다. 일반 `Preserve`에는 없지만 standalone relocation의 `Captured` root 갱신과
-`Prepared` 게시에는 같은 reserved fence가 있을 수 있다. Provider는 payload나 phase를 해석하지 않고 fence에
-저장된 authority key·expected StoreVersion·source·target owner와 durable allocation을 exact하게 검증한다.
+`Prepared` 게시에는 같은 reserved fence가 있을 수 있다. Framework는 fence record의 authority
+key·expected StoreVersion·source·target owner와 durable allocation을 exact하게 검증한다.
 Fence를 포함한 `Preserve`가 성공하면 payload CAS와 같은 transaction에서 reservation의 expected StoreVersion을
 새 StoreVersion으로 바꾼다. 이때 owner와 capacity는 바꾸지 않고 fence도 `Reserved`로 유지한다.
 
-Missing→Reserved allocation은 generic `Reserve`, Reserved→Active는 exact reservation `Commit`, Reserved→Missing은
+Missing→Reserved allocation은 internal `Reserve`, Reserved→Active는 exact reservation `Commit`, Reserved→Missing은
 exact `Abort`만 수행한다. Active→다른 Active는 capacity fence를 소비하는 NewOwner 또는 aggregate commit,
 Active→Missing은 Delete만 수행한다. Reserved row에 generic Preserve·NewOwner·Delete를 적용하면 current authority
-read를 담은 Conflict이며 mutation은 0이다. Public authority transition에는 별도 create transition이 없고
+read를 담은 Conflict이며 mutation은 0이다. Internal authority transition에는 별도 create transition이 없고
 ObjectGeneration과 initial AuthorityOwnerGeneration·allocation은 Reserve만 발급한다.
 
 ### 5.2 Snapshot-consistent scan
 
-Recovery scan은 1..1000 item과 encoded 4 MiB 상한을 지킨다. 첫 call은 cursor가 없고 provider가 snapshot
-watermark와 scan lease를 내부에 만든다. `AuthorityScanCursor`는 non-empty, 최대 4096-byte opaque value다.
+Recovery scan은 1..1000 item과 encoded 4 MiB 상한을 지킨다. 첫 call은 cursor가 없고 provider가 bounded
+snapshot을 내부에 만든다. Cursor는 non-empty, 최대 4096-byte opaque value다.
 Framework는 이를 parse, 조합하거나 다른 scan에 섞지 않는다. Expired, replayed 또는 cross-scan cursor는
 `ScanExpired`로 끝난다.
 
-첫 watermark에 존재한 row incarnation을 canonical key byte 순서로 정확히 한 번 반환한다. Scan item은 recovery
-후보일 뿐이다. Framework는 exact key Read와 expected StoreVersion CAS를 다시 수행한다. Provider는 active scan
-lease가 참조하는 versioned index와 tombstone만 보관하고 older scan이 모두 끝나면 GC한다.
+Snapshot에 존재한 record를 key byte 순서로 반환한다. Scan item은 recovery 후보일 뿐이다. Framework는 exact
+key read와 expected version batch를 다시 수행한다. Snapshot index, tombstone과 GC 방식은 provider
+implementation detail이다.
 
 ## 6. Logical create와 placement reservation
 
@@ -299,7 +301,7 @@ runtime이 activation envelope를 수락한 뒤 reservation을 만드는 §6.1�
    reservation을 만든 다음 User Spot에는 command 47 `userSpotCreate`, Actor에는
    command 49 `actorCreate`를 보낸다. Creation request bytes는 wire payload로 다시
    보내지 않는다. Target은 command의 source lifecycle,
-   key·type, provider가 발급한 reservation·`StoreVersion`과 target lifecycle을
+   key·type, Framework가 발급한 reservation, provider `StoreVersion`과 target lifecycle을
    Reserved authority exact read 결과와 비교한다.
 4. Actor는 Entry Spot의 creation callback, User Spot은 자신의 creation callback으로
    application의 생성 결정을 받는다. Callback exception은 application `Rejected`와
@@ -410,7 +412,7 @@ Target은 complete activation envelope를 Relocation Store에 변경할 수 없�
 root로 저장하고 receipt를 확인한다. 그 뒤 자신을 owner로 하는 `Reserve`를 Location
 Store에 요청한다. Store는 target descriptor의 lifecycle, owner lease, type과
 capacity를 한 transaction에서 다시 확인한다. 조건을 만족하면 `Creating` authority,
-provider가 발급한 reservation fence, recovery receipt와 reserved capacity를 함께
+Framework가 발급한 reservation fence, recovery receipt와 reserved capacity를 함께
 확정한다. Reserved authority snapshot은 정확한 reservation ID, request content
 reference, SHA-256과 encoded size를 반환한다. Active authority에는 이 Reserved
 creation 정보를 두지 않는다.
@@ -508,7 +510,7 @@ Location Store가 authority로 저장한다. Relocation manifest의 같은 diges
 Cross-node relocation은 Missing object 생성용 reservation을 재사용하지 않는다. Framework가 만든 non-zero
 128-bit reservation ID, current authority key·StoreVersion, object kind·stable type, source descriptor key·
 lifecycle generation·owner token, target descriptor key·lifecycle generation·owner token과 capacity delta를
-`ReserveRelocationCapacity`에 전달한다. Provider는 current
+internal `ReserveRelocationCapacity` transition에 전달한다. Framework는 current
 authority owner와 Active placement allocation이 request의 source descriptor·lifecycle·kind·stable type·capacity
 delta와 정확히 같은지 확인한다. Source descriptor row나 source owner lease의 live 상태는 요구하지 않는다.
 Target descriptor lifecycle·owner lease·capability·reserved capacity는 같은 transaction에서 live/exact로
@@ -518,7 +520,7 @@ Target descriptor lifecycle·owner lease·capability·reserved capacity는 같�
 Standalone Actor는 initial `Captured` authority version으로 capacity를 예약한다. Target restore 뒤 final queue·timer
 delta를 저장하면 같은 fence를 포함한 `Preserve` CAS로 `Captured` root를 갱신하고, `Prepared` 게시에서도 같은
 방식으로 fence를 다음 authority version에 재결합한다. 이어지는 `NewOwner` Put은 재결합된 exact fence를 반드시
-포함한다. Provider는 authority CAS와 같은 transaction에서 source active capacity를 줄이고 target reserved을
+포함한다. Framework는 authority mutation과 같은 atomic batch에서 source active capacity를 줄이고 target reserved을
 active로 바꾼 뒤 fence를 committed로 닫는다. User Spot aggregate는 standalone relocation capacity fence를 사용하지 않는다. 모든 `NewOwner`
 participant의 allocation delta를 합한 단일 typed capacity bundle을 aggregate prepare가 같은 transaction에서
 예약하고, aggregate commit이 모든 capacity·owner·membership mutation을 함께 적용한다. Commit 전 abort는
@@ -545,7 +547,7 @@ Aggregate prepare는 participant의 `OwnerTransition`에 따라 두 mode 가운�
   payload만 atomic CAS하며 owner, `ObjectGeneration`, `AuthorityOwnerGeneration`과 durable Active allocation을
   그대로 유지한다.
 
-Provider는 relocation mode에서 모든 `NewOwner` participant authority key·expected StoreVersion, current
+Framework는 relocation mode에서 모든 `NewOwner` participant authority key·expected StoreVersion, current
 authority의 source owner와 aggregate target owner가 일치하는지 확인하고 source·target descriptor lifecycle과
 placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는
 요구하지 않고 target descriptor lifecycle과 owner lease만 live/exact로 확인한다. Zero capacity에 `NewOwner`가
@@ -601,7 +603,7 @@ User Spot의 initial relocation aggregate에는 `NewOwner` participant가 있으
 `PrepareAggregate`는 participant authority expectation 전체, target descriptor lifecycle·owner lease와 하나의
 non-zero typed capacity bundle을 받는다. Bundle은 `NewOwner` participant의 durable allocation delta만 합산하며,
 Spot slot 하나, 해당 User Spot stable type slot 하나와 owner가 바뀌는 participant Actor 수만큼의 Actor slot을
-포함해야 한다. Provider는 participant의 current Active allocation과 bundle inventory를 검증하고 target의
+포함해야 한다. Framework는 participant의 current Active allocation과 bundle inventory를 검증하고 target의
 Actor·Spot·Spot type reserved count를 하나의 transaction에서 증가시킨 뒤 aggregate record를 `Prepared`로 만든다.
 
 Target factory와 Snapshot adapter의 `Restore`는 Prepared CAS 전에 staging 상태로 완료한다. Accepted journal은
@@ -757,8 +759,9 @@ message, timer, factory completion, relocation CAS와 reservation을 seal한다.
 set을 재검증한 뒤 diff와 connection intent를 적용한다.
 
 Provider operation 시작 전 cancellation은 invocation과 commit을 막을 수 있다. 시작 뒤 waiter cancellation,
-timeout과 provider error는 commit 여부가 불명확하다. Authority CAS는 exact key와 expected fence를 다시 읽어
-reconcile한 뒤 retry한다. Content-addressed Relocation Store Put은 verify하거나 idempotent retry하고 unlinked result는
+timeout과 provider error는 commit 여부가 불명확하다. Authority mutation은 exact key와 expected version을 다시
+읽어 reconcile한 뒤 retry한다. Relocation Store Put은 Framework가 미리 발급한 같은 reference를 read하거나
+idempotent retry하고 unlinked result는
 orphan으로 정리한다. Input bytes는 async completion까지 immutable·live해야 하고 provider가 더 오래 보관하면
 복사한다. Success result bytes는 stable immutable snapshot이다.
 
@@ -778,8 +781,9 @@ Host `Retire`는 `Retiring` descriptor를 먼저 게시해 새 placement·member
 기존 owner의 stateful message와 timer는 unit별 permit을 얻은 turn 경계까지 유지한다. 모든 unit이 source dispatch에서
 분리된 뒤 `Draining`으로 전환하고 late reply relay와 STREAM route barrier를 deadline까지 진행한 다음 exact host
 token의 descriptor를 제거한다. `Shutdown`은 `Retiring` 없이 바로 admission을 seal하고 `Draining`으로 전환한다.
-`RemoveAllByOwner`는 durable authority를 제거하지 않는다. Authority는 explicit expected StoreVersion과 owner fence를
-가진 delete만 허용한다.
+Owner cleanup은 generic scan·exact read·expected-version batch로 ephemeral descriptor와 lease record만
+제거한다. Durable authority는 explicit expected StoreVersion과 owner fence를 검증한 internal delete
+transition만 제거한다.
 
 Deadline을 넘으면 terminal ForceStopped result를 한 번 완료한다. Timer, Store callback, reconnect work와 observer가
 runtime-owned resource보다 늦게 남지 않는다.
@@ -787,7 +791,8 @@ runtime-owned resource보다 늦게 남지 않는다.
 ## 10. 구현 및 contract test 검증 요구
 
 - ObjectGeneration, AuthorityOwnerGeneration과 OwnerLeaseGeneration이 서로 다른 fence로 동작한다.
-- Provider counter가 `2^63-1`이면 `GenerationExhausted`가 atomic no-write·no-consume로 반환되고 반복해도 같다.
+- Framework private counter가 `2^63-1`이면 `GenerationExhausted`가 atomic no-write·no-consume로 처리되고
+  반복해도 같다.
 - 모든 Location host가 automatic RID 사용 여부와 무관하게 owner lease timing relation을 startup에서 검증한다.
 - Shared local owner lease deadline이 descriptor, object, timer와 relocation authority를 함께 seal한다.
 - Descriptor overflow가 partial publish 없이 startup을 실패시킨다.
@@ -806,7 +811,7 @@ runtime-owned resource보다 늦게 남지 않는다.
   identity, reservation·`StoreVersion`과 exact generation fence를 검사하고 command
   20으로 terminal result를 한 번만 반환한다.
 - Generic reservation이 Creating authority와 reserved capacity를 atomic하게 reserve·commit·abort한다.
-- Authority snapshot의 provider-owned allocation이 Reserved·Active state, kind·stable type, descriptor
+- Authority private record의 allocation이 Reserved·Active state, kind·stable type, descriptor
   lifecycle과 capacity delta를 빠짐없이 반환하고 opaque payload와 중복되지 않는다.
 - Relocation reservation과 commit이 source request를 durable Active allocation에 exact-match하며 source
   descriptor·lease가 stale이어도 recovery를 허용하고 target descriptor·lease가 stale이면 no-write로 막는다.

@@ -20,9 +20,9 @@ handler가 받는 provider-neutral payload까지만 포함한다.
 | [Actors](06-actors.ko.md) | Actor factory, context, client, manager, relocation adapter와 policy를 정의한다. |
 | [Bound STREAM session](07-bound-stream-session.ko.md) | Actor가 소유한 bound session call을 정의한다. |
 | [STREAM session](07-stream-session.ko.md) | STREAM server session과 handler interface를 정의한다. |
-| [Location과 maintenance](08-location-maintenance.ko.md) | Location 운영 API와 외부 provider가 구현하는 `IZLinkLocationStore` SPI를 정의한다. |
-| [Authority operation과 relocation](08-authority-relocation.ko.md) | `IZLinkLocationStore`의 authority member와 `IZLinkRelocationStore` provider SPI를 정의한다. |
-| [Location provider와 Redis](08-location-provider-redis.ko.md) | Optional MeshNode change-stamp member와 공식 Redis provider public API를 정의한다. |
+| [Location 설정과 운영](08-location-maintenance.ko.md) | Application용 Location option, readiness와 운영 query를 정의한다. |
+| [Location·Relocation provider](08-authority-relocation.ko.md) | Generic atomic Location Store와 immutable Relocation Store provider SPI를 정의한다. |
+| [공식 Redis Store](08-location-provider-redis.ko.md) | 두 Redis Store class의 최소 constructor와 options를 정의한다. |
 | [Host와 topology monitoring](10-topology-monitoring.ko.md) | Host state, termination, topology snapshot과 metric을 정의한다. |
 | [Monitoring과 오류](10-monitoring-errors.ko.md) | Monitoring source와 Framework 오류를 정의한다. |
 | [Codec extension](11-serialization.ko.md) | Codec 등록 API와 외부 codec provider SPI를 정의한다. |

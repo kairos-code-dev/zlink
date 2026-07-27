@@ -1,7 +1,7 @@
-# Node.js Location Store interface 이동 안내
+# Node.js Location·Relocation provider interface 이동 안내
 
-Location Store와 maintenance의 정확한 public TypeScript declaration은
-[Location Store와 maintenance](interfaces/08-location-maintenance.ko.md)가 소유한다. Location runtime의
+Location·Relocation Store와 공식 Redis provider의 정확한 public TypeScript declaration은
+[Location·Relocation provider](interfaces/08-location-maintenance.ko.md)가 소유한다. Location runtime의
 public event와 observability declaration은
 [Location, monitoring과 metrics](interfaces/03-location-observability.ko.md)에서 확인한다. Node.js 공개
 interface의 전체 문서 목록은 [공개 인터페이스 목차](interfaces/README.ko.md)가 제공한다.

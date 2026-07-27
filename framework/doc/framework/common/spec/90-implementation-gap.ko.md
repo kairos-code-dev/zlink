@@ -247,12 +247,12 @@ MeshNode를 공유하지 않으며 session Actor bind·dispatch는 resolve한 `A
 ### 12.29 전 언어 durable authority와 Relocation Store 연결 미구현
 
 [Spot Actor §7](23-spot-actor.ko.md#7-실패와-recovery)과
-[Redis Location Store §4.2](41-location-store-redis.ko.md#42-expectation과-mutation)은 current
-owner와 relocation state를 같은 durable authority에서 원자적으로 전이하고, process 종료 뒤 successor가
+[Location Store provider §4](41-location-store-redis.ko.md#4-conditional-atomic-batch)는 current owner와
+relocation state를 표현하는 private record를 같은 atomic batch에서 전이하고, process 종료 뒤 successor가
 immutable relocation root와 replay cursor로 처리를 이어 가도록 요구한다.
 
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
-opaque payload의 read와 expected Store version 기반 compare-exchange를 제공한다. Framework coordinator만
+opaque payload의 exact read와 expected Store version 기반 atomic batch를 제공한다. Framework coordinator만
 relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
 policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도 있는 host는 accepted journal, application state와
 recovery payload를 보존할 Relocation Store도 정확히 하나 등록한다. Instance Spot [factory](01-glossary.ko.md#factory)가 없고 모든 factory가

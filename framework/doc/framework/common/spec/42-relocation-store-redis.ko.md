@@ -1,203 +1,168 @@
-# Redis Relocation Store
+# Relocation Store provider와 공식 Redis 구현
 
 [공통 스펙 목차](README.ko.md) · [Location runtime](40-location-runtime.ko.md) ·
-[Redis Location Store](41-location-store-redis.ko.md) ·
+[Location Store](41-location-store-redis.ko.md) ·
 [Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)
 
-## 1. 이 문서가 정의하는 범위
+## 1. 범위와 책임
 
-이 문서는 Framework 11.0 Redis Relocation Store가 cross-node Actor·Spot 이동과,
-실행 중인 Instance Spot이 없을 때 새 [Spot](01-glossary.ko.md#spot)을 준비하고 최초 message를 복구 가능하게
-보관하는 과정인 `cold activation`에 필요한 immutable payload를 저장하는 규칙을
-정의한다.
+Relocation Store는 cross-node Actor·Spot 이동과 Instance Spot cold activation에 필요한 immutable payload를
+저장하는 provider 확장 지점이다. Provider는 relocation phase, application state, message, timer, journal,
+participant와 manifest의 의미를 해석하지 않는다.
 
-Relocation Store에는 다음 정보가 속한다.
+Location Store는 owner, membership, relocation phase와 payload reference를 원자적으로 publish한다.
+Relocation Store는 publish 전에 준비하는 bytes만 저장한다. 두 Store는 별도 interface와 별도 등록을 사용하며
+distributed transaction이나 2PC를 요구하지 않는다.
 
-- Application state
+Relocation Store에는 Framework가 encode한 다음 정보가 포함될 수 있다.
+
+- Application state와 accepted journal
 - Seal 시점에 아직 실행하지 않은 message queue
-- Accepted journal
 - Timer logical registration과 pending tick
-- Participant payload
-- Manifest와 Framework metadata
-- Cross-node Accepted completion의 `OperationId`, optional reply와 retry cursor
-- Replay와 recovery payload
-- Complete activation envelope
-- Durable activation inbox의 첫 record
+- Participant payload와 replay manifest
+- Cross-node accepted completion의 operation ID, optional reply와 retry cursor
+- Complete Instance Spot activation envelope와 durable activation inbox의 첫 record
 
-쉽게 말해 Location Store가 “어느 node가 새 owner인지”를 기록한다면 Relocation
-Store는 “새 [owner](01-glossary.ko.md#owner)가 실행을 이어가기 위해 읽어야 할 state와 미처리 작업”을
-저장한다. Owner와 membership을 결정하는 권한은 [Location Store](01-glossary.ko.md#location-store)에 있으며 Relocation
-Store의 payload만으로 owner를 바꾸지 않는다.
+Session binding route는 Relocation Store에 저장하지 않는다. Actor relocation이 완료된 뒤 같은
+`ObjectGeneration`을 확인하고 Session owner runtime이 해당 Actor route만 target owner로 갱신한다.
 
-Provider는 relocation·[activation envelope](01-glossary.ko.md#activation-envelope), application state, message, timer와 journal record의
-내용을 해석하지 않는다.
+## 2. Reference와 크기
 
-Relocation Store는 Session binding route, 즉 Session owner가 현재 Actor owner에
-전달할 때 사용하는 경로도 저장하거나 갱신하지 않는다. Actor가
-Session에 bind되어 있으면 Framework runtime이 Location Store의 owner·membership
-commit, callback·journal replay, durable source cleanup과 `Completed`를 끝낸 뒤 같은
-ObjectGeneration을 검증하고 command 44·45로 Session owner가 보관한 해당 Actor
-route만 target owner로 갱신해 달라고 요청하고 확인을 받는다(`command 44·45`). Steady normalization 전에는 target
-Actor의 session packet·push admission을 열지 않는다. 같은 Session의 다른 Actor
-route와 physical STREAM connection은 유지한다. Route 갱신은 같은 `ObjectGeneration`에만
-적용하며, 새 incarnation은 application이 명시적으로 다시 bind해야 한다.
+Framework는 put 전에 opaque reference를 발급한다.
 
-Relocation Store는 Location Store와 별도 public interface, 별도 등록과 별도 Redis implementation을 사용한다.
-두 implementation은 같은 Redis deployment 또는 cluster를 서로 다른 key prefix로 사용할 수 있고 물리적으로
-분리된 Redis를 사용할 수도 있다. Location Store transaction은 Relocation Store key를 포함하지 않으며 두 Store
-사이에 distributed transaction이나 2PC를 요구하지 않는다.
+| 항목 | 계약 |
+|---|---|
+| Reference | UTF-8 `1..4096` bytes, case-sensitive exact match |
+| Blob | 최대 64 MiB의 immutable bytes |
+| Logical stream | 최대 256 GiB |
+| Chunk 수 | Root manifest 하나당 최대 4,096개 |
 
-## 2. Immutable root와 manifest
+한 번 content에 사용한 reference는 삭제되거나 만료된 뒤에도 다른 bytes에 재사용하지 않는다. Framework는
+logical stream을 최대 64 MiB chunk와 immutable root manifest로 나눈다. Manifest에는 logical version,
+전체 길이, checksum, chunk 순서와 각 chunk의 reference·길이·checksum을 기록한다.
 
-한 번의 relocation이 저장하는 전체 logical stream은 aggregate와 accepted
-journal을 합쳐 최대 256 GiB다. Relocation adapter 하나가 반환하는 application
-state는 최대 64 MiB다.
+Application state adapter 하나가 반환하는 bytes도 최대 64 MiB다. Process의 relocation payload in-flight
+기본 상한 256 MiB는 Framework coordinator의 memory gate이며 Store blob 크기나 logical stream ceiling이
+아니다.
 
-Provider는 큰 payload를 최대 64 MiB 단위의 변경할 수 없는 chunk로 나누고, 최대
-4096개 chunk reference를 하나의 root manifest에 순서대로 기록한다. Manifest에는
-logical version, 전체 길이, 전체 CRC32C와 각 chunk의 `(reference, length,
-CRC32C)`가 들어간다. 저장한 payload와 manifest를 직접 수정하지 않으며 completion을
-추가할 때도 새 root를 만든다.
-
-Process의 encoded payload in-flight 기본 상한 256 MiB는 Framework coordinator gate이며 Store object 크기나 logical
-stream ceiling이 아니다. Framework는 source queue를 seal하기 전에 Snapshot participant마다 64 MiB와 이미
-Framework가 소유한 section의 deterministic encoded upper bound를 합한 byte permit을 얻는다. `Capture` 뒤에는 actual
-encoded size로 permit을 축소만 한다. 한 User Spot aggregate의 reservation이 gate보다 크면 다른 payload가
-in-flight가 아닌 동안에만 exclusive oversized aggregate 하나로 저장·복원한다. Standalone Actor와 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
-unit은 gate 안에서만 admit한다. Permit attempt는 all-or-nothing이며 실패한 unit은 일부 permit을 보유한 채
-기다리지 않는다.
-
-User Spot aggregate와 maintenance inventory의 권한 원본은 Location Store의 bounded canonical participant set이다.
-Relocation manifest는 participant별 state·journal payload를 찾기 위한 projection과 같은 canonical inventory digest를
-가질 수 있지만 owner·[membership](01-glossary.ko.md#membership) commit의 권한 근거가 아니다. Runtime은 Location participant set의 digest와
-Relocation manifest digest가 정확히 같은 경우에만 restore와 replay를 시작한다.
-
-Actor Join의 public `OperationId`는 completion callback의 중복 처리를 막는 별도
-field다. `RelocationId`, placement reservation ID나 aggregate commit ID를
-`OperationId`로 대신 사용하지 않는다. Same-node Join, `Rejected`와 commit 전
-`Failed`는 process 재시작 뒤 completion replay를 보장하지 않으므로 이 목적의
-durable manifest를 만들지 않는다. Location Store의 bounded aggregate commit까지
-성공한 cross-node `Accepted`만 manifest의 `OperationId`, optional reply와 cursor를
-사용해 completion을 at-least-once로 복구한다.
-
-각 tree component의 retention은 24시간이고 renew threshold는 12시간이다. Provider는 Redis server time으로
-`ExpiresAt`과 `StoreNow`를 계산한다. Application host wall clock은 retention 판단에 사용하지 않는다.
+User Spot aggregate와 maintenance inventory의 authoritative participant set은 Location Store에 있다.
+Relocation manifest의 participant 목록은 payload 탐색용 projection이며, Location participant set과 manifest의
+digest가 일치할 때만 restore와 replay를 시작한다.
 
 ## 3. Provider operation
 
-Relocation Store는 opaque payload를 저장하고 읽고, retention을 갱신하고, reference를 삭제하는 generic operation만
-제공한다. Actor·Spot별 Store interface, relocation phase별 method와 Redis 전용 root 등록 API는 제공하지 않는다.
+Relocation Store는 다음 generic operation만 제공한다.
 
-- Put은 content-addressed reference, checksum, `ExpiresAt`과 `StoreNow`를 반환한다. 같은 content의 uncertain
-  completion은 stored bytes를 verify한 뒤 idempotent하게 retry한다.
-- Read는 exact reference의 immutable bytes 또는 `Missing` closed result를 반환한다.
-- Renew는 complete tree의 retention을 갱신한다. 존재하지 않는 reference는 정상
-  `Missing` 결과다. 일부 component만 갱신되면 성공이 아니며 runtime은 root를
-  authority에 연결하지 않는다.
-- Delete는 exact reference를 idempotent하게 제거한다. 존재하지 않는 reference는 정상 `Missing` 결과다.
+### 3.1 Put
+
+`Put(reference, payload, retention)`은 다음 닫힌 결과 중 하나를 반환한다.
+
+- `Stored(expiresAt, storeNow)`: Reference가 없어서 bytes를 저장했다.
+- `AlreadyStored(expiresAt, storeNow)`: 같은 reference와 같은 bytes가 이미 저장되어 있다.
+- `Conflict(storeNow)`: 같은 reference가 다른 bytes에 사용되었다.
+
+Reference를 caller인 Framework가 먼저 발급하므로 timeout이나 transport 오류로 결과를 받지 못해도 같은
+reference를 read하여 저장 여부를 재조정할 수 있다. Provider가 새 reference를 발급하거나 같은 content에
+동등하지만 다른 reference를 반환하는 API는 제공하지 않는다.
+
+### 3.2 Read, renew와 delete
+
+- Read는 exact reference의 원래 bytes·expiry·provider clock 또는 닫힌 `Missing`을 반환한다.
+- Renew는 provider clock 기준 expiry를 연장하고 새 expiry를 반환한다. 없거나 만료되면 `Missing`이다.
+- Delete는 reference가 없어도 성공한 no-op이며 idempotent하다.
 
 Framework가 provider에 넘긴 input bytes는 asynchronous operation이 끝날 때까지 유효하고 변경되지 않는다.
-Provider가 그 이후 bytes를 보관하려면 복사한다. Success result bytes는 consumer가 사용하는 동안 immutable하고
+Provider가 이후에도 bytes를 보관하려면 복사한다. Read result의 bytes는 consumer가 사용하는 동안 immutable하고
 stable해야 한다.
 
-## 4. Location authority와 연결 순서
+각 tree component의 기본 retention은 24시간이고 renew threshold는 12시간이다. Expiry는 provider clock으로
+계산하며 application host의 wall clock을 correctness에 사용하지 않는다.
 
-Cross-store 저장 순서는 다음과 같다.
+## 4. Location authority와 publication 순서
 
-1. Relocation Store에 모든 immutable chunk를 저장한다.
-2. Root manifest를 저장하고 reference, checksum, canonical inventory digest와 retention을 검증한다.
-3. `Captured` 또는 root replacement [authority](01-glossary.ko.md#authority) CAS가 Location Store에 reference, checksum, phase와 count를 연결한다.
-4. CAS에 연결되지 않은 root와 chunk는 orphan retention 또는 idempotent cleanup으로 제거한다. Content-addressed
-   chunk는 여러 immutable root가 공유할 수 있으므로 provider가 reference count를 보장하지 않으면 root manifest만
-   즉시 삭제하고 chunk는 retention으로 정리한다.
+Cross-store publication은 다음 순서로 고정한다.
 
-`Captured`와 `Prepared` CAS 직전에 complete tree의 모든 component가 renew threshold보다 긴 remaining lifetime을
-갖는지 검증하고 필요하면 tree 전체를 renew한다. Missing 또는 partial renew는 precommit abort이며 Location
-authority에 reference를 연결하지 않는다.
+1. Relocation Store에 immutable chunk를 저장한다.
+2. Root manifest를 저장하고 reference, checksum, inventory digest와 retention을 검증한다.
+3. Location Store의 expected-version atomic batch로 authority와 reference·checksum을 함께 publish한다.
+4. Location batch에 연결되지 않은 root와 chunk는 orphan retention 또는 idempotent cleanup으로 제거한다.
 
-Completion append, `replyRelayAck` 또는 exact request-source owner lease expiry를 기록할 때는 새 immutable root를
-먼저 만든다. 그 뒤 Location Store expected-version CAS 한 번으로 root reference, checksum,
-`TerminalCompletionCount`와 `PendingRelayCount`를 함께 교체한다. Conflict loser의 새 root는 orphan이다.
+Location Store batch 성공이 payload의 공식 visibility point다. Target은 current Location authority가 연결한
+exact reference만 restore 근거로 사용한다. Relocation Store의 payload만으로 owner, membership, phase나 recovery
+target을 결정하지 않는다.
 
-### 4.1 Instance Spot cold activation 저장 순서
+Root를 교체할 때는 새 immutable root를 먼저 저장하고 Location Store에서 old reference를 new reference로
+조건부 교체한다. Conflict에서 진 새 root는 orphan이다.
 
-Instance Spot cold activation도 Location Store가 reference를 공개하기 전에 Relocation
-Store의 payload를 먼저 확정한다.
+삭제는 반대 순서를 사용한다. Location Store에서 reference 사용 종료를 atomic commit한 뒤 blob을 삭제한다.
+Commit 전에 blob을 먼저 삭제하지 않는다.
 
-1. Target은 operation identity, send/request 구분, source node RID와 lifecycle
-   generation, optional source Spot ID, reply correlation, deadline, target descriptor
-   fence, command 39의 optional metadata 존재 여부와 metadata frame, application
-   payload를 포함한 complete activation envelope를 변경할 수 없는 root로 저장한다.
-2. Reference, SHA-256, encoded size와 retention을 확인한다. 그 뒤 Location Store의
-   `Reserve`가 recovery receipt를 `Creating` authority와 Pending creation projection에
-   한 transaction으로 연결한다.
-3. Factory와 initialize가 끝나면 Framework는 root의 first message를 durable
-   activation inbox의 첫 record로 확정한다. 이때까지 handler 실행은 activation
-   barrier로 차단한다.
-4. 이 root와 durable inbox 규칙은 target이 owner claim을 획득하여 만드는
-   target-owned Instance [cold activation](01-glossary.ko.md#cold-activation)에만 적용한다. `Ready` commit은 recovery
-   root와 replay cursor를 authority payload에 유지한다.
-   Runtime은 first record를 local queue 선두에 복원한 뒤 barrier를 연다. 최초
-   handler의 완료를 durable하게 기록하고 [replay cursor](01-glossary.ko.md#replay-cursor)를 inbox sequence까지 갱신한
-   뒤에만 `Preserve` CAS로 recovery pointer를 제거한다. Queue에 넣었다는 사실만으로
-   pointer를 제거하지 않는다.
-5. Activation recovery pointer는 `Ready` Instance cold activation에만 존재한다.
-   Actor, Entry Spot, User Spot과 `Creating`·`Closing`·`Relocating` authority에는
-   둘 수 없다.
-6. Pointer 제거가 성공한 뒤 root를 삭제한다. `Reserve` 전에 실패한 root와
-   `Reserve` conflict에서 진 target의 root는 orphan이다.
+Location authority가 publish한 reference가 영구 `Missing`이거나 checksum·inventory digest가 일치하지 않으면
+non-retriable `RelocationDataLost`다. Commit된 owner와 membership을 source로 rollback하거나 이전 root를 추측해
+복원하지 않는다.
 
-Instance [factory](01-glossary.ko.md#factory)의 relocation policy가 `Disabled`여도 cold activation에는 Relocation
-Store를 사용한다. Instance Spot factory를 하나라도 등록한 Object Server는 Relocation
-Store를 정확히 하나 등록해야 한다.
+## 5. Instance Spot cold activation
 
-## 5. Reference release와 data loss
+Instance Spot cold activation도 같은 publication 규칙을 사용한다.
 
-Target restore와 recovery는 current Location authority가 연결한 exact reference만 사용한다. Relocation manifest만으로
-owner, membership, phase나 recovery target을 결정하지 않는다.
+1. Framework는 operation identity, send/request 구분, source route, reply correlation, deadline, target fence,
+   metadata와 application payload를 포함한 complete activation envelope를 immutable blob으로 저장한다.
+2. Reference, checksum, encoded size와 retention을 확인한다.
+3. Location Store atomic batch가 Creating authority, capacity reservation과 recovery reference를 함께 publish한다.
+4. Factory와 initialize가 끝나면 root의 first message를 durable activation inbox의 첫 record로 확정한다.
+5. Target queue 선두에 first record를 복원한 뒤에만 Ready barrier를 연다.
+6. 최초 handler 완료와 replay cursor 갱신을 확인한 뒤 Location Store에서 recovery reference를 release하고
+   blob을 삭제한다.
 
-Runtime은 source cleanup, accepted request의 terminal completion, reply relay ACK 또는 source lease expiry와 steady
-authority normalization을 모두 확인한 뒤 Location authority에서 reference를 먼저 release한다. Reference release
-CAS가 성공하기 전에는 Relocation root를 삭제하지 않는다. Release 뒤에는 즉시 idempotent delete하거나 recovery
-retention까지 유지할 수 있다.
+Instance Spot factory를 하나라도 등록한 Object Server는 Relocation Store를 정확히 하나 등록해야 한다.
+Relocation policy가 `Disabled`여도 cold activation에는 Relocation Store를 사용한다.
 
-Authority가 publish한 reference의 root가 일시적으로 보이지 않으면 bounded retry와 exact re-read를 수행한다.
-Provider가 영구 `Missing`을 확정하거나 checksum·inventory digest가 일치하지 않으면 non-retriable
-`RelocationDataLost`로 seal한다. Commit된 owner와 membership을 source로 rollback하거나 이전 root를 추측해 복원하지
-않는다.
+## 6. Actor Join과 completion
 
-## 6. 공식 Redis extension
+Cross-node Actor Join의 accepted completion operation ID는 relocation ID, placement reservation ID와 aggregate
+commit ID와 분리한다. Location Store aggregate commit까지 성공한 cross-node `Accepted`만 immutable manifest에
+operation ID, optional reply와 retry cursor를 저장해 at-least-once completion을 복구한다.
 
-공식 Redis extension package는 Location Store와 Relocation Store를 서로 다른 class로 제공한다. 각 instance는
-자신의 connection 설정과 비어 있지 않은 key prefix를 가진다. 한 class가 두 Store interface를 함께 구현하거나
-두 capability를 한 번에 root에 등록하는 Redis 전용 API는 제공하지 않는다.
+Same-node Join, `Rejected`와 commit 전 `Failed`는 relocation payload를 만들지 않는다. Actor relocation 뒤
+`ObjectGeneration`은 유지한다.
 
-같은 Redis deployment를 사용할 때는 운영 데이터와 정리 범위를 분리할 수 있도록 서로 다른 prefix를 권장한다.
-Framework root는 opaque provider 설정에서 deployment identity나 prefix 중복을 추측하지 않는다. 별도 deployment를
-사용할 때 Location authority의 availability와 Relocation payload의 availability는 독립적이며 한쪽 Redis operation이
-다른 Store의 key를 읽거나 변경하지 않는다.
+## 7. 취소·오류와 cleanup
 
-## 7. 구현 및 contract test 검증 요구
+Operation 시작 전 cancellation은 I/O와 write를 시작하지 않게 한다. 시작 뒤 cancellation, timeout 또는
+transport 오류가 발생하면 저장 여부가 불확실할 수 있다. Framework는 caller-issued reference로 exact read하여
+결과를 재조정한다.
 
-- Chunk와 root가 immutable하고 completion append가 새 root를 만든다.
-- Relocation manifest의 inventory digest가 Location Store의 authoritative canonical participant set과 일치한다.
-- Cross-node Actor Join의 `Accepted` manifest가 public completion `OperationId`,
-  optional reply와 retry cursor를 서로 다른 field로 보존한다.
-- Public completion
-  [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operationid)가
-  `RelocationId`, reservation ID나 aggregate
-  commit ID를 재사용하지 않는다.
-- Same-node Join, `Rejected`와 commit 전 `Failed`를 process 재시작 뒤 replay하기
-  위한 새 durable record를 만들지 않는다.
-- Put과 root 검증이 authority CAS보다 먼저 수행된다.
-- CAS conflict로 연결되지 않은 root가 orphan retention 또는 idempotent cleanup으로 제거된다.
-- Location authority reference release가 Relocation root delete보다 먼저 수행된다.
-- `Recreate`가 application state 없이도 accepted journal과 recovery payload를 Relocation Store에 기록한다.
-- Published root의 permanent missing·checksum mismatch·inventory digest mismatch가 `RelocationDataLost`이며 rollback하지
-  않는다.
-- Instance activation root가 complete envelope를 보존하고 Pending authority exact
-  read가 [recovery receipt](01-glossary.ko.md#recovery-receipt)와 provider가 발급한 reservation fence를 복원한다.
-- [Durable activation inbox](01-glossary.ko.md#durable-activation-inbox)의 첫 record를 `Ready` commit 전에 확정하고, startup
-  Serving gate는 queue 선두 복원이 끝난 뒤에만 연다.
-- Location과 Relocation Redis가 같은 deployment와 분리 deployment에서 모두 동작하고 cross-store transaction을
-  요구하지 않는다.
+`Missing`, `AlreadyStored`와 `Conflict`는 닫힌 정상 결과다. Input bound 위반은 언어별 argument validation
+error다. Provider-specific failure는 Framework가 Store failure로 분류하며 application public API에 Redis
+command, key layout이나 script를 노출하지 않는다.
+
+Location Store publication 전에 실패한 payload는 orphan이다. Provider 또는 Framework cleanup은 retention이
+끝난 orphan을 제거해야 한다. Published reference는 Location Store release 전에는 orphan cleanup 대상이 아니다.
+
+## 8. 공식 Redis provider
+
+공식 Redis extension package는 Relocation Store interface를 구현하는 `RedisRelocationStore`와 언어별 naming
+convention에 맞춘 최소 options를 제공한다. Public options는 connection, key namespace와 operation timeout처럼
+instance 생성에 필요한 설정으로 제한한다.
+
+Redis key layout, chunk storage 자료구조, script, serialization record, connection lease와 cleanup index는
+implementation detail이다. Redis 전용 Framework 등록 helper와 Location·Relocation Store를 함께 구현하는
+결합 class는 제공하지 않는다.
+
+같은 Redis deployment를 사용할 때 Location과 Relocation Store는 서로 다른 key namespace를 사용한다.
+물리적으로 분리된 Redis도 지원하며 correctness는 cross-store Redis transaction에 의존하지 않는다.
+
+## 9. Contract test
+
+- 같은 reference와 같은 bytes를 다시 put하면 `AlreadyStored`, 다른 bytes면 `Conflict`다.
+- 64 MiB blob과 4,096개 chunk로 구성된 256 GiB logical stream 계약을 지원한다.
+- Put 결과 유실 뒤 caller-issued reference의 exact read로 저장 여부를 재조정할 수 있다.
+- Read result bytes가 consumer 사용 기간에 변경되지 않는다.
+- Renew와 delete retry가 idempotent하다.
+- Location publication 전에 실패한 payload가 retention 뒤 제거된다.
+- Location reference release가 blob delete보다 먼저 수행된다.
+- Published root의 permanent missing·checksum mismatch·inventory digest mismatch는
+  `RelocationDataLost`이며 source로 rollback하지 않는다.
+- Instance cold activation의 complete envelope와 durable first record가 Ready 전에 복원된다.
+- Location과 Relocation Redis를 같은 deployment와 분리 deployment에서 모두 사용할 수 있다.
+- Redis provider public declaration에 relocation phase·manifest DTO, script와 key layout type이 없다.

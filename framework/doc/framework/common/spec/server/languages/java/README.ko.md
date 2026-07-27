@@ -6,8 +6,9 @@ regression test는 이 계약을 따라야 한다.
 Kotlin이 Java 계약을 그대로 사용하는 경우 이 문서를 따르며, Kotlin 전용 `suspend`와 `Flow`
 표면은 [Kotlin 공개 계약](../kotlin/README.ko.md)이 별도로 고정한다.
 
-Channel 호출은 process-local ChannelName만 사용한다. Host 종료는 `Retire`와 `Shutdown`이 정본이며, Location
-provider는 descriptor·location 기능과 opaque authority CAS capability를 함께 제공한다.
+Channel 호출은 process-local ChannelName만 사용한다. Host 종료는 `Retire`와 `Shutdown`이 정본이다.
+Location provider는 opaque record의 atomic 저장 primitive를 제공하고 Relocation provider는
+Framework-issued reference에 immutable blob을 저장한다.
 
 | 문서 | 범위 |
 |---|---|

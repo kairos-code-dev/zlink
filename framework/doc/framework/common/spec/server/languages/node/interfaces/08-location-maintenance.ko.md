@@ -1,337 +1,238 @@
-# Node.js Location·Relocation provider 공개 interface
+# Node.js Location·Relocation provider exact interface
 
-이 문서는 Node.js server package가 외부 provider와 application에 공개하는 Location·Relocation 계약만 고정한다. Framework runtime이 descriptor, lease, authority, reservation과 aggregate commit을 처리하기 위해 사용하는 세부 단계는 하나의 `ZLinkLocationStore` 안에 포함한다. 단계별 store interface와 저장 행·key는 공개하지 않는다.
+[Node.js 공개 interface 목차](README.ko.md) ·
+[Location Runtime](../../../../40-location-runtime.ko.md) ·
+[Redis Location Store](../../../../41-location-store-redis.ko.md)
 
-이 문서는 provider가 구현해야 하는 DTO와 closed union의 단독 owner다. 다른 Node.js exact interface 문서는
-아래 타입을 다시 선언하지 않고 이 문서를 참조한다.
+이 문서는 외부 provider가 구현하는 최소 public SPI와 공식 Redis extension의 public declaration을
+고정한다. Authority, owner lease, reservation, capacity, aggregate와 relocation state machine은
+Framework가 opaque record로 encoding한다. Provider는 해당 domain type이나 처리 단계를 알지 않는다.
 
-## 0. Provider DTO와 value type
+Store primitive와 interface는 opt-in package
+`@zlink-systems/framework-provider-abstractions`가 소유한다. Provider 구현은 이 package만 의존해 Store를
+구현할 수 있으며 Actor·Spot application API에 의존하지 않는다.
+
+## 1. Location Store
 
 ```ts
-export interface ZLinkPageRequest { readonly pageSize?: number; readonly continuationToken?: string; }
-export interface ZLinkLocationPage<T> { readonly items: readonly T[]; readonly continuationToken?: string; }
+declare const zlinkStoreKeyBrand: unique symbol;
+declare const zlinkStoreVersionBrand: unique symbol;
+declare const zlinkStoreScanCursorBrand: unique symbol;
 
-export enum ZLinkLocationWriteIntent { NewClaim = 1, Renew = 2, Takeover = 3 }
-export enum ZLinkLocationWriteStatus {
-  Stored = 'stored', IgnoredStale = 'ignoredStale', RejectedConflict = 'rejectedConflict'
-}
-export interface ZLinkLocationWriteResult {
-  readonly status: ZLinkLocationWriteStatus; readonly generation: bigint; readonly updatedAt: Date;
-}
-export interface ZLinkLocationOwnerToken { readonly ownerId: string; readonly leaseGeneration: bigint; }
-export type ZLinkOwnerLeaseClaimResult =
-  | { readonly kind: 'claimed'; readonly token: ZLinkLocationOwnerToken; readonly leaseExpiresAt: Date; readonly storeNow: Date }
-  | { readonly kind: 'conflict' }
-  | { readonly kind: 'generationExhausted' };
-export type ZLinkOwnerLeaseReadResult =
-  | { readonly kind: 'found'; readonly token: ZLinkLocationOwnerToken; readonly leaseExpiresAt: Date; readonly storeNow: Date }
-  | { readonly kind: 'missing' };
-export type ZLinkOwnerLeaseRenewResult =
-  | { readonly kind: 'renewed'; readonly leaseExpiresAt: Date; readonly storeNow: Date }
-  | { readonly kind: 'stale' };
-export type ZLinkOwnerLeaseReleaseResult = 'released' | 'stale';
-
-export interface ZLinkPopulationCapacity { readonly active: number; readonly reserved: number; readonly limit: number; }
-export interface ZLinkSpotTypeCapacity extends ZLinkPopulationCapacity {
-  readonly objectKind: 'user_spot' | 'instance_spot'; readonly stableType: string;
-}
-export type ZLinkObjectMaintenancePolicyKind = 'disabled' | 'recreate' | 'snapshot';
-export interface ZLinkObjectCapability {
-  readonly objectKind: 'actor' | 'user_spot' | 'instance_spot';
-  readonly stableType: string; readonly policy: ZLinkObjectMaintenancePolicyKind;
-  readonly hasSnapshotAdapter: boolean; readonly limit: number;
-}
-export interface ZLinkMeshNodeDescriptorKey { readonly meshName: string; readonly rid: RoutingId; }
-export interface ZLinkClientServerServerDescriptorKey { readonly channelName: string; readonly serverRid: RoutingId; }
-export interface ZLinkFanoutPublisherDescriptorKey { readonly channelName: string; readonly publisherRid: RoutingId; }
-export interface ZLinkMeshNodeDescriptor {
-  readonly meshName: string; readonly rid: RoutingId; readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint; readonly endpoint: string; readonly objectRole: ZLinkObjectRole;
-  readonly entrySpotId?: string; readonly placementWeight: number;
-  readonly populationCapacity: { readonly actors: ZLinkPopulationCapacity; readonly spots: ZLinkPopulationCapacity; readonly spotTypes: readonly ZLinkSpotTypeCapacity[] };
-  readonly activationConcurrency: { readonly active: number; readonly limit: number };
-  readonly channelWeights: Readonly<Record<string, number>>; readonly applicationVersion: bigint;
-  readonly spotTypes: readonly string[]; readonly objectCapabilities: readonly ZLinkObjectCapability[];
-  readonly maintenanceWave?: string; readonly state: ZLinkFrameworkRuntimeState;
-  readonly securityIdentity: string; readonly ownerId: string; readonly leaseGeneration: bigint; readonly updatedAt: Date;
-}
-export interface ZLinkClientServerServerDescriptor {
-  readonly channelName: string; readonly serverRid: RoutingId; readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint; readonly endpoint: string; readonly weight: number;
-  readonly state: ZLinkFrameworkRuntimeState; readonly securityIdentity: string;
-  readonly ownerId: string; readonly leaseGeneration: bigint; readonly updatedAt: Date;
-}
-export interface ZLinkFanoutPublisherDescriptor {
-  readonly channelName: string; readonly publisherRid: RoutingId; readonly lifecycleGeneration: bigint;
-  readonly descriptorRevision: bigint; readonly endpoint: string; readonly state: ZLinkFrameworkRuntimeState;
-  readonly securityIdentity: string; readonly ownerId: string; readonly leaseGeneration: bigint; readonly updatedAt: Date;
+export interface ZLinkStoreKey {
+  readonly value: string;
+  readonly [zlinkStoreKeyBrand]: true;
 }
 
-export interface ZLinkAuthorityKey { readonly value: string; readonly [zlinkAuthorityKeyBrand]: true; }
-export interface ZLinkAuthorityStoreVersion { readonly value: string; readonly [zlinkAuthorityVersionBrand]: true; }
-export type ZLinkPlacementObjectKind = 'actor' | 'user_spot' | 'instance_spot';
-export type ZLinkPlacementAllocationState = 'reserved' | 'active';
-export interface ZLinkSpotTypeCapacityDelta {
-  readonly objectKind: 'user_spot' | 'instance_spot'; readonly stableType: string; readonly count: number;
+export interface ZLinkStoreVersion {
+  readonly value: string;
+  readonly [zlinkStoreVersionBrand]: true;
 }
-export interface ZLinkCapacityVector { readonly actors: number; readonly spots: number; readonly spotType?: ZLinkSpotTypeCapacityDelta; }
-export interface ZLinkPlacementAllocation {
-  readonly state: ZLinkPlacementAllocationState; readonly objectKind: ZLinkPlacementObjectKind;
-  readonly stableType: string; readonly descriptor: ZLinkMeshNodeDescriptorKey;
-  readonly descriptorLifecycleGeneration: bigint; readonly capacity: ZLinkCapacityVector;
-}
-export interface ZLinkPendingObjectCreation {
-  readonly reservationId: string; readonly requestContentReference: string;
-  readonly requestSha256: Uint8Array; readonly requestEncodedSize: bigint;
-}
-export interface ZLinkAuthoritySnapshot {
-  readonly kind: 'snapshot'; readonly storeVersion: ZLinkAuthorityStoreVersion; readonly payload: Uint8Array;
-  readonly objectGeneration: bigint; readonly authorityOwnerGeneration: bigint;
-  readonly ownerId: string; readonly ownerLeaseGeneration: bigint; readonly allocation: ZLinkPlacementAllocation;
-  readonly pendingCreation?: ZLinkPendingObjectCreation; readonly storeNow: Date;
-}
-export type ZLinkAuthorityReadResult = { readonly kind: 'missing'; readonly storeNow: Date } | ZLinkAuthoritySnapshot;
-export interface ZLinkRelocationCapacityFence { readonly value: string; readonly [zlinkRelocationCapacityFenceBrand]: true; }
-export type ZLinkAuthorityMutation =
-  | { readonly kind: 'put'; readonly payload: Uint8Array; readonly generationTransition: 'preserve' | 'newOwner'; readonly targetOwner?: ZLinkLocationOwnerToken; readonly relocationCapacityFence?: ZLinkRelocationCapacityFence }
-  | { readonly kind: 'restore'; readonly payload: Uint8Array; readonly expectedOwner: ZLinkLocationOwnerToken }
-  | { readonly kind: 'delete' };
-export type ZLinkAuthorityCompareExchangeResult =
-  | ({ readonly kind: 'stored' } & Omit<ZLinkAuthoritySnapshot, 'kind'>)
-  | { readonly kind: 'deleted'; readonly storeVersion: ZLinkAuthorityStoreVersion; readonly storeNow: Date }
-  | { readonly kind: 'conflict'; readonly current: ZLinkAuthorityReadResult }
-  | { readonly kind: 'generationExhausted' };
-export interface ZLinkAuthorityEntry { readonly key: ZLinkAuthorityKey; readonly snapshot: ZLinkAuthoritySnapshot; }
-export class ZLinkAuthorityScanCursor { private constructor(readonly encoded: string); static from(encoded: string): ZLinkAuthorityScanCursor; }
-export type ZLinkAuthorityScanResult =
-  | { readonly kind: 'page'; readonly items: readonly ZLinkAuthorityEntry[]; readonly nextCursor?: ZLinkAuthorityScanCursor }
-  | { readonly kind: 'scanExpired' };
 
-export interface ZLinkObjectCreationKey { readonly kind: ZLinkPlacementObjectKind; readonly globalId: string; }
-export interface ZLinkObjectCreationTarget {
-  readonly meshName: string; readonly nodeRid: RoutingId; readonly nodeLifecycleGeneration: bigint;
-  readonly owner: ZLinkLocationOwnerToken;
+export interface ZLinkStoreScanCursor {
+  readonly value: string;
+  readonly [zlinkStoreScanCursorBrand]: true;
 }
-export interface ZLinkObjectCreationIntent {
-  readonly stableType: string; readonly requestContentReference: string;
-  readonly requestSha256: Uint8Array; readonly requestEncodedSize: bigint;
+
+export interface ZLinkStoreValue {
+  readonly bytes: Uint8Array;
+  readonly version: ZLinkStoreVersion;
+  readonly expiresAt?: Date;
+  readonly storeNow: Date;
 }
-export interface ZLinkCreationOperationId { readonly high: bigint; readonly low: bigint; }
-export interface ZLinkCreationOperationIdentity {
-  readonly sourceNodeRid: RoutingId; readonly sourceNodeGeneration: bigint; readonly operationId: ZLinkCreationOperationId;
-}
-export interface ZLinkCreationTerminalPublication {
-  readonly operation: ZLinkCreationOperationIdentity; readonly terminalEnvelope: Uint8Array;
-  readonly terminalEnvelopeSha256: Uint8Array; readonly operationDeadline: Date;
-}
-export interface ZLinkCreationTerminalRecord {
-  readonly state: 'created' | 'rejected' | 'failed'; readonly operation: ZLinkCreationOperationIdentity;
-  readonly reservationId: string; readonly objectKind: ZLinkPlacementObjectKind;
-  readonly terminalEnvelope: Uint8Array; readonly terminalEnvelopeSha256: Uint8Array;
-  readonly expiresAt: Date; readonly storeNow: Date;
-}
-export type ZLinkCreationTerminalReadResult =
+
+export type ZLinkStoreReadResult =
   | { readonly kind: 'missing'; readonly storeNow: Date }
-  | { readonly kind: 'found'; readonly record: ZLinkCreationTerminalRecord };
-export interface ZLinkObjectReserveRequest {
-  readonly key: ZLinkObjectCreationKey; readonly intent: ZLinkObjectCreationIntent;
-  readonly target: ZLinkObjectCreationTarget; readonly creatingPayload: Uint8Array; readonly capacity: ZLinkCapacityVector;
-}
-export type ZLinkObjectReserveResult =
-  | { readonly kind: 'reserved'; readonly reservationId: string; readonly creating: ZLinkAuthoritySnapshot }
-  | { readonly kind: 'alreadyExists' | 'typeMismatch'; readonly current: ZLinkAuthoritySnapshot }
-  | { readonly kind: 'placementCapacityExhausted' }
-  | { readonly kind: 'conflict'; readonly current: ZLinkAuthorityReadResult }
-  | { readonly kind: 'generationExhausted' };
-export interface ZLinkObjectCommitRequest {
-  readonly key: ZLinkObjectCreationKey; readonly reservationId: string; readonly expectedStoreVersion: string;
-  readonly target: ZLinkObjectCreationTarget; readonly readyPayload: Uint8Array;
-}
-export type ZLinkObjectCommitResult =
-  | { readonly kind: 'committed' | 'alreadyCommitted'; readonly ready: ZLinkAuthoritySnapshot }
-  | { readonly kind: 'stale' | 'generationExhausted' };
-export type ZLinkObjectCreationCompletion =
-  | { readonly kind: 'created'; readonly readyPayload: Uint8Array; readonly terminal: ZLinkCreationTerminalPublication }
-  | { readonly kind: 'rejected' | 'failed'; readonly terminal: ZLinkCreationTerminalPublication };
-export interface ZLinkObjectCreationCompleteRequest {
-  readonly key: ZLinkObjectCreationKey; readonly reservationId: string; readonly expectedStoreVersion: string;
-  readonly target: ZLinkObjectCreationTarget; readonly completion: ZLinkObjectCreationCompletion;
-}
-export type ZLinkObjectCreationCompleteResult =
-  | { readonly kind: 'created'; readonly ready: ZLinkAuthoritySnapshot; readonly terminal: ZLinkCreationTerminalRecord }
-  | { readonly kind: 'rejected' | 'failed' | 'alreadyCompleted'; readonly terminal: ZLinkCreationTerminalRecord }
-  | { readonly kind: 'stale' | 'generationExhausted' };
-export interface ZLinkObjectAbortRequest {
-  readonly key: ZLinkObjectCreationKey; readonly reservationId: string;
-  readonly expectedStoreVersion: string; readonly target: ZLinkObjectCreationTarget;
-}
-export type ZLinkObjectAbortResult = { readonly kind: 'aborted' | 'alreadyAborted' | 'stale' };
+  | { readonly kind: 'found'; readonly value: ZLinkStoreValue };
 
-export interface ZLinkRelocationCapacityReservationRequest {
-  readonly reservationId: string; readonly authorityKey: ZLinkAuthorityKey;
-  readonly expectedStoreVersion: ZLinkAuthorityStoreVersion; readonly objectKind: ZLinkPlacementObjectKind;
-  readonly stableType: string; readonly sourceDescriptor: ZLinkMeshNodeDescriptorKey;
-  readonly sourceNodeLifecycleGeneration: bigint; readonly sourceOwner: ZLinkLocationOwnerToken;
-  readonly targetDescriptor: ZLinkMeshNodeDescriptorKey; readonly targetNodeLifecycleGeneration: bigint;
-  readonly targetOwner: ZLinkLocationOwnerToken; readonly capacity: ZLinkCapacityVector;
-}
-export type ZLinkRelocationCapacityReserveResult =
-  | { readonly kind: 'reserved' | 'alreadyReserved'; readonly fence: ZLinkRelocationCapacityFence }
-  | { readonly kind: 'conflict'; readonly current: ZLinkAuthorityReadResult }
-  | { readonly kind: 'targetUnavailable' | 'placementCapacityExhausted' };
-export type ZLinkRelocationCapacityAbortResult = 'aborted' | 'alreadyAborted' | 'alreadyCommitted' | 'stale';
-export interface ZLinkAggregateId { readonly value: string; readonly [zlinkAggregateIdBrand]: true; }
-export interface ZLinkAggregateParticipant {
-  readonly authorityKey: ZLinkAuthorityKey; readonly expectedStoreVersion: ZLinkAuthorityStoreVersion;
-  readonly ownerTransition: 'preserve' | 'newOwner'; readonly authorityPayload: Uint8Array;
-  readonly membershipMutation: Uint8Array;
-}
-export interface ZLinkAggregatePrepareRequest {
-  readonly aggregateId: ZLinkAggregateId; readonly aggregateGeneration: bigint;
-  readonly participants: readonly ZLinkAggregateParticipant[]; readonly inventoryDigest: Uint8Array;
-  readonly targetDescriptor: ZLinkMeshNodeDescriptorKey; readonly targetDescriptorLifecycleGeneration: bigint;
-  readonly capacity: ZLinkCapacityVector; readonly targetOwner: ZLinkLocationOwnerToken;
-}
-export interface ZLinkAggregateFence { readonly aggregateId: ZLinkAggregateId; readonly aggregateGeneration: bigint; }
-export type ZLinkAggregatePrepareResult =
-  | { readonly kind: 'prepared' | 'alreadyPrepared'; readonly fence: ZLinkAggregateFence }
-  | { readonly kind: 'conflict' | 'stale' | 'generationExhausted' };
-export type ZLinkAggregateCommitResult = { readonly kind: 'committed' | 'alreadyCommitted' | 'stale' | 'generationExhausted' };
-export type ZLinkAggregateAbortResult = { readonly kind: 'aborted' | 'alreadyAborted' | 'stale' };
+export type ZLinkStoreCondition =
+  | { readonly kind: 'missing'; readonly key: ZLinkStoreKey }
+  | {
+      readonly kind: 'version';
+      readonly key: ZLinkStoreKey;
+      readonly expected: ZLinkStoreVersion;
+    };
 
-export interface ZLinkRelocationReference { readonly value: string; readonly [zlinkRelocationReferenceBrand]: true; }
-export interface ZLinkRelocationStored {
-  readonly reference: ZLinkRelocationReference; readonly checksumCrc32c: number;
-  readonly expiresAt: Date; readonly storeNow: Date;
+export type ZLinkStoreMutation =
+  | {
+      readonly kind: 'put';
+      readonly key: ZLinkStoreKey;
+      readonly bytes: Uint8Array;
+      readonly retentionMs?: number;
+    }
+  | { readonly kind: 'delete'; readonly key: ZLinkStoreKey };
+
+export interface ZLinkStoreWriteRequest {
+  readonly conditions: readonly ZLinkStoreCondition[];
+  readonly mutations: readonly ZLinkStoreMutation[];
 }
-export type ZLinkRelocationReadResult =
-  | { readonly kind: 'found'; readonly payload: Uint8Array }
-  | { readonly kind: 'missing' };
-export type ZLinkRelocationRenewResult =
-  | { readonly kind: 'renewed'; readonly expiresAt: Date; readonly storeNow: Date }
-  | { readonly kind: 'missing' };
-export type ZLinkRelocationDeleteResult = 'deleted' | 'missing';
+
+export interface ZLinkStorePutVersion {
+  readonly key: ZLinkStoreKey;
+  readonly version: ZLinkStoreVersion;
+}
+
+export type ZLinkStoreWriteResult =
+  | {
+      readonly kind: 'applied';
+      readonly putVersions: readonly ZLinkStorePutVersion[];
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'conflict'; readonly storeNow: Date };
+
+export interface ZLinkStoreScanRequest {
+  readonly prefix: string;
+  readonly cursor?: ZLinkStoreScanCursor;
+  readonly limit: number;
+}
+
+export interface ZLinkStoreScanItem {
+  readonly key: ZLinkStoreKey;
+  readonly value: ZLinkStoreValue;
+}
+
+export interface ZLinkStoreScanPage {
+  readonly items: readonly ZLinkStoreScanItem[];
+  readonly nextCursor?: ZLinkStoreScanCursor;
+  readonly storeNow: Date;
+}
+
+export type ZLinkStoreScanResult =
+  | { readonly kind: 'page'; readonly value: ZLinkStoreScanPage }
+  | { readonly kind: 'expired' };
+
+export interface ZLinkLocationStore {
+  read(
+    key: ZLinkStoreKey,
+    signal?: AbortSignal
+  ): Promise<ZLinkStoreReadResult>;
+
+  write(
+    request: ZLinkStoreWriteRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkStoreWriteResult>;
+
+  scan(
+    request: ZLinkStoreScanRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkStoreScanResult>;
+
+  // Framework가 Store 수명을 인수한 경우 dependent runtime을 먼저 종료한 뒤 한 번 호출한다.
+  dispose?(): void | Promise<void>;
+}
 ```
 
-## 1. 공개 provider SPI
+Key는 Framework가 발급하는 opaque UTF-8 `1..1024` bytes 문자열이며 case-sensitive exact match를
+사용한다. Version과 cursor는 provider가 발급하는 opaque UTF-8 `1..4096` bytes 문자열이다.
+Value는 최대 1 MiB다. `retentionMs`가 없으면 만료되지 않으며, 만료 판단에는 provider clock을
+사용한다. `storeNow`는 같은 provider 관측에서 얻은 시각이므로 Framework는 local clock을 TTL
+판정에 사용하지 않는다. 지정한 `retentionMs`는 양의 safe integer여야 한다.
+
+Framework는 provider Promise가 settle될 때까지 전달한 `Uint8Array`를 변경하거나 다른 operation의
+buffer로 재사용하지 않는다. Provider는 반환한 `Uint8Array`를 Promise가 settle된 뒤 변경하거나 다른
+결과와 공유하지 않는다.
+
+`write(...)`는 모든 condition을 먼저 검사하고 모두 참일 때만 모든 mutation을 하나의 atomic
+commit으로 적용한다. 조건 하나라도 거짓이면 mutation과 version 증가는 모두 0이고 `conflict`를
+반환한다. Condition은 Missing 또는 exact Version 비교만 제공한다. Conflict 결과에 domain state나
+current value를 싣지 않으며 Framework가 필요한 key를 exact read한다.
+
+한 write request는 condition과 mutation을 합쳐 최대 2,048개의 unique key와 최대 4 MiB의 encoded
+크기를 허용한다. 같은 key의 condition 또는 mutation을 중복할 수 없다.
+
+`scan(...)`은 recovery와 maintenance가 bounded key set을 찾기 위한 필수 operation이다. Prefix는
+UTF-8 `0..1024` bytes이고 limit은 `1..1000`이다. 첫 page가 만든 snapshot은 마지막 page까지
+고정된다. Provider가 snapshot을 더 유지할 수 없으면 `expired`를 반환하고 Framework는 부분 결과를
+버린 뒤 첫 page부터 다시 읽는다. 한 page는 encoded 4 MiB에 도달하면 limit보다 적은 item을 반환할
+수 있다.
+
+## 2. Relocation Store
 
 ```ts
-export interface ZLinkLocationStore {
-  updateMeshNode(
-    descriptor: ZLinkMeshNodeDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
+declare const zlinkBlobReferenceBrand: unique symbol;
 
-  removeMeshNode(
-    key: ZLinkMeshNodeDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-
-  listMeshNodes(
-    meshName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>;
-
-  updateClientServer(
-    descriptor: ZLinkClientServerServerDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-
-  removeClientServer(
-    key: ZLinkClientServerServerDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-
-  listClientServers(
-    channelName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>;
-
-  updateFanoutPublisher(
-    descriptor: ZLinkFanoutPublisherDescriptor,
-    intent: ZLinkLocationWriteIntent,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteResult>;
-
-  removeFanoutPublisher(
-    key: ZLinkFanoutPublisherDescriptorKey,
-    owner: ZLinkLocationOwnerToken,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationWriteStatus>;
-
-  listFanoutPublishers(
-    channelName: string,
-    page?: ZLinkPageRequest,
-    signal?: AbortSignal
-  ): Promise<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>;
-
-  claimOwnerLease(ownerId: string, leaseTtlMs: number, signal?: AbortSignal): Promise<ZLinkOwnerLeaseClaimResult>;
-  readOwnerLease(ownerId: string, signal?: AbortSignal): Promise<ZLinkOwnerLeaseReadResult>;
-  renewOwnerLease(owner: ZLinkLocationOwnerToken, leaseTtlMs: number, signal?: AbortSignal): Promise<ZLinkOwnerLeaseRenewResult>;
-  releaseOwnerLease(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkOwnerLeaseReleaseResult>;
-
-  readAuthority(key: ZLinkAuthorityKey, signal?: AbortSignal): Promise<ZLinkAuthorityReadResult>;
-  compareExchangeAuthority(
-    key: ZLinkAuthorityKey,
-    expectedStoreVersion: ZLinkAuthorityStoreVersion,
-    mutation: ZLinkAuthorityMutation,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityCompareExchangeResult>;
-  listAuthorities(
-    prefix: string,
-    cursor: ZLinkAuthorityScanCursor | undefined,
-    limit: number,
-    signal?: AbortSignal
-  ): Promise<ZLinkAuthorityScanResult>;
-
-  readCreationTerminal(operation: ZLinkCreationOperationIdentity, signal?: AbortSignal): Promise<ZLinkCreationTerminalReadResult>;
-  reserve(request: ZLinkObjectReserveRequest, signal?: AbortSignal): Promise<ZLinkObjectReserveResult>;
-  commit(request: ZLinkObjectCommitRequest, signal?: AbortSignal): Promise<ZLinkObjectCommitResult>;
-  completeCreation(request: ZLinkObjectCreationCompleteRequest, signal?: AbortSignal): Promise<ZLinkObjectCreationCompleteResult>;
-  abort(request: ZLinkObjectAbortRequest, signal?: AbortSignal): Promise<ZLinkObjectAbortResult>;
-
-  reserveRelocationCapacity(request: ZLinkRelocationCapacityReservationRequest, signal?: AbortSignal): Promise<ZLinkRelocationCapacityReserveResult>;
-  abortRelocationCapacity(fence: ZLinkRelocationCapacityFence, signal?: AbortSignal): Promise<ZLinkRelocationCapacityAbortResult>;
-  prepareAggregate(request: ZLinkAggregatePrepareRequest, signal?: AbortSignal): Promise<ZLinkAggregatePrepareResult>;
-  commitAggregate(fence: ZLinkAggregateFence, signal?: AbortSignal): Promise<ZLinkAggregateCommitResult>;
-  abortAggregate(fence: ZLinkAggregateFence, signal?: AbortSignal): Promise<ZLinkAggregateAbortResult>;
-
-  removeAllByOwner(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<bigint>;
-
-  // Descriptor refresh를 즉시 깨우는 선택적 hint다. 없으면 runtime이 polling한다.
-  getMeshNodeChangeStamp?(meshName: string, signal?: AbortSignal): Promise<bigint | undefined>;
+export interface ZLinkBlobReference {
+  readonly value: string;
+  readonly [zlinkBlobReferenceBrand]: true;
 }
+
+export type ZLinkBlobPutResult =
+  | {
+      readonly kind: 'stored' | 'alreadyStored';
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'conflict'; readonly storeNow: Date };
+
+export type ZLinkBlobReadResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | {
+      readonly kind: 'found';
+      readonly bytes: Uint8Array;
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    };
+
+export type ZLinkBlobRenewResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | {
+      readonly kind: 'renewed';
+      readonly expiresAt: Date;
+      readonly storeNow: Date;
+    };
 
 export interface ZLinkRelocationStore {
-  putRelocation(payload: Uint8Array, retentionMs: number, signal?: AbortSignal): Promise<ZLinkRelocationStored>;
-  getRelocation(reference: ZLinkRelocationReference, signal?: AbortSignal): Promise<ZLinkRelocationReadResult>;
-  renewRelocation(reference: ZLinkRelocationReference, retentionMs: number, signal?: AbortSignal): Promise<ZLinkRelocationRenewResult>;
-  deleteRelocation(reference: ZLinkRelocationReference, signal?: AbortSignal): Promise<ZLinkRelocationDeleteResult>;
+  put(
+    reference: ZLinkBlobReference,
+    payload: Uint8Array,
+    retentionMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkBlobPutResult>;
+
+  read(
+    reference: ZLinkBlobReference,
+    signal?: AbortSignal
+  ): Promise<ZLinkBlobReadResult>;
+
+  renew(
+    reference: ZLinkBlobReference,
+    retentionMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkBlobRenewResult>;
+
+  // Reference가 없어도 성공하는 idempotent operation이다.
+  delete(
+    reference: ZLinkBlobReference,
+    signal?: AbortSignal
+  ): Promise<void>;
+
+  dispose?(): void | Promise<void>;
 }
 ```
 
-`ZLinkLocationStore`가 descriptor·lease·authority·reservation·aggregate commit의 transaction boundary를 소유한다. `ZLinkRelocationStore`는 immutable relocation payload만 저장한다. 두 store 사이의 공개 distributed transaction 계약은 없다.
+Reference는 Framework가 put 전에 발급하는 opaque UTF-8 `1..4096` bytes 문자열이며 exact match를
+사용한다. 삭제되거나 만료된 reference도 다른 content에 다시 사용하지 않는다. 같은 reference와 같은
+bytes를 다시 put하면 `alreadyStored`, 다른 bytes를 put하면 `conflict`다. 이 규칙으로 Framework는
+timeout이나 연결 오류 뒤에 같은 reference를 exact read하여 저장 결과를 재조정할 수 있다.
+`retentionMs`는 양의 safe integer여야 한다.
 
-`ZLinkAuthorityMutation`의 `restore` variant는 startup recovery 전용이다. Provider는 exact
-`expectedStoreVersion`, active allocation과 `expectedOwner`를 함께 확인하지만 owner lease가 현재 live인지는
-요구하지 않는다. 따라서 payload root를 게시하기 전에 process가 종료되어 남은 root 없는 `Preparing`
-authority만 이전 steady payload로 복원할 수 있다. 일반 `put`과 `delete`의 live-owner fence는 그대로 유지한다.
+Blob 하나는 최대 64 MiB다. Framework는 최대 4,096개의 chunk와 immutable root manifest를 사용해
+최대 256 GiB의 logical relocation stream을 구성한다. Checksum, root·chunk 관계, participant
+inventory와 relocation phase는 Framework가 소유하며 provider는 payload를 해석하지 않는다.
 
-다음 이름은 public contract가 아니다.
+## 3. 등록과 수명
 
-- capability별 `*Store` interface
-- `Watch`·change event store
-- Actor 전용 transfer store
-- Routing ID allocation slot store
-- Spot·Actor location 저장 행과 key
+Application은 기존 `addLocationStore(...)`와 `addRelocationStore(...)`로 두 capability를 각각 한 번
+등록한다. 같은 의미의 `use*` method나 Redis 전용 등록 helper는 제공하지 않는다. 등록이 성공하면
+Store instance의 수명은 Framework가 인수한다. Framework는 dependent runtime과 진행 중인 operation을
+먼저 종료한 뒤 Store의 `dispose()`가 있으면 정확히 한 번 호출한다. 두 Store가 connection을 공유하면
+각 Store의 dispose 뒤 connection을 닫을지는 provider가 reference count나 외부 ownership으로 관리한다.
 
-## 2. Redis extension 공개 표면
+호출 전에 `AbortSignal`이 중단되면 provider는 I/O와 commit을 시작하지 않는다. 호출을 시작한 뒤
+중단되거나 transport 오류가 발생하면 commit 여부가 불확실할 수 있다. Framework는 Location Store의
+exact read와 version 또는 Relocation Store의 Framework-issued reference로 결과를 재조정한다.
+
+## 4. Redis extension
 
 ```ts
 export interface ZLinkRedisLocationOptions {
@@ -339,6 +240,7 @@ export interface ZLinkRedisLocationOptions {
   readonly client?: RedisClientType;
   readonly clientOptions?: RedisClientOptions;
   readonly keyPrefix: string;
+  readonly operationTimeoutMs?: number;
 }
 
 export interface ZLinkRedisRelocationOptions {
@@ -346,6 +248,7 @@ export interface ZLinkRedisRelocationOptions {
   readonly client?: RedisClientType;
   readonly clientOptions?: RedisClientOptions;
   readonly keyPrefix: string;
+  readonly operationTimeoutMs?: number;
 }
 
 export class ZLinkRedisLocationStore implements ZLinkLocationStore {
@@ -359,16 +262,20 @@ export class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
 }
 ```
 
-공개 extension 표면은 options 두 개와 store 구현 두 개다. raw Redis command adapter, mutable options builder와 Lua script·key codec은 extension 내부 구현이다.
+공식 Redis package가 공개하는 provider 표면은 options 두 개와 Store 구현 class 두 개다. Redis key
+layout, Lua script, private record encoding, retry와 connection lease는 implementation detail이다. 두
+Store는 같은 Redis deployment와 client를 공유하거나 물리적으로 분리할 수 있다. 같은 deployment를
+사용해도 서로 다른 `keyPrefix`를 사용하며 cross-store transaction은 요구하지 않는다.
 
-같은 Redis deployment를 사용하려면 두 options에 같은 URL 또는 client를 넘기고 서로 다른 `keyPrefix`를 사용한다. 물리적으로 분리할 때도 application의 Framework 등록 계약은 바뀌지 않는다.
+## 5. 공개하지 않는 타입
 
-## 3. 운영 query
+다음 타입과 operation은 Framework private record 또는 Redis implementation detail이다.
 
-Application이 저장 행을 직접 조합하지 않도록 runtime query는 aggregate projection만 제공한다.
+- Authority·owner lease·reservation·capacity·fence·aggregate DTO
+- `reserve`, `commit`, `abort`, `prepareAggregate` 같은 domain operation
+- relocation phase·manifest·participant DTO와 provider-generated relocation reference
+- raw Redis command adapter, script와 key codec
+- Spot·Actor 전용 Store와 capability별 Store interface
 
-`ZLinkLocationRuntimeQuery`의 exact 선언은
-[Location 운영 조회와 observability](03-location-observability.ko.md)가 단독으로 소유한다. 이 문서는
-provider가 공급하는 저장 capability와 relocation 책임만 고정한다.
-
-`ZLinkLocationAutoConnectType`, raw Spot·Actor·route row query와 저장 key는 runtime 내부 계약이므로 이 문서와 package root export에 포함하지 않는다.
+Application이 사용하는 location 운영 query는
+[Location, monitoring과 metrics](03-location-observability.ko.md)가 단독으로 소유한다.

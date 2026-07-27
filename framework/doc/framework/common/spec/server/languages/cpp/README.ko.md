@@ -12,7 +12,7 @@ C++의 HTTP 공개 계약은 이 디렉토리에서 별도 문서로 정의한�
 |---|------|------|
 | `01` | [시스템 구조](01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, **configuration**, **logging**, lifecycle, 등록 표면 |
 | `02` | [기능별 exact interface](interfaces/README.ko.md) | Server package의 기능별 C++ public type과 member |
-| `03` | [Location Store·Redis 이동 안내](03-location-store.ko.md) | 기능별 exact interface의 Location Store·Redis 문서로 연결 |
+| `03` | [Location·Relocation Store·Redis 이동 안내](03-location-store.ko.md) | 기능별 exact interface의 Store·Redis 문서로 연결 |
 | `60` | [HTTP hosting](60-http-hosting.ko.md) | HTTP 호스팅 계약 |
 | `61` | [내장 HTTP 서버](61-embedded-http-server.ko.md) | 내장 서버 |
 

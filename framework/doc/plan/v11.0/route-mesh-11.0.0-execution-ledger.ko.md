@@ -51,6 +51,29 @@ smoke 순서다. 서로 독립적인 언어 lane은 계속 병렬로 실행한�
 안정 checkpoint마다 이 문서와 blocked issue log를 먼저 갱신한 뒤 전체 언어 gate에 방해되지 않는 단위로
 commit·push한다. `framework/doc/plan/log/`는 이 작업에서 수정하지 않는다.
 
+### 0.0.3 2026-07-27 relocation recovery checkpoint
+
+현재 상태 기준 revision은 `17d7280ea7`이다.
+
+- 공통 문서 contract gate가 통과한다. Service wire는 40 commands, 167 types, 37 bounds이며 negative
+  self-test 233개가 통과했다. Public contract trace는 document 51개, declaration owner 1,252개,
+  member 4,389개이며 unclassified·ambiguous 항목은 0이다.
+- `.NET`은 command `40 → 30 offer → 30 accept → 41`의 역할별 payload 모양을 회귀 test로 고정했다.
+  Codec focused test 6/6, reservation owner test 16/16, documentation regression 15/15와 전체 Unit
+  1,072/1,072가 통과했다. Mixed-language process relocation E2E가 남아 있으므로
+  `V11-M6-DN-REFERENCE`와 `BLK-044`는 계속 진행 상태다.
+- C++은 Store에서 만료 descriptor를 제외한 live view만 읽고, Store 복구 뒤 owner lease 확인과
+  descriptor 재등록이 끝나기 전에는 기존 automatic connection을 제거하지 않는다. Target contract,
+  sample parity 54/54와 live-row focused test가 통과했다.
+- C++ deferred Actor Join은 non-zero operation ID, Actor queue barrier 예약, `Rejected`·`Failed`
+  callback 전달과 callback 실패 재시도를 구현했다. 미분류 실패는 `RequestFailed`,
+  `retryable=false`로 통일했으며 execution test가 통과했다.
+- 실제 C++·JVM·Node host lifecycle source에는 새 `Relocated`·`Relocate`·`Shutdown` public contract가
+  아직 모두 반영되지 않았다. 언어별 차이는 implementation gap §12.51이 소유한다.
+
+Impact manifest quarantine과 mixed-language process relocation E2E는 아직 통과하지 않는다. 이
+checkpoint는 해당 두 gate를 승인하거나 완료로 바꾸지 않는다.
+
 ### 0.0.2 2026-07-27 전체 진행 상태 checkpoint
 
 현재 상태 기준 revision은 `f26ff5945b1dde46cacfd632c588cfcdfbdcccd5`다. 아래 수치는 이 revision을
@@ -113,8 +136,8 @@ M8 cleanup과 M9 package·smoke는 해당 선행 조건을 건너뛰지 않는�
 않는 두 번째 대안으로 승인했다. Location Store는 opaque key·value와 version을 사용하는 atomic batch,
 TTL과 bounded scan만 제공하고, Relocation Store는 Framework가 먼저 발급한 reference에 immutable blob을
 저장한다. Host lifecycle은 relocation과 종료를 별도 command로 제공한다. `RelocateAsync`는 신규
-application admission과 placement를 닫고 현재 workload를 이전한 뒤 `Drained`에서 완료하며,
-`ShutdownAsync`는 relocation을 시작하지 않고 `Serving` 또는 `Drained` host를 종료한다.
+application admission과 placement를 닫고 현재 workload를 이전한 뒤 `Relocated`에서 완료하며,
+`ShutdownAsync`는 relocation을 시작하지 않고 `Serving` 또는 `Relocated` host를 종료한다.
 `PlannedMaintenance`는 source와 같은 application version만 target으로 사용한다. `RollingUpdate`는
 호출자가 지정한 더 높은 application version과 정확히 일치하는 target만 사용한다. 두 mode 모두
 source와 같은 maintenance wave를 제외하며 mode와 target version이 같은 concurrent waiter만 합류한다.

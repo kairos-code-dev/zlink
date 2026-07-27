@@ -204,25 +204,31 @@ struct room_timer_handler_t
 class room_spot_t : public fw::spot_t
 {
   public:
-    room_spot_t (bool timer_enabled,
+    room_spot_t (fw::spot_context_t context,
+                 bool timer_enabled,
                  std::shared_ptr<workflow_event_store_t> event_store = {}) :
-        _event_store (std::move (event_store)), _timer_enabled (timer_enabled)
+        _context (std::move (context)),
+        _event_store (std::move (event_store)),
+        _timer_enabled (timer_enabled)
     {
     }
 
-    void configure (fw::spot_context_t &context)
+    fw::spot_context_t &context () noexcept { return _context; }
+    const fw::spot_context_t &context () const noexcept { return _context; }
+
+    void configure ()
     {
-        _context = context;
-        context.handlers ().add_handler<&room_spot_t::apply_action> (
+        _context.handlers ().add_handler<&room_spot_t::apply_action> (
           obs::obs_action_req_t::packet_name);
-        context.handlers ().add_subscribe<&room_spot_t::on_projection> (obs::projection_topic);
+        _context.handlers ().add_subscribe<&room_spot_t::on_projection> (
+          obs::projection_topic);
     }
 
     void on_initialize ()
     {
         if (_event_store) {
             _applied = _event_store
-                         ->replay (std::string (_context.spot_rid ().value ()))
+                         ->replay (_context.spot_id ())
                          .value_or (0);
         }
         if (_timer_enabled) {
@@ -252,7 +258,7 @@ class room_spot_t : public fw::spot_t
     {
         _context
           .publish (obs::projection_topic,
-                    obs::projection_event_t{std::string (_context.spot_rid ().value ()),
+                    obs::projection_event_t{_context.spot_id (),
                                             "obs-timer", _applied})
           .submit ();
     }
@@ -292,17 +298,21 @@ struct obs_actor_factory_t
 class obs_entry_spot_t : public fw::entry_spot_t
 {
   public:
-    void configure (fw::entry_spot_context_t &context)
+    explicit obs_entry_spot_t (fw::entry_spot_context_t context) :
+        _context (std::move (context))
     {
-        _context = context;
-        context.handlers ().add_actor_request<&obs_entry_spot_t::actor_ping> (
-          obs::actor_ping_req_t::packet_name);
     }
 
-    void configure (fw::spot_context_t &context)
+    fw::entry_spot_context_t &context () noexcept { return _context; }
+    const fw::entry_spot_context_t &context () const noexcept
     {
-        fw::entry_spot_context_t entry_context (context);
-        configure (entry_context);
+        return _context;
+    }
+
+    void configure ()
+    {
+        _context.handlers ().add_actor_request<&obs_entry_spot_t::actor_ping> (
+          obs::actor_ping_req_t::packet_name);
     }
 
     fw::spot_actor_join_response_t on_actor_join (std::string_view actor_id,
@@ -314,7 +324,7 @@ class obs_entry_spot_t : public fw::entry_spot_t
     }
 
     obs::actor_ping_res_t actor_ping (obs_actor_t &actor,
-                                      fw::spot_actor_request_context_t &,
+                                      fw::message_context_t &,
                                       const obs::actor_ping_req_t &request)
     {
         actor.total += request.value;
@@ -349,27 +359,11 @@ class join_actor_handler_t
                 return obs::join_actor_res_t{request.actor_id, {}, false,
                                              error != nullptr ? error->what () : "join failed"};
             }
-            /* The drain handoff moves actors that hold a spot placement, so
-             * the fixture joins the local entry spot (rid == node rid). */
-            auto joined = actor.value ()
-                            .context ()
-                            .join_spot (fw::spot_rid_t::from_string (_node_rid),
-                                        obs::join_actor_req_t{request.actor_id})
-                            .async ()
-                            .result ();
-            if (!joined) {
-                const auto *error = joined.error ();
-                return obs::join_actor_res_t{request.actor_id, {}, false,
-                                             error != nullptr ? error->what ()
-                                                              : "entry join failed"};
-            }
-            const auto *accepted =
-              std::get_if<fw::actor_join_accepted_t<fw::message_t>> (&joined.value ());
-            if (accepted == nullptr) {
-                return obs::join_actor_res_t{request.actor_id, {}, false, "join rejected"};
-            }
             return obs::join_actor_res_t{
-              request.actor_id, std::string (accepted->actor.node_rid ().value ()), true, {}};
+              request.actor_id,
+              std::string (actor.value ().ref ().node_rid ().value ()),
+              true,
+              {}};
         }
         catch (const std::exception &error) {
             return obs::join_actor_res_t{request.actor_id, {}, false, error.what ()};
@@ -417,10 +411,10 @@ class obs_session_t final : public fw::packet_stream_session_t
 {
   public:
     using dependency_types =
-      fw::dependency_list_t<fw::route_client_t, fw::spot_handle_resolver_t>;
+      fw::dependency_list_t<fw::route_client_t>;
 
-    obs_session_t (fw::route_client_t &routes, fw::spot_handle_resolver_t &spots) :
-        _routes (routes), _spots (spots)
+    explicit obs_session_t (fw::route_client_t &routes) :
+        _routes (routes)
     {
     }
 
@@ -438,14 +432,7 @@ class obs_session_t final : public fw::packet_stream_session_t
                                                + std::string (dispatch.packet_name ()));
         }
         auto request = payload.parse_json<obs::obs_action_req_t> ();
-        auto handle = co_await _spots.resolve_spot_handle (
-          fw::spot_rid_t::from_string (request.spot_rid));
-        if (!handle) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::spot_route_not_found,
-                                             "room '" + request.spot_rid
-                                               + "' has no live location row");
-        }
-        auto reply = co_await _routes.request_to_spot (*handle, request)
+        auto reply = co_await _routes.request_to_spot (request.spot_rid, request)
                        .timeout (std::chrono::milliseconds (5000))
                        .submit<obs::obs_action_res_t> ();
         stream.reply_packet (zlink::message_t::from_json (reply))
@@ -455,20 +442,20 @@ class obs_session_t final : public fw::packet_stream_session_t
 
   private:
     fw::route_client_t &_routes;
-    fw::spot_handle_resolver_t &_spots;
 };
 
 class evidence_handler_t
 {
   public:
-    using dependency_types = fw::dependency_list_t<observability_evidence_t,
-                                                   fw::location_store_t,
-                                                   drain_control_t>;
+    using dependency_types =
+      fw::dependency_list_t<observability_evidence_t,
+                            fw::location_runtime_query_t,
+                            drain_control_t>;
 
     evidence_handler_t (observability_evidence_t &evidence,
-                        fw::location_store_t &store,
+                        fw::location_runtime_query_t &locations,
                         drain_control_t &drain) :
-        _evidence (evidence), _store (store), _drain (drain)
+        _evidence (evidence), _locations (locations), _drain (drain)
     {
     }
 
@@ -485,7 +472,12 @@ class evidence_handler_t
         }
         auto peer_rows = nlohmann::json::array ();
         try {
-            const auto peers = _store.list_mesh_nodes ({}, {}).result ().value ();
+            const auto peers =
+              _locations
+                .list_mesh_node_descriptors (
+                  {}, fw::location_page_request_t{.page_size = 1000})
+                .result ()
+                .value ();
             for (const auto &peer : peers.items) {
                 peer_rows.push_back (nlohmann::json{
                   {"nodeRid", peer.rid.to_hex ()},
@@ -499,25 +491,6 @@ class evidence_handler_t
             json["peerRowsError"] = error.what ();
         }
         json["peerRows"] = peer_rows;
-        auto owner_leases = nlohmann::json::array ();
-        try {
-            const auto snapshot = _store.list_owner_leases ().result ().value ();
-            for (const auto &lease : snapshot.leases) {
-                const auto renewed_at = std::chrono::duration_cast<std::chrono::milliseconds> (
-                  lease.updated_at.time_since_epoch ())
-                                          .count ();
-                const auto expires_at = std::chrono::duration_cast<std::chrono::milliseconds> (
-                  lease.lease_expires_at.time_since_epoch ())
-                                          .count ();
-                owner_leases.push_back (nlohmann::json{{"ownerId", lease.owner_id},
-                                                       {"renewedAtUnixMs", renewed_at},
-                                                       {"expiresAtUnixMs", expires_at}});
-            }
-        }
-        catch (const std::exception &error) {
-            json["ownerLeasesError"] = error.what ();
-        }
-        json["ownerLeases"] = owner_leases;
         try {
             json["ready"] = _drain.is_ready ? _drain.is_ready () : true;
         }
@@ -535,7 +508,7 @@ class evidence_handler_t
 
   private:
     observability_evidence_t &_evidence;
-    fw::location_store_t &_store;
+    fw::location_runtime_query_t &_locations;
     drain_control_t &_drain;
 };
 
@@ -544,30 +517,22 @@ class action_handler_t
   public:
     using request_type = obs::obs_action_req_t;
     using reply_type = obs::obs_action_res_t;
-    using dependency_types =
-      fw::dependency_list_t<fw::route_client_t, fw::spot_handle_resolver_t>;
+    using dependency_types = fw::dependency_list_t<fw::route_client_t>;
 
-    action_handler_t (fw::route_client_t &routes, fw::spot_handle_resolver_t &spots) :
-        _routes (routes), _spots (spots)
+    explicit action_handler_t (fw::route_client_t &routes) :
+        _routes (routes)
     {
     }
 
     fw::task_t<obs::obs_action_res_t> handle (const obs::obs_action_req_t &request)
     {
-        auto spot = co_await _spots.resolve_spot_handle (
-          fw::spot_rid_t::from_string (request.spot_rid));
-        if (!spot) {
-            throw fw::framework_exception_t (fw::framework_error_kind_t::spot_route_not_found,
-                                             "room route was not found");
-        }
-        co_return co_await _routes.request_to_spot (*spot, request)
+        co_return co_await _routes.request_to_spot (request.spot_rid, request)
           .timeout (std::chrono::milliseconds (5000))
           .submit<obs::obs_action_res_t> ();
     }
 
   private:
     fw::route_client_t &_routes;
-    fw::spot_handle_resolver_t &_spots;
 };
 
 class create_room_handler_t
@@ -576,9 +541,10 @@ class create_room_handler_t
     using request_type = obs::create_room_req_t;
     using reply_type = obs::create_room_res_t;
     using dependency_types =
-      fw::dependency_list_t<fw::spot_node_manager_t, drain_control_t, host_role_descriptor_t>;
+      fw::dependency_list_t<fw::spot_manager_t, drain_control_t,
+                            host_role_descriptor_t>;
 
-    create_room_handler_t (fw::spot_node_manager_t &spots,
+    create_room_handler_t (fw::spot_manager_t &spots,
                            drain_control_t &drain,
                            host_role_descriptor_t &role) :
         _spots (spots), _drain (drain), _role (role)
@@ -590,21 +556,28 @@ class create_room_handler_t
         if (_drain.is_ready && !_drain.is_ready ()) {
             return obs::create_room_res_t{request.spot_rid, "rejected"};
         }
-        const auto created = _spots.get_or_create_spot (
-          _role.value ==
-              zlink::framework::e2e::observability_ops::server::host_role_t::order_workflow
-            ? obs::order_workflow_spot
-            : obs::room_spot,
-          fw::spot_rid_t::from_string (request.spot_rid));
-        const auto state = created.state == fw::spot_create_state_t::created ? "created"
-                           : created.state == fw::spot_create_state_t::existing
-                             ? "existing"
-                             : "rejected";
+        const auto created =
+          _spots
+            .get_or_create (
+              request.spot_rid,
+              _role.value ==
+                  zlink::framework::e2e::observability_ops::server::host_role_t::order_workflow
+                ? obs::order_workflow_spot
+                : obs::room_spot)
+            .submit ()
+            .result ();
+        if (!created) {
+            return obs::create_room_res_t{request.spot_rid, "rejected"};
+        }
+        const auto state =
+          created.value ().state == fw::spot_create_state_t::existing
+            ? "existing"
+            : "created";
         return obs::create_room_res_t{request.spot_rid, state};
     }
 
   private:
-    fw::spot_node_manager_t &_spots;
+    fw::spot_manager_t &_spots;
     drain_control_t &_drain;
     host_role_descriptor_t &_role;
 };
@@ -614,21 +587,23 @@ class close_room_handler_t
   public:
     using request_type = obs::create_room_req_t;
     using reply_type = obs::create_room_res_t;
-    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t>;
+    using dependency_types = fw::dependency_list_t<fw::spot_manager_t>;
 
-    explicit close_room_handler_t (fw::spot_node_manager_t &spots) : _spots (spots) {}
+    explicit close_room_handler_t (fw::spot_manager_t &spots) : _spots (spots) {}
 
     obs::create_room_res_t handle (const obs::create_room_req_t &request)
     {
-        const auto closed = _spots
-                              .close_spot (fw::spot_rid_t::from_string (request.spot_rid))
-                              .result ();
+        const auto found = _spots.find (request.spot_rid).result ();
+        if (!found || !found.value ()) {
+            return obs::create_room_res_t{request.spot_rid, "not_closed"};
+        }
+        const auto closed = _spots.close (*found.value ()).result ();
         return obs::create_room_res_t{
           request.spot_rid, closed && closed.value () ? "closed" : "not_closed"};
     }
 
   private:
-    fw::spot_node_manager_t &_spots;
+    fw::spot_manager_t &_spots;
 };
 
 class drain_handler_t
@@ -717,7 +692,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
               .key_prefix = options.redis_key_prefix}));
         {
             auto &locations = framework.configure_locations ();
-            locations.heartbeat_interval = std::chrono::seconds (1);
+            locations.owner_lease_renew_interval = std::chrono::seconds (1);
             locations.owner_lease_ttl = std::chrono::seconds (5);
             locations.polling_interval = std::chrono::milliseconds (250);
         }
@@ -746,11 +721,17 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                 spot.channel_name (mesh_name);
                 spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
                   .listen (options.spot_router_endpoint)
-                  .add_entry_spot<obs_entry_spot_t> ()
+                  .add_entry_spot<obs_entry_spot_t> (
+                    [] (fw::entry_spot_context_t context) {
+                        return std::make_shared<obs_entry_spot_t> (
+                          std::move (context));
+                    })
                   .add_spot<room_spot_t> (
                     spot_type,
-                    [timer_enabled = options.room_timer_enabled] {
-                        return std::make_shared<room_spot_t> (timer_enabled);
+                    [timer_enabled = options.room_timer_enabled] (
+                      fw::spot_context_t context) {
+                        return std::make_shared<room_spot_t> (
+                          std::move (context), timer_enabled);
                     })
                   .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
             } else {
@@ -760,8 +741,11 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                   .listen (options.spot_router_endpoint)
                   .add_spot<room_spot_t> (
                     spot_type,
-                    [timer_enabled = options.room_timer_enabled, workflow_events] {
-                        return std::make_shared<room_spot_t> (timer_enabled, workflow_events);
+                    [timer_enabled = options.room_timer_enabled,
+                     workflow_events] (fw::spot_context_t context) {
+                        return std::make_shared<room_spot_t> (
+                          std::move (context), timer_enabled,
+                          workflow_events);
                     });
             }
         }

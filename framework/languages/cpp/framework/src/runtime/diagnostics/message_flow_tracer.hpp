@@ -160,6 +160,19 @@ class message_flow_tracer_t
         return "unknown";
     }
 
+    static const char *terminal_outcome_name (
+      message_flow_outcome_t outcome) noexcept
+    {
+        switch (outcome) {
+            case message_flow_outcome_t::error:
+                return "failed";
+            case message_flow_outcome_t::dropped:
+                return "dropped";
+            default:
+                return "succeeded";
+        }
+    }
+
     /* Fills the optional flow pair from the ambient context when the caller
      * did not carry it (flow-correlation §8: both or neither). */
     static void stamp_flow (message_flow_event_t &event)
@@ -208,7 +221,9 @@ class message_flow_tracer_t
             auto add = [&fields] (const char *key, std::string value) {
                 diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
+            add ("event_id", "zlink.message_flow");
             add ("phase", std::string (enum_name (event.outcome)));
+            add ("outcome", terminal_outcome_name (event.outcome));
             add ("surface", std::string (enum_name (event.surface)));
             add ("kind", std::string (enum_name (event.message_kind)));
             if (_options->diagnostics.label ()) {

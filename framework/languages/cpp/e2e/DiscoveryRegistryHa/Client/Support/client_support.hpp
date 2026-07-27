@@ -31,7 +31,7 @@ inline TReply post_json (const std::string &base_url,
 {
     auto client =
       zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    return client.post (path).body (request).template async<TReply> ().result ().value ().body;
+    return client.post (path).body (request).template submit<TReply> ().result ().value ().body;
 }
 
 template <typename TReply>
@@ -41,7 +41,7 @@ inline TReply get_json (const std::string &base_url,
 {
     auto client =
       zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    return client.get (path).template async<TReply> ().result ().value ().body;
+    return client.get (path).template submit<TReply> ().result ().value ().body;
 }
 
 inline void post_empty (const std::string &base_url, const std::string &path)

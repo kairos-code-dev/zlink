@@ -39,7 +39,7 @@ namespace
 using namespace std::chrono_literals;
 
 class monitoring_mesh_store_t final :
-    public zlink::framework::mesh_node_location_store_t
+    public zlink::framework::runtime::in_memory_location_store_t
 {
   public:
     zlink::framework::mesh_node_descriptor_t descriptor;
@@ -148,24 +148,18 @@ struct contract_actor_t;
 struct contract_transfer_adapter_t;
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_entry_spot<contract_entry_spot_t> ()),
-               zlink::framework::mesh_node_builder_t &>);
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_entry_spot<contract_entry_spot_t> (
                              std::declval<std::function<
-                               std::shared_ptr<contract_entry_spot_t> ()>> ())),
-               zlink::framework::mesh_node_builder_t &>);
-static_assert (std::is_same_v<
-               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
-                           .add_spot<contract_spot_t> (std::declval<std::string> ())),
+                               std::shared_ptr<contract_entry_spot_t> (
+                                 zlink::framework::entry_spot_context_t)>> ())),
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_spot<contract_spot_t> (
                              std::declval<std::string> (),
                              std::declval<
-                               std::function<std::shared_ptr<contract_spot_t> ()>> ())),
+                               std::function<std::shared_ptr<contract_spot_t> (
+                                 zlink::framework::spot_context_t)>> ())),
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()

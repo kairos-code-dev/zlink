@@ -133,10 +133,12 @@ int main ()
             tracer.trace (flow_event (message_flow_outcome_t::received));
             tracer.trace (flow_event (message_flow_outcome_t::replied));
         });
-        if (!contains (out, "zlink flow: phase=received")) {
+        if (!contains (out, "event_id=zlink.message_flow")) {
             return 4;
         }
-        if (!contains (out, "phase=replied")) {
+        if (!contains (out, "phase=received")
+            || !contains (out, "phase=replied")
+            || !contains (out, "outcome=succeeded")) {
             return 5;
         }
         if (!contains (out, "corr=corr-123")) {
@@ -193,13 +195,17 @@ int main ()
         if (!contains (out, "dispatch error")) {
             return 12;
         }
-        if (!contains (out, "reason=handler_missing")) {
+        if (!contains (out, "event_id=zlink.dispatch_error")
+            || !contains (out, "outcome=failed")) {
             return 13;
+        }
+        if (!contains (out, "reason=handler_missing")) {
+            return 14;
         }
         // failure lines now carry the correlation id, so a single grep corr=<id>
         // follows a message whether it succeeded or failed.
         if (!contains (out, "corr=corr-123")) {
-            return 14;
+            return 15;
         }
     }
 

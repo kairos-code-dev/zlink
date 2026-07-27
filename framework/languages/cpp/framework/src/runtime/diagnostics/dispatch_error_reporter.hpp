@@ -95,6 +95,8 @@ class dispatch_error_reporter_t
             auto add = [&fields] (const char *key, std::string value) {
                 diagnostic_event_sink_t::append_field (fields, key, std::move (value));
             };
+            add ("event_id", "zlink.dispatch_error");
+            add ("outcome", "failed");
             add ("surface", std::string (enum_name (event.surface)));
             add ("kind", std::string (enum_name (event.message_kind)));
             add ("reason", std::string (enum_name (event.reason)));

@@ -115,6 +115,12 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   유지하고 authority owner generation만 1 증가한다. Java core 591/591과 Kotlin 46/46이 통과했다.
   Target inbound permit, durable reply ACK, Session route ACK, PerActor timer와 process recovery는
   `BLK-043`에서 계속 진행한다.
+- C++은 이전 Store SPI를 사용하던 DiscoveryRegistryHa와 ObservabilityOps의 broad compile gap을
+  현재 public surface에 맞췄다. MeshNode vertical, Discovery provider·consumer·client,
+  Observability session·play·workflow·client와 message-flow focused test가 통과했다. Scenario를
+  삭제하거나 비활성화하지 않았다. 다만 Observability C track은 Config 11의
+  `Relocate → Shutdown` 대신 이전 drain 동작과 C1~C5만 사용하고, public header에도 제거 대상
+  `drain_state_t`·`drain_event_t`가 남아 있으므로 M6 또는 E2E 완료 증거가 아니다.
 - 공통 E2E 문서의 상대 link와 이전 계약 용어를 검사했다. 깨진 link와
   `SpotRid`·`Checkpoint`·`PlacementProfile`·`AffinityKey`·`Retire` 잔여는 0이다. Config 10과
   Config 11은 현재 relocation·maintenance 계약과 일치한다.
@@ -124,6 +130,8 @@ mixed-language process relocation을 완료로 판정하지 않는다. 해당 �
   handler context, `SpotRid`, automatic topology의 fixed Node RID와 이전 drain API도 남아 있다.
   Feature map은 이 항목을 `미구현` 또는 `전환 대상`으로 바로잡았으며, scenario를 삭제하거나
   assertion을 약화하지 않고 현재 spec에 맞게 구현한다.
+- Java SpotActorTransfer도 component test를 process E2E 완료 증거와 분리했다.
+  `ST-F3A`·`ST-G1~G6`·`ST-H1~H5`는 현재 runner가 실행하지 않으므로 `미구현`으로 기록했다.
 
 이 checkpoint는 현재 E2E spec의 완료 승인이 아니다. 실제 process scenario와 언어별 feature map이
 일치하고 Codex `gpt-5.6-sol high` 독립 review를 통과한 뒤 `V11-E2E-SPEC-FINAL`을 완료로 바꾼다.

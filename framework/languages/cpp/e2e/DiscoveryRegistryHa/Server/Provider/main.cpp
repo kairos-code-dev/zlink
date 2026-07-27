@@ -9,10 +9,27 @@
 
 #include <zlink/framework.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 namespace sf = zlink::framework::e2e::store_failure;
 namespace sf_provider = zlink::framework::e2e::store_failure::provider;
+
+namespace
+{
+std::uint16_t port_from_tcp_endpoint (const std::string &endpoint)
+{
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator + 1 >= endpoint.size ())
+        throw std::invalid_argument ("ClientServer endpoint must include a port");
+    const auto value = std::stoul (endpoint.substr (separator + 1));
+    if (value == 0 || value > 65535)
+        throw std::invalid_argument ("ClientServer endpoint port is out of range");
+    return static_cast<std::uint16_t> (value);
+}
+} // namespace
 
 int main (int argc, char **argv)
 {
@@ -33,10 +50,11 @@ int main (int argc, char **argv)
           std::make_unique<sf_provider::provider_evidence_store_t> (options.rid));
         framework.services ().add_singleton<sf_provider::provider_lifecycle_control_t> (
           std::move (lifecycle_owner));
-        auto channel = framework.add_client_server_channel (sf::api_channel);
-        channel.enable_server (options.channel_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .use_handler_group (sf::handler_group);
+        framework.add_client_server_channel (sf::api_channel)
+          .server ()
+          .set_bind_host ("127.0.0.1")
+          .listen (port_from_tcp_endpoint (options.channel_endpoint))
+          .add_handler_group (sf::handler_group);
         framework.handlers ()
           .group (sf::handler_group)
           .add<sf_provider::profile_request_handler_t> ();

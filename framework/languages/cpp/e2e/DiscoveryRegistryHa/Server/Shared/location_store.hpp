@@ -27,7 +27,8 @@ inline void add_redis_location_store (zlink::framework::zlink_framework_options_
         .connection_string = options.redis_endpoint, .key_prefix = options.redis_key_prefix});
     framework.add_location_store (std::move (redis_store));
     auto &locations = framework.configure_locations ();
-    locations.heartbeat_interval = std::chrono::milliseconds (options.heartbeat_ms);
+    locations.owner_lease_renew_interval =
+      std::chrono::milliseconds (options.heartbeat_ms);
     locations.owner_lease_ttl = std::chrono::milliseconds (options.lease_ttl_ms);
     locations.polling_interval = std::chrono::milliseconds (options.polling_ms);
     locations.store_failure_grace = std::chrono::milliseconds (options.grace_ms);

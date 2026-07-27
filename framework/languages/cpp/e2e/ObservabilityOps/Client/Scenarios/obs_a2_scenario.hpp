@@ -10,7 +10,7 @@ inline void run_obs_a2_scenario (const verification_input_t &input)
     require_shared_flow (
       lines,
       {"phase=received surface=stream_session kind=request label=cpp-obs-session packet=ObsUnknownReq",
-       "dispatch error surface=stream_session kind=request", "phase=error"},
+       "dispatch error", "outcome=failed"},
       "OBS-A2 success and dispatch error lines do not share one flow");
 }
 } // namespace zlink::framework::e2e::observability_ops::client::scenarios

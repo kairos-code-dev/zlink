@@ -7,7 +7,7 @@
 | ST-A1 | runtime evidence gap | Same-node join을 강제하고 `admission -> authority_committed -> leave -> joined -> success_reply`와 Relocation Store artifact 0건을 요구한다. Client와 ActorNode는 warning·error 0으로 build됐지만 실제 process `logs/20260728-042012-2770643`은 same-node authority commit marker가 없어 실패했다. Actor별 Message Follow route가 생성되지 않았다는 사실도 현재 public observation으로 판정할 수 없다. 이전 순서 일부만 확인한 실행은 현재 계약의 완료 증거로 사용하지 않는다. |
 | ST-A2 | current Deferred Join actual-process 통과 | Public Actor handler의 즉시 응답은 Deferred Join registration 성공으로 판정하고, typed `Rejected` terminal은 `OnJoinCompletedAsync` callback에서 확인한다. Same-node target admission 뒤 Actor ObjectGeneration·owner node·state 12가 유지되고 leave·joined·authority commit·Capture·Restore와 User Spot handler는 모두 0건이다. 이후 global Actor one-way는 source Entry Spot handler에서 정확히 한 번 실행되며 evidence 순서는 `admission → reject_reply → entry_handoff_packet`이다. Actual-process 증거는 `logs/20260729-042702-217477`이다. |
 | ST-A3 | current Deferred Join actual-process 통과 | Same-node target의 `OnJoinedActorAsync` gate가 닫힌 동안 public Actor request를 실제 제출하고 request terminal·source/target handler·leave·joined·completion이 모두 시작되지 않는지 확인한다. Gate release 뒤 queued request와 별도 follow-up request는 target Spot에서 state 13으로 각각 정확히 한 번 처리된다. Evidence 순서는 `admission → joined_wait → joined_released → joined → success_reply → queued request → follow-up request`다. Capture·Restore·transfer in/out·Message Follow와 relocation completed evidence는 0건이다. Actual-process 증거는 `logs/20260729-043746-628620`이다. |
-| ST-B1 | 전환 대상 | 기존 remote transfer 시나리오를 relocation admission, immutable payload, authority commit과 target Ready 순서로 전환해야 한다. |
+| ST-B1 | current Deferred Join actual-process 핵심 경로 통과 | Actor를 먼저 만든 뒤 다른 node에 User Spot을 배치한다. Deferred Join handler가 끝나기 전에 global Actor one-way를 수락하고, relocation 완료 뒤 target handler에서 정확히 한 번 처리하며 source handler에서는 처리하지 않는다. Source `Capture`와 target `Restore`의 application payload byte 수·SHA-256이 같고, opaque Relocation Store write와 read도 reference hash·byte 수·payload hash가 같다. ObjectGeneration은 생성 때 발급된 값을 그대로 유지하고 owner만 target으로 바뀌며, 이동 뒤 global Actor request는 target Spot에서 state version 21을 조회한다. Application evidence 순서는 `admission → Restore → transfer_in → joined → success_reply → accepted packet replay → follow-up request`다. Actual-process 증거는 `logs/20260729-044949-1108908`이다. `source_sealed`, `journal_staged`, `prepared`, `source_cleanup`, `completed`, `route_ack`, `steady_normalized`, `ready`, `admission_open`처럼 public application·provider 경계에서 직접 구분할 수 없는 private phase의 전체 순서는 이 결과로 완료를 주장하지 않는다. |
 | ST-B2 | 전환 대상 | source cleanup 실패 뒤 committed relocation을 유지하고 durable cleanup을 재개하는 현재 계약으로 전환해야 한다. |
 | ST-B3 | 전환 대상 | adapter 없는 Actor는 Recreate policy에서만 허용하는 현재 relocation 계약으로 전환해야 한다. |
 | ST-B4 | 전환 대상 | 명시적 empty state를 Snapshot adapter의 정상 payload로 처리하는 현재 relocation 계약으로 전환해야 한다. |
@@ -115,10 +115,12 @@ ownership coordinator에 연결하고 Actor publish를 그 뒤로 옮겼다. Act
 현재 User Spot fixture는 세 Actor node에 같은 stable type을 등록한다. Create DTO의
 `TargetNodeRid`는 제거했고 public node-wide placement weight를 바꾼 뒤 Location descriptor에
 반영됐는지 확인하고 global create를 실행한다. `ST-A1`은 이 경계에서 통과했다.
-`ST-B1`은 Actor를 actor-a, Spot을 actor-b에 자동 배치하고 deferred Join, target restore,
-authority convergence와 후속 probe를 검증한다. Source identity, canonical phase progress,
-source ownership release와 unbound completion fence를 고친 뒤
-`logs/20260727-235500-1282505`, `logs/20260727-235556-1284429`에서 연속 통과했다.
+`ST-B1`은 Actor를 먼저 배치하고, 그 owner와 다른 node에 User Spot을 배치한다. Deferred Join
+handler가 끝나기 전에 제출한 packet은 target restore와 joined callback 뒤에 target handler에서
+정확히 한 번 처리된다. Source capture와 target restore의 payload, opaque Relocation Store
+write·read, ObjectGeneration 유지, owner 전환과 후속 global Actor request를 함께 검증한 실행은
+`logs/20260729-044949-1108908`이다. ST-H1과 ST-B1을 같은 fresh process에서 다시 실행한
+회귀 증거는 `logs/20260729-045056-1141323`이다.
 
 Track I의 Relocate 기반 host workload에는 public lifecycle 구현 차이도 남아 있다.
 정식 .NET 계약은 mode를 받는 `RelocateAsync(...)`와 별도 `ShutdownAsync(...)`를

@@ -6795,3 +6795,34 @@ Actual-process 증거는
 `framework/languages/dotnet/e2e/LocationMessaging/logs/20260729-043637-564415`이다.
 Fixture에서 제거된 `Contracts.Eventing` namespace의 사용하지 않는 import도 삭제해
 현재 public contract source로 build되도록 정리했다.
+
+## 2026-07-29 .NET Config 10 ST-B1 remote stateful relocation checkpoint
+
+ST-B1 fixture의 생성 순서를 current public placement 계약에 맞췄다. Actor를 먼저 만든 뒤
+그 owner와 다른 node에 User Spot을 배치한다. 특정 Node RID를 application request에 넣지 않고
+node-wide placement weight와 public manager만 사용한다.
+
+- Deferred Join handler가 끝나기 전에 Object Client-only process가 global Actor ID로 one-way
+  packet을 제출한다. Handler terminal 전에는 source와 target handler가 모두 0건이다.
+- Source adapter가 4 KiB application state를 포함한 payload를 Capture하고 target adapter가
+  같은 byte 수와 SHA-256의 payload를 Restore한다.
+- Public provider SPI를 감싼 observer는 opaque Relocation Store blob만 측정한다. 같은 reference
+  hash·byte 수·payload hash를 가진 write와 read를 확인하며 envelope이나 provider key는 해석하지
+  않는다.
+- ObjectGeneration은 생성 때 발급된 값을 유지하고 owner만 target으로 바뀐다. Relocation 뒤
+  다른 process의 global Actor request는 target User Spot에서 state version 21을 조회한다.
+- Handler terminal 전에 수락한 one-way는 target에서 정확히 한 번 처리되고 source에서는
+  처리되지 않는다. Application evidence 순서는
+  `admission → Restore → transfer_in → joined → success_reply → accepted packet replay → follow-up request`다.
+
+Actual-process 단독 증거는
+`framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-044949-1108908`이다.
+ST-H1과 ST-B1을 같은 fresh process에서 실행한 focused regression도
+`framework/languages/dotnet/e2e/SpotActorTransfer/logs/20260729-045056-1141323`에서 통과했다.
+ST-A1·A2·A3·B1·B3·B4 묶음 실행은 기존 ST-A1 public authority commit evidence gap에서
+중단됐으며 새 ST-B1 실패로 계산하지 않는다.
+
+`source_sealed`, `journal_staged`, `prepared`, `source_cleanup`, `completed`, `route_ack`,
+`steady_normalized`, `ready`, `admission_open`처럼 public application·provider 경계에서 직접
+구분할 수 없는 private phase의 전체 순서는 이 checkpoint로 완료를 주장하지 않는다. Private hook,
+reflection, raw frame, retry와 timeout 확대는 추가하지 않았다.

@@ -348,6 +348,16 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Gate release response was null.");
     }
 
+    public async Task<GateReleaseRes> ReleaseTransferGateAsync(
+        ZLinkHttpClient client,
+        string actorId)
+    {
+        return (await client.Post($"/transfer-gates/{actorId}/release")
+                   .Async<GateReleaseRes>()).Body
+               ?? throw new InvalidOperationException(
+                   "Transfer gate release response was null.");
+    }
+
     public async Task ArmCleanupGateAsync(
         ZLinkHttpClient client,
         string actorId,

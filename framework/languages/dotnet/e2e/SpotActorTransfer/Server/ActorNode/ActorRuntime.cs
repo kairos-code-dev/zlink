@@ -486,7 +486,9 @@ namespace SpotActorTransfer.ActorNode
         }
     }
 
-    internal sealed class ActorJoinTargetUseCase(EvidenceStore evidence)
+    internal sealed class ActorJoinTargetUseCase(
+        EvidenceStore evidence,
+        TransferGateStore transferGates)
     {
         public async ValueTask<JoinTargetRes> ExecuteAsync(
             TransferActor actor,
@@ -533,6 +535,23 @@ namespace SpotActorTransfer.ActorNode
                 actor.Context.JoinSpot(request.TargetSpotId, request)
                     .Timeout(TimeSpan.FromSeconds(10))
                     .Defer();
+                if (request.Scenario == "ST-B1")
+                {
+                    evidence.Add(
+                        request.Scenario,
+                        actor.ActorId,
+                        "defer_registered",
+                        request.TargetSpotId);
+                    await transferGates.WaitAsync(
+                            actor.ActorId,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    evidence.Add(
+                        request.Scenario,
+                        actor.ActorId,
+                        "defer_handler_released",
+                        request.TargetSpotId);
+                }
             }
             evidence.Add(request.Scenario, actor.ActorId, "commit_request", request.TargetSpotId);
             return new JoinTargetRes(

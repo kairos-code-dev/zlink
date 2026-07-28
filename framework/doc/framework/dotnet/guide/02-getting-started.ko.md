@@ -37,8 +37,8 @@ API 코드에는 Play node의 `NodeRid`나 endpoint가 들어가지 않는다. P
 ## 2. sample 위치
 
 | 확인할 내용 | 파일 |
-|---|---|
-| 전체 실행 | `framework/languages/dotnet/samples/TicTacToe/run_sample.sh` |
+| --- | --- |
+| 전체 실행 | `samples/TicTacToe/run_sample.sh` |
 | API 실행 project | `samples/TicTacToe/Server/Api/TicTacToe.Server.Api.csproj` |
 | Play 실행 project | `samples/TicTacToe/Server/Play/TicTacToe.Server.Play.csproj` |
 | HTTP handler | `samples/TicTacToe/Server/Api/Handlers/CreateGameHttpHandler.cs` |
@@ -125,9 +125,8 @@ var mesh = options.AddRouteMesh(SampleNodes.Mesh)
 
 mesh.Objects().Server()
     .AddSpotFactory<TicTacToeGame>(
-        SampleTypes.GameSpot,                    // API가 Create에 넘긴 stable type과 같다.
-        null,
-        ZLinkRelocationPolicy<TicTacToeGame>.Disabled);
+        SampleTypes.GameSpot,               // API가 Create에 넘긴 stable type과 같다.
+        factory => factory.DisableRelocation());
 ```
 
 특정 Play node를 선호하거나 `NodeRid`로 배치하는 sample 계약은 없다. 배치 후보와
@@ -200,7 +199,7 @@ endpoint에 연결한 참가자들이 같은 방에 join하고, 게임 메시지
 ## 9. 실패할 때 확인할 항목
 
 | 증상 | 확인할 항목 |
-|---|---|
+| --- | --- |
 | 생성 후보가 없다 | Play process가 같은 `MeshName`에 Object Server와 `GameSpot` stable type을 등록했는지 확인한다. |
 | startup이 실패한다 | Redis 연결, `MeshName`, listen endpoint와 중복 등록 오류를 확인한다. |
 | 생성이 거부된다 | `OnCreateAsync`가 받은 최초 설정과 reject 사유를 확인한다. |

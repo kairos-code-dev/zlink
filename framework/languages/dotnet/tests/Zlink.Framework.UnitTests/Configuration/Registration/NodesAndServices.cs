@@ -52,6 +52,52 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void FactoryBuildersRequireExactlyOneRelocationChoice()
+    {
+        var missingActor = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("actor-node")
+                    .Objects()
+                    .Server()
+                    .AddActorFactory<TestActor, TestActorFactory>(
+                        "actor",
+                        _ => { })));
+        Assert.Contains("exactly one relocation policy", missingActor.Message);
+
+        var missingSpot = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("spot-node")
+                    .Objects()
+                    .Server()
+                    .AddSpotFactory<TestSpot>(
+                        "spot",
+                        _ => { })));
+        Assert.Contains("exactly one relocation policy", missingSpot.Message);
+
+        var missingInstance = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("instance-node")
+                    .Objects()
+                    .Server()
+                    .AddInstanceSpotFactory<TestInstanceSpot>(
+                        "instance",
+                        _ => { })));
+        Assert.Contains("exactly one relocation policy", missingInstance.Message);
+
+        var duplicate = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddRouteMesh("duplicate-node")
+                    .Objects()
+                    .Server()
+                    .AddSpotFactory<TestSpot>(
+                        "spot",
+                        factory => factory
+                            .DisableRelocation()
+                            .RecreateOnRelocation())));
+        Assert.Contains("exactly one relocation policy", duplicate.Message);
+    }
+
+    [Fact]
     public void AddZLinkFramework_Rejects_TheSameEntrySpotType_AcrossNodes()
     {
         var services = new ServiceCollection();

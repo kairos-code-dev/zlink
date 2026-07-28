@@ -349,6 +349,11 @@ public abstract class RegistrationValidationSupport
         public IZLinkSpotContext Context { get; } = context;
     }
 
+    protected sealed class TestInstanceSpot : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context => null!;
+    }
+
     protected sealed class OtherTestSpot(IZLinkSpotContext context) : IZLinkSpot
     {
         public IZLinkSpotContext Context { get; } = context;

@@ -431,6 +431,10 @@ Factory configure callback은 option과 relocation policy를 한 builder에서 �
 `IZLinkActorRelocationAdapter<TActor>`, User·Instance Spot builder는 `IZLinkSpotRelocationAdapter<TSpot>`만
 받는다. Factory 대상과 adapter 종류가 맞지 않아도 같은 오류로 실패한다.
 
+Framework는 등록 호출 안에서 callback을 동기적으로 한 번 실행한다. Callback이 반환되면 builder 구성을
+고정한다. Application이 callback 밖에 builder를 보관했다가 다시 호출하면 configuration error다.
+Callback이 예외를 던지면 factory를 등록하지 않고 같은 예외를 호출자에게 전달한다.
+
 `ZLinkUserSpotExecutionMode.PerActor`를 선택한 User Spot은
 `RecreateOnRelocation()`만 허용한다. `DisableRelocation()`이나 `PreserveStateWith<TAdapter>()`를
 함께 등록하면 socket bind 전에 startup configuration error다. PerActor Spot은

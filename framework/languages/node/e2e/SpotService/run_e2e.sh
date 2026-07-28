@@ -185,6 +185,10 @@ case "$SCENARIO" in
   SM-F3|SM-F4|SM-F5)
     build_package "$ROOT_DIR/Server/Play"
     ;;
+  SM-C4)
+    build_package "$ROOT_DIR/Server/Play"
+    build_package "$ROOT_DIR/Server/Gateway"
+    ;;
   SM-F6|SM-G2|SM-G2-PREPARE|SM-G2-VERIFY)
     build_package "$ROOT_DIR/Server/MultiNode"
     ;;
@@ -317,8 +321,8 @@ write_config session-b \
   --string evidenceFile "$LOG_DIR/session-b.evidence.log" --string logDir "$LOG_DIR"
 write_config gateway \
   --string rid gateway --string httpUrl "$GATEWAY_URL" \
-  --string spotRouterEndpoint "$GATEWAY_ROUTER" --string spotPubEndpoint "$GATEWAY_SPOT_PUB" \
-  --array spotPubPeers "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
+  --string spotRouterEndpoint "$GATEWAY_ROUTER" \
+  --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
   --string evidenceFile "$LOG_DIR/gateway.evidence.log" --string logDir "$LOG_DIR"
 
 multi_a_peer=()
@@ -399,7 +403,6 @@ wait_named_server() {
     gateway)
       wait_health "$GATEWAY_URL" gateway "${pid_by_name[gateway]:-}"
       wait_port gateway-router "$GATEWAY_ROUTER"
-      wait_port gateway-spot-pub "$GATEWAY_SPOT_PUB"
       ;;
     multi-node-a)
       wait_health "$MULTI_A_URL" multi-node-a "${pid_by_name[multi-node-a]:-}"
@@ -446,7 +449,7 @@ wait_topology_routes() {
   if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" || "$SCENARIO" == "SM-Q9" ]]; then
     return 0
   fi
-  if [[ "$SCENARIO" == "SM-F3" || "$SCENARIO" == "SM-F4" ]]; then
+  if [[ "$SCENARIO" == "SM-F3" || "$SCENARIO" == "SM-F4" || "$SCENARIO" == "SM-C4" ]]; then
     return 0
   fi
   if [[ "$SCENARIO" == "SM-F5" ]]; then
@@ -473,6 +476,7 @@ wait_topology_routes() {
 case "$SCENARIO" in
   SM-G2) SERVER_ROLES=(multi-node-a) ;;
   SM-F6|SM-Q9) SERVER_ROLES=(multi-node-a multi-node-b) ;;
+  SM-C4) SERVER_ROLES=(play-a gateway) ;;
   SM-F3|SM-F4) SERVER_ROLES=(play-a) ;;
   SM-F5) SERVER_ROLES=(play-a play-b) ;;
   *) SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b) ;;

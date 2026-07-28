@@ -17,7 +17,7 @@
 | `RM-B3` | 전환 필요 | provider A handler-start evidence 뒤 A를 `SIGKILL`하고, 같은 consumer의 in-flight 결과를 유한한 public error로 분류하며 자동 재전송이 없음을 확인해야 한다. crash 전파 구간과 descriptor 제거 뒤의 신규 request는 생존 provider B로 계속 처리되는지 별도로 검증한다. 현재 runner에는 이 전체 경계의 증거가 없다. |
 | `RM-C1` | 구현 | request와 send happy path를 함께 검증한다. |
 | `RM-C2` | 구현 | P0 미완료 항목 중 기존 exact RouteMesh Node direct API와 public topology snapshot으로 검증할 수 있어 먼저 완료했다. Public topology가 `api-b`를 Ready로 표시하는지 최대 3초 동안 확인한 뒤 targeted request를 한 번만 제출한다. Request는 `api-b`에서만 처리되고 `api-a` evidence에는 남지 않는다. 미등록 RID는 `RequestTargetNotFound`로 분류한다. Actual `logs/20260729-040050-3900121`이 재시도·skip·timeout 확대 없이 통과했고 runner exit code는 0이다. |
-| `RM-C3` | 전환 필요 | consumer MeshNode가 두 provider endpoint를 manual peer로 등록하고 같은 ChannelName request를 반복 제출해 두 ready member가 모두 선택되는지 검증한다. C++ HTTP array body binding 차이 때문에 batch endpoint 대신 단건 request endpoint를 반복 호출한다. |
+| `RM-C3` | 구현 | Consumer가 exact ClientServer `client().connect(endpoint)`로 두 Provider endpoint를 등록한다. 같은 ChannelName request 90건을 retry 없이 한 번씩 제출해 `api-a`·`api-b`가 모두 선택되고 reply 합계가 90인지 확인한다. 실행 전후 두 Provider의 public evidence 증가분도 정확히 90건인지 확인한다. Actual `logs/20260729-051403-2182401`이 exit code 0으로 통과했고 모든 stderr는 비어 있으며 process와 Redis container가 남지 않았다. |
 | `RM-C4` | 구현 | store consumer HTTP role이 timeout request를 `TimeoutException`으로 분류하고, late reply가 후속 정상 request를 오염시키지 않는지 검증한다. |
 | `RM-C5` | 구현 | store consumer HTTP role이 미등록 packet request를 `HandlerNotFound`로 분류하고, send drop 이후 정상 request 복구를 검증한다. |
 | `RM-C7` | 구현 | `server_peer_weight`로 build-time server weight를 다르게 준 provider 두 개를 시작하고, location-store 자동 연결 client에서 high-weight provider가 더 많이 처리되는지 검증한다. 최신 전체 통과: `logs/20260708-131829-51832` (`api-a=59`, `api-b=41`). |

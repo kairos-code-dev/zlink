@@ -1,10 +1,11 @@
 import fs from 'node:fs';
-import { Inject, Injectable, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { ZLinkRouteMeshRuntime, ZLinkSpotPublisherClient } from '@zlink-systems/framework';
 import {
   ZLinkMessageFlowLogMode
 } from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import {
   ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_SPOT_PUBLISHER_CLIENT,
@@ -13,7 +14,7 @@ import {
 } from '@zlink-systems/nestjs';
 import type { SpotPublishReq } from '../../Shared/messages';
 import { SpotMsg, SpotServiceNames, spotServicePacket } from '../../Shared/messages';
-import { createSpotServiceConfigurationModule, objectValues, optionalString, requiredString, stringList } from '../../configuration';
+import { createSpotServiceConfigurationModule, objectValues, optionalString, requiredString } from '../../configuration';
 import { EvidenceStore } from '../Play/Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer, type HttpRoute } from '../Play/Support/http-server';
 
@@ -21,8 +22,8 @@ interface GatewayOptions {
   readonly rid: string;
   readonly httpUrl: string;
   readonly spotRouterEndpoint: string;
-  readonly spotPubEndpoint: string;
-  readonly spotPubPeers: readonly string[];
+  readonly redisEndpoint: string;
+  readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly logDir: string;
 }
@@ -39,17 +40,6 @@ export async function startGatewayHost(): Promise<void> {
   };
   let stopping = false;
 
-  @Injectable()
-  class GatewayPubSubReadiness {
-    constructor(@Inject(ZLINK_ROUTE_MESH_RUNTIME) private readonly runtime: ZLinkRouteMeshRuntime) {}
-
-    requireConnected(): void {
-      if (!this.runtime.isReady(SpotServiceNames.spotChannel)) {
-        throw new Error('Gateway pub/sub peer is not connected yet.');
-      }
-    }
-  }
-
   class GatewayModule {}
   Module({
     imports: [
@@ -65,17 +55,25 @@ export async function startGatewayHost(): Promise<void> {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
+          builder.addLocationStore(new ZLinkRedisLocationStore({
+            url: `redis://${options.redisEndpoint}`,
+            keyPrefix: options.redisKeyPrefix
+          }));
+          builder.configureLocations()
+            .pollingIntervalMs(100)
+            .heartbeatIntervalMs(1000)
+            .ownerLeaseTtlMs(5000);
           builder.addRouteMesh(SpotServiceNames.spotChannel)
             .routingId(options.rid)
             .listen(options.spotRouterEndpoint)
-            .channelName(SpotServiceNames.spotChannel);
+            .channel(SpotServiceNames.spotChannel)
+            .client();
           return builder.build();
         }
       })
     ],
     providers: [
-      { provide: EvidenceStore, inject: [GATEWAY_OPTIONS], useFactory: createEvidence },
-      GatewayPubSubReadiness
+      { provide: EvidenceStore, inject: [GATEWAY_OPTIONS], useFactory: createEvidence }
     ]
   })(GatewayModule);
 
@@ -83,10 +81,10 @@ export async function startGatewayHost(): Promise<void> {
   const options = app.get(GATEWAY_OPTIONS) as GatewayOptions;
   const evidence = app.get(EvidenceStore);
   const publisher = app.get(ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) as ZLinkSpotPublisherClient;
-  const readiness = app.get(GatewayPubSubReadiness);
+  const routeMesh = app.get(ZLINK_ROUTE_MESH_RUNTIME, { strict: false }) as ZLinkRouteMeshRuntime;
   const server = await startHttpServer(
     options.httpUrl,
-    createGatewayEndpoints(options, evidence, publisher, readiness, () => { stopping = true; })
+    createGatewayEndpoints(options, evidence, publisher, routeMesh, () => { stopping = true; })
   );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -99,7 +97,7 @@ function createGatewayEndpoints(
   options: GatewayOptions,
   evidence: EvidenceStore,
   publisher: ZLinkSpotPublisherClient,
-  readiness: { requireConnected(): void },
+  routeMesh: ZLinkRouteMeshRuntime,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -107,7 +105,9 @@ function createGatewayEndpoints(
       method: 'GET',
       path: '/health',
       handle: () => {
-        readiness.requireConnected();
+        if (!routeMesh.isReady(SpotServiceNames.spotChannel)) {
+          throw new Error('Gateway RouteMesh peer is not connected yet.');
+        }
         return { status: 'ready', role: 'gateway', rid: options.rid };
       }
     },
@@ -118,7 +118,10 @@ function createGatewayEndpoints(
       handle: async (body) => {
         const request = body as SpotPublishReq;
         await publisher
-          .publish(SpotServiceNames.spotChannel, SpotServiceNames.spotEventTopic,
+          .publish(
+            SpotServiceNames.spotChannel,
+            SpotServiceNames.spotChannel,
+            SpotServiceNames.spotEventTopic,
             spotServicePacket(SpotMsg, { marker: request.marker }))
           .submit();
         evidence.add(`spot-publish|rid=${options.rid}|spot=${request.spotId}|marker=${request.marker}`);
@@ -141,8 +144,8 @@ function validateGatewayOptions(value: unknown): GatewayOptions {
     rid: requiredString(values, 'rid'),
     httpUrl: requiredString(values, 'httpUrl'),
     spotRouterEndpoint: requiredString(values, 'spotRouterEndpoint'),
-    spotPubEndpoint: requiredString(values, 'spotPubEndpoint'),
-    spotPubPeers: stringList(values, 'spotPubPeers'),
+    redisEndpoint: requiredString(values, 'redisEndpoint'),
+    redisKeyPrefix: requiredString(values, 'redisKeyPrefix'),
     evidenceFile: optionalString(values, 'evidenceFile'),
     logDir: requiredString(values, 'logDir')
   };

@@ -37,7 +37,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `Client/Scenarios/RmB2ScaleInScenario.cs` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | scenario | done | RM-B2 scale-in barrier와 stale 회피 검증을 provider HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmC1RequestSendScenario.cs` | `Client/Scenarios/rm_c1_request_send_scenario.hpp` | scenario | done | RM-C1 request/send happy path를 provider HTTP endpoint로 실행한다. |
 | `Client/Scenarios/RmC2TargetedRouteScenario.cs` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | scenario | done | Public topology에서 target Ready를 확인한 뒤 exact Node direct request를 한 번 제출한다. `api-b` 단독 처리와 미등록 RID의 `RequestTargetNotFound`를 actual process에서 검증한다. |
-| `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | scenario | done | direct consumer HTTP role을 거쳐 RM-C3 multi-provider distribution을 검증한다. C++ HTTP array body binding 차이 때문에 `.NET`의 batch endpoint 대신 같은 consumer의 단건 request endpoint를 반복 호출한다. |
+| `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | scenario | done | Direct Consumer가 public ClientServer manual endpoint 두 개를 등록한다. 단건 request 90건을 제출해 두 Provider 선택, reply 합계와 Provider evidence 합계를 검증한다. Actual은 `logs/20260729-051403-2182401`이다. |
 | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm_c4_timeout_isolation_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C4 timeout/late-reply isolation을 검증한다. |
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C5 missing packet negative path를 검증한다. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | scenario | done | RM-C7 weighted provider distribution을 provider HTTP endpoint로 실행하고 high-weight provider 선호를 검증한다. |
@@ -77,7 +77,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `RM-B2` | `Client/Scenarios/rm_b2_scale_in_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C1` | `Client/Scenarios/rm_c1_request_send_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C2` | `Client/Scenarios/rm_c2_targeted_route_scenario.hpp` | done | Actual `logs/20260729-040050-3900121`에서 target 단독 처리, 반대 provider evidence 부재와 `RequestTargetNotFound`를 검증했다. |
-| `RM-C3` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
+| `RM-C3` | `Client/Scenarios/rm_c3_multi_provider_distribution_scenario.hpp` | done | Public manual endpoint 두 개에서 90건의 reply와 evidence 합계가 일치한다. Actual `logs/20260729-051403-2182401`. |
 | `RM-C4` | `Client/Scenarios/rm_c4_timeout_isolation_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C5` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | done | scenario 파일이 직접 검증한다. |
 | `RM-C7` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | done | scenario 파일이 직접 검증한다. |

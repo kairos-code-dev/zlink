@@ -87,6 +87,12 @@ artifact provenance만 검증한다.
   Snapshot relocation policy와 adapter를 등록하며 호출자는 owner RID, endpoint, generation과 route frame을
   만들지 않는다. MultiNode·Client focused build와 actual process가 통과했고 증거는
   `framework/languages/node/e2e/SpotService/log/20260729-050702-1863756/`에 있다.
+- Node.js Config 2 `SM-C4`는 local Spot factory가 없는 Gateway에서 같은 RouteMesh의 public node
+  publisher를 사용한다. Gateway는 Spot channel의 Client role만 등록하고 Play-A는 Server role을
+  등록한다. 별도 publish transport endpoint 없이 기존 Router 연결로 Logical Multicast를 제출했으며,
+  topic을 구독한 User Spot은 marker를 한 번 받고 다른 stable type의 미구독 Spot은 받지 않았다.
+  Gateway·Play·Client focused build와 actual process가 통과했고 증거는
+  `framework/languages/node/e2e/SpotService/log/20260729-051542-2246502/`에 있다.
 - .NET Config 12는 public `IZLinkRouteMeshRuntimeOptions`로 ClientServer Server weight를
   runtime에 `0`으로 변경하고 discovery 수렴 뒤 신규 선택에서 제외했다. 독립 Client는
   `100:300` 비율을 확인한 뒤 weight `0` Server를 한 번도 선택하지 않았고, 같은 process의
@@ -6965,3 +6971,18 @@ adapter 반환형과 Location option이다. 이 상태에서 private Store 조�
 `Find`·direct messaging evidence를 대신 만들지 않는다. Fixture를 current public contract로
 이관한 뒤 `profile`·`workflow` 두 process의 public `GetOrCreate`, `Find`, direct Actor·Spot
 request를 실행해야 `RM-A7`을 완료할 수 있다.
+
+## 2026-07-29 C++ Config 1 RM-C3 actual-process 증거
+
+C++ `RM-C3`를 current public ClientServer manual endpoint 경로로 실행했다.
+Consumer는 exact `client().connect(endpoint)`로 `api-a`와 `api-b`를 등록했다.
+
+- 같은 ChannelName request 90건을 retry 없이 각각 한 번 제출했다.
+- `api-a`와 `api-b`가 모두 선택됐다.
+- 두 Provider의 reply 합계는 90건이다.
+- 실행 전후 public evidence 증가분 합계도 정확히 90건이다.
+- Runner exit code는 0이고 모든 stderr는 비어 있다.
+- 종료 뒤 RegistryMessaging process와 test Redis container가 남지 않았다.
+
+Actual-process 증거는
+`framework/languages/cpp/e2e/RegistryMessaging/logs/20260729-051403-2182401`이다.

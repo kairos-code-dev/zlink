@@ -17,7 +17,8 @@ inline void run_rm_c3_multi_provider_distribution_scenario (const client_options
     const std::string marker = "rm-c3";
     const auto consumer = options.direct_consumer_url;
     std::map<std::string, int> counts;
-    for (int index = 0; index < 60; ++index) {
+    constexpr int request_count = 90;
+    for (int index = 0; index < request_count; ++index) {
         const auto value = marker + "-" + std::to_string (index);
         const auto reply = post_json<profile_req_t, profile_res_t> (
           consumer, "/profile/request", profile_req_t{.value = value});
@@ -28,7 +29,7 @@ inline void run_rm_c3_multi_provider_distribution_scenario (const client_options
     }
     ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
             "RM-C3 did not distribute to both providers");
-    ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C3 count mismatch");
+    ensure (counts["api-a"] + counts["api-b"] == request_count, "RM-C3 count mismatch");
     const auto after_a = fetch_evidence (options.http_a_endpoint);
     const auto after_b = fetch_evidence (options.http_b_endpoint);
     const auto evidence_delta =
@@ -36,7 +37,7 @@ inline void run_rm_c3_multi_provider_distribution_scenario (const client_options
       - evidence_value_prefix_count (before_a, "ProfileReq", marker)
       + evidence_value_prefix_count (after_b, "ProfileReq", marker)
       - evidence_value_prefix_count (before_b, "ProfileReq", marker);
-    ensure (evidence_delta == 60, "RM-C3 provider evidence count mismatch");
+    ensure (evidence_delta == request_count, "RM-C3 provider evidence count mismatch");
     std::cout << "scenario RM-C3 passed\n";
 }
 

@@ -58,10 +58,10 @@ export async function runSmC4(options: ClientOptions): Promise<void> {
     publish.evidence.some((line) => line.includes(`spot-publish|rid=gateway|spot=${spotId}|marker=${marker}`)),
     'SM-C4 gateway evidence did not include publish marker.'
   );
-  ensure(
-    observe.evidence.some((line) => line.includes(`spot-msg|rid=play-a|spot=${spotId}|marker=${marker}`)),
-    'SM-C4 evidence did not include spot event publish.'
+  const subscribedDeliveries = observe.evidence.filter(
+    (line) => line.includes(`spot-msg|rid=play-a|spot=${spotId}|marker=${marker}`)
   );
+  ensure(subscribedDeliveries.length === 1, 'SM-C4 subscribed Spot did not receive the publish exactly once.');
   ensure(
     observe.evidence.every((line) => !line.includes(`spot-msg|rid=play-a|spot=${unsubscribedSpotId}|marker=${marker}`)),
     'SM-C4 unsubscribed spot received publish event.'

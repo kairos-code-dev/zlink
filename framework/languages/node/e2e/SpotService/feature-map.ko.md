@@ -41,7 +41,7 @@ close 거절과 새 incarnation 유지, ChannelName·RID direct 지속을 public
 | SM-C1 | 구현 | public `ZLinkSpotOutbound.requestToSpot(...)`/`sendToSpot(...)`로 channel -> spot request, command, slow request timeout, timeout 이후 정상 request를 검증한다. 선택 PASS: `logs/20260630-081924-3247169` |
 | SM-C2 | 구현 | Spot handler가 public `requestToChannel(...)`, `sendToChannel(...)`, `publish(...)`를 사용해 channel echo, channel notify, spot event publish를 모두 evidence로 남긴다. missing channel request/send negative도 message-flow observer evidence로 검증한다. 선택 PASS: `logs/20260629-205741-1493698`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-C3 | 구현 | spot -> spot request/send/publish/timeout/negative handlers를 public `ZLinkSpotOutbound.requestToSpot(...)`, `sendToSpot(...)`, `publish(...)`로 검증한다. 선택 PASS: `logs/20260630-082100-3253716` |
-| SM-C4 | 전환 필요 | local Spot factory가 없는 Gateway MeshNode가 ChannelName과 topic으로 Logical Multicast를 제출하고, Play-A의 구독 Spot만 같은 marker를 받는지 검증한다. 별도 publish endpoint는 만들지 않으며 기존 PASS는 이전 topology의 증거로만 보존한다. |
+| SM-C4 | 구현 | local Spot factory가 없는 Gateway MeshNode가 같은 RouteMesh의 public node publisher로 ChannelName과 topic을 제출한다. Play-A의 구독 Spot은 marker를 한 번 받고 미구독 Spot은 받지 않는다. 별도 publish transport endpoint 없이 Gateway와 Play-A의 기존 Router 연결만 사용한다. 선택 PASS: `log/20260729-051542-2246502/` |
 | SM-C5 | 전환 필요 | Play-A의 Logical Multicast가 Play-B의 구독 Spot에 delivery evidence를 남기고 미구독 Spot에는 남기지 않는지 검증한다. 기존 PASS 로그는 이전 topology의 증거이며 10.0.0 구현 뒤 다시 실행한다. |
 | SM-C6 | 전환 필요 | remote ROUTER backpressure를 만들고 blocking publish의 timeout, non-blocking submit의 즉시 backpressure 결과와 앞에서 수락된 target의 전달 유지를 검증해야 한다. 현재 runner에는 이 증거가 없다. |
 | SM-D1 | 구현 | Session HTTP endpoint가 control RouteMesh로 `play-a` readiness를 확인하고, stream auth로 bind한 local actor에 `ActorPushReq`를 relay한다. actor handler는 public `actor.context.boundSession.send(...)`로 같은 stream client에 `ActorPushNotify`를 보내고 reply와 push payload를 검증한다. 선택 PASS: `logs/20260629-211928-1555127`; `all` PASS: `logs/20260630-074201-3148526` |
@@ -134,8 +134,8 @@ close 거절과 새 incarnation 유지, ChannelName·RID direct 지속을 public
   - PASS: `logs/20260630-081924-3247169` (request/send/slow timeout/post-timeout request)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-C3`
   - PASS: `logs/20260630-082100-3253716` (spot-to-spot request/send/publish/timeout/negative)
-- 선택 scenario: `timeout 420s framework/languages/node/e2e/SpotService/run_e2e.sh SM-C4`
-  - PASS: `logs/20260630-083734-3303700` (Gateway publish evidence와 Play subscribed spot event evidence 확인)
+- 선택 scenario: `framework/languages/node/e2e/SpotService/run_e2e.sh SM-C4`
+  - PASS: `log/20260729-051542-2246502/` (local Spot factory가 없는 Gateway publish, Play-A 구독 Spot 1회 수신과 미구독 Spot 미수신 확인)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-D1`
   - PASS: `logs/20260629-211928-1555127` (local stream auth, actor request relay, bound session push)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-D5`

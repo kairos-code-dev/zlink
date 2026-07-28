@@ -5,7 +5,9 @@ namespace Zlink.Framework.ContractTests.Spots;
 public sealed class RelocationReadinessContracts
 {
     [Fact]
-    [ContractExample(typeof(IZLinkSpotRelocationReadyCall))]
+    [ContractExample(
+        typeof(IZLinkSpotRelocationReadyCall),
+        typeof(IZLinkUserSpotFactoryBuilder<>))]
     public void SpotWide_application_signaled_surface_matches_the_exact_contract()
     {
         Assert.Equal(
@@ -18,9 +20,11 @@ public sealed class RelocationReadinessContracts
         Assert.NotNull(typeof(IZLinkSpot).GetMethod(
             "OnRelocationReadyCompletedAsync"));
 
-        var defaults = new ZLinkUserSpotFactoryOptions();
+        Assert.NotNull(
+            typeof(IZLinkUserSpotFactoryBuilder<>)
+                .GetMethod("RelocationReadiness"));
         Assert.Equal(
-            ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
-            defaults.RelocationReadiness);
+            0,
+            (int)ZLinkSpotRelocationReadinessMode.AnyTurnBoundary);
     }
 }

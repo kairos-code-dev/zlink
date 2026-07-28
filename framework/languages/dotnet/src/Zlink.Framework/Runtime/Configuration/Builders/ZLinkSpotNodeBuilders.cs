@@ -188,14 +188,21 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     internal void RegisterSpotFactory<TSpot>(
         string spotType,
-        ZLinkUserSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkUserSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkSpot
     {
         EnsureServerRole();
         ValidateObjectType(spotType, "Spot");
-        var effectiveOptions = options ?? new ZLinkUserSpotFactoryOptions();
+        ArgumentNullException.ThrowIfNull(configure);
+        var factory = new ZLinkUserSpotFactoryBuilder<TSpot>();
+        configure(factory);
+        factory.EnsureRelocationConfigured();
+        var effectiveOptions = factory.Configuration;
         ValidateUserSpotFactoryOptions(effectiveOptions);
+        if (effectiveOptions.ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
+            && factory.Relocation.PolicyKind != 1)
+            throw new ZLinkConfigurationException(
+                "PerActor User Spots must use RecreateOnRelocation.");
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
                 $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
@@ -210,41 +217,36 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
                 {
                     MaxActiveObjects = effectiveOptions.StableTypeLimit
                 },
-            relocation,
-            typeof(IZLinkSpotRelocationAdapter<>).MakeGenericType(typeof(TSpot)),
-            relocation.AdapterType is { } spotAdapter
-                ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
-                : null);
+            factory.Relocation);
     }
 
     internal void RegisterInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkInstanceSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkInstanceSpot
     {
         EnsureServerRole();
         ValidateObjectType(instanceSpotType, "Instance Spot");
+        ArgumentNullException.ThrowIfNull(configure);
+        var factory = new ZLinkInstanceSpotFactoryBuilder<TSpot>();
+        configure(factory);
+        factory.EnsureRelocationConfigured();
         if (!registration.InstanceSpotFactories.TryAdd(
                 instanceSpotType,
                 new ZLinkInstanceSpotFactoryRegistration(
                     typeof(TSpot),
-                    new ZLinkInstanceSpotFactoryOptions())))
+                    factory.Configuration)))
             throw new ZLinkConfigurationException(
                 $"Duplicate Instance Spot factory '{instanceSpotType}' on "
                 + $"MeshNode '{registration.SpotNodeName}'.");
-        var effectiveOptions = options ?? new ZLinkInstanceSpotFactoryOptions();
+        var effectiveOptions = factory.Configuration;
         ValidateStableTypeLimit(effectiveOptions.StableTypeLimit, "Instance Spot");
         AddRelocation(
             registration.InstanceSpotRelocations,
             instanceSpotType,
             typeof(TSpot),
             PlacementFromStableTypeLimit(effectiveOptions.StableTypeLimit),
-            relocation,
-            typeof(IZLinkSpotRelocationAdapter<>).MakeGenericType(typeof(TSpot)),
-            relocation.AdapterType is { } spotAdapter
-                ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
-                : null);
+            factory.Relocation);
     }
 
     internal void RegisterEntrySpot<TEntrySpot>()
@@ -260,29 +262,27 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     internal void RegisterActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkActorFactoryOptions? options,
-        ZLinkRelocationPolicy<TActor> relocation)
+        Action<IZLinkActorFactoryBuilder<TActor>> configure)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>
     {
         EnsureServerRole();
+        ArgumentNullException.ThrowIfNull(configure);
+        var factory = new ZLinkActorFactoryBuilder<TActor>();
+        configure(factory);
+        factory.EnsureRelocationConfigured();
         ZLinkRegistrationBuilderGuard.AddUnique(
             registration.ActorFactories,
             actorType,
             typeof(TFactory),
             "Actor factory name must not be empty.",
             $"Duplicate actor factory '{actorType}'.");
-        _ = options;
         AddRelocation(
             registration.ActorRelocations,
             actorType,
             typeof(TActor),
             null,
-            relocation,
-            typeof(IZLinkActorRelocationAdapter<>).MakeGenericType(typeof(TActor)),
-            relocation.AdapterType is { } actorAdapter
-                ? new ZLinkActorRelocationAdapterInvoker<TActor>(actorAdapter)
-                : null);
+            factory.Relocation);
     }
 
     private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
@@ -333,32 +333,23 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         registration.ObjectRoleSelected = true;
     }
 
-    private static void AddRelocation<TInstance>(
+    private static void AddRelocation(
         IDictionary<string, ZLinkObjectRelocationRegistration> target,
         string stableType,
         Type instanceType,
         ZLinkObjectPlacementOptions? placement,
-        ZLinkRelocationPolicy<TInstance> relocation,
-        Type adapterContract,
-        IZLinkRelocationAdapterInvoker? adapterInvoker)
-        where TInstance : class
+        ZLinkRelocationFactoryConfiguration relocation)
     {
-        ArgumentNullException.ThrowIfNull(relocation);
         var effectivePlacement = placement ?? new ZLinkObjectPlacementOptions();
         ValidatePlacement(effectivePlacement);
-        var adapterType = relocation.AdapterType;
-        if (relocation.Kind == 2
-            && (adapterType is null || !adapterContract.IsAssignableFrom(adapterType)))
-            throw new ZLinkConfigurationException(
-                $"Relocation adapter '{adapterType}' must implement '{adapterContract}'.");
         if (!target.TryAdd(
                 stableType,
                 new ZLinkObjectRelocationRegistration(
                     instanceType,
                     effectivePlacement,
-                    relocation.Kind,
-                    adapterType,
-                    adapterInvoker)))
+                    relocation.PolicyKind,
+                    relocation.AdapterType,
+                    relocation.AdapterInvoker)))
             throw new ZLinkConfigurationException(
                 $"Duplicate relocation registration '{stableType}'.");
     }
@@ -398,7 +389,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     }
 
     private static void ValidateUserSpotFactoryOptions(
-        ZLinkUserSpotFactoryOptions options)
+        ZLinkUserSpotFactoryConfiguration options)
     {
         if (options.StableTypeLimit < 0)
             throw new ZLinkConfigurationException(
@@ -427,6 +418,158 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         limit == 0
             ? null
             : new ZLinkObjectPlacementOptions { MaxActiveObjects = limit };
+}
+
+internal sealed record ZLinkRelocationFactoryConfiguration(
+    byte PolicyKind,
+    Type? AdapterType,
+    IZLinkRelocationAdapterInvoker? AdapterInvoker);
+
+internal abstract class ZLinkFactoryBuilderBase
+{
+    private ZLinkRelocationFactoryConfiguration? _relocation;
+
+    internal ZLinkRelocationFactoryConfiguration Relocation =>
+        _relocation
+        ?? throw new ZLinkConfigurationException(
+            "A factory must configure exactly one relocation policy.");
+
+    internal void EnsureRelocationConfigured() => _ = Relocation;
+
+    protected void SelectRelocation(
+        byte policyKind,
+        Type? adapterType = null,
+        IZLinkRelocationAdapterInvoker? adapterInvoker = null)
+    {
+        if (_relocation is not null)
+            throw new ZLinkConfigurationException(
+                "A factory must configure exactly one relocation policy.");
+        _relocation = new ZLinkRelocationFactoryConfiguration(
+            policyKind,
+            adapterType,
+            adapterInvoker);
+    }
+}
+
+internal sealed class ZLinkActorFactoryBuilder<TActor>
+    : ZLinkFactoryBuilderBase, IZLinkActorFactoryBuilder<TActor>
+    where TActor : class, IZLinkActor
+{
+    public IZLinkActorFactoryBuilder<TActor> DisableRelocation()
+    {
+        SelectRelocation(0);
+        return this;
+    }
+
+    public IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation()
+    {
+        SelectRelocation(1);
+        return this;
+    }
+
+    public IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkActorRelocationAdapter<TActor>
+    {
+        SelectRelocation(
+            2,
+            typeof(TAdapter),
+            new ZLinkActorRelocationAdapterInvoker<TActor>(typeof(TAdapter)));
+        return this;
+    }
+}
+
+internal sealed class ZLinkUserSpotFactoryBuilder<TSpot>
+    : ZLinkFactoryBuilderBase, IZLinkUserSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkSpot
+{
+    private int _stableTypeLimit;
+    private ZLinkUserSpotExecutionMode _executionMode =
+        ZLinkUserSpotExecutionMode.SpotWide;
+    private ZLinkSpotRelocationReadinessMode _relocationReadiness =
+        ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
+
+    internal ZLinkUserSpotFactoryConfiguration Configuration =>
+        new(_stableTypeLimit, _executionMode, _relocationReadiness);
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
+    {
+        _stableTypeLimit = limit;
+        return this;
+    }
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(
+        ZLinkUserSpotExecutionMode mode)
+    {
+        _executionMode = mode;
+        return this;
+    }
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(
+        ZLinkSpotRelocationReadinessMode mode)
+    {
+        _relocationReadiness = mode;
+        return this;
+    }
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> DisableRelocation()
+    {
+        SelectRelocation(0);
+        return this;
+    }
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> RecreateOnRelocation()
+    {
+        SelectRelocation(1);
+        return this;
+    }
+
+    public IZLinkUserSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>
+    {
+        SelectRelocation(
+            2,
+            typeof(TAdapter),
+            new ZLinkSpotRelocationAdapterInvoker<TSpot>(typeof(TAdapter)));
+        return this;
+    }
+}
+
+internal sealed class ZLinkInstanceSpotFactoryBuilder<TSpot>
+    : ZLinkFactoryBuilderBase, IZLinkInstanceSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkInstanceSpot
+{
+    private int _stableTypeLimit;
+
+    internal ZLinkInstanceSpotFactoryConfiguration Configuration =>
+        new(_stableTypeLimit);
+
+    public IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
+    {
+        _stableTypeLimit = limit;
+        return this;
+    }
+
+    public IZLinkInstanceSpotFactoryBuilder<TSpot> DisableRelocation()
+    {
+        SelectRelocation(0);
+        return this;
+    }
+
+    public IZLinkInstanceSpotFactoryBuilder<TSpot> RecreateOnRelocation()
+    {
+        SelectRelocation(1);
+        return this;
+    }
+
+    public IZLinkInstanceSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>
+    {
+        SelectRelocation(
+            2,
+            typeof(TAdapter),
+            new ZLinkSpotRelocationAdapterInvoker<TSpot>(typeof(TAdapter)));
+        return this;
+    }
 }
 
 internal sealed class ZLinkMeshObjectRoleBuilder(
@@ -473,38 +616,33 @@ internal sealed class ZLinkMeshObjectServerBuilder(
 
     public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkUserSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkUserSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkSpot
     {
-        _builder.RegisterSpotFactory(spotType, options, relocation);
+        _builder.RegisterSpotFactory(spotType, configure);
         return this;
     }
 
     public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkInstanceSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkInstanceSpot
     {
         _builder.RegisterInstanceSpotFactory(
             instanceSpotType,
-            options,
-            relocation);
+            configure);
         return this;
     }
 
     public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkActorFactoryOptions? options,
-        ZLinkRelocationPolicy<TActor> relocation)
+        Action<IZLinkActorFactoryBuilder<TActor>> configure)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>
     {
         _builder.RegisterActorFactory<TActor, TFactory>(
             actorType,
-            options,
-            relocation);
+            configure);
         return this;
     }
 }

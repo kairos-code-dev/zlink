@@ -131,16 +131,15 @@ public interface ZLinkMeshObjectServerBuilder {
     ZLinkMeshObjectServerBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
     <TSpot extends ZLinkSpot> ZLinkMeshObjectServerBuilder addSpotFactory(
         String spotType, Class<TSpot> spotClass,
-        ZLinkUserSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
+        Consumer<ZLinkUserSpotFactoryBuilder<TSpot>> configure);
     <TSpot extends ZLinkInstanceSpot> ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
         String instanceSpotType, Class<TSpot> spotClass,
-        ZLinkInstanceSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
+        Consumer<ZLinkInstanceSpotFactoryBuilder<TSpot>> configure);
     <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String actorType,
         Class<TActor> actorClass,
         Class<? extends ZLinkActorFactory> factoryClass,
-        ZLinkActorFactoryOptions options,
-        ZLinkRelocationPolicy<TActor> relocation);
+        Consumer<ZLinkActorFactoryBuilder<TActor>> configure);
 }
 
 public enum ZLinkUserSpotExecutionMode {
@@ -157,29 +156,31 @@ public enum ZLinkSpotRelocationReadinessMode {
     public int value() { return value; }
 }
 
-public record ZLinkActorFactoryOptions() {}
-
-public record ZLinkUserSpotFactoryOptions(
-    int stableTypeLimit,
-    ZLinkUserSpotExecutionMode executionMode,
-    ZLinkSpotRelocationReadinessMode relocationReadiness) {
-    public ZLinkUserSpotFactoryOptions(int stableTypeLimit) {
-        this(
-            stableTypeLimit,
-            ZLinkUserSpotExecutionMode.SPOT_WIDE,
-            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
-    }
-    public ZLinkUserSpotFactoryOptions(
-        int stableTypeLimit,
-        ZLinkUserSpotExecutionMode executionMode) {
-        this(
-            stableTypeLimit,
-            executionMode,
-            ZLinkSpotRelocationReadinessMode.ANY_TURN_BOUNDARY);
-    }
+public interface ZLinkActorFactoryBuilder<TActor extends ZLinkActor> {
+    void disableRelocation();
+    void recreateOnRelocation();
+    void preserveStateWith(
+        Class<? extends ZLinkActorRelocationAdapter<TActor>> adapterClass);
 }
 
-public record ZLinkInstanceSpotFactoryOptions(int stableTypeLimit) {}
+public interface ZLinkUserSpotFactoryBuilder<TSpot extends ZLinkSpot> {
+    ZLinkUserSpotFactoryBuilder<TSpot> stableTypeLimit(int limit);
+    ZLinkUserSpotFactoryBuilder<TSpot> executionMode(ZLinkUserSpotExecutionMode mode);
+    ZLinkUserSpotFactoryBuilder<TSpot> relocationReadiness(
+        ZLinkSpotRelocationReadinessMode mode);
+    void disableRelocation();
+    void recreateOnRelocation();
+    void preserveStateWith(
+        Class<? extends ZLinkSpotRelocationAdapter<TSpot>> adapterClass);
+}
+
+public interface ZLinkInstanceSpotFactoryBuilder<TSpot extends ZLinkInstanceSpot> {
+    ZLinkInstanceSpotFactoryBuilder<TSpot> stableTypeLimit(int limit);
+    void disableRelocation();
+    void recreateOnRelocation();
+    void preserveStateWith(
+        Class<? extends ZLinkSpotRelocationAdapter<TSpot>> adapterClass);
+}
 
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
@@ -254,13 +255,13 @@ Object role을 생략하면 `None`이다. `client()`는 global object operation�
 Object Client에도 RouteMesh Channel Server를 등록할 수 있다. Application Node direct handler는 등록할
 수 없으며 Object Client RID를 Node direct target으로 지정하면 다른 RID로 바꾸지 않고 not-found로 끝낸다.
 
-`ZLinkRelocationPolicy.snapshot(adapterClass)`의 `Class<?>`는 factory kind에 따라 socket bind 전에 검증한다.
-Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 같은 Spot
-type의 `ZLinkSpotRelocationAdapter`가 필요하다. `Disabled`와 `Recreate`에는 adapter class를 연결하지 않는다.
-Type mismatch는 startup configuration error이며 application traffic을 받기 전에 끝난다.
+Configure callback은 `disableRelocation()`, `recreateOnRelocation()`, `preserveStateWith(...)` 중 정확히 하나를
+호출해야 한다. 누락하거나 둘 이상 호출하면 socket bind 전에 startup configuration error다. Actor builder는
+같은 Actor type의 `ZLinkActorRelocationAdapter`, User·Instance Spot builder는 같은 Spot type의
+`ZLinkSpotRelocationAdapter`만 받는다.
 
-`ZLinkUserSpotExecutionMode.PER_ACTOR`는 `ZLinkRelocationPolicy.recreate()`만
-허용한다. `disabled()`나 `snapshot(...)`을 함께 등록하면 startup configuration
+`ZLinkUserSpotExecutionMode.PER_ACTOR`는 `recreateOnRelocation()`만
+허용한다. 다른 policy를 함께 등록하면 startup configuration
 error다. PerActor Spot은 stateless execution shell이며 Actor policy와 adapter가
 Actor state를 각각 처리한다.
 
@@ -284,7 +285,7 @@ active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시 `SPOT
 
 Location provider는 `ZLinkLocationStore`를 통해 Framework의 opaque record read, version 조건부 atomic
 batch와 bounded snapshot scan을 제공한다. 별도 domain별 Store instance를 host에 등록하지 않는다.
-`Recreate` 또는 `Snapshot` policy를
+`RecreateOnRelocation` 또는 `PreserveStateWith` policy를
 하나라도 등록했거나 Instance Spot factory를 하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다.
 Instance Spot factory가 없고 `Disabled` factory와 same-node join만 사용하는 host는 Relocation Store가 없어도 된다.
 Missing 또는 duplicate Store registration은 socket bind 전에 startup
@@ -671,9 +672,9 @@ public interface systems.zlink.framework.configuration.ZLinkMeshObjectClientBuil
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, java.util.function.Consumer<systems.zlink.framework.configuration.ZLinkUserSpotFactoryBuilder<TSpot>>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, java.util.function.Consumer<systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryBuilder<TSpot>>);
+  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, java.util.function.Consumer<systems.zlink.framework.configuration.ZLinkActorFactoryBuilder<TActor>>);
 }
 public final class systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode> {
   public static final systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode SPOT_WIDE;
@@ -689,20 +690,24 @@ public final class systems.zlink.framework.configuration.ZLinkSpotRelocationRead
   public static systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode valueOf(java.lang.String);
   public int value();
 }
-public final class systems.zlink.framework.configuration.ZLinkActorFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkActorFactoryOptions();
+public interface systems.zlink.framework.configuration.ZLinkActorFactoryBuilder<TActor extends systems.zlink.framework.actors.ZLinkActor> {
+  public abstract void disableRelocation();
+  public abstract void recreateOnRelocation();
+  public abstract void preserveStateWith(java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorRelocationAdapter<TActor>>);
 }
-public final class systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode, systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode);
-  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
-  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int);
-  public int stableTypeLimit();
-  public systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode executionMode();
-  public systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode relocationReadiness();
+public interface systems.zlink.framework.configuration.ZLinkUserSpotFactoryBuilder<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> {
+  public abstract systems.zlink.framework.configuration.ZLinkUserSpotFactoryBuilder<TSpot> stableTypeLimit(int);
+  public abstract systems.zlink.framework.configuration.ZLinkUserSpotFactoryBuilder<TSpot> executionMode(systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
+  public abstract systems.zlink.framework.configuration.ZLinkUserSpotFactoryBuilder<TSpot> relocationReadiness(systems.zlink.framework.configuration.ZLinkSpotRelocationReadinessMode);
+  public abstract void disableRelocation();
+  public abstract void recreateOnRelocation();
+  public abstract void preserveStateWith(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpotRelocationAdapter<TSpot>>);
 }
-public final class systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(int);
-  public int stableTypeLimit();
+public interface systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryBuilder<TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> {
+  public abstract systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryBuilder<TSpot> stableTypeLimit(int);
+  public abstract void disableRelocation();
+  public abstract void recreateOnRelocation();
+  public abstract void preserveStateWith(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkSpotRelocationAdapter<TSpot>>);
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowOutcome extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowOutcome> {
   public static final systems.zlink.framework.configuration.ZLinkMessageFlowOutcome RECEIVED;

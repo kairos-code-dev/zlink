@@ -108,8 +108,7 @@ fun ZLinkFrameworkOptions.configureStreamCompression(
 inline fun <reified TActor, reified TFactory>
     ZLinkMeshObjectServerBuilder.actorFactory(
         actorType: String,
-        options: ZLinkActorFactoryOptions?,
-        relocation: ZLinkRelocationPolicy<TActor>,
+        noinline configure: ZLinkActorFactoryBuilder<TActor>.() -> Unit,
     ): ZLinkMeshObjectServerBuilder
     where TActor : ZLinkActor,
           TFactory : ZLinkActorFactory
@@ -135,15 +134,12 @@ ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 예약 형식과 일치하면 Store와 factory 전에
 startup configuration error로 거부한다.
 
-모든 Actor, User Spot, Instance Spot factory는 stable type, object 종류별 optional factory option과 명시적인
-`Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
-생성하지 않는다. Snapshot은 Java `ZLinkRelocationPolicy.snapshot(Adapter::class.java)`를 직접 사용한다. Actor
-factory adapter는 `ZLinkActorRelocationAdapter`, User·Instance Spot factory adapter는
-`ZLinkSpotRelocationAdapter`인지 socket bind 전에 검증한다. Kotlin 전용 policy, reified adapter registration과
-suspending adapter를 추가하지 않는다. `ZLinkStreamNodeBuilder.enableActorDispatch()`는 인자가 없고 global ID가
-Mesh를 결정한다.
+모든 factory는 Java builder를 Kotlin receiver callback으로 구성한다. Callback은
+`disableRelocation()`, `recreateOnRelocation()`, `preserveStateWith(...)` 중 정확히 하나를 호출한다. 누락하거나
+둘 이상 호출하면 socket bind 전에 startup configuration error다. Kotlin 전용 policy value와 suspending
+adapter는 추가하지 않는다.
 
-`Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
+`RecreateOnRelocation` 또는 `PreserveStateWith` factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
 Java root의 `addRelocationStore(...)`로 Relocation Store를 정확히 하나 등록한다. Instance Spot factory가 없고
 모든 factory가 `Disabled`인 same-node 구성만 이를 생략할 수 있다.
 
@@ -158,7 +154,7 @@ public final class systems.zlink.framework.kotlin.ZLinkDispatchOptionsExtensions
   public static final systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.Unit>);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkActorFactoryBuilder<TActor>, kotlin.Unit>);
   public static final systems.zlink.framework.configuration.ZLinkFrameworkOptions configureStreamCompression(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder, kotlin.Unit>);
 }
 ```

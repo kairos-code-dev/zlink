@@ -603,16 +603,6 @@ assembly Zlink.Framework.Contracts
     method override System.String ToString() [return=read:unknown,write:unknown]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Spots.ZLinkActorCreateResponse left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkActorCreateResponse right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Spots.ZLinkActorCreateResponse left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkActorCreateResponse right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions : System.IEquatable<Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions>
-    ctor ZLinkInstanceSpotFactoryOptions()
-    property System.Int32 StableTypeLimit { get; init; } [nullability=read:not-null,write:not-null]
-    method Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions <Clone>$() [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Spots.ZLinkSpotActorJoinResult : System.IEquatable<Zlink.Framework.Contracts.Spots.ZLinkSpotActorJoinResult>
     ctor ZLinkSpotActorJoinResult(System.Boolean Accepted [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Messaging.ZLinkMessage? Reply [nullability=read:nullable,write:nullable])
     property System.Boolean Accepted { get; init; } [nullability=read:not-null,write:not-null]

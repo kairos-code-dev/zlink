@@ -1,10 +1,5 @@
 namespace Zlink.Framework.Contracts.Spots;
 
-public sealed record ZLinkInstanceSpotFactoryOptions
-{
-    public int StableTypeLimit { get; init; }
-}
-
 /// <summary>
 ///     Actor-free lifecycle for a Spot activated by an Instance Spot intent.
 /// </summary>

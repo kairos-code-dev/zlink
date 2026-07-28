@@ -60,9 +60,7 @@ internal static class Program
                 .Listen(instance.MeshEndpoint)
                 .SetRoutingIdPrefix("quest-mission");
             mesh.Objects().Server().AddInstanceSpotFactory<PlayerQuestSpot>(
-                SampleNames.PlayerQuestSpotType,
-                null,
-                ZLinkRelocationPolicy<PlayerQuestSpot>.Recreate);
+                SampleNames.PlayerQuestSpotType, factory => factory.RecreateOnRelocation());
             mesh.Channel(SampleNames.GameApiChannel).Client();
         });
 

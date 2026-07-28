@@ -49,9 +49,7 @@ public static class MatchmakingServerHostFactory
                 .Listen(configuration.Node.MeshEndpoint)
                 .Objects().Server()
                 .AddInstanceSpotFactory<BingoMatchmaker>(
-                    SampleNames.MatchmakerSpotType,
-                    null,
-                    ZLinkRelocationPolicy<BingoMatchmaker>.Recreate);
+                    SampleNames.MatchmakerSpotType, factory => factory.RecreateOnRelocation());
         });
         return builder.Build();
     }

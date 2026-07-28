@@ -71,20 +71,17 @@ internal static class PlayHostFactory
             mesh18.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayerActor, PlayerActorFactory>(
-                    ObservabilityNames.PlayerActorType,
-                    null,
-                    ZLinkRelocationPolicy<PlayerActor>
-                        .Snapshot<PlayerActorRelocationAdapter>())
+                    ObservabilityNames.PlayerActorType, factory => factory.PreserveStateWith<PlayerActorRelocationAdapter>())
                 .AddSpotFactory<RoomSpot>(
                     RoomSpotType,
-                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 128 },
-                    ZLinkRelocationPolicy<RoomSpot>
-                        .Snapshot<RoomSpotRelocationAdapter>())
+                    factory => factory
+                        .StableTypeLimit(128)
+                        .PreserveStateWith<RoomSpotRelocationAdapter>())
                 .AddInstanceSpotFactory<PlayInstanceSpot>(
                     InstanceSpotType,
-                    new ZLinkInstanceSpotFactoryOptions { StableTypeLimit = 128 },
-                    ZLinkRelocationPolicy<PlayInstanceSpot>
-                        .Snapshot<PlayInstanceSpotRelocationAdapter>());
+                    factory => factory
+                        .StableTypeLimit(128)
+                        .PreserveStateWith<PlayInstanceSpotRelocationAdapter>());
             if (!string.IsNullOrWhiteSpace(options.ManualPeerEndpoint))
                 mesh18.PeerConnections.Connect(options.ManualPeerEndpoint);
             mesh18.Channel(ObservabilityNames.PlayMesh).Client();

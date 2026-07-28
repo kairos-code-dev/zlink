@@ -108,9 +108,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                         var router = spot.Listen("tcp://127.0.0.1:9000");
                     }
                     spot.Objects().Server().AddSpotFactory<TestSpot>(
-                        "test",
-                        null,
-                        ZLinkRelocationPolicy<TestSpot>.Disabled);
+                        "test", factory => factory.DisableRelocation());
                 }
             }
         });
@@ -131,9 +129,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:9000");
             node.Channel("stage-node").Server();
             node.Objects().Server().AddSpotFactory<TestSpot>(
-                "test",
-                null,
-                ZLinkRelocationPolicy<TestSpot>.Disabled);
+                "test", factory => factory.DisableRelocation());
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -155,16 +151,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:9001");
             play.Channel("play-node").Server();
             play.Objects().Server().AddSpotFactory<TestSpot>(
-                "play",
-                null,
-                ZLinkRelocationPolicy<TestSpot>.Disabled);
+                "play", factory => factory.DisableRelocation());
             var session = options.AddRouteMesh("session-node")
                 .Listen("tcp://127.0.0.1:9002");
             session.Channel("session-node").Server();
             session.Objects().Server().AddSpotFactory<OtherTestSpot>(
-                "session",
-                null,
-                ZLinkRelocationPolicy<OtherTestSpot>.Disabled);
+                "session", factory => factory.DisableRelocation());
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -202,17 +194,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     .Listen("tcp://127.0.0.1:6101");
                 first.Channel("game.stage").Server();
                 first.Objects().Server().AddSpotFactory<TestSpot>(
-                    "test-a",
-                    null,
-                    ZLinkRelocationPolicy<TestSpot>.Disabled);
+                    "test-a", factory => factory.DisableRelocation());
 
                 var second = options.AddRouteMesh("game.stage-b")
                     .Listen("tcp://127.0.0.1:6102");
                 second.Channel("game.stage").Server();
                 second.Objects().Server().AddSpotFactory<TestSpot>(
-                    "test-b",
-                    null,
-                    ZLinkRelocationPolicy<TestSpot>.Disabled);
+                    "test-b", factory => factory.DisableRelocation());
             }));
 
         Assert.Contains("Duplicate SPOT factory", exception.Message, StringComparison.Ordinal);
@@ -259,9 +247,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 node.Channel("actor-node").Server();
                 var server = node.Objects().Server();
                 server.AddActorFactory<TestActor, TestActorFactory>(
-                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                    "warrior", factory => factory.DisableRelocation());
                 server.AddActorFactory<TestActor, TestActorFactory>(
-                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                    "warrior", factory => factory.DisableRelocation());
             }));
 
         Assert.Contains("Duplicate actor factory 'warrior'", exception.Message, StringComparison.Ordinal);
@@ -278,7 +266,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 options.UseTestLocationStore();
                 options.AddRouteMesh("actor-node").Objects().Server()
                     .AddActorFactory<TestActor, TestActorFactory>(
-                        "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                        "warrior", factory => factory.DisableRelocation());
             }));
 
         Assert.Contains("ROUTER endpoint", exception.Message, StringComparison.Ordinal);
@@ -296,12 +284,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6103");
             first.Channel("actor-node-a").Server();
             first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                "warrior", factory => factory.DisableRelocation());
             var second = options.AddRouteMesh("actor-node-b")
                 .Listen("tcp://127.0.0.1:6104");
             second.Channel("actor-node-b").Server();
             second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "mage", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                "mage", factory => factory.DisableRelocation());
         });
 
         using var provider = services.BuildServiceProvider();
@@ -394,7 +382,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6201");
             node.Channel("actor-node").Server();
             node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                "warrior", factory => factory.DisableRelocation());
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -414,9 +402,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6202");
             node.Channel("actor-node").Server();
             node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior",
-                null,
-                ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
         });
 
         using var provider = services.BuildServiceProvider();
@@ -437,12 +423,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6201");
             first.Channel("actor-node-a").Server();
             first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
             var second = options.AddRouteMesh("actor-node-b")
                 .Listen("tcp://127.0.0.1:6202");
             second.Channel("actor-node-b").Server();
             second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
         });
 
         using var provider = services.BuildServiceProvider();
@@ -462,7 +448,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:6203");
             node.Channel("actor-node-a").Server();
             node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
-                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+                "warrior", factory => factory.PreserveStateWith<TestActorTransferAdapter>());
         });
 
         var registration = services.BuildServiceProvider()
@@ -580,9 +566,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                     }
                     var server = spot.Objects().Server();
                     server.AddSpotFactory<TestSpot>(
-                        "test",
-                        null,
-                        ZLinkRelocationPolicy<TestSpot>.Disabled);
+                        "test", factory => factory.DisableRelocation());
                     server.AddEntrySpot<TestEntrySpot>();
                 }
             }
@@ -713,9 +697,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             node.Channel("stage-node").Server();
             node.Objects().Server()
                 .AddSpotFactory<TestSpot>(
-                    "test",
-                    null,
-                    ZLinkRelocationPolicy<TestSpot>.Disabled)
+                    "test", factory => factory.DisableRelocation())
                 .AddEntrySpot<TestEntrySpot>();
         });
 
@@ -785,9 +767,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:9000");
             node.Channel("stage-node").Server();
             node.Objects().Server().AddSpotFactory<TestSpot>(
-                "test",
-                null,
-                ZLinkRelocationPolicy<TestSpot>.Disabled);
+                "test", factory => factory.DisableRelocation());
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -809,9 +789,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:9000");
             node.Channel("stage-node").Server();
             node.Objects().Server().AddSpotFactory<TestSpot>(
-                "test",
-                null,
-                ZLinkRelocationPolicy<TestSpot>.Disabled);
+                "test", factory => factory.DisableRelocation());
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -1079,7 +1057,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen($"inproc://duplicate-packet-{Guid.NewGuid():N}");
             node.Channel("duplicate-packet").Server();
             node.Objects().Server().AddSpotFactory<DuplicatePacketSpot>(
-                "duplicate-packet", null, ZLinkRelocationPolicy<DuplicatePacketSpot>.Disabled);
+                "duplicate-packet", factory => factory.DisableRelocation());
         });
         using var host = builder.Build();
 
@@ -1103,7 +1081,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen($"inproc://duplicate-subscription-{Guid.NewGuid():N}");
             node.Channel("duplicate-subscription").Server();
             node.Objects().Server().AddSpotFactory<DuplicateSubscriptionSpot>(
-                "duplicate-subscription", null, ZLinkRelocationPolicy<DuplicateSubscriptionSpot>.Disabled);
+                "duplicate-subscription", factory => factory.DisableRelocation());
         });
         using var host = builder.Build();
 
@@ -1125,7 +1103,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen($"inproc://duplicate-actor-{Guid.NewGuid():N}");
             node.Channel("duplicate-actor").Server();
             node.Objects().Server().AddSpotFactory<DuplicateActorSpot>(
-                "duplicate-actor", null, ZLinkRelocationPolicy<DuplicateActorSpot>.Disabled);
+                "duplicate-actor", factory => factory.DisableRelocation());
         });
         using var host = builder.Build();
 
@@ -1146,7 +1124,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 .Listen($"inproc://invalid-timer-{Guid.NewGuid():N}");
             node.Channel("invalid-timer").Server();
             node.Objects().Server().AddSpotFactory<InvalidTimerSpot>(
-                "invalid-timer", null, ZLinkRelocationPolicy<InvalidTimerSpot>.Disabled);
+                "invalid-timer", factory => factory.DisableRelocation());
         });
         using var host = builder.Build();
 

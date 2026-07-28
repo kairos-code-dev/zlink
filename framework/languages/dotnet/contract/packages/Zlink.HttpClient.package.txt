@@ -5,7 +5,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.HttpClient.dll
 entry lib/net8.0/Zlink.HttpClient.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.HttpClient.xml=126d8dfb6739ef7393386caf5d9cb1e177e558dd65b0fa83ca68d44aa09290e9
+content-sha256 lib/net8.0/Zlink.HttpClient.xml=030038fe888f7beb186c2916205c7e262c2b46e4a54f7c942feb819c8ef378a1
 metadata authors=Zlink.HttpClient
 metadata description=ZLink-style fluent HTTP client wrapping System.Net.Http for the ZLink framework.
 metadata id=Zlink.HttpClient

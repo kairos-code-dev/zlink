@@ -3234,7 +3234,7 @@ public sealed class RelocationRuntimeTests
         Assert.Contains(
             typeof(IZLinkMeshObjectServerBuilder).GetMethods(),
             static method => method.Name == "AddSpotFactory"
-                             && method.GetParameters().Length == 3);
+                             && method.GetParameters().Length == 2);
         Assert.True(
             typeof(IZLinkActorFactory).IsAssignableFrom(
                 typeof(IZLinkActorFactory<TestRelocatableActor>)));
@@ -3262,9 +3262,7 @@ public sealed class RelocationRuntimeTests
         var options = new ZLinkFrameworkOptionsBuilder(registration);
         options.UseTestLocationStore();
         server.AddInstanceSpotFactory<TestInstanceSpot>(
-            "Game.Session",
-            null,
-            ZLinkRelocationPolicy<TestInstanceSpot>.Disabled);
+            "Game.Session", factory => factory.DisableRelocation());
 
         var failure = Assert.Throws<ZLinkConfigurationException>(
             () => ZLinkFrameworkRegistrationValidator.Validate(registration));
@@ -3279,9 +3277,7 @@ public sealed class RelocationRuntimeTests
         var disabledOptions = new ZLinkFrameworkOptionsBuilder(disabled);
         disabledOptions.UseTestLocationStore();
         disabledServer.AddSpotFactory<TestRelocatableSpot>(
-            "Game.DisabledRoom",
-            null,
-            ZLinkRelocationPolicy<TestRelocatableSpot>.Disabled);
+            "Game.DisabledRoom", factory => factory.DisableRelocation());
         ZLinkFrameworkRegistrationValidator.Validate(disabled);
 
         foreach (var policyKind in new byte[] { 1, 2 })
@@ -3289,16 +3285,17 @@ public sealed class RelocationRuntimeTests
             var registration = NewObjectServerRegistration(out var server);
             var options = new ZLinkFrameworkOptionsBuilder(registration);
             options.UseTestLocationStore();
-            var relocation = policyKind == 1
-                ? ZLinkRelocationPolicy<TestRelocatableActor>.Recreate
-                : ZLinkRelocationPolicy<TestRelocatableActor>
-                    .Snapshot<TestActorRelocationAdapter>();
             server.AddActorFactory<
                 TestRelocatableActor,
                 TestRelocatableActorFactory>(
                 $"Game.Actor.{policyKind}",
-                null,
-                relocation);
+                factory =>
+                {
+                    if (policyKind == 1)
+                        factory.RecreateOnRelocation();
+                    else
+                        factory.PreserveStateWith<TestActorRelocationAdapter>();
+                });
 
             var failure = Assert.Throws<ZLinkConfigurationException>(
                 () => ZLinkFrameworkRegistrationValidator.Validate(registration));
@@ -3314,9 +3311,7 @@ public sealed class RelocationRuntimeTests
         options.UseTestLocationStore();
         options.AddRelocationStore(new RecordingRelocationStore());
         server.AddInstanceSpotFactory<TestInstanceSpot>(
-            "Game.Session",
-            null,
-            ZLinkRelocationPolicy<TestInstanceSpot>.Disabled);
+            "Game.Session", factory => factory.DisableRelocation());
 
         ZLinkFrameworkRegistrationValidator.Validate(registration);
     }
@@ -3345,13 +3340,10 @@ public sealed class RelocationRuntimeTests
 
         builder.AddSpotFactory<TestRelocatableSpot>(
             "room",
-            new ZLinkUserSpotFactoryOptions
-            {
-                StableTypeLimit = 100,
-                ExecutionMode = ZLinkUserSpotExecutionMode.PerActor
-            },
-            ZLinkRelocationPolicy<TestRelocatableSpot>
-                .Snapshot<TestSpotRelocationAdapter>());
+            factory => factory
+                .StableTypeLimit(100)
+                .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                .PreserveStateWith<TestSpotRelocationAdapter>());
 
         var relocation = registration.SpotRelocations["room"];
         Assert.Equal(typeof(TestRelocatableSpot), relocation.InstanceType);
@@ -3360,7 +3352,7 @@ public sealed class RelocationRuntimeTests
         Assert.Equal(100, relocation.Placement.MaxActiveObjects);
         var factoryOptions = registration.UserSpotFactoryOptions[typeof(TestRelocatableSpot)];
         Assert.Equal(100, factoryOptions.StableTypeLimit);
-        Assert.Equal(ZLinkUserSpotExecutionMode.PerActor, factoryOptions.ExecutionMode);
+        Assert.Equal(ZLinkUserSpotExecutionMode.SpotWide, factoryOptions.ExecutionMode);
     }
 
     [Fact]
@@ -3380,9 +3372,7 @@ public sealed class RelocationRuntimeTests
         node.Objects().Server().AddActorFactory<
             TestRelocatableActor,
             TestRelocatableActorFactory>(
-            "Game.Actor",
-            new ZLinkActorFactoryOptions(),
-            ZLinkRelocationPolicy<TestRelocatableActor>.Recreate);
+            "Game.Actor", factory => factory.RecreateOnRelocation());
 
         Assert.Equal(42, registration.ApplicationVersion);
         Assert.Equal("wave-blue", registration.MaintenanceWave);

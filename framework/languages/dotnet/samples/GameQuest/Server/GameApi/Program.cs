@@ -72,9 +72,7 @@ internal static class Program
             mesh.Objects().Server()
                 .AddEntrySpot<GameQuestEntrySpot>()
                 .AddActorFactory<PlayerSessionActor, PlayerSessionActorFactory>(
-                    SampleNames.SessionActorType,
-                    null,
-                    ZLinkRelocationPolicy<PlayerSessionActor>.Recreate);
+                    SampleNames.SessionActorType, factory => factory.RecreateOnRelocation());
             mesh.Channel(SampleNames.GameApiChannel).Server()
                 .AddHandlerGroup(SampleNames.GameApiHandlerGroup);
             options.AddStreamNode(SampleNames.StreamNode)

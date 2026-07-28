@@ -5025,10 +5025,8 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             registration.SpotNodes["entry"].SpotFactories.Add(userSpotType);
             registration.SpotNodes["entry"].UserSpotFactoryOptions[userSpotType] =
-                new ZLinkUserSpotFactoryOptions
-                {
-                    ExecutionMode = userSpotExecutionMode
-                };
+                new ZLinkUserSpotFactoryConfiguration(
+                    ExecutionMode: userSpotExecutionMode);
             registration.SpotNodes["entry"].SpotRelocations[userSpotType.FullName!] =
                 new ZLinkObjectRelocationRegistration(
                     userSpotType,

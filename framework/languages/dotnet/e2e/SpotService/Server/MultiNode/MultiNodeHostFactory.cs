@@ -78,21 +78,13 @@ internal static class MultiNodeHostFactory
                 mesh20.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
-                        SpotServiceNames.ActorType,
-                        null,
-                        ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                        SpotServiceNames.ActorType, factory => factory.RecreateOnRelocation())
                     .AddSpotFactory<SpotOnlyUserSpot>(
-                        SpotServiceNames.SpotOnlyUserSpotType,
-                        null,
-                        ZLinkRelocationPolicy<SpotOnlyUserSpot>.Disabled)
+                        SpotServiceNames.SpotOnlyUserSpotType, factory => factory.DisableRelocation())
                     .AddSpotFactory<ScenarioUserSpot>(
-                        SpotServiceNames.UserSpotType,
-                        null,
-                        ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                        SpotServiceNames.UserSpotType, factory => factory.DisableRelocation())
                     .AddSpotFactory<MultiNodeSpotA>(
-                        SpotServiceNames.MultiSpotTypeA,
-                        null,
-                        ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled);
+                        SpotServiceNames.MultiSpotTypeA, factory => factory.DisableRelocation());
                 mesh20.Channel(ResolveSpotMeshName(options)).Server();
             }
 
@@ -117,21 +109,13 @@ internal static class MultiNodeHostFactory
                 mesh21.Objects().Server()
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
-                        SpotServiceNames.ActorType,
-                        null,
-                        ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                        SpotServiceNames.ActorType, factory => factory.RecreateOnRelocation())
                     .AddSpotFactory<SpotOnlyUserSpot>(
-                        SpotServiceNames.SpotOnlyUserSpotType,
-                        null,
-                        ZLinkRelocationPolicy<SpotOnlyUserSpot>.Disabled)
+                        SpotServiceNames.SpotOnlyUserSpotType, factory => factory.DisableRelocation())
                     .AddSpotFactory<ScenarioUserSpot>(
-                        SpotServiceNames.UserSpotType,
-                        null,
-                        ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                        SpotServiceNames.UserSpotType, factory => factory.DisableRelocation())
                     .AddSpotFactory<MultiNodeSpotB>(
-                        SpotServiceNames.MultiSpotTypeB,
-                        null,
-                        ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
+                        SpotServiceNames.MultiSpotTypeB, factory => factory.DisableRelocation());
                 mesh21.Channel(ResolveSpotMeshName(options)).Server();
             }
         });

@@ -141,16 +141,16 @@ Object role이 `Client` 또는 `Server`인 MeshNode는 Location Store가 필수�
 create, find, message와 factory를 제공하지 않는다.
 
 Object를 다른 node로 옮길 때 application state를 어떻게 복원할지 정하는 방식을
-[relocation policy](01-glossary.ko.md#relocation-policy)라고 한다. `Recreate`는
+[relocation policy](01-glossary.ko.md#relocation-policy)라고 한다. `RecreateOnRelocation`은
 application state 없이 새 instance를 만들고,
-[Snapshot](01-glossary.ko.md#snapshot-relocation-policy)은
+[PreserveStateWith](01-glossary.ko.md#preserve-state-relocation-policy)는
 저장한 application state를 복원한다.
 
-Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록했거나
+Object Server factory에 `RecreateOnRelocation` 또는 `PreserveStateWith` policy를 하나라도 등록했거나
 Instance Spot factory를 하나라도 등록한 Framework
 설정에는 Relocation Store를 정확히 하나 등록해야 한다. 누락되거나 둘 이상이면 socket bind 전에 startup
 configuration error다. Instance Spot factory가 없고
-모든 factory가 `Disabled`일 때만 Relocation Store가 필요하지 않다.
+모든 factory가 `DisableRelocation`일 때만 Relocation Store가 필요하지 않다.
 
 등록에 성공하면 Framework가 Store instance를 종료할 책임을 가진다. Store를
 사용하는 작업을 먼저 끝낸 뒤 instance를 정확히 한 번 dispose한다. 두 Store가 같은
@@ -212,12 +212,12 @@ Relocation Store 사용 여부는 다음과 같다.
 | 작업 | Framework 동작 |
 |---|---|
 | Same-node Actor join | Location Store에서 membership만 변경하며 Relocation payload를 만들지 않는다. |
-| `Disabled` cross-node 이동 | Capture 전에 거부한다. |
-| `Recreate` cross-node Actor·Spot 이동 | Application state 없이 accepted journal과 recovery payload를 저장한다. |
-| `Snapshot` cross-node Actor·Spot 이동 | Application state, accepted journal과 recovery payload를 저장한다. |
+| `DisableRelocation` cross-node 이동 | Capture 전에 거부한다. |
+| `RecreateOnRelocation` cross-node Actor·Spot 이동 | Application state 없이 accepted journal과 recovery payload를 저장한다. |
+| `PreserveStateWith` cross-node Actor·Spot 이동 | Application state, accepted journal과 recovery payload를 저장한다. |
 | Host maintenance의 Actor·User Spot 이동 | 이동 대상별 state와 완료되지 않은 작업을 저장한다. |
 | Cross-node Actor `JoinSpot`·`JoinEntrySpot` | 이동하는 Actor의 policy에 맞는 payload를 저장한다. |
-| Instance Spot을 처음 만들면서 message 처리 | 생성 정보와 최초 message를 함께 저장한다. Policy가 `Disabled`여도 사용한다. |
+| Instance Spot을 처음 만들면서 message 처리 | 생성 정보와 최초 message를 함께 저장한다. Policy가 `DisableRelocation`이어도 사용한다. |
 
 실행 중인 node를 알리는 정보는 해당 host의 owner 사용 기한이 끝나면 더 이상
 사용하지 않는다. Actor·Spot의 현재 위치 record는 정해진 조건으로 삭제할 때까지
@@ -334,7 +334,7 @@ owner lease가 아직 유효한지 직접 확인한다.
 |---|---|
 | Revision | Host가 descriptor마다 발급하는 0이 아닌 증가 값이다. Provider 전체에서 공유하는 counter가 아니다. 다음 값이 `2^63-1`을 넘으면 host를 `Error`로 바꾸고 게시를 중단한다. |
 | Page | 항목은 `1..1000`개이며 저장 크기는 최대 4 MiB다. 다음 페이지를 읽는 값은 provider가 발급하고 Framework는 해석하지 않는다. |
-| Descriptor 하나 | 저장 크기는 최대 1 MiB다. 등록 type 목록과 Snapshot adapter 지원 목록은 각각 최대 1,024개다. |
+| Descriptor 하나 | 저장 크기는 최대 1 MiB다. 등록 type 목록과 state adapter 지원 목록은 각각 최대 1,024개다. |
 
 Framework는 목록을 읽기 전과 후에 변경 번호를 확인한다. 두 번호가 같을 때만 전체
 페이지를 사용한다. Provider는 전체 목록을 Lua memory에 한꺼번에 만들거나 Redis

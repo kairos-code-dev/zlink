@@ -64,12 +64,14 @@ internal static class WorkflowHostFactory
             mesh16.Objects().Server()
                 .AddSpotFactory<WorkflowSpot>(
                     WorkflowSpotType,
-                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 64 },
-                    ZLinkRelocationPolicy<WorkflowSpot>.Disabled)
+                    factory => factory
+                        .StableTypeLimit(64)
+                        .DisableRelocation())
                 .AddSpotFactory<ProjectionSpot>(
                     ProjectionSpotType,
-                    new ZLinkUserSpotFactoryOptions { StableTypeLimit = 64 },
-                    ZLinkRelocationPolicy<ProjectionSpot>.Disabled);
+                    factory => factory
+                        .StableTypeLimit(64)
+                        .DisableRelocation());
             mesh16.Channel(ObservabilityNames.WorkflowMesh).Client();
         });
 

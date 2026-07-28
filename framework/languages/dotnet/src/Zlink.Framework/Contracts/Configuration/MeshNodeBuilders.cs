@@ -78,22 +78,62 @@ public interface IZLinkMeshObjectServerBuilder
 
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkUserSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkUserSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkSpot;
 
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkInstanceSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkInstanceSpot;
 
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkActorFactoryOptions? options,
-        ZLinkRelocationPolicy<TActor> relocation)
+        Action<IZLinkActorFactoryBuilder<TActor>> configure)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
+}
+
+public interface IZLinkActorFactoryBuilder<TActor>
+    where TActor : class, IZLinkActor
+{
+    IZLinkActorFactoryBuilder<TActor> DisableRelocation();
+
+    IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation();
+
+    IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkActorRelocationAdapter<TActor>;
+}
+
+public interface IZLinkUserSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkSpot
+{
+    IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit);
+
+    IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(
+        ZLinkUserSpotExecutionMode mode);
+
+    IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(
+        ZLinkSpotRelocationReadinessMode mode);
+
+    IZLinkUserSpotFactoryBuilder<TSpot> DisableRelocation();
+
+    IZLinkUserSpotFactoryBuilder<TSpot> RecreateOnRelocation();
+
+    IZLinkUserSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>;
+}
+
+public interface IZLinkInstanceSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkInstanceSpot
+{
+    IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit);
+
+    IZLinkInstanceSpotFactoryBuilder<TSpot> DisableRelocation();
+
+    IZLinkInstanceSpotFactoryBuilder<TSpot> RecreateOnRelocation();
+
+    IZLinkInstanceSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>;
 }
 
 public interface IZLinkMeshObjectRoleBuilder
@@ -107,10 +147,6 @@ public interface IZLinkMeshObjectClientBuilder
 {
 }
 
-public sealed record ZLinkActorFactoryOptions
-{
-}
-
 public enum ZLinkUserSpotExecutionMode
 {
     SpotWide = 0,
@@ -121,17 +157,6 @@ public enum ZLinkSpotRelocationReadinessMode
 {
     AnyTurnBoundary = 0,
     ApplicationSignaled = 1
-}
-
-public sealed record ZLinkUserSpotFactoryOptions
-{
-    public int StableTypeLimit { get; init; }
-
-    public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
-        = ZLinkUserSpotExecutionMode.SpotWide;
-
-    public ZLinkSpotRelocationReadinessMode RelocationReadiness { get; init; }
-        = ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
 }
 
 public interface IZLinkMeshNodeBuilder

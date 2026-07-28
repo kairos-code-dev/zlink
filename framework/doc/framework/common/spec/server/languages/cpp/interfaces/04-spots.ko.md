@@ -11,8 +11,8 @@ target packet·push를 허용한다. Relocation 자체는 physical·logical disc
 
 ## 1. Spot identity와 relocation 등록
 
-User·Instance Spot factory는 `relocation_policy_t<TSpot>::disabled()`, `recreate()` 또는 `snapshot(...)` 중
-하나를 명시한다. Policy를 생략하는 [factory](../../../../01-glossary.ko.md#factory) overload는 제공하지 않는다.
+User·Instance Spot factory configure callback은 `disable_relocation()`, `recreate_on_relocation()` 또는
+`preserve_state_with<TAdapter>()` 중 하나를 명시한다.
 
 ```cpp
 namespace zlink::framework {
@@ -30,10 +30,35 @@ public:
       std::stop_token operation_cancellation) = 0;
 };
 
+template <typename TSpot>
+class user_spot_factory_builder_t {
+public:
+    user_spot_factory_builder_t &set_stable_type_limit(std::int32_t limit);
+    user_spot_factory_builder_t &set_execution_mode(user_spot_execution_mode_t mode);
+    user_spot_factory_builder_t &set_relocation_readiness(
+      spot_relocation_readiness_mode_t mode);
+    void disable_relocation();
+    void recreate_on_relocation();
+    template <typename TAdapter>
+      requires std::derived_from<TAdapter, spot_relocation_adapter_t<TSpot>>
+    void preserve_state_with();
+};
+
+template <typename TSpot>
+class instance_spot_factory_builder_t {
+public:
+    instance_spot_factory_builder_t &set_stable_type_limit(std::int32_t limit);
+    void disable_relocation();
+    void recreate_on_relocation();
+    template <typename TAdapter>
+      requires std::derived_from<TAdapter, spot_relocation_adapter_t<TSpot>>
+    void preserve_state_with();
+};
+
 } // namespace zlink::framework
 ```
 
-Snapshot Spot factory의 `relocation_policy_t<TSpot>::snapshot<TAdapter>()`에서 `TAdapter`는
+`preserve_state_with<TAdapter>()`에서 `TAdapter`는
 `spot_relocation_adapter_t<TSpot>`를 구현해야 한다. Actor adapter를 전달하거나 [Spot](../../../../01-glossary.ko.md#spot) factory에 맞지 않는 adapter를
 전달하면 socket bind 전에 configuration error로 실패한다. Adapter는 application state를 opaque byte vector로만
 주고받으며 typed state, 별도 contract identifier와 message wrapper를 노출하지 않는다.
@@ -418,7 +443,7 @@ Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 따른다.
 
 Actor와 User·Instance Spot의 cross-node materialization 동작은 factory 등록에 연결한
-`relocation_policy_t<T>`가 정한다. 별도 relocation adapter registry나 operation별 adapter는 제공하지 않는다.
+factory builder가 정한다. 별도 relocation adapter registry나 operation별 adapter는 제공하지 않는다.
 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) Spot factory만 `spot_relocation_adapter_t<TSpot>`로 Spot application state를 capture·restore한다. Whole
 User Spot relocation은 Spot root에 Spot adapter를 사용하고 각 Actor participant에는
 `actor_relocation_adapter_t<TActor>`를 사용한다. Same-node operation과 Disabled·Recreate policy는 Spot adapter를

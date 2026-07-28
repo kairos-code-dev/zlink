@@ -68,9 +68,7 @@ public static class OrderWorkflowServerHostFactory
                 .Listen(instance.MeshEndpoint)
                 .SetRoutingIdPrefix("order-workflow");
             mesh.Objects().Server().AddInstanceSpotFactory<OrderWorkflowSpot>(
-                SampleNames.OrderWorkflowSpotType,
-                null,
-                ZLinkRelocationPolicy<OrderWorkflowSpot>.Recreate);
+                SampleNames.OrderWorkflowSpotType, factory => factory.RecreateOnRelocation());
             mesh.Channel(SampleNames.OrderProjectionChannel).Server();
         });
 

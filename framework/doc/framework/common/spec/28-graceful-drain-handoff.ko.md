@@ -218,7 +218,7 @@ host 전체를 한 번에 검사한다. 이때 이동 대상의 새 작업을 �
 공간을 미리 확보하지 않는다.
 
 Application state를 bytes로 저장해 target에서 복원하는 방식은
-[Snapshot relocation policy](01-glossary.ko.md#snapshot-relocation-policy)다.
+[Preserve-state relocation policy](01-glossary.ko.md#preserve-state-relocation-policy)다.
 Host가 현재 owner 자격을 유지하는 기간을
 [owner lease](01-glossary.ko.md#owner-lease)라고 한다.
 
@@ -227,7 +227,7 @@ Host가 현재 owner 자격을 유지하는 기간을
 | 동시에 진행 중인 작업 | 새 object 생성, join, Instance placement, session binding과 inbound relocation이 있으면 먼저 끝낼 작업을 확정한다. |
 | Local workload | 모든 MeshNode의 Actor, Spot, timer, session과 진행 중인 infrastructure operation을 확인한다. |
 | 두 Store | Location Store의 현재 위치 record, 필요한 Relocation Store와 target descriptor의 owner lease를 사용할 수 있다. |
-| Unit 호환성 | Application이 명시적으로 만드는 [User Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot), 최초 message로 필요할 때 만드는 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot), 그 안의 Actor가 사용하는 relocation policy와 Snapshot adapter, target [factory](01-glossary.ko.md#factory), 수용 공간이 모두 호환된다. |
+| Unit 호환성 | Application이 명시적으로 만드는 [User Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot), 최초 message로 필요할 때 만드는 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot), 그 안의 Actor가 사용하는 relocation policy와 state adapter, target [factory](01-glossary.ko.md#factory), 수용 공간이 모두 호환된다. |
 | Topology | Host가 사용하는 모든 service topology가 Store의 descriptor로 remote endpoint를 찾는다. 이 방식을 [automatic discovery](01-glossary.ko.md#automatic-discovery)라고 한다. |
 
 Manual RouteMesh peer, ClientServer client endpoint, fanout subscriber endpoint 또는
@@ -248,7 +248,7 @@ Framework는 다음 순서로 target을 좁힌다.
 |---:|---|
 | 1 | `PlannedMaintenance`는 source와 같은 application version만 남긴다. `RollingUpdate`는 caller가 지정한 version만 남기며 더 낮거나 높은 다른 version도 제외한다. |
 | 2 | Source가 아니며 `Serving` 상태인 Object Server만 남긴다. |
-| 3 | Application이 object를 만들도록 등록한 함수인 [factory](01-glossary.ko.md#factory), 언어 독립 object type 이름인 [stable type](01-glossary.ko.md#stable-type), relocation policy와 Snapshot adapter가 호환되는 node만 남긴다. |
+| 3 | Application이 object를 만들도록 등록한 함수인 [factory](01-glossary.ko.md#factory), 언어 독립 object type 이름인 [stable type](01-glossary.ko.md#stable-type), relocation policy와 state adapter가 호환되는 node만 남긴다. |
 | 4 | 필요한 수용 공간이 남아 있고, source에 [maintenance wave](01-glossary.ko.md#maintenance-wave)가 설정되어 있으면 값이 다른 node만 남긴다. Maintenance wave는 같은 점검 작업의 host를 구분하는 application 설정값이다. |
 | 5 | 같은 시점의 descriptor 목록과 Core peer table에서 RID와 [lifecycle generation](01-glossary.ko.md#lifecycle-generation)이 모두 같은 node만 남긴다. Lifecycle generation은 같은 RID를 사용한 서로 다른 process 실행을 구분한다. 해당 peer는 `Admitted`와 `Ready`여야 한다. |
 
@@ -418,7 +418,7 @@ Framework는 현재 실행 중인 turn까지만 완료하고 다음 turn 전에 
 2. Framework는 새 application message, timer 실행과 아직 시작하지 않은
    continuation이 같은 이동 세대 이후에 시작되지 않게 막는다.
 3. Framework는 아직 실행하지 않은 message, accepted journal, timer registration과
-   실행 대기 중인 tick을 저장한다. `Snapshot` policy이면 adapter의 `Capture`가 반환한
+   실행 대기 중인 tick을 저장한다. `PreserveStateWith` policy이면 adapter의 `Capture`가 반환한
    application state도 포함한다.
 4. Target은 factory와 `Restore`를 실행한다. 이 과정에서는 새 application 작업을
    받지 않는다.
@@ -439,15 +439,15 @@ Bound session이 있는 Actor는 session owner의 route commit ACK와 ingress un
 
 | Policy | 처리 |
 |---|---|
-| `Disabled` | 해당 object가 남아 있으면 `Blocked/RelocationDisabled`다. |
-| `Recreate` | 같은 object ID로 target factory를 실행한다. Application state는 옮기지 않지만 아직 끝나지 않은 Framework 작업은 옮긴다. |
-| `Snapshot` | Adapter가 반환한 bytes를 저장하고 target factory instance에 `Restore`한다. Application이 bytes의 format, version과 migration을 관리한다. |
+| `DisableRelocation` | 해당 object가 남아 있으면 `Blocked/RelocationDisabled`다. |
+| `RecreateOnRelocation` | 같은 object ID로 target factory를 실행한다. Application state는 옮기지 않지만 아직 끝나지 않은 Framework 작업은 옮긴다. |
+| `PreserveStateWith` | Adapter가 반환한 bytes를 저장하고 target factory instance에 `Restore`한다. Application이 bytes의 format, version과 migration을 관리한다. |
 
 Framework는 별도 state contract ID나 generic state type을 추가하지 않는다.
 
 `PerActor` User Spot은 다음 순서로 진행한다.
 
-1. Target에 `Recreate` policy로 runtime-private Spot shell을 준비한다. Public SpotId와
+1. Target에 `RecreateOnRelocation` policy로 runtime-private Spot shell을 준비한다. Public SpotId와
    ObjectGeneration은 source와 같지만 아직 resolver에 공개하지 않는다.
 2. Source Spot lane의 current turn과 진행 중인 Actor Create·Join을 끝내고 새
    Spot-level admission을 잠시 보관한다.
@@ -526,8 +526,8 @@ Operation이 deadline까지 완료 조건을 만족하지 못한 결과를
 |---|---|
 | 요청한 application version의 target이 deadline까지 준비되지 않는다. | `Blocked/TargetUnavailable` |
 | Store 읽기, 쓰기 또는 owner lease 확인이 첫 owner 변경 전에 실패한다. | Owner를 바꾸지 않은 임시 record를 정리하고 `Blocked/StoreUnavailable` |
-| `Disabled` policy가 남아 있다. | `Blocked/RelocationDisabled` |
-| Version, type 또는 Snapshot adapter가 호환되지 않거나 허용한 재시도에서 `Capture`와 `Restore`가 모두 실패한다. | `Blocked/StateIncompatible` |
+| `DisableRelocation` policy가 남아 있다. | `Blocked/RelocationDisabled` |
+| Version, type 또는 state adapter가 호환되지 않거나 허용한 재시도에서 `Capture`와 `Restore`가 모두 실패한다. | `Blocked/StateIncompatible` |
 | Framework가 deadline 때문에 callback을 취소하거나 owner 변경 전 작업이 deadline을 넘는다. | `Blocked/DeadlineExceeded` |
 | 첫 owner 변경 뒤 authority 또는 relocation payload 처리가 실패한다. | 현재 unit의 복구를 끝내고 `Blocked/RelocationFailed` |
 

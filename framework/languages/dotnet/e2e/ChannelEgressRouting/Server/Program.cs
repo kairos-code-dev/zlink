@@ -423,18 +423,12 @@ static void RegisterMesh(
             .Objects().Server()
             .AddEntrySpot<ChannelEntrySpot>()
             .AddActorFactory<ChannelActor, ChannelActorFactory>(
-                ChannelObjectNames.ActorType,
-                null,
-                ZLinkRelocationPolicy<ChannelActor>
-                    .Snapshot<ChannelActorRelocationAdapter>())
+                ChannelObjectNames.ActorType, factory => factory.PreserveStateWith<ChannelActorRelocationAdapter>())
             .AddSpotFactory<ChannelRoomSpot>(
                 ChannelObjectNames.SpotType,
-                new ZLinkUserSpotFactoryOptions
-                {
-                    ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
-                },
-                ZLinkRelocationPolicy<ChannelRoomSpot>
-                    .Snapshot<ChannelRoomRelocationAdapter>());
+                factory => factory
+                    .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                    .PreserveStateWith<ChannelRoomRelocationAdapter>());
     }
     else if (objectClient)
     {

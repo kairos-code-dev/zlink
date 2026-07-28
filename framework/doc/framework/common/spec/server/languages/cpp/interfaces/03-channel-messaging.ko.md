@@ -152,12 +152,7 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>(
         class spot_context_t)> factory,
-      relocation_policy_t<TSpot> relocation,
-      spot_placement_options_t placement,
-      user_spot_execution_mode_t execution_mode =
-        user_spot_execution_mode_t::spot_wide,
-      spot_relocation_readiness_mode_t relocation_readiness =
-        spot_relocation_readiness_mode_t::any_turn_boundary);
+      std::function<void(user_spot_factory_builder_t<TSpot> &)> configure);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
@@ -165,8 +160,7 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>(
         class instance_spot_context_t)> factory,
-      relocation_policy_t<TSpot> relocation,
-      spot_placement_options_t placement);
+      std::function<void(instance_spot_factory_builder_t<TSpot> &)> configure);
 
     template <typename TActor, typename TActorFactory>
       requires std::derived_from<TActor, actor_t> &&
@@ -174,8 +168,7 @@ public:
     mesh_node_builder_t &add_actor_factory(
       std::string stable_type,
       std::shared_ptr<TActorFactory> factory,
-      relocation_policy_t<TActor> relocation,
-      actor_placement_options_t placement);
+      std::function<void(actor_factory_builder_t<TActor> &)> configure);
 
 };
 
@@ -512,7 +505,7 @@ Spot total 1개, 해당 Spot stable type 1개와 Actor total `N`개를 all-or-no
 reservation이 capacity 때문에 실패하면 `placement_capacity_exhausted`로 완료하고 application factory나
 handler를 호출하지 않는다.
 Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 relocation policy를 항상 명시하며 이를 생략하는
-overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
+overload는 없다. State 보존 Actor factory에는 `actor_relocation_adapter_t<TActor>`, state 보존 User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류와 adapter 종류 또는 instance type이
 일치하지 않으면 socket bind 전에 configuration error로 실패한다.
 

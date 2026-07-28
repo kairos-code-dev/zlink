@@ -95,9 +95,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                 .Objects()
                 .Server()
                 .AddActorFactory<HostedRecoveryActor, HostedRecoveryActorFactory>(
-                    "player",
-                    new ZLinkActorFactoryOptions(),
-                    ZLinkRelocationPolicy<HostedRecoveryActor>.Recreate);
+                    "player", factory => factory.RecreateOnRelocation());
         });
         await using var provider = services.BuildServiceProvider();
         var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
@@ -1830,9 +1828,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
                 .Objects()
                 .Server()
                 .AddActorFactory<HostedRecoveryActor, HostedRecoveryActorFactory>(
-                    "player",
-                    new ZLinkActorFactoryOptions(),
-                    ZLinkRelocationPolicy<HostedRecoveryActor>.Recreate);
+                    "player", factory => factory.RecreateOnRelocation());
         });
         await using var provider = services.BuildServiceProvider();
         var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();

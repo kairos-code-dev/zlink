@@ -77,15 +77,17 @@ public sealed class InstanceSpotContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkSpotRelocationAdapter<>))]
+    [ContractExample(
+        typeof(IZLinkSpotRelocationAdapter<>),
+        typeof(IZLinkInstanceSpotFactoryBuilder<>))]
     public async Task Spot_relocation_adapter_round_trips_only_application_state()
     {
-        // Registered as AddInstanceSpotFactory(..., Snapshot<TAdapter>()): the
-        // adapter is the only thing that carries application state to the
-        // node that takes the instance over.
-        var policy = ZLinkRelocationPolicy<LeaderboardSpot>.Snapshot<LeaderboardRelocationAdapter>();
-        Assert.NotNull(policy);
-        Assert.NotSame(policy, ZLinkRelocationPolicy<LeaderboardSpot>.Recreate);
+        // PreserveStateWith<TAdapter>() selects the adapter that carries
+        // application state to the node that takes the instance over.
+        var preserve = typeof(IZLinkInstanceSpotFactoryBuilder<LeaderboardSpot>)
+            .GetMethods()
+            .Single(method => method.Name == "PreserveStateWith");
+        Assert.True(preserve.IsGenericMethodDefinition);
 
         var adapter = new LeaderboardRelocationAdapter();
         var source = new LeaderboardSpot(new ExampleInstanceSpotContext("leaderboard-eu-west"));

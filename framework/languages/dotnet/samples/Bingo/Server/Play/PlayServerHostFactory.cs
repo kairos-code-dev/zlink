@@ -67,19 +67,15 @@ public static class PlayServerHostFactory
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActor, PlayerActorFactory>(
                     SampleNames.PlayerActorType,
-                    null,
-                    ZLinkRelocationPolicy<PlayerActor>
-                        .Snapshot<PlayerActorRelocationAdapter>())
+                    factory => factory
+                        .PreserveStateWith<PlayerActorRelocationAdapter>())
                 .AddSpotFactory<BingoRoom>(
                     SampleNames.RoomSpotType,
-                    new ZLinkUserSpotFactoryOptions
-                    {
-                        ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
-                        RelocationReadiness =
-                            ZLinkSpotRelocationReadinessMode.ApplicationSignaled
-                    },
-                    ZLinkRelocationPolicy<BingoRoom>
-                        .Snapshot<BingoRoomRelocationAdapter>());
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                        .RelocationReadiness(
+                            ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+                        .PreserveStateWith<BingoRoomRelocationAdapter>());
             mesh.Channel(SampleNames.RoomChannel).Server();
             options.AddClientServerChannel(SampleNames.ApiChannel).Client();
         });

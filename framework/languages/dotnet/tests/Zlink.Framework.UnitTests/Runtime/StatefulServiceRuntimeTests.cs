@@ -1770,11 +1770,9 @@ public sealed class StatefulServiceRuntimeTests
                 .SetSpotLimit(100);
             node.Objects().Server().AddSpotFactory<ProductionUserSpot>(
                 stableType,
-                new ZLinkUserSpotFactoryOptions
-                {
-                    StableTypeLimit = 100
-                },
-                ZLinkRelocationPolicy<ProductionUserSpot>.Disabled);
+                factory => factory
+                    .StableTypeLimit(100)
+                    .DisableRelocation());
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -2110,11 +2108,9 @@ public sealed class StatefulServiceRuntimeTests
                     objects.Server()
                         .AddSpotFactory<ProductionUserSpot>(
                             "Tests.ProductionUserSpot",
-                            new ZLinkUserSpotFactoryOptions
-                            {
-                                StableTypeLimit = 100
-                            },
-                            ZLinkRelocationPolicy<ProductionUserSpot>.Disabled);
+                            factory => factory
+                                .StableTypeLimit(100)
+                                .DisableRelocation());
                 }
                 else
                 {

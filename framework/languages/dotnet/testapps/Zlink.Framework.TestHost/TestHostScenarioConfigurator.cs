@@ -190,9 +190,7 @@ internal static class TestHostScenarioConfigurator
 
                 if (options.EnableSpotFactory)
                     mesh.Objects().Server().AddSpotFactory<StartupStageSpot>(
-                        "startup-stage",
-                        null,
-                        ZLinkRelocationPolicy<StartupStageSpot>.Disabled);
+                        "startup-stage", factory => factory.DisableRelocation());
             }
         });
 

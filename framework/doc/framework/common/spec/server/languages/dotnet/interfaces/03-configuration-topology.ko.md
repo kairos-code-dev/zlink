@@ -88,18 +88,15 @@ public interface IZLinkMeshObjectServerBuilder
         where TEntrySpot : class, IZLinkEntrySpot;
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkUserSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkUserSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkSpot;
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options,
-        ZLinkRelocationPolicy<TSpot> relocation)
+        Action<IZLinkInstanceSpotFactoryBuilder<TSpot>> configure)
         where TSpot : class, IZLinkInstanceSpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkActorFactoryOptions? options,
-        ZLinkRelocationPolicy<TActor> relocation)
+        Action<IZLinkActorFactoryBuilder<TActor>> configure)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
 }
@@ -116,22 +113,37 @@ public enum ZLinkSpotRelocationReadinessMode
     ApplicationSignaled = 1
 }
 
-public sealed record ZLinkActorFactoryOptions
+public interface IZLinkActorFactoryBuilder<TActor>
+    where TActor : class, IZLinkActor
 {
+    IZLinkActorFactoryBuilder<TActor> DisableRelocation();
+    IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation();
+    IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkActorRelocationAdapter<TActor>;
 }
 
-public sealed record ZLinkUserSpotFactoryOptions
+public interface IZLinkUserSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkSpot
 {
-    public int StableTypeLimit { get; init; }
-    public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
-        = ZLinkUserSpotExecutionMode.SpotWide;
-    public ZLinkSpotRelocationReadinessMode RelocationReadiness { get; init; }
-        = ZLinkSpotRelocationReadinessMode.AnyTurnBoundary;
+    IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit);
+    IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(
+        ZLinkUserSpotExecutionMode mode);
+    IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(
+        ZLinkSpotRelocationReadinessMode mode);
+    IZLinkUserSpotFactoryBuilder<TSpot> DisableRelocation();
+    IZLinkUserSpotFactoryBuilder<TSpot> RecreateOnRelocation();
+    IZLinkUserSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>;
 }
 
-public sealed record ZLinkInstanceSpotFactoryOptions
+public interface IZLinkInstanceSpotFactoryBuilder<TSpot>
+    where TSpot : class, IZLinkInstanceSpot
 {
-    public int StableTypeLimit { get; init; }
+    IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit);
+    IZLinkInstanceSpotFactoryBuilder<TSpot> DisableRelocation();
+    IZLinkInstanceSpotFactoryBuilder<TSpot> RecreateOnRelocation();
+    IZLinkInstanceSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot>;
 }
 
 public interface IZLinkNetworkOptions
@@ -413,19 +425,20 @@ User Spot factory와 Instance factory에 중복 등록할 수 없다. `TSpot`이
 actor-free 계약과 충돌하므로 startup이 실패한다. 두 option은 local MeshNode와 Instance type별로 적용한다.
 등록한 type set은 descriptor를 처음 게시하기 전에 고정하며 startup 이후 변경하지 않는다.
 
-`ZLinkRelocationPolicy<TInstance>.Snapshot<TAdapter>()`은 state type이나 state contract ID를 받지 않는다. Actor
-factory 등록에서는 `TAdapter`가 `IZLinkActorRelocationAdapter<TActor>`를, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory 등록에서는
-`IZLinkSpotRelocationAdapter<TSpot>`을 구현해야 한다. Factory 대상과 adapter 종류가 맞지 않으면 socket bind 전에
-startup configuration error로 실패한다. `Disabled`와 `Recreate`는 adapter type을 요구하지 않는다.
+Factory configure callback은 option과 relocation policy를 한 builder에서 설정한다. Callback은
+`DisableRelocation()`, `RecreateOnRelocation()`, `PreserveStateWith<TAdapter>()` 중 정확히 하나를 호출해야 한다.
+하나도 선택하지 않거나 둘 이상 선택하면 socket bind 전에 startup configuration error다. Actor builder는
+`IZLinkActorRelocationAdapter<TActor>`, User·Instance Spot builder는 `IZLinkSpotRelocationAdapter<TSpot>`만
+받는다. Factory 대상과 adapter 종류가 맞지 않아도 같은 오류로 실패한다.
 
 `ZLinkUserSpotExecutionMode.PerActor`를 선택한 User Spot은
-`ZLinkRelocationPolicy<TSpot>.Recreate()`만 허용한다. `Disabled`나 `Snapshot`을
+`RecreateOnRelocation()`만 허용한다. `DisableRelocation()`이나 `PreserveStateWith<TAdapter>()`를
 함께 등록하면 socket bind 전에 startup configuration error다. PerActor Spot은
 stateless execution shell이며 member Actor의 relocation policy와 adapter가 Actor
 state를 각각 처리한다. 유지해야 하는 shared state와 Spot-level schedule은
 application의 Redis·database·service 같은 외부 저장소에 둔다.
 
-`RelocationReadiness`의 기본값은 `AnyTurnBoundary`다.
+Execution mode의 기본값은 `SpotWide`, relocation readiness의 기본값은 `AnyTurnBoundary`다.
 `ApplicationSignaled`는 `SpotWide`에서만 허용한다. `PerActor`와 함께 등록하면
 socket bind 전에 startup configuration error다. Callback은 `IZLinkSpot`의 기본
 no-op 구현을 사용하므로 application override는 필수가 아니다.

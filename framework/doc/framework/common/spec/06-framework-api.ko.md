@@ -66,7 +66,7 @@ RouteMesh 등록은 MeshName 하나를 받고 MeshNode builder를 반환한다. 
 - node direct와 channel handler
 - `None`, `Client`, `Server` 중 하나인 object role
 - Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory
-- 모든 object [factory](01-glossary.ko.md#factory)에 명시하는 `Disabled`, `Recreate`, `Snapshot` relocation policy
+- 모든 object factory callback에서 선택하는 `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith` policy
 - node별 Actor·Spot 수와 Spot type별 capacity, node-wide placement weight
 - route cache age와 Message Follow duration
 - Logical Multicast publish policy
@@ -307,10 +307,10 @@ Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자
 한 process 안의 contract test에서만 사용할 수 있다.
 
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
-Object Server factory에 `Recreate` 또는 `Snapshot` policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도
+Object Server factory에 `RecreateOnRelocation` 또는 `PreserveStateWith` policy가 하나라도 있거나 [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 하나라도
 있으면 opaque Relocation Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지
 않지만 factory 등록 시점에는 향후 cross-node join과 host `Relocate`를 배제할 수 없으므로 이 조건을 완화하지 않는다.
-Instance Spot factory가 없고 모든 factory가 `Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있으며,
+Instance Spot factory가 없고 모든 factory가 `DisableRelocation`인 same-node 구성만 Relocation Store를 생략할 수 있으며,
 cross-node relocation은 capture 전에 거부한다.
 
 Location provider가 owner·relocation authority compare-exchange, generic placement reservation·aggregate commit과
@@ -448,10 +448,12 @@ envelope를 저장하고, 재전송 reply는 현재 correlation과 reply route�
 `Rejected`와 `Failed`에서는 Ready authority와 active capacity를 만들지 않고 reserved
 capacity를 반환한다. Terminal record는 original deadline 뒤 5분에 TTL로 제거한다.
 
-Actor·User Spot·Instance Spot factory는 생성할 구체 type과 `Disabled`, `Recreate`, `Snapshot` 중 하나의
-relocation policy를 같은 type registration에서 고정한다. `Disabled`는 cross-node relocation을 거부하고,
-`Recreate`는 application state payload 없이 같은 logical ID의 typed factory를 실행한다. `Snapshot`은
-Actor factory에 `ActorRelocationAdapter`, User·Instance Spot factory에 `SpotRelocationAdapter`를 지정한다.
+Actor·User Spot·Instance Spot factory는 configure callback에서 option과 relocation policy를 함께 고정한다.
+Callback은 `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith(adapter)` 중 정확히 하나를 선택해야
+한다. 누락하거나 둘 이상 선택하면 socket bind 전에 startup configuration error다.
+`DisableRelocation`은 cross-node relocation을 거부하고, `RecreateOnRelocation`은 application state payload 없이
+같은 logical ID의 typed factory를 실행한다. `PreserveStateWith`는 Actor factory에
+`ActorRelocationAdapter`, User·Instance Spot factory에 `SpotRelocationAdapter`를 지정한다.
 Adapter의 `Capture`는 source instance에서 opaque byte sequence를 반환하고 `Restore`는 target factory가 만든
 instance에 같은 byte sequence를 적용한다. Application이 byte format, version과 migration을 관리하며
 Framework는 state contract ID, state type, relocation codec 등록 API를 제공하지 않는다. Same-node Actor join에는
@@ -619,8 +621,8 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 - Object role과 manager·factory·placement target의 일치
 - Spot, Actor, STREAM session factory와 owner 관계
 - User·Instance Spot stable type 중복, actor-free Instance lifecycle, node·type별 active·pending capacity
-- 모든 Actor·User Spot·Instance Spot factory의 explicit relocation policy, Snapshot adapter kind와 대상 type의 일치,
-  Instance Spot factory가 하나라도 있거나 `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
+- 모든 Actor·User Spot·Instance Spot factory callback의 policy 단일 선택, state adapter kind와 대상 type의 일치,
+  Instance Spot factory가 하나라도 있거나 `RecreateOnRelocation` 또는 `PreserveStateWith` 사용 시 정확히 하나의 Relocation Store
 - 분산 owner 또는 relocation을 사용할 때 authority CAS·store clock capability
 - placement reservation·aggregate commit capability와 object descriptor limit
 - route cache age·Message Follow duration 조합과 host termination deadline

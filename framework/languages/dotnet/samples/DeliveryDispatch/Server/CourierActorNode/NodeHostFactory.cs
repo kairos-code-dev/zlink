@@ -43,9 +43,7 @@ public static class NodeHostFactory
             mesh.Objects().Server()
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActor, CourierActorFactory>(
-                    SampleNames.CourierActorType,
-                    null,
-                    ZLinkRelocationPolicy<CourierActor>.Disabled);
+                    SampleNames.CourierActorType, factory => factory.DisableRelocation());
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec §7.4).
             options.AddClientServerChannel(SampleNames.DispatchChannel).Client();

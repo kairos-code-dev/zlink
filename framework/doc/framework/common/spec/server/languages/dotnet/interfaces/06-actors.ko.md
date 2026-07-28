@@ -100,17 +100,6 @@ public interface IZLinkActorRelocationAdapter<TActor>
         CancellationToken cancellationToken);
 }
 
-public abstract class ZLinkRelocationPolicy<TInstance>
-    where TInstance : class
-{
-    private protected ZLinkRelocationPolicy();
-
-    public static ZLinkRelocationPolicy<TInstance> Disabled { get; }
-    public static ZLinkRelocationPolicy<TInstance> Recreate { get; }
-    public static ZLinkRelocationPolicy<TInstance> Snapshot<TAdapter>()
-        where TAdapter : class;
-}
-
 public interface IZLinkActorClient
 {
     IZLinkActorSendCall SendToActor<TMessage>(
@@ -259,13 +248,13 @@ monotonic absolute deadline을 고정한다.
 
 Relocation policy는 Actor factory registration이 소유한다. `Disabled`는 cross-node materialization이 필요한
 이동을 capture 전에 거부한다. `Recreate`는 target [factory](../../../../01-glossary.ko.md#factory)로 같은 logical identity를 다시 만들고 application
-state를 복구하지 않는다. `Snapshot<TAdapter>()`은 `IZLinkActorRelocationAdapter<TActor>`가 반환한 byte 배열을
+state를 복구하지 않는다. `PreserveStateWith<TAdapter>()`는 `IZLinkActorRelocationAdapter<TActor>`가 반환한 byte 배열을
 opaque application payload로 저장하고 target Actor instance에 복원한다. 별도 application state generic과 stable
 state contract ID를 받지 않으며 Framework message wrapper를 payload로 사용하지 않는다. Adapter는 relocation
 reference, accepted journal, relocation phase, source·target owner와 Store CAS version을 받지 않는다.
 
 다른 node에서 Actor instance를 materialize하는 maintenance, cross-node User Spot·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) join과 whole User
-Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 사용한다. `Snapshot`일 때만 Actor adapter의
+Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 사용한다. `PreserveStateWith`일 때만 Actor adapter의
 `CaptureAsync(...)`와 `RestoreAsync(...)`를 호출한다. Same-node join은 adapter를 호출하지 않으며 `Disabled`로
 거부하지도 않는다. `Disabled` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
 
@@ -317,9 +306,9 @@ target의 대기 capacity를 함께 예약한다. 이 예약은 다음 순서로
 Resolve와 remote messaging은 `Ready` 상태만 사용한다. Entry Spot initialization도 Host `Serving`
 publication보다 먼저 완료한다. 이 barrier를 제어하는 application API는 없다.
 
-Actor factory와 relocation policy는
-[Topology configuration](03-configuration-topology.ko.md)의 `AddActorFactory<TActor,TFactory>(...)` 한 호출에서
-등록한다. Policy를 생략하는 overload는 제공하지 않는다.
+Actor factory option과 relocation policy는
+[Topology configuration](03-configuration-topology.ko.md)의 `AddActorFactory<TActor,TFactory>(...)` configure
+callback에서 함께 등록한다. Callback에서 policy를 정확히 하나 선택해야 한다.
 
 Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidOperation`, terminal
 `Async(...)`를 두 번 호출하면 `InvalidOperation`이다. Terminal 호출 시 resolve, reservation, factory와 Ready

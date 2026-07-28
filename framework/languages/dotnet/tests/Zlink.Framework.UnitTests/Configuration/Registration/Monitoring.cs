@@ -102,9 +102,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
                         var router = spot.Listen("tcp://127.0.0.1:9000");
                     }
                     spot.Objects().Server().AddSpotFactory<TestSpot>(
-                        "test",
-                        null,
-                        ZLinkRelocationPolicy<TestSpot>.Disabled);
+                        "test", factory => factory.DisableRelocation());
                 }
             }
         });

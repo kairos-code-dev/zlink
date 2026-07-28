@@ -18,14 +18,12 @@ public sealed class UserSpotExecutionSchedulerTests
 
         server.AddSpotFactory<ExecutionTestSpot>(
             "execution.spot",
-            new ZLinkUserSpotFactoryOptions
-            {
-                StableTypeLimit = 8,
-                ExecutionMode = ZLinkUserSpotExecutionMode.PerActor,
-                RelocationReadiness =
-                    ZLinkSpotRelocationReadinessMode.AnyTurnBoundary
-            },
-            ZLinkRelocationPolicy<ExecutionTestSpot>.Disabled);
+            factory => factory
+                .StableTypeLimit(8)
+                .ExecutionMode(ZLinkUserSpotExecutionMode.PerActor)
+                .RelocationReadiness(
+                    ZLinkSpotRelocationReadinessMode.AnyTurnBoundary)
+                .RecreateOnRelocation());
 
         var configured = registration.UserSpotFactoryOptions[typeof(ExecutionTestSpot)];
         Assert.Equal(8, configured.StableTypeLimit);
@@ -44,22 +42,18 @@ public sealed class UserSpotExecutionSchedulerTests
         Assert.Throws<ZLinkConfigurationException>(() =>
             invalid.AddSpotFactory<OtherExecutionTestSpot>(
                 "invalid.execution.spot",
-                new ZLinkUserSpotFactoryOptions
-                {
-                    ExecutionMode = (ZLinkUserSpotExecutionMode)9
-                },
-                ZLinkRelocationPolicy<OtherExecutionTestSpot>.Disabled));
+                factory => factory
+                    .ExecutionMode((ZLinkUserSpotExecutionMode)9)
+                    .DisableRelocation()));
 
         Assert.Throws<ZLinkConfigurationException>(() =>
             invalid.AddSpotFactory<OtherExecutionTestSpot>(
                 "invalid.application-signaled.spot",
-                new ZLinkUserSpotFactoryOptions
-                {
-                    ExecutionMode = ZLinkUserSpotExecutionMode.PerActor,
-                    RelocationReadiness =
-                        ZLinkSpotRelocationReadinessMode.ApplicationSignaled
-                },
-                ZLinkRelocationPolicy<OtherExecutionTestSpot>.Disabled));
+                factory => factory
+                    .ExecutionMode(ZLinkUserSpotExecutionMode.PerActor)
+                    .RelocationReadiness(
+                        ZLinkSpotRelocationReadinessMode.ApplicationSignaled)
+                    .DisableRelocation()));
     }
 
     [Fact]

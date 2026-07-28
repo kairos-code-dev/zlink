@@ -84,7 +84,7 @@ public sealed partial class RegressionTests
         var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support", "Infrastructure", "ZLink",
             "Actors", "SupportUserActorRelocationAdapter.cs"));
 
-        Assert.Contains("Snapshot<SupportUserActorRelocationAdapter>()", host,
+        Assert.Contains("PreserveStateWith<SupportUserActorRelocationAdapter>()", host,
             StringComparison.Ordinal);
         Assert.Contains("IZLinkActorRelocationAdapter<SupportUserActor>", adapter, StringComparison.Ordinal);
         Assert.Contains("ValueTask<byte[]> CaptureAsync", adapter, StringComparison.Ordinal);

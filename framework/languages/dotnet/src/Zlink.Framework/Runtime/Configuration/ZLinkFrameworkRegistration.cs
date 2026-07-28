@@ -354,7 +354,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public HashSet<Type> SpotFactories { get; } = [];
 
-    public Dictionary<Type, ZLinkUserSpotFactoryOptions> UserSpotFactoryOptions { get; } = [];
+    public Dictionary<Type, ZLinkUserSpotFactoryConfiguration> UserSpotFactoryOptions { get; } = [];
 
     public Dictionary<string, ZLinkInstanceSpotFactoryRegistration>
         InstanceSpotFactories { get; } = new(StringComparer.Ordinal);
@@ -404,7 +404,16 @@ internal sealed class ZLinkSpotNodeRegistration
 
 internal sealed record ZLinkInstanceSpotFactoryRegistration(
     Type SpotType,
-    ZLinkInstanceSpotFactoryOptions Options);
+    ZLinkInstanceSpotFactoryConfiguration Options);
+
+internal sealed record ZLinkUserSpotFactoryConfiguration(
+    int StableTypeLimit = 0,
+    ZLinkUserSpotExecutionMode ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide,
+    ZLinkSpotRelocationReadinessMode RelocationReadiness =
+        ZLinkSpotRelocationReadinessMode.AnyTurnBoundary);
+
+internal sealed record ZLinkInstanceSpotFactoryConfiguration(
+    int StableTypeLimit = 0);
 
 internal sealed record ZLinkObjectRelocationRegistration(
     Type InstanceType,

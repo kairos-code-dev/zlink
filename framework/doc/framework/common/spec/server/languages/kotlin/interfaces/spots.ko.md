@@ -106,7 +106,7 @@ authority 경쟁만 보여 준다. Handler의 terminal completion 또는 reply�
 Kotlin은 Java `ZLinkSpotRelocationAdapter<TSpot>`를 그대로 구현한다. Opaque `byte[]`는 `ByteArray`로 보이고
 `capture`와 `restore`는 Java 계약과 같은 `CompletionStage`를 반환한다. 별도 suspending Spot adapter,
 `TState`, `stateContractId`, state class와 `ZLinkMessage` relocation surface는 제공하지 않는다. Snapshot policy는
-`ZLinkRelocationPolicy.snapshot(SpotAdapter::class.java)`를 사용하고 factory target과 adapter type은 socket bind
+`preserveStateWith(SpotAdapter::class.java)`를 사용하고 factory target과 adapter type은 socket bind
 전에 검증한다.
 
 Snapshot whole User Spot relocation은 Spot 자체에 Spot adapter를, member Actor마다 Actor adapter를 사용한다.
@@ -379,7 +379,7 @@ Request·worker·Actor·Spot create wrapper의 `yield()`만 gate를 반환하고
 포함한 active lane이 안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier 실패는 같은
 generation의 seal 전체를 abort하고 application admission을 정확히 복원한다.
 
-`PER_ACTOR` User Spot은 `ZLinkRelocationPolicy.recreate()`만 허용한다. Spot adapter,
+`PER_ACTOR` User Spot은 `recreateOnRelocation()`만 허용한다. Spot adapter,
 Spot field와 Spot-level application timer는 relocation 대상이 아니다. 유지해야 하는 공유 state와
 schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다. Framework는 target에 같은
 public Spot ID와 ObjectGeneration의 stateless shell을 준비하고 Spot authority를 먼저 바꾼다. 각 Actor는

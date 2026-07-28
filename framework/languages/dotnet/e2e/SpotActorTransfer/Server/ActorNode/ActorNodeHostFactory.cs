@@ -96,61 +96,32 @@ internal static class ActorNodeHostFactory
             mesh28.Objects().Server()
                 .AddEntrySpot<TransferEntrySpot>()
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeStateful,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>
-                        .Snapshot<TransferActorRelocationAdapter>())
+                    SpotActorTransferNames.ActorTypeStateful, factory => factory.PreserveStateWith<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeEmptyState,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>
-                        .Snapshot<TransferActorRelocationAdapter>())
+                    SpotActorTransferNames.ActorTypeEmptyState, factory => factory.PreserveStateWith<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeNoAdapter,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>.Recreate)
+                    SpotActorTransferNames.ActorTypeNoAdapter, factory => factory.RecreateOnRelocation())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeFailLeave,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>
-                        .Snapshot<TransferActorRelocationAdapter>())
+                    SpotActorTransferNames.ActorTypeFailLeave, factory => factory.PreserveStateWith<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeFailTransferOut,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>
-                        .Snapshot<TransferActorRelocationAdapter>())
+                    SpotActorTransferNames.ActorTypeFailTransferOut, factory => factory.PreserveStateWith<TransferActorRelocationAdapter>())
                 .AddActorFactory<TransferActor, TransferActorFactory>(
-                    SpotActorTransferNames.ActorTypeFailTransferIn,
-                    null,
-                    ZLinkRelocationPolicy<TransferActor>
-                        .Snapshot<TransferActorRelocationAdapter>())
+                    SpotActorTransferNames.ActorTypeFailTransferIn, factory => factory.PreserveStateWith<TransferActorRelocationAdapter>())
                 .AddSpotFactory<TransferUserSpot>(
-                    SpotActorTransferNames.UserSpotType,
-                    null,
-                    ZLinkRelocationPolicy<TransferUserSpot>.Disabled)
+                    SpotActorTransferNames.UserSpotType, factory => factory.DisableRelocation())
                 .AddSpotFactory<RelocationPayloadUserSpot>(
                     SpotActorTransferNames.RelocationPayloadUserSpotType,
-                    new ZLinkUserSpotFactoryOptions
-                    {
-                        ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
-                    },
-                    ZLinkRelocationPolicy<RelocationPayloadUserSpot>
-                        .Snapshot<RelocationPayloadUserSpotAdapter>())
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                        .PreserveStateWith<RelocationPayloadUserSpotAdapter>())
                 .AddSpotFactory<RelocationPayloadPerActorUserSpot>(
                     SpotActorTransferNames
                         .RelocationPayloadPerActorUserSpotType,
-                    new ZLinkUserSpotFactoryOptions
-                    {
-                        ExecutionMode = ZLinkUserSpotExecutionMode.PerActor
-                    },
-                    ZLinkRelocationPolicy<RelocationPayloadPerActorUserSpot>
-                        .Snapshot<
-                            RelocationPayloadPerActorUserSpotAdapter>())
+                    factory => factory
+                        .ExecutionMode(ZLinkUserSpotExecutionMode.PerActor)
+                        .RecreateOnRelocation())
                 .AddInstanceSpotFactory<RelocationPayloadInstanceSpot>(
-                    SpotActorTransferNames.RelocationPayloadInstanceSpotType,
-                    null,
-                    ZLinkRelocationPolicy<RelocationPayloadInstanceSpot>
-                        .Snapshot<RelocationPayloadInstanceSpotAdapter>());
+                    SpotActorTransferNames.RelocationPayloadInstanceSpotType, factory => factory.PreserveStateWith<RelocationPayloadInstanceSpotAdapter>());
         });
         var app = builder.Build();
         app.Lifetime.ApplicationStopped.Register(

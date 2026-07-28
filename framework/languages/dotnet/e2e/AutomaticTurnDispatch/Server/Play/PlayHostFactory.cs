@@ -78,12 +78,10 @@ internal static class PlayHostFactory
                 .AddEntrySpot<AwaitEntrySpot>()
                 .AddActorFactory<AwaitActor, AwaitActorFactory>(
                     AutomaticTurnDispatchNames.ActorType,
-                    options: null,
-                    ZLinkRelocationPolicy<AwaitActor>.Recreate)
-                .AddSpotFactory(
+                    factory => factory.RecreateOnRelocation())
+                .AddSpotFactory<AwaitProbeSpot>(
                     AutomaticTurnDispatchNames.SpotType,
-                    options: null,
-                    ZLinkRelocationPolicy<AwaitProbeSpot>.Disabled);
+                    factory => factory.DisableRelocation());
             mesh24.Channel(AutomaticTurnDispatchNames.SpotChannel).Server();
         });
 

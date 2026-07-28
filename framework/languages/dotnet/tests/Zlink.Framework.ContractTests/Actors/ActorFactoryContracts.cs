@@ -8,9 +8,9 @@ namespace Zlink.Framework.ContractTests.Actors;
 /// <summary>
 ///     Worked examples for the two contracts an actor type registers with its
 ///     factory: the typed factory the runtime calls to materialize an actor
-///     (06-actors §2) and the relocation adapter a
-///     <c>ZLinkRelocationPolicy.Snapshot</c> registration calls to move that
-///     actor's application state across nodes (06-actors §5).
+///     (06-actors §2) and the relocation adapter selected with
+///     <c>PreserveStateWith</c> to move that actor's application state across
+///     nodes (06-actors §5).
 /// </summary>
 public sealed class ActorFactoryContracts
 {
@@ -55,18 +55,26 @@ public sealed class ActorFactoryContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkActorRelocationAdapter<>),
-        typeof(IZLinkActorFactory<>))]
-    public async Task Snapshot_policy_moves_application_state_through_the_relocation_adapter()
+        typeof(IZLinkActorFactory<>),
+        typeof(IZLinkActorFactoryBuilder<>))]
+    public async Task Preserve_state_policy_moves_application_state_through_the_relocation_adapter()
     {
         // Registration decides how a cross-node move materializes the actor.
-        // Disabled refuses the move before capture, Recreate rebuilds a bare
-        // actor from the factory, and Snapshot additionally round-trips
-        // application state through the named adapter.
-        Assert.NotSame(
-            ZLinkRelocationPolicy<PlayerActor>.Disabled,
-            ZLinkRelocationPolicy<PlayerActor>.Recreate);
-        var policy = ZLinkRelocationPolicy<PlayerActor>.Snapshot<PlayerRelocationAdapter>();
-        Assert.NotNull(policy);
+        // The builder requires exactly one of DisableRelocation,
+        // RecreateOnRelocation or PreserveStateWith. The last choice names
+        // the adapter that round-trips application state.
+        var builderMethods = typeof(IZLinkActorFactoryBuilder<PlayerActor>)
+            .GetMethods();
+        Assert.Contains(
+            builderMethods,
+            method => method.Name == "DisableRelocation");
+        Assert.Contains(
+            builderMethods,
+            method => method.Name == "RecreateOnRelocation");
+        Assert.Contains(
+            builderMethods,
+            method => method.Name == "PreserveStateWith"
+                      && method.IsGenericMethodDefinition);
 
         var factory = new PlayerActorFactory(startingLoadout: "torch,potion");
         var adapter = new PlayerRelocationAdapter();

@@ -4,14 +4,14 @@ assembly Zlink.Framework
     where TActor : class, Zlink.Framework.Contracts.Actors.IZLinkActor
     method abstract System.Threading.Tasks.ValueTask<System.Byte[]> CaptureAsync(TActor actor [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask RestoreAsync(TActor actor [nullability=read:not-null,write:not-null], System.ReadOnlyMemory<System.Byte> payload [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type abstract-class Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TInstance>
-    generic TInstance variance=invariant nullable=unspecified
-    where TInstance : class
-    property static Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TInstance> Disabled { get; } [nullability=read:not-null,write:unknown]
-    property static Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TInstance> Recreate { get; } [nullability=read:not-null,write:unknown]
-    method static Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TInstance> Snapshot<TAdapter>() [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkActorFactoryBuilder<TActor>
+    generic TActor variance=invariant nullable=unspecified
+    where TActor : class, Zlink.Framework.Contracts.Actors.IZLinkActor
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkActorFactoryBuilder<TActor> DisableRelocation() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>() [return=read:not-null,write:not-null]
       generic TAdapter variance=invariant nullable=unspecified
-      where TAdapter : class
+      where TAdapter : class, Zlink.Framework.Contracts.Actors.IZLinkActorRelocationAdapter<TActor>
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation() [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkClientServerChannelClientBuilder
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkClientServerChannelClientBuilder Connect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkClientServerChannelRoleBuilder
@@ -87,6 +87,15 @@ assembly Zlink.Framework
     method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRuntimeStatus> ObserveAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRelocationResult> RelocateAsync(Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRelocationOptions options [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationResult> ShutdownAsync(System.Nullable<System.TimeSpan> deadline = null [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot>
+    generic TSpot variance=invariant nullable=unspecified
+    where TSpot : class, Zlink.Framework.Contracts.Spots.IZLinkInstanceSpot
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot> DisableRelocation() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>() [return=read:not-null,write:not-null]
+      generic TAdapter variance=invariant nullable=unspecified
+      where TAdapter : class, Zlink.Framework.Contracts.Spots.IZLinkSpotRelocationAdapter<TSpot>
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot> RecreateOnRelocation() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(System.Int32 limit [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelClientBuilder
   type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelRoleBuilder
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelClientBuilder Client() [return=read:not-null,write:not-null]
@@ -156,7 +165,7 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectClientBuilder Client() [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder Server() [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(System.String actorType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? options [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TActor> relocation [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(System.String actorType [nullability=read:not-null,write:not-null], System.Action<Zlink.Framework.Contracts.Configuration.IZLinkActorFactoryBuilder<TActor>> configure [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TActor variance=invariant nullable=unspecified
       where TActor : class, Zlink.Framework.Contracts.Actors.IZLinkActor
       generic TFactory variance=invariant nullable=unspecified
@@ -164,10 +173,10 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>() [return=read:not-null,write:not-null]
       generic TEntrySpot variance=invariant nullable=unspecified
       where TEntrySpot : class, Zlink.Framework.Contracts.Spots.IZLinkEntrySpot
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(System.String instanceSpotType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkInstanceSpotFactoryOptions? options [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TSpot> relocation [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(System.String instanceSpotType [nullability=read:not-null,write:not-null], System.Action<Zlink.Framework.Contracts.Configuration.IZLinkInstanceSpotFactoryBuilder<TSpot>> configure [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TSpot variance=invariant nullable=unspecified
       where TSpot : class, Zlink.Framework.Contracts.Spots.IZLinkInstanceSpot
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(System.String spotType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? options [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Actors.ZLinkRelocationPolicy<TSpot> relocation [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(System.String spotType [nullability=read:not-null,write:not-null], System.Action<Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot>> configure [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TSpot variance=invariant nullable=unspecified
       where TSpot : class, Zlink.Framework.Contracts.Spots.IZLinkSpot
   type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshPeerConnections
@@ -234,15 +243,17 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder SetAdvertiseHost(System.String advertiseHost [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder SetBindHost(System.String bindHost [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder SetTlsServer(System.String certificatePath [nullability=read:not-null,write:not-null], System.String keyPath [nullability=read:not-null,write:not-null], System.Boolean requireClientCertificate = false [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions>
-    ctor ZLinkActorFactoryOptions()
-    method Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions <Clone>$() [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkActorFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot>
+    generic TSpot variance=invariant nullable=unspecified
+    where TSpot : class, Zlink.Framework.Contracts.Spots.IZLinkSpot
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> DisableRelocation() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(Zlink.Framework.Contracts.Configuration.ZLinkUserSpotExecutionMode mode [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>() [return=read:not-null,write:not-null]
+      generic TAdapter variance=invariant nullable=unspecified
+      where TAdapter : class, Zlink.Framework.Contracts.Spots.IZLinkSpotRelocationAdapter<TSpot>
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> RecreateOnRelocation() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(Zlink.Framework.Contracts.Configuration.ZLinkSpotRelocationReadinessMode mode [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(System.Int32 limit [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Configuration.ZLinkChannelStatus : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkChannelStatus>
     ctor ZLinkChannelStatus(System.String ChannelName [nullability=read:not-null,write:not-null], System.Boolean IsReady [nullability=read:not-null,write:not-null], System.Int32 ReadyTargetCount [nullability=read:not-null,write:not-null])
     property System.String ChannelName { get; init; } [nullability=read:not-null,write:not-null]
@@ -480,18 +491,6 @@ assembly Zlink.Framework
   type enum Zlink.Framework.Contracts.Configuration.ZLinkUserSpotExecutionMode : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Configuration.ZLinkUserSpotExecutionMode PerActor = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkUserSpotExecutionMode SpotWide = 0 [nullability=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions>
-    ctor ZLinkUserSpotFactoryOptions()
-    property Zlink.Framework.Contracts.Configuration.ZLinkUserSpotExecutionMode ExecutionMode { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Configuration.ZLinkSpotRelocationReadinessMode RelocationReadiness { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Int32 StableTypeLimit { get; init; } [nullability=read:not-null,write:not-null]
-    method Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions <Clone>$() [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkUserSpotFactoryOptions? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Dispatch.IZLinkDiagnosticsOptions
     method abstract Zlink.Framework.Contracts.Dispatch.IZLinkDiagnosticsOptions IncludeMessageSizes(System.Boolean include [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Dispatch.IZLinkDiagnosticsOptions SetLevel(Zlink.Framework.Contracts.Dispatch.ZLinkDiagnosticsLevel level [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]

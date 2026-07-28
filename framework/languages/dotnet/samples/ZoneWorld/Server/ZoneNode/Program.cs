@@ -94,14 +94,9 @@ builder.Services.AddZLinkFramework(options =>
     mesh.Objects().Server()
         .AddEntrySpot<ZoneEntrySpot>()
         .AddActorFactory<PlayerActor, PlayerActorFactory>(
-            ZoneWorldNames.PlayerActorType,
-            null,
-            ZLinkRelocationPolicy<PlayerActor>
-                .Snapshot<PlayerActorRelocationAdapter>())
+            ZoneWorldNames.PlayerActorType, factory => factory.PreserveStateWith<PlayerActorRelocationAdapter>())
         .AddSpotFactory<ZoneSpot>(
-            ZoneWorldNames.ZoneSpotType,
-            null,
-            ZLinkRelocationPolicy<ZoneSpot>.Disabled);
+            ZoneWorldNames.ZoneSpotType, factory => factory.DisableRelocation());
     mesh.Channel(ZoneWorldNames.ZoneChannel).Server();
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)

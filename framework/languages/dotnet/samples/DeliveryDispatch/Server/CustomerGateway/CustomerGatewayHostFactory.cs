@@ -45,9 +45,7 @@ public static class CustomerGatewayHostFactory
             mesh.Objects().Server()
                 .AddEntrySpot<CustomerEntrySpot>()
                 .AddActorFactory<CustomerActor, CustomerActorFactory>(
-                    SampleNames.CustomerActorType,
-                    null,
-                    ZLinkRelocationPolicy<CustomerActor>.Disabled);
+                    SampleNames.CustomerActorType, factory => factory.DisableRelocation());
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .EnableActorDispatch()

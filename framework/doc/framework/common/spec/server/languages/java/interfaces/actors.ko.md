@@ -33,33 +33,13 @@ public interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
         TActor actor, byte[] state, ZLinkRelocationCancellation cancellation);
 }
 
-public sealed interface ZLinkRelocationPolicy<TInstance>
-    permits ZLinkRelocationPolicy.Disabled,
-            ZLinkRelocationPolicy.Recreate,
-            ZLinkRelocationPolicy.Snapshot {
-    record Disabled<T>() implements ZLinkRelocationPolicy<T> {}
-    record Recreate<T>() implements ZLinkRelocationPolicy<T> {}
-    record Snapshot<T>(Class<?> adapterClass)
-        implements ZLinkRelocationPolicy<T> {}
-
-    static <T> ZLinkRelocationPolicy<T> disabled() {
-        return new Disabled<>();
-    }
-    static <T> ZLinkRelocationPolicy<T> recreate() {
-        return new Recreate<>();
-    }
-    static <T> ZLinkRelocationPolicy<T> snapshot(Class<?> adapterClass) {
-        return new Snapshot<>(adapterClass);
-    }
-}
-
 ```
 
 [Factory](../../../../01-glossary.ko.md#factory) registration의 정확한 builder member는
 [구성과 host](configuration-host.ko.md)가 소유한다. Cross-node relocation policy는 Actor factory 등록에
 직접 연결한다. Runtime은 factory가 반환한 Actor를 명시한 `actorClass`로 검사해 type 불일치를 startup
 오류로 반환한다. Factory와 분리된 relocation registry는 제공하지 않는다.
-`Snapshot` Actor policy의 `adapterClass`는 해당 Actor type의
+`preserveStateWith(...)`의 `adapterClass`는 해당 Actor type의
 `ZLinkActorRelocationAdapter<TActor>`를 구현해야 한다. User·Instance Spot policy의 adapter type 검증은
 [Spot 인터페이스](spots.ko.md)가 소유한다. `Class<?>`를 받는 것은 Java type erasure 때문에 policy value를
 공통으로 유지하기 위한 표현이며, Framework는 factory type과 adapter generic target이 일치하는지 socket bind
@@ -74,7 +54,7 @@ adapter는 stage가 끝난 뒤 그 배열을 보관하지 않는다. 길이가 0
 해석하거나 Restore를 생략하지 않는다. Adapter는 owner claim, relocation envelope, generation과 recovery phase를
 받지 않는다.
 
-Cross-node materialization에서 Actor factory가 `Snapshot` policy를 사용하면 maintenance Actor relocation,
+Cross-node materialization에서 Actor factory가 `preserveStateWith(...)`를 사용하면 maintenance Actor relocation,
 remote User·[Entry Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) join과 whole User Spot relocation의 각 Actor participant에 같은 Actor adapter를 사용한다.
 Same-node join과 `Disabled` policy에서는 adapter를 호출하지 않는다. `Recreate`는 application state를 capture하지
 않으므로 adapter가 없다.
@@ -164,33 +144,6 @@ public interface systems.zlink.framework.actors.ZLinkRelocationCancellation {
 public interface systems.zlink.framework.actors.ZLinkActorRelocationAdapter<TActor extends systems.zlink.framework.actors.ZLinkActor> {
   public abstract java.util.concurrent.CompletionStage<byte[]> capture(TActor, systems.zlink.framework.actors.ZLinkRelocationCancellation);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> restore(TActor, byte[], systems.zlink.framework.actors.ZLinkRelocationCancellation);
-}
-public sealed interface systems.zlink.framework.actors.ZLinkRelocationPolicy<TInstance>
-    permits systems.zlink.framework.actors.ZLinkRelocationPolicy.Disabled,
-            systems.zlink.framework.actors.ZLinkRelocationPolicy.Recreate,
-            systems.zlink.framework.actors.ZLinkRelocationPolicy.Snapshot {
-  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> disabled();
-  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> recreate();
-  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> snapshot(java.lang.Class<?>);
-}
-public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Disabled<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Disabled();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-}
-public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Recreate<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Recreate();
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-}
-public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Snapshot<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Snapshot(java.lang.Class<?>);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public java.lang.Class<?> adapterClass();
 }
 public interface systems.zlink.framework.actors.ZLinkActorHandlerRegistry {
   public abstract void addHandler(java.lang.Class<?>);

@@ -52,7 +52,7 @@ public sealed partial class RegressionTests
         var adapter = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
             "Actors", "PlayerActorRelocationAdapter.cs"));
 
-        Assert.Contains("Snapshot<PlayerActorRelocationAdapter>()", host,
+        Assert.Contains("PreserveStateWith<PlayerActorRelocationAdapter>()", host,
             StringComparison.Ordinal);
         Assert.Contains("IZLinkActorRelocationAdapter<PlayerActor>", adapter, StringComparison.Ordinal);
         Assert.Contains("ValueTask<byte[]> CaptureAsync", adapter, StringComparison.Ordinal);
@@ -75,9 +75,12 @@ public sealed partial class RegressionTests
             sampleRoot, "Server", "Play", "Infrastructure", "ZLink", "Actors",
             "PlayerActorRelocationAdapter.cs"));
 
-        Assert.Contains("RelocationReadiness =", host, StringComparison.Ordinal);
+        Assert.Contains(".RelocationReadiness(", host, StringComparison.Ordinal);
         Assert.Contains("ApplicationSignaled", host, StringComparison.Ordinal);
-        Assert.Contains("Snapshot<BingoRoomRelocationAdapter>()", host, StringComparison.Ordinal);
+        Assert.Contains(
+            "PreserveStateWith<BingoRoomRelocationAdapter>()",
+            host,
+            StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotRelocationAdapter<BingoRoom>", roomAdapter, StringComparison.Ordinal);
         Assert.Contains("LastCompletedJoinOperationId == operationId", actor, StringComparison.Ordinal);
         Assert.Contains("JoinOperationHigh", actorAdapter, StringComparison.Ordinal);

@@ -33,9 +33,6 @@ export declare enum ZLinkObjectRole {
     Server = "server"
 }
 
-export interface ZLinkActorFactoryOptions {
-}
-
 export declare enum ZLinkUserSpotExecutionMode {
     SpotWide = "spot_wide",
     PerActor = "per_actor"
@@ -44,16 +41,6 @@ export declare enum ZLinkUserSpotExecutionMode {
 export declare enum ZLinkSpotRelocationReadinessMode {
     AnyTurnBoundary = "any_turn_boundary",
     ApplicationSignaled = "application_signaled"
-}
-
-export interface ZLinkUserSpotFactoryOptions {
-    readonly stableTypeLimit?: number;
-    readonly executionMode?: ZLinkUserSpotExecutionMode;
-    readonly relocationReadiness?: ZLinkSpotRelocationReadinessMode;
-}
-
-export interface ZLinkInstanceSpotFactoryOptions {
-    readonly stableTypeLimit?: number;
 }
 
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
@@ -80,35 +67,27 @@ export interface ZLinkSpotRelocationAdapter<TSpot extends ZLinkSpot | ZLinkInsta
     restore(spot: TSpot, payload: Uint8Array, signal: AbortSignal): Promise<void>;
 }
 
-declare const zlinkRelocationPolicyBrand: unique symbol;
-
-export interface ZLinkDisabledRelocationPolicy<TInstance> {
-    readonly [zlinkRelocationPolicyBrand]: TInstance;
-    readonly kind: "disabled";
+export interface ZLinkActorFactoryBuilder<TActor extends ZLinkActor> {
+    disableRelocation(): void;
+    recreateOnRelocation(): void;
+    preserveStateWith(adapterType: Type<ZLinkActorRelocationAdapter<TActor>>): void;
 }
 
-export interface ZLinkRecreateRelocationPolicy<TInstance> {
-    readonly [zlinkRelocationPolicyBrand]: TInstance;
-    readonly kind: "recreate";
+export interface ZLinkUserSpotFactoryBuilder<TSpot extends ZLinkSpot> {
+    stableTypeLimit(limit: number): this;
+    executionMode(mode: ZLinkUserSpotExecutionMode): this;
+    relocationReadiness(mode: ZLinkSpotRelocationReadinessMode): this;
+    disableRelocation(): void;
+    recreateOnRelocation(): void;
+    preserveStateWith(adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>): void;
 }
 
-export interface ZLinkSnapshotRelocationPolicy<TInstance> {
-    readonly [zlinkRelocationPolicyBrand]: TInstance;
-    readonly kind: "snapshot";
-    readonly adapterType: Type;
+export interface ZLinkInstanceSpotFactoryBuilder<TSpot extends ZLinkInstanceSpot> {
+    stableTypeLimit(limit: number): this;
+    disableRelocation(): void;
+    recreateOnRelocation(): void;
+    preserveStateWith(adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>): void;
 }
-
-export type ZLinkRelocationPolicy<TInstance> =
-    | ZLinkDisabledRelocationPolicy<TInstance>
-    | ZLinkRecreateRelocationPolicy<TInstance>
-    | ZLinkSnapshotRelocationPolicy<TInstance>;
-
-export declare function zlinkDisabledRelocation<T>(): ZLinkDisabledRelocationPolicy<T>;
-export declare function zlinkRecreateRelocation<T>(): ZLinkRecreateRelocationPolicy<T>;
-export declare function zlinkSnapshotRelocation<TActor extends ZLinkActor>(
-    adapterType: Type<ZLinkActorRelocationAdapter<TActor>>): ZLinkSnapshotRelocationPolicy<TActor>;
-export declare function zlinkSnapshotRelocation<TSpot extends ZLinkSpot | ZLinkInstanceSpot>(
-    adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>): ZLinkSnapshotRelocationPolicy<TSpot>;
 
 export interface ZLinkBoundSession {
     send(message: unknown): ZLinkBoundSessionSendCall;
@@ -202,18 +181,15 @@ export interface ZLinkMeshObjectServerBuilder {
     addSpotFactory<TSpot extends ZLinkSpot>(
         spotType: string,
         implementation: Type<TSpot>,
-        options: ZLinkUserSpotFactoryOptions | undefined,
-        relocation: ZLinkRelocationPolicy<TSpot>): this;
+        configure: (builder: ZLinkUserSpotFactoryBuilder<TSpot>) => void): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
-        options: ZLinkInstanceSpotFactoryOptions | undefined,
-        relocation: ZLinkRelocationPolicy<TSpot>): this;
+        configure: (builder: ZLinkInstanceSpotFactoryBuilder<TSpot>) => void): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        options: ZLinkActorFactoryOptions | undefined,
-        relocation: ZLinkRelocationPolicy<TActor>): this;
+        configure: (builder: ZLinkActorFactoryBuilder<TActor>) => void): this;
 }
 
 export interface ZLinkNetworkOptions {
@@ -289,14 +265,13 @@ local 우선순위나 remote 제외는 없다. Local Server를 선택해도 Clie
 transport message를 전달하고 handler 직접 호출로 codec, HWM, timeout, cancellation, correlation 또는
 terminal completion을 우회하지 않는다.
 
-Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
-Disabled·Recreate는 유지한다. [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy는 adapter `Type` 하나만 보유한다. Actor [factory](../../../../01-glossary.ko.md#factory)에는
-`ZLinkActorRelocationAdapter<TActor>`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며
-종류나 instance type이 다르면 socket bind 전에 configuration error로 실패한다. 별도 adapter registry와
-operation별 adapter는 제공하지 않는다.
+Factory configure callback은 option과 relocation policy를 한 builder에서 설정한다. Callback은
+`disableRelocation()`, `recreateOnRelocation()`, `preserveStateWith(...)` 중 정확히 하나를 호출해야 한다.
+누락하거나 둘 이상 호출하면 socket bind 전에 configuration error다. Actor builder는 Actor adapter,
+User·Instance Spot builder는 Spot adapter만 받는다.
 
-`ZLinkUserSpotExecutionMode.PerActor`는 `Recreate` Spot policy만 허용한다.
-`Disabled`나 `Snapshot`을 함께 등록하면 socket bind 전에
+`ZLinkUserSpotExecutionMode.PerActor`는 `recreateOnRelocation()`만 허용한다.
+다른 policy를 함께 등록하면 socket bind 전에
 startup configuration error다. PerActor Spot은 stateless execution shell이며 Actor
 policy와 adapter가 Actor state를 각각 처리한다. 유지해야 하는 shared state와
 Spot-level schedule은 application의 Redis·database·service 같은 외부 저장소에 둔다.
@@ -312,7 +287,7 @@ relocation을 취소하거나 rollback하지 않는다.
 startup configuration error다. Spot callback은 optional이며 없으면 no-op으로 처리한다.
 
 Adapter는 application state를 `Uint8Array` opaque bytes로만 주고받으며 typed state, 별도 contract identifier와
-message wrapper를 사용하지 않는다. Framework는 Snapshot policy의 cross-node materialization에서만 adapter를
+message wrapper를 사용하지 않는다. Framework는 `preserveStateWith(...)`의 cross-node materialization에서만 adapter를
 호출한다. Maintenance 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant에는
 Actor adapter를 사용한다. Whole User Spot의 Spot root와 cross-node User·Instance Spot materialization에는 [Spot](../../../../01-glossary.ko.md#spot)
 adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은

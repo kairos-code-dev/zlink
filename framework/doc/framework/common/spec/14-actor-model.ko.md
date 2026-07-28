@@ -250,17 +250,17 @@ Object Server는 다음 값을 함께 등록한다.
 
 - Actor [stable type](01-glossary.ko.md#stable-type)
 - [Factory](01-glossary.ko.md#factory)
-- `Disabled`, `Recreate`, `Snapshot` 중 하나의 relocation policy
+- factory configure callback에서 선택하는 relocation policy
 
 Relocation policy를 생략하는 overload나 compatibility default는 제공하지 않는다.
 
-`Snapshot` policy를 선택하면 해당 Actor type에 맞는 `ActorRelocationAdapter`를 같은
+`PreserveStateWith`를 선택하면 해당 Actor type에 맞는 `ActorRelocationAdapter`를 같은
 등록에서 제공해야 한다. Adapter는 Actor 상태를 application만 해석하는 byte sequence로
 저장하고 복원한다. Framework는 이 byte sequence의 내용을 해석하지 않으며 별도의
 state contract ID도 관리하지 않는다.
 
-`Snapshot`은 source handler가 정상적으로 끝난 시점의 application state를
-capture하여 target Actor에 복원한다. `Recreate`는 target에서 Actor 객체를 다시
+`PreserveStateWith`는 source handler가 정상적으로 끝난 시점의 application state를
+capture하여 target Actor에 복원한다. `RecreateOnRelocation`은 target에서 Actor 객체를 다시
 만들지만 application state를 복원하지 않는다. 대신 Framework가 소유한 실행 전
 queue와 timer 정보는 이동 후에도 유지한다. 두 policy 모두 같은 logical Actor의
 이동이므로 `ObjectGeneration`을 바꾸지 않는다. Cross-node 이동에서 owner가 바뀌면
@@ -293,13 +293,13 @@ public interface IZLinkActorRelocationAdapter<TActor>
         CancellationToken cancellationToken);
 }
 
-public abstract class ZLinkRelocationPolicy<TInstance>
-    where TInstance : class
+public interface IZLinkActorFactoryBuilder<TActor>
+    where TActor : class, IZLinkActor
 {
-    public static ZLinkRelocationPolicy<TInstance> Disabled { get; }
-    public static ZLinkRelocationPolicy<TInstance> Recreate { get; }
-    public static ZLinkRelocationPolicy<TInstance> Snapshot<TAdapter>()
-        where TAdapter : class;
+    IZLinkActorFactoryBuilder<TActor> DisableRelocation();
+    IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation();
+    IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+        where TAdapter : class, IZLinkActorRelocationAdapter<TActor>;
 }
 ```
 

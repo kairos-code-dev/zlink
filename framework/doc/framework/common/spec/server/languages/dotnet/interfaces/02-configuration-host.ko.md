@@ -127,8 +127,8 @@ Host는 network bind 전에 다음 조건을 검증한다.
 - Actor·User Spot·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)의 stable type·구현 class 중복, explicit relocation policy와 type별 capacity
 - Node placement weight와 active/pending capacity
 - Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
-- `Snapshot` policy의 Actor·Spot adapter type과 factory 대상의 일치 여부
-- `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있을 때 Relocation
+- `PreserveStateWith`의 Actor·Spot adapter type과 factory 대상의 일치 여부
+- `RecreateOnRelocation` 또는 `PreserveStateWith` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있을 때 Relocation
   Store가 정확히 하나 등록되었는지 여부
 - 자동 discovery 또는 분산 location 기능에 필요한 store instance
 - [automatic discovery](../../../../01-glossary.ko.md#automatic-discovery)·object role과 fixed routing ID의 잘못된 조합, RID prefix 형식

@@ -59,14 +59,9 @@ public static class SupportServerHostFactory
             mesh.Objects().Server()
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActor, SupportUserActorFactory>(
-                    SampleNames.SupportActorType,
-                    null,
-                    ZLinkRelocationPolicy<SupportUserActor>
-                        .Snapshot<SupportUserActorRelocationAdapter>())
+                    SampleNames.SupportActorType, factory => factory.PreserveStateWith<SupportUserActorRelocationAdapter>())
                 .AddSpotFactory<ConversationSpot>(
-                    SampleNames.ConversationSpotType,
-                    null,
-                    ZLinkRelocationPolicy<ConversationSpot>.Disabled);
+                    SampleNames.ConversationSpotType, factory => factory.DisableRelocation());
             options.AddClientServerChannel(SampleNames.ApiChannel).Client();
         });
 

@@ -59,9 +59,7 @@ internal static class FixtureSamples
                 mesh.Channel("game.stage").Client();
                 mesh.Listen("tcp://127.0.0.1:7302");
                 mesh.Objects().Server().AddSpotFactory<FixtureStageSpot>(
-                    "fixture-stage",
-                    null,
-                    ZLinkRelocationPolicy<FixtureStageSpot>.Recreate);
+                    "fixture-stage", factory => factory.RecreateOnRelocation());
             }
         });
         return builder;
@@ -105,9 +103,7 @@ internal static class FixtureSamples
                 mesh.Channel("game.stage").Client();
                 mesh.Listen("tcp://127.0.0.1:7605");
                 mesh.Objects().Server().AddSpotFactory<FixtureStageSpot>(
-                    "fixture-stage",
-                    null,
-                    ZLinkRelocationPolicy<FixtureStageSpot>.Recreate);
+                    "fixture-stage", factory => factory.RecreateOnRelocation());
             }
         });
         return builder;
@@ -131,13 +127,9 @@ internal static class FixtureSamples
                 mesh.Listen("tcp://127.0.0.1:7702");
                 mesh.Objects().Server()
                     .AddSpotFactory<FixtureActorSpot>(
-                        "fixture-actor-spot",
-                        null,
-                        ZLinkRelocationPolicy<FixtureActorSpot>.Recreate)
+                        "fixture-actor-spot", factory => factory.RecreateOnRelocation())
                     .AddActorFactory<FixtureActor, FixtureActorFactory>(
-                        "hero",
-                        null,
-                        ZLinkRelocationPolicy<FixtureActor>.Recreate);
+                        "hero", factory => factory.RecreateOnRelocation());
             }
         });
         return builder;

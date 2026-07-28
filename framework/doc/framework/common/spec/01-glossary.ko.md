@@ -986,22 +986,20 @@ Actor나 Spot을 다른 node에서 계속 실행해야 할 때 application state
 
 | Policy | Target에서 유지하는 내용 |
 |---|---|
-| `Disabled` | Cross-node relocation을 허용하지 않는다. Source owner와 application admission을 유지한다. |
-| `Recreate` | Target factory로 application 객체를 다시 만든다. Framework queue·timer는 유지하지만 application state는 복원하지 않는다. 같은 logical incarnation이므로 `ObjectGeneration`은 유지한다. |
-| `Snapshot` | Handler가 정상 종료한 경계의 application state를 relocation adapter의 opaque byte sequence로 capture·restore한다. Framework queue·timer도 함께 유지한다. |
+| `DisableRelocation` | Cross-node relocation을 허용하지 않는다. Source owner와 application admission을 유지한다. |
+| `RecreateOnRelocation` | Target factory로 application 객체를 다시 만든다. Framework queue·timer는 유지하지만 application state는 복원하지 않는다. 같은 logical incarnation이므로 `ObjectGeneration`은 유지한다. |
+| `PreserveStateWith` | Handler가 정상 종료한 경계의 application state를 지정한 relocation adapter의 opaque byte sequence로 capture·restore한다. Framework queue·timer도 함께 유지한다. |
 
-`Snapshot` relocation policy는 위의 publish target snapshot과 이름만 같고 서로 다른
-계약이다. Application은 operation마다 policy를 바꾸지 못하며 startup 뒤
-registration도 변경할 수 없다.
+Application은 operation마다 policy를 바꾸지 못하며 startup 뒤 registration도 변경할 수 없다.
 
-<a id="snapshot-relocation-policy"></a>
-### Snapshot relocation policy
+<a id="preserve-state-relocation-policy"></a>
+### Preserve-state relocation policy
 
 Actor나 Spot을 다른 node로 옮길 때 application state를 bytes로 저장하고 target의
 새 instance에 복원하는 relocation policy다. Framework가 관리하는 queue, 아직
 끝나지 않은 작업과 timer도 함께 옮긴다.
 
-Monitoring에서 특정 시점의 상태를 복사한 [Snapshot](#snapshot)과는 다른 개념이다.
+Factory configure callback의 `PreserveStateWith`가 adapter를 함께 지정한다.
 
 <a id="classic-fanout"></a>
 ### Classic fanout

@@ -96,14 +96,14 @@ public:
       std::stop_token operation_cancellation) = 0;
 };
 
-template <typename TInstance>
-class relocation_policy_t {
+template <typename TActor>
+class actor_factory_builder_t {
 public:
-    static relocation_policy_t disabled();
-    static relocation_policy_t recreate();
-
+    void disable_relocation();
+    void recreate_on_relocation();
     template <typename TAdapter>
-    static relocation_policy_t snapshot();
+      requires std::derived_from<TAdapter, actor_relocation_adapter_t<TActor>>
+    void preserve_state_with();
 };
 
 } // namespace zlink::framework
@@ -128,12 +128,12 @@ rejected·commit 전 failed completion retry는 current process lifetime으로
 제한한다. Cross-node commit 뒤 accepted만 Relocation manifest에 operation ID,
 optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
 
-모든 Actor [factory](../../../../01-glossary.ko.md#factory)는 `relocation_policy_t<TActor>`를 명시한다. `snapshot<TAdapter>()`의 `TAdapter`는
+모든 Actor factory configure callback은 policy를 정확히 하나 선택한다. `preserve_state_with<TAdapter>()`의 `TAdapter`는
 `actor_relocation_adapter_t<TActor>`를 구현해야 하며 다른 adapter type이면 socket bind 전에 configuration error로
 실패한다. Adapter는 application state를 opaque byte vector로만 주고받으며 typed state, 별도 contract identifier,
 message wrapper, authority, relocation reference, relocation phase와 operation ID를 받지 않는다.
 
-Framework는 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
+Framework는 `preserve_state_with<TAdapter>()`의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant가 포함된다. Same-node join과
 relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은 `capture(...)` 전에 거부한다. Recreate
 policy도 application payload를 capture하거나 restore하지 않는다. Whole User Spot relocation에서는 Spot root에

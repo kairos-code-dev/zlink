@@ -57,14 +57,9 @@ internal sealed class PlayServer(SampleSettings settings)
             mesh.Objects().Server()
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayActor, PlayActorFactory>(
-                    SampleTypes.PlayerActor,
-                    null,
-                    ZLinkRelocationPolicy<PlayActor>
-                        .Snapshot<PlayActorRelocationAdapter>())
+                    SampleTypes.PlayerActor, factory => factory.PreserveStateWith<PlayActorRelocationAdapter>())
                 .AddSpotFactory<TicTacToeGame>(
-                    SampleTypes.GameSpot,
-                    null,
-                    ZLinkRelocationPolicy<TicTacToeGame>.Disabled);
+                    SampleTypes.GameSpot, factory => factory.DisableRelocation());
             mesh.Channel(SampleTopics.PlayerMilestoneChannel).Server();
             foreach (var endpoint in settings.PeerMeshEndpoints)
                 mesh.PeerConnections.Connect(endpoint);

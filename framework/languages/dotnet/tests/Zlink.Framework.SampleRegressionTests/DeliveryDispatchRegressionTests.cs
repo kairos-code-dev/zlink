@@ -5,7 +5,7 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
-    public void DeliveryDispatch_Uses_One_Physical_Mesh_And_Scanned_Channel_Handlers()
+    public void DeliveryDispatch_Uses_One_Role_Specific_Mesh_Per_Host_And_Scanned_Channel_Handlers()
     {
         var sampleRoot = ResolveSampleRoot("DeliveryDispatch");
         var hosts = Directory.EnumerateFiles(
@@ -17,7 +17,11 @@ public sealed partial class RegressionTests
         {
             var source = File.ReadAllText(host);
             Assert.Equal(1, source.Split("AddRouteMesh(", StringSplitOptions.None).Length - 1);
-            Assert.Contains("AddRouteMesh(SampleNames.MeshName)", source, StringComparison.Ordinal);
+            var expectedMesh = host.Contains("CustomerGateway", StringComparison.Ordinal)
+                               || host.Contains("Tracking", StringComparison.Ordinal)
+                ? "AddRouteMesh(SampleNames.CustomerMeshName)"
+                : "AddRouteMesh(SampleNames.CourierMeshName)";
+            Assert.Contains(expectedMesh, source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddRequestHandler<", source, StringComparison.Ordinal);
             Assert.DoesNotContain("AddSendHandler<", source, StringComparison.Ordinal);
         }

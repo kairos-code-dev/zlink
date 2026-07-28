@@ -29,9 +29,7 @@ builder.Services.AddZLinkFramework(framework =>
     mesh25.Objects().Server()
         .AddEntrySpot<TestEntrySpot>()
         .AddActorFactory<TestActor, TestActorFactory>(
-            "test-actor",
-            null,
-            ZLinkRelocationPolicy<TestActor>.Disabled);
+            "test-actor", factory => factory.DisableRelocation());
     mesh25.Channel("to-actor").Client();
 });
 

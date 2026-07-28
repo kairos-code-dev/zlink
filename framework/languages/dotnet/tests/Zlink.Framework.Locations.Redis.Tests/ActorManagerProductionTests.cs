@@ -228,9 +228,7 @@ public sealed class ActorManagerProductionTests
             node.Objects().Server()
                 .AddEntrySpot<TestEntrySpot>()
                 .AddActorFactory<TestActor, TestActorFactory>(
-                    "player",
-                    null,
-                    ZLinkRelocationPolicy<TestActor>.Disabled);
+                    "player", factory => factory.DisableRelocation());
         });
         return services.BuildServiceProvider();
     }

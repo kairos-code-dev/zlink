@@ -41,15 +41,15 @@ Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready 
 typed creation failure다. 다른 type이면 `ActorTypeMismatch`다. Kotlin은 local Actor
 create, directory, resolver 또는 hidden remote retry를 추가하지 않는다.
 
-Kotlin은 Java `ZLinkActorRelocationAdapter<TActor>`와 `ZLinkRelocationPolicy<TInstance>`를 그대로 사용한다.
+Kotlin은 Java `ZLinkActorRelocationAdapter<TActor>`와 factory builder를 그대로 사용한다.
 Opaque Java `byte[]`는 Kotlin `ByteArray`로 보이며 `capture`와 `restore`의 asynchronous completion은
 `CompletionStage`다. 별도 suspending adapter, `TState`, `stateContractId`, state class와 `ZLinkMessage` 기반
-relocation API를 만들지 않는다. Snapshot policy는
-`ZLinkRelocationPolicy.snapshot(ActorAdapter::class.java)`로 구성하며 factory와 adapter target의 일치는 socket
+relocation API를 만들지 않는다. State 보존 policy는
+`preserveStateWith(ActorAdapter::class.java)`로 구성하며 factory와 adapter target의 일치는 socket
 bind 전에 검증한다. Java interop에서 null adapter class를 전달한 policy도 bind 전에 startup configuration error로
 거부한다.
 
-[Snapshot](../../../../01-glossary.ko.md#relocation-policy) Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
+`PreserveStateWith` Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole [User Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)
 relocation의 각 Actor participant에 사용한다. Same-node join, `Disabled`와 `Recreate`에서는 호출하지 않는다.
 Capture가 반환한 `ByteArray`는 최대 64 MiB이며 adapter가 completion까지 소유한다. Java runtime은 completion에서
 복사한다. Restore는 호출마다
@@ -220,7 +220,7 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinActorClient {
 }
 ```
 
-Factory registration은 `Disabled`, `Recreate`, `Snapshot` 중 하나를 반드시 받는다. Kotlin은 Snapshot policy와
+Factory callback은 `DisableRelocation`, `RecreateOnRelocation`, `PreserveStateWith` 중 하나를 반드시 선택한다. Kotlin은 state 보존 policy와
 adapter registration을 위한 reified helper, policy를 생략하는 overload와 default argument를 생성하지 않는다.
 Exact `ActorRef`를 받는 public operation은
 destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `ActorGenerationStale`, seal된

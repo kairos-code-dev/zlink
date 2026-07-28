@@ -101,36 +101,36 @@ public sealed class ObjectAndChannelRoleBuilderContracts
             server,
             server.AddSpotFactory<BattleRoomSpot>(
                 "battle-room",
-                new ZLinkUserSpotFactoryOptions
-                {
-                    StableTypeLimit = 2000,
-                    ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
-                },
-                ZLinkRelocationPolicy<BattleRoomSpot>.Recreate));
+                factory => factory
+                    .StableTypeLimit(2000)
+                    .ExecutionMode(ZLinkUserSpotExecutionMode.SpotWide)
+                    .RecreateOnRelocation()));
         Assert.Same(
             server,
             server.AddInstanceSpotFactory<LeaderboardSpot>(
                 "leaderboard",
-                new ZLinkInstanceSpotFactoryOptions { StableTypeLimit = 64 },
-                ZLinkRelocationPolicy<LeaderboardSpot>.Disabled));
+                factory => factory
+                    .StableTypeLimit(64)
+                    .DisableRelocation()));
         Assert.Same(
             server,
             server.AddActorFactory<PlayerActor, PlayerActorFactory>(
-                "player",
-                new ZLinkActorFactoryOptions(),
-                ZLinkRelocationPolicy<PlayerActor>.Snapshot<PlayerRelocationAdapter>()));
+                "player", factory => factory.PreserveStateWith<PlayerRelocationAdapter>()));
 
         var registered = playObjects.ServerBuilder;
         Assert.Equal(["LobbyEntrySpot"], registered.EntrySpots);
         Assert.Equal(["battle-room"], registered.SpotTypes);
         Assert.Equal(["leaderboard"], registered.InstanceSpotTypes);
         Assert.Equal(["player"], registered.ActorTypes);
-        Assert.Equal(64, registered.InstanceSpotOptions!.StableTypeLimit);
+        Assert.Equal(64, registered.InstanceSpotStableTypeLimit);
         Assert.Equal(
             ZLinkUserSpotExecutionMode.SpotWide,
-            registered.SpotOptions!.ExecutionMode);
-
-        Assert.NotNull(registered.ActorOptions);
+            registered.SpotExecutionMode);
+        Assert.Equal("Recreate", registered.SpotRelocation);
+        Assert.Equal("Disabled", registered.InstanceSpotRelocation);
+        Assert.Equal(
+            nameof(PlayerRelocationAdapter),
+            registered.ActorRelocation);
     }
 
     private sealed record ItemGranted(string ActorId, string ItemId);
@@ -283,11 +283,17 @@ public sealed class ObjectAndChannelRoleBuilderContracts
 
         public List<string> ActorTypes { get; } = [];
 
-        public ZLinkUserSpotFactoryOptions? SpotOptions { get; private set; }
+        public int SpotStableTypeLimit { get; private set; }
 
-        public ZLinkInstanceSpotFactoryOptions? InstanceSpotOptions { get; private set; }
+        public ZLinkUserSpotExecutionMode SpotExecutionMode { get; private set; }
 
-        public ZLinkActorFactoryOptions? ActorOptions { get; private set; }
+        public string? SpotRelocation { get; private set; }
+
+        public int InstanceSpotStableTypeLimit { get; private set; }
+
+        public string? InstanceSpotRelocation { get; private set; }
+
+        public string? ActorRelocation { get; private set; }
 
         public IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
             where TEntrySpot : class, IZLinkEntrySpot
@@ -298,35 +304,138 @@ public sealed class ObjectAndChannelRoleBuilderContracts
 
         public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
             string spotType,
-            ZLinkUserSpotFactoryOptions? options,
-            ZLinkRelocationPolicy<TSpot> relocation)
+            Action<IZLinkUserSpotFactoryBuilder<TSpot>> configure)
             where TSpot : class, IZLinkSpot
         {
             SpotTypes.Add(spotType);
-            SpotOptions = options;
+            var factory = new RecordingUserSpotFactoryBuilder<TSpot>();
+            configure(factory);
+            SpotStableTypeLimit = factory.StableTypeLimitValue;
+            SpotExecutionMode = factory.ExecutionModeValue;
+            SpotRelocation = factory.Relocation;
             return this;
         }
 
         public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
             string instanceSpotType,
-            ZLinkInstanceSpotFactoryOptions? options,
-            ZLinkRelocationPolicy<TSpot> relocation)
+            Action<IZLinkInstanceSpotFactoryBuilder<TSpot>> configure)
             where TSpot : class, IZLinkInstanceSpot
         {
             InstanceSpotTypes.Add(instanceSpotType);
-            InstanceSpotOptions = options;
+            var factory = new RecordingInstanceSpotFactoryBuilder<TSpot>();
+            configure(factory);
+            InstanceSpotStableTypeLimit = factory.StableTypeLimitValue;
+            InstanceSpotRelocation = factory.Relocation;
             return this;
         }
 
         public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
             string actorType,
-            ZLinkActorFactoryOptions? options,
-            ZLinkRelocationPolicy<TActor> relocation)
+            Action<IZLinkActorFactoryBuilder<TActor>> configure)
             where TActor : class, IZLinkActor
             where TFactory : class, IZLinkActorFactory<TActor>
         {
             ActorTypes.Add(actorType);
-            ActorOptions = options;
+            var factory = new RecordingActorFactoryBuilder<TActor>();
+            configure(factory);
+            ActorRelocation = factory.Relocation;
+            return this;
+        }
+    }
+
+    private sealed class RecordingActorFactoryBuilder<TActor>
+        : IZLinkActorFactoryBuilder<TActor>
+        where TActor : class, IZLinkActor
+    {
+        public string? Relocation { get; private set; }
+
+        public IZLinkActorFactoryBuilder<TActor> DisableRelocation() =>
+            Select("Disabled");
+
+        public IZLinkActorFactoryBuilder<TActor> RecreateOnRelocation() =>
+            Select("Recreate");
+
+        public IZLinkActorFactoryBuilder<TActor> PreserveStateWith<TAdapter>()
+            where TAdapter : class, IZLinkActorRelocationAdapter<TActor> =>
+            Select(typeof(TAdapter).Name);
+
+        private IZLinkActorFactoryBuilder<TActor> Select(string relocation)
+        {
+            Relocation = relocation;
+            return this;
+        }
+    }
+
+    private sealed class RecordingUserSpotFactoryBuilder<TSpot>
+        : IZLinkUserSpotFactoryBuilder<TSpot>
+        where TSpot : class, IZLinkSpot
+    {
+        public int StableTypeLimitValue { get; private set; }
+
+        public ZLinkUserSpotExecutionMode ExecutionModeValue { get; private set; }
+
+        public string? Relocation { get; private set; }
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
+        {
+            StableTypeLimitValue = limit;
+            return this;
+        }
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> ExecutionMode(
+            ZLinkUserSpotExecutionMode mode)
+        {
+            ExecutionModeValue = mode;
+            return this;
+        }
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> RelocationReadiness(
+            ZLinkSpotRelocationReadinessMode mode) => this;
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> DisableRelocation() =>
+            Select("Disabled");
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> RecreateOnRelocation() =>
+            Select("Recreate");
+
+        public IZLinkUserSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+            where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot> =>
+            Select(typeof(TAdapter).Name);
+
+        private IZLinkUserSpotFactoryBuilder<TSpot> Select(string relocation)
+        {
+            Relocation = relocation;
+            return this;
+        }
+    }
+
+    private sealed class RecordingInstanceSpotFactoryBuilder<TSpot>
+        : IZLinkInstanceSpotFactoryBuilder<TSpot>
+        where TSpot : class, IZLinkInstanceSpot
+    {
+        public int StableTypeLimitValue { get; private set; }
+
+        public string? Relocation { get; private set; }
+
+        public IZLinkInstanceSpotFactoryBuilder<TSpot> StableTypeLimit(int limit)
+        {
+            StableTypeLimitValue = limit;
+            return this;
+        }
+
+        public IZLinkInstanceSpotFactoryBuilder<TSpot> DisableRelocation() =>
+            Select("Disabled");
+
+        public IZLinkInstanceSpotFactoryBuilder<TSpot> RecreateOnRelocation() =>
+            Select("Recreate");
+
+        public IZLinkInstanceSpotFactoryBuilder<TSpot> PreserveStateWith<TAdapter>()
+            where TAdapter : class, IZLinkSpotRelocationAdapter<TSpot> =>
+            Select(typeof(TAdapter).Name);
+
+        private IZLinkInstanceSpotFactoryBuilder<TSpot> Select(string relocation)
+        {
+            Relocation = relocation;
             return this;
         }
     }

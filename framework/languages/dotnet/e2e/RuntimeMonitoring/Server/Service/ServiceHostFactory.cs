@@ -75,9 +75,7 @@ internal static class ServiceHostFactory
             spotMesh.Objects().Server()
                 .AddEntrySpot<MonitoringEntrySpot>()
                 .AddSpotFactory<MonitoringSubjectSpot>(
-                    RuntimeMonitoringNames.SubjectSpotType,
-                    null,
-                    ZLinkRelocationPolicy<MonitoringSubjectSpot>.Disabled);
+                    RuntimeMonitoringNames.SubjectSpotType, factory => factory.DisableRelocation());
             var spotRouter = spotMesh.ConfigureRouterSocket();
             spotRouter.SendHighWaterMark = 1;
             spotRouter.SendTimeout = TimeSpan.FromMilliseconds(250);

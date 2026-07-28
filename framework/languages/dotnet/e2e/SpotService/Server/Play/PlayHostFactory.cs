@@ -94,25 +94,15 @@ internal static class PlayHostFactory
             spot.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
-                    SpotServiceNames.ActorType,
-                    null,
-                    ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                    SpotServiceNames.ActorType, factory => factory.RecreateOnRelocation())
                 .AddSpotFactory<ScenarioUserSpot>(
-                    SpotServiceNames.UserSpotType,
-                    null,
-                    ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                    SpotServiceNames.UserSpotType, factory => factory.DisableRelocation())
                 .AddSpotFactory<ScenarioAlternateSpot>(
-                    SpotServiceNames.AlternateSpotType,
-                    null,
-                    ZLinkRelocationPolicy<ScenarioAlternateSpot>.Disabled)
+                    SpotServiceNames.AlternateSpotType, factory => factory.DisableRelocation())
                 .AddSpotFactory<MultiNodeSpotA>(
-                    SpotServiceNames.MultiSpotTypeA,
-                    null,
-                    ZLinkRelocationPolicy<MultiNodeSpotA>.Disabled)
+                    SpotServiceNames.MultiSpotTypeA, factory => factory.DisableRelocation())
                 .AddSpotFactory<MultiNodeSpotB>(
-                    SpotServiceNames.MultiSpotTypeB,
-                    null,
-                    ZLinkRelocationPolicy<MultiNodeSpotB>.Disabled);
+                    SpotServiceNames.MultiSpotTypeB, factory => factory.DisableRelocation());
             spot.Channel(SpotServiceNames.SpotChannel).Server();
             if (string.Equals(options.Rid, "play-a", StringComparison.Ordinal))
             {

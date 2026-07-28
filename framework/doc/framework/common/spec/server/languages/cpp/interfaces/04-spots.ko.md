@@ -444,10 +444,11 @@ Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
 Actor와 User·Instance Spot의 cross-node materialization 동작은 factory 등록에 연결한
 factory builder가 정한다. 별도 relocation adapter registry나 operation별 adapter는 제공하지 않는다.
-[Snapshot](../../../../01-glossary.ko.md#relocation-policy) Spot factory만 `spot_relocation_adapter_t<TSpot>`로 Spot application state를 capture·restore한다. Whole
+`preserve_state_with<TAdapter>()`를 선택한 Spot factory만 `spot_relocation_adapter_t<TSpot>`로 Spot application state를 capture·restore한다. Whole
 User Spot relocation은 Spot root에 Spot adapter를 사용하고 각 Actor participant에는
-`actor_relocation_adapter_t<TActor>`를 사용한다. Same-node operation과 Disabled·Recreate policy는 Spot adapter를
-호출하지 않는다. Disabled cross-node operation은 capture 전에 거부한다.
+`actor_relocation_adapter_t<TActor>`를 사용한다. Same-node operation과 `disable_relocation()`·
+`recreate_on_relocation()`은 Spot adapter를 호출하지 않는다. `disable_relocation()`을 선택한
+cross-node operation은 capture 전에 거부한다.
 
 Spot adapter의 `capture(...)` 결과는 최대 64 MiB이며 빈 vector는 유효하다. 반환한 vector의 소유권은
 Framework로 이동하고 `restore(...)`에 전달한 vector는 해당 비동기 호출이 소유한다. Capture가 throw하거나

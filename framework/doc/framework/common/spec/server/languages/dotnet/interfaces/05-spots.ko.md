@@ -350,10 +350,10 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
 Actor membership과 local instance가 유효한 상태에서 callback을 실행하고 completion 뒤 scope와 [authority](../../../../01-glossary.ko.md#authority)를
 정리한다. Standalone Actor relocation은 Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
-`IZLinkSpotRelocationAdapter<TSpot>`은 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy로 cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) instance를
+`IZLinkSpotRelocationAdapter<TSpot>`은 `PreserveStateWith<TAdapter>()`로 등록한다. Cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) instance를
 materialize할 때만 호출한다. Whole User Spot relocation에서는 [Spot](../../../../01-glossary.ko.md#spot) adapter가 Spot application payload를 처리하고,
-각 member Actor의 payload는 Actor factory에 등록한 Actor adapter가 각각 처리한다. `Recreate`는 adapter를 호출하지
-않고 application state 없이 instance를 다시 만들며 `Disabled`는 capture 전에 cross-node 이동을 거부한다.
+각 member Actor의 payload는 Actor factory에 등록한 Actor adapter가 각각 처리한다. `RecreateOnRelocation()`은 adapter를 호출하지
+않고 application state 없이 instance를 다시 만들며 `DisableRelocation()`은 capture 전에 cross-node 이동을 거부한다.
 
 Spot adapter의 capture와 restore는 stable relocation attempt에서 at-least-once 호출될 수 있으므로 retry-safe해야
 한다. `CaptureAsync(...)` 결과는 최대 64 MiB이며 빈 배열은 유효하고 null은 contract 위반이다. Framework는

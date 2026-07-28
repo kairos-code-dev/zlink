@@ -142,7 +142,7 @@ var match = await spotClient
 | `IZLinkSpotContext` | handler, timer, worker, close와 relocation-ready turn 관리 |
 | `IZLinkInstanceSpotContext` | Instance Spot handler, timer, worker와 close 관리 |
 | `IZLinkEntrySpotContext` | Entry Spot handler, timer와 Actor lifecycle 관리 |
-| `IZLinkSpotRelocationAdapter<TSpot>` | Snapshot policy에서 opaque state bytes capture·restore |
+| `IZLinkSpotRelocationAdapter<TSpot>` | `PreserveStateWith`에서 opaque state bytes capture·restore |
 
 `SpotRef`는 current location snapshot이다. 일반 message target으로 보관하지 않는다. `CloseAsync(spotRef)`처럼
 exact generation을 확인해야 하는 operation에 사용한다.
@@ -181,7 +181,7 @@ actor.Context
 | `IZLinkActorClient` | global ActorId로 Actor send/request |
 | `IZLinkActorContext` | 현재 Actor identity, Spot membership, session binding과 deferred join |
 | `IZLinkActorFactory<TActor>` | Framework가 선택한 target에서 Actor instance 생성 |
-| `IZLinkActorRelocationAdapter<TActor>` | Snapshot policy에서 opaque state bytes capture·restore |
+| `IZLinkActorRelocationAdapter<TActor>` | `PreserveStateWith`에서 opaque state bytes capture·restore |
 
 `ActorRef`도 exact incarnation을 가리키는 snapshot이다. 일반 messaging은 ActorId를 사용한다.
 

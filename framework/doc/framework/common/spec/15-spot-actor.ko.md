@@ -538,10 +538,11 @@ application state이고 null result는 adapter contract 위반이다. Callback�
 복사하거나 소유권을 넘겨받으므로 application은 그 뒤 결과를 바꾸지 않는다. `Restore`에 전달한 bytes는 callback이
 완료될 때까지만 유효하고 callback이 보관하려면 직접 복사해야 한다.
 
-Join과 host maintenance는 같은 factory policy와 adapter registration을 사용한다. `Snapshot` Actor가 다른
+Join과 host maintenance는 같은 factory relocation 구성과 adapter registration을 사용한다.
+`PreserveStateWith`를 선택한 Actor가 다른
 node의 User Spot·Entry Spot으로 join하거나 maintenance로 이동할 때 Actor adapter를 호출한다.
-User Spot aggregate relocation에서는 `Snapshot`으로 등록한 Spot과 각 member Actor의 adapter를 각각
-호출한다. Same-node join, `Disabled` 거부와 `Recreate` relocation에서는 adapter를 호출하지
+User Spot aggregate relocation에서는 `PreserveStateWith`로 등록한 Spot과 각 member Actor의 adapter를 각각
+호출한다. Same-node join, `DisableRelocation` 거부와 `RecreateOnRelocation`에서는 adapter를 호출하지
 않는다. Operation별 policy, 생략 overload와 별도 adapter registry를 제공하지 않는다.
 Policy와 adapter registration은 startup 뒤 바뀌지 않는다.
 
@@ -592,8 +593,8 @@ flowchart LR
 1. Spot queue turn 경계에서 aggregate의 active unit, callback과 예상 payload byte permit을 모두 얻은 뒤 source
    User Spot의 join·leave와 모든 participant admission을 reversible하게 seal한다.
 2. Exact participant inventory를 immutable tree로 저장하고 root·count·digest를 검증한다.
-3. 모든 policy, target type·[Snapshot](01-glossary.ko.md#relocation-policy) adapter capability와 active·pending capacity를 preflight한다.
-4. `Snapshot` participant의 모든 state, 실행하지 않은 message queue, accepted journal과 timer logical
+3. 모든 relocation 구성, target type·state 보존 adapter capability와 active·pending capacity를 preflight한다.
+4. `PreserveStateWith` participant의 모든 state, 실행하지 않은 message queue, accepted journal과 timer logical
    registration·pending tick을 capture하고 target reservation·factory·restore를 admission이 닫힌 상태로 준비한다.
 5. Location Store의 단일 CAS가 aggregate owner, generation, inventory root와 capacity를
    전환한다. 이 CAS가 성공하면 Spot과 모든 member Actor가 함께 새 owner를 사용한다.

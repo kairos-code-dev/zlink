@@ -20,9 +20,9 @@ Kotlin application은 Java의 lifecycle, termination, relocation policy와 Locat
 package는 coroutine handler, suspending call, reified registration과 구성 DSL을 제공하며 같은 의미의 runtime
 facade나 상태 type을 중복해서 정의하지 않는다.
 
-Actor·Spot Snapshot adapter도 Java `ZLinkActorRelocationAdapter`와 `ZLinkSpotRelocationAdapter`가 정본이다. Kotlin은
+Actor·Spot state 보존 adapter도 Java `ZLinkActorRelocationAdapter`와 `ZLinkSpotRelocationAdapter`가 정본이다. Kotlin은
 `byte[]`를 `ByteArray`로 투영하고 `CompletionStage` completion을 그대로 사용하며 별도 state DTO,
-state contract ID, suspending adapter와 reified [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy를 정의하지 않는다. Entry Spot의 coroutine
+state contract ID, suspending adapter와 reified state 보존 policy를 정의하지 않는다. Entry Spot의 coroutine
 lifecycle class는 infrastructure membership relocation callback을 추가하지 않는다.
 `SpotWide` application-signaled 경계의 completion만
 `onRelocationReadyCompletedSuspending(...)` 기본 no-op bridge로 제공한다.

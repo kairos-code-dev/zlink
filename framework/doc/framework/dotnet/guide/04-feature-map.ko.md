@@ -95,7 +95,7 @@ actor가 다른 node로 이동하는 동안 보낸 request도 원래 caller에�
 ## 6. 더 보기
 
 - 핵심 개념: [03-concepts](03-concepts.ko.md)
-- ZLink를 어디에 쓰나(새 서비스 도입 판단): [14-grpc-alternative](14-grpc-alternative.ko.md)
+- ZLink를 어디에 쓰나(새 서비스 도입 판단): [14-alternative](14-alternative.ko.md)
 - 모든 계약 인터페이스를 코드로(ContractTests 검증): [13-interface-catalog](13-interface-catalog.ko.md)
 - 전체 인터페이스 카탈로그(언어 중립 정식): [spec/handler-interfaces](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 동작 계약은 각 기능 spec을 따르고, 검증 범위는

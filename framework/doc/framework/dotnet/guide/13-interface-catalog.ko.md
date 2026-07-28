@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-grpc-alternative.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 인터페이스 카탈로그 — 모든 계약을 코드로
@@ -794,5 +794,5 @@ Exact interface를 바꾸면 목표 계약 테스트와 이 카탈로그를 함�
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-grpc-alternative.ko.md)
+[문서 목록](../../../README.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: ZLink를 어디에 쓰나](14-alternative.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

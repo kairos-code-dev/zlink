@@ -164,9 +164,10 @@ AI는 다음 순서를 지킨다. 문장을 먼저 생성한 뒤 계약을 추�
 [cold activation](../../../framework/doc/framework/common/spec/01-glossary.ko.md#cold-activation)이라고 한다.
 ```
 
-문서에서 한 번만 사용하는 용어도 링크한다. 이후 같은 용어에는 링크를 반복하지
-않는다. 다른 문서는 독립적으로 읽어야 하므로 그 문서의 첫 사용에서 다시 설명하고
-링크한다.
+문서에서 한 번만 사용하는 용어도 링크한다. 이후 같은 문서 안에서는 링크를
+반복하지 않는다. 다른 문서는 독립적으로 읽어야 하므로 그 문서의 첫 사용에서
+다시 설명하고 링크한다 — [기술문서 작성 원칙](documentation-principles.ko.md)
+원칙 2 "용어는 문서 단위로 다시 소개한다"를 spec 용어집에 적용한 것이다.
 
 제목, 목차, interface signature와 code block은 첫 사용 판단에서 제외할 수 있다.
 본문의 public identifier, 상태와 오류 값은 glossary 항목이 있으면 제외하지 않는다.

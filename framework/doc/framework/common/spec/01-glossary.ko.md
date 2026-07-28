@@ -6,7 +6,7 @@
 > 이 문서는 `framework/doc/framework/common/spec/`의 공개 계약을 이해하는 데 필요한
 > 공통 domain term, 상태와 결과 이름을 설명한다.
 
-[스펙 작성 가이드](../../../../../doc/principal/documentation/00-spec-writing-guide.ko.md) ·
+[스펙 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md) ·
 [Spot 메시징](12-spot-messaging.ko.md)
 
 ## 표와 .NET 코드 예제를 읽는 방법

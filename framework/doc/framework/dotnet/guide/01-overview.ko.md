@@ -30,7 +30,7 @@ correlation은 framework가 처리한다.
 > protocol(ZMP) + codec + 논리 channel/packet이라 서로 다른 언어로 구현된 서비스가
 > 같은 channel 위에서 상호 호출한다(예: room 서버 C++, API 서버 .NET·Java). 이
 > 가이드는 `.NET` 기준이며 `.NET` 구현을 reference implementation(기준 구현)으로
-> 삼는다. 자세한 cross-language 모델은 [14-grpc-alternative §2.1](14-grpc-alternative.ko.md)이 다룬다.
+> 삼는다. 자세한 cross-language 모델은 [14-alternative §2.1](14-alternative.ko.md)이 다룬다.
 
 ## 2. 언제 필요한가
 
@@ -65,26 +65,35 @@ correlation은 framework가 처리한다.
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart TB
-  subgraph mmo["① zone 분할형 — MMORPG"]
+  subgraph row1[" "]
     direction LR
-    C1["client"] --> GW["gateway"] --> Z1["zone 서버 A"]
-    GW --> Z2["zone 서버 B"]
-    Z1 <-.->|"경계 넘으면 서로 넘겨줌<br/>(자체 프로토콜)"| Z2
+    subgraph mmo["① zone 분할형 — MMORPG"]
+      direction LR
+      C1["client"] --> GW["gateway"] --> Z1["zone 서버 A"]
+      GW --> Z2["zone 서버 B"]
+      Z1 <-.->|"경계 넘으면 서로 넘겨줌<br/>(자체 프로토콜)"| Z2
+    end
+    subgraph rm["② lobby + room형 — 캐주얼·MO·보드게임"]
+      direction LR
+      C2["client"] --> LO["lobby / 매칭"] --> R1["room 서버들<br/>(방 단위 상태)"]
+    end
+    mmo ~~~ rm
   end
-  subgraph rm["② lobby + room형 — 캐주얼·MO·보드게임"]
+  subgraph row2[" "]
     direction LR
-    C2["client"] --> LO["lobby / 매칭"] --> R1["room 서버들<br/>(방 단위 상태)"]
+    subgraph ded["③ matchmaker + dedicated형 — 세션 기반"]
+      direction LR
+      C3["client"] --> MM["matchmaker<br/>(ticket 큐)"] --> FL["dedicated 서버 fleet<br/>(판마다 프로세스 할당)"]
+    end
+    subgraph act["④ 분산 actor 서비스형 — 메타·소셜 백엔드"]
+      direction LR
+      C4["client"] --> AP["API 서버<br/>(stateless front-end)"] --> AC["actor 클러스터<br/>(플레이어·길드 단위 상태,<br/>노드 간 위치 투명)"]
+    end
+    ded ~~~ act
   end
-  subgraph ded["③ matchmaker + dedicated형 — 세션 기반"]
-    direction LR
-    C3["client"] --> MM["matchmaker<br/>(ticket 큐)"] --> FL["dedicated 서버 fleet<br/>(판마다 프로세스 할당)"]
-  end
-  subgraph act["④ 분산 actor 서비스형 — 메타·소셜 백엔드"]
-    direction LR
-    C4["client"] --> AP["API 서버<br/>(stateless front-end)"] --> AC["actor 클러스터<br/>(플레이어·길드 단위 상태,<br/>노드 간 위치 투명)"]
-  end
-  mmo ~~~ rm
-  ded ~~~ act
+  row1 ~~~ row2
+  style row1 fill:none,stroke:none
+  style row2 fill:none,stroke:none
 ```
 
 - **① zoning(zone 분할).** 월드를 지리적 구역으로 나눠 구역마다 서버(노드)가
@@ -103,7 +112,7 @@ flowchart TB
   유지하고, DB는 주기적 저장소 역할만 한다. 읽기 편중 부하가 줄고 별도 캐싱
   계층이 필요 없어져, 메타·소셜 백엔드에서 흔히 쓰인다. 대표 프레임워크는
   Orleans·Akka이고, ZLink의 SPOT/actor와의 차이와 제약은
-  [14장 §7](14-grpc-alternative.ko.md)에서 비교한다.
+  [14장 §7](14-alternative.ko.md)에서 비교한다.
 
 **ZLink가 제공하는 것.** 어려움 하나하나에 기능이 대응한다.
 
@@ -127,8 +136,9 @@ flowchart TB
 
 > 트위치 FPS의 **초저지연 snapshot netcode**는 유실을 허용하는 비신뢰 전송을 쓴다.
 > 현재 STREAM이 제공하는 transport는 TCP/TLS/WS/WSS이며, **비신뢰 전송(QUIC
-> datagram·WebTransport)은 지원 예정**이다. 지금도 그 게임의 매칭·로비·메타·소셜은
-> 위 갈래들로 덮인다. 경계 전체는 [14장](14-grpc-alternative.ko.md) §4가 다룬다.
+> datagram·WebTransport)은 지원 예정**이다. 다만 그런 게임에서도 매칭·로비·메타·
+> 소셜은 지금 이 네 갈래로 충분히 처리된다. 어디까지 되고 안 되는지는
+> [14장](14-alternative.ko.md) §4에서 다룬다.
 
 **게임 서버 엔진·서비스와는 어떻게 다른가.** 직접 만들지 않는 길로는 엔진과
 관리형 서비스가 있다. 이들이 제공하는 것을 영역별로 놓고 보면 ZLink의 자리가
@@ -139,7 +149,7 @@ flowchart TB
 | 연결·전송 최적화 — 소켓/세션 관리, 암호화·압축, TCP/UDP 병행, 네트워크 I/O와 로직 스레드 분리 | [ProudNet](https://docs.proudnet.com/proudnet.eng) | 전용 서버 모듈 + client SDK |
 | room·lobby·매칭 — room 생성/조회, lobby, 매치 초대 | [Photon](https://www.photonengine.com/)·[SmartFoxServer](https://docs2x.smartfoxserver.com/Overview/zones-room-architecture) | 자체 런타임 위의 room 모델 |
 | 호스팅·fleet — dedicated 서버 할당, autoscaling, 매치메이킹 규칙 엔진(FlexMatch) | [AWS GameLift](https://aws.amazon.com/gamelift/servers/)·Agones | 클라우드 관리형 서비스 |
-| 소셜·메타 배터리 — 친구, 리더보드, 그룹, 채팅 | [Nakama](https://heroiclabs.com/nakama-gamelift/) | 백엔드 서버 제품 |
+| 소셜·메타 기능 — 친구, 리더보드, 그룹, 채팅 | [Nakama](https://heroiclabs.com/nakama-gamelift/) | 백엔드 서버 제품 |
 
 ZLink는 이 중 **연결·세션(STREAM), room·상태 단위(SPOT), 서버 간 메시징(channel),
 참가자 상태(actor), 무중단 종료(drain)** 를 제공한다 — 단, 전용 런타임이나 관리형
@@ -148,10 +158,11 @@ ZLink는 이 중 **연결·세션(STREAM), room·상태 단위(SPOT), 서버 간
 - **호스팅·fleet은 ZLink의 몫이 아니다.** K8s든 GameLift든 그 위에서 ZLink 서버가
   돌면 된다 — 호스팅 서비스와 경쟁하지 않고 조합된다.
 - **매치메이킹 규칙과 소셜 기능은 제품 기능이 아니라 앱 로직이다.** channel
-  handler와 spot으로 직접 작성한다. 배터리는 적지만, 로직의 소유권과 자유도가
-  앱에 남는다.
+  handler와 spot으로 직접 작성한다. 미리 만들어진 기능은 적지만, 로직의 소유권과
+  자유도가 앱에 남는다.
 
-그리고 이 전부가 쓰던 프레임워크 안이다 — 엔진의 섬과 정반대 방향이다.
+그리고 이 전부가 쓰던 프레임워크 안이다 — 엔진을 새로 들여와 별도 생태계로 옮겨가야
+하는 것과는 정반대 방향이다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -431,7 +442,7 @@ Kafka(주황)가 처리 경로 **밖으로** 나가 전파·보존만 맡는다(
 **남는 것은 남는다.** 클라이언트 HTTP 진입은 여전히 stateless라 L7 LB/Ingress가 평소처럼
 API 서버에 분배하고(회색), 주문 상태는 여전히 DB에 저장한다. gRPC와 달리 이 HTTP 진입
 경로에 L7 분배 장치를 **추가로** 요구하지도 않는다(그 이유는
-[14장 §6.1](14-grpc-alternative.ko.md)이 다룬다).
+[14장 §6.1](14-alternative.ko.md)이 다룬다).
 
 **ZLink가 제공하는 것.** "같은 key를 한 곳에 모아 순서대로"를 log가 아니라 **owner
 routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 사라진다.
@@ -445,7 +456,7 @@ routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 �
 | offset·lag·재동기화 잡 운영 | 소비 파이프라인이 없으므로 해당 운영 항목 자체가 없다 | |
 
 **경계는 그대로다.** durable log가 진짜 필요한 요구 — 이벤트 replay, 장기 보존, 독립
-시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([14장 §4](14-grpc-alternative.ko.md)).
+시스템들로의 광범위 fan-out — 는 Kafka가 맞고 그대로 남긴다([14장 §4](14-alternative.ko.md)).
 ZLink가 줄이는 것은 "엔티티 단위 순서 처리"만을 위해 log 파이프라인을 조립하던
 경우다. 순서와 정합성이 목적의 전부였다면, owner routing이 그 목적을 파이프라인 없이
 직접 달성한다.
@@ -810,7 +821,7 @@ location store 모델로 공개 기능을 사용한다. 정식 public API 계약
 9. [11-monitoring](11-monitoring.ko.md) — runtime 이벤트 관찰
 10. [04-feature-map](04-feature-map.ko.md) — 무엇을·얼마나 쉽게·언제 쓰나
 11. [13-interface-catalog](13-interface-catalog.ko.md) — 모든 계약 인터페이스를 코드로(ContractTests 검증)
-12. [14-grpc-alternative](14-grpc-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
+12. [14-alternative](14-alternative.ko.md) — **ZLink를 어디에 쓰나**(사용처·문제 신호·기술 선택 경계)
 13. [공통 샘플](../../common/sample/README.ko.md) — 정본 업무 시나리오와 검증 기준
 14. [spec/](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md) — 정식 계약(인터페이스 카탈로그)
 

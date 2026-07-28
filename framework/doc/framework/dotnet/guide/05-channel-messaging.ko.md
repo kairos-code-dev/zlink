@@ -170,7 +170,7 @@ sequenceDiagram
 강조하는 핵심은 **호출 경로와 운영 컴포넌트를 줄일 수 있다**는 점이다. ZLink는
 HTTP/2 프록시·stub·별도 broker를 통과하는 구성을 줄이고, TCP 기반 비동기 channel로
 request/reply와 send를 처리하기 때문에 내부 메시징 경로를 짧게 만들 수 있다.
-더 자세한 도입 판단과 gRPC 비교는 [14-grpc-alternative](14-grpc-alternative.ko.md)가
+더 자세한 도입 판단과 gRPC 비교는 [14-alternative](14-alternative.ko.md)가
 다룬다.
 
 예를 들어 주문 서비스라면, gRPC `rpc PlaceOrder(...)`가 다음과 같이 바뀐다.
@@ -205,7 +205,7 @@ var placed = await client
 보여 준다.
 
 > 비슷한 서비스를 새로 만들 때의 기술 선택 경계와 도입 판단은
-> [14-grpc-alternative](14-grpc-alternative.ko.md)가 다룬다.
+> [14-alternative](14-alternative.ko.md)가 다룬다.
 
 ## 1. channel 종류
 

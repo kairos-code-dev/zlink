@@ -145,6 +145,10 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 계약은 spec 문서가 다루며, 가이드는 그 의미를 실사용 코드로 풀어 준다. 실행
 가능한 전체 샘플의 업무 흐름은 [공통 sample](../common/sample/README.ko.md)이 정의한다.
 
+이 가이드 문서를 작성·수정할 때는
+[guide 문서 작성 가이드](../../../../doc/principal/documentation/guide-writing-guide.ko.md)를
+따른다.
+
 | 문서 | 역할 |
 |------|------|
 | [guide/01-overview.ko.md](guide/01-overview.ko.md) | 무엇/왜/누구를 위한 것, 기존 방식 대비 체감 난이도, 4축 |
@@ -160,7 +164,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 Options binding 기준�
 | [guide/11-monitoring.ko.md](guide/11-monitoring.ko.md) | socket / location / spot runtime 이벤트 관찰 사용법 |
 | [guide/12-operations.ko.md](guide/12-operations.ko.md) | 운영 — 런타임 메트릭, graceful drain, readiness 통합 |
 | [guide/13-interface-catalog.ko.md](guide/13-interface-catalog.ko.md) | 모든 계약 인터페이스를 ContractTests 검증 코드로 색인 |
-| [guide/14-grpc-alternative.ko.md](guide/14-grpc-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
+| [guide/14-alternative.ko.md](guide/14-alternative.ko.md) | **ZLink를 어디에 쓰나** — 사용처, 문제 신호, 기술 선택 경계 |
 
 ### 2.1 기준 문서 (interface catalog)
 
